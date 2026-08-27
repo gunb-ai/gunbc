@@ -1,9 +1,17 @@
 module gunbc.emit_subject_clean_frontier
 
-import std.types { Bool, Int, String, NonEmptyStr }
+import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
 import std.materialization_ladder { string_list_contains }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.dissolution { DissolutionCondition }
+import std.witness_admission {
+  WitnessConsumerCadence,
+  NoConsumer,
+  WitnessExecutionStanding,
+  WitnessHasExecutingConsumer,
+  UnexecutedDeferredWitness,
+  witness_cadence_has_scheduled_route
+}
 import std.roster_frontier {
   FrontierRow,
   frontier_row_path,
@@ -26,8 +34,23 @@ import gunbc.emit_diagnostic_observation {
   emit_blocking_count,
   emit_population_extent_text
 }
+import std.measure { Nanosecond, nanosecond_count, ByteSize, byte_size_count }
+import extdeps.crypto.hash { Digest }
+import extdeps.github.actions_environment {
+  ActionsRunCoordinate,
+  ActionsRunCoordinateObserved,
+  ActionsRunCoordinateMissing,
+  ActionsRunCoordinateEmpty
+}
 import tools.emission_entry_instrument {
   EmissionMeasurement,
+  EmissionMeasurementSubject,
+  WorkingTreeStanding,
+  WorkingTreeClean,
+  WorkingTreeDirty,
+  EmissionAssemblyMode,
+  SeedLinkedAssembly,
+  working_tree_standing_text,
   EmissionSubjectUnestablished,
   EmissionUnreached,
   EmissionEmitRefused,
@@ -313,10 +336,14 @@ type RosterDiscoveryPolicy
 // them. That is exactly the failure this carrier exists to remove, committed by the carrier itself.
 //
 // So the rule "nothing may gate on a single-denominator universe" is carried by
-// `emit_ratchet_gating_admission` below, which REFUSES on this field. Enrolling a single-denominator
-// carrier is then a typed refusal naming the missing denominator, not a missed paragraph — and when
-// the file inventory lands, the field changes and enrolment becomes possible with no note for
-// anyone to remember.
+// `emit_ratchet_gate_admission` below, which REFUSES on this field. Enrolling a single-denominator
+// carrier as a GATE is then a typed refusal naming the missing denominator, not a missed paragraph.
+//
+// AND THE FIELD NO LONGER DECIDES ENROLMENT BY ITSELF, which is the correction this sentence needed
+// rather than a widening of it. It used to end "when the file inventory lands, the field changes and
+// enrolment becomes possible" -- true of the wall as it then stood, and false the moment that landed:
+// a dual denominator makes a gate ELIGIBLE, not admissible, because a gate additionally requires that
+// every roster subject was evaluated. Enrolment as an OBSERVATION does not consult this field at all.
 type RosterDenominators
   = DeclarationIndexOnly
   | DeclarationIndexAndModuleInventory
@@ -790,6 +817,7 @@ type EmitRatchetVerdict
   | RatchetFrontierStale { entry: String }
   | RatchetNotEvaluated { entry: String, on_frontier: Bool, cause: EmitNotEvaluatedCause }
   | RatchetSubjectUnmeasured { entry: String, on_frontier: Bool }
+  | RatchetSubjectNotSelected { entry: String, on_frontier: Bool }
 
 fn emit_ratchet_verdict_entry(v: EmitRatchetVerdict) -> String {
   match v {
@@ -799,17 +827,85 @@ fn emit_ratchet_verdict_entry(v: EmitRatchetVerdict) -> String {
     RatchetFrontierStale { entry: e } => e
     RatchetNotEvaluated { entry: e, on_frontier: _, cause: _ } => e
     RatchetSubjectUnmeasured { entry: e, on_frontier: _ } => e
+    RatchetSubjectNotSelected { entry: e, on_frontier: _ } => e
   }
 }
 
-fn emit_ratchet_verdict_holds(v: EmitRatchetVerdict) -> Bool {
+// ---------------------------------------------------------------------------------------------
+// THE CANONICAL CLASSIFICATION, and it is the ONE place that reads the verdict vocabulary's shape.
+//
+// Two questions are asked of a verdict -- did the ratchet HOLD, and was the subject EVALUATED AT ALL
+// -- and they were answered by two independent total matches. Review 56204 is right that this
+// duplicates the coproduct's shape knowledge across two authorities, and right that distinct
+// semantics do not exempt it: both facts can be true at once, which is what neither of my earlier
+// answers said. Two matches over six variants is two places to edit when a variant lands, and the
+// compiler forcing both to be total does not make them one authority.
+//
+// SO THE FIX IS NOT TO DELETE A PREDICATE BUT TO GIVE BOTH ONE SOURCE. The three-way classification
+// below is the real semantic axis, and naming it turns the disagreement the two predicates exhibited
+// into a CONSTRUCT rather than an emergent difference someone has to measure to discover:
+//
+//   VerdictHeld                 the fold established a verdict and the ratchet holds
+//   VerdictEstablishedAndRefused the fold established a verdict and then REFUSED it -- a regression
+//                               is a subject measured and found dirty, a stale frontier row is a
+//                               subject measured and found CLEAN while its admission row disagrees
+//   VerdictUnestablished        no verdict about this subject exists at all
+//
+// That middle class IS the population where the two questions diverge: holds=false, evaluated=true.
+// It previously had to be discovered by comparing two functions arm by arm; now it has a name, and
+// a new verdict variant fails to compile in exactly one place instead of two.
+// WHY A SUBJECT HAS NO VERDICT, carried rather than flattened away. Three unevaluated verdicts have
+// three different owners and three different repairs, and a refusal that names the subjects without
+// naming the reasons tells a reader WHICH subjects blocked enrolment and not WHY ANY OF THEM DID.
+//
+// The reason rides on the classification's own Unestablished arm rather than in a second total match
+// beside it. Review 56204 dissolved exactly that duplication once already; adding the reason HERE
+// keeps one authority over the verdict vocabulary and gives the arm the payload it was missing.
+type UnevaluatedReason
+  = UnevaluatedNoPopulation { cause: EmitNotEvaluatedCause }
+  | UnevaluatedInstrumentSilent
+  | UnevaluatedNeverSelected
+
+fn unevaluated_reason_text(reason: UnevaluatedReason) -> String {
+  match reason {
+    UnevaluatedNoPopulation { cause: c } =>
+      concat("the reading established no population — ", emit_not_evaluated_cause_text(cause: c))
+    UnevaluatedInstrumentSilent =>
+      "the run asked about this subject and the instrument produced no reading — fix the instrument"
+    UnevaluatedNeverSelected =>
+      "this run never asked about this subject — widen the run"
+  }
+}
+
+type VerdictStanding
+  = VerdictHeld
+  | VerdictEstablishedAndRefused
+  | VerdictUnestablished { reason: UnevaluatedReason }
+
+fn emit_ratchet_verdict_standing(v: EmitRatchetVerdict) -> VerdictStanding {
   match v {
-    RatchetCleanHeld { entry: _ } => true
-    RatchetDebtHeld { entry: _, cause: _ } => true
-    RatchetRegressed { entry: _, cause: _ } => false
-    RatchetFrontierStale { entry: _ } => false
-    RatchetNotEvaluated { entry: _, on_frontier: _, cause: _ } => false
-    RatchetSubjectUnmeasured { entry: _, on_frontier: _ } => false
+    RatchetCleanHeld { entry: _ } => VerdictHeld
+    RatchetDebtHeld { entry: _, cause: _ } => VerdictHeld
+    RatchetRegressed { entry: _, cause: _ } => VerdictEstablishedAndRefused
+    RatchetFrontierStale { entry: _ } => VerdictEstablishedAndRefused
+    RatchetNotEvaluated { entry: _, on_frontier: _, cause: c } =>
+      VerdictUnestablished { reason: UnevaluatedNoPopulation { cause: c } }
+    RatchetSubjectUnmeasured { entry: _, on_frontier: _ } =>
+      VerdictUnestablished { reason: UnevaluatedInstrumentSilent }
+    RatchetSubjectNotSelected { entry: _, on_frontier: _ } =>
+      VerdictUnestablished { reason: UnevaluatedNeverSelected }
+  }
+}
+
+// BOTH PREDICATES ARE NOW PROJECTIONS OVER THE CLASSIFICATION, never over the storage shape. They
+// stay predicates because `filter` takes a `Bool`, but that is now a question about the CONSUMER's
+// interface rather than a reason to duplicate variant knowledge -- which is the distinction the
+// earlier defence of them missed.
+fn emit_ratchet_verdict_holds(v: EmitRatchetVerdict) -> Bool {
+  match emit_ratchet_verdict_standing(v: v) {
+    VerdictHeld => true
+    VerdictEstablishedAndRefused => false
+    VerdictUnestablished { reason: _ } => false
   }
 }
 
@@ -839,7 +935,12 @@ fn emit_ratchet_verdict_row(v: EmitRatchetVerdict) -> String {
     RatchetSubjectUnmeasured { entry: e, on_frontier: f } =>
       concat(
         concat(concat("UNMEASURED\t", e), concat("\ton_frontier\t", to_string(f))),
-        "\tthe fold was handed no measurement for this roster subject — a partial run cannot answer a closed-universe claim"
+        "\tthe instrument was asked about this subject and produced no reading for it — a deficit in the run, not its scope"
+      )
+    RatchetSubjectNotSelected { entry: e, on_frontier: f } =>
+      concat(
+        concat(concat("NOT-SELECTED\t", e), concat("\ton_frontier\t", to_string(f))),
+        "\tthis run measured a subset and never asked about this subject — scope rather than a deficit, and still not a verdict"
       )
   }
 }
@@ -900,9 +1001,56 @@ fn lookup_subject_reading(readings: List<EmitSubjectReading>, entry: String) -> 
   )
 }
 
-fn emit_ratchet_verdict_for(entry: String, on_frontier: Bool, readings: List<EmitSubjectReading>) -> EmitRatchetVerdict {
+// ---------------------------------------------------------------------------------------------
+// THE SELECTION, WHICH IS WHY "NO VERDICT" IS TWO FACTS AND NOT ONE.
+//
+// A roster subject can arrive at the fold with no reading for two reasons that share nothing but
+// their silence. Either the run ASKED about it and the instrument produced nothing -- a deficit in
+// the run -- or the run never asked, because `entries` named a subset. The owners are opposite:
+// the first is an instrument to fix, the second is a run to widen, and a reader handed one
+// UNMEASURED count cannot tell which they are looking at.
+//
+// This module already draws exactly this distinction correctly one axis over: an admission row
+// naming a subject the roster lacks is reported as an ORPHAN rather than as a missing measurement,
+// because the two have opposite owners. The selection axis is the same shape and did not get the
+// same treatment, so it is given one here.
+//
+// THE CARRIER IS A COPRODUCT AND NOT A LIST, deliberately. A bare `List<String>` would make the
+// empty list mean both a subset naming nothing and no subsetting at all -- the state-space
+// conflation this type exists to remove, reintroduced in the type that removes it.
+type SubjectSelection
+  = SelectionWholeRoster
+  | SelectionSubset { entries: List<String> }
+
+fn subject_was_selected(selection: SubjectSelection, entry: String) -> Bool {
+  match selection {
+    SelectionWholeRoster => true
+    SelectionSubset { entries: es } => string_list_contains(xs: es, wanted: entry)
+  }
+}
+
+// The subjects an instrument should be invoked over, which is the SAME value the classification
+// above reads. A caller deriving this list independently of the selection is how the two drift.
+fn subject_selection_entries(selection: SubjectSelection, roster: List<String>) -> List<String> {
+  match selection {
+    SelectionWholeRoster => roster
+    SelectionSubset { entries: es } => es
+  }
+}
+
+fn emit_ratchet_verdict_for(
+  entry: String,
+  on_frontier: Bool,
+  selection: SubjectSelection,
+  readings: List<EmitSubjectReading>
+) -> EmitRatchetVerdict {
   match lookup_subject_reading(readings: readings, entry: entry) {
-    SubjectReadingAbsent => RatchetSubjectUnmeasured { entry: entry, on_frontier: on_frontier }
+    SubjectReadingAbsent =>
+      if subject_was_selected(selection: selection, entry: entry) {
+        RatchetSubjectUnmeasured { entry: entry, on_frontier: on_frontier }
+      } else {
+        RatchetSubjectNotSelected { entry: entry, on_frontier: on_frontier }
+      }
     SubjectReadingFound { reading: reading } =>
       emit_ratchet_verdict_of_outcome(
         entry: entry,
@@ -930,6 +1078,7 @@ type EmitSubjectCleanRatchet {
 fn fold_emit_subject_clean_ratchet_over_readings(
   universe: RatchetUniverse,
   admissions: List<EmitDebtAdmission>,
+  selection: SubjectSelection,
   readings: List<EmitSubjectReading>
 ) -> EmitSubjectCleanRatchet {
   let keys = map(admissions, a => emit_debt_admission_entry(admission: a))
@@ -943,6 +1092,7 @@ fn fold_emit_subject_clean_ratchet_over_readings(
         emit_ratchet_verdict_for(
           entry: entry,
           on_frontier: string_list_contains(xs: keys, wanted: entry),
+          selection: selection,
           readings: all_readings
         )
     ),
@@ -968,11 +1118,13 @@ fn fold_emit_subject_clean_ratchet_over_readings(
 fn fold_emit_subject_clean_ratchet(
   universe: RatchetUniverse,
   admissions: List<EmitDebtAdmission>,
+  selection: SubjectSelection,
   measurements: List<EmissionMeasurement>
 ) -> EmitSubjectCleanRatchet {
   fold_emit_subject_clean_ratchet_over_readings(
     universe: universe,
     admissions: admissions,
+    selection: selection,
     readings: map(measurements, m => emit_subject_reading(m: m))
   )
 }
@@ -1040,51 +1192,530 @@ fn emit_ratchet_standing_text(standing: EmitRatchetStanding) -> String {
 // function of rows the report also prints in full, so a reader can reconstruct it and no consumer
 // has to trust it. Nothing above admits or refuses on one.
 // ---------------------------------------------------------------------------------------------
-// THE ENROLMENT WALL.
+// THE ENROLMENT WALL, AND WHY ENROLMENT IS TWO QUESTIONS RATHER THAN ONE.
 //
-// Any consumer that would let a merge decision ride on this carrier routes through here first, and
-// today it always refuses, because hole 2 is open: a universe discovered from the declaration index
-// alone drops a file it cannot CLASSIFY instead of blocking it, so a gate reading it would report
-// IMPROVEMENT when ingest regresses. That is fabricated plausible output with merge authority
-// behind it.
+// The wall that stood here answered ONE question -- may a merge decision ride on this carrier --
+// and answered it from ONE fact, the denominators the universe was discovered under. That was the
+// only fact it needed while hole 2 was open, because a single-denominator universe disqualifies
+// every enrolment at once. Hole 2 closed, the permitting arm became producible, and the wall then
+// permitted a carrier that must still not gate: the question it asks is now too narrow for the
+// answer it gives.
 //
-// THIS IS A CONSTRUCTION, NOT A NOTE, AND THE DIFFERENCE IS THE POINT. The same rule written as
-// prose is enforced only by the next author reading a paragraph and correctly believing it applies
-// to them; written here it is a typed refusal naming the missing denominator. When the module
-// inventory lands, the field changes, this permits, and there is no sentence anyone has to remember
-// to delete.
+// SO THE ENROLMENT MODE IS A PARAMETER, NOT AN ASSUMPTION. An OBSERVATION reports what it measured
+// and decides nothing; a GATE stops a merge. They are different claims about the same fold, they
+// have different preconditions, and collapsing them is what would let a first live run be adopted
+// as a baseline. DESIGN §5 is explicit that a population measured from the tree being judged is not
+// an oracle -- and the first live run of this ratchet over a corpus nobody has measured produces
+// exactly such a population. Enrolled as an observation it is a reading; enrolled as a gate it is a
+// snapshot with merge authority, and the refusal below is what keeps the second from being reachable
+// by wiring alone.
 //
-// BOTH ARMS ARE REACHABLE TODAY — the permitting arm is authorable by handing the fold the dual
-// denominator, which is why this is a wall rather than a decoration that could only ever refuse.
-type EmitRatchetGatingAdmission
-  = GatingPermitted
-  | GatingRefusedDenominator { missing: String }
+// THE PRECONDITIONS, PER MODE, AND EACH ONE IS DERIVED FROM THE FOLD RATHER THAN ASSERTED ABOUT IT:
+//
+//   BOTH -- the universe is non-empty. A fold over no subjects is a discovery failure, and a
+//   discovery failure rendered as an observation of nothing is the empty-observation narrow at the
+//   point where the observation is taken.
+//
+//   GATE ONLY -- the dual denominator, for the reason the previous wall gave verbatim and which is
+//   unchanged.
+//
+//   GATE ONLY -- every roster subject was EVALUATED. A subject that reached NOT-EVALUATED or was
+//   never measured has no verdict about its cleanliness at all, and a gate whose universe contains
+//   such subjects is deciding a closed-universe question over an open one. This is hole 3 arriving
+//   at the enrolment seam: while the instrument cannot recover entry scope for a talkative subject,
+//   a realistic universe folds to a wall of not-evaluated rows, and the honest consequence is that
+//   the carrier may be READ and may not GATE.
+//
+// AND THE ASYMMETRY IS DELIBERATE RATHER THAN LENIENT. An observation is NOT refused by a single
+// denominator or by unevaluated subjects, because those are the observation's CONTENT: refusing to
+// look because the looking is imperfect is the same narrow the empty-universe arm refuses, committed
+// one level up. What the observation may not do is be quoted as a gate, and that is not a property
+// of the reading -- it is the question this admission answers.
+//
+// BOTH ARMS OF EVERY REFUSAL ARE AUTHORABLE, which is what makes this a wall rather than a
+// decoration: the witness beside this module produces each refusing input and its one-field control.
+//
+// AND THE GATE'S PERMITTING ARM IS UNOCCUPIED ON THE LIVE CORPUS TODAY, WHICH IS A DIFFERENT FACT
+// FROM BEING UNREACHABLE -- the distinction decides whether this arm is a quiet wall or a decoration,
+// and only one of those readings licenses deleting it. Hole 3 above: the instrument reads compiler
+// stderr through a bounded TAIL while the entry-scope marker prints near the HEAD, so a talkative
+// subject loses its marker and arrives NOT-EVALUATED. Over a realistic roster under `dag` that means
+// the any-unevaluated condition refuses essentially always, so nothing currently RECEIVES the permit
+// (relayed from gentle-bee-495, 2026-08-26, on the measuring lane's nine sized specimens -- a SHAPE
+// and not a rate, since nine chosen entries are not a census, and no proportion is stated here or in
+// hole 3).
+//
+// THAT IS OCCUPANCY, NOT REACHABILITY. DESIGN's reachability-read-as-occupancy row puts the test at
+// the FIXTURE boundary rather than the corpus one, and the permit is authorable there -- the witness
+// authors it, as the one-field control beside the unevaluated refusal, and it goes red if the arm
+// stops permitting. Yes / yes / zero is a healthy guard being quiet. So this arm is not relaxed to
+// tolerate unevaluated subjects, which would convert the instrument's blindness into a green: the
+// absorbing fallback exactly, arriving as a kindness to a roster that is not ready.
+//
+// WHAT THE PERMIT ACTUALLY WAITS ON is therefore not this module and not the admission roster: it is
+// a typed entry-scope output the reader does not reconstruct from prose. No tail size closes it --
+// the marker is bounded from the head and the window from the tail, so the two never meet by tuning.
+// ---------------------------------------------------------------------------------------------
+type EmitRatchetEnrolment
+  = EnrolledAsObservation
+  | EnrolledAsGate
 
-fn emit_ratchet_gating_admission(r: EmitSubjectCleanRatchet) -> EmitRatchetGatingAdmission {
-  match r.roster {
-    RosterEmpty { policy: _, denominators: dn } => emit_ratchet_gating_admission_of(denominators: dn)
-    RosterIdentified { policy: _, denominators: dn, subject_count: _, digest: _ } =>
-      emit_ratchet_gating_admission_of(denominators: dn)
+fn emit_ratchet_enrolment_text(enrolment: EmitRatchetEnrolment) -> String {
+  match enrolment {
+    EnrolledAsObservation => "observation"
+    EnrolledAsGate => "gate"
   }
 }
 
-fn emit_ratchet_gating_admission_of(denominators: RosterDenominators) -> EmitRatchetGatingAdmission {
-  match denominators {
-    DeclarationIndexAndModuleInventory => GatingPermitted
+type EmitRatchetEnrolmentAdmission
+  = EnrolmentPermitted { enrolment: EmitRatchetEnrolment }
+  | EnrolmentRefusedNoUniverse { enrolment: EmitRatchetEnrolment }
+  | EnrolmentRefusedDenominator { enrolment: EmitRatchetEnrolment, missing: String }
+  | EnrolmentRefusedUnevaluated { enrolment: EmitRatchetEnrolment, subjects: List<UnevaluatedSubject> }
+
+fn ratchet_denominators(r: EmitSubjectCleanRatchet) -> RosterDenominators {
+  match r.roster {
+    RosterEmpty { policy: _, denominators: dn } => dn
+    RosterIdentified { policy: _, denominators: dn, subject_count: _, digest: _ } => dn
+  }
+}
+
+// WHETHER A VERDICT ESTABLISHED ANYTHING -- the second projection over the same classification, and
+// the one the not-evaluated wall turns on. `VerdictEstablishedAndRefused` answering TRUE here while
+// answering FALSE in `holds` is the whole content of the split: an evaluated failure must never be
+// indistinguishable from a subject nobody could measure, which is the state-space conflation this
+// carrier exists to refuse.
+fn emit_ratchet_verdict_evaluated(v: EmitRatchetVerdict) -> Bool {
+  match emit_ratchet_verdict_standing(v: v) {
+    VerdictHeld => true
+    VerdictEstablishedAndRefused => true
+    VerdictUnestablished { reason: _ } => false
+  }
+}
+
+// THE UNEVALUATED SUBJECTS, BY NAME. A count would be the wrong shape for the same reason every
+// other count in this module is display only: the refusal has to tell an operator WHICH subjects
+// have no verdict, because that list is the work that closes the gap.
+//
+// SELECTED, NOT ACCUMULATED. The obvious spelling is a fold appending `concat(acc, [e])` per hit,
+// which copies the accumulator on every append and is quadratic in the roster. DESIGN's bare-minimum-
+// cost rule is explicit that a proven cost shape is fixed regardless of the realized n, because "n is
+// small here" is not a time-stable fact -- and the roster here is the whole corpus, so it is not even
+// small. filter-then-map says the same thing in the shape that does not copy. (This module's peer
+// accumulators predate this change and are not touched by it; pricing an unrelated cut against them
+// would be the wrong denominator.)
+// AN UNEVALUATED SUBJECT IS AN ENTRY AND A REASON, never an entry alone. The earlier form mapped
+// the filtered verdicts to their entries and dropped the variant, which was total over
+// evaluated-versus-not and blind to the distinction that decides who repairs it -- the corpus's
+// "total at the level examined, blind one level down", with its named tell present exactly as
+// described: the payload-carrying position kept the entry and discarded the variant.
+//
+// It mattered more than a projection, because this list IS the gate refusal's payload: the refusal
+// could name which subjects blocked enrolment and could not say why any of them did.
+type UnevaluatedSubject {
+  entry: String
+  reason: UnevaluatedReason
+}
+
+fn unevaluated_subject_text(subject: UnevaluatedSubject) -> String {
+  concat(concat(subject.entry, " — "), unevaluated_reason_text(reason: subject.reason))
+}
+
+fn ratchet_unevaluated_subjects(r: EmitSubjectCleanRatchet) -> List<UnevaluatedSubject> {
+  fold(
+    r.verdicts,
+    init: [],
+    f: (acc, v) =>
+      match emit_ratchet_verdict_standing(v: v) {
+        VerdictHeld => acc
+        VerdictEstablishedAndRefused => acc
+        VerdictUnestablished { reason: reason } =>
+          concat(
+            acc,
+            [UnevaluatedSubject { entry: emit_ratchet_verdict_entry(v: v), reason: reason }]
+          )
+      }
+  )
+}
+
+fn emit_ratchet_gate_admission(r: EmitSubjectCleanRatchet) -> EmitRatchetEnrolmentAdmission {
+  match ratchet_denominators(r: r) {
     DeclarationIndexOnly =>
-      GatingRefusedDenominator {
+      EnrolmentRefusedDenominator {
+        enrolment: EnrolledAsGate,
         missing: "file inventory — a universe discovered from the declaration index alone loses a file the index cannot CLASSIFY (a fragment, a header preceded by non-comment text, an empty module name) instead of blocking it, so a gate over it reports improvement when such a file drops out of classification"
+      }
+    DeclarationIndexAndModuleInventory => {
+      let unevaluated = ratchet_unevaluated_subjects(r: r)
+      if count(unevaluated) == 0 {
+        EnrolmentPermitted { enrolment: EnrolledAsGate }
+      } else {
+        EnrolmentRefusedUnevaluated { enrolment: EnrolledAsGate, subjects: unevaluated }
+      }
+    }
+  }
+}
+
+// THE ROSTER COPRODUCT IS MATCHED DIRECTLY, not through a Bool. A `roster_is_empty` predicate would
+// be a second place holding the same shape knowledge, and the repository has already dissolved that
+// exact pattern twice -- `std.witness_admission` `witness_admission_predicate_dissolution_note`
+// (review 39760) and `v2.std.witness_execution_routing` -- in both cases by making the CONSUMER match
+// the coproduct instead. `RosterEmpty` carries the discovery failure, so reading it here is reading
+// the authority rather than a derived answer about it.
+fn emit_ratchet_enrolment_admission(
+  enrolment: EmitRatchetEnrolment,
+  r: EmitSubjectCleanRatchet
+) -> EmitRatchetEnrolmentAdmission {
+  match r.roster {
+    RosterEmpty { policy: _, denominators: _ } => EnrolmentRefusedNoUniverse { enrolment: enrolment }
+    RosterIdentified { policy: _, denominators: _, subject_count: _, digest: _ } =>
+      match enrolment {
+        EnrolledAsObservation => EnrolmentPermitted { enrolment: enrolment }
+        EnrolledAsGate => emit_ratchet_gate_admission(r: r)
       }
   }
 }
 
-fn emit_ratchet_report_rows(r: EmitSubjectCleanRatchet) -> List<String> {
+fn emit_ratchet_enrolment_admission_text(admission: EmitRatchetEnrolmentAdmission) -> String {
+  match admission {
+    EnrolmentPermitted { enrolment: e } =>
+      concat("permitted as ", emit_ratchet_enrolment_text(enrolment: e))
+    EnrolmentRefusedNoUniverse { enrolment: e } =>
+      concat(
+        concat("refused as ", emit_ratchet_enrolment_text(enrolment: e)),
+        " — the fold discovered no subject, so there is nothing to report and nothing to decide"
+      )
+    EnrolmentRefusedDenominator { enrolment: e, missing: m } =>
+      concat(
+        concat(concat("refused as ", emit_ratchet_enrolment_text(enrolment: e)), " — missing "),
+        m
+      )
+    EnrolmentRefusedUnevaluated { enrolment: e, subjects: ss } =>
+      concat(
+        concat(
+          concat("refused as ", emit_ratchet_enrolment_text(enrolment: e)),
+          " — no verdict was established for: "
+        ),
+        join(map(ss, sub => unevaluated_subject_text(subject: sub)), "; ")
+      )
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE OBSERVATION, AND ITS EXECUTION PROVENANCE.
+//
+// A standing and a fold that could not be taken must not render alike, and the coproduct is what
+// makes that structural rather than checked. DESIGN's execution-provenance-loss row states the test
+// exactly: if a count of zero and an unreached stage produce the same output, the number is not an
+// observation. `ObservationNotTaken` is therefore not a standing with no failing rows -- it holds no
+// standing at all, so there is no spelling in which a fold that never happened reads as a fold that
+// found nothing wrong.
+//
+// AND NO WITNESS ASSERTS THAT LAST SENTENCE, DELIBERATELY. The absent field is unauthorable at BOTH
+// §4b boundaries -- not in the corpus, and not in a fixture either, since no fixture can construct a
+// variant field that does not exist -- so a check over it would be permanently green BY CONSTRUCTION
+// and worse than absent for being cited as coverage. What the witness asserts instead is the thing
+// that CAN fail: that an unobservable fold DISPATCHES to this arm rather than to the taken one.
+//
+// AND A REFUSING STANDING IS A TAKEN OBSERVATION. That is the whole distinction this carrier exists
+// to hold: the observation succeeded and the news is bad. Its consumer reports it and does not stop
+// the line on it; what stops the line is being unable to observe at all.
+// ---------------------------------------------------------------------------------------------
+// THE NOT-TAKEN ARM CARRIES THE ADMISSION, NOT ITS RENDERING, and that is a correction rather than a
+// preference. It held a `cause: String` -- the typed refusal flattened into prose at the moment it
+// was stored -- which is DESIGN §2's anemic leaf: a String hiding named parts that already exist one
+// function away. The cost was immediate and was caught in review: every claim about WHY an
+// observation was not taken had to be a substring match over rendered text, so the evidence for this
+// carrier's strongest property was a change detector that reds on a wording edit and greens on any
+// prose containing the phrase. Storing the admission makes the same question structural, and the
+// rendering becomes what it should have been -- a projection, derived at the edge, never the record.
+// =============================================================================================
+// THE OBSERVATION CONTEXT: WHAT RUN PRODUCED THIS, ASSERTED ONCE AND BORNE OUT BY THE POPULATION.
+//
+// A ratchet report that names no run is not citable, and a pricing receipt attached to an
+// under-specified execution is six precise numbers about nothing. So the observation carries the
+// coordinates of the run that produced it.
+//
+// NOTHING IS MINTED HERE, AND THAT IS THE WHOLE POINT. Every coordinate already has an authority:
+// CommitSha and Digest come through tools.emission_entry_instrument's EmissionMeasurementSubject,
+// which reuses extdeps.git.inspect and extdeps.crypto.hash and says so; the run coordinates come
+// from extdeps.github.actions_environment, beside GITHUB_SHA, because they are facts the RUNNER
+// supplies and the reference defines. Adding a source-head field to this module would have been a
+// second authority for provenance inside the carrier whose purpose is provenance.
+//
+// AND THE COORDINATES ARE NOT PART OF THE SUBJECT IDENTITY. Putting source revision inside
+// EmitSubjectKey would mint a new logical subject on every commit, which silently retires all
+// prior debt -- a ratchet whose subjects churn every commit ratchets nothing. The context sits
+// BESIDE the subject, never inside it.
+// =============================================================================================
+
+type ObservationComponent
+  = SourceRevisionComponent
+  | WorkingTreeComponent
+  | CompilerComponent
+  | AssemblerComponent
+  | AssemblyModeComponent
+
+data every_observation_component: List<ObservationComponent> = [
+  SourceRevisionComponent,
+  WorkingTreeComponent,
+  CompilerComponent,
+  AssemblerComponent,
+  AssemblyModeComponent
+]
+
+fn observation_component_name(component: ObservationComponent) -> String {
+  match component {
+    SourceRevisionComponent => "source_revision"
+    WorkingTreeComponent => "working_tree"
+    CompilerComponent => "compiler"
+    AssemblerComponent => "assembler"
+    AssemblyModeComponent => "assembly_mode"
+  }
+}
+
+fn assembly_mode_text(mode: EmissionAssemblyMode) -> String {
+  match mode {
+    SeedLinkedAssembly { std_bridge_dir: d } => concat("seed-linked:", d)
+  }
+}
+
+fn subject_component_value(subject: EmissionMeasurementSubject, component: ObservationComponent) -> String {
+  match component {
+    SourceRevisionComponent => subject.source_revision as String
+    WorkingTreeComponent => working_tree_standing_text(standing: subject.working_tree)
+    CompilerComponent => subject.compiler.hex as String
+    AssemblerComponent => subject.assembler.hex as String
+    AssemblyModeComponent => assembly_mode_text(mode: subject.assembly_mode)
+  }
+}
+
+// The accumulator grows only on a value not already seen, so its length is the number of DISTINCT
+// values rather than the number of subjects -- a handful at most, and one in the case that matters.
+// This is not the copied-accumulator cost shape: there is no filter-shaped alternative to a
+// deduplication, and the growth term is the answer's own size.
+fn distinct_strings(xs: List<String>) -> List<String> {
+  fold(
+    xs,
+    init: [],
+    f: (acc, x) => if string_list_contains(xs: acc, wanted: x) { acc } else { concat(acc, [x]) }
+  )
+}
+
+// PROJECT ONCE, THEN DEDUPLICATE. The earlier form called `subject_component_value` twice per
+// subject -- once to test membership and once to append -- which is the copied-work shape DESIGN's
+// bare-minimum-cost ruling says is always fixed regardless of the realized n, because "n is small
+// here" is not a time-stable fact. Mapping first evaluates each subject's component exactly once.
+fn distinct_component_values(
+  subjects: List<EmissionMeasurementSubject>,
+  component: ObservationComponent
+) -> List<String> {
+  distinct_strings(
+    xs: map(subjects, subject => subject_component_value(subject: subject, component: component))
+  )
+}
+
+type ComponentAgreement
+  = ComponentsAgree
+  | ComponentDiverges { component: ObservationComponent, values: List<String> }
+
+// One component, one derivation of its distinct values. The fold below asked for them twice -- once
+// to count and once to carry -- so the values were built, discarded and built again on exactly the
+// path that reports a divergence.
+fn component_divergence(
+  subjects: List<EmissionMeasurementSubject>,
+  component: ObservationComponent
+) -> ComponentAgreement {
+  let values = distinct_component_values(subjects: subjects, component: component)
+  if count(values) > 1 {
+    ComponentDiverges { component: component, values: values }
+  } else {
+    ComponentsAgree
+  }
+}
+
+// FIRST DIVERGENCE WINS, in the declared component order, so the reported component is stable
+// across runs rather than a function of which subject happened to be measured first.
+fn component_agreement(subjects: List<EmissionMeasurementSubject>) -> ComponentAgreement {
+  fold(
+    every_observation_component,
+    init: ComponentsAgree,
+    f: (acc, component) =>
+      match acc {
+        ComponentDiverges { component: _, values: _ } => acc
+        ComponentsAgree => component_divergence(subjects: subjects, component: component)
+      }
+  )
+}
+
+type EmitObservationContext {
+  source_revision: CommitSha
+  working_tree: WorkingTreeStanding
+  compiler: Digest
+  assembler: Digest
+  run_identity: ActionsRunCoordinate
+  run_attempt: ActionsRunCoordinate
+  runner_binding: ActionsRunCoordinate
+}
+
+// THE BINDING IS A COPRODUCT AND A DIVERGENT ONE CARRIES NO CONTEXT, which is the guarantee that
+// used to be bought with a refusal. A consumer cannot read a context that was never true of the
+// whole population because, where the population does not agree, THERE IS NO CONTEXT TO READ.
+//
+// AND THE POPULATION SURVIVES. Refusing the fold on disagreement would discard every good
+// measurement to avoid publishing one false binding; those two are separable and only the second
+// is mandatory. The divergence is a typed value naming WHICH component diverged and what the
+// distinct values were, so its frequency is countable and a commit landing mid-run stays
+// distinguishable from a compiler rebuilt between subjects -- different owners, different remedies.
+type ObservationBinding
+  = BindingEstablished { context: EmitObservationContext }
+  | BindingDivergent { component: ObservationComponent, values: List<String> }
+  | BindingAbsent
+
+fn observation_binding(
+  subjects: List<EmissionMeasurementSubject>,
+  run_identity: ActionsRunCoordinate,
+  run_attempt: ActionsRunCoordinate,
+  runner_binding: ActionsRunCoordinate
+) -> ObservationBinding {
+  match component_agreement(subjects: subjects) {
+    ComponentDiverges { component: c, values: vs } => BindingDivergent { component: c, values: vs }
+    ComponentsAgree =>
+      fold(
+        subjects,
+        init: BindingAbsent,
+        f: (acc, subject) =>
+          match acc {
+            BindingEstablished { context: _ } => acc
+            BindingDivergent { component: _, values: _ } => acc
+            BindingAbsent =>
+              BindingEstablished {
+                context: EmitObservationContext {
+                  source_revision: subject.source_revision,
+                  working_tree: subject.working_tree,
+                  compiler: subject.compiler,
+                  assembler: subject.assembler,
+                  run_identity: run_identity,
+                  run_attempt: run_attempt,
+                  runner_binding: runner_binding
+                }
+              }
+          }
+      )
+  }
+}
+
+fn run_coordinate_text(coordinate: ActionsRunCoordinate) -> String {
+  match coordinate {
+    ActionsRunCoordinateObserved { value: v } => v
+    ActionsRunCoordinateMissing { variable: n } => concat("UNSET:", n)
+    ActionsRunCoordinateEmpty { variable: n } => concat("EMPTY:", n)
+  }
+}
+
+fn observation_binding_text(binding: ObservationBinding) -> String {
+  match binding {
+    BindingEstablished { context: ctx } =>
+      concat(
+        concat(concat("bound\trevision\t", ctx.source_revision as String), concat("\ttree\t", working_tree_standing_text(standing: ctx.working_tree))),
+        concat(
+          concat(concat("\tcompiler\t", ctx.compiler.hex as String), concat("\trun\t", run_coordinate_text(coordinate: ctx.run_identity))),
+          concat(concat("\tattempt\t", run_coordinate_text(coordinate: ctx.run_attempt)), concat("\trunner\t", run_coordinate_text(coordinate: ctx.runner_binding)))
+        )
+      )
+    BindingDivergent { component: c, values: vs } =>
+      concat(
+        concat("UNBOUND\tdivergent\t", observation_component_name(component: c)),
+        concat("\tvalues\t", to_string(count(vs)))
+      )
+    BindingAbsent => "UNBOUND\tno measurement carried a subject"
+  }
+}
+
+// A TAKEN OBSERVATION CARRIES ITS BINDING AND ITS SELECTION, so a reader never has to join the
+// standing to a run by hand. A NOT-TAKEN one carries the binding and NO STANDING: a run that could
+// not measure has no spelling in which it renders as a measurement.
+type EmitRatchetObservation
+  = ObservationTaken {
+      binding: ObservationBinding
+      selection: SubjectSelection
+      roster: RosterIdentity
+      unevaluated_subjects: List<UnevaluatedSubject>
+      standing: EmitRatchetStanding
+    }
+  | ObservationNotTaken {
+      binding: ObservationBinding
+      admission: EmitRatchetEnrolmentAdmission
+    }
+
+fn emit_ratchet_observation(
+  binding: ObservationBinding,
+  selection: SubjectSelection,
+  r: EmitSubjectCleanRatchet
+) -> EmitRatchetObservation {
+  let admission = emit_ratchet_enrolment_admission(enrolment: EnrolledAsObservation, r: r)
+  match admission {
+    EnrolmentPermitted { enrolment: _ } =>
+      ObservationTaken {
+        binding: binding,
+        selection: selection,
+        roster: r.roster,
+        unevaluated_subjects: ratchet_unevaluated_subjects(r: r),
+        standing: emit_ratchet_standing(r: r)
+      }
+    EnrolmentRefusedNoUniverse { enrolment: e } =>
+      ObservationNotTaken { binding: binding, admission: EnrolmentRefusedNoUniverse { enrolment: e } }
+    EnrolmentRefusedDenominator { enrolment: e, missing: m } =>
+      ObservationNotTaken { binding: binding, admission: EnrolmentRefusedDenominator { enrolment: e, missing: m } }
+    EnrolmentRefusedUnevaluated { enrolment: e, subjects: ss } =>
+      ObservationNotTaken { binding: binding, admission: EnrolmentRefusedUnevaluated { enrolment: e, subjects: ss } }
+  }
+}
+
+fn emit_ratchet_observation_text(observation: EmitRatchetObservation) -> String {
+  match observation {
+    ObservationTaken { binding: b, selection: _, roster: _, unevaluated_subjects: _, standing: s } =>
+      concat(
+        concat("taken — ", emit_ratchet_standing_text(standing: s)),
+        concat("\t", observation_binding_text(binding: b))
+      )
+    ObservationNotTaken { binding: b, admission: a } =>
+      concat(
+        concat("NOT TAKEN — ", emit_ratchet_enrolment_admission_text(admission: a)),
+        concat("\t", observation_binding_text(binding: b))
+      )
+  }
+}
+
+// THE REPORT CARRIES THE OBSERVATION, NEVER A BARE STANDING. A row reading `standing\theld over 0
+// subject(s)` and a row reading `standing\t...` written by a run that never folded anything are the
+// same bytes, and DESIGN's execution-provenance test is exactly that: if a count of zero and an
+// unreached stage produce the same output, the number is not an observation. So the standing is
+// reachable on this report only THROUGH the observation, whose not-taken arm holds no standing to
+// print. The gate admission is printed beside it because a reader of an observation report must be
+// able to see, on the artifact itself, that it is not a gate verdict.
+fn emit_ratchet_report_rows(
+  binding: ObservationBinding,
+  selection: SubjectSelection,
+  r: EmitSubjectCleanRatchet
+) -> List<String> {
   concat(
     concat(
       roster_identity_rows(identity: r.roster),
       [
         concat("admission_rows\t", to_string(r.admission_count)),
-        concat("standing\t", emit_ratchet_standing_text(standing: emit_ratchet_standing(r: r)))
+        concat(
+          "observation\t",
+          emit_ratchet_observation_text(
+            observation: emit_ratchet_observation(binding: binding, selection: selection, r: r)
+          )
+        ),
+        concat(
+          "enrolment_gate\t",
+          emit_ratchet_enrolment_admission_text(
+            admission: emit_ratchet_enrolment_admission(enrolment: EnrolledAsGate, r: r)
+          )
+        )
       ]
     ),
     concat(
@@ -1094,8 +1725,12 @@ fn emit_ratchet_report_rows(r: EmitSubjectCleanRatchet) -> List<String> {
   )
 }
 
-fn emit_ratchet_report_text(r: EmitSubjectCleanRatchet) -> String {
-  concat(join(emit_ratchet_report_rows(r: r), "\n"), "\n")
+fn emit_ratchet_report_text(
+  binding: ObservationBinding,
+  selection: SubjectSelection,
+  r: EmitSubjectCleanRatchet
+) -> String {
+  concat(join(emit_ratchet_report_rows(binding: binding, selection: selection, r: r), "\n"), "\n")
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1115,6 +1750,261 @@ fn emit_ratchet_report_text(r: EmitSubjectCleanRatchet) -> String {
 // nothing yet admitted to it.
 data emit_subject_clean_admissions: List<EmitDebtAdmission> = []
 
+// ---------------------------------------------------------------------------------------------
+// WHO RUNS THIS, TODAY: NOBODY, AND THAT IS A DECLARED FACT RATHER THAN A GAP SOMEONE HAS TO NOTICE.
+//
+// THE DISTINCTION THIS CLOSES is not "did the fold succeed" -- the observation above answers that --
+// but the one a reader of an absent report actually needs: HAS THE RATCHET NOT RUN YET, or WILL IT
+// NEVER RUN HERE. They render identically as absence and only the second is terminal, so a consumer
+// that reports both as "no report" strands whoever is waiting on the first.
+//
+// THE VOCABULARY IS BORROWED, NOT MINTED. `std.witness_admission` already separates a row with an
+// executing consumer from a row nothing claims from a row whose named cadence has no scheduled
+// route, and it already carries the mechanical per-cadence realization gate. Minting a second
+// "does anything run this" vocabulary beside it would be the §3 nicknaming violation, in the exact
+// place this carrier is arguing that a name without a mechanism is worthless.
+//
+// TODAY'S ANSWER IS `NoConsumer`, and it is measured rather than assumed: no workflow, no phase and
+// no module in the tree names `tools.emit_subject_clean_ratchet` or this module. So the derived
+// standing is UnexecutedDeferredWitness -- nothing claims the runner -- whose remedy the admission
+// authority states as naming a cadence or deleting the witness. Neither is available from inside a
+// PR: enrolment is a floor-cut re-add and DESIGN requires each of those to be re-derived under its
+// own operator agreement, which is not a thing a diff can author.
+//
+// WHEN A CADENCE IS AGREED, THE ROW AND ITS WITNESS MOVE IN ONE DIFF. Changing
+// `emit_ratchet_runner_cadence` without replacing or inverting
+// `the_ratchet_runner_has_no_executing_consumer_today` in the SAME change leaves a known-false
+// declaration standing green -- which is this carrier's own third-state defect arriving from the
+// other side: there, an absent report could not say whether it would ever be produced; here, a
+// declaration would keep asserting nobody runs the runner after somebody does. The claim is written
+// to red on that change rather than to survive it, and the enrolment diff is expected to carry both.
+//
+// AND THIS FUNCTION IS NOT CONSTANT, which is what keeps the declaration from being a decoration:
+// handed a cadence that HAS a scheduled route it returns the covered arm, and the witness beside
+// this module asserts both directions. The day enrolment is agreed, the cadence row below changes,
+// the claim naming today's answer goes RED, and it is that red -- not a paragraph -- that forces
+// this block to be rewritten.
+// ---------------------------------------------------------------------------------------------
+// =============================================================================================
+// PERSISTENCE AND PRICING: AN UNATTACHED RESULT HAS NO SPELLING.
+//
+// The mandated pricing run reports six dimensions, and every one of them is a claim about a
+// specific execution. A receipt that carries the numbers without the execution is the failure this
+// whole carrier exists to prevent, one level up -- six precise figures attached to nothing.
+//
+// SO THE RECEIPT IS NOT A RECORD SOMEONE FILLS IN. It is DERIVED from a taken observation and a
+// persisted report, and there is no constructor that takes the dimensions alone. Report size comes
+// from the persisted artifact rather than from anything computed before serialization, because the
+// question is how many bytes were actually written.
+// =============================================================================================
+
+type EmitObservationPersistence
+  = ObservationPersisted { report_artifact: String, report_digest: Digest, report_bytes: ByteSize }
+  | ObservationPersistenceRefused { cause: String }
+
+fn observation_persistence_text(persistence: EmitObservationPersistence) -> String {
+  match persistence {
+    ObservationPersisted { report_artifact: a, report_digest: d, report_bytes: b } =>
+      concat(
+        concat(concat("persisted\t", a), concat("\tsha256\t", d.hex as String)),
+        concat("\tbytes\t", to_string(byte_size_count(b: b)))
+      )
+    ObservationPersistenceRefused { cause: c } => concat("NOT PERSISTED\t", c)
+  }
+}
+
+// THE UNITS ARE CARRIERS AND NOT BARE Int, and the reason is this change's own thesis rather than a
+// style rule: grounding the provenance coordinates meticulously and then re-minting the pricing
+// scalars would be a second representation of quantities `std.measure` already owns. Review 56351
+// caught that inconsistency, and `gunbc.emit_diagnostic_observation` had recorded the same finding
+// one module over -- "THE SIZES ARE ByteSize AND NOT Int" -- from its own review.
+//
+// NANOSECOND RATHER THAN A MILLISECOND SCALE, which is the measure module's ruling rather than a
+// preference: it states Nanosecond is the canonical exact elapsed-time carrier while Millisecond
+// "remains a policy and presentation scale", and that measurement, ordering, joining and
+// attribution must retain Nanosecond. A pricing receipt is measurement that later runs are joined
+// against, so a millisecond field would have recorded a floor-rounded reading as though exact. The
+// `_ms` field names went with it: a unit spelled in the name beside a unit spelled in the type is
+// the same fact twice, and the two disagree the day the scale changes.
+//
+// THE TWO COUNTS STAY Int DELIBERATELY. Roster size and unevaluated-subject count are CARDINALS,
+// not quantities in a unit system -- no scale to convert, no dimension to check -- so wrapping them
+// in a measure would assert a structure they do not have.
+type EmitPricingDimensions {
+  wall: Nanosecond
+  cpu: Nanosecond
+  peak_rss: ByteSize
+  roster_size: Int
+  unevaluated_subject_count: Int
+  report: ByteSize
+}
+
+// Every refusal names WHICH precondition failed rather than answering "not priceable". The causes
+// have different owners: a divergent binding is a run to repeat under a stable tree, a dirty tree
+// is a checkout to clean, an unbound coordinate is an execution outside Actions, and a persistence
+// failure is a disk or path problem. One cause would have collapsed four remedies.
+type PricingRefusalCause
+  = PricingObservationNotTaken
+  | PricingBindingDivergent { component: ObservationComponent, values: List<String> }
+  | PricingBindingAbsent
+  | PricingWorkingTreeDirty
+  | PricingRunCoordinateUnbound { coordinate: String }
+  | PricingReportNotPersisted { cause: String }
+
+type EmitPricingReceipt
+  = PricingReceiptBound { context: EmitObservationContext, dimensions: EmitPricingDimensions }
+  | PricingReceiptRefused { cause: PricingRefusalCause }
+
+// A pricing receipt over a DIRTY tree is a measurement of something no one can check out again, so
+// it refuses rather than being published with a caveat. Same for a coordinate the runner never
+// supplied: a receipt that cannot say which run produced it is not citable, which is the only
+// property it was built to have.
+type PricingContextStanding
+  = PricingContextUsable
+  | PricingContextRefused { cause: PricingRefusalCause }
+
+fn pricing_context_refusal(context: EmitObservationContext) -> PricingContextStanding {
+  match context.working_tree {
+    WorkingTreeDirty => PricingContextRefused { cause: PricingWorkingTreeDirty }
+    WorkingTreeClean =>
+      match context.run_identity {
+        ActionsRunCoordinateMissing { variable: n } =>
+          PricingContextRefused { cause: PricingRunCoordinateUnbound { coordinate: n } }
+        ActionsRunCoordinateEmpty { variable: n } =>
+          PricingContextRefused { cause: PricingRunCoordinateUnbound { coordinate: n } }
+        ActionsRunCoordinateObserved { value: _ } =>
+          match context.run_attempt {
+            ActionsRunCoordinateMissing { variable: n } =>
+              PricingContextRefused { cause: PricingRunCoordinateUnbound { coordinate: n } }
+            ActionsRunCoordinateEmpty { variable: n } =>
+              PricingContextRefused { cause: PricingRunCoordinateUnbound { coordinate: n } }
+            ActionsRunCoordinateObserved { value: _ } => PricingContextUsable
+          }
+      }
+  }
+}
+
+fn emit_pricing_receipt(
+  observation: EmitRatchetObservation,
+  persistence: EmitObservationPersistence,
+  wall: Nanosecond,
+  cpu: Nanosecond,
+  peak_rss: ByteSize
+) -> EmitPricingReceipt {
+  match observation {
+    ObservationNotTaken { binding: _, admission: _ } =>
+      PricingReceiptRefused { cause: PricingObservationNotTaken }
+    ObservationTaken { binding: b, selection: _, roster: roster, unevaluated_subjects: un, standing: _ } =>
+      match b {
+        BindingAbsent => PricingReceiptRefused { cause: PricingBindingAbsent }
+        BindingDivergent { component: c, values: vs } =>
+          PricingReceiptRefused { cause: PricingBindingDivergent { component: c, values: vs } }
+        BindingEstablished { context: ctx } =>
+          match pricing_context_refusal(context: ctx) {
+            PricingContextRefused { cause: cause } => PricingReceiptRefused { cause: cause }
+            PricingContextUsable =>
+              match persistence {
+                ObservationPersistenceRefused { cause: c } =>
+                  PricingReceiptRefused { cause: PricingReportNotPersisted { cause: c } }
+                ObservationPersisted { report_artifact: _, report_digest: _, report_bytes: bytes } =>
+                  PricingReceiptBound {
+                    context: ctx,
+                    dimensions: EmitPricingDimensions {
+                      wall: wall,
+                      cpu: cpu,
+                      peak_rss: peak_rss,
+                      roster_size: roster_subject_count(roster: roster),
+                      unevaluated_subject_count: count(un),
+                      report: bytes
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn pricing_refusal_cause_text(cause: PricingRefusalCause) -> String {
+  match cause {
+    PricingObservationNotTaken => "the observation was never taken"
+    PricingBindingDivergent { component: c, values: vs } =>
+      concat(
+        concat("the population disagrees about ", observation_component_name(component: c)),
+        concat(" across ", concat(to_string(count(vs)), " distinct values"))
+      )
+    PricingBindingAbsent => "no measurement carried a subject, so there is no run to attribute this to"
+    PricingWorkingTreeDirty => "the working tree was dirty — this cost cannot be checked out again"
+    PricingRunCoordinateUnbound { coordinate: n } =>
+      concat("the runner supplied no ", concat(n, " — the receipt cannot say which run produced it"))
+    PricingReportNotPersisted { cause: c } => concat("the report was not persisted — ", c)
+  }
+}
+
+// THE UNEVALUATED COUNT IS RENDERED BESIDE THE COST FIGURES, NOT BELOW THEM, and that placement is
+// the point rather than formatting. Per-entry measurement mapped across a roster measures the union
+// of the entries' closures, which is NOT the corpus -- a narrow run is on record reporting clean
+// while twelve real sites sat outside what it looked at. So the number of roster subjects this
+// receipt establishes nothing about is the number that says how much it does not speak for, and a
+// clean board printed without it reads as coverage while being exactly the shape that is not.
+fn emit_pricing_receipt_text(receipt: EmitPricingReceipt) -> String {
+  match receipt {
+    PricingReceiptRefused { cause: c } =>
+      concat("pricing NOT TAKEN\t", pricing_refusal_cause_text(cause: c))
+    PricingReceiptBound { context: ctx, dimensions: d } =>
+      concat(
+        concat(
+          concat("pricing\trevision\t", ctx.source_revision as String),
+          concat("\trun\t", run_coordinate_text(coordinate: ctx.run_identity))
+        ),
+        concat(
+          concat(
+            concat("\tattempt\t", run_coordinate_text(coordinate: ctx.run_attempt)),
+            concat("\trunner\t", run_coordinate_text(coordinate: ctx.runner_binding))
+          ),
+          concat(
+            concat(
+              concat("\troster_size\t", to_string(d.roster_size)),
+              concat("\tunevaluated_subjects\t", to_string(d.unevaluated_subject_count))
+            ),
+            concat(
+              concat("\twall_ns\t", to_string(nanosecond_count(n: d.wall))),
+              concat(
+                concat("\tcpu_ns\t", to_string(nanosecond_count(n: d.cpu))),
+                concat(
+                  concat("\tpeak_rss_bytes\t", to_string(byte_size_count(b: d.peak_rss))),
+                  concat("\treport_bytes\t", to_string(byte_size_count(b: d.report)))
+                )
+              )
+            )
+          )
+        )
+      )
+  }
+}
+
+fn roster_subject_count(roster: RosterIdentity) -> Int {
+  match roster {
+    RosterIdentified { policy: _, denominators: _, subject_count: n, digest: _ } => n
+    RosterEmpty { policy: _, denominators: _ } => 0
+  }
+}
+
+data emit_ratchet_runner_entry: String = "dag/tools/emit_subject_clean_ratchet.dag"
+
+data emit_ratchet_runner_observe_function: String = "observe"
+
+data emit_ratchet_runner_cadence: WitnessConsumerCadence = NoConsumer
+
+fn emit_ratchet_runner_execution_standing(cadence: WitnessConsumerCadence) -> WitnessExecutionStanding {
+  if witness_cadence_has_scheduled_route(cadence: cadence) {
+    WitnessHasExecutingConsumer { cadence: cadence }
+  } else {
+    UnexecutedDeferredWitness {
+      entry: emit_ratchet_runner_entry,
+      function: emit_ratchet_runner_observe_function
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------------------------
 // A MEASUREMENT OVER A SUBJECT WHOSE BOUNDARY DID NOT HOLD IS NOT A MEASUREMENT OF THAT SUBJECT.

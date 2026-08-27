@@ -52,7 +52,16 @@ enum Commands {
         #[arg(long)]
         entry: Option<String>,
     },
-    Ci,
+
+    /// Run one target by its absolute label and report the standing its own producer
+    /// answers in. The label is exact: a target PATTERN refuses, and an unbound or
+    /// unknown target refuses rather than reporting a pass.
+    Test {
+        /// Absolute label of exactly one target, e.g.
+        /// `//gunbc/instruments:heads-reading-differential`.
+        #[arg(value_name = "LABEL")]
+        target: String,
+    },
 
     /// Execute a .dag program directly (interpreter)
     Run {
@@ -617,25 +626,29 @@ fn main() {
             &args,
         )
         .apply(),
-        // `ci` is NOT a second verb to wire: the deleted handler was `run` with fixed
-        // arguments, so it is a PARAMETERIZATION of the same seam. Wiring it as its own
-        // path would fork one route into two that must then be kept equal by hand.
-        // The roots come from `cli_run::witness_layer_roots`, which reads the single
-        // `.dag` authority live rather than a literal spelled here.
-        // `ci` passes dry_run: false DELIBERATELY, matching the deleted `handle_ci`,
-        // which took no dry-run parameter and always evaluated Wet. `--dry-run` is a
-        // global flag, so it is ACCEPTED here and ignored — a pre-existing hazard on the
-        // base, not one this seam introduces, and changing it would alter a verb's
-        // semantics under cover of a restoration.
-        Commands::Ci {} => run_verb(
-            &cli_run::witness_layer_roots(),
-            "main",
-            Some("dag/tools/gunbc_ci.dag"),
-            false,
-            false,
-            &[],
-        )
-        .apply(),
+
+        // THE TARGET DISPATCH SEAM, AND THE WHOLE ARM IS A CALL.
+        //
+        // There is deliberately no mode switch here and no arm per instrument: which producer a
+        // label names is decided by the registry in `target_invocation_host`, mirroring
+        // `gunbc.instrument_targets`, and the realization that runs it is selected one level
+        // below that. A second instrument adds a row there and nothing at all here.
+        //
+        // The status is the producer's own termination, not an aggregate verdict: 0 the reading
+        // held, 1 it did not, 2 no reading was taken. `gunbc.build_target`'s
+        // `test_standing_verdict` and the Blaze status export are both deliberately NOT consulted
+        // -- each refuses instrument producers by design, so either would answer a question this
+        // verb is not asking.
+        Commands::Test { target } => {
+            let outcome = cli_run::target_invocation_host::test_verb(&target);
+            Verdict {
+                status: cli_run::target_invocation_host::invocation_exit_status(
+                    outcome.termination,
+                ),
+                message: Some(outcome.message),
+            }
+            .apply()
+        }
 
         // The refusal names a CONDITION, not a branch. An earlier revision said "not
         // available on integration/cli-run-cut", which the merge itself would have

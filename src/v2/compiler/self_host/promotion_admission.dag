@@ -538,3 +538,87 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
       ^refusal_corpus_population_mismatch
   }
 }
+
+// WHY A STANDING EXISTS BESIDE THE OBSERVATION, and it is the smallest possible change that
+// makes a real defect unrepresentable rather than merely caught.
+//
+// BehavioralComparisonObservation already separates what a run learned from what it did not:
+// three ObservedVerdicts, each either Observed or ObservationUnavailable carrying a located
+// cause. The transports populate it correctly and have all along. What consumed it was a
+// predicate returning Bool, and in the logic transport that predicate collapsed the payload at
+// THREE sites, each spelled `ObservationUnavailable { cause: _ } => false` -- the cause bound and
+// explicitly discarded. The match is exhaustive over ObservationUnavailable, so there is no
+// missing arm, no warning and nothing incomplete to see: total at the level examined, blind one
+// level down, three times in one function.
+//
+// The test that clause names is whether every cause collapsed shares one remedy. These do not.
+// stage_incomplete means the compile never ran; comparison_unreported means it ran and said
+// nothing; fault_run_did_not_run means the fault arm never executed. Three owners, three repairs,
+// one `false`.
+//
+// MEASURED COST OF THE COLLAPSE (2026-08-26): four wet executions of the logic receipt produced
+// four DIFFERENT causes -- a hermetic route gap, an absent binary, an OOM-killed toolchain, and a
+// whole-corpus memory-budget admission refusal that emitted zero files. Every one rendered as a
+// bare FAIL, and each was diagnosed only by reading a transcript. The located cause was computed
+// correctly every time and discarded one function from the end.
+//
+// So the standing is not new evidence. It is the evidence the observation already carries,
+// surviving to its consumer.
+type BehavioralReceiptStanding
+  = ReceiptHolds
+  | ReceiptBuildUnobserved { cause: Symbol }
+  | ReceiptBuildFailed { cause: Symbol }
+  | ReceiptEquivalenceUnobserved { cause: Symbol }
+  | ReceiptBehaviorDiverges { at_case: String }
+  | ReceiptFaultUnobserved { cause: Symbol }
+  | ReceiptFaultNotCaught { at_case: String }
+
+// THE ORDER OF INTERROGATION IS THE CAUSAL ORDER, not a preference. A build that was never
+// observed makes the equivalence and fault verdicts meaningless rather than false, so reporting
+// an equivalence cause over an unobserved build would name a downstream symptom as the finding.
+fn behavioral_receipt_standing(o: BehavioralComparisonObservation) -> BehavioralReceiptStanding {
+  match o.build {
+    ObservationUnavailable { cause: c } => ReceiptBuildUnobserved { cause: c }
+    Observed { value: b } =>
+      match b {
+        BuildFailed { cause: c } => ReceiptBuildFailed { cause: c }
+        BuildGreen =>
+          match o.equivalence {
+            ObservationUnavailable { cause: c } => ReceiptEquivalenceUnobserved { cause: c }
+            Observed { value: e } =>
+              match e {
+                BehaviorDiverges { at_case: a } => ReceiptBehaviorDiverges { at_case: a }
+                BehaviorAgrees =>
+                  match o.fault {
+                    ObservationUnavailable { cause: c } => ReceiptFaultUnobserved { cause: c }
+                    Observed { value: f } =>
+                      match f {
+                        FaultNotCaught { at_case: a } => ReceiptFaultNotCaught { at_case: a }
+                        FaultCaught => ReceiptHolds
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE Bool SURVIVES because the witness harness's boundary is Bool, and that is a real contract
+// rather than a defect to route around. What changes is that it is DERIVED from the standing at
+// one site instead of hand-matched at three, so a new ObservationUnavailable cause cannot be
+// silently absorbed: it arrives at the standing, and any consumer that wants the reason has one.
+fn behavioral_receipt_standing_holds(s: BehavioralReceiptStanding) -> Bool {
+  match s {
+    ReceiptHolds => true
+    ReceiptBuildUnobserved { cause: _ } => false
+    ReceiptBuildFailed { cause: _ } => false
+    ReceiptEquivalenceUnobserved { cause: _ } => false
+    ReceiptBehaviorDiverges { at_case: _ } => false
+    ReceiptFaultUnobserved { cause: _ } => false
+    ReceiptFaultNotCaught { at_case: _ } => false
+  }
+}
+
+fn behavioral_observation_holds(o: BehavioralComparisonObservation) -> Bool {
+  behavioral_receipt_standing_holds(s: behavioral_receipt_standing(o: o))
+}

@@ -9,6 +9,7 @@ use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
 use self::OccurrenceTransportValidation::*;
 pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_content_hash::Fnv1a64Structural;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -360,6 +361,26 @@ pub enum OccurrenceTransportRefusal {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScopedOccurrenceRef {
+    pub scope: Rc<Fnv1a64Structural>,
+    pub occurrence: OccurrenceId,
+}
+
+pub fn scoped_occurrence_ref_same_scope(
+    left: Rc<ScopedOccurrenceRef>,
+    right: Rc<ScopedOccurrenceRef>,
+) -> bool {
+    (left.scope.clone().digest.clone() == right.scope.clone().digest.clone())
+}
+
+pub fn scoped_occurrence_ref_in_scope(
+    occurrence_ref: Rc<ScopedOccurrenceRef>,
+    scope: Rc<Fnv1a64Structural>,
+) -> bool {
+    (occurrence_ref.scope.clone().digest.clone() == scope.digest.clone())
+}
+
 pub fn occurrence_identity_constructor_spelling_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -373,13 +394,20 @@ pub fn occurrence_identity_constructor_spelling_note() -> String {
 #[serde(tag = "_variant")]
 pub enum NodeOccurrenceIdentity {
     OccurrenceSynthetic,
-    OccurrenceMinted { id: OccurrenceId },
+    OccurrenceMinted {
+        id: OccurrenceId,
+    },
+    OccurrenceProjected {
+        id: OccurrenceId,
+        caused_by: Rc<ScopedOccurrenceRef>,
+    },
 }
 impl NodeOccurrenceIdentity {
     pub fn id(&self) -> OccurrenceId {
         match self {
             NodeOccurrenceIdentity::OccurrenceSynthetic => panic!("no id on unit variant"),
             NodeOccurrenceIdentity::OccurrenceMinted { id: __val, .. } => __val.clone(),
+            NodeOccurrenceIdentity::OccurrenceProjected { id: __val, .. } => __val.clone(),
         }
     }
 }
@@ -440,6 +468,16 @@ pub fn authored_token_ordinal_space_from_allocator(
 
 pub fn node_occurrence_identity_minted(id: OccurrenceId) -> Rc<NodeOccurrenceIdentity> {
     Rc::new(NodeOccurrenceIdentity::OccurrenceMinted { id: id.clone() })
+}
+
+pub fn node_occurrence_identity_projected(
+    id: OccurrenceId,
+    caused_by: Rc<ScopedOccurrenceRef>,
+) -> Rc<NodeOccurrenceIdentity> {
+    Rc::new(NodeOccurrenceIdentity::OccurrenceProjected {
+        id: id.clone(),
+        caused_by: caused_by.clone(),
+    })
 }
 
 pub fn occurrence_transport_validation_complexity_law() -> String {

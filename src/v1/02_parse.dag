@@ -53,6 +53,8 @@ import v1.std.core {
 import std.occurrence_identity {
   AuthoredTokenOrdinalSpace,
   NodeOccurrenceIdentity,
+  OccurrenceMinted,
+  OccurrenceProjected,
   OccurrenceSynthetic,
   OccurrenceId,
   OccurrenceIdAllocator,
@@ -151,21 +153,25 @@ type ParseWithTableResult {
 type ParsedNodeStampResult {
   node: Node
   ctx: ParseContext
+  err: ErrorNode?
 }
 
 type ParsedNodeListStampResult {
   nodes: List<Node>
   ctx: ParseContext
+  err: ErrorNode?
 }
 
 type ParsedOptionalNodeStampResult {
   node: Node?
   ctx: ParseContext
+  err: ErrorNode?
 }
 
 type ParsedPatternStampResult {
   pattern: MatchPattern?
   ctx: ParseContext
+  err: ErrorNode?
 }
 
 type ParsedOccurrenceRole
@@ -477,6 +483,7 @@ type GuardResult { guard: Node?, tokens: TokenStream, ctx: ParseContext, err: Er
 type FromKeyResult { properties: List<Node>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 
 type PostfixResult { expr: Node, changed: Bool, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type PipeCalleeResult { spine: Node?, method: String, method_span: SourceSpan, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type ParserParam { name: String, span: SourceSpan }
 type LambdaCheckResult { is_lambda: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type IdentCollectResult { success: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
@@ -1163,17 +1170,20 @@ fn stamp_parsed_node_list(
 ) -> ParsedNodeListStampResult {
   fold(
     nodes,
-    init: ParsedNodeListStampResult { nodes: [], ctx: ctx },
+    init: ParsedNodeListStampResult { nodes: [], ctx: ctx, err: none },
     f: (acc, node) =>
-      let stamped = stamp_parsed_node(
-        node: node,
-        ancestors: ancestors,
-        ctx: acc.ctx,
-        role: role
-      )
-      ParsedNodeListStampResult {
-        nodes: list_push(acc.nodes, stamped.node),
-        ctx: stamped.ctx,
+      if has_err(err: acc.err) { acc } else {
+        let stamped = stamp_parsed_node(
+          node: node,
+          ancestors: ancestors,
+          ctx: acc.ctx,
+          role: role
+        )
+        ParsedNodeListStampResult {
+          nodes: list_push(acc.nodes, stamped.node),
+          ctx: stamped.ctx,
+          err: stamped.err,
+        }
       }
   )
 }
@@ -1195,9 +1205,10 @@ fn stamp_parsed_optional_node(
       ParsedOptionalNodeStampResult {
         node: Present { value: stamped.node },
         ctx: stamped.ctx,
+        err: stamped.err,
       }
     Absent =>
-      ParsedOptionalNodeStampResult { node: none, ctx: ctx }
+      ParsedOptionalNodeStampResult { node: none, ctx: ctx, err: none }
   }
 }
 
@@ -1221,6 +1232,7 @@ fn stamp_parsed_pattern(
           value: Bind { declaration: stamped.node },
         },
         ctx: stamped.ctx,
+        err: stamped.err,
       }
     Present {
       value: VariantPattern {
@@ -1244,19 +1256,22 @@ fn stamp_parsed_pattern(
           },
         },
         ctx: stamped.ctx,
+        err: stamped.err,
       }
     Present { value: LitPattern { value: value } } =>
       ParsedPatternStampResult {
         pattern: Present { value: LitPattern { value: value } },
         ctx: ctx,
+        err: none,
       }
     Present { value: Wildcard } =>
       ParsedPatternStampResult {
         pattern: Present { value: Wildcard },
         ctx: ctx,
+        err: none,
       }
     Absent =>
-      ParsedPatternStampResult { pattern: none, ctx: ctx }
+      ParsedPatternStampResult { pattern: none, ctx: ctx, err: none }
   }
 }
 
@@ -1276,8 +1291,9 @@ fn stamp_parsed_inferred(
       ParsedOptionalNodeStampResult {
         node: Present { value: stamped.node },
         ctx: stamped.ctx,
+        err: stamped.err,
       }
-    _ => ParsedOptionalNodeStampResult { node: none, ctx: ctx }
+    _ => ParsedOptionalNodeStampResult { node: none, ctx: ctx, err: none }
   }
 }
 
@@ -1377,17 +1393,22 @@ fn stamp_parsed_node_list_with_head_role(
         ctx: ctx,
         role: head_role
       )
-      let stamped_tail = stamp_parsed_node_list(
-        nodes: skip(nodes, 1),
-        ancestors: ancestors,
-        ctx: stamped_head.ctx,
-        role: tail_role
-      )
-      ParsedNodeListStampResult {
-        nodes: concat([stamped_head.node], stamped_tail.nodes),
-        ctx: stamped_tail.ctx,
+      if has_err(err: stamped_head.err) {
+        ParsedNodeListStampResult { nodes: [stamped_head.node], ctx: stamped_head.ctx, err: stamped_head.err }
+      } else {
+        let stamped_tail = stamp_parsed_node_list(
+          nodes: skip(nodes, 1),
+          ancestors: ancestors,
+          ctx: stamped_head.ctx,
+          role: tail_role
+        )
+        ParsedNodeListStampResult {
+          nodes: concat([stamped_head.node], stamped_tail.nodes),
+          ctx: stamped_tail.ctx,
+          err: stamped_tail.err,
+        }
       }
-    Absent => ParsedNodeListStampResult { nodes: [], ctx: ctx }
+    Absent => ParsedNodeListStampResult { nodes: [], ctx: ctx, err: none }
   }
 }
 
@@ -1448,49 +1469,45 @@ fn stamp_parsed_node(
   ctx: ParseContext,
   role: ParsedOccurrenceRole
 ) -> ParsedNodeStampResult {
-  let allocated = alloc_occurrence_id(
-    alloc: parse_context_occurrence_allocator(ctx: ctx)
-  )
-  let occurrence = allocated.id
-  let containment = OccurrenceContainmentPath {
-    ancestors: ancestors,
-    terminal: occurrence,
-  }
-  let projection = OccurrenceProjection {
-    occurrence: occurrence,
-    authored_name: node.name,
-    diagnostic_span: node.span,
+  let occurrence = match node.occurrence_identity {
+    OccurrenceMinted { id: id } => Present { value: id }
+    OccurrenceSynthetic => none
+    OccurrenceProjected { id: _, caused_by: _ } => return ParsedNodeStampResult {
+      node: node,
+      ctx: ctx,
+      err: Present { value: parse_error(msg: "projected occurrence identity is invalid at the authored parser boundary", span: node.span) },
+    }
   }
   let effective_role = parsed_occurrence_role_for_node(
     node: node,
     requested: role
   )
-  let indexed_ctx = parse_context_with_occurrence_state(
-    ctx: ctx,
-    occurrence_allocator: Present { value: allocated.alloc },
-    occurrence_index: Present { value: OccurrenceIndex {
-      entries: list_push(
-        parse_context_occurrence_index(ctx: ctx).entries,
-        OccurrenceIndexEntry {
-          projection: projection,
-          containment: containment,
-        }
-      ),
-    } },
-    declaration_occurrences: ctx.declaration_occurrences,
-    reference_occurrences: ctx.reference_occurrences
-  )
-  let indexed_ctx = parse_context_record_occurrence(
-    ctx: indexed_ctx,
-    role: effective_role,
-    occurrence: occurrence,
-    containment: containment,
-    diagnostic_span: node.span
-  )
-  let child_ancestors = occurrence_ancestors_push(
-    ancestors: ancestors,
-    occurrence: occurrence
-  )
+  let indexed_ctx = match occurrence {
+    Present { value: id } => {
+      let containment = OccurrenceContainmentPath { ancestors: ancestors, terminal: id }
+      let with_index = parse_context_with_occurrence_state(
+        ctx: ctx,
+        occurrence_allocator: ctx.occurrence_allocator,
+        occurrence_index: Present { value: OccurrenceIndex {
+          entries: list_push(
+            parse_context_occurrence_index(ctx: ctx).entries,
+            OccurrenceIndexEntry {
+              projection: OccurrenceProjection { occurrence: id, authored_name: node.name, diagnostic_span: node.span },
+              containment: containment,
+            }
+          ),
+        } },
+        declaration_occurrences: ctx.declaration_occurrences,
+        reference_occurrences: ctx.reference_occurrences
+      )
+      parse_context_record_occurrence(ctx: with_index, role: effective_role, occurrence: id, containment: containment, diagnostic_span: node.span)
+    }
+    Absent => ctx
+  }
+  let child_ancestors = match occurrence {
+    Present { value: id } => occurrence_ancestors_push(ancestors: ancestors, occurrence: id)
+    Absent => ancestors
+  }
   let children = stamp_parsed_node_children(
     node: node,
     ancestors: child_ancestors,
@@ -1546,6 +1563,15 @@ fn stamp_parsed_node(
   ParsedNodeStampResult {
     node: node,
     ctx: pattern.ctx,
+    err: if has_err(err: children.err) { children.err }
+      else if has_err(err: params.err) { params.err }
+      else if has_err(err: uses.err) { uses.err }
+      else if has_err(err: properties.err) { properties.err }
+      else if has_err(err: body.err) { body.err }
+      else if has_err(err: transport.err) { transport.err }
+      else if has_err(err: annotation.err) { annotation.err }
+      else if has_err(err: inferred.err) { inferred.err }
+      else { pattern.err },
   }
 }
 
@@ -1608,8 +1634,8 @@ fn parse_with_table_at(
     let occurrence_allocator = parse_context_occurrence_allocator(ctx: stamped.ctx)
     ParseWithTableResult {
       result: ParseResult {
-        module: Present { value: stamped.node },
-        error: none,
+        module: if has_err(err: stamped.err) { none } else { Present { value: stamped.node } },
+        error: stamped.err,
       },
       intern_table: intern_table_with_authored_token_ordinals(
         table: stamped.ctx.intern_table,
@@ -4444,19 +4470,78 @@ fn infix_bp(tokens: TokenStream) -> BindingPower? {
   }
 }
 
+// WHAT DECIDES THAT A DOTTED PIPE CALLEE IS A QUALIFIED CALLEE RATHER THAN A METHOD FOLLOWED
+// BY FIELD ACCESS, and why the discriminator is the application and not the shape of the path.
+// The parser cannot know that `a.b` names a module -- that fact lives in the symbol index, which
+// resolution owns and parse does not have. So the pipe production decides it syntactically:
+// `x |> a.b.f(...)` is the qualified callee `a.b.f` applied to `x`, and `x |> m.field` -- a
+// dotted path with NO application -- keeps the older reading, the method `m` on the receiver
+// followed by ordinary field access on its result.
+//
+// THE RECEIPT IS A LIVE SITE, and it is why this arm exists at all rather than the path being
+// consumed unconditionally. An earlier draft of this change consumed every `.segment` after the
+// pipe callee regardless of what followed, which silently re-denoted v1.compiler.emit_rust's
+// `field_names |> first.value` -- pipe into the kernel method `first`, then take `.value` off the
+// Optional it returns -- as a call to a function `value` in a module named `first`. A corpus scan
+// for a dotted pipe callee finds exactly one site and it is that one, so the population is small;
+// the point is that it is not empty, and the shape it uses is correct code that the unconditional
+// rule would have refused.
+//
+// WHAT THIS COSTS, stated rather than left to be discovered: `(x |> m).f(...)` is no longer
+// spellable as `x |> m.f(...)`; it needs the parentheses that say what it means. That spelling has
+// zero occurrences in the corpus today. What it does NOT cost is a second resolution path -- both
+// pipe forms produce one ExprMethodCall node, and the qualified one is exactly the node shape
+// v1.compiler.infer's qualified_direct_call arm already reads off an ordinary call site.
+
+fn pipe_callee_path_is_applied(candidate: PipeCalleeResult) -> Bool {
+  match candidate.spine {
+    Absent => true
+    Present { value: _ } => tok_is_lparen(tok: token_stream_first(stream: skip_newlines(tokens: candidate.tokens)))
+  }
+}
+
+fn parse_pipe_callee_rest(tokens: TokenStream, ctx: ParseContext, spine: Node?, name: String, name_span: SourceSpan) -> PipeCalleeResult {
+  if tok_is_dot(tok: token_stream_first(stream: tokens)) {
+    let r = expect_name(tokens: token_stream_advance(stream: tokens, n: 1))
+    if has_err(err: r.err) { return PipeCalleeResult { spine: spine, method: name, method_span: name_span, tokens: r.tokens, ctx: ctx, err: r.err } }
+    let minted = mint_parsed_node_identity(ctx: ctx)
+    let next_spine = match spine {
+      Absent => make_named_expr_node(occurrence_identity: minted.identity, name: name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: name_span, name_span: name_span)
+      Present { value: base } => make_named_expr_node(occurrence_identity: minted.identity, name: name, expr_data: ExprFieldAccess { summary: none }, children: [base], inferred: none, span: name_span, name_span: name_span)
+    }
+    parse_pipe_callee_rest(tokens: r.tokens, ctx: minted.ctx, spine: Present { value: next_spine }, name: r.name, name_span: r.span)
+  } else {
+    PipeCalleeResult { spine: spine, method: name, method_span: name_span, tokens: tokens, ctx: ctx, err: none }
+  }
+}
+
 fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: Node, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
   let r = expect_name(tokens: tokens)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
-  let method = r.name
-  let tokens = skip_newlines(tokens: r.tokens)
+  let dotted = parse_pipe_callee_rest(tokens: r.tokens, ctx: ctx, spine: none, name: r.name, name_span: r.span)
+  if has_err(err: dotted.err) { return ExprResult { expr: dummy_expr, tokens: dotted.tokens, ctx: ctx, err: dotted.err } }
+  let callee = if pipe_callee_path_is_applied(candidate: dotted) {
+    dotted
+  } else {
+    PipeCalleeResult { spine: none, method: r.name, method_span: r.span, tokens: r.tokens, ctx: ctx, err: none }
+  }
+  let method = callee.method
+  let leading_result = match callee.spine {
+    Absent => ParsedNodesResult { nodes: [receiver], ctx: callee.ctx }
+    Present { value: qualifier } => {
+      let wrapper_mint = mint_parsed_node_identity(ctx: callee.ctx)
+      ParsedNodesResult { nodes: [qualifier, make_arg_node(occurrence_identity: wrapper_mint.identity, name: none, value: receiver, span: receiver.span, name_span: receiver.span)], ctx: wrapper_mint.ctx }
+    }
+  }
+  let tokens = skip_newlines(tokens: callee.tokens)
 
   if tok_is_lparen(tok: token_stream_first(stream: tokens)) {
-    let r2 = parse_call_args(tokens: tokens, ctx: ctx)
+    let r2 = parse_call_args(tokens: tokens, ctx: leading_result.ctx)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-    parsed_expr_result(tokens: r2.tokens, ctx: r2.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], r2.args |> map(na => make_arg_node(occurrence_identity: na.occurrence_identity, name: arg_name_at(n: na, source_indices: ctx.source_indices), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: r.span))
+    parsed_expr_result(tokens: r2.tokens, ctx: r2.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat(leading_result.nodes, r2.args |> map(na => make_arg_node(occurrence_identity: na.occurrence_identity, name: arg_name_at(n: na, source_indices: ctx.source_indices), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: callee.method_span))
   } else {
-    parsed_expr_result(tokens: tokens, ctx: ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: ExprMethodCall { method_semantics: none }, children: [receiver], inferred: none, span: span, name_span: r.span))
+    parsed_expr_result(tokens: tokens, ctx: leading_result.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: method, expr_data: ExprMethodCall { method_semantics: none }, children: leading_result.nodes, inferred: none, span: span, name_span: callee.method_span))
   }
 }
 

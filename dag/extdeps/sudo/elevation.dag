@@ -1,7 +1,8 @@
 module extdeps.sudo.elevation
 
 import std.types { String, NonEmptyStr, List }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import v2.std.algebra { list_append }
 import extdeps.exec.command { ArgvCommand, argv_command }
@@ -11,6 +12,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "www.sudo.ws/docs/man/sudo.man/"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.sudo.elevation",
+      decl_name: "ElevatedInvocation",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // THE ABSOLUTE PATH IS THE CLAIM THIS ONE BINARY MUST MAKE, and callers that previously spelled a

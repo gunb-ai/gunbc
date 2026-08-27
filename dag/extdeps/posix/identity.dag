@@ -1,7 +1,8 @@
 module extdeps.posix.identity
 
 import std.types { String, Int, Bool }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.integer { integer_lexeme_to_int_optional, integer_nat_to_decimal_string }
@@ -12,6 +13,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/basedefs/sys_types.h.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.identity",
+      decl_name: "PosixOwnerSpec",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // POSIX OWNS THESE TYPES; `id(1)` MERELY PRINTS THEM. extdeps.tools.id is the coreutils tool that
