@@ -1,0 +1,81 @@
+module gunbc.bmc_fan_program_syntax_boundary_witness
+
+import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.languages.json.emit { serialize_json }
+import extdeps.languages.json.parse { JsonDocumentParsed, parse_json_document }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT A JSON ROUND TRIP DOES AND DOES NOT PRESERVE, PINNED BY EXECUTION BEFORE THE OBSERVER IS
+// WRITTEN. This exists to stop one specific future mistake: stating the observer's correctness
+// proof as "serialize(parse(artifact_bytes)) == artifact_bytes". The captured BMC programs are
+// pretty-printed, whitespace does not survive the round trip, and that check would therefore be
+// PERMANENTLY RED on every real capture - for a reason that is not a decoder defect at all.
+//
+// A permanently-red wall is not a strict wall, it is one whose only closing move is to normalise
+// the artifact - which destroys the exact bytes the capture exists to preserve and that an
+// adoption is content-addressed against. So the boundary is measured and asserted here, and the
+// observer states its proof as SEMANTIC idempotence instead.
+//
+// THE CARRIER IS STRONGER THAN A REVIEW ASSUMED, AND THAT IS THE HALF WORTH RECORDING. The three
+// semantic axes below all survive, and none of them survives by accident: JsonObject holds
+// List<JsonKeyValue> rather than a map, so order and duplicates are representable at all, and
+// JsonNumber holds a lexeme rather than a parsed value, so 30.0 and 30 remain distinct. Those two
+// choices predate this lane and already discharge two of the three decode hazards the captured
+// bytes exhibit. A review reported this parser as not establishing the lossless properties needed
+// here; measured, it establishes every one of them except whitespace.
+
+fn round_trips(text: String) -> Bool {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: v } => serialize_json(v: v) == text
+    other => false
+  }
+}
+
+// srv3 writes failsafePercent 30.0 where srv4 writes 30. If a round trip collapsed the lexeme, one
+// host's artifact would re-serialise as the other's and a semantic digest could not tell a
+// formatting difference from a policy difference.
+fn the_number_lexeme_survives() -> Bool {
+  round_trips(text: "\{\"a\": 30.0\}")
+    && round_trips(text: "\{\"a\": 30\}")
+    && round_trips(text: "\{\"f\": -8.0\}")
+}
+
+// The step curve's reading and output are objects keyed "0".."8" joined by key identity. Order is
+// not what carries the pairing, but a carrier that cannot preserve order cannot preserve duplicate
+// keys either, and a decoder that silently drops one of two identical keys has lost a document
+// defect the observer is supposed to refuse.
+fn member_order_and_duplicates_survive() -> Bool {
+  round_trips(text: "\{\"b\": 1, \"a\": 2\}")
+    && round_trips(text: "\{\"a\": 1, \"a\": 2\}")
+}
+
+fn the_curve_shape_survives() -> Bool {
+  round_trips(
+    text: "\{\"reading\": \{\"0\": 40, \"1\": 55\}, \"output\": \{\"0\": 22, \"1\": 30\}\}",
+  )
+}
+
+// THE NEGATIVE HALF, AND IT IS THE POINT OF THE MODULE. This asserts a LIMITATION rather than a
+// capability, so it goes red if someone later makes the serializer whitespace-preserving - at which
+// point the observer's proof may be restated as a byte round trip and this witness should be
+// rewritten rather than deleted quietly.
+fn whitespace_does_not_survive() -> Bool {
+  !round_trips(text: "\{\n  \"a\": 1\n\}")
+    && !round_trips(text: "\{ \"a\": 1 \}")
+    && round_trips(text: "\{\"a\": 1\}")
+}
+
+fn bmc_fan_program_syntax_boundary_witness() -> ProcessExit {
+  if the_number_lexeme_survives()
+    && member_order_and_duplicates_survive()
+    && the_curve_shape_survives()
+    && whitespace_does_not_survive() {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: "JSON round-trip boundary changed: the observer's proof shape depends on which of the semantic axes survive and on whitespace NOT surviving",
+    )
+  }
+}

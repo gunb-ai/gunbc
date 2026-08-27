@@ -243,7 +243,7 @@ test fn witness_https_link_serializes() -> Bool {
   }
 }
 
-test fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
+test fn witness_req_a_hostile_href_still_emits_with_markdown_escaping() -> Bool {
   let doc = MarkdownDocument {
     blocks: [
       ParagraphBlock {

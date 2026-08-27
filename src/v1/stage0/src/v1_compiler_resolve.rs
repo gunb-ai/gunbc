@@ -8,7 +8,7 @@ pub use crate::std_types::kernel_type_set;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::{
-    CircularDependency, DuplicateModule, MissingExport, UnresolvedImport,
+    CircularDependency, DuplicateDeclaration, DuplicateModule, MissingExport, UnresolvedImport,
 };
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 pub use crate::v1_std_core::InferredNode;
@@ -105,6 +105,17 @@ pub fn resolve_modules_with_occurrence_transport(
             __result
         });
         let dup_diags = check_duplicate_modules(modules.clone(), source_indices.clone());
+        let dup_decl_diags = Rc::new({
+            let mut __result = Vec::new();
+            for m in modules.iter().cloned() {
+                __result.extend(
+                    (*check_duplicate_declarations(m.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
         let module_index = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
             |acc: Rc<HashMap<String, Rc<Node>>>, m: Rc<Node>| {
@@ -227,7 +238,10 @@ pub fn resolve_modules_with_occurrence_transport(
         Rc::new(ModuleGraph {
             modules: sorted_resolved.clone(),
             diagnostics: v1_rt::concat(
-                v1_rt::concat(dup_diags.clone(), import_diags.clone()),
+                v1_rt::concat(
+                    v1_rt::concat(dup_diags.clone(), dup_decl_diags.clone()),
+                    import_diags.clone(),
+                ),
                 topo_diags.clone(),
             ),
             occurrence_transport: occurrence_transport.clone(),
@@ -587,6 +601,50 @@ pub fn check_duplicate_modules(
                         seen_names: v1_rt::rc_map_insert(
                             state.seen_names.clone(),
                             m_name.clone(),
+                            true,
+                        ),
+                        diagnostics: state.diagnostics.clone(),
+                    })
+                }
+            },
+        );
+        result.diagnostics.clone()
+    }
+}
+
+pub fn check_duplicate_declarations(
+    module: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let module_name = authored_name_at(source_indices.clone(), module.clone());
+        let result = module_items(module.clone()).iter().cloned().fold(
+            Rc::new(DuplicateCheckState {
+                seen_names: v1_rt::rc_empty_map::<String, bool>(),
+                diagnostics: Rc::new(vec![]),
+            }),
+            |state: Rc<DuplicateCheckState>, item: Rc<Node>| {
+                let item_name = authored_name_at(source_indices.clone(), item.clone());
+                if v1_rt::map_has(&state.seen_names.clone(), item_name.clone()) {
+                    Rc::new(DuplicateCheckState {
+                        seen_names: state.seen_names.clone(),
+                        diagnostics: v1_rt::concat(
+                            state.diagnostics.clone(),
+                            Rc::new(vec![make_error_node(
+                                Rc::new(CompilerDiagnostic::DuplicateDeclaration {
+                                    module_name: module_name.clone(),
+                                    name: item_name.clone(),
+                                    span: item.span.clone(),
+                                }),
+                                module_name.clone(),
+                            )]),
+                        ),
+                    })
+                } else {
+                    Rc::new(DuplicateCheckState {
+                        seen_names: v1_rt::rc_map_insert(
+                            state.seen_names.clone(),
+                            item_name.clone(),
                             true,
                         ),
                         diagnostics: state.diagnostics.clone(),
