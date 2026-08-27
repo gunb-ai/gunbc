@@ -55,7 +55,7 @@ import gunbc.live_deploy.spec {
   DeploymentArtifactStep,
   ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit,
   deployment_belt_service_unit_name,
-  deployment_belt_env_path,
+  deployment_credential_env_path,
   deployment_tree_remote_unit_name,
   deployment_belt_timer_unit_name,
   deployment_belt_service_unit_path,
@@ -322,6 +322,7 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding)
       ServiceUser { name: svc.service_user },
       ServiceGroup { name: svc.service_user },
       WorkingDirectory { path: svc.repo_root },
+      EnvironmentFileIfPresent { path: deployment_credential_env_path(names: spec.names) },
       ExecStart { command: join([
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
@@ -357,7 +358,7 @@ fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
       Environment { assignment: join([
         belt_spawn_workdir_env_var as String, "=", svc.repo_root as String,
       ], "") as NonEmptyStr },
-      EnvironmentFileIfPresent { path: deployment_belt_env_path(names: spec.names) },
+      EnvironmentFileIfPresent { path: deployment_credential_env_path(names: spec.names) },
       ExecStart { command: join([
         svc.serve_binary as String,
         " run --source-root dag --source-root src/v2",

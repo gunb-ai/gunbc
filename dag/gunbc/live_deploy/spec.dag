@@ -229,12 +229,20 @@ fn deployment_belt_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-belt.timer"], "") as NonEmptyStr
 }
 
-// THE BELT'S CREDENTIAL FILE IS A PATH THIS GRAPH NAMES AND A SECRET THIS GRAPH NEVER HOLDS.
-// `belt_publication_credential` (gunbc.roadmap_belt_actuate) resolves GITHUB_TOKEN from the tick's
-// environment, and the belt unit supplied none -- so `github.Pulls.List` was never attempted and
-// publish_pass refused on every tick since the unit was installed. The refusal was correct and the
-// deployment was incomplete: the model carried a CredentialSource the deployed unit could not
-// satisfy.
+// THE INSTANCE'S CREDENTIAL FILE IS A PATH THIS GRAPH NAMES AND A SECRET THIS GRAPH NEVER HOLDS.
+// `belt_publication_credential` (gunbc.roadmap_belt_actuate) resolves GITHUB_TOKEN from the process
+// environment, and neither deployed unit supplied one -- so `github.Pulls.List` was never attempted
+// and publish_pass refused on every tick since the belt unit was installed. The refusal was correct
+// and the deployment was incomplete: the model carried a CredentialSource the deployed units could
+// not satisfy.
+//
+// ONE FILE FOR THE INSTANCE, NOT ONE PER UNIT, and the reason is that TWO units reach that resolver.
+// The belt tick reaches it through belt_publish_pass; the HTTP server reaches the SAME code through
+// POST /publish/NODE_ID (gunbc.roadmap_serve serve_publish_handler_response_for_instance ->
+// belt_publish_node_for_instance), which is the manual trigger serve_publish_note describes. Fixing
+// only the belt would have left that route refusing for a reason its caller could not distinguish
+// from the belt's. It is one credential belonging to one instance, so two files would be the second
+// representation DESIGN section 2 forbids -- and would drift on rotation.
 //
 // The path DERIVES from the belt stem rather than joining DeploymentNames, on the precedent
 // belt_timer_is_a_deploy_member_note states for the belt's other two files: a value identical in
@@ -247,8 +255,8 @@ fn deployment_belt_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
 // name, and a fresh instance whose file is absent gets a located refusal naming the path rather than
 // a belt that dies -- see EnvironmentFileIfPresent in extdeps.systemd.unit_file for why the optional
 // form is the one that preserves that refusal.
-fn deployment_belt_env_path(names: DeploymentNames) -> NonEmptyStr {
-  join(["/etc/", deployment_belt_unit_stem(names: names), "-belt.env"], "") as NonEmptyStr
+fn deployment_credential_env_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/", deployment_belt_unit_stem(names: names), "-credentials.env"], "") as NonEmptyStr
 }
 
 // THE DEPLOYED TREE'S REMOTE IS A MEMBER, and it needs a unit of its own for an ordering reason
