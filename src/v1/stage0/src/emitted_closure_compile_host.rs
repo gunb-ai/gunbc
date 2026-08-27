@@ -49,9 +49,31 @@ use crate::v1_compiler_stage0_crates::{
 
 const REQUIRED_EMIT_COMPILE_ENTRIES_DATA_NAME: &str = "required_emit_compile_entries";
 
-/// The crate name the emitted closure is compiled under. One name for every entry: the crate
-/// is rebuilt per entry in its own directory, so the name is a label rather than an identity.
-const PROBE_PACKAGE_NAME: &str = "gunbc-emitted-closure";
+/// The crate name the emitted closure is compiled under — DERIVED PER ENTRY, not shared.
+///
+/// WHY IT IS NOT ONE NAME FOR EVERY ENTRY, WHICH IS WHAT IT WAS. The entries share one
+/// `CARGO_TARGET_DIR` deliberately: that is what keeps dependency artifacts warm across a roster,
+/// and rebuilding `im`, `serde` and the seed crate once per entry would multiply the phase's cost
+/// by its roster size. But a shared target directory plus one package name and version means the
+/// only thing separating two entries' fingerprints is cargo's use of the manifest path. That is
+/// an implementation detail of a tool, load-bearing for a merge gate, and nothing here states it.
+///
+/// THE FAILURE IT WOULD PRODUCE IS FAIL-OPEN, WHICH IS WHY IT IS WORTH A NAME RATHER THAN A
+/// COMMENT SAYING CARGO HANDLES IT. If one entry's build were ever judged fresh against another's
+/// artifacts, cargo would replay the other's cached diagnostics — and a replayed clean compile is
+/// byte-identical in the output to a real one. The arm would report `Completed status=0` for an
+/// entry it never compiled, and the gate would go green over it.
+///
+/// Deriving the name from the entry makes each probe crate its own package, so the fingerprints
+/// cannot alias whatever cargo keys on. Dependencies are separate packages and stay shared, so
+/// the warmth the shared target dir buys is untouched.
+fn probe_package_name(entry: &str) -> String {
+    let slug: String = entry
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    format!("gunbc-emitted-closure-{slug}")
+}
 
 /// THE INJECTED FAULT. A type error rather than a syntax error, deliberately: a syntax error
 /// would also be caught by anything that merely parses the file, so it cannot discriminate a
@@ -274,7 +296,7 @@ pub fn emit_compile_outcome_summary(outcome: &EmitCompileOutcome) -> String {
 /// `cssl_v1_compiled_probe_lib_cargo_toml`), it is marked scaffold debt in its own module for
 /// being concat-authored markup, and adding a required gate as a consumer of it would have
 /// pinned that debt open on the merge path.
-fn probe_manifest(workspace: &Path) -> String {
+fn probe_manifest(workspace: &Path, entry: &str) -> String {
     let mut deps: Vec<CargoDependency> = stage0_foundation_runtime_dependencies()
         .iter()
         .map(|dep| (**dep).clone())
@@ -295,7 +317,7 @@ fn probe_manifest(workspace: &Path) -> String {
         .join("");
     format!(
         "{}\nedition = \"2021\"\n\n[dependencies]\n{rendered}",
-        render_cargo_package_header_prefix(PROBE_PACKAGE_NAME.to_string())
+        render_cargo_package_header_prefix(probe_package_name(entry))
     )
 }
 
@@ -347,7 +369,7 @@ fn write_probe_crate(run: &CompileRun, entry: &str) -> Result<(PathBuf, usize), 
     }
     std::fs::write(
         dir.join("Cargo.toml"),
-        probe_manifest(&process_workspace_root()),
+        probe_manifest(&process_workspace_root(), entry),
     )
     .map_err(|e| format!("writing the manifest into {}: {e}", dir.display()))?;
     Ok((dir, written))
@@ -935,7 +957,7 @@ mod tests {
     /// runtime dependency set, and the path dependency the emitted closure links against.
     #[test]
     fn manifest_carries_the_modeled_dependency_rows() {
-        let manifest = probe_manifest(Path::new("/repo"));
+        let manifest = probe_manifest(Path::new("/repo"), "dag/std/logic.dag");
         assert!(manifest.starts_with("[package]\nname = \"gunbc-emitted-closure\""));
         assert!(manifest.contains("edition = \"2021\""));
         for name in ["im", "serde", "serde_json", "stacker"] {
