@@ -673,21 +673,44 @@ fn census_source_roots() -> List<String> {
   ["dag", "src/v2", "src/v1"]
 }
 
-fn read_emitted_tree(src_dir: String) -> List<EmittedFile> {
+// A FILE THAT CANNOT BE READ REFUSES; IT IS NOT SKIPPED. Dropping it would shrink the denominator
+// silently -- the empty-observation narrow -- so a census over three readable files out of ninety-three
+// would report a population and call it taken. The listing failing and the listing being empty are also
+// different states and get different causes: one is an instrument fault, the other is a subject that
+// does not exist.
+type EmittedTreeRead
+  = EmittedTreeFiles { files: List<EmittedFile> }
+  | EmittedTreeUnreadable { cause: String }
+
+fn emitted_tree_read_then(acc: EmittedTreeRead, path: String) -> EmittedTreeRead {
+  match acc {
+    EmittedTreeUnreadable { cause: c } => EmittedTreeUnreadable { cause: c }
+    EmittedTreeFiles { files: so_far } =>
+      let read = Filesystem.Read(path: path)
+      if !read.success {
+        EmittedTreeUnreadable {
+          cause: concat(
+            "an emitted file could not be read, so the subject is incomplete and any population over the rest would be a fraction reported as a whole: ",
+            concat(path, concat(" — ", read.error))
+          )
+        }
+      } else {
+        EmittedTreeFiles { files: list_push(so_far, read_emitted_file(path: path, content: read.content)) }
+      }
+  }
+}
+
+fn read_emitted_tree(src_dir: String) -> EmittedTreeRead {
   let found = shell.Find.FilesByNameSorted(root: src_dir, name_glob: "*.rs" as NonEmptyStr)
   if !found.success {
-    []
+    EmittedTreeUnreadable {
+      cause: concat("the emitted src directory could not be listed: ", found.stderr)
+    }
   } else {
     fold(
       filter(split(s: found.stdout, delimiter: "\n"), p => p != ""),
-      init: [],
-      f: (acc, path) =>
-        let read = Filesystem.Read(path: path)
-        if !read.success {
-          acc
-        } else {
-          list_push(acc, read_emitted_file(path: path, content: read.content))
-        }
+      init: EmittedTreeFiles { files: [] },
+      f: (acc, path) => emitted_tree_read_then(acc: acc, path: path)
     )
   }
 }
@@ -744,27 +767,35 @@ fn disposition_subject_key(d: UseSiteDisposition) -> String {
 }
 
 fn census_emitted_tree(provenance: EmittedTreeProvenance, src_dir: String, emit_detail: String) -> OpaqueRealizationCensus {
-  let files = read_emitted_tree(src_dir: src_dir)
-  if (files |> count) == 0 {
-    OpaqueCensusUnestablished {
-      provenance: provenance,
-      stage: OpaqueCensusStageEmittedTreeRead,
-      cause: concat(
-        "no readable .rs file was found under the emitted src directory, so no use site could be examined; detail: ",
-        emit_detail
-      )
-    }
-  } else {
-    let claims = all_claims(files: files)
-    let index = claim_index(claims: claims)
-    let dispositions = fold(files, init: [], f: (acc, f) => concat(acc, classify_file(file: f, claims: index)))
-    OpaqueCensusTaken {
-      provenance: provenance,
-      emitted_file_count: files |> count,
-      dispositions: dispositions,
-      subject_consistency: subject_consistency_rows(dispositions: dispositions, claims: claims),
-      opaque_subjects: opaque_subject_rows(dispositions: dispositions, files: files, claims: claims)
-    }
+  match read_emitted_tree(src_dir: src_dir) {
+    EmittedTreeUnreadable { cause: c } =>
+      OpaqueCensusUnestablished {
+        provenance: provenance,
+        stage: OpaqueCensusStageEmittedTreeRead,
+        cause: concat(c, concat("; detail: ", emit_detail))
+      }
+    EmittedTreeFiles { files: files } =>
+      if (files |> count) == 0 {
+        OpaqueCensusUnestablished {
+          provenance: provenance,
+          stage: OpaqueCensusStageEmittedTreeRead,
+          cause: concat(
+            "the emitted src directory listed no .rs file at all, so there is no subject to examine; detail: ",
+            emit_detail
+          )
+        }
+      } else {
+        let claims = all_claims(files: files)
+        let index = claim_index(claims: claims)
+        let dispositions = fold(files, init: [], f: (acc, f) => concat(acc, classify_file(file: f, claims: index)))
+        OpaqueCensusTaken {
+          provenance: provenance,
+          emitted_file_count: files |> count,
+          dispositions: dispositions,
+          subject_consistency: subject_consistency_rows(dispositions: dispositions, claims: claims),
+          opaque_subjects: opaque_subject_rows(dispositions: dispositions, files: files, claims: claims)
+        }
+      }
   }
 }
 
