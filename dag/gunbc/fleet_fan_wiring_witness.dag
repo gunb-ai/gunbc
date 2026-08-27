@@ -748,17 +748,6 @@ fn unmodelled_host_has_no_tach_expectation() -> Bool {
   }
 }
 
-// A ROSTER WITH ONE HEADER AUTHORED TWICE. srv3 has no FAN2 row at all, so prepending one there
-// makes an UNEXPECTED header rather than a duplicated one -- a distinction the coverage query
-// reports correctly and which a first draft of this control got wrong.
-data srv3_wiring_with_a_duplicated_header: HostFanWiring = HostFanWiring {
-  host: srv3_fan_wiring.host,
-  headers: flat_map(
-    [srv3_fan_wiring.headers, filter(srv3_fan_wiring.headers, b => b.header == "FAN3")],
-    group => group,
-  ),
-}
-
 // A HEADER WHOSE DRIVEN COUNT NOBODY OBSERVED, for the partial-total control.
 // ONE UNOBSERVED HEADER AMONG FOUR DECLARED ONES. Both halves are authored here now: the chassis
 // bays are given the declared arm the live rows no longer carry, and FAN1 is forced to unobserved.
