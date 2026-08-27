@@ -1,0 +1,71 @@
+module test.claim.plain_call_result_wrap_roster_test
+
+// EXECUTING evidence that a result wrap is paired with the roster that lowered
+// the call, and with no other. The v1 Rust emitter carries two rosters that say
+// "this lowering yields a bare collection the shared reference layer must lift":
+// rt_wraps_result, over the v1_rt bridge functions, and rust_method_wraps_result,
+// over the simple-method templates. They were consulted through one fused
+// predicate at four positions, only two of which lowered through the roster they
+// asked, so a roster could answer for a position it never produced text at.
+//
+// WHAT THAT COST, measured on the src/v2/compiler/01_tokenize.dag closure before
+// the repair: v2.std.compilers.lexing token_stream_remaining is a PLAIN CALL to
+// the declared v2.std.algebra skip, which lowers as an ordinary declared call and
+// already returns the wrapped level; `skip` is also a simple-method template
+// name, so the plain-call position wrapped it a second time and rustc refused
+// with `expected Vector<Rc<Token>>, found Rc<Vector<Rc<Token>>>`. The Rc level
+// disagreed across the call boundary because two positions read one name and
+// only one of them had lowered anything.
+//
+// THE THREE ROWS ARE MUTUALLY DISCRIMINATING, which is why they are three and
+// not one. plain_call_to_declared_method_roster_name_is_not_wrapped goes RED if
+// the fused predicate returns -- it is the specimen above, reduced to a fixture.
+// plain_call_to_rt_bridge_keeps_its_wrap goes RED if the repair over-narrows and
+// deletes the wrap the rt roster legitimately owns at that same position.
+// method_template_call_keeps_its_wrap goes RED if the method roster is severed
+// from the position it does lower. No single constant satisfies all three, and
+// no disabled mechanism satisfies the last two.
+//
+// SCOPE, stated so the rows are not read as wider: this is the PLAIN-CALL half
+// of the wrapping-level class. A roster row that misdeclares wraps_result
+// against its own template is still writable and these rows do not see it; that
+// residue's next rung is the modeled layer transition
+// v2.compiler.wrap_decision wrap_decision_flow_gate names.
+fn plain_call_declared_shadow_source() -> String {
+  "module wrapplaincall\n\nimport std.types { Int }\n\nfn skip(xs: List<Int>, n: Int) -> List<Int> {\n  xs\n}\n\nfn remaining(xs: List<Int>) -> List<Int> {\n  skip(xs: xs, n: 1)\n}\n"
+}
+
+fn plain_call_rt_bridge_source() -> String {
+  "module wrapplaincallrt\n\nimport std.types { Int, Map, String }\n\nfn keys(m: Map<String, Int>) -> List<String> {\n  map_keys(m: m)\n}\n"
+}
+
+fn method_template_source() -> String {
+  "module wrapmethodcall\n\nimport std.types { Int }\n\nfn rest(xs: List<Int>) -> List<Int> {\n  xs.skip(n: 1)\n}\n"
+}
+
+test fn plain_call_to_declared_method_roster_name_is_not_wrapped() -> Bool {
+  compile_dag_rust_emit_check(
+    plain_call_declared_shadow_source(),
+    "src/wrapplaincall.rs",
+    ["pub fn remaining("],
+    ["Rc::new(skip("]
+  )
+}
+
+test fn plain_call_to_rt_bridge_keeps_its_wrap() -> Bool {
+  compile_dag_rust_emit_check(
+    plain_call_rt_bridge_source(),
+    "src/wrapplaincallrt.rs",
+    ["Rc::new(v1_rt::map_keys("],
+    []
+  )
+}
+
+test fn method_template_call_keeps_its_wrap() -> Bool {
+  compile_dag_rust_emit_check(
+    method_template_source(),
+    "src/wrapmethodcall.rs",
+    ["Rc::new(", ".iter().cloned().skip("],
+    []
+  )
+}
