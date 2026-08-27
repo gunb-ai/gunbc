@@ -39,7 +39,7 @@ import v1.std.core {
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_span,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -659,6 +659,49 @@ fn variant_owner_node(scope: InferScope, name: String) -> Node? {
       }
     Absent => none
   }
+  }
+}
+
+// THE BARE NULLARY VARIANT REFERENCE'S OWN UNLISTED-USE OBSERVATION, ON ITS OWN CONSTRUCTOR, and why
+// it is emitted here
+// rather than left to the type path. `resolve_node_bounded`'s masked-leaf check reports
+// UnlistedImportUse for a TYPE named without an import; the identical situation one channel over --
+// a coproduct ARM named without an import -- reported nothing at all, because the arm binds through
+// the constructor channel (`merge_global_bare_variant_locals` merges a whole-closure base under the
+// checked own+direct-imports fold) and never reaches that leaf. Measured on a discriminating pair in
+// `gunbc.constructor_binding_channel`: same fixture, same absent import, advisory for the type
+// reference and silence for the arm.
+//
+// WHY THAT SILENCE IS NOT COSMETIC. `v1.compiler.emit_rust` `collect_value_ref_names` harvests
+// ExprCall unconditionally and ExprRecordLit through `record_lit_ref_names`, so the payload-carrying
+// constructor forms already reach the reference-derived use-line producer. ExprVar carrying a
+// VariantValueBinding falls to that function's `_ => []`, so the BARE NULLARY arm -- Absent, Empty,
+// NoConnective, the unit arm of nearly every coproduct here -- contributes nothing, and a census of
+// the use-line repair population built on the existing instrument cannot be complete while it does.
+// This adds the missing observation; it does not change what binds or what refuses.
+//
+// AND IT DOES NOT REACH THE EMITTER, BY CONSTRUCTION RATHER THAN BY MEASUREMENT. The first cut of this
+// observation reused `UnlistedImportUse`, which `v1.compiler.emit_rust` `group_unlisted_type_names`
+// folds out of `typed.diagnostics` -- a set that carries `infer_diags` -- into the input
+// `reference_derived_use_lines` synthesizes use-lines from. That would have added bare variants to
+// production synthesis output, which a standing hold forbids until the pre-cut population is counted.
+// `UnlistedVariantValueUse` is a separate constructor that selector cannot match, so byte-identical
+// emission is a property of the shape rather than a diff someone has to keep re-running. The reason
+// the constructor exists is recorded on the constructor, in v1.std.core.
+//
+// THE OWNER-FILE TEST IS WHAT KEEPS IT FROM FIRING ON LOCAL DECLARATIONS. `source_visible_names`
+// carries imports and the kernel surface, never the module's own declarations, so membership alone
+// would report every locally-declared arm. The owner node's file is compared with the reference's,
+// which is the same identity test `insert_variant_owner_checked` already uses for same-owner.
+fn unlisted_variant_use_diagnostics(scope: InferScope, name: String, span: SourceSpan, owner: Node?) -> List<ErrorNode> {
+  match owner {
+    Present { value: owner_node } =>
+      if owner_node.span.file != span.file
+        && map_is_empty(m: scope.type_env.source_visible_names) == false
+        && map_has(m: scope.type_env.source_visible_names, key: name) == false {
+        [make_error_node(diagnostic: UnlistedVariantValueUse { name: name, span: span }, module_name: scope.module_name)]
+      } else { [] }
+    Absent => []
   }
 }
 
@@ -4335,14 +4378,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
           match scope_parent {
             Present { value: scope_enum } =>
-              ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                name: name,
-                expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
-                children: [],
-                inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: binding.resolved) } },
-                span: span,
-                name_span: span
-              ))
+              InferResult {
+                typed: make_named_expr_node(
+                  occurrence_identity: texpr.occurrence_identity,
+                  name: name,
+                  expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
+                  children: [],
+                  inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: binding.resolved) } },
+                  span: span,
+                  name_span: span
+                ),
+                diagnostics: unlisted_variant_use_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
+              }
             Absent =>
               let binding_kind = infer_var_binding_kind(scope: scope, name: name)
               ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
@@ -4385,14 +4432,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
                   match scope_parent {
                     Present { value: scope_enum } =>
-                      ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                        name: name,
-                        expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
-                        children: [],
-                        inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: gbinding.resolved) } },
-                        span: span,
-                        name_span: span
-                      ))
+                      InferResult {
+                        typed: make_named_expr_node(
+                          occurrence_identity: texpr.occurrence_identity,
+                          name: name,
+                          expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
+                          children: [],
+                          inferred: Present { value: Resolved { node: variant_reference_inferred_node(expected: expected, name: name, owner_name: scope_enum, scope: scope, fallback: gbinding.resolved) } },
+                          span: span,
+                          name_span: span
+                        ),
+                        diagnostics: unlisted_variant_use_diagnostics(scope: scope, name: name, span: span, owner: variant_owner_node(scope: scope, name: name))
+                      }
                     Absent =>
                       let binding_kind = infer_var_binding_kind(scope: scope, name: name)
                       ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
@@ -4408,14 +4459,18 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   let expected_variant_enum = expected_variant_owner_instantiation(expected: expected, name: name, scope: scope)
                   match expected_variant_enum {
                     Present { value: exp_enum } =>
-                      ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
-                        name: name,
-                        expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
-                        children: [],
-                        inferred: Present { value: Resolved { node: exp_enum } },
-                        span: span,
-                        name_span: span
-                      ))
+                      InferResult {
+                        typed: make_named_expr_node(
+                          occurrence_identity: texpr.occurrence_identity,
+                          name: name,
+                          expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
+                          children: [],
+                          inferred: Present { value: Resolved { node: exp_enum } },
+                          span: span,
+                          name_span: span
+                        ),
+                        diagnostics: unlisted_variant_use_diagnostics(scope: scope, name: name, span: span, owner: Present { value: exp_enum })
+                      }
                     Absent =>
                       let var_ambiguity_cands = global_bare_strict_ambiguity_candidates(env: scope.type_env, name: name)
                       if (var_ambiguity_cands |> count) > 0 {
