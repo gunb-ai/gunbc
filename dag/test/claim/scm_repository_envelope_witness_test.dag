@@ -53,19 +53,31 @@ import gunbc.scm.repository_envelope {
   commit_at_reference,
 }
 
-// THESE WITNESSES WERE DISCOVERED AND NEVER RUN, AND THIS DECLARATION IS WHAT CHANGES THAT.
-// A module that declares no `live_tree_disposition` resolves to ReadsLiveTree by the floor's
-// fail-closed default -- v2.workflow.floor_discovery_producer answers `Absent =>
-// EntryLiveTreeResolved { disposition: ReadsLiveTree }` -- and a ReadsLiveTree site is DECLINED
-// before the fold, counted in `declined_live` and never executed. This module carried no such
-// declaration, so all of its witnesses sat in that arm while reading as coverage: discovered,
-// counted, asserting nothing. Thirteen sibling gunbc.scm witness modules declare it; this one did
-// not, and the omission predates the ancestry work rather than arriving with it.
+// THIS MODULE STATED NO DISPOSITION, AND WHAT THAT MEANT WAS NOT MEASURED. The declaration is added
+// because silence is the one answer that cannot be right, not because the silence was observed to
+// decline anything.
 //
-// SubstrateInputsOnly IS A TRUE STATEMENT ABOUT THIS MODULE, not the convenient one. Its entire
-// import surface is std.types, the json emit/parse grammars, v2.std.node and three gunbc.scm
-// carriers; nothing here opens a file, shells out, or reads the tree. Declaring it is what makes
-// the 37 claims below into executed evidence rather than specification.
+// WHAT IS MEASURED: this module declared no `live_tree_disposition` while thirteen sibling
+// gunbc.scm witness modules declare one, and the omission predates the ancestry work rather than
+// arriving with it. The run current when this landed reported `offered=13090 routed=11647
+// declined_long=541 declined_live=902` -- real, aggregate, and attributable to no module, because
+// the floor's output names no module's disposition anywhere.
+//
+// WHAT WAS NOT MEASURED, AND WAS ASSERTED HERE BEFORE THIS CORRECTION: that these claims were
+// declined and never ran. An earlier revision of this annotation said exactly that, reasoning from
+// `v2.workflow.floor_discovery_producer` answering `Absent => EntryLiveTreeResolved { disposition:
+// ReadsLiveTree }`. That is a real code path but it is not established to be the one that executes:
+// the floor consumer resolves an undeclared module by DERIVING from its import closure, so an
+// undeclared substrate-only module may well have been admitted all along. Two computations of one
+// fact, and the earlier revision read one and asserted it of the other -- which is that defect
+// walked into rather than detected. No per-module evidence was ever available to settle it.
+//
+// SubstrateInputsOnly IS A TRUE STATEMENT ABOUT THIS MODULE, not the convenient one, and this is the
+// part that makes the declaration correct under every mechanism in play. Its entire import surface
+// is std.types, the json emit/parse grammars, v2.std.node and three gunbc.scm carriers; nothing here
+// opens a file, shells out, or reads the tree. Verified before declaring. Had the closure genuinely
+// reached the tree, the honest act would have been to leave it undeclared and say so, not to author
+// the value that produces a green number.
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
