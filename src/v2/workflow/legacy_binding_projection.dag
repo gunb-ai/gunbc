@@ -1,8 +1,9 @@
 module v2.workflow.legacy_binding_projection
 
-import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.types { String, Bool, Int, List }
 import std.content_hash { Fnv1a64Structural }
-import std.dissolution { DissolutionCondition, UnboundDissolution }
+import std.dissolution { DissolutionCondition, bound_dissolution }
+import std.decl_ref { decl_ref }
 import std.occurrence_identity { OccurrenceId, ScopedOccurrenceRef }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservationSubject,
@@ -24,13 +25,19 @@ import v2.workflow.legacy_binding_delta {
 // per-occurrence carry decision into the ProjectionProvenance the delta consumes.
 //
 // It emits ProjectedFromSource ONLY. ProjectedAsInsertion is not merely unimplemented here, it is
-// UNEMITTABLE, and the reason is a property of the substrate rather than of this module:
-// `std.occurrence_identity` `NodeOccurrenceIdentity` has two arms, `OccurrenceSynthetic` and
-// `OccurrenceMinted`, and neither carries a cause -- `caused_by` appears zero times anywhere in
-// `dag/std` or `src/v2/std`. A projector-created node therefore has no representable provenance,
-// and the arm it would have to borrow is already the fill value for every non-parser-constructed
-// node, so borrowing it would collapse parser-minted, incidentally-synthetic and
-// projection-synthesized-with-cause into one symbol.
+// UNEMITTABLE BY THIS MODULE, and the reason has MOVED -- it used to be a property of the substrate
+// and is now a property of this module's wiring. `std.occurrence_identity` `NodeOccurrenceIdentity`
+// once had two arms, `OccurrenceSynthetic` and `OccurrenceMinted`, neither carrying a cause; a
+// projector-created node had no representable provenance, and the arm it would have had to borrow is
+// already the fill value for every non-parser-constructed node, so borrowing it would have collapsed
+// parser-minted, incidentally-synthetic and projection-synthesized-with-cause into one symbol.
+//
+// gunbc#9359 closed that: `OccurrenceProjected { id, caused_by }` carries the cause, and
+// `v2.workflow.legacy_binding_delta` `insertion_provenance_entry` derives the `ProjectedAsInsertion`
+// row from it. THE REFUSAL BELOW STAYS ANYWAY, and the distinction is the point -- what this module
+// cannot do is no longer EXPRESS an insertion's cause but EMIT one, because nothing here has been
+// taught to allocate a projected occurrence and name what caused it. A refusal is honest about a
+// capability that is unbuilt; it would be dishonest as a claim that the capability is impossible.
 //
 // THE COST OF THAT IS A WRONG ANSWER, NOT A MISSING FEATURE, which is the whole reason this module
 // refuses instead of improvising. The delta's source-coverage law reads carried sources; an
@@ -40,11 +47,12 @@ import v2.workflow.legacy_binding_delta {
 // dropped occurrence survived. That is exactly the defect a review caught on gunbc#9337, arriving
 // through the carrier instead of through the filter.
 //
-// So insertions are BLOCKED ON A NAMED WORK ITEM (`node://adhoc-e1692c72-f81`: model the third arm
-// as a shared-authority algebra decision), and this module's refusal is the honest state until it
-// lands. No placeholder cause, no optional field, no convention -- each of those is the fabricated
-// cause wearing a different hat, and a fabricated cause is worse than an omitted insertion because
-// the omission is countable and the fabrication is not.
+// That hazard is why the carrier gained a third ARM rather than an optional field: no placeholder
+// cause, no `caused_by: OccurrenceId?` on the minted arm, no convention -- each of those is the
+// fabricated cause wearing a different hat, and a fabricated cause is worse than an omitted
+// insertion because the omission is countable and the fabrication is not. With the arm landed, the
+// remaining work is wiring this projector across it, and until that lands the refusal below is
+// still the honest state.
 // THE RETIREMENT IS A TYPED CONDITION, NOT A SENTENCE. An earlier revision of this module carried
 // the whole thing as `data ...: String`, which is the shape §4c names as modeling debt and which
 // #6262/#6424 already swept once: a dissolution condition is machine-consumed, so it belongs in
@@ -53,18 +61,38 @@ import v2.workflow.legacy_binding_delta {
 // a bounded trigger; that is backwards -- naming a trigger is precisely what makes it a fact rather
 // than commentary, and therefore precisely what disqualifies the String carrier.
 //
-// It is UNBOUND rather than bound, and that is forced rather than lazy. The bound form would be
-// `DeclarationAppears` over `std.occurrence_identity` `OccurrenceProjected`, and that declaration
-// does not exist on this base -- so authoring the citation here would be refused by the citation
-// wall as a name that does not resolve, which is the §3 fabricated-citation class the dissolution
-// module's own annotation warns about by name. The condition binds in the same change that rebases
-// onto the arm, at which point the ref is verifiable at the moment it is written.
+// IT IS NOW BOUND, AND THIS IS THE CHANGE THAT WAS ENTITLED TO BIND IT. An earlier revision left it
+// UNBOUND and said so honestly: the bound form is `DeclarationAppears` over `std.occurrence_identity`
+// `OccurrenceProjected`, that declaration did not exist on the base this module was authored against,
+// and authoring the citation there would have been refused by the citation wall as a name that does
+// not resolve -- the §3 fabricated-citation class the dissolution module's own annotation warns about
+// by name. That revision also named its own trigger: the condition binds in the same change that
+// rebases this module onto the arm, at which point the ref is verifiable at the moment it is written.
 //
-// The instrument for the claim, rather than a transcription of it: grep `caused_by` across `dag/std`
-// and `src/v2/std`, and read `NodeOccurrenceIdentity`'s arms in `std.occurrence_identity`.
-data legacy_binding_projection_insertion_dissolution: DissolutionCondition = UnboundDissolution {
-  description: "ProjectedAsInsertion is unemittable while std.occurrence_identity NodeOccurrenceIdentity carries no arm for a projector-created node's cause. Binds to DeclarationAppears over OccurrenceProjected once that arm lands (gunbc#9359); ProjectionInsertionUnrepresentable then flips to a regression control over the InsertionCauseLost population rather than retiring, because deleting an executed refusal recreates specification-without-execution one rung up." as NonEmptyStr
-}
+// gunbc#9359 landed `OccurrenceProjected`. THIS change is the first that rebases this module's
+// claims onto that capability and authors the now-resolvable citation, so the citation is written at
+// the first moment it CAN be written honestly rather than at the first moment it is convenient. The
+// two-step interval is the interesting part and an earlier revision of this sentence erased it by
+// attributing both to one commit: #9359 merged WITHOUT this rebase, and for the gap between them
+// main carried a dissolution row asserting the absence of an arm declared in the same tree. Leaving it unbound here would have been worse than merely stale: a
+// dissolution condition is machine-consumed, so the debt would have reported UNBOUND while its own
+// binding declaration sat in the same commit -- a false fact rather than a false comment.
+//
+// WHAT DID NOT CHANGE: the refusal. `ProjectionInsertionUnrepresentable` still fires, because the
+// carrier boundary is closed and the PROJECTOR is not yet wired across it. Binding the dissolution
+// records that the blocking declaration now exists; it does not claim this module emits insertions.
+//
+// THE INSTRUMENTS ARE THE FACTS THAT ARE NOW TRUE, not the absence that closed. Read
+// `std.occurrence_identity` `NodeOccurrenceIdentity` for the `OccurrenceProjected` arm, and
+// `v2.workflow.legacy_binding_delta` `insertion_provenance_entry` for the derivation of
+// `ProjectedAsInsertion` from it. An earlier revision named a grep for `caused_by` across `dag/std`
+// and `src/v2/std`, which was correct while the count was zero and INVERTED SILENTLY the moment the
+// arm landed -- a reader running it now gets a nonzero answer and cannot tell a wrong annotation
+// from a mis-run. Naming an instrument beats transcribing its output, but an instrument that
+// measures an ABSENCE rots exactly like a transcribed number once someone closes the absence.
+data legacy_binding_projection_insertion_dissolution: DissolutionCondition = bound_dissolution(
+  ref: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceProjected")
+)
 
 // A CARRY DECISION IS PER BASE OCCURRENCE, AND ITS DENOMINATOR IS THE BASE OBSERVATION'S OWN
 // EXPECTED POPULATION -- not the projected side, and not the set of decisions this module happened
