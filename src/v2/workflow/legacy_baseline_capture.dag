@@ -4,11 +4,12 @@ import std.types { String, List, Int, Bool, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural }
 import std.occurrence_identity { ValidatedOccurrenceTransport }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_wire_hex }
+import v2.workflow.legacy_repair_observation { CompleteLegacyRepairObservation }
+import std.observation_completeness { ObservationCompleteness }
 import v2.workflow.legacy_binding_observation {
   LegacyBindingObservation,
   LegacyBindingObservationSubject,
   CompleteLegacyObservation,
-  LegacyObservationCompleteness,
   LegacyObservationAdmission,
   ObservationAdmitted,
   ObservationRefused,
@@ -73,22 +74,31 @@ fn materialization_receipt(
 // denominator, and that denominator is an open question in the census owner's subject rather than a
 // missing field here.
 //
-// Declaring the field with an unconstructable type makes the accepted arm UNREACHABLE rather than
+// Declaring the field with an unconstructable type made the accepted arm UNREACHABLE rather than
 // reachable-with-a-stub. A placeholder value would admit a capture whose repair half was never taken,
 // which is the fabricated-plausible-output failure at the exact seam the cut is authorised against.
-// WHEN R_X(B) LANDS, THIS DECLARATION IS DELETED AND ITS CARRIER IS IMPORTED -- the two cannot coexist.
-// Declaration names bind closure-globally in this tree, so two modules declaring
-// CompleteLegacyRepairObservation is a collision rather than a shadowing, and whichever change lands
-// second owes the deletion. v2.workflow.legacy_repair_observation is the surviving authority; this
-// declaration exists only so that the capture record can be SHAPED correctly before that authority
-// exists, and it is deliberately the weaker of the two -- it has no constructor and no fields.
 //
-// IT IS GENERIC IN THE REPAIR DECISION VOCABULARY, AND THAT IS A SECOND PARAMETER RATHER THAN A REUSE
-// OF THE BINDING ONE. O is what the legacy RESOLVER selected at each occurrence; R is what the
-// REPAIRER decided at each repair site. Binding them to one parameter would force the emitter's repair
-// vocabulary to equal the resolver's binding vocabulary -- the same conflation the operator ruling
-// exists to prevent, committed in the type parameters instead of the fields.
-type CompleteLegacyRepairObservation<R>
+// THAT PLACEHOLDER IS NOW GONE AND THE REAL CARRIER IS IMPORTED. It was a constructor-less, field-less
+// declaration standing in for v2.workflow.legacy_repair_observation before that authority existed, and
+// this module's own annotation committed to its deletion by whichever change landed second. #9440
+// landed first, so the deletion rides here -- in the same change that merges it, never as a follow-up,
+// because declaration names bind closure-globally and two declarations of one name on main is a
+// collision rather than a shadowing. THE ACCEPTED ARM IS NOW CONSTRUCTIBLE FOR THE FIRST TIME.
+//
+// WHY THE DELETION COULD NOT WAIT FOR A FOLLOW-UP, recorded because the reason is not obvious from
+// either side alone: neither author can observe this collision by compiling their own branch. Both
+// were green against main independently, and the breakage exists only once both are on one tree.
+// Measured receipt from this lane's own history -- a duplicate `SubjectRoster` minted in
+// legacy_repair_observation produced nine diagnostics, every one of them in v2.lens.enforcement
+// modules that change never touched. The place a defect is authored and the place it is observable
+// are different, and compiling your own branch only ever checks the first.
+//
+// THE SECOND TYPE PARAMETER SURVIVES THE SWAP AND MUST. O is what the legacy RESOLVER selected at each
+// occurrence; R is what the REPAIRER decided at each repair site. Binding them to one parameter would
+// force the emitter's repair vocabulary to equal the resolver's binding vocabulary -- the same
+// conflation the operator ruling exists to prevent, committed in the type parameters instead of the
+// fields. The imported carrier is generic for the same reason: the repair decision vocabulary belongs
+// to the tap inside the emitter, and neither envelope may name it.
 
 // NO PUBLIC CONSTRUCTOR. Every field is either a proven equality or a carrier that could only be
 // obtained by having done the work: the observation is `sole_constructor` and minted only by the
@@ -145,7 +155,7 @@ type LegacyBaselineCaptureOutcome<O, R>
   | LegacyBaselineHeadMismatch { requested: GitObjectId, materialized: GitObjectId }
   | LegacyBaselineWorktreeMismatch { commit_tree: GitObjectId, observed_tree: GitObjectId }
   | LegacyBaselineSubjectMismatch { field: LegacyObservationSubjectField }
-  | LegacyBaselineObservationIncomplete { completeness: LegacyObservationCompleteness }
+  | LegacyBaselineObservationIncomplete { completeness: ObservationCompleteness<Int> }
   | LegacyBaselineExecutionRefused {
       phase: LegacyBaselineCapturePhase,
       cause: LegacyBaselineCaptureRefusal
