@@ -30,6 +30,10 @@ import extdeps.github.rulesets {
   BranchTarget,
   RulesetBypassStanding,
   BypassNever,
+  BypassPullRequestsOnly,
+  BypassAlways,
+  UnrecognizedBypassStanding,
+  ruleset_bypass_standing_wire_label,
   RequiredStatusCheckStanding,
   NoRequiredStatusChecksRule,
   RequiredStatusChecks,
@@ -264,6 +268,7 @@ type RulesetDivergence
   | RulesetEnforcementDrift { observed: String }
   | RulesetTargetDrift { observed: String }
   | RulesetBypassGranted { observed: String }
+  | RulesetBypassStandingUnrecognized { raw: String }
   | RefNameIncludeDrift { observed: List<String> }
   | RefNameExcludeNonEmpty { observed: List<String> }
   | RulesetRuleAbsent { rule: String }
@@ -301,10 +306,24 @@ fn target_divergences(observed: RulesetTarget) -> List<RulesetDivergence> {
 // of no observation at all. The honest bound: a bypass role granted to an actor this module never
 // authenticates as would not be seen here, and closing that needs the bypass_actors roster, which
 // GitHub omits from the response entirely when it is empty rather than sending [].
+//
+// AND THE NON-`never` ARMS ARE NAMED RATHER THAN WILDCARDED, which review 56496 caught this
+// function getting wrong. A single `_` arm emitting one static sentence was total over the type
+// and blind one level down -- exactly the pattern the rest of this module is written to avoid.
+// Three facts sat under it with three different remedies: `pull_requests_only` and `always` are
+// real, DIFFERENT bypass grants (revoke the role -- and which role differs), while an
+// unrecognized standing means GitHub's vocabulary moved and this module's reading is no longer
+// established, whose remedy is to extend the parser and re-establish the read. Collapsing the
+// third into the first two would report a granted bypass for an unread one, and the `raw` GitHub
+// actually sent -- the only thing that says what to extend the parser WITH -- was discarded.
 fn bypass_divergences(observed: RulesetBypassStanding) -> List<RulesetDivergence> {
   match observed {
     BypassNever => []
-    _ => [RulesetBypassGranted { observed: "reader may bypass this ruleset" }]
+    BypassPullRequestsOnly =>
+      [RulesetBypassGranted { observed: ruleset_bypass_standing_wire_label(b: observed) }]
+    BypassAlways =>
+      [RulesetBypassGranted { observed: ruleset_bypass_standing_wire_label(b: observed) }]
+    UnrecognizedBypassStanding { raw: r } => [RulesetBypassStandingUnrecognized { raw: r }]
   }
 }
 
@@ -413,7 +432,9 @@ fn render_divergence(d: RulesetDivergence) -> String {
     RulesetNameDrift { observed: o } => concat("ruleset name is ", o)
     RulesetEnforcementDrift { observed: o } => concat("enforcement is ", o)
     RulesetTargetDrift { observed: o } => concat("target is ", o)
-    RulesetBypassGranted { observed: o } => o
+    RulesetBypassGranted { observed: o } => concat("reader may bypass this ruleset: ", o)
+    RulesetBypassStandingUnrecognized { raw: r } =>
+      concat("current_user_can_bypass is unrecognized: ", r)
     RefNameIncludeDrift { observed: o } => concat("ref_name include is ", join(o, "|"))
     RefNameExcludeNonEmpty { observed: o } => concat("ref_name exclude is non-empty: ", join(o, "|"))
     RulesetRuleAbsent { rule: r } => concat("rule absent: ", r)

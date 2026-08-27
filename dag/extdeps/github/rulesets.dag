@@ -175,6 +175,15 @@ fn parse_ruleset_bypass_standing(raw: String) -> RulesetBypassStanding {
   else { UnrecognizedBypassStanding { raw: raw } } } }
 }
 
+fn ruleset_bypass_standing_wire_label(b: RulesetBypassStanding) -> String {
+  match b {
+    BypassNever => "never"
+    BypassPullRequestsOnly => "pull_requests_only"
+    BypassAlways => "always"
+    UnrecognizedBypassStanding { raw: r } => r
+  }
+}
+
 fn ruleset_rule_wire_type(rule: RulesetRuleWire) -> RulesetRuleType {
   parse_ruleset_rule_type(raw: rule.type)
 }
