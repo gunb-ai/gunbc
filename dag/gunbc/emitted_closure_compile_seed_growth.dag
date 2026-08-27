@@ -26,6 +26,7 @@ data emitted_closure_compile_seed_growth_justification: SeedGrowthJustification 
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "MutationSubject", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "MutationSubjectRefusal", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "mutation_subject_rust_module", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "subject_rust_module", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "mutation_subject_name", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "mutation_subject_refusal_summary", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "MutationVerdict", field: WholeDeclaration },

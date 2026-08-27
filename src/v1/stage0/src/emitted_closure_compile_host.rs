@@ -199,7 +199,7 @@ pub fn cargo_verdict_stderr_tail(verdict: &CargoVerdict) -> &str {
 /// written anywhere else here does not compile, rather than compiling and being discouraged by a
 /// comment. That is the difference between structurally impossible and review diligence, and it
 /// is one `mod` block.
-pub use entry_own_subject::{mutation_subject, MutationSubject};
+pub use entry_own_subject::{mutation_subject, subject_rust_module, MutationSubject};
 
 mod entry_own_subject {
     use super::MutationSubjectRefusal;
@@ -213,10 +213,16 @@ mod entry_own_subject {
         rust_module: String,
     }
 
-    impl MutationSubject {
-        pub fn rust_module(&self) -> &str {
-            self.rust_module.as_str()
-        }
+    /// A FREE FUNCTION AND NOT AN `impl` METHOD, and the reason is a receipt rather than taste.
+    /// `std.decl_ref` offers `WholeDeclaration` or `NamedField` and neither names a method on an
+    /// impl block, so a method is UNCITABLE: it cannot appear in this file's seed-growth roster,
+    /// and the roster's own census would then be silently short by exactly the items it cannot
+    /// spell. `gunbc.emitted_closure_compile_seed_growth` states that this file adds ZERO
+    /// uncitable items, and an `impl` here would have made that receipt false while the census
+    /// still reported a clean total. Inside the privacy boundary it reads the private field for
+    /// the same reason the constructor does, so nothing is given up by not being a method.
+    pub fn subject_rust_module(subject: &MutationSubject) -> &str {
+        subject.rust_module.as_str()
     }
 
     /// THE FAULT GOES INTO THE ENTRY'S OWN EMITTED MODULE, OR NOWHERE.
@@ -264,7 +270,7 @@ mod entry_own_subject {
 }
 
 pub fn mutation_subject_rust_module(subject: &MutationSubject) -> &str {
-    subject.rust_module()
+    entry_own_subject::subject_rust_module(subject)
 }
 
 /// The SUBJECT KIND, printed rather than inferred. There is one kind and the log still says it,
