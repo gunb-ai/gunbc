@@ -2602,6 +2602,20 @@ pub fn occurrence_ancestors_push(
     )
 }
 
+pub fn occurrence_index_contains(
+    entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
+    occurrence: OccurrenceId,
+) -> bool {
+    entries
+        .iter()
+        .cloned()
+        .fold(false, |found: bool, entry: Rc<OccurrenceIndexEntry>| {
+            (found
+                || (entry.projection.clone().occurrence.clone().value.clone()
+                    == occurrence.value.clone()))
+        })
+}
+
 pub fn stamp_parsed_node_list(
     nodes: Rc<Vec<Rc<Node>>>,
     ancestors: Rc<Vec<OccurrenceId>>,
@@ -2984,36 +2998,45 @@ pub fn stamp_parsed_node(
         let effective_role = parsed_occurrence_role_for_node(node.clone(), role.clone());
         let indexed_ctx = match occurrence.clone() {
             Some(id) => {
-                let containment = Rc::new(OccurrenceContainmentPath {
-                    ancestors: ancestors.clone(),
-                    terminal: id.clone(),
-                });
-                let with_index = parse_context_with_occurrence_state(
-                    ctx.clone(),
-                    ctx.occurrence_allocator.clone(),
-                    Some(Rc::new(OccurrenceIndex {
-                        entries: v1_rt::rc_list_push(
-                            parse_context_occurrence_index(ctx.clone()).entries.clone(),
-                            Rc::new(OccurrenceIndexEntry {
-                                projection: Rc::new(OccurrenceProjection {
-                                    occurrence: id.clone(),
-                                    authored_name: node.name.clone(),
-                                    diagnostic_span: node.span.clone(),
-                                }),
-                                containment: containment.clone(),
-                            }),
-                        ),
-                    })),
-                    ctx.declaration_occurrences.clone(),
-                    ctx.reference_occurrences.clone(),
-                );
-                parse_context_record_occurrence(
-                    with_index.clone(),
-                    effective_role.clone(),
+                if occurrence_index_contains(
+                    parse_context_occurrence_index(ctx.clone()).entries.clone(),
                     id.clone(),
-                    containment.clone(),
-                    node.span.clone(),
-                )
+                ) {
+                    ctx.clone()
+                } else {
+                    {
+                        let containment = Rc::new(OccurrenceContainmentPath {
+                            ancestors: ancestors.clone(),
+                            terminal: id.clone(),
+                        });
+                        let with_index = parse_context_with_occurrence_state(
+                            ctx.clone(),
+                            ctx.occurrence_allocator.clone(),
+                            Some(Rc::new(OccurrenceIndex {
+                                entries: v1_rt::rc_list_push(
+                                    parse_context_occurrence_index(ctx.clone()).entries.clone(),
+                                    Rc::new(OccurrenceIndexEntry {
+                                        projection: Rc::new(OccurrenceProjection {
+                                            occurrence: id.clone(),
+                                            authored_name: node.name.clone(),
+                                            diagnostic_span: node.span.clone(),
+                                        }),
+                                        containment: containment.clone(),
+                                    }),
+                                ),
+                            })),
+                            ctx.declaration_occurrences.clone(),
+                            ctx.reference_occurrences.clone(),
+                        );
+                        parse_context_record_occurrence(
+                            with_index.clone(),
+                            effective_role.clone(),
+                            id.clone(),
+                            containment.clone(),
+                            node.span.clone(),
+                        )
+                    }
+                }
             }
             None => ctx.clone(),
         };

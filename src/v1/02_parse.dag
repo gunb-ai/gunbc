@@ -1162,6 +1162,18 @@ fn occurrence_ancestors_push(
   concat(ancestors, Cons { head: occurrence, tail: Empty })
 }
 
+fn occurrence_index_contains(
+  entries: List<OccurrenceIndexEntry>,
+  occurrence: OccurrenceId
+) -> Bool {
+  fold(
+    entries,
+    init: false,
+    f: (found, entry) =>
+      found || entry.projection.occurrence.value == occurrence.value
+  )
+}
+
 fn stamp_parsed_node_list(
   nodes: List<Node>,
   ancestors: FreeMonoid<OccurrenceId>,
@@ -1484,23 +1496,27 @@ fn stamp_parsed_node(
   )
   let indexed_ctx = match occurrence {
     Present { value: id } => {
-      let containment = OccurrenceContainmentPath { ancestors: ancestors, terminal: id }
-      let with_index = parse_context_with_occurrence_state(
-        ctx: ctx,
-        occurrence_allocator: ctx.occurrence_allocator,
-        occurrence_index: Present { value: OccurrenceIndex {
-          entries: list_push(
-            parse_context_occurrence_index(ctx: ctx).entries,
-            OccurrenceIndexEntry {
-              projection: OccurrenceProjection { occurrence: id, authored_name: node.name, diagnostic_span: node.span },
-              containment: containment,
-            }
-          ),
-        } },
-        declaration_occurrences: ctx.declaration_occurrences,
-        reference_occurrences: ctx.reference_occurrences
-      )
-      parse_context_record_occurrence(ctx: with_index, role: effective_role, occurrence: id, containment: containment, diagnostic_span: node.span)
+      if occurrence_index_contains(entries: parse_context_occurrence_index(ctx: ctx).entries, occurrence: id) {
+        ctx
+      } else {
+        let containment = OccurrenceContainmentPath { ancestors: ancestors, terminal: id }
+        let with_index = parse_context_with_occurrence_state(
+          ctx: ctx,
+          occurrence_allocator: ctx.occurrence_allocator,
+          occurrence_index: Present { value: OccurrenceIndex {
+            entries: list_push(
+              parse_context_occurrence_index(ctx: ctx).entries,
+              OccurrenceIndexEntry {
+                projection: OccurrenceProjection { occurrence: id, authored_name: node.name, diagnostic_span: node.span },
+                containment: containment,
+              }
+            ),
+          } },
+          declaration_occurrences: ctx.declaration_occurrences,
+          reference_occurrences: ctx.reference_occurrences
+        )
+        parse_context_record_occurrence(ctx: with_index, role: effective_role, occurrence: id, containment: containment, diagnostic_span: node.span)
+      }
     }
     Absent => ctx
   }

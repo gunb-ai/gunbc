@@ -2163,9 +2163,6 @@ mod compiler_tests {
     ) -> std::rc::Rc<crate::v1_std_core::Node> {
         let span = crate::v1_std_core::no_span();
         std::rc::Rc::new(crate::v1_std_core::Node {
-            occurrence_identity: std::rc::Rc::new(
-                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
-            ),
             name: name.to_string(),
             ident: None,
             span: span.clone(),

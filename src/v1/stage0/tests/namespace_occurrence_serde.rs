@@ -176,14 +176,14 @@ fn occurrence_transport_round_trips_with_node_identity_and_paths() {
         .collect();
     node_ids.sort_unstable();
     sidecar_ids.sort_unstable();
-    assert_eq!(
-        node_ids, sidecar_ids,
-        "parser node identities must equal sidecar identities"
-    );
     let mut unique_node_ids = node_ids.clone();
     unique_node_ids.dedup();
     let mut unique_sidecar_ids = sidecar_ids.clone();
     unique_sidecar_ids.dedup();
+    assert_eq!(
+        sidecar_ids, unique_sidecar_ids,
+        "the parser sidecar must index each authored identity exactly once"
+    );
     assert_eq!(
         unique_node_ids, unique_sidecar_ids,
         "authored node and sidecar identity sets must agree despite shared node reachability"
