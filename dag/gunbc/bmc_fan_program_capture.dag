@@ -23,13 +23,20 @@ import product.placement_supply { HostIdentity }
 // constrain the observer's shape and because each was found by reading the artifact rather than by
 // reasoning about the format. They are rationale for a future author, not facts a program reads.
 //
-// ONE - THE STEP CURVE'S reading AND output ARE JSON OBJECTS WITH STRING KEYS "0".."8", NOT ARRAYS.
-// They are paired by index, so the pairing is positional while the carrier is a map, and JSON
-// objects are unordered by specification. A decoder that reads them into an unordered map and
-// re-emits it can produce a curve whose points are correctly valued and wrongly paired - a fan
-// table that looks plausible and commands the wrong duty at every temperature. The complete ORDERED
-// population is therefore not a stylistic preference in the observer's boundary; it is the only
-// reading under which this field survives a round trip.
+// ONE - THE STEP CURVE'S reading AND output ARE JSON OBJECTS WITH STRING KEYS "0".."8", NOT
+// ARRAYS. An earlier revision of this note said they are paired by INDEX and that reordering the
+// members can therefore mispair them. That was imprecise and the correction matters, because it
+// changes which decoder is dangerous. They are paired by KEY IDENTITY - reading["3"] belongs with
+// output["3"] - so reordering the members changes the BYTES and leaves the pairing intact as long
+// as the keys survive.
+//
+// The decoder that actually corrupts the curve is the one that converts each object independently
+// to a list of values, DROPS the keys, and zips the two lists. That produces a table whose every
+// value is correct and whose pairings are wrong - a plausible-looking curve commanding the wrong
+// duty at every temperature, and the highest-consequence field in the file. So the requirement is
+// not "preserve order" but the stronger and more specific: preserve every member key, require the
+// reading and output key sets to be EQUAL, refuse duplicate keys, join by exact key, and only then
+// order the typed steps by parsed index.
 //
 // TWO - ABSENT IS NOT false. srv3 and srv4 both omit ignoreDbusMinMax on FAN4 while setting it true
 // on every other fan. Both hosts agree, so this predates any hand editing and comes from the
@@ -39,7 +46,19 @@ import product.placement_supply { HostIdentity }
 // was adopted. The adoption receipt is content-addressed, so a lossless round trip is what makes
 // adoption meaningful at all.
 //
-// THREE - THE SENSOR ROSTER IS NOT THE POPULATED ROSTER. srv3 declares a FAN2 sensor and srv3 has
+// THREE - BYTE IDENTITY AND SEMANTIC IDENTITY ARE ALREADY DIFFERENT ACROSS THIS PAIR, and it is
+// demonstrated inside the capture rather than argued from the format. srv3 writes failsafePercent
+// 30.0 and 75.0 and minThermalOutput 30.0; srv4 writes 30, 75 and 30 for the same fields. Same
+// numbers, different lexemes, different bytes, identical meaning.
+//
+// So one digest cannot answer both questions. sha256 over the exact artifact answers "are these the
+// bytes that were adopted"; a digest over a canonical typed program would answer "is this the same
+// control behaviour". A formatting-only rewrite moves the first and leaves the second still, while
+// a change to an offset, a slew limit or a curve pairing must move both. Asking the artifact digest
+// to certify behaviour would make every reformat look like a policy change and give the operator a
+// stream of adoptions to ratify that mean nothing.
+//
+// FOUR - THE SENSOR ROSTER IS NOT THE POPULATED ROSTER. srv3 declares a FAN2 sensor and srv3 has
 // no FAN2 fan; the bay is empty. So the deployed program's sensor list cannot be read as evidence
 // of what is installed, and an observer that derived a fan population from it would resurrect
 // exactly the fleet-wide required_tach_inputs defect this lane already removed - a header required
