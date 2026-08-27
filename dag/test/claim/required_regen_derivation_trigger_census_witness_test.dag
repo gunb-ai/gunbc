@@ -1,0 +1,61 @@
+module test.claim.required_regen_derivation_trigger_census_witness
+
+import gunbc.required_regen_derivation_trigger_census {
+  required_regen_derivation_preconditions,
+  required_regen_derivation_trigger_is_satisfiable,
+  required_regen_closure_membership_controls,
+  PreconditionHolds,
+  PreconditionFalse
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// DECLARED EXPLICITLY BECAUSE THE FAIL-CLOSED DEFAULT WOULD SILENCE THIS FILE. A witness that
+// declares no disposition is treated as ReadsLiveTree and DECLINED -- discovered, counted, and
+// never executed. Every assertion here reads only substrate values from the census module, so the
+// honest declaration is SubstrateInputsOnly, and without it this evidence would be exactly the
+// inert decoration the census it guards warns about.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHY A FINDING CARRIER CARRIES EXECUTING EVIDENCE AT ALL.
+//
+// A census of measurements that nothing executes is the artifact DESIGN section 5 warns about --
+// it typechecks, it greps, it reads as established, and it decays silently as the world moves. The
+// assertions below are not a wall over anyone's change; they are what makes this record
+// SELF-INVALIDATING. If someone repairs a precondition, the first witness goes RED and the census
+// must be revisited rather than left asserting a state that has ended.
+//
+// So a red here is not a regression. It means the finding is out of date, which is exactly the
+// event a filed finding most needs to be told about and the one prose cannot tell anyone.
+test fn witness_derivation_trigger_is_not_satisfiable() -> Bool {
+  required_regen_derivation_trigger_is_satisfiable() == false
+}
+
+test fn witness_every_precondition_carries_its_evidence() -> Bool {
+  required_regen_derivation_preconditions |> all(p => match p.outcome {
+    PreconditionFalse { evidence: e } => e != ""
+    PreconditionHolds => true
+  })
+}
+
+// THE TWO ARMS BELOW ARE ONE CLAIM AND NEITHER HALF IS EVIDENCE ALONE. "Every module with no seed
+// importer is unemitted" is satisfied VACUOUSLY by a table containing no such module, and the
+// mirror arm is satisfied vacuously the same way. Asserting both, over a table shown to populate
+// both sides, is what makes the control table discriminate rather than merely agree with itself.
+test fn witness_unimported_modules_are_not_emitted() -> Bool {
+  required_regen_closure_membership_controls
+    |> filter(o => o.seed_importers == 0)
+    |> all(o => o.emitted == false)
+}
+
+test fn witness_imported_modules_are_emitted() -> Bool {
+  required_regen_closure_membership_controls
+    |> filter(o => o.seed_importers > 0)
+    |> all(o => o.emitted)
+}
+
+// THE ANTI-VACUITY CONTROL. Without this, the pair above passes over an empty table and reports a
+// rule nobody measured.
+test fn witness_control_table_populates_both_arms() -> Bool {
+  length(xs: required_regen_closure_membership_controls |> filter(o => o.seed_importers == 0)) > 0
+    && length(xs: required_regen_closure_membership_controls |> filter(o => o.seed_importers > 0)) > 0
+}
