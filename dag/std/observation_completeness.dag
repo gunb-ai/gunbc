@@ -32,8 +32,28 @@ import std.types { Bool, Int, List }
 // foreign one, so a two-direction MEMBERSHIP check calls it complete while the artifact carries two,
 // possibly conflicting, outcomes for 11. That is the one-outcome-per-key grain a consumer declares,
 // admitted as a writable state by the very law that was supposed to enforce it.
+//
+// AND A FOURTH REFUSAL, WHICH IS ABOUT THE DENOMINATOR RATHER THAN THE OBSERVATION.
+// The three above all judge the ANSWER set. None of them judges the QUESTION set, and an
+// ill-formed question set defeats all three at once: expected [A, A] against observed [A] has
+// nothing missing (A is present, so BOTH expected entries are filtered out), nothing foreign, and
+// nothing repeated (A is observed once, and the repeat test counts OBSERVED occurrences). So the
+// join returned ObservationComplete over a denominator that asked for A twice and got one answer.
+//
+// THE DIRECTION IS WHAT MAKES IT SERIOUS: a duplicate in the expected list makes the join MORE
+// permissive, and it certifies exactness while the roster is malformed -- the fabricated-plausible
+// -output failure aimed at the very property this module exists to establish. Note the near miss
+// that hides it: expected [A, A] against observed [A, A] DOES refuse as repeated-observed, so the
+// hole is only the single-answer case and a fixture that duplicated both sides would have found
+// nothing.
+//
+// IT IS CHECKED FIRST, BEFORE ANY ARM ABOVE, because the other three are statements ABOUT a
+// question set and are meaningless when there is no well-formed one to be about. Reporting
+// "missing" or "foreign" against a malformed denominator would name the observation as the defect
+// when the defect is the roster, and a consumer would go and fix the wrong artifact.
 type ObservationCompleteness<K>
   = ObservationComplete
+  | ObservationRepeatedExpected { keys: List<K> }
   | ObservationMissingExpected { keys: List<K> }
   | ObservationForeignObserved { keys: List<K> }
   | ObservationRepeatedObserved { keys: List<K> }
@@ -48,10 +68,12 @@ fn observation_completeness<K>(
   observed: List<K>,
   key_eq: fn(K, K) -> Bool,
 ) -> ObservationCompleteness<K> {
+  let repeated_expected = expected |> filter(k => (expected |> filter(e => key_eq(e, k)) |> count) > 1)
   let missing = expected |> filter(k => !(observed |> any(o => key_eq(o, k))))
   let foreign = observed |> filter(k => !(expected |> any(e => key_eq(e, k))))
   let repeated = expected |> filter(k => (observed |> filter(o => key_eq(o, k)) |> count) > 1)
-  if (missing |> count) > 0 { ObservationMissingExpected { keys: missing } }
+  if (repeated_expected |> count) > 0 { ObservationRepeatedExpected { keys: repeated_expected } }
+  else if (missing |> count) > 0 { ObservationMissingExpected { keys: missing } }
   else if (foreign |> count) > 0 { ObservationForeignObserved { keys: foreign } }
   else if (repeated |> count) > 0 { ObservationRepeatedObserved { keys: repeated } }
   else { ObservationComplete }

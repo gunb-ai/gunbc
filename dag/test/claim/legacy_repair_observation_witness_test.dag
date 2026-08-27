@@ -7,9 +7,11 @@ import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.observation_completeness {
   ObservationCompleteness,
   ObservationComplete,
+  ObservationRepeatedExpected,
   ObservationMissingExpected,
   ObservationForeignObserved,
-  ObservationRepeatedObserved
+  ObservationRepeatedObserved,
+  observation_completeness
 }
 import v2.workflow.legacy_repair_observation {
   RepairSite,
@@ -24,6 +26,7 @@ import v2.workflow.legacy_repair_observation {
   ProvenRepairRoster,
   RepairRosterProof,
   RepairRosterProven,
+  RepairRosterRepeatedSite,
   RepairRosterMismatch,
   prove_repair_roster,
   LegacyRepairSubjectApplicability,
@@ -124,6 +127,7 @@ test fn an_observation_answering_exactly_the_roster_is_admitted() -> Bool {
         RepairObservationRefused { completeness: _ } => false
       }
     RepairRosterMismatch { subject_digest: _, roster_digest: _ } => false
+    RepairRosterRepeatedSite { sites: _ } => false
   }
 }
 
@@ -141,6 +145,7 @@ test fn an_observation_missing_one_roster_site_refuses() -> Bool {
     expected: lro_roster().sites
   ) {
     ObservationMissingExpected { keys: missing } => (missing |> count) == 1
+    ObservationRepeatedExpected { keys: _ } => false
     ObservationComplete => false
     ObservationForeignObserved { keys: _ } => false
     ObservationRepeatedObserved { keys: _ } => false
@@ -158,6 +163,7 @@ test fn an_observation_answering_for_a_site_outside_the_roster_refuses() -> Bool
     ObservationForeignObserved { keys: foreign } => (foreign |> count) == 1
     ObservationComplete => false
     ObservationMissingExpected { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
     ObservationRepeatedObserved { keys: _ } => false
   }
 }
@@ -173,6 +179,7 @@ test fn an_observation_answering_twice_for_one_site_refuses() -> Bool {
     ObservationRepeatedObserved { keys: repeated } => (repeated |> count) == 1
     ObservationComplete => false
     ObservationMissingExpected { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
     ObservationForeignObserved { keys: _ } => false
   }
 }
@@ -185,6 +192,7 @@ test fn an_observation_whose_every_row_is_declined_is_still_complete() -> Bool {
   match legacy_repair_completeness(observation: lro_observation(sites: lro_answered_exactly()), expected: lro_roster().sites) {
     ObservationComplete => true
     ObservationMissingExpected { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
     ObservationForeignObserved { keys: _ } => false
     ObservationRepeatedObserved { keys: _ } => false
   }
@@ -221,6 +229,7 @@ fn lro_foreign_roster_subject() -> LegacyRepairObservationSubject {
 test fn a_roster_that_is_not_the_subjects_cannot_be_proven() -> Bool {
   match prove_repair_roster(subject: lro_foreign_roster_subject(), roster: lro_roster()) {
     RepairRosterMismatch { subject_digest: _, roster_digest: _ } => true
+    RepairRosterRepeatedSite { sites: _ } => false
     RepairRosterProven { proven: _ } => false
   }
 }
@@ -257,6 +266,7 @@ test fn an_observation_taken_on_another_base_refuses_against_a_proven_roster() -
         RepairObservationRefused { completeness: _ } => false
       }
     RepairRosterMismatch { subject_digest: _, roster_digest: _ } => false
+    RepairRosterRepeatedSite { sites: _ } => false
   }
 }
 
@@ -424,4 +434,107 @@ test fn a_moved_resolution_registry_refuses() -> Bool {
     repair_site_roster_digest: base.repair_site_roster_digest,
     resolution_registry_digest: lro_digest(label: "eeeeeeeeeeeeeeee")
   }) == "resolution_registry_digest"
+}
+
+// ── THE DUPLICATE-DENOMINATOR ARMS (review 56949) ──
+//
+// FOUND BY REVIEW, NOT BY THIS FILE, and the reason it slipped is worth keeping: every arm above
+// varies the OBSERVATION against a well-formed roster. None varied the ROSTER itself, so the
+// question "what if the denominator is malformed" was never asked -- a whole axis missing rather
+// than a case missed within one.
+//
+// THE EXACT FALSIFYING INPUT: a roster naming one site TWICE, answered ONCE. Under the previous
+// law that returned ObservationComplete -- nothing missing (the site is present, so both expected
+// entries filter out), nothing foreign, nothing repeated (the repeat test counts OBSERVED
+// occurrences and there is one). So the envelope certified exactness over a denominator that
+// asked for one site twice.
+//
+// NOTE THE NEAR MISS, because it explains why a plausible fixture would have found nothing:
+// duplicating the site on BOTH sides refuses correctly as repeated-observed. Only the
+// duplicate-expected-answered-once case slipped.
+//
+// EXECUTED MUTATION RECEIPT, TWO INDEPENDENT MUTATIONS, taken in sequence with nothing else
+// running against the tree:
+//
+//   the law's repeated-expected check deleted:
+//     a_repeated_expected_key_refuses_before_any_verdict_about_the_observation   false
+//     a_malformed_denominator_refuses_ahead_of_a_genuine_missing_key             false
+//     a_roster_naming_one_site_twice_cannot_be_proven                            TRUE  <- unmoved
+//     an_observation_answering_exactly_the_roster_is_admitted                    true
+//
+//   prove_repair_roster's duplicate refusal deleted:
+//     a_roster_naming_one_site_twice_cannot_be_proven                            false
+//     a_roster_that_is_not_the_subjects_cannot_be_proven                         true
+//     an_observation_answering_exactly_the_roster_is_admitted                    true
+//
+//   unmutated: 24 arms, all true
+//
+// THE ARM THAT DOES NOT MOVE UNDER THE FIRST MUTATION IS THE POINT. The two halves guard the same
+// malformed state at different layers and neither substitutes for the other: deleting the law
+// leaves the proof still refusing, deleting the proof leaves the law still refusing. Had one
+// mutation reddened both arms, one of them would have been redundant machinery rather than a
+// second layer, and DESIGN section 4b(4) would say to delete it rather than keep it.
+
+fn lro_duplicate_roster() -> RepairSiteRoster {
+  RepairSiteRoster {
+    sites: [
+      lro_site(module_name: "std.logic", name: "Bool"),
+      lro_site(module_name: "std.logic", name: "Bool")
+    ]
+  }
+}
+
+// THE CONSTRUCTION HALF: a duplicate roster cannot be PROVEN, so no ProvenRepairRoster ever holds
+// one and no downstream law has to re-ask. This arm fails if the proof is reordered to check
+// digest agreement first, which would return Mismatch and name the wrong defect.
+test fn a_roster_naming_one_site_twice_cannot_be_proven() -> Bool {
+  match prove_repair_roster(subject: lro_base_subject(), roster: lro_duplicate_roster()) {
+    RepairRosterRepeatedSite { sites: s } => (s |> count) == 2
+    RepairRosterProven { proven: _ } => false
+    RepairRosterMismatch { subject_digest: _, roster_digest: _ } => false
+  }
+}
+
+// THE LAW HALF, ASKED DIRECTLY, because the proof above now makes this state unreachable on the
+// repair path -- and the law is key-generic with a second consumer that has no such proof. Asking
+// the join itself is what keeps this covered for THAT consumer, and it is the arm that goes red if
+// the expected-side check is ever removed from the law.
+test fn a_repeated_expected_key_refuses_before_any_verdict_about_the_observation() -> Bool {
+  match observation_completeness(
+    expected: [
+      lro_site(module_name: "std.logic", name: "Bool"),
+      lro_site(module_name: "std.logic", name: "Bool")
+    ],
+    observed: [lro_site(module_name: "std.logic", name: "Bool")],
+    key_eq: (a, b) => repair_site_eq(left: a, right: b)
+  ) {
+    ObservationRepeatedExpected { keys: k } => (k |> count) == 2
+    ObservationComplete => false
+    ObservationMissingExpected { keys: _ } => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+  }
+}
+
+// THE ORDERING IS LOAD-BEARING AND THIS ARM PINS IT. A malformed denominator must refuse BEFORE the
+// join says anything about the observation: reporting "missing" or "foreign" here would name the
+// observation as the defect when the roster is the defect, and a consumer would go and fix the
+// wrong artifact. Expected [A, A, B] against observed [A] is BOTH repeated-expected AND
+// missing-B; the law must answer the denominator.
+test fn a_malformed_denominator_refuses_ahead_of_a_genuine_missing_key() -> Bool {
+  match observation_completeness(
+    expected: [
+      lro_site(module_name: "std.logic", name: "Bool"),
+      lro_site(module_name: "std.logic", name: "Bool"),
+      lro_site(module_name: "std.types", name: "NonEmptyStr")
+    ],
+    observed: [lro_site(module_name: "std.logic", name: "Bool")],
+    key_eq: (a, b) => repair_site_eq(left: a, right: b)
+  ) {
+    ObservationRepeatedExpected { keys: k } => (k |> count) == 2
+    ObservationMissingExpected { keys: _ } => false
+    ObservationComplete => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+  }
 }

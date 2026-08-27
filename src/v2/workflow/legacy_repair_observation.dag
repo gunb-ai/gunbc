@@ -12,6 +12,7 @@ import v2.workflow.legacy_binding_observation { decl_field_label }
 import std.observation_completeness {
   ObservationCompleteness,
   ObservationComplete,
+  ObservationRepeatedExpected,
   ObservationMissingExpected,
   ObservationForeignObserved,
   ObservationRepeatedObserved,
@@ -71,6 +72,26 @@ import std.observation_completeness {
 // their own key and equality. Two envelopes with two denominators and ONE join is the DESIGN
 // section 2 shape; two envelopes each with its own copy of the fold would have been the section 3
 // failure.
+
+// WHAT REVIEW 56949 FOUND, KEPT HERE BECAUSE THE MISS WAS STRUCTURAL RATHER THAN CARELESS.
+//
+// This envelope admitted an observation against a roster naming one site TWICE. Every refusal the
+// module carried judged the ANSWER set; none judged the QUESTION set, and a duplicate expected key
+// defeats all of them at once -- nothing is missing (the site IS present, so both expected entries
+// filter out), nothing is foreign, and nothing is repeated in the OBSERVED sense. So exactness was
+// certified over a malformed denominator: the fabricated-plausible-output failure aimed squarely
+// at this module's own claim.
+//
+// THE SHAPE OF THE MISS: 21 witness arms varied the OBSERVATION against a well-formed roster and
+// not one varied the ROSTER. That is a missing AXIS, not a missing case within one -- and the
+// header above already said completeness is a join between two sets, while every arm exercised
+// only one of them. A near miss hid it: duplicating the site on BOTH sides refuses correctly as
+// repeated-observed, so the obvious fixture would have found nothing.
+//
+// REPAIRED AT TWO LAYERS, and the mutation receipt in the witness shows neither substitutes for
+// the other: std.observation_completeness refuses a repeated EXPECTED key (which every consumer of
+// the law gets, including the one with no roster to prove), and prove_repair_roster below refuses
+// a duplicate outright so a ProvenRepairRoster cannot HOLD one.
 
 // A REPAIR SITE: THE REFERENCING MODULE AND THE NAME THE REPAIRER WAS ASKED ABOUT.
 //
@@ -268,8 +289,30 @@ type ProvenRepairRoster sole_constructor {
   roster: RepairSiteRoster
 }
 
+// A THIRD ARM, AND IT IS ABOUT THE ROSTER'S OWN SHAPE RATHER THAN ITS AGREEMENT WITH THE SUBJECT.
+//
+// `RepairSiteRoster.sites` is an unrestricted `List`, so `[A, A]` is authorable. A roster that
+// names one site twice is a MALFORMED DENOMINATOR: it asks for one repair site's outcome twice,
+// which no observation can satisfy at the one-outcome-per-site grain this module declares, and
+// which the digest agreement above cannot see -- a duplicate roster hashes perfectly well.
+//
+// WHY IT REFUSES HERE AND NOT ONLY AT THE JOIN. `std.observation_completeness` now refuses a
+// repeated expected key, so the malformed case cannot be certified either way. But that is
+// VALIDATION -- it catches the bad denominator when the join is finally asked. Refusing at the
+// proof means a `ProvenRepairRoster` cannot HOLD a duplicate at all, so every downstream law
+// taking one has the uniqueness as a property of its parameter rather than as a check somebody
+// remembered to run. DESIGN section 5: construction over validation, at the boundary where the
+// carrier is minted.
+//
+// THAT DOES NOT MAKE THE JOIN'S ARM DEAD, and the distinction is the reachability-versus-occupancy
+// one. The join is key-generic and has a SECOND consumer,
+// `v2.workflow.legacy_binding_observation`, which derives its expected list without any proven
+// roster to constrain it -- so the arm is reachable from that consumer's denominator even while
+// this path can no longer produce it. An arm that is unreachable from ONE operation is a healthy
+// guard being quiet, not a decoration.
 type RepairRosterProof
   = RepairRosterProven { proven: ProvenRepairRoster }
+  | RepairRosterRepeatedSite { sites: List<RepairSite> }
   | RepairRosterMismatch {
       subject_digest: Fnv1a64Structural,
       roster_digest: Fnv1a64Structural
@@ -279,8 +322,11 @@ fn prove_repair_roster(
   subject: LegacyRepairObservationSubject,
   roster: RepairSiteRoster
 ) -> RepairRosterProof {
+  let repeated = roster.sites |> filter(s => (roster.sites |> filter(o => repair_site_eq(left: o, right: s)) |> count) > 1)
   let roster_digest = repair_site_roster_identity(roster: roster)
-  if subject.repair_site_roster_digest.digest == roster_digest.digest {
+  if (repeated |> count) > 0 {
+    RepairRosterRepeatedSite { sites: repeated }
+  } else if subject.repair_site_roster_digest.digest == roster_digest.digest {
     RepairRosterProven { proven: ProvenRepairRoster { subject: subject, roster: roster } }
   } else {
     RepairRosterMismatch {
@@ -342,6 +388,7 @@ fn admit_over_proven_subject<O>(
     ObservationComplete => RepairObservationAdmitted {
       admitted: CompleteLegacyRepairObservation { observation: observation }
     }
+    ObservationRepeatedExpected { keys: k } => RepairObservationRefused { completeness: ObservationRepeatedExpected { keys: k } }
     ObservationMissingExpected { keys: k } => RepairObservationRefused { completeness: ObservationMissingExpected { keys: k } }
     ObservationForeignObserved { keys: k } => RepairObservationRefused { completeness: ObservationForeignObserved { keys: k } }
     ObservationRepeatedObserved { keys: k } => RepairObservationRefused { completeness: ObservationRepeatedObserved { keys: k } }

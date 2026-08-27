@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, d
 import std.observation_completeness {
   ObservationCompleteness,
   ObservationComplete,
+  ObservationRepeatedExpected,
   ObservationMissingExpected,
   ObservationForeignObserved,
   ObservationRepeatedObserved,
@@ -221,6 +222,7 @@ fn admit_complete_observation<O>(
     ObservationComplete => ObservationAdmitted {
       admitted: CompleteLegacyObservation { observation: observation }
     }
+    ObservationRepeatedExpected { keys: k } => ObservationRefused { completeness: ObservationRepeatedExpected { keys: k } }
     ObservationMissingExpected { keys: k } => ObservationRefused { completeness: ObservationMissingExpected { keys: k } }
     ObservationForeignObserved { keys: k } => ObservationRefused { completeness: ObservationForeignObserved { keys: k } }
     ObservationRepeatedObserved { keys: k } => ObservationRefused { completeness: ObservationRepeatedObserved { keys: k } }
