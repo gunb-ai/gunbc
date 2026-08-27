@@ -402,7 +402,7 @@ fn use_line_imports(consumer_file: String, line: String) -> List<ConsumerImport>
             if n == "" {
               acc
             } else {
-              concat(acc, [ConsumerImport { consumer_file: consumer_file, declaring_file: declaring, name: n }])
+              list_push(acc, ConsumerImport { consumer_file: consumer_file, declaring_file: declaring, name: n })
             }
         )
       } else {
@@ -433,7 +433,7 @@ fn read_emitted_file(path: String, content: String) -> EmittedFile {
       init: [],
       f: (acc, l) =>
         let n = line_bound_name(line: l)
-        if n == "" { acc } else { concat(acc, [n]) }
+        if n == "" { acc } else { list_push(acc, n) }
     )
   }
 }
@@ -441,10 +441,23 @@ fn read_emitted_file(path: String, content: String) -> EmittedFile {
 // ---------------------------------------------------------------------------------------------
 // Classification.
 
-fn claim_for(claims: List<RealizationClaim>, declaring_file: String, name: String) -> RealizationClaim? {
-  claims
-    |> filter(c => c.declaring_file == declaring_file && c.name == name)
-    |> first
+fn claim_key(declaring_file: String, name: String) -> String {
+  concat(declaring_file, concat("::", name))
+}
+
+// THE CLAIMS ARE INDEXED ONCE, NOT FILTERED PER LOOKUP. Every import in the closure asks this
+// question, so a linear scan per import is the quadratic fold DESIGN section 6 rules is always
+// fixed regardless of the realized n -- and here n is the whole closure's declaration roster.
+fn claim_index(claims: List<RealizationClaim>) -> Map<String, RealizationClaim> {
+  fold(
+    claims,
+    init: empty_map(),
+    f: (acc, c) => map_insert(acc, claim_key(declaring_file: c.declaring_file, name: c.name), c)
+  )
+}
+
+fn claim_for(claims: Map<String, RealizationClaim>, declaring_file: String, name: String) -> RealizationClaim? {
+  map_get(claims, claim_key(declaring_file: declaring_file, name: name))
 }
 
 fn consumer_binds(file: EmittedFile, spelling: String, declaring_file: String) -> String {
@@ -461,7 +474,7 @@ fn consumer_binds(file: EmittedFile, spelling: String, declaring_file: String) -
 fn classify_import(
   file: EmittedFile,
   imp: ConsumerImport,
-  claims: List<RealizationClaim>
+  claims: Map<String, RealizationClaim>
 ) -> UseSiteDisposition? {
   match claim_for(claims: claims, declaring_file: imp.declaring_file, name: imp.name) {
     Absent => none
@@ -521,13 +534,13 @@ fn classify_import(
   }
 }
 
-fn classify_file(file: EmittedFile, claims: List<RealizationClaim>) -> List<UseSiteDisposition> {
+fn classify_file(file: EmittedFile, claims: Map<String, RealizationClaim>) -> List<UseSiteDisposition> {
   fold(
     file.imports,
     init: [],
     f: (acc, imp) =>
       match classify_import(file: file, imp: imp, claims: claims) {
-        Present { value: d } => concat(acc, [d])
+        Present { value: d } => list_push(acc, d)
         Absent => acc
       }
   )
@@ -551,10 +564,11 @@ fn module_candidate_paths(source_module: String, roots: List<String>) -> List<St
   )
 }
 
-// A declaration is OPAQUE when its `type X` line carries no body -- no `=` and no `|` on the line.
-// A `type X` whose next non-blank line opens a coproduct has a body; that spelling does not occur in
-// this corpus without the `|` on a following line, so the standing is read from the declaration line
-// and its successor together.
+// A declaration is OPAQUE when its `type X` line carries no body. THE STANDING IS READ FROM THE
+// DECLARATION LINE ALONE, and that is a stated boundary rather than a completeness claim: a
+// coproduct whose first `|` sits on a following line and whose `type X` line ends after the name
+// would read as opaque here. No such spelling occurs in this corpus today, so the reading is exact
+// for the corpus it is run over and would need the successor line the day one is authored.
 // A MODIFIER SUCH AS `nominal_opaque` OR `sole_constructor` SITS BETWEEN THE NAME AND THE BODY, so
 // the last arm decides the body question by what follows the modifier on the same line rather than
 // by the character immediately after the name.
@@ -633,7 +647,7 @@ fn read_emitted_tree(src_dir: String) -> List<EmittedFile> {
         if !read.success {
           acc
         } else {
-          concat(acc, [read_emitted_file(path: path, content: read.content)])
+          list_push(acc, read_emitted_file(path: path, content: read.content))
         }
     )
   }
@@ -656,14 +670,14 @@ fn opaque_subject_rows(
     f: (acc, claim) =>
       if acc |> any(r => r.declaring_file == claim.declaring_file && r.name == claim.name) {
         acc
-      } else if !(dispositions |> any(d => disposition_names(d: d) == concat(claim.declaring_file, concat("::", claim.name)))) {
+      } else if !(dispositions |> any(d => disposition_subject_key(d: d) == claim_key(declaring_file: claim.declaring_file, name: claim.name))) {
         acc
       } else {
         let source_module = match files |> filter(f => f.file_key == claim.declaring_file) |> first {
           Present { value: f } => f.source_module
           Absent => ""
         }
-        concat(acc, [
+        list_push(acc,
           OpaqueSubjectRow {
             declaring_file: claim.declaring_file,
             source_module: source_module,
@@ -674,17 +688,17 @@ fn opaque_subject_rows(
               declaration_body_standing(source_module: source_module, name: claim.name, roots: census_source_roots())
             }
           }
-        ])
+        )
       }
   )
 }
 
-fn disposition_names(d: UseSiteDisposition) -> String {
+fn disposition_subject_key(d: UseSiteDisposition) -> String {
   match d {
-    OpaqueNameEmitted { consumer_file: _, declaring_file: df, name: n } => concat(df, concat("::", n))
-    RealizationExpandedColliding { consumer_file: _, declaring_file: df, name: n, spelling: _, collides_with: _ } => concat(df, concat("::", n))
-    RealizationExpandedNonColliding { consumer_file: _, declaring_file: df, name: n, spelling: _ } => concat(df, concat("::", n))
-    ImportPresentNoUseSite { consumer_file: _, declaring_file: df, name: n, spelling: _ } => concat(df, concat("::", n))
+    OpaqueNameEmitted { consumer_file: _, declaring_file: df, name: n } => claim_key(declaring_file: df, name: n)
+    RealizationExpandedColliding { consumer_file: _, declaring_file: df, name: n, spelling: _, collides_with: _ } => claim_key(declaring_file: df, name: n)
+    RealizationExpandedNonColliding { consumer_file: _, declaring_file: df, name: n, spelling: _ } => claim_key(declaring_file: df, name: n)
+    ImportPresentNoUseSite { consumer_file: _, declaring_file: df, name: n, spelling: _ } => claim_key(declaring_file: df, name: n)
   }
 }
 
@@ -731,7 +745,8 @@ fn census_entry_emission(entry: String) -> OpaqueRealizationCensus {
         }
       } else {
         let claims = all_claims(files: files)
-        let dispositions = fold(files, init: [], f: (acc, f) => concat(acc, classify_file(file: f, claims: claims)))
+        let index = claim_index(claims: claims)
+        let dispositions = fold(files, init: [], f: (acc, f) => concat(acc, classify_file(file: f, claims: index)))
         CensusTaken {
           entry: entry,
           emitted_file_count: files |> count,
