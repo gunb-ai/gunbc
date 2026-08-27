@@ -23,6 +23,7 @@ import v1.std.core {
   generic_param_name_at,
   param_node_type_expr,
   NoConnective,
+  Arrow,
   ContainerSpellingVerdict,
   ContainerSpellingDeclared,
   NotAContainerSpelling,
@@ -1700,6 +1701,39 @@ fn v1_declared_arg_positions_need_clone_param(
   }
 }
 
+// A callable type expression carries its component types OFF the children list: parse builds it as
+// Node { name: "Callable", children: [], connective: Arrow, params: <argument params>, inferred:
+// <return type> }, so every walk that recurses through `.children` sees a leaf. That is why the
+// well-formedness fixpoint below could not see `fn(OrderedClosedInterval<T>) -> R`: the field is a
+// Callable, the Callable has no children, and the walk returned false before ever reaching the
+// declared type named inside it.
+//
+// The components are real type positions, not an encoding detail: an arrow realizes in Rust as
+// `Rc<dyn Fn(A) -> R>` (render_rust_type / callable_type_template), and naming a Clone-bounded
+// declared type at A or R is exactly as ill-formed as naming it at a bare field -- rustc E0277 at
+// the field, before any derive is considered, which is the same trigger
+// trait_derive_emit_item_clone_bound_wf_propagation_note already states for the children path.
+//
+// This yields the components for the WELL-FORMEDNESS walk only, deliberately not for the
+// clone-IMPL walk (v1_type_expr_clone_impl_needs_param): `Rc<dyn Fn(A) -> R>: Clone` is satisfied
+// by Rc alone and requires nothing of A or R, so descending there would bound parameters that no
+// impl needs. A spurious bound is not free -- it tightens the emitted signature and breaks every
+// caller instantiating with a non-Clone argument -- so the two walks stay split on the fact they
+// answer, exactly as the two sub-predicates already are.
+fn v1_callable_argument_and_return_type_exprs(type_expr: Node) -> List<Node> {
+  concat(
+    [resolved_type(n: type_expr)],
+    type_expr.params |> map(p => param_node_type_expr(n: p))
+  )
+}
+
+fn v1_callable_type_expr_component_type_exprs(type_expr: Node) -> List<Node> {
+  match type_expr.connective {
+    Arrow => v1_callable_argument_and_return_type_exprs(type_expr: type_expr)
+    _ => []
+  }
+}
+
 fn v1_type_expr_wf_needs_clone_param(
   param_name: String,
   type_expr: Node,
@@ -1765,6 +1799,53 @@ fn v1_item_field_type_exprs(item: Node, source_indices: Map<String, NewlineIndex
   }
 }
 
+// THE DESCENT IS SCOPED TO ITEM FIELDS, AND THAT SCOPE IS MEASURED RATHER THAN ASSUMED.
+//
+// An earlier revision of this change put the callable descent inside
+// v1_type_expr_wf_needs_clone_param itself, which is shared with the FN-level trigger
+// (v1_fn_param_wf_needs_clone). That over-bounded: measured on the fixture
+// `fn sig_only<A, B>(lookup: fn(A) -> CacheProbe<B>, ...)`, the emitted signature became
+// `<A, B: Clone>` from the SIGNATURE ALONE (the body is irrelevant -- confirmed by a variant whose
+// body never calls anything), while `CacheProbe<B>` itself emits BARE. Naming a type whose own
+// declaration prints no bound is well-formed for every B, so that bound was spurious -- and a
+// spurious bound is not free: it refuses every caller instantiating B with a non-Clone type.
+//
+// The asymmetry is the one clone_impl_required_type_params_note already records: an ENUM may carry
+// a parameter in the well-formedness record while its DECLARATION correctly prints bare, because
+// derive supplies the bound per-impl. At a struct FIELD that distinction does not arise the same
+// way -- the field's own declaration is what must be well-formed -- so the descent belongs here and
+// not in the shared predicate. It was caught by test.claim.trait_bound_witness
+// `call_forwarding_scope_excludes_match_wrapped_body`, the FN-level trigger's own declared-boundary
+// negative control, doing exactly the job a converse control exists to do.
+fn v1_item_field_type_expr_wf_needs_clone_param(
+  param_name: String,
+  type_expr: Node,
+  bounds: Map<String, Set<String>>,
+  type_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let callable_components = v1_callable_type_expr_component_type_exprs(type_expr: type_expr)
+  if (callable_components |> count) > 0 {
+    callable_components |> any(c =>
+      v1_item_field_type_expr_wf_needs_clone_param(
+        param_name: param_name,
+        type_expr: c,
+        bounds: bounds,
+        type_decl_items: type_decl_items,
+        source_indices: source_indices
+      )
+    )
+  } else {
+    v1_type_expr_wf_needs_clone_param(
+      param_name: param_name,
+      type_expr: type_expr,
+      bounds: bounds,
+      type_decl_items: type_decl_items,
+      source_indices: source_indices
+    )
+  }
+}
+
 fn v1_item_param_wf_needs_clone(
   param_name: String,
   item: Node,
@@ -1773,7 +1854,7 @@ fn v1_item_param_wf_needs_clone(
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   v1_item_field_type_exprs(item: item, source_indices: source_indices) |> any(te =>
-    v1_type_expr_wf_needs_clone_param(
+    v1_item_field_type_expr_wf_needs_clone_param(
       param_name: param_name,
       type_expr: te,
       bounds: bounds,
@@ -2075,6 +2156,47 @@ fn v1_emit_type_params_with_bounds(
 // calls it, and that caller is out of scope for this lane, so generalizing in place would have
 // forced an edit there. Output is byte-identical to the literal it replaces --
 // concat(pascal, ": ", ["Clone"] |> join(" + ")) is concat(pascal, ": Clone").
+// THE SPLIT `has_fn_fields` OWED, and the carrier that triggered it.
+//
+// The header-bareness note in v1.compiler.emit_rust (emit_type_def_from_connective) declared this
+// exact next-rung trigger: "the first carrier with a callable field that ALSO names a
+// well-formedness-bounded declared type". std.interval IntervalConstructionFold<T, R>, whose field
+// is `fn(OrderedClosedInterval<T>) -> R` against a T-Clone-bounded OrderedClosedInterval, is that
+// carrier -- so the population the note measured as EMPTY is empty no longer, and the deferral it
+// priced against a zero benefit has expired on its own stated terms.
+//
+// `has_fn_fields` answers two questions at once. For the DERIVE half it is a real discriminator:
+// a derive emits PER-IMPL bounds, so `Monoid<T> { identity: T }` needs no header bound and
+// suppressing it is correct. For the WELL-FORMEDNESS half it has no authority at all -- naming a
+// declared type whose parameters are bounded is ill-formed whatever the struct derives, and a
+// callable field names its argument and return types exactly as a plain field does
+// (`Rc<dyn Fn(OrderedClosedInterval<T>) -> R>` is ill-formed without `T: Clone`).
+//
+// This subtracts the item's OWN derive-seed contribution from the record and keeps the propagated
+// remainder. It is a subtraction rather than a second fixpoint because propagation must still see
+// every OTHER item's seed -- OrderedClosedInterval earns its bound from its own bare `low: T`
+// field, and a WF-only fixpoint with no seeds anywhere would have nothing to propagate FROM.
+fn v1_item_wf_propagated_clone_bounded_param_names(
+  item_name: String,
+  item: Node,
+  generic_param_names: List<String>,
+  bounds: Map<String, Set<String>>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  let field_type_exprs = v1_item_field_type_exprs(item: item, source_indices: source_indices)
+  v1_item_clone_bounded_param_names(
+    item_name: item_name,
+    generic_param_names: generic_param_names,
+    bounds: bounds
+  ) |> filter(g =>
+    !v1_item_type_param_needs_clone_bound_struct(
+      param_name: g,
+      field_type_exprs: field_type_exprs,
+      source_indices: source_indices
+    )
+  )
+}
+
 fn v1_emit_type_params_with_clone_bounds(
   params: List<Node>,
   clone_param_names: List<String>,

@@ -27,11 +27,6 @@ import gunbc.ci_layer_roots {
   witness_discovery_scan_dirs
 }
 import gunbc.cli_invoke {
-  claim_executor_run_plan_shell,
-  PlanFunction,
-  CiFloorPlan,
-  CiPlanArtifactPlan,
-  plan_function_name,
   claim_executor_verify_artifacts_shell
 }
 import v2.workflow.gunbc_invoke_step_emit {
@@ -401,52 +396,6 @@ fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
   }
 }
 
-fn git_fetch_script(policy: DiffPolicy) -> String {
-  let parts = git_remote_ref_parts(ref: policy.base as GitRef)
-  git_fetch_no_tags_shell(remote: parts.remote, ref_name: parts.ref_name, ignore_failure: true)
-}
-
-data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
-data plan_function_string_projection_note: String = "These two are the NAME PROJECTION of gunbc.cli_invoke PlanFunction, not a second authority. The coproduct is where the roster is closed; these exist because the floor's own policy predicates (v2.workflow.ci_floor_plan gunbc_ci_floor_plan_uses_batch_stop_policy, gunbc_floor_arm_time_budget_refusal_applies) compare a plan identity as a String, and the claim_executor side receives it as an argv token. Deriving them through plan_function_name keeps one authority (§3): a rename edits the coproduct's match arm and both the argv and these comparisons follow, where three independent literals were exactly the fork that let the falsifier's fifth target drift. They delete when those predicates take a PlanFunction instead of a String."
-
-data floor_plan_function: String = plan_function_name(p: CiFloorPlan)
-data plan_artifact_plan_function: String = plan_function_name(p: CiPlanArtifactPlan)
-
-fn scheduler_invoke_with(spec: CiSpec, plan_function: PlanFunction) -> String {
-  claim_executor_run_plan_shell(
-    source_roots: witness_layer_roots,
-    plan_entry: floor_plan_entry,
-    plan_function: plan_function,
-    notice_title: Present { value: spec.notice_title },
-    rooted: true
-  )
-}
-
-fn scheduler_invoke(spec: CiSpec) -> String {
-  scheduler_invoke_with(spec: spec, plan_function: CiFloorPlan)
-}
-
-fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
-  concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
-    concat(
-      concat(
-        concat("# ", concat(ci_documentation_only_floor_shortcut_retired_note, "\n")),
-        concat(git_fetch_script(policy: spec.diff_policy), "\n")
-      ),
-      scheduler_invoke(spec: spec)
-    )
-  )
-}
-
-fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
-  gunbc_ci_floor_only_script(spec: spec)
-}
-
-fn gunbc_ci_floor_run(spec: CiSpec) -> String {
-  gunbc_ci_floor_only_script(spec: spec)
-}
-
 // Read-only srv1 tasks pre-apply observation (operator ruling 2026-08-09 on PR 8045;
 // manager approval msg_03ec1f78): produces the ONE exact pre-apply receipt (effective
 // TasksMax, pids.max, pids.current, ancestor limit, observer slot membership) via the
@@ -702,7 +651,8 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 // THE MARKER'S ORIGINAL TRIGGER WAS UNFALSIFIABLE, AND THIS ROW RECORDS WHY BEFORE
 // DELETING IT (parent-session finding, 2026-08-21). It read "DISSOLVES WHEN the typed
 // secret-materialization effect... lands on host_effect_apply" — but host_effect_apply's
-// HostEffectIntent.target is a NodeControlPlane, and both its arms require a ComputeHost.
+// HostEffectIntent.target is a NodeControlPlane. Fleet effects use arms carrying ComputeHost;
+// explicitly runner-local effects use RunnerLocalHost without fabricating a fleet identity.
 // An ephemeral GitHub Actions runner is not a ComputeHost the fleet models; there was no
 // host_effect_apply arm this step could ever land on, so the condition named could never
 // occur. That is the same defect class as the trigger corrected alongside it this session
@@ -758,8 +708,22 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
 //
 // The mode is set BEFORE the content exists. Both preludes already run `umask 077`, so the redirect
 // creates the file 0600 at creation rather than writing world-readable bytes and narrowing them
-// afterwards; there is no window where the token sits at a wider mode. Each prelude's existing trap
-// removes HDR_FILE on exit alongside the other credential material it already cleans up.
+// afterwards; there is no window where the token sits at a wider mode.
+//
+// THE TRAP IS NOT WHAT RETIRES THE TOKEN IN THE FLEET PRELUDE, and an earlier revision of this
+// annotation said it was: "Each prelude's existing trap removes HDR_FILE on exit alongside the
+// other credential material it already cleans up." That holds for the spark prelude, whose trap
+// stays armed through step exit. It is FALSE for the fleet prelude, which DISARMS its trap
+// (`trap - EXIT`) so the ssh-agent survives into later steps -- and disarms it after removing only
+// KEY_FILE, so the bearer token was left sitting in RUNNER_TEMP for the remainder of the job.
+// Moving the token out of argv and then leaving it on disk is not a repair, it is the same
+// exposure at a different address; found in review of gunbc#9230 (review 56110).
+//
+// THE FIX IS LIFETIME, NOT CLEANUP. HDR_FILE is consumed by exactly one curl, so it is removed on
+// the line after that curl rather than added to a later rm -- the credential ceases to exist at
+// the moment its only consumer is done with it, which is a shorter window than any exit path can
+// offer and does not depend on which trap is armed when the step ends. The trap still covers the
+// failure arm between creation and that removal, where the file genuinely can outlive the shell.
 //
 // WHAT IS NOT CLAIMED: this is a repair at two call sites, not a wall. Nothing refuses the next
 // prelude that interpolates a credential into a command string -- these bodies are hand-authored
@@ -811,6 +775,7 @@ fn gunbc_ci_fleet_key_agent_prelude() -> List<PipelineStep> {
         ], "")
       )
     },
+    Do { run: ci_retry_body_run(command: "rm -f \"$HDR_FILE\"") },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$KEY_FILE\"") },
     Do {
       run: ci_retry_body_run(

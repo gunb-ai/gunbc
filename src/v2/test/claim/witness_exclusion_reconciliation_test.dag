@@ -2,7 +2,11 @@ module v2.test.claim.witness_exclusion_reconciliation_test
 
 import std.types { NonEmptyStr }
 
-import std.witness_admission { DiscoverySelection }
+import std.witness_admission {
+  DiscoverySelection,
+  FalsifierSelfHostWet,
+  witness_cadence_has_scheduled_route
+}
 import gunbc.ci_layer_roots {
   WitnessExclusionRow,
   BinWitnessWet,
@@ -19,7 +23,6 @@ import gunbc.ci_layer_roots {
   witness_exclusion_row_waits_on_wet_lane_undarken
 }
 import v2.compiler.self_host.wet_receipt_enrollment {
-  falsifier_self_host_wet_cadence_is_active,
   dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet
 }
 import v2.workflow.witness_admission {
@@ -180,9 +183,9 @@ test fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet_h
 // skipping for them. A status projection must not decide selection for the corpus.
 fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_dark_note() -> String {
   concat(
-    "R1 real-crate bijection enrollment (Lane D, gunbc#7825): falsifier_self_host_wet_cadence_active=",
+    "R1 real-crate bijection enrollment (Lane D, gunbc#7825): falsifier_self_host_wet_has_scheduled_route=",
     concat(
-      falsifier_self_host_wet_cadence_is_active() as String,
+      witness_cadence_has_scheduled_route(cadence: FalsifierSelfHostWet) as String,
       concat(
         " template_enrolled=",
         concat(
@@ -223,7 +226,7 @@ test fn witness_exclusion_red_control_third_spelling_row_is_unclassified() -> Bo
 
 // Positive control on the same synthetic-row path: a row that DOES match one of the positive arms must not be reported as unclassified by the net/positive-predicate pairing.
 test fn witness_exclusion_control_matched_row_is_not_flagged_unclassified() -> Bool {
-  let row = synthetic_wet_lane_row(dissolution: unbound_dissolution(description: "falsifier_self_host_wet_cadence_active flips true"))
+  let row = synthetic_wet_lane_row(dissolution: unbound_dissolution(description: "witness_cadence_has_scheduled_route(FalsifierSelfHostWet) returns true"))
   witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
     && witness_exclusion_row_waits_on_wet_lane_undarken(row: row)
 }

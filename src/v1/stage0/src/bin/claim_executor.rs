@@ -1,13 +1,13 @@
 #![allow(clippy::disallowed_macros)]
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 use std::rc::Rc;
+use v1_compiler::cli_run::namespace_wave_admission::git_stdout;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::PhaseProfile;
-use v1_compiler::memory_governor::{binding_cap_cgroup_dir, leaf_cgroup_dir, mem_total_bytes};
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
@@ -31,81 +31,6 @@ fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String,
             Err(ExitCode::from(2))
         }
     }
-}
-
-#[cfg(test)]
-fn classify_witness_expectations(
-    outcomes: &[DiscoveryWitnessOutcome],
-    expected_red: &[(String, String)],
-) -> WitnessExpectationTally {
-    classify_witness_expectations_in(outcomes, expected_red, &[])
-}
-
-/// One read of the whole-tree job footprint and its budget context, taken in a single cgroup walk so
-/// a consumer (placement divisor, compile-jobs derive) can parse usage AND budget from one emitted
-/// line without re-walking. `cap_bytes` is the tightest numeric `memory.max` on the leaf→root walk
-/// (`None` = uncapped / RAM-bound); `host_ram` is the physical-RAM budget that binds when uncapped;
-/// `sccache_under_leaf` classifies the sccache server's cgroup as a descendant (already counted in
-/// `leaf_peak`) vs a sibling (must be subtracted as `host_fixed_overhead`) — the "accounted exactly
-/// once" decision, read from paths rather than guessed.
-struct CgroupMeasurement {
-    leaf_peak: u64,
-    leaf_rel: String,
-    cap_bytes: Option<u64>,
-    host_ram: Option<u64>,
-    pids_current: u64,
-    pids_max: String,
-    sccache_rel: Option<String>,
-    sccache_under_leaf: bool,
-}
-
-fn cgroup_job_measurement() -> Option<CgroupMeasurement> {
-    let leaf = leaf_cgroup_dir()?;
-    let leaf_peak = fs::read_to_string(leaf.join("memory.peak"))
-        .ok()?
-        .trim()
-        .parse::<u64>()
-        .ok()?;
-    let leaf_rel = leaf
-        .strip_prefix("/sys/fs/cgroup")
-        .map(|p| format!("/{}", p.to_string_lossy().trim_start_matches('/')))
-        .unwrap_or_else(|_| leaf.to_string_lossy().into_owned());
-    let cap_bytes = binding_cap_cgroup_dir()
-        .and_then(|d| fs::read_to_string(d.join("memory.max")).ok())
-        .and_then(|s| s.trim().parse::<u64>().ok());
-    let pids_current = fs::read_to_string(leaf.join("pids.current"))
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-        .unwrap_or(0);
-    let pids_max = fs::read_to_string(leaf.join("pids.max"))
-        .ok()
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-    let sccache_rel = sccache_server_cgroup_rel();
-    // Descendant iff sccache's cgroup is the leaf or strictly under it — a PATH-COMPONENT prefix,
-    // not a bare string prefix, so a sibling like `<leaf>-other.service` is NOT misclassified as a
-    // descendant (that would under-count host overhead — the fail-OPEN direction). When the leaf is
-    // the cgroup root (`leaf_r` empty — e.g. a single-cgroup container) everything is a descendant.
-    // On the real fleet the leaf is the runner-service cgroup and sccache is a sibling service
-    // cgroup, so this is `false` (subtract as host_fixed_overhead).
-    let leaf_r = leaf_rel.trim_start_matches('/').to_string();
-    let sccache_under_leaf = sccache_rel
-        .as_deref()
-        .map(|r| {
-            let r = r.trim_start_matches('/');
-            leaf_r.is_empty() || r == leaf_r || r.starts_with(&format!("{leaf_r}/"))
-        })
-        .unwrap_or(false);
-    Some(CgroupMeasurement {
-        leaf_peak,
-        leaf_rel,
-        cap_bytes,
-        host_ram: mem_total_bytes(),
-        pids_current,
-        pids_max,
-        sccache_rel,
-        sccache_under_leaf,
-    })
 }
 
 /// Verify each declared release artifact exists, is executable, and is non-empty — failing CLOSED
@@ -161,87 +86,6 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
         if paths.len() == 1 { "y" } else { "ies" }
     );
     Ok(ExitCode::SUCCESS)
-}
-
-/// Single authority for the one-line whole-tree cgroup measurement, shared by the floor run and the
-/// standalone `--measure-cgroup-peak` mode so the `ci` and `rust_tests` jobs report an
-/// identically-shaped line. `context` distinguishes the call site.
-fn emit_cgroup_measurement(context: &str) {
-    let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
-    match cgroup_job_measurement() {
-        Some(m) => {
-            let label = format!("cgroup peak @ {} ({context})", m.leaf_rel);
-            eprintln!(
-                "{}",
-                v1_compiler::cli_run::render_peak_rss_line_mirror(&label, Some(m.leaf_peak), emoji)
-            );
-            // Diagnostic companions (cap/pids/sccache) stay as Ambient detail beside the
-            // Measured peak — not the old raw-byte `[measurement]` dump. Placement still
-            // reads the typed `cgroup_job_measurement` fact, not this prose.
-            let cap = match m.cap_bytes {
-                Some(b) => format!("{b} bytes"),
-                None => "uncapped(RAM-bound)".to_string(),
-            };
-            let host_ram = m
-                .host_ram
-                .map(|b| format!("{b} bytes"))
-                .unwrap_or_else(|| "unknown".to_string());
-            let sccache = match (&m.sccache_rel, m.sccache_under_leaf) {
-                (Some(r), true) => format!("{r} (descendant: counted in memory.peak)"),
-                (Some(r), false) => format!("{r} (sibling: subtract as host_fixed_overhead)"),
-                (None, _) => "not-found (treat as fixed host overhead)".to_string(),
-            };
-            eprintln!(
-                "  memory.max={cap} host_ram={host_ram} pids_current={pc} pids_max={pm} sccache-server-cgroup={sccache}",
-                pc = m.pids_current,
-                pm = m.pids_max
-            );
-        }
-        None => {
-            let label = format!("cgroup peak ({context})");
-            eprintln!(
-                "{}",
-                v1_compiler::cli_run::render_peak_rss_line_mirror_with_cause(
-                    &label,
-                    None,
-                    "no leaf cgroup or memory.peak unreadable; kernel < 5.19?",
-                    emoji,
-                )
-            );
-        }
-    }
-}
-
-/// Best-effort cgroup-v2 relative path of the sccache SERVER daemon (a `sccache` comm), scanned
-/// from `/proc`. Emitted beside the binding-cap ancestor path so the analysis can classify the
-/// "accounted exactly once" case: a path UNDER the ancestor → sccache is inside `memory.peak`
-/// (don't subtract); a SIBLING path → subtract it as `host_fixed_overhead`. Returns `None` when
-/// no sccache server process is found (then it's fixed host overhead by default, fail-closed).
-fn sccache_server_cgroup_rel() -> Option<String> {
-    for entry in fs::read_dir("/proc").ok()?.flatten() {
-        let p = entry.path();
-        let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if !name.bytes().all(|b| b.is_ascii_digit()) {
-            continue;
-        }
-        if fs::read_to_string(p.join("comm"))
-            .unwrap_or_default()
-            .trim()
-            != "sccache"
-        {
-            continue;
-        }
-        if let Some(rel) = fs::read_to_string(p.join("cgroup")).ok().and_then(|cg| {
-            cg.lines()
-                .find_map(|l| l.strip_prefix("0::"))
-                .map(|s| s.trim().to_string())
-        }) {
-            return Some(rel);
-        }
-    }
-    None
 }
 
 const FLOOR_WORKER_TERMINAL_ENV: &str = "GUNBC_FLOOR_WORKER_TERMINAL_RECEIPT";
@@ -311,19 +155,16 @@ fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    let mut measure_cgroup_peak = false;
     let mut verify_artifacts: Vec<String> = Vec::new();
     let mut verify_artifacts_mode = false;
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
     let mut required_ci_lane: Option<RequiredCiLane> = None;
     let mut required_v2_emission_mode = false;
-    let mut required_v2_emission_selftest_mode = false;
     let mut required_regen_mode = false;
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
     let mut required_regen_fixed_point_mode = false;
-    let mut heads_reading_differential_mode = false;
     let mut behavioral_receipt_plan_mode = false;
     let mut behavioral_receipt_selftest_mode = false;
     let mut behavioral_receipt_census_mode = false;
@@ -370,9 +211,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--required-v2-emission" => {
                 required_v2_emission_mode = true;
             }
-            "--required-v2-emission-selftest" => {
-                required_v2_emission_selftest_mode = true;
-            }
             "--required-regen" => {
                 required_regen_mode = true;
             }
@@ -384,9 +222,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--write" => {
                 emit_partition_crates_write = true;
-            }
-            "--heads-reading-differential" => {
-                heads_reading_differential_mode = true;
             }
             "--required-regen-fixed-point" => {
                 required_regen_fixed_point_mode = true;
@@ -408,7 +243,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 i += 1;
                 regen_receipt_path = require_value(&args, i, "--regen-receipt")?;
             }
-            "--measure-cgroup-peak" => measure_cgroup_peak = true,
             other => {
                 eprintln!("claim_executor: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -427,52 +261,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         return verify_build_artifacts(&verify_artifacts);
     }
 
-    // Standalone whole-tree cgroup measurement (no plan run): the `rust_tests` job invokes this
-    // after its gate to emit ITS leaf cgroup peak (a separate ephemeral runner cgroup from the `ci`
-    // job's), reusing the same single-authority walk/emit. Short-circuits before the plan-arg
-    // requirements so it needs no `--source-root`/`--plan-entry`.
-    if measure_cgroup_peak {
-        let job = std::env::var("GITHUB_JOB").unwrap_or_else(|_| "standalone".to_string());
-        emit_cgroup_measurement(&format!("job={job} (--measure-cgroup-peak)"));
-        return Ok(ExitCode::SUCCESS);
-    }
-
-    // ── V2 EMISSION: TWO STANDALONE ENTRY POINTS BESIDE THE REQUIRED PHASE ──────
-    //
-    // The v2-emission transaction IS ENROLLED in `--required-ci` as phase 3 (see that
-    // mode below), on an operator ruling relayed through the requesting session
-    // 2026-08-23, at a measured +135s against the floor's ~30-40 minutes. These two
-    // flags are not an opt-in alternative to that phase and must not be read as one:
-    // they exist because running the emission alone, or running only its red/green
-    // evidence, are real local actions -- the same reason the `src/v1` .dag parse sweep
-    // keeps its own bin beside its required phase.
-    //
-    // This comment said "DELIBERATELY NOT ENROLLED" in the revision that ADDED the
-    // enrolment, which is the premise contamination DESIGN warns about rather than a
-    // stale comment: a reader grepping here would conclude the phase is opt-in when it
-    // is required. It is rewritten rather than annotated, because two accounts of one
-    // fact is what produced the contradiction.
-    //
-    // Both flags run the SAME producer the required phase runs
-    // (`cli_run::compile_entry_emission`), so a green here and a green there cannot be
-    // different facts.
-    if required_v2_emission_selftest_mode {
-        let failures = v1_compiler::cli_run::run_required_v2_emission_selftest();
-        for failure in &failures {
-            eprintln!("required-v2-emission-selftest: FAIL {failure}");
-        }
-        return if failures.is_empty() {
-            eprintln!(
-                "required-v2-emission-selftest: OK red fixture refused on the annotation cause, green fixture emitted"
-            );
-            Ok(ExitCode::SUCCESS)
-        } else {
-            Err(ExitCode::from(1))
-        };
-    }
-
     // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, for the reason `--verify-build-artifacts`
-    // and `--measure-cgroup-peak` are: this mode takes NO roots. It renders from the emitted
+    // is: this mode takes NO roots. It renders from the emitted
     // authority carrier and reads only the files it is adjudicating, so the generic guard below
     // would refuse the only invocation it has -- a mode that could never have run once.
     // MEASURED, NOT REASONED -- the first remote run of this entry point exited 2 with
@@ -593,6 +383,13 @@ fn run() -> Result<ExitCode, ExitCode> {
     if required_ci_mode {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
+        // THE ONE PARSE, HELD FOR ITS SECOND CONSUMER. The wave-admission phase below reads
+        // the index the parse phase built rather than acquiring the corpus again; holding it
+        // in an `Option` also keeps `the parse refused` distinguishable from `the parse ran
+        // and found nothing`, which is what the wall's own `NotEvaluated` arm exists to keep
+        // apart one level down.
+        let mut head_index: Option<v1_compiler::cli_run::declaration_index::DeclarationIndex> =
+            None;
 
         // THE ROSTER IS ANNOUNCED BEFORE ANY PHASE RUNS, whole, with each phase's owning lane.
         // A reader of one job's log sees the complete required roster and where the phases this
@@ -632,6 +429,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                         "required-ci: parse OK {} file(s) parse-clean",
                         sweep.parse_clean
                     );
+                    head_index = Some(sweep.index.clone());
                     // THE DECLARATION INTEGRITY CHECKS RIDE THE PARSE THAT JUST RAN.
                     //
                     // They are reported inside this phase rather than as a phase of their own
@@ -682,6 +480,67 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
             ran.push("parse");
+        }
+
+        // PHASE — THE NAMESPACE WAVE-ADMISSION WALL.
+        //
+        // WHAT IT GATES AND WHY IT IS REQUIRED. `gunbc.compiler_frontend_program_interlock`
+        // (operator ruling, 2026-08-26) makes the import/namespace plan's disclosed "no CI
+        // mechanism" gap a BLOCKER rather than a disclosure: no change that can alter which
+        // modules enter a subject, or what an occurrence denotes, may merge before this wall
+        // exists, and `milestone_prerequisites` gates `NamespaceFirstSemanticWave` on
+        // `NamespaceWaveAdmissionEnrolled` by name.
+        //
+        // IT REPORTS ITS OWN NON-VERDICTS UNDER THEIR OWN NAMES. `NoSubject` (a push whose
+        // baseline is its own head) and `NotEvaluated` (a baseline that does not resolve) are
+        // printed as themselves and never as an admission -- and only the first of them
+        // passes, because "nothing to compare" and "could not compare" are the two zeros this
+        // repository has already been corrected for once.
+        if required_ci_phase_selected(RequiredCiPhase::NamespaceWaveAdmission, required_ci_lane) {
+            eprintln!("required-ci: phase namespace-wave-admission (closure, subject membership, binding)");
+            match &head_index {
+                // THE PARSE REFUSED, SO THERE IS NO HEAD TO ADJUDICATE AGAINST. This is not
+                // silence: the parse phase has already stopped the line, and adjudicating a
+                // corpus half of which failed to parse would report a smaller delta than the
+                // one that exists.
+                None => {
+                    eprintln!(
+                        "required-ci: namespace-wave-admission NOT RUN — the parse phase did not \
+                         produce an index (it refused, or this lane does not own it)"
+                    );
+                    phase_failures.push("namespace-wave-admission (no head index)".to_string());
+                }
+                Some(index) => {
+                    // THE VOCABULARY JOIN RUNS FIRST, because every verdict below is stated in
+                    // that vocabulary: adjudicating against a superseded disposition set would
+                    // produce answers that look like verdicts and are not.
+                    let vocabulary =
+                        v1_compiler::cli_run::namespace_wave_admission::vocabulary_findings(index);
+                    for finding in &vocabulary {
+                        eprintln!("required-ci: namespace-wave-admission VOCABULARY {finding}");
+                    }
+                    if !vocabulary.is_empty() {
+                        phase_failures.push(format!(
+                            "namespace-wave-admission vocabulary ({} finding(s))",
+                            vocabulary.len()
+                        ));
+                    }
+                    match v1_compiler::cli_run::namespace_wave_admission::run_required_wave_admission(
+                        index,
+                    ) {
+                        Ok(outcome) => {
+                            if let Some(failure) = report_wave_admission_outcome(&outcome) {
+                                phase_failures.push(failure);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("required-ci: namespace-wave-admission FAIL {e}");
+                            phase_failures.push("namespace-wave-admission".to_string());
+                        }
+                    }
+                }
+            }
+            ran.push("namespace-wave-admission");
         }
 
         // PHASE 2 — regen first generation: the emitted mirrors against what is committed.
@@ -746,6 +605,34 @@ fn run() -> Result<ExitCode, ExitCode> {
         // a green here and an emitting board are one fact rather than two.
         if required_ci_phase_selected(RequiredCiPhase::V2Emission, required_ci_lane) {
             eprintln!("required-ci: phase v2-emission (the v2 compiler entry, full closure)");
+
+            // THE PHASE'S DISCRIMINATING EVIDENCE, RUN BEFORE THE PRODUCER IT VOUCHES FOR.
+            //
+            // This selftest was reachable only through a standalone flag no workflow invoked, so
+            // the phase below ran a producer whose REFUSAL had never once been shown to fire. A
+            // green emission then established that the emitter emitted, not that it still refuses
+            // what it must -- specification-without-execution, and DESIGN 4b(4) is explicit that a
+            // class's discriminating RED and positive control stay ENROLLED as the evidence the
+            // rung is real. Unenrolled evidence is not weaker evidence; it is none.
+            //
+            // It runs FIRST because it is cheap (two fixtures, measured under a second) and
+            // because a producer green means nothing if the red fixture stopped refusing.
+            {
+                let failures = v1_compiler::cli_run::run_required_v2_emission_selftest();
+                for failure in &failures {
+                    eprintln!("required-ci: v2-emission-selftest FAIL {failure}");
+                }
+                if failures.is_empty() {
+                    eprintln!(
+                        "required-ci: v2-emission-selftest OK red fixture refused on the annotation cause, green fixture emitted"
+                    );
+                } else {
+                    phase_failures.push(format!(
+                        "v2-emission-selftest ({} evidence failure(s))",
+                        failures.len()
+                    ));
+                }
+            }
             match v1_compiler::cli_run::run_required_v2_emission(&source_roots) {
                 Ok(runs) => {
                     let mut not_completed = 0usize;
@@ -1050,51 +937,19 @@ fn run() -> Result<ExitCode, ExitCode> {
     // and it indexes test modules, which `decl_facts` deliberately did not — so the
     // outside-index disposition those exclusions forced is not needed at all.
 
-    // The heads reading's own instrument. It is not enrolled in the required run and this
-    // clause does not pretend otherwise: reading 3875 modules TWICE is precisely the cost
-    // the heads reading exists to remove, so paying it on every push would spend more than
-    // the repair saves. It is a re-runnable receipt — the differential this change was
-    // landed on can be re-taken by anyone, on any tree, rather than being a number quoted
-    // from a run nobody can repeat.
-    if heads_reading_differential_mode {
-        let roots = if source_roots.is_empty() {
-            vec!["dag".to_string(), "src/v2".to_string()]
-        } else {
-            source_roots.clone()
-        };
-        let d = v1_compiler::cli_run::heads_reading_differential(&roots);
-        eprintln!(
-            "heads-reading-differential: compared={} divergent={} narrowed={} regressed={} both_refused={}",
-            d.modules_compared,
-            d.divergent.len(),
-            d.narrowed.len(),
-            d.regressed.len(),
-            d.both_refused.len(),
-        );
-        // The two readings' summed parse wall, from the same process over the same
-        // modules. This is the PARSE term only — not the whole `pool_parse` row, which
-        // also pays tokenize, newline indexing and per-file setup that neither reading
-        // changes.
-        eprintln!(
-            "heads-reading-differential: full_reading_parse_ms={} heads_reading_parse_ms={}",
-            d.full_reading_nanos / 1_000_000,
-            d.heads_reading_nanos / 1_000_000,
-        );
-        for path in d.divergent.iter().take(20) {
-            eprintln!("heads-reading-differential: DIVERGENT {path}");
-        }
-        for path in d.regressed.iter().take(20) {
-            eprintln!("heads-reading-differential: REGRESSED {path}");
-        }
-        for path in d.narrowed.iter().take(20) {
-            eprintln!("heads-reading-differential: narrowed (declared scope) {path}");
-        }
-        return if d.holds() {
-            Ok(ExitCode::SUCCESS)
-        } else {
-            Err(ExitCode::from(1))
-        };
-    }
+    // THE HEADS READING'S OWN INSTRUMENT MOVED TO `gunbc test`, AND IT MOVED ATOMICALLY.
+    //
+    // What stood here was a `--heads-reading-differential` mode: the same producer, reached by a
+    // flag on this binary. It is DELETED in the change that makes the instrument addressable as
+    // `//gunbc/instruments:heads-reading-differential`, rather than left standing beside it. Two
+    // routes to one producer is the fork DESIGN section 3 forbids, and the interval in which both
+    // work is exactly when a caller learns the old one and keeps it.
+    //
+    // The reason it was never enrolled in the required run is unchanged and is now recorded on the
+    // target instead: reading the corpus TWICE is precisely the cost the heads reading exists to
+    // remove, so paying it on every push would spend more than the repair saves. The instrument is
+    // outside `//:required` by construction there -- `gunbc.discovery_census` derives that
+    // aggregate from discovered witness sites, and no fold feeds the instrument population into it.
 
     if required_regen_mode {
         return match v1_compiler::cli_run::run_required_regen(
@@ -1300,6 +1155,7 @@ impl RequiredCiLane {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RequiredCiPhase {
     Parse,
+    NamespaceWaveAdmission,
     Regen,
     V2Emission,
     PartitionCrates,
@@ -1310,6 +1166,7 @@ impl RequiredCiPhase {
     fn name(self) -> &'static str {
         match self {
             RequiredCiPhase::Parse => "parse",
+            RequiredCiPhase::NamespaceWaveAdmission => "namespace-wave-admission",
             RequiredCiPhase::Regen => "regen",
             RequiredCiPhase::V2Emission => "v2-emission",
             RequiredCiPhase::PartitionCrates => "partition-crates",
@@ -1326,6 +1183,11 @@ impl RequiredCiPhase {
             // lane means the cheapest total refusal over the witness corpus arrives from the
             // job that owns that corpus.
             RequiredCiPhase::Parse => RequiredCiLane::Witnesses,
+            // THE WALL CONSUMES THE PARSE THAT PHASE JUST RAN, so it is in the same lane by
+            // necessity and not by preference: its head index IS the sweep's index, and a
+            // lane boundary between them would mean parsing the corpus twice to answer a
+            // question one parse already reached.
+            RequiredCiPhase::NamespaceWaveAdmission => RequiredCiLane::Witnesses,
             RequiredCiPhase::Regen => RequiredCiLane::Build,
             RequiredCiPhase::V2Emission => RequiredCiLane::Build,
             // A DRIFT COMPARISON OVER DERIVED RUST, so it belongs beside regen and
@@ -1338,8 +1200,9 @@ impl RequiredCiPhase {
     }
 }
 
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 6] = [
     RequiredCiPhase::Parse,
+    RequiredCiPhase::NamespaceWaveAdmission,
     RequiredCiPhase::Regen,
     RequiredCiPhase::V2Emission,
     RequiredCiPhase::PartitionCrates,
@@ -1361,6 +1224,73 @@ fn required_ci_phase_selected(phase: RequiredCiPhase, lane: Option<RequiredCiLan
     }
 }
 
+/// Print one wave-admission run, and return the phase failure it carries, if any.
+///
+/// EVERY GREEN NAMES ITS DENOMINATORS. A run that admitted nothing because it compared
+/// nothing and a run that compared a corpus and found no motion render identically unless the
+/// population is printed beside the verdict, and rendering them alike is the
+/// execution-provenance loss DESIGN names.
+fn report_wave_admission_outcome(
+    outcome: &v1_compiler::cli_run::namespace_wave_admission::WaveAdmissionOutcome,
+) -> Option<String> {
+    use v1_compiler::cli_run::namespace_wave_admission as nwa;
+    match outcome {
+        nwa::WaveAdmissionOutcome::NoSubject { head } => {
+            eprintln!(
+                "required-ci: namespace-wave-admission NO SUBJECT — the merge base against \
+                 origin/main IS {head}, so this run has no diff to adjudicate. Nothing was \
+                 compared and nothing is admitted."
+            );
+            None
+        }
+        nwa::WaveAdmissionOutcome::NotEvaluated { reason } => {
+            eprintln!("required-ci: namespace-wave-admission NotEvaluated — {reason}");
+            Some("namespace-wave-admission (NotEvaluated)".to_string())
+        }
+        nwa::WaveAdmissionOutcome::Adjudicated { base, head, report } => {
+            let p = &report.population;
+            eprintln!(
+                "required-ci: namespace-wave-admission base={base} head={head} \
+                 modules_compared={} modules_added={} modules_removed={} \
+                 membership_edges_head={} binding_rows_compared={} closure_rows_moved={} \
+                 deltas={}",
+                p.modules_compared,
+                p.modules_added,
+                p.modules_removed,
+                p.membership_edges_head,
+                p.binding_rows_compared,
+                p.closure_rows_moved,
+                report.deltas.len(),
+            );
+            for delta in &report.deltas {
+                eprintln!(
+                    "required-ci: namespace-wave-admission {}",
+                    nwa::render_delta(delta)
+                );
+            }
+            for stale in &report.stale_admissions {
+                eprintln!("required-ci: namespace-wave-admission STALE ADMISSION {stale}");
+            }
+            let unadjudicated = nwa::report_unadjudicated(report);
+            // A STALE ADMISSION REFUSES TOO. A row that matches no delta is a permission
+            // standing over nothing, and leaving it means the roster stops being a fact about
+            // the corpus and becomes a list someone forgot to prune.
+            if unadjudicated.is_empty() && report.stale_admissions.is_empty() {
+                eprintln!(
+                    "required-ci: namespace-wave-admission ADMITTED — every delta is \
+                     auto-admitted or named by a transition admission"
+                );
+                return None;
+            }
+            Some(format!(
+                "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s))",
+                unadjudicated.len(),
+                report.stale_admissions.len()
+            ))
+        }
+    }
+}
+
 fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) {
     eprintln!(
         "required-floor: subject={} modules_resolved={} modules_excluded={}",
@@ -1373,12 +1303,11 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // not. The three are printed together so the subtraction is visible rather
     // than inferable.
     eprintln!(
-        "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
+        "required-floor: offered={} routed={} declined_long={} \
          declined_live={} — every discovered site is exactly one of these",
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
-        outcome.declined_fixture_member,
         outcome.declined_live_tree
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
@@ -1603,45 +1532,8 @@ fn main() -> ExitCode {
 mod tests {
     use super::*;
 
-    // Process-wide eval-recompute totals are shared across every test in this
-    // binary. Tests that drain or assert on the accumulator must serialize so
-    // one cannot steal another's totals (DESIGN §5 hermetic discriminating tests).
-    static PROCESS_EVAL_RECOMPUTE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn with_process_eval_recompute_test_lock<F: FnOnce()>(f: F) {
-        let _guard = PROCESS_EVAL_RECOMPUTE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        let prior_trace = std::env::var_os("GUNBC_RECOMPUTE_TRACE");
-        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
-        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
-        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-        match prior_trace {
-            Some(value) => std::env::set_var("GUNBC_RECOMPUTE_TRACE", value),
-            None => std::env::remove_var("GUNBC_RECOMPUTE_TRACE"),
-        }
-        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
-        match run {
-            Ok(()) => {}
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-
-    fn with_workspace_root_current_dir<F: FnOnce()>(root: &std::path::Path, f: F) {
-        let prior_cwd = std::env::current_dir().ok();
-        std::env::set_current_dir(root).expect("chdir to workspace root for receipt paths");
-        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-        if let Some(cwd) = prior_cwd {
-            let _ = std::env::set_current_dir(cwd);
-        }
-        match run {
-            Ok(()) => {}
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-
     fn repo_root_from_manifest() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../..")
             .canonicalize()
             .expect("repo root from CARGO_MANIFEST_DIR")
@@ -1650,19 +1542,6 @@ mod tests {
     fn dag_source_from_repo(rel: &str) -> String {
         let path = repo_root_from_manifest().join(rel);
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
-    }
-
-    fn dag_string_data_literal(source: &str, data_name: &str) -> String {
-        let marker = format!("data {data_name}: String = \"");
-        let start = source
-            .find(&marker)
-            .unwrap_or_else(|| panic!("string data row {data_name} not found in authority source"))
-            + marker.len();
-        let rest = &source[start..];
-        let end = rest
-            .find('"')
-            .expect("unterminated string literal in authority source");
-        rest[..end].to_string()
     }
 
     fn dag_record_string_field(source: &str, data_name: &str, field: &str) -> String {
@@ -1729,10 +1608,6 @@ mod tests {
             TEST_NATIVE_BUNDLE_OBLIGATION_FUNCTION,
         );
     }
-
-    /// The `<entry>::<function>` a refusal locates itself at — the same shape the
-    /// production caller passes.
-    const TEST_PLAN_SITE: &str = "src/v2/workflow/ci_floor_plan.dag::gunbc_ci_floor_plan";
 
     // --- floor-finalization DISPOSITION visibility (the fix this PR ships) -----------
     //
@@ -1823,12 +1698,6 @@ mod tests {
         );
     }
 
-    fn parse_materialization_receipt_field(body: &str, key: &str) -> Option<u64> {
-        body.lines()
-            .find_map(|line| line.strip_prefix(key))
-            .and_then(|v| v.trim().parse::<u64>().ok())
-    }
-
     // --- build-artifact verification teeth (DESIGN §5 fail-open guard) ---
 
     fn write_exec(dir: &std::path::Path, name: &str, bytes: &[u8]) -> String {
@@ -1891,17 +1760,6 @@ mod tests {
         );
     }
 
-    fn drift_authority_source_roots() -> Vec<String> {
-        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(3)
-            .expect("workspace root");
-        vec![
-            workspace.join("dag").to_string_lossy().into_owned(),
-            workspace.join("src/v2").to_string_lossy().into_owned(),
-        ]
-    }
-
     // ---- walk-attempt identity ----
     //
     // The refusals below are the point of the feature, so each is asserted as a REFUSAL,
@@ -1928,69 +1786,6 @@ mod tests {
             "the persisted row must retain the phase, state, and detail: {persisted:?}"
         );
     }
-}
-
-#[cfg(test)]
-mod witness_walk_flags_tests {
-    use super::witness_walk_flags;
-
-    /// The scoped-child boundary deletion narrowed the roster walk. This pins that it narrowed
-    /// ONLY the walk: a scoped child still executes rows, so it must still be handed the
-    /// per-witness eval budget. RED if the two questions are ever collapsed back into one flag —
-    /// the collapse is silent at the type level and would weaken a budget wall while reading as a
-    /// pure scope narrowing.
-    #[test]
-    fn witness_walk_flags_split_the_two_questions() {
-        let ordinary = witness_walk_flags(true, false);
-        assert!(ordinary.executes_witness_rows);
-        assert!(
-            ordinary.schedules_discovery,
-            "an ordinary worker carrying witness rows must still derive the roster"
-        );
-
-        let scoped = witness_walk_flags(true, true);
-        assert!(
-            scoped.executes_witness_rows,
-            "a scoped child executes its frozen rows, so it must keep the eval budget"
-        );
-        assert!(
-            !scoped.schedules_discovery,
-            "a scoped child must never re-derive a roster its parent already froze"
-        );
-
-        // No rows at all: neither question is yes, for either role.
-        for is_scoped in [false, true] {
-            let empty = witness_walk_flags(false, is_scoped);
-            assert!(!empty.executes_witness_rows);
-            assert!(!empty.schedules_discovery);
-        }
-    }
-}
-
-#[cfg(test)]
-mod scoped_execution_request_tests {
-    use super::*;
-}
-
-/// Run git in the workspace and return trimmed stdout, or a refusal naming the command.
-///
-/// Kept when the mirror-drift gate was removed: the behavioral receipt resolves its own baseline
-/// through it, so this is a shared helper rather than that gate's private one.
-fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .args(args)
-        .current_dir(workspace)
-        .env("GIT_PAGER", "cat")
-        .output()
-        .map_err(|e| format!("spawn git {}: {e}", args.join(" ")))?;
-    if !out.status.success() {
-        return Err(format!(
-            "git {} failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 // ---------------------------------------------------------------------------

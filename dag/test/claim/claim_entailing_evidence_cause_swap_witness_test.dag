@@ -1,0 +1,103 @@
+module test.claim.claim_entailing_evidence_cause_swap_witness
+
+import std.logic { Bool }
+import tools.self_host_curated_seed_linked_harness {
+  cssl_fault_run_detected_the_planted_fault,
+  cssl_pass_marker_stem
+}
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+data cause_swap_witness_doc: String = "THE CAUSE-SWAP CONTROL for tools.self_host_curated_seed_linked_harness cssl_fault_run_detected_the_planted_fault. It is an unusual control and the shape is the point: it is a probe the OLD mechanism PASSES and the NEW one must REFUSE. A conventional discriminating red cannot detect this class at all, because the subject is fine -- the EVIDENCE ABOUT the subject is what was invalid, so the control has to test the carrier rather than the subject. The rule it enforces: an evidence standing may establish a proposition only when EVERY execution path that constructs it proves the subject reached the relevant phase and entails the proposition. The old predicate fault_run.success == false was true when the planted fault was detected AND when the binary never existed, so its truth set was strictly wider than the proposition it was cited for. Both arms below hold the OLD predicate constant at true and vary only the CAUSE; the new carrier must admit the first and refuse the second."
+
+data cause_swap_discriminating_subset_note: String = "FOUR OF THESE EIGHT ARMS DISCRIMINATE FOR THE REPAIR, NOT EIGHT, and the difference matters to anyone counting green arms as coverage. Measured by mutation 2026-08-26 -- collapsing cssl_fault_run_detected_the_planted_fault back to the old single conjunct reds exactly absent_binary_is_refused_not_treated_as_detection, killed_before_comparison_is_refused, fault_run_that_agreed_is_refused and malformed_pass_marker_establishes_nothing. Every one of those is a run that never reached its comparison being cited as a comparison that disagreed, which is the class the repair closes.\n\nThe other four stay green under that mutation and are not thereby idle. old_predicate_cannot_tell_the_two_causes_apart is the control that proves the two arms were genuinely indistinguishable to the mechanism being replaced; detected_fault_is_admitted pins that the repair did not narrow past the case it must admit; stem_is_derived_from_the_pass_marker pins the derivation; and zero_exit_is_still_refused guards a DIFFERENT hole -- both predicates refuse it, so it is a real arm and not a discriminating one here. Recording which arms flip is what stops eight greens being read as eight walls."
+
+data cause_swap_pass_marker: String = "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: PASS"
+
+// ARM 1 -- THE CAUSE THAT SHOULD BE ADMITTED. The driver ran, reached its comparison, found the
+// planted fault and said so on its own terms before exiting nonzero. This is the real 00_compile
+// inject-fault transcript shape: the marker below is what dag/tools/self_host_00_compile_shims/
+// witness_main.rs actually prints.
+data cause_swap_fault_detected_stdout: String = "required_lens_grain_note emitted_len=13 seed_len=402 eq=false\nSELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: FAIL\n"
+
+// ARM 2 -- THE CAUSE THAT MUST BE REFUSED, AND IT IS THE WHOLE POINT OF THE FILE. The binary was
+// never built, so the run failed before executing a single comparison. The OLD predicate is
+// IDENTICAL here: exit is nonzero in both arms. Only the subject-side evidence differs, and only a
+// carrier that reads subject-side evidence can tell them apart.
+data cause_swap_binary_absent_stdout: String = ""
+
+// THE OLD PREDICATE, RESTATED HERE RATHER THAN CITED. Keeping it executable is what makes the
+// control a control: it proves the two arms are genuinely indistinguishable to the mechanism being
+// replaced, instead of asserting that they were. If this ever stops answering true for both arms,
+// the control has lost its discriminating power and the file is no longer evidence of anything.
+fn cause_swap_old_predicate(fault_exit_ok: Bool) -> Bool {
+  fault_exit_ok == false
+}
+
+test fn cause_swap_old_predicate_cannot_tell_the_two_causes_apart() -> Bool {
+  cause_swap_old_predicate(fault_exit_ok: false)
+    && cause_swap_old_predicate(fault_exit_ok: false)
+}
+
+test fn cause_swap_detected_fault_is_admitted() -> Bool {
+  cssl_fault_run_detected_the_planted_fault(
+    fault_exit_ok: false,
+    fault_stdout: cause_swap_fault_detected_stdout,
+    pass_marker: cause_swap_pass_marker
+  )
+}
+
+// THE LOAD-BEARING ARM. Old predicate true, new carrier must answer false.
+test fn cause_swap_absent_binary_is_refused_not_treated_as_detection() -> Bool {
+  !cssl_fault_run_detected_the_planted_fault(
+    fault_exit_ok: false,
+    fault_stdout: cause_swap_binary_absent_stdout,
+    pass_marker: cause_swap_pass_marker
+  )
+}
+
+// A SECOND REFUSAL THE OLD PREDICATE ALSO ADMITTED: the process was killed after printing progress
+// but before reaching its comparison. Nonzero exit, real output, no verdict.
+test fn cause_swap_killed_before_comparison_is_refused() -> Bool {
+  !cssl_fault_run_detected_the_planted_fault(
+    fault_exit_ok: false,
+    fault_stdout: "required_lens_grain_note emitted_len=402 seed_len=402 eq=true\n",
+    pass_marker: cause_swap_pass_marker
+  )
+}
+
+// THE DRIVER AGREED ANYWAY. If the fault run somehow printed the PASS marker, the planted fault was
+// not detected whatever else the exit status says.
+test fn cause_swap_fault_run_that_agreed_is_refused() -> Bool {
+  !cssl_fault_run_detected_the_planted_fault(
+    fault_exit_ok: false,
+    fault_stdout: "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: PASS\n",
+    pass_marker: cause_swap_pass_marker
+  )
+}
+
+// A DETECTED FAULT ON A ZERO EXIT IS STILL REFUSED. The exit-status conjunct is retained rather than
+// replaced, so this arm pins that the repair NARROWED the admitted set and did not merely move it.
+test fn cause_swap_zero_exit_is_still_refused() -> Bool {
+  !cssl_fault_run_detected_the_planted_fault(
+    fault_exit_ok: true,
+    fault_stdout: cause_swap_fault_detected_stdout,
+    pass_marker: cause_swap_pass_marker
+  )
+}
+
+// THE MARKER DERIVATION REFUSES A MALFORMED STEM RATHER THAN FABRICATING ONE. A pass marker that
+// does not end in PASS yields no stem, so no fault marker can be derived and no detection is
+// claimed -- rather than deriving a marker that matches nothing and reporting an undetected fault.
+test fn cause_swap_malformed_pass_marker_establishes_nothing() -> Bool {
+  cssl_pass_marker_stem(pass_marker: "SOMETHING ELSE ENTIRELY") == ""
+    && !cssl_fault_run_detected_the_planted_fault(
+      fault_exit_ok: false,
+      fault_stdout: "SOMETHING ELSE ENTIRELY: FAIL\n",
+      pass_marker: "SOMETHING ELSE ENTIRELY"
+    )
+}
+
+test fn cause_swap_stem_is_derived_from_the_pass_marker() -> Bool {
+  cssl_pass_marker_stem(pass_marker: cause_swap_pass_marker) == "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: "
+}

@@ -55,12 +55,6 @@ test fn residue_emit_host_gate_clean() -> Bool {
   ) == 0
 }
 
-test fn residue_gunbc_ci_clean() -> Bool {
-  transport_script_live_literal_violation_count_for_path(
-    path: "dag/tools/gunbc_ci.dag"
-  ) == 0
-}
-
 test fn residue_host_prelude_clean() -> Bool {
   transport_script_live_literal_violation_count_for_path(
     path: "dag/tools/host_prelude.dag"
