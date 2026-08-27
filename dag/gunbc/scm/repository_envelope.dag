@@ -344,7 +344,7 @@ fn encode_optional_reference(commits: List<RepositoryCommit>, selected: ObjectId
   }
 }
 
-fn encode_commit_record(acc: EncodeAcc, commits: List<RepositoryCommit>, commit: RepositoryCommit) -> JsonValue {
+fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit) -> JsonValue {
   json_object(
     members: [
       json_kv(key: "root", value: encoded_root_reference(acc: acc, root: commit.root)),
@@ -368,6 +368,16 @@ fn encode_commit_record(acc: EncodeAcc, commits: List<RepositoryCommit>, commit:
 // on any revert is a different record than the parent. The commits argument is gone with it -- a
 // reference needs no population to resolve against at encode time, so the parameter that made the
 // search possible does not exist to be misused.
+//
+// THAT LAST CLAUSE WAS FALSE WHEN FIRST WRITTEN, AND THE REPAIR IS WHY IT NOW HOLDS. This branch
+// removed the search from `encode_ancestry` and left `commits` threaded through the enclosing
+// `encode_commit_record`, unread. main carries no such parameter, so the branch ADDED it back while
+// this annotation declared it gone -- prose saying a mechanism is removed over code where the
+// mechanism-shaped parameter remains, which is the class this lane repaired in gunbc#9282 and
+// promptly re-authored one file away. It is deleted here rather than documented, because an unused
+// population parameter at the exact site that used to search that population is not inert: it is the
+// cheapest possible route back to the first-match defect, needing no new argument at any call site.
+// Reported by external review; the added-not-left provenance is measured against main.
 fn encode_ancestry(ancestry: CommitAncestry) -> JsonValue {
   match ancestry {
     RootCommit => JsonNull
@@ -376,7 +386,7 @@ fn encode_ancestry(ancestry: CommitAncestry) -> JsonValue {
 }
 
 fn encode_commit_records(acc: EncodeAcc, commits: List<RepositoryCommit>) -> List<JsonValue> {
-  map(commits, c => encode_commit_record(acc: acc, commits: commits, commit: c))
+  map(commits, c => encode_commit_record(acc: acc, commit: c))
 }
 
 // THE CODEC IS NAMED FOR THE EXACT WIRE VERSION IT UNDERSTANDS, and `encode_repository` is the
@@ -538,11 +548,27 @@ fn unresolved_commit_parent(commits: List<RepositoryCommit>) -> RepositoryCommit
 // "is this history cyclic". Re-deriving the test here would be a second answer to one question --
 // and the two would drift the first time the walk's bound changed.
 //
-// COST, STATED RATHER THAN HIDDEN: one walk per commit is O(n^2) over a repository's history. A
-// linear alternative needs a keyed visited set, which this layer's list representation does not
-// give, and the walk itself is the only acyclicity authority. It is on a persistence boundary
-// crossed once per write rather than in a fold, so the shape is declared here instead of being
-// silently accepted; it dissolves when the commit list is keyed rather than positional.
+// COST, STATED RATHER THAN HIDDEN, AND THE FIGURE BELOW IS THE CORRECTED ONE. This annotation first
+// said O(n^2), which understated the shape by one exponent. The derivation, written out because the
+// wrong figure came from stopping one level too early -- counting the walks and taking each walk to
+// be linear, without opening the walk:
+//
+//   history_step_at        folds the whole step list                              O(n)
+//   ancestry_walk          up to n steps, one history_step_at at each             O(n^2)
+//   a_cyclic_commit        one walk per commit, over n starts                     O(n^3)
+//
+// The bad bound is realized by the ORDINARY case, not a pathological one: on an acyclic history no
+// start finds a cycle early, so every start is walked to exhaustion. n is a repository's whole commit
+// count and grows without bound, so this is not a "small n" the rule excuses -- DESIGN section 6 fixes
+// a proven cost shape regardless of realized n, and the realized n here is the one that keeps growing.
+//
+// ALL THREE FACTORS DISSOLVE ON THE SAME TRIGGER, which is why this is declared rather than partly
+// repaired: the lookup is linear because the carrier is a list, and the all-starts fold cannot skip a
+// start already proven acyclic without a visited set. Both want the same keyed representation, and
+// keying is deferred to one cut over the whole reference vocabulary rather than taken piecemeal here
+// -- converting this one site would relocate the fork instead of removing it. Until that lands the
+// shape stands declared and wrong-by-design, on a persistence boundary crossed once per write.
+// Corrected after external review measured the nesting; the original figure was authored here.
 // KEYED ON THE ROW, NOT THE PROGRAM. The previous form folded for the first row whose ROOT matched,
 // so on a history containing a revert it answered with the wrong record's ancestry -- and answered
 // confidently, since a first match is a successful lookup. Resolving through commit_at_reference
