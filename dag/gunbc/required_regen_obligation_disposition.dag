@@ -8,122 +8,153 @@ import std.decl_ref { DeclarationRef, decl_ref }
 //
 // `gunbc.plans.cli_run_hollowing_plan` carries one row -- area "Regen oracle & self-host scope",
 // authority `v2.workflow.required_regen` / `v1_compiler.required_regen_host` -- dispositioned
-// `delete-with-v1` at the Wave 4 real-fixpoint cutover. That single row answers for two different
-// futures with different obligations:
-//
-//   TRANSFER  the operation survives under a successor authority and realization
-//   RETIRE    the operation ceases to exist because its subject is gone
-//
+// `delete-with-v1` at the Wave 4 real-fixpoint cutover. That row answers for two futures with
+// different obligations: TRANSFER, where the operation survives under a successor and owes an
+// equivalence receipt, and RETIRE, where the operation ceases and owes proof its subject is empty.
 // Both end in deleting the same two files, which is why one row can cover them and why nothing
-// notices that it does. The obligations diverge completely: a transfer owes a successor and an
-// equivalence receipt, a retirement owes proof that the subject is empty. `delete-with-v1` states
-// the ACTION and leaves the JUSTIFICATION unstated, so the plan may take the action without ever
-// establishing which justification held.
+// notices that it does. `delete-with-v1` states the ACTION and leaves the JUSTIFICATION unstated.
 //
-// THE PLAN MAY STILL CHOOSE RETIREMENT. What it may not do is let "delete-with-v1" stand in for
-// PROVING the subject retired. This module is the carrier where that proof would live.
+// The plan may still choose retirement. What it may not do is let `delete-with-v1` stand in for
+// PROVING the subject retired.
 //
-// DESIGN owns safety standing and the plan owns sequencing; this lifecycle is the one place they
-// meet, so neither is edited against the other. An earlier revision of this work reported the two
-// as CONTRADICTORY and asked for arbitration between them. That was wrong and the error is worth
-// recording: a next-rung trigger is an obligation WHILE ITS SUBJECT REMAINS LIVE, and a terminal
-// migration may remove the subject entirely -- deleting an operation whose subject is gone is
-// RETIRING it, not declining to climb. The two authorities are compatible under exactly that
-// condition, and nobody had checked whether it holds. That unchecked condition, not a
-// contradiction, is the defect.
+// DESIGN owns safety standing and the plan owns sequencing; this lifecycle is where they meet, so
+// neither is edited against the other. An earlier revision reported the two as CONTRADICTORY and
+// asked for arbitration. That was wrong: a next-rung trigger is an obligation WHILE ITS SUBJECT
+// REMAINS LIVE, and a terminal migration may remove the subject entirely -- deleting an operation
+// whose subject is gone is RETIRING it, not declining to climb. The two are compatible under
+// exactly that condition, and nobody had checked whether it holds. That unchecked condition, not
+// a contradiction, is the defect.
+//
+// THIS CARRIER GATES NOTHING, and says so because a carrier named for a wall while occupying none
+// is the inflation DESIGN section 4b forbids. It is a finding, not a repair and not a proposal for
+// the Wave 4 work.
+//
+// SCOPE: one obligation, one authority pair, one plan row. How many other plan rows fuse transfer
+// with retirement is UNMEASURED, deliberately -- a specimen count taken while establishing the
+// mechanism would be mistaken for the bound. What licenses generalizing the MECHANISM and not the
+// RATE is that nothing in the corpus can refuse over a plan row's disposition: it has no
+// executable dependents, so the fail-closed census that normally surfaces a load-bearing gap is
+// structurally silent for this class, and the only thing that finds one is somebody attempting
+// the work it governs.
+
+// A retirement's obligations, as discharge markers rather than prose. Modeling these as typed
+// members is what makes "retirement owes proof" mechanical: a Retired arm carrying an incomplete
+// discharge list is inspectable, where a String receipt could only be read.
+type RetirementObligation
+  = MirrorPopulationEmpty
+  | RequiredConsumerPopulationEmpty
+
 type ObligationLifecycle
   = Active
   | Transferred {
       successor_authority: DeclarationRef
-      successor_realization: String
-      equivalence_receipt: String
+      successor_realization: DeclarationRef
     }
-  | Retired {
-      mirror_population_empty_receipt: String
-      required_consumer_population_empty_receipt: String
-    }
+  | Retired { discharged: List<RetirementObligation> }
 
-// THE ASYMMETRY IS THE ENTIRE CONTENT OF THIS CARRIER, and a symmetric pair of predicates would
-// have been the fused row again in typed clothing.
-//
-// The HOST is one realization of the operation. Under a transfer its work moves to the successor
-// realization, so deleting it is admissible. Under a retirement the operation is gone, so
-// deleting it is admissible. Both arms admit.
-//
-// The CARRIER is the operation's DEFINITION. A transfer needs something to define what the
-// successor must be equivalent TO, so deleting the definition while the operation still exists
-// destroys the referent of its own equivalence receipt. Only retirement admits it.
+// Both obligations must be discharged for a retirement to be complete. An earlier revision carried
+// these as free-form String receipts, which could assert discharge without exhibiting it.
+fn retirement_fully_discharged(discharged: List<RetirementObligation>) -> Bool {
+  (discharged |> any(o => match o { MirrorPopulationEmpty => true  RequiredConsumerPopulationEmpty => false }))
+    && (discharged |> any(o => match o { RequiredConsumerPopulationEmpty => true  MirrorPopulationEmpty => false }))
+}
+
+// THE ASYMMETRY IS THE ENTIRE CONTENT, and a symmetric pair would be the fused row again in typed
+// clothing. The HOST is one realization: a transfer moves its work to the successor, a retirement
+// ends it, so both terminal arms admit deleting it. The CARRIER is the operation's DEFINITION, so
+// deleting it under a transfer destroys the referent of the equivalence receipt that transfer
+// owes. Only a fully discharged retirement admits it.
 fn host_deletion_admitted(lifecycle: ObligationLifecycle) -> Bool {
   match lifecycle {
     Active => false
-    Transferred { successor_authority: _, successor_realization: _, equivalence_receipt: _ } => true
-    Retired { mirror_population_empty_receipt: _, required_consumer_population_empty_receipt: _ } => true
+    Transferred { successor_authority: _, successor_realization: _ } => true
+    Retired { discharged: d } => retirement_fully_discharged(discharged: d)
   }
 }
 
 fn carrier_deletion_admitted(lifecycle: ObligationLifecycle) -> Bool {
   match lifecycle {
     Active => false
-    Transferred { successor_authority: _, successor_realization: _, equivalence_receipt: _ } => false
-    Retired { mirror_population_empty_receipt: _, required_consumer_population_empty_receipt: _ } => true
+    Transferred { successor_authority: _, successor_realization: _ } => false
+    Retired { discharged: d } => retirement_fully_discharged(discharged: d)
   }
 }
 
-// WHAT THE MEASUREMENTS ACTUALLY LICENSE, NARROWED FROM WHAT AN EARLIER REVISION CLAIMED.
-//
-// Three routes were attempted and one was refuted. The refuted one is real and its receipts hold.
-// What does NOT follow is that no derivation can exist: "the host derived from the carrier" does
-// not require the host to import a Rust type generated into the same v1 stage0 closure. That is
-// ONE construction. The others below are reachable and UNEXAMINED, and an earlier revision of this
-// work reported the class as unable to climb -- an impossibility claim resting on the exhaustion
-// of one route, which is the same equivalence-across-a-gap this lane had already caught itself
-// making about the closure stubs.
 type RouteStatus
-  = RouteRefuted { evidence: String }
-  | RouteUnexamined { why_it_remains_open: String }
+  = RouteRefuted
+  | RouteUnexamined
 
 type DerivationRoute {
   route: String
   status: RouteStatus
 }
 
+// REFUTED, and the three preconditions below are its evidence. `regen_source_roots()` is a closed
+// two-variant enum -- src/v1 and dag -- so src/v2 is not a regen root; measured by reading line 2
+// of every emitted stage0 .rs, ZERO declare a v2.* source module. Relocating the carrier into dag/
+// does not suffice, because closure membership is by IMPORT FROM A SEED MODULE rather than by
+// residence. And no seed-side consumer of regen refusals exists, because the adjudication is
+// hand-written Rust; the only honest candidate consumer is the host itself.
+// `dag/std/trait_derive_shape.dag` states the exclusion is deliberate: stage0 IS the v1 seed, and
+// a seed reaching into src/v2 would depend on the successor it bootstraps toward.
+data route_seed_import_generated_type: DerivationRoute = DerivationRoute {
+  route: "host imports a Rust type generated into the v1 stage0 closure",
+  status: RouteRefuted
+}
+
+// Does not require the carrier to be a closure member at all -- the generation step runs before or
+// beside the seed build rather than inside it, so the src/v2 root exclusion does not reach it.
+data route_build_time_generation: DerivationRoute = DerivationRoute {
+  route: "generate the host decision fold from the carrier at build time",
+  status: RouteUnexamined
+}
+
+// The interpreter already executes .dag; the host would consume a receipt rather than a generated
+// type, so no Rust type needs to exist in the seed closure.
+data route_interpreted_receipt: DerivationRoute = DerivationRoute {
+  route: "interpret the carrier and pass a typed receipt across the host boundary",
+  status: RouteUnexamined
+}
+
+// Dissolves the boundary instead of crossing it: if the operation runs in the v2 product there is
+// no v1 host to derive. This is the TRANSFER arm of the lifecycle above.
+data route_promoted_v2_product: DerivationRoute = DerivationRoute {
+  route: "move the operation to the promoted v2 workflow product",
+  status: RouteUnexamined
+}
+
+// If Wave 4 eliminates the committed stage0-mirror population and no successor needs the
+// operation, there is nothing left to derive. This is the RETIRED arm, and it is the plan's
+// apparent intent -- but it is unproven, which is this module's subject.
+data route_retire_with_subject: DerivationRoute = DerivationRoute {
+  route: "the operation retires with its subject",
+  status: RouteUnexamined
+}
+
+// AN EARLIER REVISION CONCLUDED THE CLASS COULD NOT CLIMB, from three refuted attempts at the FIRST
+// route only. That is an impossibility claim resting on the exhaustion of one construction, and it
+// is the same equivalence-across-a-gap this lane had already caught itself making elsewhere. The
+// evidence licenses only that the seed-import route is unavailable.
 data required_regen_derivation_routes: List<DerivationRoute> = [
-  DerivationRoute {
-    route: "host imports a Rust type generated into the v1 stage0 closure",
-    status: RouteRefuted {
-      evidence: "Three preconditions fail, each found only by attempting the step the previous one unblocked. regen_source_roots() is a closed two-variant enum (src/v1, dag), so src/v2 is not a regen root; measured by reading line 2 of every emitted stage0 .rs, ZERO declare a v2.* source module. Relocating the carrier into dag/ does not suffice, because closure membership is by IMPORT FROM A SEED MODULE rather than by residence -- see the control table below. And no seed-side consumer of regen refusals exists, because the adjudication is hand-written Rust; the only honest candidate consumer is the host itself. dag/std/trait_derive_shape.dag states the exclusion is deliberate: stage0 IS the v1 seed, and a seed reaching into src/v2 would depend on the successor it bootstraps toward."
-    }
-  },
-  DerivationRoute {
-    route: "generate the host decision fold from the carrier at build time",
-    status: RouteUnexamined { why_it_remains_open: "Does not require the carrier to be a closure member at all -- the generation step runs before or beside the seed build rather than inside it, so the src/v2 root exclusion does not reach it. Unattempted." }
-  },
-  DerivationRoute {
-    route: "interpret the carrier and pass a typed receipt across the host boundary",
-    status: RouteUnexamined { why_it_remains_open: "The interpreter already executes .dag; the host would consume a receipt rather than a generated type, so no Rust type needs to exist in the seed closure. Unattempted." }
-  },
-  DerivationRoute {
-    route: "move the operation to the promoted v2 workflow product",
-    status: RouteUnexamined { why_it_remains_open: "Dissolves the boundary instead of crossing it: if the operation runs in the v2 product there is no v1 host to derive. This is the TRANSFER arm of the lifecycle above." }
-  },
-  DerivationRoute {
-    route: "the operation retires with its subject",
-    status: RouteUnexamined { why_it_remains_open: "If Wave 4 eliminates the committed stage0-mirror population and no successor needs the operation, there is nothing left to derive. This is the RETIRED arm, and it is the plan's apparent intent -- but it is unproven, which is this module's subject." }
-  }
+  route_seed_import_generated_type,
+  route_build_time_generation,
+  route_interpreted_receipt,
+  route_promoted_v2_product,
+  route_retire_with_subject
 ]
 
 // DERIVED, NEVER STORED, so a stale verdict is unrepresentable rather than merely discouraged.
 fn some_derivation_route_remains_unexamined() -> Bool {
   required_regen_derivation_routes |> any(r => match r.status {
-    RouteUnexamined { why_it_remains_open: _ } => true
-    RouteRefuted { evidence: _ } => false
+    RouteUnexamined => true
+    RouteRefuted => false
   })
 }
 
 fn refuted_route_count() -> Int {
   length(xs: required_regen_derivation_routes |> filter(r => match r.status {
-    RouteRefuted { evidence: _ } => true
-    RouteUnexamined { why_it_remains_open: _ } => false
+    RouteRefuted => true
+    RouteUnexamined => false
   }))
 }
 
@@ -135,7 +166,7 @@ type ClosureMembershipObservation {
 
 // BOTH ARMS ARE LOAD-BEARING. A positive-only list would establish that imported modules are
 // emitted and leave "would an unimported one be emitted anyway?" unanswered -- which is exactly
-// the question the second precondition turns on.
+// the question the second precondition of the refuted route turns on.
 data required_regen_closure_membership_controls: List<ClosureMembershipObservation> = [
   ClosureMembershipObservation { module_path: "extdeps.cargo", seed_importers: 2, emitted: true },
   ClosureMembershipObservation { module_path: "gunbc.cli_dispatch_surface", seed_importers: 1, emitted: true },
@@ -144,9 +175,47 @@ data required_regen_closure_membership_controls: List<ClosureMembershipObservati
   ClosureMembershipObservation { module_path: "gunbc.doc_graph_roots", seed_importers: 0, emitted: false }
 ]
 
-data required_regen_conformance_note: String = "THE OPERATION IS ENFORCED; WHAT IS UNOBSERVED IS THE RELATION BETWEEN ITS TWO REALIZATIONS. Measured across all of src/v1/stage0/src/*.rs, `required_regen_run` and `required_regen_sync_admission` occur exactly ONCE, and the occurrence is a COMMENT naming the carrier as authority for an ordering. No production Rust calls into the carrier; its only executor is its own witness test.\n\nAN EARLIER REVISION READ THAT AS THE OPERATION BEING UNENFORCED. It is not, and the correction matters because it changes both severity and repair. The hand-written host is an INDEPENDENT REALIZATION and it does enforce required-regen: it refuses drift, it names paths, it stops the line. The honest pair is OperationEnforcedByIndependentRealization together with CarrierRealizationConformanceUnobserved. What is missing is a mechanically enforced RELATION between the two realizations -- not the enforcement.\n\nWHAT THE UNOBSERVED CONFORMANCE COSTS, which is the part that survives the correction. The host has 23 production refusal sites covering roughly 21 distinct states; the carrier names SIX of those states, and three of the carrier's eleven declared variants have no producer anywhere. Site count and state count are reported separately because two states refuse at two sites each, so a site total read as a state total overstates the divergence. Two realizations of one operation drifted to that extent without anything refusing, and a comment cannot fail. That is what an unobserved conformance relation permits; it is not a claim that either realization is wrong.\n\nWHY THE ZERO-PRODUCER COUNT IS SOUND DESPITE BEING A NAME GREP: constructing a .dag coproduct variant requires the literal variant name, and a check for reflective construction (construct_variant / variant_by_name / make_variant) returns nothing in the corpus, so for the .dag side the terminal-constructor vocabulary IS the producer-path vocabulary. An exclusion oracle needs a closed producer-path vocabulary, not merely a closed terminal-constructor one; where that does not hold, a producer may publish the positives it found and may not publish 'no X exists'. The host-side claims here are scoped to what was read directly."
+type ConformanceDivergence {
+  host_production_refusal_sites: Int
+  host_distinct_refusal_states: Int
+  carrier_named_states: Int
+  carrier_declared_variants: Int
+  carrier_variants_without_producer: Int
+}
 
-data required_regen_obligation_scope_note: String = "SCOPE. Subject: ONE obligation, on ONE authority pair, and one plan row. This module does not claim the plan is wrong to delete either file, does not claim retirement is the wrong disposition, and does not propose the Wave 4 work. It claims the row does not say WHICH disposition it is taking, and that the two carry different obligations.\n\nIT ALSO MAKES NO POPULATION CLAIM. How many other plan rows fuse transfer with retirement is UNMEASURED -- deliberately, because a specimen count taken while establishing the mechanism would be mistaken for the bound. What licenses generalizing the MECHANISM and not the RATE is that nothing in the corpus can refuse over a plan row's disposition: it has no executable dependents, so the fail-closed census that normally surfaces a load-bearing gap is structurally silent for this class, and the only thing that finds one is somebody attempting the work it governs.\n\nTHIS CARRIER GATES NOTHING. It is a finding, not a repair and not a proposal, and saying so is required rather than modest: a carrier named for a wall while occupying none is the inflation DESIGN section 4b forbids."
+// THE OPERATION IS ENFORCED; WHAT IS UNOBSERVED IS THE RELATION BETWEEN ITS TWO REALIZATIONS.
+// Measured across all of src/v1/stage0/src/*.rs, `required_regen_run` and
+// `required_regen_sync_admission` occur exactly ONCE, and the occurrence is a COMMENT naming the
+// carrier as authority for an ordering. No production Rust calls into the carrier; its only
+// executor is its own witness test.
+//
+// AN EARLIER REVISION READ THAT AS THE OPERATION BEING UNENFORCED. It is not, and the correction
+// changes both severity and repair: the hand-written host is an INDEPENDENT REALIZATION and it
+// does enforce required-regen -- it refuses drift, names paths, stops the line. The honest pair is
+// OperationEnforcedByIndependentRealization with CarrierRealizationConformanceUnobserved. What is
+// missing is a mechanically enforced RELATION between the two realizations, not the enforcement.
+//
+// The row below is what that unobserved relation COST. Site count and state count are separate
+// members because two states refuse at two sites each, so a site total read as a state total
+// overstates the divergence.
+//
+// WHY THE PRODUCERLESS COUNT IS SOUND DESPITE COMING FROM A NAME GREP: constructing a .dag
+// coproduct variant requires the literal variant name, and a check for reflective construction
+// (construct_variant / variant_by_name / make_variant) returns nothing in the corpus, so for the
+// .dag side the terminal-constructor vocabulary IS the producer-path vocabulary. An exclusion
+// oracle needs a closed producer-path vocabulary, not merely a closed terminal-constructor one.
+data required_regen_conformance_divergence: ConformanceDivergence = ConformanceDivergence {
+  host_production_refusal_sites: 23,
+  host_distinct_refusal_states: 21,
+  carrier_named_states: 6,
+  carrier_declared_variants: 11,
+  carrier_variants_without_producer: 3
+}
+
+fn conformance_divergence_is_observed(d: ConformanceDivergence) -> Bool {
+  d.carrier_named_states == d.host_distinct_refusal_states
+    && d.carrier_variants_without_producer == 0
+}
 
 data required_regen_obligation_authorities: List<DeclarationRef> = [
   decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run"),
