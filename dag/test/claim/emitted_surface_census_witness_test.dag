@@ -90,7 +90,10 @@ fn witness_single_observation_is_admitted() -> Bool {
 // The admission is fail-closed at the assembly grain: one refused row rejects the whole assembly.
 fn witness_assembly_rejects_when_any_provider_varies() -> Bool {
   match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
-    rows: [crate_root_row_with_two_surfaces(), provider_row_with_two_surfaces()]
+    census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
+      sample_entries: [^entry_integer, ^entry_node_query],
+      rows: [crate_root_row_with_two_surfaces(), provider_row_with_two_surfaces()]
+    }
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == ^seed_module_carries_more_than_one_linkage_surface
@@ -98,12 +101,83 @@ fn witness_assembly_rejects_when_any_provider_varies() -> Bool {
 }
 
 // GREEN control at the same grain: an assembly whose only variation is the crate root is accepted.
+//
+// provider_row_with_one_surface is observed under entry_integer and entry_coercion, so the
+// sample here names those two -- coverage is a precondition and this control must satisfy it
+// rather than dodge it.
 fn witness_assembly_accepts_crate_root_variation_alone() -> Bool {
   match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
-    rows: [crate_root_row_with_two_surfaces(), provider_row_with_one_surface()]
+    census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
+      sample_entries: [^entry_integer, ^entry_node_query],
+      rows: [crate_root_row_with_two_surfaces()]
+    }
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// AN EMPTY CENSUS MUST NOT ADMIT. Nothing varies because nothing was measured, and rendering
+// that as a clean verdict is the empty-observation narrow.
+fn witness_empty_census_is_refused() -> Bool {
+  match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
+    census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
+      sample_entries: [],
+      rows: []
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^surface_census_sample_too_small_to_exhibit_variation
+  }
+}
+
+// A ONE-ENTRY SAMPLE CANNOT EXHIBIT ENTRY-CONDITIONED VARIATION, so admitting on it would report
+// the absence of a measurement as a result. Distinct from the empty case: rows are present here.
+fn witness_single_entry_sample_is_refused() -> Bool {
+  match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
+    census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
+      sample_entries: [^entry_integer],
+      rows: [provider_row_with_one_surface()]
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^surface_census_sample_too_small_to_exhibit_variation
+  }
+}
+
+// A MISSING OBSERVATION RENDERS AS AGREEMENT unless coverage is checked: this row was observed
+// under entry_integer only, while the sample claims two entries, so it has nothing to disagree
+// with and would otherwise be admitted as clean.
+fn witness_partially_observed_module_is_refused() -> Bool {
+  match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
+    census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
+      sample_entries: [^entry_integer, ^entry_node_query],
+      rows: [
+        v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
+          product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
+          source_module: ^v2_std_node,
+          observations: [observation(entry: ^entry_integer, surface: ^surface_agreed)]
+        }
+      ]
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^seed_module_not_observed_under_every_sampled_entry
+  }
+}
+
+// ORDERING CONTROL: ignorance is refused BEFORE variation is reported. A census that is both
+// undiscriminating AND carries a varying row must name the sample defect, not the variation --
+// otherwise a reader repairs the module and the blind sample survives.
+fn witness_ignorance_is_refused_before_variation() -> Bool {
+  match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
+    census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
+      sample_entries: [^entry_integer],
+      rows: [provider_row_with_two_surfaces()]
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^surface_census_sample_too_small_to_exhibit_variation
   }
 }
 
@@ -114,4 +188,8 @@ test fn emitted_surface_census_witnesses() -> Bool {
     && witness_single_observation_is_admitted()
     && witness_assembly_rejects_when_any_provider_varies()
     && witness_assembly_accepts_crate_root_variation_alone()
+    && witness_empty_census_is_refused()
+    && witness_single_entry_sample_is_refused()
+    && witness_partially_observed_module_is_refused()
+    && witness_ignorance_is_refused_before_variation()
 }

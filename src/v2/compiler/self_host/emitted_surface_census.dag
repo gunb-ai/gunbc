@@ -1,7 +1,7 @@
 module v2.compiler.self_host.emitted_surface_census
 
 import std.algebra { Cons, Empty }
-import v2.std.algebra { any, count_where, filter }
+import v2.std.algebra { any, count_where, filter, length }
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic, Outcome, outcome_accepted, outcome_rejected, textual_whole_file_diagnostic, Correction, Unavailable, NoCorrectionReason, ExternalContractUnknown }
 import v2.std.logic { Bool }
@@ -65,6 +65,22 @@ type SurfaceCensusRow {
   observations: List<EmittedMemberIdentity>
 }
 
+// THE CENSUS CARRIES ITS OWN SAMPLE, AND THAT IS WHAT MAKES ADMISSION HONEST.
+//
+// A bare list of rows cannot distinguish CENSUSED AND CLEAN from NOT CENSUSED. Both render as
+// "no row varies", so an admission over rows alone answers a question it never asked -- the
+// empty-observation narrow: an observation that could not express variation, reported as the
+// verdict that there is none. That is worse than the widen DESIGN forbids, because a widen is
+// merely expensive and a narrow is silently uncovered.
+//
+// Naming the sample makes two ignorance states representable and therefore refusable: a sample
+// too small to exhibit variation at all, and a module the sample did not observe under every
+// entry it claims to cover.
+type SurfaceCensus {
+  sample_entries: List<Symbol>
+  rows: List<SurfaceCensusRow>
+}
+
 fn surface_digest_of(observation: EmittedMemberIdentity) -> Symbol {
   observation.linkage_surface_digest
 }
@@ -97,6 +113,40 @@ fn row_admissible(row: SurfaceCensusRow) -> Bool {
   }
 }
 
+// A census over fewer than two entries CANNOT exhibit an entry-conditioned surface. Admitting on
+// one is not a clean result, it is the absence of a measurement wearing a verdict's clothes.
+fn census_can_discriminate(census: SurfaceCensus) -> Bool {
+  length(xs: census.sample_entries) >= 2
+}
+
+fn row_observed_under_entry(row: SurfaceCensusRow, entry: Symbol) -> Bool {
+  any(xs: row.observations, predicate: observation => observation.entry == entry)
+}
+
+// A module observed under only SOME of the sampled entries has fewer observations to disagree,
+// so a MISSING observation renders as agreement. Coverage is therefore a precondition of the
+// verdict rather than a quality note beside it.
+fn row_covers_sample(row: SurfaceCensusRow, census: SurfaceCensus) -> Bool {
+  count_where(xs: census.sample_entries, predicate: entry => row_observed_under_entry(row: row, entry: entry))
+    == length(xs: census.sample_entries)
+}
+
+fn census_undiscriminating_diagnostic(census: SurfaceCensus) -> Diagnostic {
+  textual_whole_file_diagnostic(
+    reason: ^surface_census_sample_too_small_to_exhibit_variation,
+    module_file: ^surface_census,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  )
+}
+
+fn uncovered_row_diagnostic(row: SurfaceCensusRow) -> Diagnostic {
+  textual_whole_file_diagnostic(
+    reason: ^seed_module_not_observed_under_every_sampled_entry,
+    module_file: row.source_module,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  )
+}
+
 fn entry_conditioned_surface_diagnostic(row: SurfaceCensusRow) -> Diagnostic {
   textual_whole_file_diagnostic(
     reason: ^seed_module_carries_more_than_one_linkage_surface,
@@ -105,23 +155,41 @@ fn entry_conditioned_surface_diagnostic(row: SurfaceCensusRow) -> Diagnostic {
   )
 }
 
-fn refused_rows(rows: List<SurfaceCensusRow>) -> List<SurfaceCensusRow> {
-  filter(xs: rows, predicate: row => row_admissible(row: row) == false)
+fn refused_rows(census: SurfaceCensus) -> List<SurfaceCensusRow> {
+  filter(xs: census.rows, predicate: row => row_admissible(row: row) == false)
 }
 
-fn refused_row_count(rows: List<SurfaceCensusRow>) -> Int {
-  count_where(xs: rows, predicate: row => row_admissible(row: row) == false)
+fn uncovered_rows(census: SurfaceCensus) -> List<SurfaceCensusRow> {
+  filter(xs: census.rows, predicate: row => row_covers_sample(row: row, census: census) == false)
+}
+
+fn refused_row_count(census: SurfaceCensus) -> Int {
+  count_where(xs: census.rows, predicate: row => row_admissible(row: row) == false)
 }
 
 // Canonical seed assembly admission.
 //
-// Fail-closed: the first provider module carrying more than one surface refuses the assembly,
-// naming that module. Admission is not a claim that a canonical surface was chosen -- only that
-// no module offered two.
-fn canonical_seed_admission(rows: List<SurfaceCensusRow>) -> Outcome<List<SurfaceCensusRow>> {
-  match refused_rows(rows: rows) {
-    Empty => outcome_accepted(value: rows)
-    Cons { head: first, tail: _ } =>
-      outcome_rejected(d: entry_conditioned_surface_diagnostic(row: first))
+// Fail-closed in THREE directions, ordered so that ignorance is refused before cleanliness is
+// asserted. An admission means: the sample could have exhibited variation, every module was
+// observed across the whole sample, and none offered two surfaces. It is never a claim that a
+// canonical surface was chosen.
+//
+// The ordering is the content. Answering "no module varies" first would let both ignorance
+// states pass as verdicts, which is exactly the defect this ordering exists to make
+// unrepresentable.
+fn canonical_seed_admission(census: SurfaceCensus) -> Outcome<SurfaceCensus> {
+  if census_can_discriminate(census: census) == false {
+    outcome_rejected(d: census_undiscriminating_diagnostic(census: census))
+  } else {
+    match uncovered_rows(census: census) {
+      Cons { head: uncovered, tail: _ } =>
+        outcome_rejected(d: uncovered_row_diagnostic(row: uncovered))
+      Empty =>
+        match refused_rows(census: census) {
+          Empty => outcome_accepted(value: census)
+          Cons { head: first, tail: _ } =>
+            outcome_rejected(d: entry_conditioned_surface_diagnostic(row: first))
+        }
+    }
   }
 }
