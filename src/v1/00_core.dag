@@ -91,9 +91,28 @@ type VarBindingKind
   | VariantValueBinding { parent_enum: String }
   | MatchBoundBinding
 
+// WHAT A CALL ACTUALLY TARGETS, DECIDED ONCE WHERE THE LEXICAL SCOPE IS AVAILABLE.
+//
+// Emission used to re-decide a call's target from the authored leaf spelling: a bare `contains`
+// reaching 05_emit_rust was matched against the v1_rt bridge roster by NAME, so an explicitly
+// imported v2 declaration could be emitted as an unrelated same-named runtime primitive. That
+// is the authority-substitution class -- resolution held the answer and a second mechanism
+// answered for it at a grain where the imports that decided it are gone.
+//
+// RuntimePrimitiveCall is produced by builtin resolution, or when std.primitive_projection says
+// THIS EXACT declaration is a HostRealizedSeam or ModeledProjection of the primitive.
+// SourceDeclarationCall is retained for every ordinary declaration and for DivergentProjection,
+// where the declaration and the primitive genuinely disagree and the declaration is what was
+// called. CallableTargetUndetermined is a refusal-bearing residue -- it is not permission for
+// emission to fall back to a name lookup, and emission refuses on it.
+type CallTargetIdentity
+  = RuntimePrimitiveCall { primitive_name: String }
+  | SourceDeclarationCall { owner_module_path: String, decl_name: String }
+  | CallableTargetUndetermined
+
 type CallSemantics
-  = PlainCallSemantics
-  | LookupCallSemantics
+  = PlainCallSemantics { target: CallTargetIdentity }
+  | LookupCallSemantics { target: CallTargetIdentity }
   | FunctionValueCallSemantics
 
 type MethodSemantics
