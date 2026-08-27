@@ -534,6 +534,64 @@ fn milestone_report_line(m: ProgramMilestone) -> String {
   concat("\n    ", startability_label(s: milestone_startability(m: m)))))))))
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE REPORT DENOMINATES ITSELF, AND THIS EXISTS BECAUSE ITS ABSENCE COST SOMETHING MEASURABLE.
+//
+// The report rendered one row per milestone and left the COUNTING to whoever read it. That is an
+// invitation, not a hazard: the author of this carrier eyeballed its output and reported "five
+// startable, nine not derivable" to three separate audiences over one evening, when every run this
+// session produced -- six of them, spanning three structural changes -- read six and eight,
+// identically. The figures were never true at any moment. A downstream planner had already acted on
+// them.
+//
+// NOTHING IN THE CONSTRUCTION COULD HAVE CAUGHT IT, WHICH IS THE POINT. The standings were derived,
+// the witnesses were green, the carrier was correct. The defect sat one layer ABOVE the
+// construction, in the prose that reports it -- the one channel a derived carrier does not cover.
+// So "count more carefully" is not the remedy; no amount of care removes an invitation. The remedy
+// is that the report states the counts IT derives, so a reader quoting a figure quotes a derived
+// one and the miscount has nowhere to enter (DESIGN section 5: construction over validation).
+//
+// THE FOLD IS PARAMETERIZED ON ITS POPULATION rather than reaching for `program_milestones`
+// directly, so its behaviour is checkable against a controlled fixture whose input and expected
+// counts are authored independently. Folded only over the live roster it could be checked only
+// against a transcription of that same roster -- the change detector DESIGN's oracle rule rejects.
+type StandingCensus {
+  milestones: Int
+  clear: Int
+  outstanding: Int
+  not_derivable: Int
+  startable: Int
+  blocked: Int
+  startability_not_derivable: Int
+}
+
+fn standing_census(ms: List<ProgramMilestone>) -> StandingCensus {
+  StandingCensus {
+    milestones: count(ms),
+    clear: count(ms |> filter(m => standing_class_label(c: standing_class(s: milestone_status(m: m))) == "CLEAR")),
+    outstanding: count(ms |> filter(m => standing_class_label(c: standing_class(s: milestone_status(m: m))) == "OUTSTANDING")),
+    not_derivable: count(ms |> filter(m => standing_class_label(c: standing_class(s: milestone_status(m: m))) == "NOT-DERIVABLE")),
+    startable: count(ms |> filter(m => startability_label(s: milestone_startability(m: m)) == "startable")),
+    blocked: count(ms |> filter(m => starts_with(s: startability_label(s: milestone_startability(m: m)), prefix: "blocked on"))),
+    startability_not_derivable: count(ms |> filter(m => starts_with(s: startability_label(s: milestone_startability(m: m)), prefix: "startability not derivable"))),
+  }
+}
+
+fn program_standing_census() -> StandingCensus {
+  standing_census(ms: program_milestones)
+}
+
+fn census_line(c: StandingCensus) -> String {
+  concat("milestones ",
+  concat(to_string(n: c.milestones),
+  concat(" -- clear ", concat(to_string(n: c.clear),
+  concat(", outstanding ", concat(to_string(n: c.outstanding),
+  concat(", not-derivable ", concat(to_string(n: c.not_derivable),
+  concat("\nstartability -- startable ", concat(to_string(n: c.startable),
+  concat(", blocked on work in flight ", concat(to_string(n: c.blocked),
+  concat(", not derivable ", to_string(n: c.startability_not_derivable))))))))))))))
+}
+
 fn instrument_report_line(i: MissingInstrument) -> String {
   let waiting = milestones_awaiting(i: i)
   let obstacle = missing_instrument_obstacle(i: i)
@@ -549,6 +607,7 @@ fn instrument_report_line(i: MissingInstrument) -> String {
 
 fn report() -> String {
   concat("compiler frontend program -- milestone standing, derived\n\n",
+  concat(concat(census_line(c: program_standing_census()), "\n\n"),
   concat(
     fold(program_milestones, init: "", f: fn(acc, m) {
       concat(acc, concat(milestone_report_line(m: m), "\n"))
@@ -557,7 +616,7 @@ fn report() -> String {
     fold(all_missing_instruments, init: "", f: fn(acc, i) {
       concat(acc, concat(instrument_report_line(i: i), "\n"))
     })
-  )))
+  ))))
 }
 
 fn where_are_we(out: String) -> ProcessExit {

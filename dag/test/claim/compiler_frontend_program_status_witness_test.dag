@@ -24,6 +24,9 @@ import gunbc.compiler_frontend_program_status {
   NotBuilt,
   RefusedByAuthority,
   missing_instrument_obstacle,
+  StandingCensus,
+  standing_census,
+  program_standing_census,
   milestones_awaiting,
   missing_instrument_label,
   Startability,
@@ -217,4 +220,43 @@ test fn the_refused_instrument_cites_the_authority_that_refuses_it() -> Bool {
     RefusedByAuthority { authority, why: _ } =>
       authority.module_path == "gunbc.whole_corpus_compile_admission"
   }
+}
+
+// THE CENSUS IS CHECKED AGAINST A CONTROLLED FIXTURE, NOT AGAINST THE LIVE ROSTER. The input is two
+// milestones this file names and the expected counts are authored here independently -- one
+// OUTSTANDING, one NOT-DERIVABLE, no CLEAR, both startable because neither has an unanswerable
+// prerequisite. Folded over the live roster instead, the only available oracle would be a
+// transcription of that same roster, which is the change detector DESIGN's oracle rule rejects.
+test fn the_census_counts_a_controlled_population_exactly() -> Bool {
+  let c = standing_census(ms: [SelfHostEmitterProducesEveryRetainedArtifact, SelfHostCargoPhaseEnrolled])
+  c.milestones == 2
+    && c.clear == 0
+    && c.outstanding == 1
+    && c.not_derivable == 1
+    && c.startable == 2
+    && c.blocked == 0
+    && c.startability_not_derivable == 0
+}
+
+// THE DISCRIMINATING ARM: a population whose members ARE unanswerable must not report them as
+// startable. Without this, a census that ignored its startability predicate entirely would still
+// pass the fixture above, since both of its members happen to be startable.
+test fn the_census_separates_unanswerable_startability() -> Bool {
+  let c = standing_census(ms: [NamespaceFirstSemanticWave])
+  c.milestones == 1
+    && c.startable == 0
+    && c.blocked == 0
+    && c.startability_not_derivable == 1
+}
+
+// THE CENSUS PARTITIONS ITS POPULATION EXACTLY, on both axes, over the LIVE roster. This is the arm
+// that makes the printed line trustworthy as a denominator: a milestone that fell out of every
+// class, or was counted in two, breaks the sum. It asserts the LAW rather than the current figures,
+// so it does not go red when the program legitimately moves -- which is what distinguishes it from
+// the snapshot pin DESIGN's oracle rule forbids.
+test fn the_live_census_partitions_on_both_axes() -> Bool {
+  let c = program_standing_census()
+  c.milestones == count(program_milestones)
+    && c.clear + c.outstanding + c.not_derivable == c.milestones
+    && c.startable + c.blocked + c.startability_not_derivable == c.milestones
 }
