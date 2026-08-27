@@ -1,7 +1,6 @@
-module v1.gunbc.bare_variant_reference_occurrence_control
+module v1.tests.claim.bare_variant_reference_occurrence_control_test
 
 import std.types { String, List, Int, Bool }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.occurrence_identity {
   ReferenceOccurrence,
   OccurrenceCategory,
@@ -40,16 +39,23 @@ import v1.gunbc.occurrence_binding_parser_walk {
 // observation simply becomes unable to be complete again, in the same invisible way. If the parser's
 // ExprVar classification ever changes, this control going red is how anyone finds out.
 //
-// WHY IT IS AN ENTRY POINT AND NOT AN ENROLLED WITNESS, stated rather than left to be discovered:
+// WHY IT LIVES IN THE v1 TEST TREE AND EXECUTES ON NO REQUIRED RUN, stated rather than left to be
+// discovered:
 // the required floor's source roots are `dag` and `src/v2`, and this subject is only reachable through
 // `v1.compiler.parse`, so no witness under `dag/test/claim` can call it. The one route a dag-side
 // witness has to v1 is reading the file TEXT, which declares ReadsLiveTree and is declined by the fold.
-// So this executes when invoked and on no required run. Rung: mitigatable. Next-rung trigger: a
-// witness home whose source roots reach `src/v1`, or a host builtin exposing the parser's transport
-// the way `compile_dag_diagnostic_census` exposes diagnostics.
+// So this executes when invoked and on no required run. It is a `test fn` under `src/v1/tests/claim`
+// rather than a `ProcessExit` entry point for a second, measured reason: as a standalone module it
+// entered the regen closure and the fixed point refused for four missing mirrors -- its own plus
+// `std.process` and two `extdeps.process.*` -- so hosting a control would have grown the frozen v1
+// seed by four emitted files. A test module emits none.
 //
-//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 \
-//     --entry src/v1/gunbc/bare_variant_reference_occurrence_control.dag --function check
+// Rung: mitigatable. Next-rung trigger: a witness home whose source roots reach `src/v1`, or a host
+// builtin exposing the parser's transport the way `compile_dag_diagnostic_census` exposes diagnostics.
+//
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
+//     --entry src/v1/tests/claim/bare_variant_reference_occurrence_control_test.dag \
+//     --function bare_nullary_variant_references_are_carried_by_the_parser_transport_holds
 
 // THE SUBJECT. Two bare nullary variant references -- `ZqxProbeRed` in a let initializer and `ZqxYes`
 // in tail position -- and one type reference, `ZqxAnswer`. Names are deliberately corpus-unique so the
@@ -84,15 +90,12 @@ fn lexical_value_reference_count(source: String) -> Int {
   }
 }
 
-fn check() -> ProcessExit {
-  let with_count = lexical_value_reference_count(source: subject_with_bare_variants)
-  let without_count = lexical_value_reference_count(source: subject_without_value_references)
-  if with_count == 2 && without_count == 0 {
-    ExitSuccess
-  } else {
-    exit_failure(reason: concat(concat(concat(concat(
-      "bare nullary variant references are no longer carried as reference occurrences by the parser transport: expected 2 lexical-value references in the subject and 0 in the control, measured ",
-      to_string(value: with_count)), " and "), to_string(value: without_count)),
-      ". A negative refusal (-1) means the parse itself refused, which is a different failure from the one this control watches."))
-  }
+// THE ASSERTION AND ITS CONTROL IN ONE ROW, deliberately. Read alone, "the subject has two
+// lexical-value references" is satisfied by a parser that emits a reference occurrence for
+// everything; the control's zero is what makes the two a measurement of THIS class rather than of
+// the parser's willingness to emit occurrences at all. A refusal to parse renders as -1 rather than
+// as 0, so a broken subject cannot pass as an empty one.
+test fn bare_nullary_variant_references_are_carried_by_the_parser_transport_holds() -> Bool {
+  lexical_value_reference_count(source: subject_with_bare_variants) == 2
+    && lexical_value_reference_count(source: subject_without_value_references) == 0
 }
