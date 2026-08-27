@@ -122,6 +122,13 @@ const CONSUMER_IMPORTS_OTHER: &str =
 const CONSUMER_IMPORTS_BOTH: &str = "module probe.consumer\n\nimport probe.home { widget }\nimport probe.other { widget }\n\nfn use_it() -> String { widget }\n";
 const CONSUMER_IMPORTS_NOTHING: &str =
     "module probe.consumer\n\nfn use_it() -> String { widget }\n";
+// THE POOL-COINCIDENCE PAIR. The consumer's own source is BYTE-IDENTICAL on both sides and
+// reaches `probe.home` through a blanket import; the target is what grows `widget`. That is
+// the only way to author a `0 -> 1` whose cause is in another module, and it is what
+// separates the coincidence from the authored repair below.
+const HOME_WITHOUT_WIDGET: &str = "module probe.home\n\ndata unrelated: String = \"u\"\n";
+const CONSUMER_BLANKET_HOME: &str =
+    "module probe.consumer\n\nimport probe.home\n\nfn use_it() -> String { widget }\n";
 
 // ── THE POSITIVE CONTROL: an admitted run over a real, non-empty comparison ──
 
@@ -274,10 +281,48 @@ fn a_spelling_that_stops_denoting_anything_refuses_as_new_unresolvedness() {
     assert!(!report_unadjudicated(&report).is_empty());
 }
 
+// ── `0 -> 1` IS TWO STATES, AND THESE TWO ARMS ARE THE DISCRIMINATING PAIR ──
+//
+// The two fixtures differ in ONE fact: which side's author wrote something. In the first the
+// consumer's own source is unchanged and the target grew the name; in the second the target is
+// unchanged and the consumer authored the import. Both are `0 -> 1` at the set grain, and
+// reading them as one symbol is what made the wall refuse the repair it exists to want.
+//
+// THE SECOND ARM WAS THE FIRST ARM'S FIXTURE UNTIL 2026-08-27. This file asserted
+// NewPoolCoincidenceResolution over a head that authored `import probe.home { widget }` — it
+// planted the repair and named it the coincidence, which is why the conflation survived
+// review. Re-deriving it required authoring a coincidence that is actually one.
+
 #[test]
-fn a_spelling_that_begins_denoting_something_refuses_as_pool_coincidence() {
+fn a_spelling_the_target_began_supplying_refuses_as_pool_coincidence() {
     let report = compare(
         "coincidence",
+        &[
+            ("home.dag", HOME_WITHOUT_WIDGET),
+            ("consumer.dag", CONSUMER_BLANKET_HOME),
+        ],
+        &[("home.dag", HOME), ("consumer.dag", CONSUMER_BLANKET_HOME)],
+    );
+    assert!(
+        dispositions_for(&report, "widget")
+            .contains(&NamespaceDeltaDisposition::NewPoolCoincidenceResolution),
+        "a name the TARGET began supplying, with the consumer's source unchanged, must be \
+         NewPoolCoincidenceResolution, got: {:?}",
+        report.deltas
+    );
+    // AND IT MUST STILL REFUSE. The split adds an auto-admitted arm; if it had widened this
+    // one the wall would have lost the class it was built for.
+    assert!(
+        !report_unadjudicated(&report).is_empty(),
+        "a pool coincidence must remain unadjudicated, got: {:?}",
+        report.deltas
+    );
+}
+
+#[test]
+fn a_spelling_this_module_authored_the_import_for_is_an_authored_reference_resolution() {
+    let report = compare(
+        "authored_resolution",
         &[
             ("home.dag", HOME),
             ("consumer.dag", CONSUMER_IMPORTS_NOTHING),
@@ -286,9 +331,17 @@ fn a_spelling_that_begins_denoting_something_refuses_as_pool_coincidence() {
     );
     assert!(
         dispositions_for(&report, "widget")
-            .contains(&NamespaceDeltaDisposition::NewPoolCoincidenceResolution),
-        "a name that began denoting something must be NewPoolCoincidenceResolution, got: {:?}",
+            .contains(&NamespaceDeltaDisposition::AuthoredReferenceResolution),
+        "a dangling name resolved by an import this module's own author wrote must be \
+         AuthoredReferenceResolution, got: {:?}",
         report.deltas
+    );
+    // THE WHOLE POINT OF THE SPLIT: this is the shape of gunbc#9485, and it must merge without
+    // an admission row. Asserting the disposition alone would leave the wall refusing it.
+    assert!(
+        report_unadjudicated(&report).is_empty(),
+        "an authored-reference resolution must be auto-admitted, got: {:?}",
+        report_unadjudicated(&report)
     );
 }
 
