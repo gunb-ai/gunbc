@@ -84,7 +84,7 @@ test fn witness_converge_cli_run_srv2_is_enrolled_but_deployment_refused() -> Bo
           ConvergeTargetMissingForDerivedHost { host: _ } => false
           HostDeploymentRefused { host: h, cause: why } =>
             h == "srv2"
-              && string_contains(s: refusal_cause_text(c: why), pattern: "session_reservation_unestablished")
+              && string_contains(s: host_deployment_refusal_text(c: why), pattern: "session_reservation_unestablished")
           KnobFrontier { reason: _ } => false
           PolicyUnsound { reason: _ } => false
           UnknownHost { host: _ } => false
@@ -102,7 +102,7 @@ test fn witness_converge_cli_run_srv2_is_enrolled_but_deployment_refused() -> Bo
           ConvergeTargetMissingForDerivedHost { host: _ } => false
           HostDeploymentRefused { host: h, cause: why } =>
             h == "srv2"
-              && string_contains(s: refusal_cause_text(c: why), pattern: "session_reservation_unestablished")
+              && string_contains(s: host_deployment_refusal_text(c: why), pattern: "session_reservation_unestablished")
           KnobFrontier { reason: _ } => false
           PolicyUnsound { reason: _ } => false
           UnknownHost { host: _ } => false

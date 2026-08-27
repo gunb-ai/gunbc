@@ -218,7 +218,7 @@ fn plan_reason_under(p: FabricControlPlanePlacement) -> String {
   fold(
     plan_refused_hosts(p: runner_deployment_plan_under_placement(control_plane_placement: p)),
     init: "",
-    f: (acc, r) => concat(acc, concat(" ", refusal_cause_text(c: r.cause)))
+    f: (acc, r) => concat(acc, concat(" ", host_deployment_refusal_text(c: r.cause)))
   )
 }
 
@@ -320,7 +320,7 @@ test fn two_refused_hosts_are_both_retained() -> Bool {
   refused.length() == 2
     && any(refused, r => (r.host as String) == (operator_host_srv2 as String))
     && any(refused, r => (r.host as String) == (operator_host_srv4 as String))
-    && refusal_cause_text(c: refused[0].cause) != refusal_cause_text(c: refused[1].cause)
+    && host_deployment_refusal_text(c: refused[0].cause) != host_deployment_refusal_text(c: refused[1].cause)
 }
 
 // CHANGING ONE HOST'S REFUSAL CAUSE MUST NOT PERTURB ANOTHER HOST'S DEPLOYMENT. This is the

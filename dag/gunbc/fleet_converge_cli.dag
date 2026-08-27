@@ -92,12 +92,12 @@ fn converge_cli_unknown_host_reason(host: String) -> String {
 // through rather than re-described here, so there is one authority for why the host refused.
 //
 // THE CARRIER HOLDS THE PLAN'S OWN TYPED REFUSAL, NOT A RENDERED STRING. An earlier revision stored
-// refusal_cause_text's output here, which made this arm a second representation of a fact the plan
+// host_deployment_refusal_text's output here, which made this arm a second representation of a fact the plan
 // already owns: a new HostRunnerDeploymentRefusal variant would have been flattened into prose at
 // the point of capture, and nothing downstream could have discriminated it again. Rendering is
 // deferred to the message edge, so the refusal survives as a value for as long as it is a value.
 fn converge_cli_host_deployment_refused_reason(host: String, cause: HostRunnerDeploymentRefusal) -> String {
-  concat(concat(concat("gunbc converge: ", host), " is enrolled but its runner deployment refused, so no converge target exists for it — "), refusal_cause_text(c: cause))
+  concat(concat(concat("gunbc converge: ", host), " is enrolled but its runner deployment refused, so no converge target exists for it — "), host_deployment_refusal_text(c: cause))
 }
 
 // A DERIVED HOST WITH NO CONVERGE TARGET IS AN INTERNAL INVARIANT BREAK, NOT A REFUSAL AND NOT AN

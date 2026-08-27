@@ -307,7 +307,13 @@ fn host_usable_ram_or_refusal(host: HostIdentity, r: HostUsableRam) -> HostUsabl
 
 // THE CAUSE RENDERS FROM ITS OWN MODULE so the manifest, the witnesses and any later consumer all
 // read one projection rather than each spelling the variants again.
-fn refusal_cause_text(c: HostRunnerDeploymentRefusal) -> String {
+// NAMED FOR ITS SUBJECT BECAUSE A BARE `refusal_cause_text` IS AMBIGUOUS CORPUS-WIDE.
+// gunbc.roadmap_instrument_sandbox already declares one over ProgramViewRefusalCause. Modules that
+// resolve by bare reference -- the witness tests do -- then see two candidates and refuse, and the
+// refusal surfaces only in a whole-corpus resolve, never in a per-entry run whose closure happens
+// to contain one of them. The two functions are genuinely different facts, not a nickname pair, so
+// the repair is to name this one after the refusal it renders rather than to merge them.
+fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
   match c {
     PrimaryCpuUnavailable { cause: t } => concat("primary_cpu_unavailable ", t)
     UsableRamUnavailable { cause: t } => concat("usable_ram_unavailable ", t)

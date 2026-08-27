@@ -10,7 +10,7 @@ import gunbc.ci_runner_placement {
   ZeroRunnerWidth, HostNotEnrolledInFleet,
   RunnerDeploymentPlan,
   FleetDeploymentComplete, FleetDeploymentIncomplete, fleet_deployment_completion,
-  refusal_cause_text,
+  host_deployment_refusal_text,
   RunnerHostDeployment,
   runner_deployment_plan,
   SessionReservationPlan,
@@ -92,7 +92,7 @@ fn runner_standing_doc(st: HostRunnerDeploymentStanding) -> Doc {
     HostRunnerDeploymentDerived { deployment: h } =>
       doc_concat(parts: [doc_text(text: "runner-deploy deployment=derived "), manifest_host_doc(h: h), DocLine])
     HostRunnerDeploymentRefused { refusal: r } =>
-      doc_line_of(text: concat(concat("runner-deploy deployment=refused host=", r.host), concat(" cause=", refusal_cause_text(c: r.cause))))
+      doc_line_of(text: concat(concat("runner-deploy deployment=refused host=", r.host), concat(" cause=", host_deployment_refusal_text(c: r.cause))))
   }
 }
 
