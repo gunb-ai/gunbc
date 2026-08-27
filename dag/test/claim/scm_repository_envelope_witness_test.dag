@@ -53,31 +53,39 @@ import gunbc.scm.repository_envelope {
   commit_at_reference,
 }
 
-// THIS MODULE STATED NO DISPOSITION, AND WHAT THAT MEANT WAS NOT MEASURED. The declaration is added
-// because silence is the one answer that cannot be right, not because the silence was observed to
-// decline anything.
+// THIS DECLARATION DOES NOT CHANGE WHETHER THESE CLAIMS EXECUTE, AND TWO EARLIER REVISIONS OF THIS
+// ANNOTATION SAID IT DID. Both are retracted here against the source rather than against a rerun.
 //
-// WHAT IS MEASURED: this module declared no `live_tree_disposition` while thirteen sibling
-// gunbc.scm witness modules declare one, and the omission predates the ancestry work rather than
-// arriving with it. The run current when this landed reported `offered=13090 routed=11647
-// declined_long=541 declined_live=902` -- real, aggregate, and attributable to no module, because
-// the floor's output names no module's disposition anywhere.
+// THE FLOOR'S AUTOMATIC ROUTE IS A COLUMN-ZERO TEXT SCAN (`witness_file_from_source`, v1 seed):
+// a line must `starts_with("data ")` AND contain BOTH `LiveTreeDisposition` AND `ReadsLiveTree`.
+// An undeclared module matches nothing, so `reads_live_tree` is false and the module is ROUTED.
+// A module declaring SubstrateInputsOnly also matches nothing -- the second token is absent -- so it
+// is likewise ROUTED. Before this row and after it, the floor's answer for this module is the same.
+// The 37 claims below were executing already.
 //
-// WHAT WAS NOT MEASURED, AND WAS ASSERTED HERE BEFORE THIS CORRECTION: that these claims were
-// declined and never ran. An earlier revision of this annotation said exactly that, reasoning from
-// `v2.workflow.floor_discovery_producer` answering `Absent => EntryLiveTreeResolved { disposition:
-// ReadsLiveTree }`. That is a real code path but it is not established to be the one that executes:
-// the floor consumer resolves an undeclared module by DERIVING from its import closure, so an
-// undeclared substrate-only module may well have been admitted all along. Two computations of one
-// fact, and the earlier revision read one and asserted it of the other -- which is that defect
-// walked into rather than detected. No per-module evidence was ever available to settle it.
+// WHERE THE ROW DOES CHANGE SOMETHING: the SELECTION path. `parse_entry_live_tree_disposition` ends
+// `Ok(declared.unwrap_or(true))`, so silence there reads as "reads the live tree" and the module is
+// not selection-eligible; declaring SubstrateInputsOnly is what makes it eligible. That is a real
+// effect on affected-set work, and it is not the effect the earlier revisions claimed.
 //
-// SubstrateInputsOnly IS A TRUE STATEMENT ABOUT THIS MODULE, not the convenient one, and this is the
-// part that makes the declaration correct under every mechanism in play. Its entire import surface
-// is std.types, the json emit/parse grammars, v2.std.node and three gunbc.scm carriers; nothing here
-// opens a file, shells out, or reads the tree. Verified before declaring. Had the closure genuinely
-// reached the tree, the honest act would have been to leave it undeclared and say so, not to author
+// SO THE REASON TO DECLARE IS AMBIGUITY, NOT EXECUTION. Three routes read this one fact and two of
+// them disagree about silence. `cli_run.rs` says so in its own words at the scan -- "ONE FACT, TWO
+// COMPUTATIONS, IN ONE BINARY -- a section 3 defect, recorded here rather than silently carried" --
+// and records that the floor's copy is deleted rather than reconciled, because the two consumers ask
+// different questions. An authored answer removes this module from that disagreement; it does not
+// resolve the disagreement, which is not this module's to resolve.
+//
+// SubstrateInputsOnly IS A TRUE STATEMENT ABOUT THIS MODULE, verified before declaring: the entire
+// import surface is std.types, the json emit/parse grammars, v2.std.node and three gunbc.scm
+// carriers, and nothing here opens a file, shells out, or reads the tree. Had the closure genuinely
+// reached the tree the honest act would have been to leave it undeclared and say so, not to author
 // the value that produces a green number.
+//
+// ONE AUTHORING HAZARD, since this row is now parsed by two scanners: the selection parser REFUSES a
+// second matching row ("declared more than once in one entry"), and the floor scan keys on tokens a
+// prose line could carry. Comments are safe from both -- the selection parser trims then requires the
+// `data` prefix, the floor scan requires column zero -- but a SECOND `data live_tree_disposition` row
+// anywhere in this file is a refusal, not a duplicate.
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
