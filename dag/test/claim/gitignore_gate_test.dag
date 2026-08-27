@@ -35,7 +35,7 @@ test fn witness_clean_does_not_drift() -> Bool {
   !(gitignore_drifted(committed: expected_gitignore()))
 }
 
-test fn witness_drift_receipt() -> Bool {
+test fn witness_gitignore_gate_drift_receipt() -> Bool {
   let eg = expected_gitignore()
   !gitignore_drifted(committed: eg)
     && gitignore_drifted(committed: concat(eg, "\n# drift-receipt-perturb"))
