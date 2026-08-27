@@ -377,6 +377,35 @@ fn refused_row_count(census: SurfaceCensus) -> Int {
 // The ordering is the content. Answering "no module varies" first would let both ignorance
 // states pass as verdicts, which is exactly the defect this ordering exists to make
 // unrepresentable.
+//
+// NOT YET WIRED TO A PRODUCTION CONSUMER, AND SAYING SO IS THE POINT OF THIS PARAGRAPH.
+//
+// Today the only callers are witnesses. This function decides an admission; nothing in seed
+// assembly or in a required lane asks it to. So it is an INSTRUMENT, and it must not be cited as
+// coverage: no seed is currently refused because of it, and a reader who takes the name for a gate
+// has read it as one rung higher than it sits (§4b rung honesty). It is at MITIGATABLE.
+//
+// It is unwired for a stated reason rather than an unfinished one. RUN AGAINST THE LIVE SEED IT
+// REFUSES, on main, today: std.algebra publishes [DivError Optional Result empty_map] under one
+// entry and [DivError Result] under another. Enrolling the check in the same change that
+// introduces it would therefore stop the required line for every author on a defect none of them
+// caused, which is a fleet-wide block bought with someone else's time (§1). The sequencing is the
+// honest arm, not the convenient one -- the alternative is to ship a check that greens by never
+// being asked, and that is the decoration this repository already names as worse than absent.
+//
+// NEXT-RUNG TRIGGER, naming the capability rather than an artifact that would contribute to one:
+// the emitter stops conditioning a module's published linkage surface on closure membership, so
+// that a seed module's interface is a function of the seed module. The located mechanism is the
+// export-proof gate on use-line synthesis (`provider_proven_exports_symbol` in v1's Rust emitter),
+// which admits a synthesised reexport only when some OTHER module in the same closure proves the
+// export -- so the same source publishes different interfaces under different closures. When that
+// holds, this function is enrolled as a required phase and this paragraph is deleted, not amended.
+//
+// WHAT WOULD FALSIFY THE TRIGGER RATHER THAN SATISFY IT: repairing std.algebra alone. That closes
+// one specimen and leaves the mechanism, and the population of modules with a closure-conditioned
+// surface is UNMEASURED -- the sampling frame here is two entries chosen to discriminate, never a
+// census of the seed. A trigger satisfied by one module would retire the row with the capability
+// still dead, which is the failure mode a trigger is supposed to prevent.
 fn canonical_seed_admission(census: SurfaceCensus) -> Outcome<SurfaceCensus> {
   if sample_repeats_an_entry(census: census) {
     outcome_rejected(d: sample_repeated_entry_diagnostic())

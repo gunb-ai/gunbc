@@ -214,3 +214,25 @@ fn reexport_rows(rows: List<EmittedExportSurfaceRow>) -> List<EmittedExportSurfa
     }
   })
 }
+
+// The other half of the same partition, homed here rather than at either consumer.
+//
+// It exists because a caller wanted it, but it lives HERE because `ExportSurfaceRowKind` is this
+// module's coproduct and a partition over it is one fact. The first consumer to need declarations
+// authored its own copy while IMPORTING `reexport_rows` from this module -- half a partition
+// imported, half re-implemented -- which is the tell that the second half had no home rather than
+// that it belonged to the caller. With both halves here the match on `row.kind` occurs in exactly
+// one module, so a third variant fails to compile at one site instead of silently taking the
+// `false` arm at each hand-rolled consumer.
+//
+// It takes rows and not an observation, for the reason its sibling states: given an observation it
+// would owe the unobserved arm an answer, and the empty list would report "this emit declares
+// nothing" about a read that never happened.
+fn declaration_rows(rows: List<EmittedExportSurfaceRow>) -> List<EmittedExportSurfaceRow> {
+  filter(xs: rows, predicate: fn(row) {
+    match row.kind {
+      DeclarationRow => true
+      ReexportRow => false
+    }
+  })
+}

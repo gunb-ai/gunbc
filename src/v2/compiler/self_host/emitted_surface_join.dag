@@ -5,10 +5,8 @@ import gunbc.stage0_emitted_export_surface_observation {
   ExportSurfaceObservation,
   ExportSurfaceObserved,
   ExportSurfaceUnobserved,
-  ExportSurfaceRowKind,
-  ReexportRow,
-  DeclarationRow,
-  reexport_rows
+  reexport_rows,
+  declaration_rows
 }
 import v2.compiler.self_host.emitted_surface_census {
   EmittedMemberIdentity,
@@ -79,13 +77,6 @@ fn surface_digest_of_members(members: List<String>) -> Fnv1a64Structural {
 
 fn rows_for_module(rows: List<EmittedExportSurfaceRow>, source_module: String) -> List<EmittedExportSurfaceRow> {
   filter(xs: rows, predicate: row => row.source_module == source_module)
-}
-
-fn declaration_rows(rows: List<EmittedExportSurfaceRow>) -> List<EmittedExportSurfaceRow> {
-  filter(xs: rows, predicate: row => match row.kind {
-    DeclarationRow => true
-    ReexportRow => false
-  })
 }
 
 fn observed_rows(entry_observation: EntryObservation) -> List<EmittedExportSurfaceRow> {
