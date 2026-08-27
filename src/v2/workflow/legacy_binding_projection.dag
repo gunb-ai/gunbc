@@ -75,7 +75,7 @@ import v2.workflow.legacy_binding_delta {
 // a bounded trigger; that is backwards -- naming a trigger is precisely what makes it a fact rather
 // than commentary, and therefore precisely what disqualifies the String carrier.
 //
-// IT IS NOW BOUND, AND THIS IS THE CHANGE THAT WAS ENTITLED TO BIND IT. An earlier revision left it
+// IT IS NOW BOUND, AND gunbc#9377 WAS THE CHANGE ENTITLED TO BIND IT. An earlier revision left it
 // UNBOUND and said so honestly: the bound form is `DeclarationAppears` over `std.occurrence_identity`
 // `OccurrenceProjected`, that declaration did not exist on the base this module was authored against,
 // and authoring the citation there would have been refused by the citation wall as a name that does
@@ -98,7 +98,7 @@ import v2.workflow.legacy_binding_delta {
 // being deleted: `dissolution_status` reads it, so a satisfied condition is a recorded fact about a
 // debt that ended, not a live obligation. What it retired was "the substrate cannot represent an
 // insertion cause". It never covered "this projector is not wired to emit insertions" -- a
-// different fact with a different owner -- and that second one is discharged by this change rather
+// different fact with a different owner -- and that second one is discharged by gunbc#9390 rather
 // than by the binding, which is why no successor row replaces it: the wiring is now evidenced by an
 // executing positive control over an emitted insertion, and an executing control outranks a row
 // asserting the same thing.
