@@ -390,6 +390,10 @@ fn probe_manifest(workspace: &Path, entry: &str) -> String {
 /// it safe. It changes nothing the shared target directory buys: the entries of ONE run still
 /// share `workspace/target`, and per-entry package names still separate their fingerprints within
 /// it.
+///
+/// This refusal governs `required_ci_probe_root_from_runner_temp` and its environment-reading
+/// wrapper `required_ci_emit_compile_probe_root`; `local_emit_compile_probe_root` deliberately
+/// remains the standalone mode's explicit system-temp selection.
 fn required_ci_probe_root_from_runner_temp(
     runner_temp: Option<&std::ffi::OsStr>,
 ) -> Result<PathBuf, String> {
