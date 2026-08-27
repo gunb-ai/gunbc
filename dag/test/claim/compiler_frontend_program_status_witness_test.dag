@@ -144,15 +144,9 @@ test fn a_populated_observation_is_outstanding_not_clear() -> Bool {
 // an independent check. Summing the two roster sizes is the independent form and catches the case
 // containment cannot: a fold that ADDS a member neither source contains.
 test fn the_emitter_population_unions_both_of_its_rosters() -> Bool {
-  let s = milestone_status(m: SelfHostEmitterProducesEveryRetainedArtifact)
-  let members = standing_outstanding_members(s: s)
-  standing_class_label(c: standing_class(s: s)) != "NOT-DERIVABLE"
-    && count(members)
-         == count(emitter_produced_divergent_registrations) + count(gunbc_cli_emitter_gap())
-    && all(emitter_produced_divergent_registrations,
-         row => any(members, m => m == concat("stage0-divergent:", row.basename)))
-    && all(gunbc_cli_emitter_gap(),
-         name => any(members, m => m == concat("cli-emitter-gap:", name)))
+  standing_agrees_with_population(
+    s: milestone_status(m: SelfHostEmitterProducesEveryRetainedArtifact),
+    expected: emitter_expected_members())
 }
 
 // S4a'S WIRING, AS A RELATION RATHER THAN TODAY'S STATE. This arm used to assert that the
@@ -175,13 +169,67 @@ test fn the_emitter_population_unions_both_of_its_rosters() -> Bool {
 // it asked about the POPULATION, a question its two sources can answer independently, and re-derived
 // the answer from the producer instead. Executed proof this one discriminates: rewiring S4a off its
 // cadence fold reds it.
+// STANDING AND POPULATION MUST AGREE, WHICH IS STRICTLY MORE THAN "NOT NotDerivable". The previous
+// guard closed ONE of the three states standing_outstanding_members collapses, and paid for it with
+// a string comparison against "NOT-DERIVABLE" -- a textual copy of a label the coproduct already
+// carries. Both problems have one fix: match the coproduct and check the class against the expected
+// population, rather than projecting to a list and comparing lists.
+//
+// The two rows the old form missed are the ones that bite in exactly the future states this PR is
+// meant to survive, because both are invisible once the expected population is empty:
+//   Clear carrying a NON-EMPTY evidence population -- standing_outstanding_members DISCARDS the
+//     evidence on the Clear arm, so hidden members project to [] and the relation passed.
+//   Outstanding carrying an EMPTY population -- malformed, since standing_from_evidence never
+//     produces it, but the variant constructor is directly authorable and it projected to [] too.
+// Neither is reachable through the mint; both are reachable by a defective rewire, which is what
+// the relation exists to catch after S4a clears or both emitter rosters close.
+//
+// This predicate is total over MilestoneStanding, so a new variant fails to compile here rather
+// than silently inheriting whichever arm it resembles.
+fn standing_agrees_with_population(s: MilestoneStanding, expected: List<String>) -> Bool {
+  match s {
+    Clear { evidence } => count(expected) == 0 && count(evidence.outstanding) == 0
+    Outstanding { evidence } =>
+      count(expected) > 0
+        && count(evidence.outstanding) == count(expected)
+        && all(expected, e => any(evidence.outstanding, m => m == e))
+    NotDerivable { why: _, cause: _ } => false
+  }
+}
+
+// THE EMITTER'S EXPECTED POPULATION, RE-DERIVED FROM THE TWO SOURCES. This deliberately restates
+// the fold's shape in the test rather than calling emitter_retained_artifact_outstanding(): an
+// oracle authored from the SOURCES is independent, whereas one obtained from the PRODUCER is the
+// self-comparison the previous commit removed from the count clause.
+fn emitter_expected_members() -> List<String> {
+  concat(
+    emitter_produced_divergent_registrations
+      |> map(row => concat("stage0-divergent:", row.basename)),
+    gunbc_cli_emitter_gap() |> map(name => concat("cli-emitter-gap:", name)))
+}
+
+// THE FOUR-ROW TRUTH TABLE, AUTHORED. Every row is authorable at fixture grain because the variant
+// constructors and the evidence mint are both exported, so all four REDs can be exhibited here
+// rather than argued for in prose (DESIGN 4b: the fixture boundary is the one that decides).
+test fn a_standing_agrees_only_when_its_class_matches_its_population() -> Bool {
+  let empty_evidence = observe_outstanding(subject: "fixture" as NonEmptyStr, outstanding: [])
+  let one_member = observe_outstanding(subject: "fixture" as NonEmptyStr, outstanding: ["m"])
+  standing_agrees_with_population(s: Clear { evidence: empty_evidence }, expected: [])
+    && standing_agrees_with_population(s: Outstanding { evidence: one_member }, expected: ["m"])
+    && !standing_agrees_with_population(s: Clear { evidence: one_member }, expected: [])
+    && !standing_agrees_with_population(s: Outstanding { evidence: empty_evidence }, expected: [])
+}
+
+// AND IT REFUSES NotDerivable, which is the row the previous guard closed and the only one it did.
+test fn a_not_derivable_standing_never_agrees() -> Bool {
+  !standing_agrees_with_population(
+    s: milestone_status(m: SelfHostSuccessorPromotionAdmitted), expected: [])
+}
+
 test fn the_ratchet_observation_milestone_is_wired_to_its_fold() -> Bool {
-  let s = milestone_status(m: SelfHostRatchetObservationEnrolled)
-  let members = standing_outstanding_members(s: s)
-  let fold = ratchet_observation_outstanding(cadence: emit_ratchet_runner_cadence)
-  standing_class_label(c: standing_class(s: s)) != "NOT-DERIVABLE"
-    && count(members) == count(fold)
-    && all(fold, f => any(members, m => m == f))
+  standing_agrees_with_population(
+    s: milestone_status(m: SelfHostRatchetObservationEnrolled),
+    expected: ratchet_observation_outstanding(cadence: emit_ratchet_runner_cadence))
 }
 
 // AND THE FUNCTION BEHIND IT IS NOT CONSTANT, which is what keeps the arm above from being a
