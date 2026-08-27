@@ -4,17 +4,16 @@ import gunbc.rust_item_identity {
   RustFunction,
   RustImplMethod,
   RustItemIdentity,
-  rust_item_host_observation_scaffold_note,
+  rust_item_host_observation_producer_note,
   rust_item_identity_key,
   rust_item_identity_extension_proposal_note,
   rust_item_identity_note
 }
-import gunbc.seed_growth_admission {
-  seed_growth_admission_g0_population_note,
-  seed_growth_admission_note,
-  seed_growth_justification_roster_note
-}
+import gunbc.seed_growth_admission { seed_growth_admission_note }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn rust_item_identity_note_cites_impl_method_gap() -> Bool {
   string_contains(s: rust_item_identity_note, pattern: "impl-block method")
@@ -27,6 +26,7 @@ test fn rust_item_identity_key_includes_impl_subject() -> Bool {
     kind: RustImplMethod,
     name: "fmt",
     impl_subject: "std::fmt::Display for Stage0CargoBinManifestParseRefusal",
+    enclosing_module: "",
     start_line: 100,
     loc: 5
   }
@@ -39,26 +39,56 @@ test fn rust_item_identity_key_omits_empty_impl_subject() -> Bool {
     kind: RustFunction,
     name: "parse_stage0_cargo_manifest_bin_paths",
     impl_subject: "",
+    enclosing_module: "",
     start_line: 200,
     loc: 50
   }
   rust_item_identity_key(item: item) == "src/v1/stage0/src/cli_run.rs::fn::parse_stage0_cargo_manifest_bin_paths"
 }
 
+// TWO SAME-NAMED ITEMS IN TWO INLINE MODULES OF ONE FILE MUST NOT SHARE A KEY. If they did, the
+// admission join would find the second one already present in the roster on the strength of the
+// first, and an addition would be admitted by a justification written about something else. This is
+// the discriminating pair rather than a single positive: the same name in two enclosing modules,
+// required to differ.
+test fn same_name_in_two_inline_modules_yields_two_keys() -> Bool {
+  let left = RustItemIdentity {
+    repo_path: "src/v1/stage0/src/cli_run.rs",
+    kind: RustFunction,
+    name: "helper",
+    impl_subject: "",
+    enclosing_module: "bare_reference_scanner_tests",
+    start_line: 10,
+    loc: 3
+  }
+  let right = RustItemIdentity {
+    repo_path: "src/v1/stage0/src/cli_run.rs",
+    kind: RustFunction,
+    name: "helper",
+    impl_subject: "",
+    enclosing_module: "stage0_cargo_manifest_parser_tests",
+    start_line: 40,
+    loc: 3
+  }
+  rust_item_identity_key(item: left) != rust_item_identity_key(item: right)
+    && rust_item_identity_key(item: left)
+      == "src/v1/stage0/src/cli_run.rs::fn::bare_reference_scanner_tests.helper"
+}
+
 test fn seed_growth_admission_note_cites_seed_growth_authority() -> Bool {
   string_contains(s: seed_growth_admission_note, pattern: "gunbc.seed_growth")
     && string_contains(s: seed_growth_admission_note, pattern: "completeness join")
-    && string_contains(s: seed_growth_justification_roster_note, pattern: "CLOSED ROSTER")
 }
 
-test fn g0_population_note_cites_census_host() -> Bool {
-  string_contains(s: seed_growth_admission_g0_population_note, pattern: "scripts/rust_item_census.py")
-    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "SCAFFOLD")
-    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "does NOT pin numeric literals")
-    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "cli_run_hollowing_plan")
-}
-
-test fn rust_item_host_observation_scaffold_names_python_dissolution() -> Bool {
-  string_contains(s: rust_item_host_observation_scaffold_note, pattern: "rust_item_census.py")
-    && string_contains(s: rust_item_host_observation_scaffold_note, pattern: "extdeps/languages/rust")
+// WHAT REPLACED THE TWO PROSE-MATCH ARMS THAT STOOD HERE, AND WHY THEY WERE WORSE THAN EMPTY. Two
+// witnesses asserted that prose rows CONTAINED the substring "scripts/rust_item_census.py" -- a path
+// gunbc#9132 had already deleted from the tree. Their only failure mode was that someone edited a
+// sentence, so they could not tell a repair from a regression, and here they actively defended the
+// regression: while they were green the repository's item-grain census capability was at zero and
+// the rows saying so were pinned in place. The producer note is now asserted for what it must
+// RECORD -- that the trigger it replaced was a conjunction an unrelated cut half-satisfied -- which
+// is the fact a later reader needs and the one that would be lost if the row were quietly rewritten.
+test fn the_producer_note_records_the_half_fired_trigger() -> Bool {
+  string_contains(s: rust_item_host_observation_producer_note, pattern: "CONJUNCTION")
+    && string_contains(s: rust_item_host_observation_producer_note, pattern: "gunbc.rust_item_scan")
 }

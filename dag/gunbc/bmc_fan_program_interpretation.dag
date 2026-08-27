@@ -1,0 +1,81 @@
+module gunbc.bmc_fan_program_interpretation
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash { ContentHash }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// WHAT PRODUCED A SEMANTIC PROGRAM, KEPT SEPARATE FROM WHAT THE PROGRAM MEANS. An adoption says an
+// operator accepted a particular program; this says which decoder, over which bytes, produced the
+// reading that adoption was made from. Keeping them apart decides the case that actually comes up:
+//
+//   a new decoder + the same raw artifact + the same semantic digest
+//     -> the adopted policy still means what it meant; nobody re-adopts anything
+//
+//   a corrected decoder that produces a DIFFERENT semantic digest from the same bytes
+//     -> the old adoption is about a program nobody is running, and needs adjudication
+//
+// Folding decoder provenance into the adoption would make the first case look like the second, so
+// every harmless refactor of this decoder would demand the operator re-approve the fleet's fans.
+type FanProgramDecoderIdentity {
+  entry_declaration: DeclarationRef
+  source_closure_digest: ContentHash
+  compiler_runtime_digest: ContentHash
+}
+
+// THE IDENTITY IS NOT AUTHORED HERE, AND THAT IS THE WHOLE CONTENT OF THIS MODULE TODAY. Both
+// digests are properties of an execution -- the exact transitive source closure that ran, and the
+// compiler binary that ran it -- so a hand-written pair would be two literals typed by the same
+// person who typed the decoder, joined by nothing. That is precisely the fake join removed from
+// the capture observer on gunbc#9299: two constants that agree because one author wrote both, and
+// which keep agreeing after the thing they describe has changed.
+//
+// So the absent state is a named state rather than a placeholder value, and every consumer must
+// match it. A receipt with no decoder identity is usable for saying WHAT was read; it is not
+// usable for saying that two readings were produced by the same reader.
+type DecoderIdentityStanding
+  = DecoderIdentityEstablished { identity: FanProgramDecoderIdentity }
+  | DecoderIdentityNotInstrumented { obligation: NonEmptyStr }
+
+// THE PRECEDENT AND THE TRIGGER, both named so this does not have to be rediscovered. The two-digest
+// shape already exists in this repository: tools.multi_module_compile_fixture carries a structural
+// source_digest over its exact source vector and a compiler_digest taken from the running
+// compiler's own content hash, and its note records why both are absent from its refused arm --
+// stamping a digest on a measurement that did not happen names a measurement that did not happen.
+// This module reuses that concept rather than minting a fan-specific one.
+//
+// DISSOLVES WHEN: an instrument supplies both digests for a decode, at which point
+// DecoderIdentityNotInstrumented has no producer and the carrier below always holds an established
+// identity. Until then the standing is honest and the receipt says so.
+data decoder_identity_instrument_obligation: NonEmptyStr = "no instrument in this repository supplies a source-closure digest for a .dag entry's transitive closure together with the running compiler's content digest, so a decoder identity would have to be hand-authored beside the result it describes. Precedent for the shape: tools.multi_module_compile_fixture source_digest and compiler_digest."
+
+data fan_program_decoder: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.bmc.pid_control_representability",
+  decl_name: "program_representability",
+  field: WholeDeclaration,
+}
+
+data fan_program_decoder_identity_standing: DecoderIdentityStanding = DecoderIdentityNotInstrumented {
+  obligation: decoder_identity_instrument_obligation,
+}
+
+// THE RECEIPT JOINS THE THREE FACTS A LATER ADOPTION NEEDS, and carries the decoder's standing
+// rather than assuming one. The artifact digest says which bytes were read; the semantic digest
+// says what program they were read AS; the standing says whether the reader that turned one into
+// the other is itself identified.
+type FanProgramInterpretationReceipt {
+  source_artifact_digest: ContentHash
+  semantic_program_digest: ContentHash
+  decoder: DeclarationRef
+  decoder_standing: DecoderIdentityStanding
+}
+
+// A RECEIPT WHOSE DECODER IS UNIDENTIFIED CAN STILL BE COMPARED WITH ANOTHER OF THE SAME KIND, and
+// this predicate is what a consumer asks before treating two receipts' semantic digests as
+// comparable. It answers false today, deliberately: two digests produced by decoders nobody can
+// identify are equal-looking, not established-equal.
+fn receipt_decoder_is_identified(receipt: FanProgramInterpretationReceipt) -> Bool {
+  match receipt.decoder_standing {
+    DecoderIdentityEstablished { identity } => true
+    DecoderIdentityNotInstrumented { obligation } => false
+  }
+}

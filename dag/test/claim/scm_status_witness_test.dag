@@ -1,10 +1,19 @@
 module test.claim.scm_status_witness
 
 import std.types { Bool, String, List, Int }
+import std.minted_identity { MintedId, MintedIdAllocator }
 import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.object_store { ObjectStore, ObjectId, empty_store, store_node, Stored, LocatorCollision }
-import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryCommitMinted,
+  RepositoryCommitMintAllocatorInvalid,
+  RepositoryCommitMintRootMissing,
+  RepositoryCommitMintParentMissing,
+  mint_repository_commit,
+}
 import gunbc.scm.merge { Proposal, Requirement, RequireBinding, RequireBindingAbsent }
 import gunbc.scm.authoring { author_requirement, empty_proposal }
 import gunbc.scm.status {
@@ -29,31 +38,57 @@ fn status_witness_atom(name: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
 }
 
-fn status_witness_stored_id(name: Symbol) -> ObjectId {
+type StatusWitnessStored { store: ObjectStore, identity: ObjectId }
+
+fn status_witness_stored(name: Symbol) -> StatusWitnessStored {
   match store_node(store: empty_store(), n: status_witness_atom(name: name)) {
-    Stored { store: _, identity: identity } => identity
-    LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
+    Stored { store: store, identity: identity } => StatusWitnessStored { store: store, identity: identity }
+    LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+      StatusWitnessStored { store: empty_store(), identity: identity }
   }
 }
 
+fn status_witness_ref(ordinal: Int) -> RepositoryCommitRef {
+  RepositoryCommitRef { identity: MintedId { ordinal: ordinal } }
+}
+
 fn status_witness_empty_repository() -> RepositoryEnvelope {
-  RepositoryEnvelope { store: empty_store(), commits: [], checked_out: none }
+  RepositoryEnvelope {
+    store: empty_store(),
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+  }
 }
 
 fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
-  let root = status_witness_stored_id(name: ^r1)
-  RepositoryEnvelope {
-    store: empty_store(),
-    commits: [RepositoryCommit { root: root, message: "first" }],
-    checked_out: Present { value: root },
+  let held = status_witness_stored(name: ^r1)
+  let base = RepositoryEnvelope {
+    store: held.store,
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+  }
+  match mint_repository_commit(repository: base, root: held.identity, message: "first", parent: none) {
+    RepositoryCommitMinted { repository: minted, reference: reference } => RepositoryEnvelope {
+      store: minted.store,
+      commits: minted.commits,
+      commit_allocator: minted.commit_allocator,
+      checked_out: Present { value: reference },
+    }
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => base
+    RepositoryCommitMintRootMissing { root: _ } => base
+    RepositoryCommitMintParentMissing { parent: _ } => base
   }
 }
 
 fn status_witness_repository_with_dangling_checkout() -> RepositoryEnvelope {
+  let valid = status_witness_repository_with_checkout()
   RepositoryEnvelope {
-    store: empty_store(),
-    commits: [RepositoryCommit { root: status_witness_stored_id(name: ^r1), message: "first" }],
-    checked_out: Present { value: status_witness_stored_id(name: ^elsewhere) },
+    store: valid.store,
+    commits: valid.commits,
+    commit_allocator: MintedIdAllocator { next_ordinal: 2 },
+    checked_out: Present { value: status_witness_ref(ordinal: 1) },
   }
 }
 
@@ -71,7 +106,7 @@ test fn a_fresh_repository_reports_nothing_checked_out_and_is_resolvable() -> Bo
     && match s.checkout {
       NothingCheckedOut => true
       CheckedOutCommit { root: _, message: _ } => false
-      CheckedOutCommitMissing { root: _ } => false
+      CheckedOutCommitMissing { reference: _ } => false
     }
 }
 
@@ -87,7 +122,7 @@ test fn a_dangling_checkout_is_reported_as_missing_not_as_ordinary() -> Bool {
   )
   !status_checkout_is_resolvable(status: s)
     && match s.checkout {
-      CheckedOutCommitMissing { root: _ } => true
+      CheckedOutCommitMissing { reference: _ } => true
       CheckedOutCommit { root: _, message: _ } => false
       NothingCheckedOut => false
     }
@@ -102,7 +137,7 @@ test fn a_resolvable_checkout_carries_its_commit_message() -> Bool {
     && s.commit_count == 1
     && match s.checkout {
       CheckedOutCommit { root: _, message: message } => message == "first"
-      CheckedOutCommitMissing { root: _ } => false
+      CheckedOutCommitMissing { reference: _ } => false
       NothingCheckedOut => false
     }
 }

@@ -1,6 +1,7 @@
 module v2.compiler.infer
 
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
@@ -79,7 +80,6 @@ import v2.std.node {
   Node,
   NodeFold,
   Symbol,
-  SyntheticOccurrence,
   Transform,
   TypeNode,
   Value,
@@ -88,7 +88,7 @@ import v2.std.node {
   loop_edge_contributes_to_iteration_fold,
   match_arm_body,
   match_arm_pattern,
-  well_formed
+  well_formed,
 }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
@@ -566,7 +566,7 @@ fn infer_branch_int_binding_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1370,7 +1370,7 @@ fn infer_gather_fold_failure_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^infer_gather_fold_failure } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

@@ -637,10 +637,10 @@ pub fn stage0_partition_row_dependencies_outcome(
     }
 }
 
-pub fn stage0_partition_row_features(
-    row: Rc<GeneratedPartitionCrateRow>,
+pub fn stage0_features_for_crate_kind(
+    kind: GeneratedPartitionCrateKind,
 ) -> Rc<Vec<Rc<CargoFeature>>> {
-    match row.kind.clone() {
+    match kind.clone() {
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => {
             Rc::new(vec![Rc::new(CargoFeature {
                 name: "text_lookup_work_counter".to_string(),
@@ -650,6 +650,12 @@ pub fn stage0_partition_row_features(
         GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => Rc::new(vec![]),
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => Rc::new(vec![]),
     }
+}
+
+pub fn stage0_partition_row_features(
+    row: Rc<GeneratedPartitionCrateRow>,
+) -> Rc<Vec<Rc<CargoFeature>>> {
+    stage0_features_for_crate_kind(row.kind.clone())
 }
 
 pub fn stage0_partition_row_to_spec_outcome(
@@ -685,7 +691,11 @@ pub fn render_stage0_crate_dep(dep: Rc<CargoDependency>) -> String {
     match (*dep.source.clone()).clone() {
         CargoDepSource::RegistryDep {
             version, features, ..
-        } => emit_cargo_dep(dep.name.clone(), version.clone(), features.clone()),
+        } => crate::v1_compiler_emit_rust::emit_cargo_dep(
+            dep.name.clone(),
+            version.clone(),
+            features.clone(),
+        ),
         CargoDepSource::LocalPathDep { path: path, .. } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(dep.name.clone(), " = { path = \"".to_string()),
@@ -756,7 +766,9 @@ pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        render_cargo_package_header_prefix(spec.package_name.clone()),
+                        crate::extdeps_cargo_version::render_cargo_package_header_prefix(
+                            spec.package_name.clone(),
+                        ),
                         "\nedition = \"2021\"".to_string(),
                     ),
                     render_stage0_crate_features_section(spec.features.clone()),
@@ -818,7 +830,7 @@ pub fn render_stage0_foundation_lib(spec: Rc<Stage0CrateSpec>) -> String {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(head.clone(), "\n\n".to_string()),
-                    emit_non_empty_wrappers(),
+                    crate::v1_compiler_emit_rust::emit_non_empty_wrappers(),
                 ),
                 "\n".to_string(),
             )
@@ -1085,7 +1097,7 @@ pub fn stage0_crate_boundary_emit_outcome() -> Rc<Stage0CrateBoundaryEmitOutcome
 pub fn stage0_crate_plan_list_wrapper_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            unbound_dissolution("dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.".to_string())
+            crate::std_dissolution::unbound_dissolution("dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

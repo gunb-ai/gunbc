@@ -49,8 +49,14 @@ use serde::Serialize;
 
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
+// THE WAVE-ADMISSION WALL RIDES THE SAME SWEEP the index above is built by, which is why it is
+// registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
+// and a second acquisition of the corpus to answer a second question is the cost-shape defect
+// DESIGN §6 names.
 pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
+#[path = "namespace_wave_admission.rs"]
+pub mod namespace_wave_admission;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 #[path = "required_regen_host.rs"]
@@ -58,11 +64,18 @@ mod required_regen_host;
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
 // the emitted crate's exported surface is unchanged; the obligation is enrolled in
 // `gunbc.target_invocation_seed_growth`.
+#[path = "behavioral_receipt_host.rs"]
+pub mod behavioral_receipt_host;
 #[path = "target_invocation_host.rs"]
 pub mod target_invocation_host;
 
+#[path = "generated_artifact_boundary_host.rs"]
+mod generated_artifact_boundary_host;
 #[path = "partition_crate_boundary_host.rs"]
 mod partition_crate_boundary_host;
+
+#[path = "emitted_closure_compile_host.rs"]
+mod emitted_closure_compile_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
@@ -1919,6 +1932,73 @@ pub enum CompileDiagnosticCensus {
     NotRunnable(String),
 }
 
+thread_local! {
+    static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO: std::cell::RefCell<
+        std::collections::HashMap<String, CompileDiagnosticCensus>,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+/// `(hits, misses)` for the `compile_dag_diagnostic_census` memo across the whole process.
+/// Report-only; no consumer branches on it. Same accounting shape, and the same reason for it,
+/// as [`compile_dag_rust_emit_check_memo_counts`]: a hit count with no denominator is not a
+/// measurement.
+pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
+    (
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.load(std::sync::atomic::Ordering::Relaxed),
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.load(std::sync::atomic::Ordering::Relaxed),
+    )
+}
+
+/// Memoized entry point for the census, mirroring [`compile_dag_rust_emit_check`]'s memo rather
+/// than inventing a second caching discipline beside it (DESIGN §3 — the two builtins compile the
+/// same program through the same pipeline and differ only in what they report, so they must not
+/// disagree about when a compile may be reused).
+///
+/// WHY THIS EXISTS, stated as the measurement that produced it rather than as a general
+/// preference: `compile_dag_rust_emit_check` was memoized and this sibling was not, so a witness
+/// asking two QUESTIONS about one source paid for two full compiles of it. `neither_green_source_
+/// refuses_and_neither_mis_resolves` (`test.claim.callable_candidate_ambiguity_witness`) is the
+/// specimen — four census calls over two distinct sources, so half of its compiles recomputed a
+/// pure function of an input already compiled in the same run. That is the DESIGN §6
+/// bare-minimum-cost class ("a proven cost-shape defect is ALWAYS fixed, regardless of the
+/// realized n"), and its n stopped being small: the row reached 5437ms CPU against the 5000ms
+/// `required_floor_claim_cpu_safety_limit_ms`, which is a FAIL-STOP protecting the executor and
+/// explicitly "never a budget, tolerance, or target" — so the admissible repair is to stop
+/// recomputing, never to raise the line.
+///
+/// PURITY, and it is the whole reason for the guard: the memo is armed ONLY under the floor's
+/// prepared-inventory snapshot and keyed on the source TOGETHER WITH that inventory's content
+/// digest, because `build_module_path_index_from_witness_roots` reads those bytes and the census
+/// is therefore a function of the corpus as well as of the source. Outside the guard there is no
+/// snapshot, so a hit would be a claim about disk that nothing established — DESIGN's
+/// cache-impurity rule (key on declared-input content), and the reason this is not simply a
+/// `HashMap` on the source string.
+pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
+    let Some(inventory_digest) = floor_prepared_inventory_digest() else {
+        return compile_dag_diagnostic_census_uncached(source);
+    };
+    let memo_key = {
+        use crate::v1_rt::{atom_identity_hash, hash_combine};
+        let h = atom_identity_hash(source.to_string());
+        hash_combine(h, atom_identity_hash(inventory_digest))
+    };
+    if let Some(hit) =
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
+    {
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        return hit;
+    }
+    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let census = compile_dag_diagnostic_census_uncached(source);
+    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow_mut().insert(memo_key, census.clone()));
+    census
+}
+
 /// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
 /// `.dag` program through the v1 pipeline to the Rust render target (the same pipeline
 /// [`compile_dag_rust_emit_check`] uses), and report the full per-class diagnostic census the
@@ -1940,7 +2020,7 @@ pub enum CompileDiagnosticCensus {
 /// fail-open / `UnlistedImportUse` advisory path. Census receipts therefore must not be read as
 /// production compile-clean behavior for those type positions. It observes nothing about the
 /// interpreter's disposition of the same program and nothing about other emission targets.
-pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
+fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDiagnosticCensus {
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
             let module_index = build_module_path_index_from_witness_roots();
@@ -2394,6 +2474,42 @@ thread_local! {
 // not reported" — DESIGN's empty-observation narrow, ⊥-as-answer conflated with ⊥-as-ignorance.
 // One end-of-run receipt carrying BOTH numbers is the same information at 1/N the volume, and
 // it is the first form in which the ratio is readable at all.
+thread_local! {
+    /// CPU spent, on this thread, FILLING shared memoized artifacts during the current claim.
+    ///
+    /// WHY THIS QUANTITY EXISTS AT ALL, and it is an attribution fact rather than a performance
+    /// one: a memoized compile is consumed by every claim that names the same source, but its
+    /// cost lands entirely on whichever claim happened to reach it FIRST. That makes a
+    /// merge-blocking per-claim ceiling a function of EXECUTION ORDER rather than of the tree —
+    /// the same claim is over or under the line depending on who got there first. The floor
+    /// already refuses that accounting for its larger shared artifacts: the three
+    /// `[floor-phase]` warm builds report `provenance=built-by-preparation` and are billed to
+    /// preparation, never to a claim. This is that same rule at a smaller grain (DESIGN §2 — one
+    /// concept, every scale), which is why it reuses `SharedBuildProvenance` rather than minting
+    /// an exemption beside it.
+    ///
+    /// IT EXEMPTS NOTHING. The cost is measured, accumulated, reported per claim and attributed
+    /// to the shared artifact; it stops being CHARGED to the first payer and does not stop being
+    /// COUNTED. A cost that vanished here would be the absorbing fallback (§5) wearing an
+    /// accounting label — the deficit's frequency zeroed by construction — so the receipt carries
+    /// marginal and fill as two columns whose sum is the claim's whole measured cost.
+    static SHARED_ARTIFACT_FILL_CPU_NANOS: std::cell::Cell<u128> =
+        const { std::cell::Cell::new(0) };
+}
+
+/// Accumulate CPU spent filling a shared memoized artifact. Called ONLY from a memo MISS path,
+/// and only under the floor guard — outside it there is no memo, so there is no shared artifact
+/// and nothing to attribute.
+fn record_shared_artifact_fill_cpu(nanos: u128) {
+    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
+}
+
+/// Read the running total for this thread. The claim loop samples it either side of one claim;
+/// the difference is that claim's fill.
+pub fn shared_artifact_fill_cpu_nanos() -> u128 {
+    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
+}
+
 static COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 static COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES: std::sync::atomic::AtomicU64 =
@@ -2475,7 +2591,14 @@ pub fn compile_dag_rust_emit_check(
         return hit;
     }
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    // A MISS FILLS A SHARED ARTIFACT. Measured on the same thread clock the claim loop enforces
+    // against, so the two quantities cannot drift apart, and recorded rather than subtracted here
+    // — the claim loop does the split, this only says how much of the cost was a fill.
+    let fill_started = v1_interpreter::thread_cpu_nanos();
     let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    record_shared_artifact_fill_cpu(
+        v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
+    );
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict));
     verdict
 }
@@ -3740,6 +3863,7 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
         && matches!(
             d.diagnostic.as_ref(),
             crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
+                | crate::v1_std_core::CompilerDiagnostic::UnlistedVariantValueUse { .. }
                 | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
                 | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
                 // A non-blocking variant that is absent from this list is counted by
@@ -5367,6 +5491,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "NonExhaustiveMatch",
         CompilerDiagnostic::CircularDependency { .. } => "CircularDependency",
         CompilerDiagnostic::DuplicateModule { .. } => "DuplicateModule",
+        CompilerDiagnostic::DuplicateDeclaration { .. } => "DuplicateDeclaration",
         CompilerDiagnostic::MissingAnnotation { .. } => "MissingAnnotation",
         CompilerDiagnostic::ParseError { .. } => "ParseError",
         CompilerDiagnostic::InternalError { .. } => "InternalError",
@@ -5398,6 +5523,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => {
             "AmbiguousAnonymousRecordLiteral"
         }
+        CompilerDiagnostic::ModuleFilenameCollision { .. } => "ModuleFilenameCollision",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
         CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
@@ -5410,6 +5536,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
             "ServiceConfigReferenceJudgmentDeferred"
         }
+        CompilerDiagnostic::UnlistedVariantValueUse { .. } => "UnlistedVariantValueUse",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -5429,6 +5556,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
         CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),
         CompilerDiagnostic::DuplicateModule { name, .. } => name.clone(),
+        CompilerDiagnostic::DuplicateDeclaration { name, .. } => name.clone(),
         CompilerDiagnostic::MissingAnnotation { fn_name, .. } => fn_name.clone(),
         CompilerDiagnostic::ParseError { message, .. } => truncate_histogram_label(message, 80),
         CompilerDiagnostic::InternalError { message, .. } => {
@@ -5452,12 +5580,14 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeNotInhabited { position, .. } => position.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
+        CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name, .. } => name.clone(),
         CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter, .. } => parameter.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates, .. } => {
             candidates.iter().cloned().collect::<Vec<_>>().join("|")
         }
+        CompilerDiagnostic::ModuleFilenameCollision { filename, .. } => filename.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
         CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
@@ -18396,6 +18526,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                             module,
                             &source_indices,
                             &rel,
+                            &fill.occurrence_transport,
                         ));
                     }
                     records.lock().expect("record lock").extend(built);
@@ -19884,11 +20015,39 @@ pub fn run_claim_measured(
     }
     let started = std::time::Instant::now();
     let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();
+    let fill_before_nanos = shared_artifact_fill_cpu_nanos();
     let outcome = run_claim(ctx, function);
     // CPU consumed by THIS (witness-eval) thread — the budget metric, so the completion-side
     // check matches the cooperative stride-poll and neither fires on cold-I/O or contention
     // wall time. wall_nanos stays the measurement/receipt basis (unchanged).
-    let cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
+    let measured_cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
+    // SHARED-ARTIFACT FILL IS NOT THIS CLAIM'S MARGINAL COST (operator-line ruling, 2026-08-27).
+    // Whatever this claim spent filling a memo is consumed by every later claim naming the same
+    // source — one of them measured at literally 0ms in the same run because this one paid — so
+    // charging it here makes a merge-blocking ceiling a function of EXECUTION ORDER rather than of
+    // the tree. The floor already bills its three `[floor-phase]` warm builds to preparation with
+    // `provenance=built-by-preparation` for exactly this reason; this is that rule at memo grain.
+    //
+    // THE COST IS SPLIT, NEVER DROPPED: `fill_cpu_nanos` is reported per claim and the two halves
+    // sum to `measured_cpu_nanos`. A runaway compile cannot hide behind "it was a miss", because
+    // the fill is still counted, still attributed and still visible in the receipt.
+    let fill_cpu_nanos = shared_artifact_fill_cpu_nanos().saturating_sub(fill_before_nanos);
+    let cpu_nanos = measured_cpu_nanos.saturating_sub(fill_cpu_nanos);
+    if fill_cpu_nanos > 0 {
+        // REPORTED, NOT ABSORBED. Printed on its own line, per claim, whenever a fill happened,
+        // so the quantity the ceiling stops charging is visible at the same grain it was measured
+        // — the difference between attributing a cost and losing one. `triggered_by` is this
+        // claim, which is precisely what `SharedBuildProvenance::AlreadyWarmOnEntry` records for
+        // the larger shared builds: every later claim reading this artifact reads it warm, and
+        // this line names who paid.
+        eprintln!(
+            "[floor-shared-fill] claim={function} marginal_cpu_ms={} fill_cpu_ms={} \
+             measured_cpu_ms={} provenance=filled-shared-artifact triggered_by={function}",
+            cpu_nanos / 1_000_000,
+            fill_cpu_nanos / 1_000_000,
+            measured_cpu_nanos / 1_000_000,
+        );
+    }
     let wall_nanos = started.elapsed().as_nanos();
     ctx.clear_eval_deadline();
     ctx.clear_wall_deadline();
@@ -26152,10 +26311,24 @@ fn call_floor_row_precompute_would_skip(
 // (a live read hidden behind an import was invisible to entry-text scanning): the
 // entry's own row asserts the fact for the whole evaluation, wherever the read hides.
 // A row that DECLARES SubstrateInputsOnly while actually reading live state is not
-// re-checked by any text scan — the nightly affected-set falsifier (predict-only cold
-// run) is the enforcement; a lying row surfaces as a counted divergence within one
-// cadence window. Call-reachability-grade classification (fn-arrow DependencyView over
-// lowered bodies) remains the later lane that re-derives these declarations.
+// re-checked by any text scan, AND IT IS NOW RE-CHECKED BY NOTHING AT ALL. This comment
+// named the nightly affected-set falsifier (predict-only cold run) as the enforcement,
+// promising that a lying row surfaces as a counted divergence within one cadence window.
+// THAT CADENCE IS GONE: `falsifier.yml` was deleted by the 2026-08-15 floor cut and sits
+// on DESIGN's unguarded list awaiting its own re-add, so the sentence was true when
+// written and became false when the workflow died, with nothing to notice. One claim in
+// three places — here, `v2.std.live_tree` `live_tree_disposition_note`, and that module's
+// `live_tree_disposition_stamp_provenance` — all three corrected together, because a claim
+// with three homes corrected in one still has two authorities (DESIGN §3).
+//
+// WHAT IS LEFT IS NOT A WEAKER WALL, IT IS NO WALL. `reads_live_tree_effective` consults
+// this declaration FIRST and falls through to `effect_reach_derived_reads_live_tree_for_entry`
+// only for a row already claiming SubstrateInputsOnly, so that derivation is the sole thing
+// standing behind a false claim — and it is a partial classifier, not an enforcement:
+// `v2.std.effect_reach` `effect_reach_detection_ceiling` files its three bounds and its
+// evidence. A lying declaration therefore buys a predict-skip that nothing observes.
+// Call-reachability-grade classification (fn-arrow DependencyView over lowered bodies) is
+// the capability that would restore an enforcement here, and it remains unbuilt.
 fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool, String> {
     let mut declared: Option<bool> = None;
     for line in content.lines() {
@@ -31499,6 +31672,52 @@ mod node_frontier_plumbing_controls {
         );
     }
 
+    /// THE DERIVATION'S CEILING, MADE EXECUTABLE. `v2.std.effect_reach` classifies a closure as
+    /// host-reading only when TWO INDEPENDENT EXISTENTIALS both hold somewhere in it: some module
+    /// declares a repository path literal, AND some module contains a host-sink call shape. They
+    /// are evaluated over the closure separately, so neither is a statement about the other — the
+    /// conjunction is not reachability, and it is not a conservative bound in either direction.
+    ///
+    /// WHY THIS PAIR AND NOT A CORPUS COUNT. A count over the live tree is a fact about today's
+    /// corpus and rots (DESIGN §5's oracle rule); this fixture authors both sides, so the red is a
+    /// property of the derivation and survives any amount of corpus drift. The two entries differ
+    /// by exactly one import edge whose only content is a path-literal row, and the read they
+    /// perform is byte-identical — so the disagreement can only be the conjunction.
+    ///
+    /// WHAT IT DOES NOT CLAIM. This is not an argument that the derivation should be widened here:
+    /// its own doc records under-approximation as a deliberate fail-open on the SKIP axis, where a
+    /// missed live reader costs a skipped witness rather than a wrong answer. What the pair
+    /// establishes is narrower and is the thing that was being assumed away: the derivation cannot
+    /// stand in for the authored declaration, so `parse_entry_live_tree_disposition`'s fail-closed
+    /// undeclared default is load-bearing rather than redundant with it.
+    #[test]
+    fn effect_reach_conjunction_loses_a_closure_that_reads_with_no_path_literal() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![ws
+            .join("dag/test/fixture/effect_reach_conjunction")
+            .to_string_lossy()
+            .into_owned()];
+        let facts = super::build_module_graph_facts_live(&roots);
+        let sink_only = "dag/test/fixture/effect_reach_conjunction/sink_only_entry.dag";
+        let sink_and_path = "dag/test/fixture/effect_reach_conjunction/sink_and_path_entry.dag";
+        // POSITIVE CONTROL FIRST: without it a `false` below proves only that the fixture never
+        // reached the derivation at all.
+        assert!(
+            super::effect_reach_derived_reads_live_tree_for_entry(sink_and_path, &facts),
+            "positive control: a closure carrying BOTH terms must derive host-reading, or this \
+             fixture is not reaching the derivation and the red below is meaningless"
+        );
+        assert!(
+            !super::effect_reach_derived_reads_live_tree_for_entry(sink_only, &facts),
+            "THE CEILING: a closure whose only host reach is a real `Filesystem.Read` derives \
+             NOT-live because no module in it carries a repository path literal. This assertion \
+             is expecting-red by construction — it flips the day the derivation stops conjoining \
+             a storage fact with a reachability one, and at that point it becomes the regression \
+             control for the repair rather than being deleted (DESIGN §4b(4))"
+        );
+    }
+
     // Phase 0 monotone-toward-RUN (bridge b): effect_reach_touched is additive touch
     // evidence — it may block skip on literal match but absence must not enable skip
     // beyond today's rules for a hermetic entry.
@@ -32315,6 +32534,20 @@ fn emit_source_root_entry_admission_data(admission: &SourceRootEntryAdmission) -
     )
 }
 
+/// The fnv1a64 digest of one NUL-delimited material string, rendered as `fnv1a64:<hex>`.
+///
+/// Extracted from `source_root_ingest_content_hash_fnv1a64` rather than copied beside it: a second
+/// site spelling out the same two constants would be one concept with two authorities, and the
+/// two would then be free to disagree about a digest two carriers are expected to compare.
+pub fn fnv1a64_digest_of_material(material: &str) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in material.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("fnv1a64:{hash:016x}")
+}
+
 pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord]) -> String {
     let mut material = String::new();
     for rec in records {
@@ -32323,12 +32556,7 @@ pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord])
         material.push_str(&rec.source);
         material.push('\0');
     }
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in material.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    format!("fnv1a64:{hash:016x}")
+    fnv1a64_digest_of_material(&material)
 }
 
 fn path_matches_any_subpath(path: &str, subpaths: &[String]) -> bool {
@@ -32548,7 +32776,6 @@ pub fn emit_module_storage_binding_manifest(
     out.push_str("import std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.diagnostic { ByteRange, Textual }\n");
     out.push_str("import v2.std.integer { Int }\n");
-    out.push_str("import v2.std.node { MintedOccurrence }\n");
     out.push_str("import v2.std.provenance { FromSource, span_index_empty, span_index_record }\n");
     out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
@@ -32606,30 +32833,25 @@ fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, Strin
     ))
 }
 
-/// The `OccurrenceId` construction is FULLY QUALIFIED deliberately, and the name is
-/// correspondingly absent from this manifest's `v2.std.node` import list.
+/// THE FIELD THIS EMITS IS AN `OccurrenceId`, NOT A `NodeOccurrenceIdentity` ARM.
 ///
-/// `v2.std.node.OccurrenceId` is a compatibility alias of `std.occurrence_identity.OccurrenceId`
-/// (#7352). Both modules sit in this overlay's compiled pool, so a BARE `OccurrenceId` in a
-/// record-literal position resolves to two candidates and the indexer refuses:
-/// "ambiguous reference 'OccurrenceId' ... qualify by containment path, alias, or rename".
-/// A bare reference in a TYPE position still resolves (v2/std/provenance.dag, v2/std/dependents.dag) —
-/// only construction sites need the qualification, which is why this reads as an inconsistency.
+/// `span_index_record` declares `id: OccurrenceId`, and this generator previously wrapped the
+/// value in `MintedOccurrence { id: ... }` and imported that constructor from `v2.std.node` --
+/// a payload-for-carrier confusion of exactly the class
+/// `dag/test/claim/coproduct_payload_soundness_witness_test.dag` records, pointing the other way.
+/// It stayed invisible because this file is generated: whole-tree compile-clean never sees it,
+/// and the committed manifest stub carries no rows, so the wrapped form was never parsed.
+/// Repaired with the v2 `NodeOccurrenceId` facade cut, which deleted the constructor it named.
 ///
-/// #7352 applied exactly this qualification to the one COMMITTED construction site
-/// (src/v2/test/claim/manual/bind_demand_driven_eval_test.dag) and missed this generator.
-/// The gap stayed invisible because this file is generated: whole-tree compile-clean never
-/// sees it, and its only executing consumer is the module-binding supply gate, which moved
-/// off per-PR CI onto the falsifier cadence — where it then failed for four days.
-///
-/// Dissolve-on: the `node_occurrence_id_v2_facade_dissolve_on` migration deletes the
-/// `v2.std.node` alias; the second candidate disappears and the qualification is free to drop.
+/// The construction stays FULLY QUALIFIED, and the name is correspondingly absent from this
+/// manifest's import list: a bare `OccurrenceId` in a record-literal position has resolved
+/// ambiguously in this overlay's compiled pool before (#7352), and qualifying costs nothing.
 fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> String {
     let start = span.start.max(0);
     let end = span.end.max(start);
     let occurrence_id = start.max(1);
     format!(
-        "span_index_record(\n  index: span_index_empty(),\n  id: MintedOccurrence {{ id: v2.std.node.OccurrenceId {{ value: {occurrence_id} }} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
+        "span_index_record(\n  index: span_index_empty(),\n  id: std.occurrence_identity.OccurrenceId {{ value: {occurrence_id} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
     )
 }
 
@@ -43898,6 +44120,8 @@ pub struct PreparedRepository {
     pub modules_excluded: usize,
     /// The witness sites preparation found, already folded. NOT the corpus bytes.
     pub witness_files: Vec<InventoryWitnessFile>,
+    /// Admitted sources carrying zero `test fn` decls. See `PreparedSubject::test_decl_free_paths`.
+    pub test_decl_free_paths: Vec<String>,
 }
 
 /// Shared view of one admitted source. Holds the same `Rc<SourceFile>` preparation already
@@ -44086,6 +44310,14 @@ pub struct PreparedSubject {
     pub sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     pub inventory: Vec<PreparedSourceView>,
     pub witness_files: Vec<InventoryWitnessFile>,
+    /// Admitted sources carrying ZERO `test fn` decls, by repo-relative path.
+    ///
+    /// Preparation records the fact and judges nothing with it. Whether a path in here is a
+    /// VIOLATION is a policy question owned by `v2.workflow.floor_naming_hygiene`
+    /// (`floor_test_sidecar_suffix` / `floor_entry_is_barren_test_sidecar`), and the floor asks
+    /// it once, later, against the constant read from that module — so the rule keeps one home
+    /// and only its consumer moved.
+    pub test_decl_free_paths: Vec<String>,
     pub subject_digest: String,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
@@ -44112,6 +44344,7 @@ pub fn assemble_prepared_subject(
     let index = build_module_index(source_roots);
     let total = index.len();
     let mut witness_files: Vec<InventoryWitnessFile> = Vec::new();
+    let mut test_decl_free_paths: Vec<String> = Vec::new();
     let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::with_capacity(total);
     let mut inventory: Vec<PreparedSourceView> = Vec::with_capacity(total);
     for (module_path, sf) in index.iter() {
@@ -44122,8 +44355,42 @@ pub fn assemble_prepared_subject(
         {
             continue;
         }
-        if let Some(site) = witness_file_from_source(module_path, &sf.path, &sf.content) {
-            witness_files.push(site);
+        // THE DROP THAT MADE A WALL UNREACHABLE, NOW A RECORDED FACT.
+        //
+        // `witness_file_from_source` answers `None` for a file with no `test fn` decl, and this
+        // loop used to discard that answer. Since `run_required_floor` builds its whole roster
+        // from `witness_files`, a `*_test.dag` file declaring no `test fn` was not declined and
+        // not counted — it left the floor's universe entirely, one level ABOVE the
+        // `offered = routed + declined_long + declined_live` partition, which is why that line
+        // can be exact and still say nothing about it.
+        //
+        // The `.dag` producer has carried a wall for exactly this since it was written
+        // (`v2.workflow.floor_naming_hygiene` `floor_entry_is_barren_test_sidecar`, refused as
+        // `BarrenTestSidecar`), and it never fired, because the required floor does not take the
+        // path that reaches it — `invoke_floor_discovery_producer` is reachable only through
+        // `discover_floor_witness_roster`, which `run_required_floor` never calls.
+        //
+        // AND THE RECORDED SET USES THE RULE'S OWN VOCABULARY, NOT THIS SCANNER'S. `test data `
+        // is a test decl to `floor_discovery_scan_test_decl_names`, which is what
+        // `floor_entry_is_barren_test_sidecar` composes, so a file declaring only `test data`
+        // rows is NOT barren under the rule this wall enforces — measured at 3bbd53c05a, 13 such
+        // files exist and refusing them here would have been this wall over-reaching into a
+        // different defect. That different defect is real and is declared, not fixed here:
+        // `witness_file_from_source` recognises `test fn ` and not `test data `, so those rows
+        // are dropped from the floor's roster whether or not their file carries a `test fn`.
+        let site = witness_file_from_source(module_path, &sf.path, &sf.content);
+        let declares_no_test_decl = site.is_none()
+            && !sf
+                .content
+                .lines()
+                .any(|line| line.starts_with("test data "));
+        match site {
+            Some(site) => witness_files.push(site),
+            None => {
+                if declares_no_test_decl {
+                    test_decl_free_paths.push(p.clone());
+                }
+            }
         }
         inventory.push(PreparedSourceView {
             module_path: module_path.clone(),
@@ -44136,12 +44403,14 @@ pub fn assemble_prepared_subject(
     }
     let modules_excluded = total - sources.len();
     witness_files.sort_by(|a, b| a.path.cmp(&b.path));
+    test_decl_free_paths.sort();
     let subject_digest = subject_digest_for_closure(&sources);
     let modules_resolved = total - modules_excluded;
     Ok(PreparedSubject {
         sources,
         inventory,
         witness_files,
+        test_decl_free_paths,
         subject_digest,
         modules_resolved,
         modules_excluded,
@@ -44170,6 +44439,7 @@ pub fn prepare_repository_once(
         sources,
         inventory,
         witness_files,
+        test_decl_free_paths,
         subject_digest,
         modules_resolved,
         modules_excluded,
@@ -44184,6 +44454,7 @@ pub fn prepare_repository_once(
             modules_resolved,
             modules_excluded,
             witness_files,
+            test_decl_free_paths,
         },
         inventory,
     ))
@@ -44245,6 +44516,18 @@ pub struct PreparedClaimScope {
     /// counted here so the population is a measured quantity rather than an assumption, which is
     /// what decides whether the honest arm — refusing the ambiguous lookup — is affordable or
     /// whether the terminal per-module-environment correction has to land first.
+    ///
+    /// THE COUNT IS UNCHANGED AND ITS SUBJECT HAS NARROWED, which is worth saying because a
+    /// reader who takes it as the silent-pick population will now overcount.
+    /// [`v1_interpreter::InterpContext::lookup_fn_from`] resolves a reference through the
+    /// referring file's own declarations and then its explicit imports before this shared slot,
+    /// so for every name in this count the two directions that used to be decided by nothing the
+    /// author wrote — a module losing its
+    /// OWN declaration to an unrelated homonym, and an explicit `import a.b.c { x }` being inert
+    /// against one — are decided by what the author wrote now. What remains counted here is the
+    /// genuinely undecided residue: a bare reference to a name the referring module neither
+    /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
+    /// modules it reached.
     pub ambiguous_bare_names: usize,
 }
 
@@ -45524,6 +45807,51 @@ fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result
     }
 }
 
+/// Read one `String` constant from a `.dag` authority, by qualified name.
+///
+/// The barren-sidecar rule's suffix lives in `v2.workflow.floor_naming_hygiene`
+/// (`floor_test_sidecar_suffix`), and it stays there: re-spelling `"_test.dag"` in Rust would
+/// fork the rule across two representations, which is the defect this whole repair is about.
+fn floor_required_string(
+    ctx: &v1_interpreter::InterpContext,
+    qualified: &str,
+) -> Result<String, String> {
+    match v1_interpreter::run_in_context(ctx, qualified, false) {
+        Ok(v1_interpreter::Value::Str(s)) if !s.is_empty() => Ok(s.to_string()),
+        Ok(other) => Err(format!(
+            "{qualified}: expected a non-empty String, got {}",
+            floor_value_shape(Some(&other))
+        )),
+        Err(e) => Err(format!("{qualified}: {e}")),
+    }
+}
+
+/// The barren witnesses in the prepared subject, judged by the `.dag` rule rather than by a
+/// second Rust spelling of it.
+///
+/// Preparation records every admitted source with no `test fn` decl; this asks
+/// `floor_naming_hygiene`'s own suffix which of them are `*_test.dag` entries — the same
+/// predicate `floor_entry_is_barren_test_sidecar` composes, consumed here because THIS is the
+/// path the required floor takes.
+fn floor_barren_test_sidecars(
+    hermetic: &v1_interpreter::InterpContext,
+    test_decl_free_paths: &[String],
+) -> Result<Vec<String>, String> {
+    let suffix = floor_required_string(
+        hermetic,
+        "v2.workflow.floor_naming_hygiene.floor_test_sidecar_suffix",
+    )?;
+    Ok(test_decl_free_paths
+        .iter()
+        .filter(|path| {
+            path.strip_prefix("./")
+                .unwrap_or(path.as_str())
+                .ends_with(suffix.as_str())
+        })
+        .cloned()
+        .collect())
+}
+
 fn floor_decode_list<'a>(
     ctx: &v1_interpreter::InterpContext,
     v: Option<&'a v1_interpreter::Value>,
@@ -46242,6 +46570,21 @@ pub fn run_required_floor(
         &hermetic,
         "v2.workflow.required_floor.long_home_prefixes",
     )?;
+    // THE LINE STOPS BEFORE THE PARTITION IS COMPUTED, because a barren entry is invisible to
+    // the partition by construction — it contributes no SITE, so `offered` cannot report it and
+    // `offered == routed + declined_long + declined_live` stays exact while saying nothing about
+    // it. A file that claims the `*_test.dag` place and enrolls nothing is a witness nobody asked
+    // and everybody reads as covered.
+    let barren_test_sidecars =
+        floor_barren_test_sidecars(&hermetic, &prepared.test_decl_free_paths)?;
+    if !barren_test_sidecars.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=BarrenTestSidecar count={} — a `*_test.dag` entry must \
+             declare at least one `test fn`; the required floor enrolls nothing from: {}",
+            barren_test_sidecars.len(),
+            barren_test_sidecars.join(", ")
+        ));
+    }
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
@@ -48498,6 +48841,33 @@ pub use partition_crate_boundary_host::{
     compile_partition_crates, partition_package_names, run_partition_crate_boundary,
     BoundaryFileDisposition, PartitionCompileOutcome, PartitionCrateBoundaryOutcome,
     RenderedBoundaryFile, PARTITION_CRATE_PRODUCING_COMMAND,
+};
+
+/// The committed generated-artifact population, produced from `gunbc.generated_artifact_emit`
+/// and adjudicated against the tree.
+///
+/// Re-exported here rather than reached directly so every required phase addresses the producer
+/// through one surface, the way the regen and partition-crate paths do.
+pub use generated_artifact_boundary_host::{
+    artifact_disposition, artifact_disposition_name, boundary_divergent, boundary_is_clean,
+    generated_artifact_body_for_path, generated_artifact_ctx, run_generated_artifact_boundary,
+    AdjudicatedArtifact, ArtifactDisposition, GeneratedArtifactBoundaryOutcome,
+    GeneratedArtifactPathBody, UnadjudicatedArtifact, GENERATED_ARTIFACT_PRODUCING_COMMAND,
+};
+
+/// The emitted-closure compile phase: one entry's closure emitted, written as a crate, and
+/// compiled — with the discriminating red the phase establishes on itself every run.
+///
+/// Re-exported here for the same reason the two above are: every required phase addresses its
+/// producer through one surface.
+pub use emitted_closure_compile_host::{
+    cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
+    emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
+    emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
+    emit_compile_selection_universe_digest, local_emit_compile_probe_root,
+    required_ci_emit_compile_probe_root, required_emit_compile_entries,
+    retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
+    EmitCompileSelection, MutationVerdict,
 };
 
 /// The authority's own declared module path, for consumers outside this module.

@@ -12,8 +12,7 @@ module gunbc.scm.ancestry
 // IT IS CARRIED, NOT RECOVERED FROM POSITION, and that is forced rather than chosen. Position gives
 // a total order and says nothing about descent: that the commit at index 1 follows the one at index
 // 0 in the list does not make it its child, and reading it that way would assume history is both
-// linear and append-ordered -- neither of which anything in this model establishes (there is no
-// commit-authoring verb, so nothing defines what appending means). Recovering ancestry from position
+// linear and append-ordered -- neither of which the model establishes. Recovering ancestry from position
 // would therefore not be recovering it; it would be inventing it, and the invention would be
 // invisible because it would agree with position by construction.
 //
@@ -22,7 +21,8 @@ module gunbc.scm.ancestry
 // code has yet baked in the assumption that history is a sequence. That is model-before-implement in
 // the order DESIGN prescribes, not a type built speculatively ahead of its consumer.
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, List }
+import std.minted_identity { MintedId, minted_id_eq }
 
 // THE ROOT IS A STRUCTURAL STATE, NOT AN EMPTY PARENT.
 //
@@ -77,36 +77,28 @@ import std.types { Bool, Int, List, String }
 // well-formed, confident, wrong answer, which is the silent wrongness DESIGN section 5 places
 // outside the ladder entirely.
 //
-// REPRESENTATION IS DELIBERATELY NOT DECIDED HERE, AND THE DEFERRAL NAMES ITS INVARIANTS so that it
-// reads as an open question rather than an answered one. The reference is opaque at this layer;
-// whether a document spells it as a row position is a fact about a serialized repository and belongs
-// to the codec that owns one.
-//
-// A POSITIONAL SPELLING OWES TWO WALLS, NOT ONE, and they buy different properties:
-//
-//   append-only          records are only ever appended -- never inserted, removed or reordered.
-//                        This is what buys STABILITY. An earlier-only rule (a parent may name only
-//                        a preceding record) buys ACYCLICITY and is NOT a substitute: against a list
-//                        whose indices move, earlier-only holds throughout, no cycle ever appears,
-//                        and every stored reference silently repoints to a different commit. That is
-//                        the same well-formed-confident-wrong answer this type exists to remove,
-//                        reintroduced by the repair that removed it.
-//
-//   order-preserving     the codec must round-trip `commits` in exactly its authored order. This is
-//                        a CODEC obligation rather than a model one, and it is not hypothetical: the
-//                        defect that produced this recut was a codec losing which record was meant.
-//                        A decoder that rebuilds the list in any other order breaks every positional
-//                        reference at once.
-//
-// If either wall is hard to make structural, that is the argument for the reference carrying
-// something INTRINSIC instead of a position. Naming the concept here is what allows that decision to
-// be taken later in one place instead of two.
+// A COMMIT REFERENCE IS A MINTED IDENTITY IN THE COMMIT SUBJECT SPACE, never a list position and
+// never a digest of mutable commit facts. The subject parameter prevents a numeric coincidence with
+// another allocator's ordinal from being compared as the same identity. The value is opaque outside
+// the codec's membership index: log and status carry it but derive no order, recency, or content from
+// its ordinal. This discharges the positional spelling's append-only obligation by removing its
+// subject -- inserting, deleting, or reordering rows cannot retarget an existing reference.
+
+// TWO SUCCESSOR LANES WAITED ON THIS CUT FOR DIFFERENT GROUNDS, even though the dependency event was
+// the same. A commit producer waited on the HAZARD: authoring against positional references before
+// an append-only wall existed would make silent retargeting reachable. Repository reading and its
+// CLI surface carried no such mutation hazard; they waited on the VOCABULARY, because implementing a
+// consumer against a representation already scheduled for replacement would cement the old root.
+// If this cut ever slips or splits, a loader may correctly be called hazard-free and still must wait
+// on the second ground. Conflating those grounds makes that true objection produce the wrong order.
+type RepositoryCommitSubject
+
 type RepositoryCommitRef {
-  reference: String
+  identity: MintedId<RepositoryCommitSubject>
 }
 
 fn repository_commit_ref_eq(left: RepositoryCommitRef, right: RepositoryCommitRef) -> Bool {
-  left.reference == right.reference
+  minted_id_eq(left: left.identity, right: right.identity)
 }
 
 type CommitAncestry
@@ -327,4 +319,3 @@ fn ancestry_walk(start: RepositoryCommitRef, history: RepositoryHistory) -> Ance
       }
   }
 }
-

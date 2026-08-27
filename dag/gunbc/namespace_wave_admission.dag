@@ -1,0 +1,281 @@
+module gunbc.namespace_wave_admission
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String, List }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import gunbc.guarantee_rung_drop {
+  GuaranteeStall,
+  Mitigatable,
+  MechanicallyPreventable,
+  AwaitsOneGrounding,
+  BoundedPopulation,
+}
+
+// WHY THIS CARRIER EXISTS BESIDE THE WALL RATHER THAN INSIDE THE PLAN IT ENFORCES. The
+// enforcement mechanism was dispatched OUTSIDE the import/namespace program deliberately --
+// the program's own owning session declined ownership of it on the ground that a program
+// parented over its enforcement grades its own homework -- so what counts as ADMISSIBLE is
+// homed here, and what the deltas MEAN over the import population stays with that program.
+
+data namespace_wave_admission_note: String = "THE REQUIRED WAVE-ADMISSION WALL over closure, subject-membership and occurrence-binding deltas: gunbc.compiler_frontend_program_interlock milestone NamespaceWaveAdmissionEnrolled.\n\nWHAT IT ANSWERS. For one change, at merge-base grain: which modules entered or left each module's subject, what each module's transitive closure gained or lost, and whether any spelling already authored on both sides changed WHICH DECLARATIONS IT ADMITS. Every motion is classified into NamespaceDeltaDisposition and the run is ADMITTED only when the UNADJUDICATED set is empty -- never when the delta is empty, which is the one-word difference the ruling states explicitly and the weaker spelling of which would refuse the cut itself and then be repaired by weakening the wall.\n\nWHERE IT RUNS. As the namespace-wave-admission phase of claim_executor --required-ci, in the witnesses lane, consuming the index the parse phase built. It acquires no second corpus: the base index is the head index with the diff applied in reverse at FILE grain, so only the files a change touched are parsed again, from their base blobs, while closure and binding are recomputed over both whole graphs -- a module whose own text did not move can still have its subject moved by one that did.\n\nTHE CHANGE CLASS IS DERIVED, NOT DECLARED. NamespaceChangeClass splits preparatory work from work that alters membership or binding. Nothing asks an author which they wrote: the delta is measured and the answer falls out, so PreparatoryNoSemanticMotion is a property of a diff rather than a claim in a pull-request body. Construction over validation.\n\nTWO NON-VERDICTS ARE REPORTED UNDER THEIR OWN NAMES AND ONLY ONE PASSES. A push whose baseline IS its own head -- main after a squash merge -- has no diff to adjudicate, and that is NoSubject: nothing was compared and nothing is admitted. A baseline that does not resolve is NotEvaluated, which the ruling puts on the refusing side, because I could not see what changed and nothing changed are different states with different remedies and the second is the empty-observation narrow.\n\nA STALE ADMISSION REFUSES TOO. A transition-admission row matching no delta is a permission standing over nothing; leaving it would let the roster stop being a fact about the corpus and become a list nobody pruned."
+
+data namespace_wave_admission_grain_note: String = "WHY THE GRAIN IS AUTHORED CONTAINMENT IDENTITY AND NOT OCCURRENCE IDENTITY, which is a CLOSED RESULT rather than a shortcut.\n\nv2.workflow.legacy_binding_delta states it for its own subject and the argument transfers unchanged: std.occurrence_identity's scope law forbids filename, SourceSpan, authored name, structural Node equality and content hash as identity inputs, and an OccurrenceId is a monotone counter consumed in walk order, so it ENCODES POSITION and shifts under any edit above it. A cross-compile correspondence is therefore something a TRANSFORMATION EMITS -- a function knows which output came from which input -- and between a merge base and a pull-request head there is no transformation to emit one. So an occurrence-grain delta between two arbitrary trees is not a better key waiting to be found; it is unavailable by construction.\n\nWHAT THE WALL USES INSTEAD is the identity legacy_binding_observation legacy_subject_identity already folds for its own subjects, read at the grain a cross-tree join can carry: module path, enclosing declaration, and the LEAF SEGMENT of the reference rather than its whole spelling. A row's VALUE is the SET of declaring identities that leaf admits, never a winner -- so a local declaration arriving beside an imported one WIDENS the set to two and reports NewAmbiguity, rather than silently picking the nearer one, which is the mechanism the namespace authority exists to delete.\n\nTHE LEAF RATHER THAN THE SPELLING IS AN INVARIANT OF THE OPERATION THE CUT PERFORMS, NOT A LUCKY FIXTURE. A requalification wave prepends the declarer's path to a reference and leaves the declarer fixed, so it changes the authored SPELLING and leaves the last segment unchanged BY CONSTRUCTION -- the key does not merely happen to survive the cut, it is invariant under exactly the transformation the cut applies. The reduction is not coined here either: v1.05_emit_rust rust_fn_sig_leaf_name_dotted_note names qualified_last_segment as THE single authority for taking an authored spelling to its last segment, and records a real defect from a site that skipped it and emitted dots into Rust output. Stated as an invariant rather than as a finding because a finding invites re-litigation and an invariant does not (measured against the carriers by snappy-dove-250, 2026-08-26). Keyed on the whole spelling instead, requalifying a reference reads as NewUnresolvedness, and the wall would refuse the only program it exists to admit -- which is how this was found, by a fixture going red rather than by review.\n\nTHE CONVERSE IS THE WALL WORKING AND IS NOT TO BE SOFTENED. If a cut ever repoints a reference to a DIFFERENT declaration whose leaf differs, the key moves and the wall refuses. The owning program has bound itself to splitting that out rather than asking for tolerance: a wave that both requalifies and moves a symbol is two change classes in one diff, and TargetChanged firing on it is the wall reporting a mis-shaped wave. No per-row exemption, threshold or allowance is admitted for that case -- a confidence threshold selecting a softer arm is the smuggled heuristic DESIGN rules out, and it would convert the one signal that catches a mis-shaped wave into silence.\n\nTHE CEILING, STATED SO IT IS NOT MISREAD AS COVERAGE: two occurrences of one spelling inside one declaration share a row, so WHICH occurrence took which member of the set is not observable here. ANYONE READING THE MILESTONE AS COVERING OCCURRENCE GRAIN WILL BE READING MORE THAN EXISTS, and that sentence is carried here rather than only in a pull-request body because a body is not an authority and the overclaim it prevents is the kind that recurs. The milestone NamespaceWaveAdmissionEnrolled delivers two adjudicated walls -- subject membership and binding at authored containment grain -- a MEASURED closure blast radius attributed to its generators, and this declared stall. It does not deliver a third wall over closure, and it does not deliver occurrence grain.\n\nNEXT-RUNG TRIGGER: a projector-emitted correspondence (legacy_binding_delta ProjectionProvenanceEntry) reaching a base/head pair, at which point the row key descends to the occurrence and this note is deleted rather than amended."
+
+data namespace_wave_admission_reference_channel_note: String = "WHY THE BINDING CHANNEL IS NOT THE IMPORT CHANNEL, which is the load-bearing design choice.\n\nA wall reading bindings only through import members would observe the import-name universe being deleted and then see NOTHING AT ALL -- blind on precisely the change it gates, in the first wave it exists to govern. So the channel is every authored NAME OCCURRENCE in a module's own parsed tree, resolved independently: a dotted spelling by its longest module prefix, a bare spelling against the module's own declarations and its import claims, following a re-export chain to the module that actually DECLARES the name. It survives the cut because it never depended on the construct being cut, and the FUNCTION is the same on both sides, so a base measured before a cut and a head measured after it are measured by one instrument.\n\nIT IS PARSE-THEN-DERIVE AND NOT A TEXT SCANNER. DESIGN's namespace-cut correction ruled the raw-text scanner family -- referenced_module_paths_in_text and kin -- a heuristic that cannot distinguish a reference from prose, with the in-tree receipt of the English word edge binding to fn edge. This reads the Node tree. What it does NOT do is resolve: a parameter name, a field name and a let binder land in the same set as a genuine reference, because telling them apart is the resolver's job. That over-collection is SYMMETRIC across two trees, which is the only property the delta needs -- a spelling denoting nothing on both sides contributes no row.\n\nWHERE THAT IS CONSERVATIVE AND IN WHICH DIRECTION, because an approximation whose direction is unstated is a hole. On the BINDING channel it can only produce rows about spellings that are not references, and such a row is a delta only if its candidate set actually moved -- so the direction is toward refusing, never toward admitting. On the MEMBERSHIP-SUPPORT question -- does any name in this module reach into the target -- it is toward admitting, and that is deliberate: refusing an added dependency because the reader could not see the reference would make ordinary work an adjudication, and a wall paid for in false refusals is a wall that gets weakened."
+
+data namespace_wave_admission_closure_note: String = "WHAT THE WALL DOES WITH CLOSURE, AND THE ARM IT DELIBERATELY DOES NOT AUTHOR.\n\nClosure is a pure function of membership, so the closure moved and no membership moved is not a state any fixture can author. An arm for it would be permanently green by construction -- the decoration DESIGN 4b calls worse than absent, because it gets cited as coverage. Closure is therefore MEASURED and ATTRIBUTED rather than separately adjudicated: every moved closure row is grouped under the membership delta that generates it, and each delta carries the number of modules whose subject it moves, so a refusal names its blast radius. The adjudication happens at the generators, which is where the decision is; adjudicating the consequence as well would be a second representation of one fact.\n\nSO THE THREE DELTAS THE MILESTONE NAMES ARE NOT THREE WALLS. Two are adjudicated and the third is the derived consequence of one of them, reported beside it. Saying so here is the difference between a scope statement and an inflated one."
+
+data namespace_wave_admission_admission_grain_note: String = "THE TRANSITION-ADMISSION ROSTER IS EMPTY AT LANDING, AND THAT IS THE CORRECT STATE: no wave has run, so no transition has been authorised. A row names one exact subject under one exact disposition, and a row matching no delta refuses as stale, so the roster can only shrink toward its subject.\n\nWHAT THE FIRST WAVE WILL NEED, RECORDED NOW AND NOT BUILT NOW. The import/namespace program's owning session measured the expected magnitude against the import-strip receipts: THOUSANDS of transitions, dominated by one class. That figure is STALE AS A POPULATION -- the same anchor recipe re-run on 2026-08-26 returns a different corpus hash than the receipts record, so the receipts describe no current tree -- and it is quoted here ONLY as an order of magnitude, which is the part that decides a design question. A per-row roster at that scale is unreviewable, and an unreviewable roster is rubber-stamped, which converts this wall into a formality.\n\nSO A CLASS ADMISSION MUST BE BOUNDED BY ENUMERATED IDENTITY AND NEVER BY PREDICATE. These exact bindings, taken from the pre-deletion baseline observation, become unresolved is admissible; unresolvedness is expected during the wave is not, because it admits everything and zeroes the wall's deficit frequency by construction -- the absorbing fallback wearing the wave's clothes. The distinction is the whole difference between a wall that survives its own transition and one that is switched off for its duration.\n\nTHE POPULATION ARRIVES ONE GRAIN DOWN FROM THIS WALL'S ROWS, AND THE PROJECTION IS THE RECEIVING END'S JOB. Measured on the carrier rather than assumed: std.legacy_binding_observation LegacyBindingObservationRow carries exactly two fields, an occurrence identity and an outcome -- no module, no enclosing declaration, no leaf. So a class admission enumerated from the baseline observation cannot hand this wall its key directly. The route down is the leaf from the validated occurrence transport's index entries, whose OccurrenceProjection authored_name is the authored spelling; the enclosing declaration from the occurrence containment path's ancestors joined against that transport's declarations; and the module from the containment root.\n\nONE TRAP ON THAT ROUTE, NAMED BECAUSE IT FAILS SILENTLY. authored_name CARRIES DOTS -- v1.02_parse populates it from the raw node name and every consumption site applies qualified_last_segment to reduce it. Keying on authored_name raw reproduces exactly the spelling hazard the grain note above rejects, and reproduces it INVISIBLY, because on an unqualified reference the spelling and the leaf are identical and every naturally-written test passes. The reduction is not optional and is not this module's to re-coin.\n\nWHY THE COARSE CARRIER IS NOT AUTHORED HERE. It would be a mechanism with no consumer until a wave needs it, and a new artifact with no final consumer is the experimental residue DESIGN 6 names. What is fixed today is the CONSTRAINT on its shape, not the shape itself; the population it enumerates comes from the milestone NamespaceBaselineObservationComplete, and where that baseline is unavailable for the base being gated, the honest disposition is NotEvaluated refusing rather than a predicate substituted for a missing enumeration."
+
+// THE RUNG, AND WHAT IT DOES NOT REACH. The class is a namespace change merging with its
+// closure, membership or binding motion unexamined. It was OUTSIDE THE LADDER -- not
+// mitigatable, because nothing could be attempted -- and it is now mechanically preventable:
+// a required phase, armed on every push and pull request, whose RED is authorable at the
+// FIXTURE boundary and is authored there. It is not structurally guaranteed and this row does
+// not claim it: the motion stays perfectly writable and safety depends on the phase executing.
+data namespace_wave_admission_occurrence_grain_stall: GuaranteeStall = GuaranteeStall {
+  subject: "v1_compiler.namespace_wave_admission -- WHICH occurrence of a spelling took which member of its declaring-candidate set, where one declaration carries two occurrences of one spelling",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding {
+    grounding: "no transformation emits a correspondence between a merge base and a pull-request head, and v2.workflow.legacy_binding_delta rules that without one there is no admissible cross-compile occurrence key at all -- an OccurrenceId encodes walk position and shifts under any edit above it, so this is a closed result rather than a missing implementation",
+  },
+  population: BoundedPopulation {
+    members: [
+      "a spelling shadowed by a let declaration inside the declaration that also reaches it from an outer scope",
+      "a spelling shadowed by a lambda or match-arm binder inside the declaration that also reaches it from an outer scope",
+      "two references to one leaf inside one declaration where only one of them is requalified",
+    ],
+  },
+  next_rung_trigger: "A projector-emitted correspondence between the two trees being compared -- v2.workflow.legacy_binding_delta ProjectionProvenanceEntry, whose ProjectedFromSource arm relates one target occurrence to its source. The wall's row key descends from the leaf to the occurrence the moment a base/head pair carries one, and the union taken in binding_rows deletes with it. What does NOT close this is a finer key invented here: the scope law rules out every property computable from a finished tree in isolation, so an occurrence key that is not emitted by a transformation is not a stronger key, it is a wrong one."
+}
+
+data namespace_wave_admission_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "NamespaceDeltaDisposition",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "DeltaSubject",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "NamespaceDelta",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "TransitionAdmission",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "AdmissionSubject",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "admission_subject_matches",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "admission_subject_render",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "NAMESPACE_TRANSITION_ADMISSIONS",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "WaveAdmissionPopulation",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "WaveAdmissionReport",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "WaveAdmissionOutcome",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "direct_membership",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "module_prefix_of",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "declaring_candidates",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "declarer_of",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "closure_of",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "membership_map",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "adjudicate",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "binding_disposition",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "membership_supported",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "blast_radius",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "render_delta",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "git_stdout",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "in_sweep_scope",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "base_records",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "run_required_wave_admission",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "disposition_label",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "disposition_auto_admitted",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "delta_subject_render",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "report_unadjudicated",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "binding_rows",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "vocabulary_findings",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "DISPOSITION_LABELS",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "DISPOSITION_AUTHORITY_MODULE",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.namespace_wave_admission",
+      decl_name: "DISPOSITION_AUTHORITY_DECL",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.declaration_index",
+      decl_name: "dotted_chain",
+      field: WholeDeclaration
+    },
+  ],
+  reason: "THE OPERATOR RULED THAT A REQUEST TO ADD HAND RUST IS THE OCCASION TO MIGRATE OR DELETE HAND RUST (2026-08-26, relayed by warm-hawk-909: `yes we need to stop adding hand rust asap` and `use it as an opportunity to migrate/delete hand rust`). So this row answers at DECLARATION grain rather than as a count, and it records what the growth request bought back.\n\nWHAT THIS CHANGE DELETES OR AVOIDS, MEASURED, NOT ARGUED. (i) leaf_of was DELETED: it was a nickname for v1.00_core qualified_last_segment, which v1.05_emit_rust rust_fn_sig_leaf_name_dotted_note names as THE single authority for taking an authored spelling to its last segment. The wall now calls that mirror. That is a section 3 fork this change had introduced and removed before landing, and it is also the stronger construction, because the reduction the wall keys on is now the corpus authority rather than a local respelling. (ii) render_set was DELETED and inlined at its two call sites. (iii) claim_executor carried a BYTE-IDENTICAL PRIVATE COPY of git_stdout; the wall needed the same helper, and rather than land a third spelling the lib now owns the one copy, the bin`s copy is DELETED and its call sites read it. That is a NET REDUCTION of one pre-existing hand declaration and one fork.\n\nWHAT WAS NOT DELETED AND WHY, PER CLASS, BECAUSE `THESE ARE IRREDUCIBLE` IS A CLAIM AND A REASON PER DECLARATION IS AN ARGUMENT.\n\nCLASS A -- THE PURE FOLD, thirty-one declarations: adjudicate, binding_rows, binding_disposition, declaring_candidates, declarer_of, closure_of, membership_map, direct_membership, module_prefix_of, membership_supported, blast_radius, disposition_label, disposition_auto_admitted, delta_subject_render, report_unadjudicated, render_delta, vocabulary_findings, and the types and constants they fold over. Every one is a pure function of two indexes and needs NO host effect. They are host Rust for exactly ONE reason and it is not effort: their INPUT TYPE is host-only. ModuleDeclarationRecord and DeclarationIndex are Rust types produced by a host walk, and there is no .dag carrier for a per-module declaration record. Authoring one now would be a SECOND REPRESENTATION of a type gunbc.declaration_index_seed_growth already owns -- the section 3 violation this wall exists to refuse elsewhere -- so the correct move is to FOLLOW that carrier`s migration rather than fork it. Its trigger already names this class: when the record derivation is modeled, `the record builder and every finding function follow it`. This roster is one of those consumers.\n\nCLASS B -- THE ACQUISITION, four declarations: git_stdout, in_sweep_scope, base_records, run_required_wave_admission. These are blocked on a DIFFERENT grounding, which is why they are named separately rather than swept into class A: there is no typed repository-read transport a .dag fold can call to obtain the text of a file AT A REF. That is the scm lane`s subject, not a missing surface this change could have authored. base_records additionally needs the frontend`s own per-source parse, which is the same acquisition boundary.\n\nPR #9436 CHECKABLE HAND-RUST RECEIPT (review 56812). The 53 exact transition admissions are DATA consumed by the already-rostered NAMESPACE_TRANSITION_ADMISSIONS declaration; they add no compiler function, type, or admission mechanism. Measured against origin/main after rebasing: `git diff --numstat origin/main -- src/v1/stage0/src/namespace_wave_admission.rs` reports 559 added / 7 removed. `git show origin/main:src/v1/stage0/src/namespace_wave_admission.rs | grep -cE '^(pub )?(fn|struct|enum|const|static) '` reports 34 declarations, and the same grep on the worktree file reports 37. The anchored added/removed forms over `git diff` report 4 and 1 respectively: the unchanged roster declaration moves from the old `DeltaSubject` element type to `AdmissionSubject`, while `AdmissionSubject`, `admission_subject_matches`, and `admission_subject_render` are the three net additions. All three are enumerated in this justification. The initializer is a literal authored roster, not a scan, file read, environment read, or computed predicate. Each row is exact on subject and disposition; stale rows refuse, so the roster has its own deletion trigger: any absorbed or vanished delta makes required CI red until that row is removed. This is an expansion in maintained lines, not in declarations or host capability, and it dissolves row-by-row with the transition it names.\n\nONE THING THIS ROW WILL NOT DO: shrink the wall`s coverage to lower the count. A smaller wall that adds less Rust would spend correctness to buy a metric, which is the ratchet failure DESIGN names in the other direction.\n\nAND THE COUNT WENT UP RATHER THAN DOWN, WHICH IS THE HONEST DIRECTION. This roster was authored at 25 rows and is now 36, because it was JOINED against the module`s actual declaration population instead of listed from memory: leaf_of, binding_rows, vocabulary_findings and three constants were missing from the first draft. gunbc.seed_growth already warns that hand_authored_declarations is an authored obligation roster rather than a derived denominator; this is that warning firing on its own first use. Four methods were also converted from inherent impl blocks to free functions, because std.decl_ref names WholeDeclaration or NamedField and neither names a method on an impl block -- so as methods they would have been UNCITABLE items the roster structurally cannot enumerate. The module now carries no impl block, and every declaration in it is enumerated here.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these in TWO steps, one per class above, and a PARTIAL migration is the expected shape rather than a failure. Class A follows gunbc.declaration_index_seed_growth`s first step: the moment a per-module declaration record is a .dag carrier, every one of those twenty-eight moves with it, because they are pure folds over it and nothing else. Class B follows the scm lane: when a typed repository-read transport can supply a file`s text at a ref. adjudicate, binding_disposition, declaring_candidates, declarer_of, closure_of, membership_map, direct_membership, module_prefix_of, membership_supported and blast_radius are pure functions of two indexes and move to .dag the moment the per-module record derivation does -- they need no host effect at all, so they follow gunbc.declaration_index_seed_growth's first step rather than waiting for its second. git_stdout, in_sweep_scope, base_records and run_required_wave_admission stay behind until a typed repository-read transport can supply a file's text at a ref, which is the scm lane's subject. A PARTIAL migration is the expected shape. What does NOT dissolve them is the phase moving to another host entry point, and what does NOT dissolve them is a hermetic witness over a fabricated pair of indexes -- the fixture suite already does that, and it is the evidence rather than the dissolution.",
+  current_boundary: "src/v1/stage0/src/namespace_wave_admission.rs; src/v1/stage0/src/declaration_index.rs dotted_chain and ModuleDeclarationRecord.referenced; src/v1/stage0/src/bin/claim_executor.rs phase namespace-wave-admission; src/v1/stage0/tests/namespace_wave_admission.rs; dag/gunbc/namespace_wave_admission.dag"
+}
+
+// THE RULING AND THE PLAN THIS WALL DISCHARGES, cited by symbol so a rename or deletion
+// refuses at ingestion rather than rotting silently.
+data namespace_wave_admission_bindings: List<DeclarationRef> = [
+  DeclarationRef {
+    module_path: "gunbc.compiler_frontend_program_interlock",
+    decl_name: "milestone_prerequisites",
+    field: WholeDeclaration
+  },
+  DeclarationRef {
+    module_path: "gunbc.compiler_frontend_program_interlock",
+    decl_name: "NamespaceDeltaDisposition",
+    field: WholeDeclaration
+  },
+  DeclarationRef {
+    module_path: "gunbc.compiler_frontend_program_interlock",
+    decl_name: "NamespaceChangeClass",
+    field: WholeDeclaration
+  },
+  DeclarationRef {
+    module_path: "gunbc.compiler_frontend_program_interlock",
+    decl_name: "ProgramMilestone",
+    field: WholeDeclaration
+  },
+  DeclarationRef {
+    module_path: "gunbc.plans.import_namespace_program",
+    decl_name: "import_namespace_program_plan",
+    field: WholeDeclaration
+  },
+  DeclarationRef {
+    module_path: "v2.workflow.legacy_binding_delta",
+    decl_name: "ProjectionProvenanceEntry",
+    field: WholeDeclaration
+  },
+  DeclarationRef {
+    module_path: "v2.workflow.legacy_binding_observation",
+    decl_name: "legacy_subject_identity",
+    field: WholeDeclaration
+  },
+]

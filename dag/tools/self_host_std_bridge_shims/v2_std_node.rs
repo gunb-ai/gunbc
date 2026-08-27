@@ -24,12 +24,18 @@ pub struct OccurrenceId {
     pub value: i64,
 }
 
-// src/v2/std/node.dag:15  `type NodeOccurrenceId = SyntheticOccurrence | MintedOccurrence { id: OccurrenceId }`
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+// AUTHORITY: dag/std/occurrence_identity.dag `NodeOccurrenceIdentity`. v2.std.node no longer
+// declares an occurrence carrier of its own -- the compatibility coproduct and its two conversions
+// are deleted -- so `Node.occurrence_id` is this shared carrier directly. The projected arm's
+// `caused_by` payload (`ScopedOccurrenceRef`) is not modeled in this curated shim because nothing
+// on the bridge constructs or reads it; the arm is carried so a decoded projected occurrence
+// refuses here instead of silently landing in a two-arm enum.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum NodeOccurrenceId {
-    SyntheticOccurrence,
-    MintedOccurrence { id: OccurrenceId },
+pub enum NodeOccurrenceIdentity {
+    OccurrenceSynthetic,
+    OccurrenceMinted { id: OccurrenceId },
+    OccurrenceProjected { id: OccurrenceId },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -78,14 +84,14 @@ pub struct Edge {
 pub struct Node {
     pub kind: Rc<NodeKind>,
     pub children: Rc<Vec<Rc<Edge>>>,
-    pub occurrence_id: Rc<NodeOccurrenceId>,
+    pub occurrence_id: Rc<NodeOccurrenceIdentity>,
 }
 
 pub fn node_synthetic(kind: Rc<NodeKind>, children: Rc<Vec<Rc<Edge>>>) -> Rc<Node> {
     Rc::new(Node {
         kind,
         children,
-        occurrence_id: Rc::new(NodeOccurrenceId::SyntheticOccurrence),
+        occurrence_id: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     })
 }
 

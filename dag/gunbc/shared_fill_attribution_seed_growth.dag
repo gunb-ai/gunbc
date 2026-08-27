@@ -1,0 +1,52 @@
+module gunbc.shared_fill_attribution_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added by splitting shared-artifact fill cost out of
+// a claim's measured CPU. Authored because gunbc.seed_growth_admission
+// seed_growth_forward_freeze_policy_note makes unenumerated hand growth in src/v1 a stop-line,
+// and this change adds two hand items to v1_compiler.cli_run.
+//
+// WHAT THE CHANGE IS, AND WHAT IT IS NOT. It is an ATTRIBUTION correction on an existing
+// measurement, not a new budget, exemption or tolerance. run_claim_measured already measured a
+// claim's CPU and already compared it to required_floor_claim_cpu_safety_limit_ms; this branch
+// changes WHICH WORK that number covers and changes neither the limit nor its fail-stop
+// semantics. Measured against the merge base, the whole cli_run delta is 72 added lines.
+//
+// WHY IT WAS ADDED. The memoized compile_dag_rust_emit_check is a SHARED artifact: the first
+// claim to reach a given source pays the whole compile and every later claim reads it for free.
+// Charging that fill to whichever claim happened to arrive first bills one row for work the
+// roster shares, so the row's reported cost is a function of DISCOVERY ORDER rather than of the
+// row -- and the safety limit is a FAIL-STOP protecting the executor, so an order-dependent
+// number decides whether the line stops. The floor already carries the vocabulary for this: it
+// bills a shared build to preparation via SharedBuildProvenance, and this reuses that framing
+// rather than minting a second one (operator ruling on gunbc#9477 -- reuse the existing
+// provenance field rather than inventing an exemption).
+//
+// WHY IT IS RUST AND NOT .dag. The measured subject is a host builtin. compile_dag_rust_emit_check
+// runs the seed compiler synchronously and its memo lives beside it, so the fill interval exists
+// only inside the host call; the substrate has no representation of that call to time. A
+// .dag-side accounting would have to attribute an interval it cannot observe, which is a layer
+// inversion rather than a migration -- the same boundary gunbc.census_memo_seed_growth records
+// one seam over, and the two dissolve together for the same reason.
+//
+// WHAT IS NOT NETTED. run_claim_measured is ExistingSeedItemModified per
+// gunbc.seed_growth_admission SeedGrowthChangeDisposition -- it keeps its name and signature --
+// so it is not counted as an addition.
+//
+// HAND-ITEM DELTA: +2 citable declarations, both in v1_compiler.cli_run. One module-level
+// thread-local accumulator is added and is NOT a citable declaration; it is named here rather
+// than omitted, because a receipt that counts only what the roster can cite would under-report
+// its own growth.
+data shared_fill_attribution_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "record_shared_artifact_fill_cpu", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "shared_artifact_fill_cpu_nanos", field: WholeDeclaration }
+  ],
+  reason: "Accounting for a host-side shared artifact is a property of the host that fills it. record_shared_artifact_fill_cpu accumulates the interval a MISS spent filling the shared emit-check memo; shared_artifact_fill_cpu_nanos reads that accumulator so run_claim_measured can subtract the shared half from the claim's own. Both exist because the two halves must be read at the same seam: a total with no split is the order-dependent number this change exists to remove.\n\nENUMERATED RATHER THAN COUNTED. Both are free functions, so the citable count and the real count are both two; nothing lands in seed_growth_uncitable_item_keys. The added thread-local is not a declaration and is disclosed in this file's header instead.\n\nTHE SPLIT IS REPORTED, NOT SILENTLY APPLIED. Every claim whose fill interval is nonzero emits a [floor-shared-fill] line naming the claim, its marginal CPU, the fill CPU and the measured total, so the subtraction is visible in the run that made it and can be disagreed with. A subtraction that only ever shrank a number without saying so would be an unaccounted widening of the safety limit -- the absorbing-fallback shape DESIGN section 5 forbids -- and the line is what keeps it a measurement instead.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete both when compile_dag_rust_emit_check and its census sibling are MODELED operations rather than host builtins -- at which point the shared artifact is the substrate's own Realization on a content hash, its fill is an ordinary node the cost model already sees, and attributing it by hand is the duplicated accounting authority that carrier dissolves. This receipt and gunbc.census_memo_seed_growth retire in the same change or neither does: they are the cache and the bill for one artifact, and separating them would leave a hand-rolled accounting beside a modeled one.",
+  current_boundary: "Confined to one process and one call site pair. The accumulator is thread-local, is written only on an emit-check MISS and is read only by run_claim_measured, so nothing outside the required floor observes it. It changes no verdict for any claim that fills nothing: with a zero fill interval the subtraction is the identity and no line is emitted. What it does change is a claim that pays for a shared compile, which is the whole point -- and the value it reports is the claim's own marginal cost, never a reduced form of the shared cost, which is still paid and still measured."
+}

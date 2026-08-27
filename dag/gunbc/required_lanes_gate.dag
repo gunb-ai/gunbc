@@ -379,39 +379,53 @@ fn required_lanes_refusal_stmts(
   ]
 }
 
-// The whole gate. The lane RESULT EXPRESSIONS and the attempt-subject EXPRESSIONS are supplied by
-// the caller rather than spelled here, because they are derived from the job ids and the workflow
-// contexts that module owns -- a literal `needs.build.result` here would be a second spelling of
-// a name that module owns, and an unknown `needs` context renders as the empty string, so the
-// drift would refuse every run and read as a broken lane rather than a broken reference.
+// The whole gate. It takes VARIABLE NAMES and no expressions: the six subject values arrive in
+// the step's ENVIRONMENT, and this program reads them as ordinary shell variables.
+//
+// THEY USED TO ARRIVE AS ASSIGNMENTS HERE -- `BUILD=<expression>` built with
+// `bash_build_assign_lit` -- and that fused two languages in one word. A `${{ }}` expression is
+// not shell text: GitHub substitutes it into the workflow document BEFORE any shell exists, so
+// the expression must survive into the emitted yaml VERBATIM. A bash literal word is the one
+// thing that cannot promise that, because the serializer's job is to quote and escape it.
+//
+// IT WAS LATENT UNTIL A SEGMENT NEEDED QUOTING, and that is why it survived review. Every
+// expression the gate carried happened to contain no character bash escapes, so the escaped
+// rendering and the verbatim one were the same bytes -- and A SERIALIZER FED ONLY INPUTS ON
+// WHICH TWO RENDERINGS AGREE HAS NOT BEEN TESTED AT ALL: its whole green history says nothing
+// about which of the two it implements. The defect was revealed by the first discriminating
+// input, not introduced by it.
+//
+// That input was a job id carrying a `-`, which `extdeps.github.expressions` renders in the
+// cited grammar's INDEX form as this writer's canonical spelling. The index form contains single
+// quotes; passed through a single-quoted shell literal those became `'\''` sequences INSIDE the
+// `${{ }}` delimiters, and a backslash is not a token GitHub's expression grammar admits -- so
+// the whole workflow document would have failed to parse, taking both lane jobs with it.
+//
+// THE HYPHEN IS NOT WHY, AND SAYING SO MATTERS BECAUSE AN EARLIER REVISION IMPLIED IT WAS. The
+// dot form is admitted by the upstream production for a hyphenated name; index notation is our
+// choice, not a repair. Any expression containing a quote would have detonated here, so the
+// defect is the SEAM and the hyphen was merely the first value to reach it.
+//
+// THE FIX IS THE SEAM, NOT THE ESCAPING. Binding through `env:` puts the expression in a yaml
+// scalar, which `extdeps.languages.yaml.emit` emits verbatim for an expression, and leaves the
+// shell reading a variable -- which `bash_build_word_var` already models and every consumer in
+// this gate already used. So the invalid state is not detected, it stops being writable: this
+// function no longer has a parameter through which an expression could be handed to a shell
+// literal (DESIGN 5, construction over validation).
 fn required_lanes_gate_stmts(
   build_var: String,
-  build_result_expression: String,
   floor_var: String,
-  floor_result_expression: String,
   pull_request_var: String,
-  pull_request_expression: String,
   event_name_var: String,
-  event_name_expression: String,
   measured_head_var: String,
-  measured_head_expression: String,
   run_id_var: String,
-  run_id_expression: String,
   standing_var: String,
   verdict_var: String,
   mechanism_var: String,
   attribution_var: String
 ) -> List<Node> {
-  let subject_assignments = [
-    bash_build_assign_lit(name: build_var, text: build_result_expression),
-    bash_build_assign_lit(name: floor_var, text: floor_result_expression),
-    bash_build_assign_lit(name: pull_request_var, text: pull_request_expression),
-    bash_build_assign_lit(name: event_name_var, text: event_name_expression),
-    bash_build_assign_lit(name: measured_head_var, text: measured_head_expression),
-    bash_build_assign_lit(name: run_id_var, text: run_id_expression)
-  ]
   let through_head_axis = list_append(
-    left: subject_assignments,
+    left: [],
     right: required_lanes_head_standing_stmts(
       event_name_var: event_name_var,
       standing_var: standing_var

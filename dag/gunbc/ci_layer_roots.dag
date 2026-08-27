@@ -123,6 +123,119 @@ data required_v2_emission_entries: List<String> = ["src/v2/compiler/00_compile.d
 // self-host probe, product receipt and cargo census become four answers to one question.
 data required_v2_emission_dissolution: DissolutionCondition = unbound_dissolution(description: "the authentic self-host product receipt is required on every admitted candidate and carries this emission boundary (same producer, stopping before cargo); then the standalone --required-v2-emission phase, required_v2_emission_entries and their host reader delete together")
 
+// THE ENTRIES WHOSE EMITTED CLOSURE A REQUIRED PHASE COMPILES.
+//
+// WHY THIS ROW IS SEPARATE FROM required_v2_emission_entries ABOVE, rather than the same list
+// read twice: the two phases answer different questions and have different cost shapes. The
+// emission phase asks whether the emitter produced a tree at all, and its subject is the widest
+// closure one entry names because emission is cheap. This phase asks whether the tree rustc
+// accepts it, and cargo over a closure is not cheap, so its subject is chosen for what it
+// compiles rather than for how wide it is. Sharing one row would have forced one answer to both
+// questions and, in practice, would have pinned the emission phase's subject to whatever the
+// compile phase could afford.
+//
+// THE SAME NARROW ARRIVES THROUGH THE BUDGET, AND IT IS THE ONE MORE LIKELY TO BE WRITTEN.
+// A cover computed as "the N entries that fit the window" looks like a cost decision rather
+// than an observation, so it does not read as a derived cover at all -- but it drops a member
+// exactly when that member becomes slow, and an entry becomes slow when it breaks. The verdict
+// is then a function of the budget rather than of the emitted bytes, which is the same
+// empty-observation narrow one level out. Membership is a row; cost decides whether a row is
+// ADDED, and never whether a declared row is MEASURED.
+//
+// MEMBERSHIP IS DECLARED HERE; IT IS NEVER DERIVED AT RUN TIME. A cover computed each run as
+// "whatever currently compiles" is SELF-DISARMING: it drops a member at precisely the moment
+// that member becomes the defect this phase exists to catch, and reports green over a quietly
+// smaller subject. That is DESIGN's empty-observation narrow -- an observation that could not
+// express what changed rendered as the verdict nothing is affected -- and it is strictly worse
+// than the absorbing fallback, because a widen is merely expensive and a narrow is silently
+// uncovered. Measured against today's corpus rather than argued: dag/std/interval.dag does not
+// compile right now, so a derived cover would exclude it and be green, while a declared cover
+// containing it is RED, which is the correct answer.
+//
+// SO THE MEASUREMENT SITS AT THE DECISION, NOT AT THE VERDICT, and the two must not be fused:
+//   MEMBERSHIP is DECLARED -- this row. Adding or removing an entry is a decision a reviewer sees.
+//   ADMISSION is MEASURED -- an entry may not be ADDED until its emitted closure has been
+//     measured clean, because a member that is red on main makes the phase permanently red
+//     rather than discriminating.
+//   DEGRADATION is RED -- once declared, a member that stops compiling FAILS THE PHASE. It is
+//     never dropped, never skipped, never reported as not-applicable.
+//   THE COUNT is REPORTED EVERY RUN -- declared members with their per-entry verdicts, never a
+//     count of survivors.
+//
+// DELETING A ROW TO GET GREEN IS NOT THE REMEDY, and this sentence is here because the first
+// person to hit a red member will be able to argue that it looks like maintenance. It is not:
+// the red IS the finding, and removing the member deletes the finding rather than resolving it.
+// The remedy is to repair the emission, or -- if the entry is genuinely no longer worth
+// covering -- to remove it as a declared COVERAGE decision argued on its own terms, never as a
+// way to turn a failing run green.
+//
+// THE ROSTER IS BOUNDED AND MUST STAY BOUNDED. gunbc.whole_corpus_compile_admission refuses a
+// whole-bundle compile on the default runner and records two EXIT=137 kills behind that
+// refusal, and the required path is already the fleet's dominant serialized cost. So widening
+// this list is a COST DECISION taken deliberately, exactly as the row above is, and never a
+// reflex -- but it is still a row, not a Rust edit.
+//
+// WHAT A READER MUST NOT CONCLUDE FROM IT. This is not corpus compile coverage and does not
+// claim to be. A blocking emit-stage diagnostic in a closure no entry here reaches still
+// escapes every required phase, which is the narrowed remainder DESIGN's emit-stage row carries.
+//
+// WHY THESE ENTRIES. Every one was MEASURED CLEAN before being written here -- emitted, and its
+// emitted closure compiled -- which is the admission rule this row states below. They are not a
+// cover in any principled sense: they are the entries whose closures were measured and found
+// admissible, ordered widest first, and the list exists to be grown.
+//
+// WHAT BOUNDS IT IS ADMISSIBILITY, NOT COST, and that is the opposite of what the cost figures
+// suggest. A warm entry costs seconds, so budget would permit hundreds. What it may not permit
+// is MEMBERSHIP: entries exist today whose emitted closure does not compile -- the v2 compiler
+// root, the emission phase's own subject one row up, is one of them -- and admissibility does
+// NOT fail entry by entry, because closures SHARE defects. One uncompilable site in a
+// widely-imported module disqualifies every entry whose closure reaches it, so the admissible
+// set is a property of where broken sites sit in the import graph rather than of how many
+// entries anyone can afford. This roster is therefore a BEACHHEAD on a live frontier, and it is
+// sized against a TEMPORARY CONDITION: emitter repairs that clear a widely-reached site return
+// many entries to admissibility at once.
+//
+// THE FAULT GOES INTO THE ENTRY'S OWN EMITTED MODULE, AND THAT IS A LOAD-BEARING CHOICE RATHER
+// THAN AN IMPLEMENTATION DETAIL. The selector first shipped preferring any declared member OTHER
+// than the entry, on the reasoning that a dependency is the stronger subject because it proves
+// the verdict reaches past the entry's own bytes. Measured over this whole roster, that rule
+// mutated a SHARED-CORE module for every single entry -- the emitted runtime in one case, which
+// is in every closure there is. Each verdict was honestly discriminating and each one established
+// `cargo refused when the shared core was broken`, never `THIS entry's closure is what was
+// compiled`: total at the level examined, blind one level down.
+//
+// The entry's own module is the one member NOTHING ELSE REFERENCES -- the others are its
+// dependencies, and a dependency does not import the root -- so it is exactly the file a faulty
+// emission can DROP while the crate still compiles. A drop that breaks a reference is already
+// caught by the baseline; the uncaught case is a REFERENCE-CLOSED drop, and the entry's own leaf
+// is the canonical one. Its ABSENCE is therefore a typed refusal naming the entry, never a
+// fallback to some other member: falling back would hand the phase a discriminating verdict
+// computed over precisely the tree that is broken.
+//
+// A FAILED RESTORE IS TERMINAL FOR THE RUN. If the mutation arm's byte-exact restore does not
+// hold, the phase stops at that entry and reports every later one as NotExecuted; it is not a
+// per-entry finding the siblings continue past, and it is not recoverable by re-running the
+// phase. The reason is mechanical rather than procedural -- the arms share one cargo target
+// directory, so after a failed restore no later baseline taken through it is attributable --
+// and the effect is that a head whose restore arm did not hold has no green from this phase at
+// all, rather than a green whose restore was never established (operator ruling relayed
+// 2026-08-26).
+//
+// THE INSTRUMENT, not its output (DESIGN, the 2026-08-24 measurement ruling): the phase prints
+// one `required-ci: emit-compile` line per entry carrying its own file count, baseline verdict
+// and mutation verdict, and `claim_executor --required-ci --required-lane build` re-derives
+// them. No figure from a run is transcribed here.
+data required_emit_compile_entries: List<String> = [
+  "dag/gunbc/ci_layer_roots.dag",
+  "dag/gunbc/scm/load_standing.dag",
+  "dag/extdeps/uri.dag",
+  "dag/std/measure.dag",
+  "dag/std/node.dag",
+  "dag/std/content_hash.dag",
+  "dag/std/abi.dag",
+  "dag/std/logic.dag"
+]
+
 data frontier_probe_witness_measure_receipt_note: String = "Measured durations cited on commit_gate SpanEnrolled cost_basis rows are WallClock: claim_batch performance receipts use wall_nanos (performance_receipt_from_witness), not the thread-CPU nanos that budget_completion_outcome gates on (operator msg_e24f4cab). Do not compare these figures to the per-witness eval CPU budget without stating the clock. The arm is named in std.measure ClockBasis, which is the single clock-basis authority; this sentence said WitnessCostWallEval until 2026-08-05, naming a second carrier that std.realization_schedule declared for one day and that witness_cost_clock_note records the dissolution of. The advice the sentence gives is exactly what the surviving carrier now enforces rather than advises: witness_row_cost_verdict answers BasisClockMismatch instead of comparing across clocks."
 
 data frontier_probe_witness_measure_receipt_read_failure: String = "target/frontier-probe-survey/matrix_readthrough_claim_batch_receipt.log"
@@ -971,7 +1084,7 @@ data wet_integration_offline_note: String = "Four wet-integration entries above 
 
 data known_red_frontier_note: String = "HOW THE KNOWN-RED FRONTIER WORKS, and the receipts it has accumulated. The rows themselves live at function grain on gunbc.explicit_witness_admission explicit_witness_admissions, each carrying its own diagnosis and dissolve_on; this note deliberately does NOT restate them (that would be the parallel-ledger duplication the rows exist to prevent) and carries only what is not a property of a live row. WHAT THEY ARE: witnesses red on main for feature gaps owned by named lanes. They are RED CONTROLS for their lanes, not broken tests - deleting one would discard the discriminating input, while leaving it discovered would red every wide PR on a debt that PR did not create. So each sits as a declared, countable row (the typed self-host-frontier pattern applied to witnesses). Local recipe per row: claim_batch --source-root dag --source-root src/v2 --entry <entry> --functions <function> -- AND FOR AN ExecutionWitnessKind ROW, --wet AS WELL, WITHOUT WHICH THE RECIPE CANNOT DO WHAT THE ROW ASKS OF IT. claim_batch is hermetic by default, so a wet row invoked by the recipe as written above never reaches its subject: measured 2026-08-26 on self_host_logic_behavioral_receipt_holds, it returns FAIL in 87 seconds with 'hermetic route has no arm for Dir: the claim never reached its subject, so this is a route gap and not a verdict', naming three undeclared dispatches (Filesystem.Read, git.Inspect.Toplevel, shell.Mktemp.Dir). The refusal is well-modeled and says plainly that it is not a verdict; the defect was in the recipe, which every wet dissolution condition below cites as the way its row greens. A row whose only recorded closing move cannot close it is the shape DESIGN records for a gate whose sole green is the forbidden action -- here arrived at from the other side, with no green reachable at all. THE ROSTER MUST NOT GROW SILENTLY: a new admission requires a per-row reason naming the diagnosis and owner plus a dissolve_on, and a row whose witness runs green locally is stale and deletes. Greening is the counted un-quarantine event of std.witness_admission: the row deletes in the SAME change that lands the fix, which promotes the unchanged witness to ordinary DiscoverySelection as a permanent regression control (DESIGN 4b(4) - the climb deletes the quarantine machinery, never the evidence). UN-QUARANTINE RECEIPTS (history, not live rows). emit_host_fold_closure_equals_eval_test (2026-07-20, smart-hawk-154 / witness-realization lane 3): three rows deleted - the eval walk now materializes RuntimeClosure for an Arrow TypeNode in runtime-argument position (eval_fold_is_closure_argument_edge / eval_fold_closure_argument_child_state in 05_eval.dag), so the closure at transform child 3 of fold_fixture_param_call_body evaluates to a real closure value instead of falling through eval_type_node_atom's non-Atom arm into allocate_literal and refusing. The interpreted leg reads the closure from the EVALUATED argument list rather than re-walking the node AST, so eval is genuinely exercised, and no literal-atom roster was extended (the PR 6879 diagnosis-table tripwire). emit_on_demand_field_access_family_witness_test + emit_on_demand_complement_family_witness_test (2026-07-20, witty-owl-841 / eval-repair arc): ten rows deleted - dag_node_is_eval_literal_atom plus eval_type_node_atom bind-miss and non-Atom TypeNode arms routing to allocate_literal repaired the lane-2 equals_eval BuildFailed roots. emit_host_meet_join_equals_eval_test and emit_host_variant_construct_equals_eval_test greened as byproducts of the same consolidation and never held rows of their own. WET ASSEMBLE-RED SelfEmitted MODULE RECEIPTS (admitted 2026-07-25, review #7199) are the same frontier at a different WitnessKind: six SelfEmitted wet behavioral receipts red on assemble (unresolved std_algebra/std_types/std_nat/List and target_carriers type-shape, cadence run 30126573464), which run Wet expect_red on the falsifier quarantine batch because Phase-0 forbids SelfEmitted-with-zero-executing-consumer. As of 2026-08-03 they are ExecutionWitnessKind rows on the one admission authority beside the hermetic ones, and v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries derives from it rather than holding its own copy. Owner: #7199 falsifier lane / self-host assemble."
 
-data bin_witness_wet_note: String = "The remaining excluded entries are the BIN-EXECUTION witness class: their test fns run compiled seed witness binaries via tools.host_prelude.run_witness_bin (git.Inspect.Toplevel to locate the checkout, shell.Test.IsExecutable against target/release build artifacts, then process execution) — host effects on non-commit-deterministic inputs, so the hermetic envelope refuses them by construction (audit 2026-07-12: every refusal typed as IsExecutable / Run / IsNonEmpty / Dir; the pure fns that merely read transport modules pass hermetically and stay discovered). They carry core per-PR compiler coverage, so unlike the offline four they DO keep running on every PR — as the declared bin-witness wet batch (bin_witness_wet_entries below, a Wet-profiled explicit-entry batch in v2.workflow.ci_floor_plan), never as silently-wet discovery rows. EXCEPTION (Wave 2, 2026-07-15): emit->compile->run->equals-seed self-host behavioral receipts (Gate-4 std/logic first) moved to the falsifier nightly Wet follow-on batch (falsifier_self_host_wet_entries) — per-PR stays hermetic/mocked for that class; the falsifier is the proven template lane. Dissolve-on: these files migrate under the execution-corpus scope prefix and enroll as ExecutionWitnessKind rows in gunbc.commit_workflow; then this roster and its exclusion rows delete."
+data bin_witness_wet_note: String = "The remaining excluded entries are the BIN-EXECUTION witness class: their test fns run compiled seed witness binaries via tools.host_prelude.run_witness_bin (git.Inspect.Toplevel to locate the checkout, shell.Test.IsExecutable against target/release build artifacts, then process execution) — host effects on non-commit-deterministic inputs, so the hermetic envelope refuses them by construction (audit 2026-07-12: every refusal typed as IsExecutable / Run / IsNonEmpty / Dir; the pure fns that merely read transport modules pass hermetically and stay discovered). They carry core per-PR compiler coverage, so unlike the offline four they DO keep running on every PR — as the declared bin-witness wet batch (bin_witness_wet_entries below, a Wet-profiled explicit-entry batch in v2.workflow.ci_floor_plan), never as silently-wet discovery rows. EXCEPTION (Wave 2, 2026-07-15): emit->compile->run->equals-seed self-host behavioral receipts (Gate-4 std/logic first) moved to the falsifier nightly Wet follow-on batch (falsifier_self_host_wet_entries) — per-PR stays hermetic/mocked for that class. THE JUSTIFYING HALF OF THAT SENTENCE IS PAST TENSE (2026-08-26): the falsifier WAS the proven template lane, and it was the reason this class could leave per-PR without leaving coverage. falsifier.yml was deleted at 611fd02770 (#8283, 2026-08-15), so the destination the exception moved these receipts to executes nothing, and the exception now removes them from per-PR coverage without adding any. Censused as PremiseInvalidated in gunbc.deleted_cadence_reference_census; re-adding an executor is the separate operator agreement std.witness_admission witness_cadence_has_scheduled_route_note reserves. Dissolve-on: these files migrate under the execution-corpus scope prefix and enroll as ExecutionWitnessKind rows in gunbc.commit_workflow; then this roster and its exclusion rows delete."
 
 data bin_witness_wet_per_row_actions_log_observation_gap_note: String = "CLOSED (measured 2026-08-06, Lane D / still-bat-561): main push run 31060353614 job 92492124511 (post-#7857 instrumentation) discriminates the four collapsed states. Batch 4 `bin-witness-corpus` PASS (146 witnesses); worker wrote `target/floor-wet-witness-row-outcome-receipt.tsv` with 192 rows; coordinator replayed 192 `[wet-witness-row-outcome]` lines; post-step dumps TSV + phase journal; `live_rust_observation_matches_actions_subject` row shows `outcome=passed` (batch=4). Prior zero-row reads conflated the regen job's legitimate 0-row receipt (no wet discovery batches) with the per-PR ci worker — observation collapse, not batch-not-reached or transport failure. HISTORY: COUNTED OBSERVATION GAP opened 2026-08-02 (#7698 run 30765850510); mechanism landed #7698 worker receipt + coordinator replay; scheduling proof #7857; observation extension #7857 labels + journal persistence + post-step dump."
 
@@ -1686,7 +1799,7 @@ fn witness_long_eval_budget_entries() -> List<ScheduleWitnessEntry> {
 
 data resolution_divergence_silent_pick_gate_retirement_receipt: String = "RETIREMENT (operator 2026-08-18, gentle-tern-815). WHAT THE GATE CLAIMED: closure-scoped resolution-divergence census plus join-filtered SILENT-PICK-GATE refusals on genuine silent picks (global_bare_lcp, global_bare_lcp_tie, fn_parent_first_hit). THE DEFECT IS PRECONDITION ORDER, NOT PERFORMANCE: the gate checked its cheap decidable precondition LAST — it performed a second strict whole-corpus resolve and only then asked whether parent-plan telemetry was captured. Had it asked whether capture was armed BEFORE acquiring anything, it would have refused in microseconds the day the floor cut landed, loudly and for free. That ordering defect would still be wrong if the resolve were fast; 526s and +2.66GB RSS are the symptom, not the cause. WHY CAPTURE NEVER ARMED (both halves independently fatal): claim_executor returns from run_required_floor before the --plan-entry branch; capture_begin lives only under plan_function == gunbc_falsifier_plan inside that branch; witnesses.yml invokes only --required-floor; and src/v2/workflow/ci_floor_plan.dag (gunbc_falsifier_plan entry) was deleted by the floor cut — so the global stayed None and every run paid the full resolve cost before the foregone parent plan telemetry was not captured refusal. ENROLLMENT HID THE DEFECT: expected-red held means merely not-Pass, so a row failing structurally was indistinguishable from a row failing for the reason it was enrolled for — hiding 43% of slow time for the entire life of the floor, not a small miss. Measured: 526.1s wall, 4.6x next module, +2.66GB RSS. DELETED end-to-end: witness, transport, resolution_divergence_census bin, walk_target_alias_plan bin and cli_run walk-target planner (same silent-pick investigation family; zero CI consumers), in-process builtin, cli_run census machinery, falsifier roster rows. PRESERVED: v1_rt silent-pick recording hooks (main.rs compile-path proxy). Silent-pick divergence detection is NOT covered by any enrolled witness today. REBUILD CONSTRAINT: do NOT substitute the calling witness InterpContext for a whole-corpus census subject — the floor evaluates each claim through claim_scope_for, which scopes to that module's transitive import closure, not the prepared subject; reusing _calling_ctx (the obvious cheap repair) would silently narrow coverage from the whole corpus to one witness closure, run fast, report plausible sites_checked, and cover almost nothing (empty-observation narrow: bottom-as-answer conflated with bottom-as-ignorance). A future census must take the prepared module list explicitly; terminal shape is a function over that list whose typed receipt a constant-time witness asserts — not a witness that acquires or inherits its subject at evaluation time."
 
-data enforcement_coverage_exclusion_note: String = "The four enforcement inventory/coverage witnesses (enforcement/cost_coverage_witness_test.dag, enforcement/grammar_coverage_witness_test.dag, enforcement_live_witness_test.dag, enforcement_inventory_witness_test.dag) are operator-ruled OFFLINE (2026-07-11; enforcement_inventory_witness_test.dag added 2026-08-02 review 47569). Receipt: their *_live fns read the corpus as data (live-tree rosters), so the PR-A never-predict-skip rule for live-tree rows made them run on EVERY wide PR regardless of diff; the block cost 22.0 min (main run 29137081535, busy fleet) and 21.0 min (PR run 29142398465, quiet fleet) of the 60-minute floor budget - about 35 percent - and their allocation ramp feeds the ~15GiB slot memory.high throttle that turns the floor tail into swap-speed work. Their input is corpus-denominated (the InputEnvelope axis, not layer span): per-PR admission wants a declared bounded envelope, which these rows cannot declare today. Offlining required TWO edits (cursor review catch, same PR): the discovery exclusion rows here AND removing the explicit CommitCheckEnrollment for enforcement_live_witness_test.dag in gunbc.commit_workflow - explicit roster rows merge after discovery with no exclusion filter (cli_run.rs explicit_entries dedup), and that is correct: an explicitly declared row should run, so offlining one means deleting its declaration, never teaching exclusions to veto the roster (a second authority). Run them via the local recipe: claim_batch --source-root dag --source-root src/v2 --entry <entry> per fn (all pure reads, no --wet needed). Dissolve-on: witness rows declare InputEnvelope/CostEnvelope and the scheduled (nightly) lane admits corpus-input rows under its own budget - then re-enroll consciously through the floor owner's lane; the affected-set-falsifier cadence covers interim drift."
+data enforcement_coverage_exclusion_note: String = "The four enforcement inventory/coverage witnesses (enforcement/cost_coverage_witness_test.dag, enforcement/grammar_coverage_witness_test.dag, enforcement_live_witness_test.dag, enforcement_inventory_witness_test.dag) are operator-ruled OFFLINE (2026-07-11; enforcement_inventory_witness_test.dag added 2026-08-02 review 47569). Receipt: their *_live fns read the corpus as data (live-tree rosters), so the PR-A never-predict-skip rule for live-tree rows made them run on EVERY wide PR regardless of diff; the block cost 22.0 min (main run 29137081535, busy fleet) and 21.0 min (PR run 29142398465, quiet fleet) of the 60-minute floor budget - about 35 percent - and their allocation ramp feeds the ~15GiB slot memory.high throttle that turns the floor tail into swap-speed work. Their input is corpus-denominated (the InputEnvelope axis, not layer span): per-PR admission wants a declared bounded envelope, which these rows cannot declare today. Offlining required TWO edits (cursor review catch, same PR): the discovery exclusion rows here AND removing the explicit CommitCheckEnrollment for enforcement_live_witness_test.dag in gunbc.commit_workflow - explicit roster rows merge after discovery with no exclusion filter (cli_run.rs explicit_entries dedup), and that is correct: an explicitly declared row should run, so offlining one means deleting its declaration, never teaching exclusions to veto the roster (a second authority). Run them via the local recipe: claim_batch --source-root dag --source-root src/v2 --entry <entry> per fn (all pure reads, no --wet needed). Dissolve-on: witness rows declare InputEnvelope/CostEnvelope and a scheduled lane admits corpus-input rows under its own budget - then re-enroll consciously through the floor owner's lane. THE INTERIM-DRIFT CLAUSE IS RETRACTED (2026-08-26): this row said the affected-set-falsifier cadence covers interim drift, which was true when written and became false at 611fd02770 (#8283, 2026-08-15) when falsifier.yml was deleted. Nothing covers interim drift on these four witnesses today, and the dissolution trigger above additionally names a scheduled lane that does not exist -- a trigger naming an absent capability is satisfied by nothing, which is the honest reading rather than a defect in the four rows. Censused as PremiseInvalidated in gunbc.deleted_cadence_reference_census."
 
 data accumulator_copy_roster_gate_exclusion_note: String = "The three accumulator_copy_roster_gate*_test.dag witnesses are operator-ruled OFFLINE (2026-07-10: the gate is ~15m of serial interpreted resolve; run it via the claim_batch recipe in v2.lens.complexity_accumulator_copy.roster_gate; the typed rows are gunbc.offline_local_recipe). Excluded from discovery because the flip's selection cannot see them honestly either way: file_gate reads its roster targets via filesystem_read at runtime — a data dependency invisible to resolve-closure attribution — and the live-scan classifier reads only entry-file text, so the rows would be intermittently selected by lens/std-closure PRs (cost, against the ruling) while never firing on roster-target-only PRs (no enforcement). Dissolve-on: resolved-graph memoization receipts land AND G2 path-intersection (not G1 module-closure alone) is wired into floor admission axis (iv); then re-enroll consciously through the floor owner's lane."
 

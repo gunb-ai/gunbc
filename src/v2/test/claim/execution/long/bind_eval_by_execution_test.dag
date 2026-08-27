@@ -1,5 +1,6 @@
 module v2.test.long.bind_eval_by_execution
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.test.complexity_gate.table_fixture_bind_subject_producer {
   table_fixture_bind_arrow_with_body,
   table_fixture_bind_wrong_value_arrow_with_body
@@ -68,7 +69,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  SyntheticOccurrence,
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -108,7 +108,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn bind_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: []
   }
 }
@@ -264,7 +264,7 @@ fn bind_context() -> EvalContext {
 fn bind_pick_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: callee }
     ]
@@ -274,7 +274,7 @@ fn bind_pick_call(callee: Node) -> Node {
 fn bind_tree_root(call: Node, expected: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Named { name: ^bind_actual }, target: call },
       Edge { label: Named { name: ^bind_expected }, target: expected }
