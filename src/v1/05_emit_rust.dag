@@ -1346,8 +1346,13 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
         Present { value: carrier } => carrier
         Absent => {
           let leaf = qualified_last_segment(name: name)
-          let rendered = rust_render_type_leaf_name(name: leaf, variant_to_enum: variant_to_enum)
-          render_rust_shared_type_if_needed(type_name: leaf, rendered: rendered, shared_types: shared_types)
+          match rust_scalar_checkpoint_reference_base(dag_name: leaf, decl_file: type_reference_decl_file(n: n)) {
+            Present { value: scalar } => scalar
+            Absent => {
+              let rendered = rust_render_type_leaf_name(name: leaf, variant_to_enum: variant_to_enum)
+              render_rust_shared_type_if_needed(type_name: leaf, rendered: rendered, shared_types: shared_types)
+            }
+          }
         }
       }
     }
