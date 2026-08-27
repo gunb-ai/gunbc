@@ -40,7 +40,7 @@ data iso_32000_2_authority: ExternalAuthority = ExternalAuthority {
 data rfc_8118_normative_relationship_note: String = "RFC 8118 (Informational, March 2017) specifies PDF Open Parameters for fragment identifiers and OBSOLETES RFC 3778. Where RFC 8118 and ISO 32000-2 disagree on PDF document semantics, ISO 32000-2 controls — cited as iso_32000_2_authority in rfc_8118_model_scope.further_citations. This module models the upstream RFC 8118 section-3 vocabulary and wire semantics only. gunbc product admission policy lives in gunbc.citation.pdf_safe_profile."
 
 // RFC 8118 section 3: PDF fragment parameters are an ORDERED sequence separated by ampersand; later parameters override earlier ones. Parameter values may be URI-encoded (RFC 8118); wire serialization routes through extdeps.uri uri_percent_encode_component.
-data citation_cit1_witness_split_note: String = "CIT-1 witnesses split across citation_cit1_witness_test and citation_cit1_consumer_witness_test because extdeps_external_authority_anchor is not module-scoped in v1-seed. dissolve-on: namespace-only resolution lane gives declarations module-scoped identity so one witness file can import both rfc_8118 and sysv_amd64 without homonym shadowing."
+data citation_cit1_witness_split_note: String = "CIT-1 witnesses split across citation_cit1_witness_test and citation_cit1_consumer_witness_test because the former generic external-authority anchor was not module-scoped in v1-seed. dissolve-on: namespace-only resolution lane gives declarations module-scoped identity so one witness file can import both rfc_8118 and sysv_amd64 without homonym shadowing."
 
 type NavigableUriRefusalCause
   = BaseLocatorAlreadyCarriesFragment { locator: NonEmptyStr }
@@ -437,7 +437,7 @@ fn pdf_open_fragment_selector(sequence: PdfOpenParameterSequence) -> PdfOpenFrag
       }
     PdfOpenParameterSequenceWired { wire: fragment } =>
       match fragment_selector(
-        conforms_to: extdeps_external_authority_anchor,
+        conforms_to: rfc_8118_external_authority_anchor,
         value: fragment as NonEmptyStr,
       ) {
         CitationSelectorConstructed(selector) => PdfOpenFragmentSelectorConstructed(selector)
