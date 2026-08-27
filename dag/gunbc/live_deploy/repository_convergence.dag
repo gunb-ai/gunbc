@@ -76,6 +76,7 @@ type RepositoryConvergenceOutcome
   | ConvergenceWorktreeRebound { path: String, detail: String }
   | ConvergenceHeadNotAtCandidate { candidate: String, observed: String }
   | ConvergenceHeadMovedWithoutReflog { candidate: String }
+  | ConvergenceBaseRefUpdateRefused { base_ref: String, exit_code: Int, stderr: String }
   | ConvergenceObjectImportRefused { candidate: String, exit_code: Int, stderr: String }
   | ConvergenceWorktreeTransitionRefused { candidate: String, exit_code: Int, stderr: String }
 
@@ -323,6 +324,7 @@ fn repository_convergence_converged(outcome: RepositoryConvergenceOutcome) -> Bo
     ConvergenceWorktreeRebound { path: _, detail: _ } => false
     ConvergenceHeadNotAtCandidate { candidate: _, observed: _ } => false
     ConvergenceHeadMovedWithoutReflog { candidate: _ } => false
+    ConvergenceBaseRefUpdateRefused { base_ref: _, exit_code: _, stderr: _ } => false
     ConvergenceObjectImportRefused { candidate: _, exit_code: _, stderr: _ } => false
     ConvergenceWorktreeTransitionRefused { candidate: _, exit_code: _, stderr: _ } => false
   }
@@ -355,7 +357,10 @@ fn repository_convergence_detail(outcome: RepositoryConvergenceOutcome) -> Strin
     ConvergencePostStateUnobservable { detail: d } =>
       join(["the repository state after the transition could not be observed, so nothing is established about it: ", d], "")
     ConvergenceBaseRefMoved { expected: e, observed: o } =>
-      join(["the base ref moved between observation and update (expected ", e, "): ", o], "")
+      join([
+        "the base ref moved between observation and update: expected ", e, ", now ", o,
+        " -- another writer is converging this repository, so re-observe and retry",
+      ], "")
     ConvergenceRefDisappeared { refname: r, objectname: o } =>
       join(["ref ", r, " at ", o, " existed before the transition and does not after it"], "")
     ConvergenceWorktreeDisappeared { path: p } =>
@@ -369,6 +374,8 @@ fn repository_convergence_detail(outcome: RepositoryConvergenceOutcome) -> Strin
         "HEAD reached ", c,
         " but the reflog did not grow, so the move was not performed by git -- a file-level write over refs leaves exactly this trace",
       ], "")
+    ConvergenceBaseRefUpdateRefused { base_ref: r, exit_code: x, stderr: e } =>
+      join(["updating ", r, " refused for a reason other than a concurrent move (exit ", to_string(x), "): ", e], "")
     ConvergenceObjectImportRefused { candidate: c, exit_code: x, stderr: e } =>
       join(["fetching objects for ", c, " refused (exit ", to_string(x), "): ", e], "")
     ConvergenceWorktreeTransitionRefused { candidate: c, exit_code: x, stderr: e } =>
@@ -407,6 +414,45 @@ fn observe_repository_state(repo: String) -> RepositoryState {
     ),
     head: trim(s: head.revision),
     reflog: reflog.stdout,
+  }
+}
+
+// A FAILED COMPARE-AND-SWAP IS NOT SELF-DESCRIBING, and inferring "the ref moved" from a nonzero
+// exit would fold three different owners into one. `update-ref` refuses a lost CAS, a ref it cannot
+// lock, an unwritable repository and a malformed ref name, and only the first means "someone else is
+// here, re-observe and retry" -- for the rest, retrying is useless and the remedy is elsewhere. This
+// module's own note on the CAS step claims exactly that distinction, so implementing it as a single
+// arm would have left an annotation asserting something the code did not do, which is worse than
+// carrying no annotation at all.
+//
+// THE DISCRIMINATOR IS A RE-OBSERVATION, NOT THE STDERR TEXT. Matching git's message would bind this
+// judgment to a human-facing string that is localised and free to change between versions; asking
+// the repository what the ref holds NOW answers the question directly. If the ref has left the value
+// we expected, it genuinely moved. If it still holds that value -- or cannot be read at all -- then
+// whatever refused was not a concurrent writer, and the typed refusal says so and carries git's own
+// exit code and stderr for triage.
+//
+// A REF THAT MOVED AND MOVED BACK reads as "not moved" here, and that is the honest answer this
+// mechanism can give: the CAS itself already refused, nothing was written, and the operation is
+// refusing either way. What the arm decides is which remedy to name, and for a ref that ended where
+// it started, "retry" is the correct one.
+fn base_ref_update_refusal_cause(
+  repo: String,
+  base_ref: String,
+  expected_old: String,
+  exit_code: Int,
+  stderr: String,
+) -> RepositoryConvergenceOutcome {
+  let seen = git.Core.RevParseInRepo(repo: repo as FilePath, target: base_ref as GitRef)
+  if seen.exit_code != 0 {
+    ConvergenceBaseRefUpdateRefused { base_ref: base_ref, exit_code: exit_code, stderr: stderr }
+  } else {
+    let now = trim(s: seen.revision)
+    if now == expected_old {
+      ConvergenceBaseRefUpdateRefused { base_ref: base_ref, exit_code: exit_code, stderr: stderr }
+    } else {
+      ConvergenceBaseRefMoved { expected: expected_old, observed: now }
+    }
   }
 }
 
@@ -461,10 +507,13 @@ func repository_converge_wet(
           expected_old: expected_old,
         )
         if swapped.exit_code != 0 {
-          convergence_exit(outcome: ConvergenceBaseRefMoved {
-            expected: expected_old,
-            observed: swapped.stderr,
-          })
+          convergence_exit(outcome: base_ref_update_refusal_cause(
+            repo: repo,
+            base_ref: base_ref,
+            expected_old: expected_old,
+            exit_code: swapped.exit_code,
+            stderr: swapped.stderr,
+          ))
         } else {
           let reset = git.Core.ResetHardInRepo(repo: repo as FilePath, target: candidate)
           if reset.exit_code != 0 {
