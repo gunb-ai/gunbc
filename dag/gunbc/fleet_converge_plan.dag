@@ -9,8 +9,6 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash {
   content_hash_of_value,
   serialize_content_hash,
-  compare_content_hash,
-  ContentHashEqual,
   Fnv1a64StructuralDigestHex,
   Fnv1a64Structural,
   Fnv1a64,
@@ -286,29 +284,11 @@ fn fleet_converge_apply_subject_host_matches(planned_host: NonEmptyStr, observed
 }
 
 // APPLY RE-OBSERVES UNDER THE REQUEST, WHICH CARRIES THE SCOPE THE PLAN WAS BUILT FROM. Taking the
-// families as loose parameters here would let an apply admit a fabric-only plan against a full-host
-// re-observation, or the reverse -- the fingerprints would simply be computed over different family
-// sets and the mismatch would read as ordinary drift rather than as a scope confusion. Since the
-// scope is inside the baseline text, a scope mismatch cannot compare equal.
-fn fleet_converge_apply_subject_admits(
-  planned_subject: FleetConvergePlanSubject,
-  observed: FleetConvergeRequest,
-) -> Bool {
-  fleet_converge_apply_subject_host_matches(
-    planned_host: planned_subject.host,
-    observed_host: fleet_converge_request_host(request: observed),
-  )
-    && fleet_converge_scope_matches(
-      planned: planned_subject.scope,
-      observed: fleet_converge_request_scope(request: observed),
-    )
-    && compare_content_hash(
-      left: planned_subject.member_set_fingerprint,
-      right: fleet_converge_member_set_fingerprint(request: observed),
-    ) == ContentHashEqual
-}
-
-// THIS PREDICATE IS NOW A PROJECTION OF THE ARTIFACT-LEVEL ONE BELOW, NOT A SECOND AUTHORITY.
+// families as loose parameters would let an apply admit a fabric-only plan against a full-host
+// re-observation, or the reverse -- the fingerprints would be computed over different family sets
+// and the mismatch would read as ordinary drift rather than as a scope confusion.
+//
+// THIS PREDICATE IS A PROJECTION OF THE ARTIFACT-LEVEL ONE BELOW, NOT A SECOND AUTHORITY.
 // It takes a FleetConvergePlanSubject, which production does not have at apply time and cannot
 // build: the artifact holds a host, a scope wire and a fingerprint TEXT, and turning that text
 // back into a ContentHash would mean minting a content hash from untrusted file bytes -- the
