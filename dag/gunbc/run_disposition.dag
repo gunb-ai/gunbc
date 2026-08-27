@@ -22,7 +22,7 @@ import extdeps.github.actions_runs {
 }
 import gunbc.witness_floor_workflow { witness_floor_cancel_in_progress_event }
 
-// `cancelled` IS ONE WORD OVER TWO STATES WITH OPPOSITE OWNERS AND OPPOSITE REMEDIES.
+// `cancelled` IS ONE WORD OVER AT LEAST TWO STATES WITH OPPOSITE OWNERS AND OPPOSITE REMEDIES.
 //
 // This module exists because a measured claim went into circulation and was very nearly acted on:
 // half of all settled witnesses.yml runs never reach a verdict. The LEVEL was correct and
@@ -100,6 +100,27 @@ type ReplacementObservation
 // here, per the standing rule that a measurement is cited by naming its producer -- a copied number
 // rots without anyone touching either end.
 data replacement_lag_supersession_floor_s: Int = 0
+
+// A THIRD CANCEL POPULATION EXISTS AND THIS CARRIER DELIBERATELY DOES NOT SEPARATE IT, because it
+// is not a RUN-grain fact and everything here is.
+//
+// The runner-acquisition failure -- a job that is never claimed, ending at a fixed ~181 seconds with
+// no runner name and ZERO steps -- can land on the AGGREGATOR job specifically: the one-step job
+// whose only purpose is to read the other two lanes' results. When it does, both real lanes have
+// SUCCEEDED and the run still reports failure. Specimen: commit 62ad8d7d7, floor success steps=16,
+// build success steps=12, aggregator cancelled steps=0 with no runner.
+//
+// That is the OPPOSITE of the eviction this module's cancel arms describe, on every axis: not a long
+// job killed mid-work but a trivial one that never started, and the consumer-visible harm is a FALSE
+// RED OVER VERIFIED WORK rather than a lost verdict. A lane hitting it goes looking for a defect in a
+// diff that has none. So the remedies differ again, which is exactly the argument this module makes
+// about the other two.
+//
+// WHY IT IS OUT OF SCOPE RATHER THAN MISSING: separating it requires the JOB roster -- which job was
+// cancelled, its step count, whether it held a runner -- and a WorkflowRunRecord carries none of
+// that. A run-grain carrier cannot express the distinction, so inventing an arm for it here would be
+// a variant no input could ever select. Naming the limitation is the honest form; the arm belongs to
+// a job-grain carrier that does not exist yet.
 
 // THE DISPOSITIONS. Every settled run is exactly one of these, and the two cancel arms are the
 // point of the module.
