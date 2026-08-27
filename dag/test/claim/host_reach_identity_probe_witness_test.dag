@@ -198,8 +198,8 @@ test fn mismatch_expectation_threads_without_fabrication() -> Bool {
 // reservation address — 'srv5'/'srv6' are not published names anywhere — while
 // name-resolvable hosts pass through unchanged. Identity stays the receipt key.
 test fn spark_probe_targets_are_modeled_addresses_not_names() -> Bool {
-  fleet_probe_endpoint_for(host: "srv5") == "192.168.1.222"
-    && fleet_probe_endpoint_for(host: "srv6") == "192.168.1.223"
+  fleet_probe_endpoint_for(host: "srv5") == "192.168.1.226"
+    && fleet_probe_endpoint_for(host: "srv6") == "192.168.1.225"
     && fleet_probe_endpoint_for(host: "srv1") == "srv1"
 }
 

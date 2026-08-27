@@ -12,8 +12,12 @@ allocation).
 
 ## Physical facts (settled, operator-supplied)
 
-- `srv5` = router binding `spark-a3ee` = `192.168.1.222`
-- `srv6` = router binding `spark-3bd5` = `192.168.1.223`
+- `srv5` = router binding `spark-a3ee` = `192.168.1.226` (wireless MAC `F0:68:E3:B3:1A:40`)
+- `srv6` = router binding `spark-3bd5` = `192.168.1.225` (wireless MAC `F0:68:E3:31:AB:E6`)
+
+Both units moved to wifi on 2026-08-27 (SPARK-WIFI-0) and their reservations were re-keyed
+to the radio MACs; the ethernet ports are unplugged. The prior addresses were
+`192.168.1.222` / `192.168.1.223`, keyed to the RJ-45 MACs.
 - Allocation was **arbitrary and operator-delegated** — it carries an `OperatorAllocation`
   receipt on main precisely so it is never re-presented as a discovered fact.
 - Rack Pi: Raspberry Pi 3 Model B+, `192.168.1.197`, single radio (so `SameRack` does **not**
