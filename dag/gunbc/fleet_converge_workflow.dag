@@ -7,7 +7,7 @@ import extdeps.github.actions {
   WorkflowPermissions, PermRead, PermWrite,
   upload_artifact_action, download_artifact_action,
   RunnerSpec, RunsOnExpression,
-  ConcurrencySpec, ConcurrencyMappingQueueMax, QueueMaxCancelInProgressFalse,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
 }
 import gunbc.roadmap_execution_contract { CargoCapability }
 import gunbc.toolchain_home_standing {
@@ -256,6 +256,14 @@ fn fleet_converge_dashboard_deploy_step() -> Step {
   }
 }
 
+// QueueNotMax RATHER THAN QueueMax, and the two are not interchangeable here. QueueMax permits many
+// pending entries, so a burst of dispatches would deploy each queued revision in turn -- installing
+// revisions already superseded before they were installed. QueueNotMax holds at most one pending and
+// REPLACES it with the newest arrival, which is what srv1_dashboard_deploy_serialization_note
+// describes: an older pending deployment gives way to the newest main revision. cancel_in_progress
+// is false in both readings and that is the half that matters most -- a queued deploy must never
+// interrupt the one currently holding the host mutation window, which is the state that produces a
+// half-applied cutover.
 fn fleet_converge_dashboard_deploy_job() -> Job {
   Job {
     id: "dashboard-deploy",
@@ -276,9 +284,10 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
     timeout_minutes: Present { value: gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: Present {
-      value: ConcurrencyMappingQueueMax {
+      value: ConcurrencyMappingQueueNotMax {
         group: srv1_dashboard_deploy_concurrency_group,
-        cancel_in_progress: Present { value: QueueMaxCancelInProgressFalse }
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
       }
     },
     permissions: none,
