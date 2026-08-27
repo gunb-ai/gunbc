@@ -1,5 +1,6 @@
 module v2.extdeps.languages.c
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -143,8 +144,7 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 
 data c_r3_interface_members_split_note: String = "C R3: CompilationUnit.interface renders to the unit .h (declarations only); CompilationUnit.members renders to the unit .c (implementation). partition_fold is the sole producer of interface/deps; this module only spells linkage paths and cross-unit #include lines."
@@ -830,7 +830,7 @@ fn c_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -865,7 +865,7 @@ fn c_int_inhabitant_node() -> Node {
     children: [
       c_named_edge(name: ^c_inhabitant_field_atom, target: c_atom(id: ^c_inhabitant_int))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -877,7 +877,7 @@ fn c_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: c_int_inhabitant_node() },
       Edge { label: Positional, target: c_int_inhabitant_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -907,7 +907,7 @@ fn c_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: c_serialize_source_children(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -981,7 +981,7 @@ fn c_grammar_relation_row_node(row: CGrammarRelationRow) -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -991,7 +991,7 @@ fn c_translation_rules_node() -> Node {
     children: [
       c_named_edge(name: ^c_relation_rule_fn_add, target: c_grammar_relation_row_node(row: c_grammar_relation_row()))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1006,7 +1006,7 @@ fn c_add_declared_inhabitants_root() -> Node {
       c_named_edge(name: ^c_inhabitant_field_int, target: c_int_inhabitant_node()),
       c_named_edge(name: ^c_inhabitant_field_add_fn, target: c_emitted_add_fn_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1123,7 +1123,7 @@ fn c_target_model_node() -> Node {
         target: c_operator_realizations_catalog_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1186,7 +1186,7 @@ fn c_emit_host_runtime_primitive_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^c_emit_host_runtime_primitive_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

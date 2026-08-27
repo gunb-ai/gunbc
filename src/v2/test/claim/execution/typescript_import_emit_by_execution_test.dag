@@ -9,7 +9,7 @@ fn ts_import_symbol_atom(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -26,7 +26,7 @@ fn ts_import_block_node(names: List<Symbol>) -> Node {
         )
       }
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -51,7 +51,7 @@ fn ts_import_carrier_node(segments: List<Symbol>, names: List<Symbol>) -> Node {
         target: ts_import_block_node(names: names)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -68,7 +68,7 @@ fn ts_import_missing_qn_carrier_node(names: List<Symbol>) -> Node {
         target: ts_import_block_node(names: names)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

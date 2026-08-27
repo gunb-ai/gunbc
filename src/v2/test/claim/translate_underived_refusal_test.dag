@@ -1,5 +1,6 @@
 module v2.test.claim.translate_underived_refusal
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree, infer }
 import v2.compiler.translate { translate }
@@ -51,11 +52,10 @@ import v2.std.node {
   Edge,
   Node,
   Positional,
-  SyntheticOccurrence,
   TypeNode,
   Value,
   content_hash,
-  node_rebuild
+  node_rebuild,
 }
 import v2.std.optional { Absent, Optional, optional_absent }
 import v2.test.complexity_gate.table_fixture_add_subject_producer {
@@ -82,14 +82,14 @@ fn translate_refused_canonical_grounding(d: NonEmptyDiagnostics) -> Bool {
 data translate_underived_value_specimen: Node = Node {
   kind: ComputationNode { behavior: Value },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn translate_underived_conj_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -97,7 +97,7 @@ fn translate_underived_disj_node() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -235,7 +235,7 @@ fn translate_projection_absent_fold_bodied_arrow_wrapped_root() -> Outcome<Node>
           children: [
             Edge { label: Positional, target: arrow }
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       )
     }
@@ -277,7 +277,7 @@ fn translate_underived_grammar_match_bundle() -> Node {
         target: rust_selection_policy_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

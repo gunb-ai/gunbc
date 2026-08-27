@@ -1,7 +1,7 @@
 module gunbc.plans.regime2_shared_emission_fold
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
@@ -61,6 +61,7 @@ fn regime2_shared_emission_fold_body() -> List<MarkdownBlock> {
 }
 
 data regime2_shared_emission_fold_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "regime2-shared-emission-fold",
   title: "Regime-2 emission: one shared fold for the pure-projection formats",
   body: regime2_shared_emission_fold_body(),

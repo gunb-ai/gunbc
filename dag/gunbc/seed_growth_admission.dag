@@ -3,14 +3,17 @@ module gunbc.seed_growth_admission
 import gunbc.anonymous_record_resolution_seed_growth { anonymous_record_resolution_seed_growth_justification }
 import gunbc.reference_closure_binder_seed_growth { reference_closure_binder_seed_growth_justification }
 import gunbc.bare_reference_scanner_admission { bare_reference_scanner_seed_growth_justification }
+import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
 import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
 import gunbc.declaration_index_seed_growth { declaration_index_seed_growth_justification }
 import gunbc.emitted_closure_compile_seed_growth { emitted_closure_compile_seed_growth_justification }
 import gunbc.namespace_wave_admission { namespace_wave_admission_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
 import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_growth_justification }
+import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
+import gunbc.generated_artifact_boundary_seed_growth { generated_artifact_boundary_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjection,
@@ -151,11 +154,14 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     witness_runtime_cause_seed_growth_justification,
     parse_refusal_location_seed_growth_justification,
     claim_unwind_seed_growth_justification,
+    shared_fill_attribution_seed_growth_justification,
+    census_memo_seed_growth_justification,
     declaration_index_seed_growth_justification,
     emitted_closure_compile_seed_growth_justification,
     namespace_wave_admission_seed_growth_justification,
     qualified_pipe_callee_seed_growth_justification,
-    target_invocation_seed_growth_justification
+    target_invocation_seed_growth_justification,
+    generated_artifact_boundary_seed_growth_justification
   ]
 }
 

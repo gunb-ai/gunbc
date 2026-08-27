@@ -1,7 +1,7 @@
 module test.claim.node_hash_protocol_witness
 
 import std.types { Bool, String }
-import std.occurrence_identity { OccurrenceId }
+import std.occurrence_identity { OccurrenceId, node_occurrence_identity_minted }
 
 import v2.std.node {
   Node,
@@ -29,7 +29,6 @@ import v2.std.node {
   Match,
   node_synthetic,
   node_with_occurrence_id,
-  node_occurrence_minted,
   content_hash,
 }
 
@@ -222,7 +221,7 @@ fn minted_atom(identity: Symbol, id: Int) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: node_occurrence_minted(id: OccurrenceId { value: id }),
+    occurrence_id: node_occurrence_identity_minted(id: OccurrenceId { value: id }),
   )
 }
 

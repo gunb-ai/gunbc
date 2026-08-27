@@ -1,5 +1,6 @@
 module v2.extdeps.languages.gha_workflow_yaml_fold
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import extdeps.languages.yaml.emit { emit_inline_scalar_text }
 import extdeps.github.actions {
   ActionRef,
@@ -67,8 +68,7 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.node_query { find_named_child }
 import v2.std.witness { Holds, Violates, Witness }
@@ -89,7 +89,7 @@ fn gha_fold_prod_tag(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: binding } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -103,7 +103,7 @@ fn gha_fold_prod_kind_tag_terminal(binding: Symbol) -> FormalGrammarSymbol {
 data gha_fold_diagnostic_anchor: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn gha_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
@@ -123,7 +123,7 @@ fn gha_fold_scalar_emitted(text: String) -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^gha_fold_scalar_kind } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       },
       Edge {
@@ -131,11 +131,11 @@ fn gha_fold_scalar_emitted(text: String) -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: emit_inline_scalar_text(s: text) } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -143,7 +143,7 @@ fn gha_fold_flow_labels_single_emitted(label: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [Edge { label: Positional, target: label }],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -154,7 +154,7 @@ fn gha_fold_flow_labels_pair_emitted(left: Node, right: Node) -> Node {
       Edge { label: Positional, target: left },
       Edge { label: Positional, target: right }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -205,7 +205,7 @@ fn gha_fold_runs_on_self_hosted_emitted(labels: Node) -> Node {
       },
       Edge { label: Positional, target: labels }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -219,7 +219,7 @@ fn gha_fold_step_head_run_emitted(scalar: Node) -> Node {
       },
       Edge { label: Positional, target: scalar }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -233,7 +233,7 @@ fn gha_fold_step_head_uses_emitted(scalar: Node) -> Node {
       },
       Edge { label: Positional, target: scalar }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -247,7 +247,7 @@ fn gha_fold_step_tail_run_emitted(scalar: Node) -> Node {
       },
       Edge { label: Positional, target: scalar }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -261,7 +261,7 @@ fn gha_fold_step_tail_uses_emitted(scalar: Node) -> Node {
       },
       Edge { label: Positional, target: scalar }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -366,7 +366,7 @@ fn gha_fold_step_list_single_emitted(step_head: Node) -> Node {
     children: [
       Edge { label: Positional, target: step_head }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -377,7 +377,7 @@ fn gha_fold_step_list_pair_emitted(left: Node, right: Node) -> Node {
       Edge { label: Positional, target: left },
       Edge { label: Positional, target: right }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -391,7 +391,7 @@ fn gha_fold_steps_block_emitted(step_list: Node) -> Node {
       },
       Edge { label: Positional, target: step_list }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -406,7 +406,7 @@ fn gha_fold_job_emitted(runs_on: Node, steps_block: Node) -> Node {
       Edge { label: Positional, target: runs_on },
       Edge { label: Positional, target: steps_block }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -687,7 +687,7 @@ fn gha_fold_serialize_source_witness(
                   target: tokens_root
                 )
               ],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: OccurrenceSynthetic
             }
           }
         Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
@@ -715,7 +715,7 @@ fn gha_fold_translation_rules_node_for_emitted(
             ),
             bash_named_edge(name: rule_name, target: row)
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -868,7 +868,7 @@ fn gha_fold_flat_step_head_run_emitted(scalar: Node) -> Node {
       },
       Edge { label: Positional, target: scalar }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -882,7 +882,7 @@ fn gha_fold_flat_step_tail_uses_emitted(scalar: Node) -> Node {
       },
       Edge { label: Positional, target: scalar }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -927,11 +927,11 @@ data gha_fold_flat_steps_wrong_emitted: Node = Node {
             )
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn gha_fold_flat_steps_wrong_target_model_witness(source_text: String) -> Witness<TargetModel> {
@@ -958,7 +958,7 @@ data gha_fold_job_wrong_production_emitted: Node = Node {
       )
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn gha_fold_job_wrong_production_target_model_witness(source_text: String) -> Witness<TargetModel> {

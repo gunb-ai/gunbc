@@ -133,8 +133,8 @@ fn node_kind_type_node(ctx: &InterpContext, connective: Value) -> Value {
 
 fn synthetic_occurrence(ctx: &InterpContext) -> Value {
     Value::Variant {
-        type_name: ctx.sym("NodeOccurrenceId"),
-        variant_name: ctx.sym("SyntheticOccurrence"),
+        type_name: ctx.sym("NodeOccurrenceIdentity"),
+        variant_name: ctx.sym("OccurrenceSynthetic"),
         fields: Rc::new(vec![]),
     }
 }
