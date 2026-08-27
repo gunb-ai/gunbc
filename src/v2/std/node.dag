@@ -1,5 +1,6 @@
 module v2.std.node
 
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -111,7 +112,7 @@ type NodeShape {
 fn node_with_occurrence_id(
   kind: NodeKind,
   children: List<Edge>,
-  occurrence_id: std.occurrence_identity.NodeOccurrenceIdentity
+  occurrence_id: NodeOccurrenceIdentity
 ) -> Node {
   Node { kind: kind, children: children, occurrence_id: occurrence_id }
 }
@@ -128,7 +129,7 @@ fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: kind,
     children: children,
-    occurrence_id: std.occurrence_identity.OccurrenceSynthetic
+    occurrence_id: OccurrenceSynthetic
   )
 }
 
@@ -136,7 +137,7 @@ fn node_for_structural_equality(n: Node) -> Node {
   node_with_occurrence_id(
     kind: n.kind,
     children: n.children,
-    occurrence_id: std.occurrence_identity.OccurrenceSynthetic
+    occurrence_id: OccurrenceSynthetic
   )
 }
 
@@ -165,7 +166,7 @@ fn canonicalize_node_strip_provenance(n: Node) -> Node {
 type Node {
   kind: NodeKind
   children: List<Edge>
-  occurrence_id: std.occurrence_identity.NodeOccurrenceIdentity
+  occurrence_id: NodeOccurrenceIdentity
 }
 type NodeFold<R> {
   init: fn(Node) -> R
@@ -744,7 +745,7 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
   Node {
     kind: base.kind,
     children: canonicalize_edges_for_content_hash(kind: base.kind, children: base.children),
-    occurrence_id: std.occurrence_identity.OccurrenceSynthetic
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
