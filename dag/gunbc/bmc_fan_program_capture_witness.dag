@@ -1,0 +1,112 @@
+module gunbc.bmc_fan_program_capture_witness
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.bmc_fan_program_capture {
+  CapturedProgramReceipt,
+  ConvergedFromModelledIntent,
+  HandAppliedNotReproducibleFromSource,
+  ProgramProvenanceUnobserved,
+  fleet_captured_fan_programs,
+  srv3_captured_program,
+  srv4_captured_program,
+}
+
+// WHAT THIS WITNESS CAN AND CANNOT ESTABLISH, STATED FIRST BECAUSE THE GAP IS THE POINT.
+//
+// IT CANNOT CHECK THE DIGEST AGAINST THE BYTES. That check needs a filesystem read, and the
+// required floor evaluates witnesses inside a hermetic envelope that refuses host effects by
+// construction. A witness declaring ReadsLiveTree is discovered, counted and never run - it would
+// read as coverage while executing nothing, which is worse than its absence. So the binding between
+// artifacts/bmc/srvN-config-asrr.json and the hex recorded beside it is NOT machine-checked here.
+//
+// WHAT ESTABLISHES IT TODAY: the capture computed sha256 locally over the received bytes and each
+// BMC independently computed sha256sum over its own file, and the two agreed for both hosts. That
+// is two independent computations rather than one, which is why the digest is trustworthy - but it
+// happened once, at capture time, and nothing re-derives it. NEXT-RUNG TRIGGER: a phase that hashes
+// the committed artifact and joins it to this carrier by path. The parse sweep already walks the
+// tree on every required run and is the natural home; until it does, this class sits at
+// mitigatable and the paragraph above is the whole of its evidence.
+//
+// WHAT IT DOES ESTABLISH is that the carrier cannot quietly collapse two hosts into one. Every
+// field that distinguishes srv3's capture from srv4's is asserted distinct, so a copy-paste that
+// duplicated one host's digest, machine id or byte count onto the other goes red here. That is the
+// realistic authoring failure for a two-row table of near-identical records, and it is the one a
+// digest check would NOT catch if both rows pointed at the same artifact.
+
+fn digests(rows: List<CapturedProgramReceipt>) -> List<NonEmptyStr> {
+  map(rows, row => row.program.digest.hex)
+}
+
+fn distinct_count(values: List<NonEmptyStr>) -> Int {
+  fold(
+    values,
+    init: 0,
+    f: (acc, value) =>
+      acc
+        + if fold(values, init: 0, f: (n, other) => if other == value { n + 1 } else { n }) == 1 {
+            1
+          } else {
+            0
+          },
+  )
+}
+
+fn the_two_captures_are_not_the_same_machine() -> Bool {
+  let a = srv3_captured_program.program
+  let b = srv4_captured_program.program
+  a.digest.hex != b.digest.hex
+    && a.origin.bmc_machine_id != b.origin.bmc_machine_id
+    && a.origin.host != b.origin.host
+    && a.artifact_path != b.artifact_path
+    && a.artifact_byte_count != b.artifact_byte_count
+}
+
+fn every_digest_is_distinct() -> Bool {
+  distinct_count(values: digests(rows: fleet_captured_fan_programs)) == 2
+}
+
+// THE PROVENANCE ARM DECIDES WHETHER THE BYTES ARE DISPOSABLE, so it is asserted rather than
+// assumed. Both programs were arrived at by hand against live DIMM temperatures and nothing in this
+// repository regenerates them; marking either as converged would say the artifact could be
+// discarded and rebuilt from intent, which is false and would license deleting the only copy.
+fn both_programs_are_hand_applied() -> Bool {
+  fold(
+    fleet_captured_fan_programs,
+    init: true,
+    f: (acc, row) =>
+      acc
+        && match row.program.provenance {
+          HandAppliedNotReproducibleFromSource => true
+          ConvergedFromModelledIntent => false
+          ProgramProvenanceUnobserved => false
+        },
+  )
+}
+
+// THE OUTCOME IS WHAT THE INTENT WILL HAVE TO REPRODUCE. Both hosts landed under 36 dBA with no
+// DIMM over guard, and the guard count is asserted at zero against a population of nine rather than
+// as a bare ratio - "0 of 9" and "0 of 0" are different claims and only one of them is cooling
+// anything.
+fn the_recorded_outcome_is_the_quiet_one() -> Bool {
+  fold(
+    fleet_captured_fan_programs,
+    init: true,
+    f: (acc, row) =>
+      acc
+        && row.outcome.tenths_dba < 360
+        && row.outcome.dimms_over_guard == 0
+        && row.outcome.dimm_population == 9,
+  )
+}
+
+fn bmc_fan_program_capture_witness() -> ProcessExit {
+  if the_two_captures_are_not_the_same_machine()
+    && every_digest_is_distinct()
+    && both_programs_are_hand_applied()
+    && the_recorded_outcome_is_the_quiet_one() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "captured BMC fan program receipts: host distinctness, provenance, or the recorded acoustic outcome changed")
+  }
+}

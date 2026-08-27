@@ -1,0 +1,141 @@
+module gunbc.bmc_fan_program_capture
+
+import std.types { EpochMs, Int, List, NonEmptyStr }
+import product.placement_supply { HostIdentity }
+
+// THE BYTES THAT WERE RUNNING, CAPTURED BEFORE ANYTHING ELSE IS MODELLED. srv3 and srv4 hold a fan
+// control program that was arrived at by hand and that this repository cannot regenerate: the
+// curve, the split between cooler and chassis actuator groups, the offsets and the slew limits are
+// the outcome of live measurement against real DIMM temperatures, not a derivation from anything
+// in the tree. If a BMC is reflashed or factory reset, that work is gone and no amount of modelling
+// recovers it. So the bytes are captured first and everything else - the observer, the intent, the
+// alignment - is authored afterwards against a fact that already exists.
+//
+// THIS IS NOT THE OBSERVER. It stores an artifact and its digest, and it deliberately does NOT
+// decode the program into typed PID rows. Decoding is the observer cut's job and has its own
+// acceptance boundary: the complete ordered PID population, every coefficient and limit and slew,
+// unknown fields and unknown PID types retained rather than dropped, and absent/null/empty
+// distinguished. Publishing a half-decode here would create a second, weaker representation of the
+// same program for the observer to later contradict - and the capture would then be worth less than
+// the raw bytes it started from.
+//
+// WHY THE PATH IS A DISCRIMINATOR AND NOT THE FACT. The artifacts sit outside dag/ because they are
+// captured foreign bytes rather than authored source; the fact this module owns is the DIGEST, and
+// the path is how a reader finds the bytes that produce it.
+
+// WHAT THE DIGEST IS OVER, STATED SO IT CANNOT BE READ AS ANYTHING ELSE. It is sha256 of the exact
+// committed artifact, byte for byte, with no normalisation, no re-serialisation and no JSON
+// round-trip. That matters because a digest taken after a parse would answer a question about this
+// repository's parser rather than about the deployed file, and the two come apart precisely when a
+// field is unknown or a duplicate key appears - the cases where the difference is load-bearing.
+//
+// THE DIGEST WAS CONFIRMED FROM BOTH ENDS. Each BMC computed sha256sum over its own
+// /usr/share/swampd/config-asrr.json and the value matched the committed artifact for both hosts,
+// so the transfer is established as lossless by agreement between two independent computations
+// rather than by the absence of an error from scp.
+type CapturedProgramDigest {
+  algorithm: NonEmptyStr
+  hex: NonEmptyStr
+}
+
+// WHERE THE BYTES CAME FROM, AT A GRAIN THAT SURVIVES A REIMAGE. The machine id is carried beside
+// the host name because a host name is a label this repository assigns and can be reassigned; the
+// machine id is what distinguishes "the same BMC, reconfigured" from "a different BMC answering to
+// the same name". A restore that cannot tell those apart is a restore that can write one machine's
+// program onto another.
+type CaptureOrigin {
+  host: HostIdentity
+  bmc_machine_id: NonEmptyStr
+  firmware_version: NonEmptyStr
+  source_path: NonEmptyStr
+}
+
+// HOW THE PROGRAM CAME TO HAVE THESE BYTES. This is not decoration: a restore decision depends on
+// it. A hand-applied program is one nothing in this repository can regenerate, so restoring it means
+// replaying these exact bytes; a converged program could instead be re-derived from intent. Marking
+// a hand-applied program as converged would license discarding the only copy.
+type ProgramProvenance
+  = HandAppliedNotReproducibleFromSource
+  | ConvergedFromModelledIntent
+  | ProgramProvenanceUnobserved
+
+type CapturedFanProgram {
+  origin: CaptureOrigin
+  captured_at: EpochMs
+  artifact_path: NonEmptyStr
+  artifact_byte_count: Int
+  digest: CapturedProgramDigest
+  provenance: ProgramProvenance
+}
+
+// THE ACOUSTIC OUTCOME THESE BYTES PRODUCED, RECORDED AS A MEASUREMENT AND NOT AS A TARGET. It is
+// carried here rather than in an intent because it is a property of THIS program on THIS hardware,
+// observed after it was applied - it is what the bytes did, not what anyone asked for. When the
+// intent is finally authored, this is the figure it has to reproduce, and having it beside the
+// bytes is what makes that check possible at all.
+//
+// tenths_dba is used rather than a decimal because std.acoustic carries A-weighted levels in tenths
+// and this module does not get to invent a second scale for the same quantity.
+type CapturedAcousticOutcome {
+  tenths_dba: Int
+  dimms_over_guard: Int
+  dimm_population: Int
+}
+
+type CapturedProgramReceipt {
+  program: CapturedFanProgram
+  outcome: CapturedAcousticOutcome
+}
+
+data srv3_captured_program: CapturedProgramReceipt = CapturedProgramReceipt {
+  program: CapturedFanProgram {
+    origin: CaptureOrigin {
+      host: "srv3",
+      bmc_machine_id: "61c058a5db564eb3a20f6c891820fedd",
+      firmware_version: "3.22.00",
+      source_path: "/usr/share/swampd/config-asrr.json",
+    },
+    captured_at: 1787802300000,
+    artifact_path: "artifacts/bmc/srv3-config-asrr.json",
+    artifact_byte_count: 5212,
+    digest: CapturedProgramDigest {
+      algorithm: "sha256",
+      hex: "b6e43af4652688330a3f8c1a979f9a178adc436d84f14c54651fe0cd9405161a",
+    },
+    provenance: HandAppliedNotReproducibleFromSource,
+  },
+  outcome: CapturedAcousticOutcome {
+    tenths_dba: 350,
+    dimms_over_guard: 0,
+    dimm_population: 9,
+  },
+}
+
+data srv4_captured_program: CapturedProgramReceipt = CapturedProgramReceipt {
+  program: CapturedFanProgram {
+    origin: CaptureOrigin {
+      host: "srv4",
+      bmc_machine_id: "4344cff41d7346c2b8a1a971d5aea590",
+      firmware_version: "3.22.00",
+      source_path: "/usr/share/swampd/config-asrr.json",
+    },
+    captured_at: 1787802300000,
+    artifact_path: "artifacts/bmc/srv4-config-asrr.json",
+    artifact_byte_count: 5206,
+    digest: CapturedProgramDigest {
+      algorithm: "sha256",
+      hex: "e9357d5731b7131de1d3a7e20ffec9b397e65ebc3a4c50eb1d36f6a306d3e614",
+    },
+    provenance: HandAppliedNotReproducibleFromSource,
+  },
+  outcome: CapturedAcousticOutcome {
+    tenths_dba: 349,
+    dimms_over_guard: 0,
+    dimm_population: 9,
+  },
+}
+
+data fleet_captured_fan_programs: List<CapturedProgramReceipt> = [
+  srv3_captured_program,
+  srv4_captured_program,
+]
