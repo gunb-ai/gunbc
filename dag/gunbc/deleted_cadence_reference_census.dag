@@ -48,6 +48,19 @@ import v2.std.algebra { fold_list, any }
 // with no edit -- and, better, REFUSES the moment a route returns while the row still
 // claims nothing runs, which is the direction a transcription can never fail in.
 //
+// THE STORED ALTERNATIVE WAS TRIED, FORKED, AND DELETED ONE DAY BEFORE THIS CENSUS, which is
+// why deriving is a settled corpus decision rather than this module's preference.
+// `v2.compiler.self_host.wet_receipt_enrollment` `falsifier_self_host_wet_cadence_flag_deleted_note`
+// records a `Bool` that stored this same fact, DISAGREED with the route authority for eleven
+// days without anything refusing, and fed a fork that would have reclassified its rows from
+// uncovered to COVERED had anyone set it to its honest value -- an honesty edit wired to
+// produce coverage inflation. It was cut at the root rather than corrected.
+// `gunbc.ci_layer_roots` `witness_exclusion_row_mentions_wet_lane_dark_state_note` records the
+// follow-on and the hazard this census had to check itself against: a predicate keyed on the
+// deleted symbol could never fire on a real row, and re-pointing it at the surviving authority
+// left the broader net blind to the authority's own CamelCase vocabulary -- caught by a positive
+// control going red, not by review, because a net going blind is silent.
+//
 // THE POLARITY IS DELIBERATE AND IS THE DISCRIMINATING PART. A no-coverage claim
 // (PremiseInvalidated, LostWithDeletedCadence) asserts that its cadence is dark, so it
 // REFUSES if the route returns -- forcing reclassification rather than leaving a stale
