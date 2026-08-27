@@ -3,7 +3,8 @@ module zqxbeta.user
 type ZqxAnswer = ZqxYes | ZqxNo
 
 fn zqx_probe_pick() -> ZqxAnswer {
-    match ZqxProbeMauve {
+    let probe = ZqxProbeMauve
+    match probe {
         ZqxProbeMauve => ZqxYes
     }
 }
