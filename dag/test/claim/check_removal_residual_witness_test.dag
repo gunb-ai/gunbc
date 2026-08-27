@@ -47,10 +47,7 @@ fn synthetic_uncovered() -> CheckRemoval {
     check: CommitCargoFmtCheck,
     removed_from: GithubActionsCiJob,
     removed_on: "2026-01-02" as NonEmptyStr,
-    residual: RemovalUncovered {
-      since: "2026-01-02" as NonEmptyStr,
-      cause: "synthetic" as NonEmptyStr
-    }
+    residual: RemovalUncovered { cause: "synthetic" as NonEmptyStr }
   }
 }
 

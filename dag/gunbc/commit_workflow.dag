@@ -1076,7 +1076,14 @@ type CommitCheckEnrollment {
 // this class died of, and it is not a claim that the mechanism runs.
 type RemovalResidual
   = RemovalCoveredBy { mechanism: DeclarationRef }
-  | RemovalUncovered { since: NonEmptyStr, cause: NonEmptyStr }
+  // NO `since` FIELD, AND ITS ABSENCE IS THE POINT. The first cut of this arm carried one, and
+  // in the only row that inhabits it, `since` and the row's own `removed_on` were the SAME
+  // LITERAL -- two representations of one fact with no authority saying which wins if they
+  // drift, which is the §2 defect this whole carrier exists to reduce, reintroduced one field
+  // in. Uncoverage begins when the check was removed, and `removed_on` already states that. A
+  // row that was covered and became uncovered LATER is a different shape; it gets modeled when
+  // a real specimen exists, rather than minted now on speculation.
+  | RemovalUncovered { cause: NonEmptyStr }
 
 type CheckRemoval {
   check: CommitCheckKind
@@ -1113,7 +1120,6 @@ data check_removal_roster: List<CheckRemoval> = [
     removed_from: GithubActionsCiJob,
     removed_on: "2026-08-15" as NonEmptyStr,
     residual: RemovalUncovered {
-      since: "2026-08-15" as NonEmptyStr,
       cause: "the floor cut deleted the build job that ran cargo fmt --all --check; no required lane in .github/workflows/witnesses.yml carries a fmt step, so GitPrePushHook is the only remaining surface and it is opt-in per clone" as NonEmptyStr
     }
   }
@@ -1128,7 +1134,7 @@ data check_removal_roster: List<CheckRemoval> = [
 fn removal_is_uncovered(removal: CheckRemoval) -> Bool {
   match removal.residual {
     RemovalCoveredBy { mechanism: _ } => false
-    RemovalUncovered { since: _, cause: _ } => true
+    RemovalUncovered { cause: _ } => true
   }
 }
 
