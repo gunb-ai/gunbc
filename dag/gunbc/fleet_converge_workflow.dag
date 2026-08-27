@@ -49,6 +49,7 @@ import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.ci_spec {
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
+  gunbc_ci_live_deploy_apply_srv1_invoke,
   gunbc_ci_spark_serving_converge_slice_invoke,
   gunbc_ci_spark_serving_observe_invoke,
   gunbc_ci_session_demand_observe_invoke,
@@ -69,7 +70,7 @@ data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3
 
 data fleet_converge_spark_target_options: List<String> = ["srv5", "srv6"]
 
-data fleet_converge_mode_options: List<String> = ["plan", "apply", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability", "session_demand_observe"]
+data fleet_converge_mode_options: List<String> = ["plan", "apply", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability", "session_demand_observe", "dashboard_deploy"]
 
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
@@ -137,6 +138,8 @@ data fleet_converge_spark_reboot_step_if: String = "github.event.inputs.mode == 
 data fleet_converge_spark_durability_step_if: String = "github.event.inputs.mode == 'spark_durability'"
 
 data fleet_converge_spark_grants_step_if: String = "github.event.inputs.mode == 'spark_grants'"
+
+data fleet_converge_dashboard_deploy_step_if: String = "github.event.inputs.mode == 'dashboard_deploy'"
 
 fn fleet_converge_plan_upload_step() -> Step {
   UsesStep {
@@ -209,6 +212,34 @@ fn fleet_converge_apply_step() -> Step {
     },
     working_directory: none,
     if_condition: Present { value: fleet_converge_apply_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// THE DASHBOARD DEPLOY, AS A MODE OF THIS WORKFLOW RATHER THAN A WORKFLOW OF ITS OWN, and the
+// placement is what makes it safe rather than merely convenient. gunbc.live_deploy.deployed_tree_report
+// BLOCKS tree-only publication: moving the deployed HEAD alone flips roadmap_belt_actuate
+// belt_revision_admission from refusing to admitting WHILE THE INSTALLED BINARY IS STILL OLD, so the
+// next belt tick dispatches a mixed realization never admitted as a release. This job already built
+// and shipped that binary in the same run (ci_release_bins_download_step / _unpack_verify_step above),
+// so the tree and the interpreter arrive together -- the pair, which is the subject
+// gunbc.live_deploy.release_binding names, rather than either half alone.
+//
+// It carries no `target` input for the same reason the mutating spark converge does carry one: this
+// deploy takes its host from the RUNNER, not from an argument. ci_deploy_srv1_access resolves the job
+// principal from the runner it lands on and refuses when that user is not in srv1's fleet roster, so
+// dispatching with host=srv1 is what aims it, and dispatching with any other host refuses at the
+// preflight instead of deploying somewhere unintended.
+fn fleet_converge_dashboard_deploy_step() -> Step {
+  RunStep {
+    name: Present { value: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)" },
+    id: Present { value: "dashboard_deploy" },
+    run: gunbc_ci_live_deploy_apply_srv1_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_dashboard_deploy_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
@@ -362,6 +393,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_session_demand_observe_step(),
         fleet_converge_spark_reboot_step(),
         fleet_converge_spark_durability_step(),
+        fleet_converge_dashboard_deploy_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
