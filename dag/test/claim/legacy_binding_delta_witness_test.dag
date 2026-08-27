@@ -298,12 +298,12 @@ test fn a_provenance_accounting_for_both_denominators_is_total() -> Bool {
     FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
       ProvenanceTotal => true
-      ProvenanceSourceMissing { keys: _ } => false
-      ProvenanceSourceRepeated { keys: _ } => false
-      ProvenanceTargetMissing { keys: _ } => false
-      ProvenanceForeignOccurrence { keys: _ } => false
-      ProvenanceTargetRepeated { keys: _ } => false
-      ProvenanceRefOutOfSubjectScope { keys: _ } => false
+      ProvenanceSourceMissing { occurrences: _ } => false
+      ProvenanceSourceRepeated { occurrences: _ } => false
+      ProvenanceTargetMissing { occurrences: _ } => false
+      ProvenanceForeignOccurrence { occurrences: _ } => false
+      ProvenanceTargetRepeated { occurrences: _ } => false
+      ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
     }
   }
 }
@@ -321,12 +321,12 @@ test fn a_projection_with_no_insertions_is_also_total() -> Bool {
     FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
       ProvenanceTotal => true
-      ProvenanceSourceMissing { keys: _ } => false
-      ProvenanceSourceRepeated { keys: _ } => false
-      ProvenanceTargetMissing { keys: _ } => false
-      ProvenanceForeignOccurrence { keys: _ } => false
-      ProvenanceTargetRepeated { keys: _ } => false
-      ProvenanceRefOutOfSubjectScope { keys: _ } => false
+      ProvenanceSourceMissing { occurrences: _ } => false
+      ProvenanceSourceRepeated { occurrences: _ } => false
+      ProvenanceTargetMissing { occurrences: _ } => false
+      ProvenanceForeignOccurrence { occurrences: _ } => false
+      ProvenanceTargetRepeated { occurrences: _ } => false
+      ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
     }
   }
 }
@@ -343,13 +343,13 @@ test fn a_base_occurrence_with_no_provenance_source_refuses() -> Bool {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
     FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
-      ProvenanceSourceMissing { keys: missing } => (missing |> count) == 1
+      ProvenanceSourceMissing { occurrences: missing } => (missing |> count) == 1
       ProvenanceTotal => false
-      ProvenanceSourceRepeated { keys: _ } => false
-      ProvenanceTargetMissing { keys: _ } => false
-      ProvenanceForeignOccurrence { keys: _ } => false
-      ProvenanceTargetRepeated { keys: _ } => false
-      ProvenanceRefOutOfSubjectScope { keys: _ } => false
+      ProvenanceSourceRepeated { occurrences: _ } => false
+      ProvenanceTargetMissing { occurrences: _ } => false
+      ProvenanceForeignOccurrence { occurrences: _ } => false
+      ProvenanceTargetRepeated { occurrences: _ } => false
+      ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
     }
   }
 }
@@ -367,13 +367,13 @@ test fn a_base_occurrence_projected_twice_refuses() -> Bool {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
     FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
-      ProvenanceSourceRepeated { keys: repeated } => (repeated |> count) == 1
+      ProvenanceSourceRepeated { occurrences: repeated } => (repeated |> count) == 1
       ProvenanceTotal => false
-      ProvenanceSourceMissing { keys: _ } => false
-      ProvenanceTargetMissing { keys: _ } => false
-      ProvenanceForeignOccurrence { keys: _ } => false
-      ProvenanceTargetRepeated { keys: _ } => false
-      ProvenanceRefOutOfSubjectScope { keys: _ } => false
+      ProvenanceSourceMissing { occurrences: _ } => false
+      ProvenanceTargetMissing { occurrences: _ } => false
+      ProvenanceForeignOccurrence { occurrences: _ } => false
+      ProvenanceTargetRepeated { occurrences: _ } => false
+      ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
     }
   }
 }
@@ -389,13 +389,13 @@ test fn a_projected_occurrence_with_no_provenance_entry_refuses() -> Bool {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
     FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
-      ProvenanceTargetMissing { keys: missing } => (missing |> count) == 1
+      ProvenanceTargetMissing { occurrences: missing } => (missing |> count) == 1
       ProvenanceTotal => false
-      ProvenanceSourceMissing { keys: _ } => false
-      ProvenanceSourceRepeated { keys: _ } => false
-      ProvenanceForeignOccurrence { keys: _ } => false
-      ProvenanceTargetRepeated { keys: _ } => false
-      ProvenanceRefOutOfSubjectScope { keys: _ } => false
+      ProvenanceSourceMissing { occurrences: _ } => false
+      ProvenanceSourceRepeated { occurrences: _ } => false
+      ProvenanceForeignOccurrence { occurrences: _ } => false
+      ProvenanceTargetRepeated { occurrences: _ } => false
+      ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
     }
   }
 }
@@ -419,13 +419,13 @@ test fn a_provenance_naming_an_occurrence_outside_either_denominator_refuses() -
     AdmissionRefusedBeforeTotality { completeness: _ } => false
     FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
-      ProvenanceForeignOccurrence { keys: foreign } => (foreign |> count) == 1
+      ProvenanceForeignOccurrence { occurrences: foreign } => (foreign |> count) == 1
       ProvenanceTotal => false
-      ProvenanceSourceMissing { keys: _ } => false
-      ProvenanceSourceRepeated { keys: _ } => false
-      ProvenanceTargetMissing { keys: _ } => false
-      ProvenanceTargetRepeated { keys: _ } => false
-      ProvenanceRefOutOfSubjectScope { keys: _ } => false
+      ProvenanceSourceMissing { occurrences: _ } => false
+      ProvenanceSourceRepeated { occurrences: _ } => false
+      ProvenanceTargetMissing { occurrences: _ } => false
+      ProvenanceTargetRepeated { occurrences: _ } => false
+      ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
     }
   }
 }
@@ -485,11 +485,11 @@ test fn a_ref_bearing_the_wrong_subject_address_refuses() -> Bool {
     TotalityComputed { totality: t } => match t {
       ProvenanceRefOutOfSubjectScope { occurrences: out } => (out |> count) == 1
       ProvenanceTotal => false
-      ProvenanceSourceMissing { keys: _ } => false
-      ProvenanceSourceRepeated { keys: _ } => false
-      ProvenanceTargetMissing { keys: _ } => false
-      ProvenanceForeignOccurrence { keys: _ } => false
-      ProvenanceTargetRepeated { keys: _ } => false
+      ProvenanceSourceMissing { occurrences: _ } => false
+      ProvenanceSourceRepeated { occurrences: _ } => false
+      ProvenanceTargetMissing { occurrences: _ } => false
+      ProvenanceForeignOccurrence { occurrences: _ } => false
+      ProvenanceTargetRepeated { occurrences: _ } => false
     }
   }
 }
@@ -509,12 +509,12 @@ test fn a_reference_that_is_carried_forward_and_also_causes_an_insertion_is_not_
     FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
       ProvenanceTotal => true
-      ProvenanceSourceMissing { keys: _ } => false
-      ProvenanceSourceRepeated { keys: _ } => false
-      ProvenanceTargetMissing { keys: _ } => false
-      ProvenanceForeignOccurrence { keys: _ } => false
-      ProvenanceTargetRepeated { keys: _ } => false
-      ProvenanceRefOutOfSubjectScope { keys: _ } => false
+      ProvenanceSourceMissing { occurrences: _ } => false
+      ProvenanceSourceRepeated { occurrences: _ } => false
+      ProvenanceTargetMissing { occurrences: _ } => false
+      ProvenanceForeignOccurrence { occurrences: _ } => false
+      ProvenanceTargetRepeated { occurrences: _ } => false
+      ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
     }
   }
 }
@@ -540,13 +540,13 @@ test fn an_insertion_naming_a_dropped_occurrence_does_not_cover_it() -> Bool {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
     FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
-      ProvenanceSourceMissing { keys: missing } => (missing |> count) == 1
+      ProvenanceSourceMissing { occurrences: missing } => (missing |> count) == 1
       ProvenanceTotal => false
-      ProvenanceSourceRepeated { keys: _ } => false
-      ProvenanceTargetMissing { keys: _ } => false
-      ProvenanceTargetRepeated { keys: _ } => false
-      ProvenanceForeignOccurrence { keys: _ } => false
-      ProvenanceRefOutOfSubjectScope { keys: _ } => false
+      ProvenanceSourceRepeated { occurrences: _ } => false
+      ProvenanceTargetMissing { occurrences: _ } => false
+      ProvenanceTargetRepeated { occurrences: _ } => false
+      ProvenanceForeignOccurrence { occurrences: _ } => false
+      ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
     }
   }
 }
@@ -565,13 +565,13 @@ test fn two_sources_claiming_one_target_refuses() -> Bool {
     AdmissionRefusedBeforeTotality { completeness: _ } => false
     FixtureTransportRefused => false
     TotalityComputed { totality: t } => match t {
-      ProvenanceTargetRepeated { keys: repeated } => (repeated |> count) == 1
+      ProvenanceTargetRepeated { occurrences: repeated } => (repeated |> count) == 1
       ProvenanceTotal => false
-      ProvenanceSourceMissing { keys: _ } => false
-      ProvenanceSourceRepeated { keys: _ } => false
-      ProvenanceTargetMissing { keys: _ } => false
-      ProvenanceForeignOccurrence { keys: _ } => false
-      ProvenanceRefOutOfSubjectScope { keys: _ } => false
+      ProvenanceSourceMissing { occurrences: _ } => false
+      ProvenanceSourceRepeated { occurrences: _ } => false
+      ProvenanceTargetMissing { occurrences: _ } => false
+      ProvenanceForeignOccurrence { occurrences: _ } => false
+      ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
     }
   }
 }
@@ -620,12 +620,12 @@ test fn a_row_less_observation_over_a_genuinely_empty_expected_population_is_adm
   ) {
     TotalityComputed { totality: t } => match t {
       ProvenanceTotal => true
-      ProvenanceSourceMissing { keys: _ } => false
-      ProvenanceSourceRepeated { keys: _ } => false
-      ProvenanceTargetMissing { keys: _ } => false
-      ProvenanceForeignOccurrence { keys: _ } => false
-      ProvenanceTargetRepeated { keys: _ } => false
-      ProvenanceRefOutOfSubjectScope { keys: _ } => false
+      ProvenanceSourceMissing { occurrences: _ } => false
+      ProvenanceSourceRepeated { occurrences: _ } => false
+      ProvenanceTargetMissing { occurrences: _ } => false
+      ProvenanceForeignOccurrence { occurrences: _ } => false
+      ProvenanceTargetRepeated { occurrences: _ } => false
+      ProvenanceRefOutOfSubjectScope { occurrences: _ } => false
     }
     AdmissionRefusedBeforeTotality { completeness: _ } => false
     FixtureTransportRefused => false
