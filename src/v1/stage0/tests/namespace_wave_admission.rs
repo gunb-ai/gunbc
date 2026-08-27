@@ -746,32 +746,42 @@ fn membership_declared_by_an_import_whose_names_appear_only_in_pattern_arms() {
 // it, and the wall that exists to catch unsound namespace motion is the thing recommending it. A
 // refusal is loud and gets investigated; this is a green, and nothing stops.
 //
-// EVERY ARM'S RED IS AUTHORABLE BY ONE ISOLATED MUTATION: delete that channel's block from
-// `collect_reference_occurrences` and the arm reports `UnusedSubjectMembershipRemoved`.
+// EVERY ARM'S RED IS AUTHORABLE BY ONE ISOLATED MUTATION, and the three mutations below were
+// EXECUTED after the reader was rebuilt on the parser's transport -- not carried over from the
+// earlier Node-reading construction, which no longer exists. A receipt about deleted code is
+// worse than no receipt, because it reads as evidence for what is actually there.
 //
-// EXECUTED MUTATION RECEIPT -- both mutations run, each channel deleted in ISOLATION, the whole
-// file run each time, and the arms that went red are exactly the arms that name that channel:
-//
-//   channel one deleted (variant-pattern name):  23 passed, 2 failed --
+//   the pattern-head String read deleted:        2 failed
 //     a_removed_import_whose_names_survive_only_as_pattern_heads_is_not_reported_unused
-//     one_name_reached_through_both_authored_channels_is_one_support_relation
-//   channel two deleted (declared field type):   23 passed, 2 failed --
+//     each_authored_channel_lands_in_the_field_whose_authority_supplied_it
+//   the transport reader yielding nothing:       3 failed
 //     a_removed_import_whose_name_survives_only_as_a_declared_field_type_is_not_reported_unused
-//     one_name_reached_through_both_authored_channels_is_one_support_relation
-//   both channels present:                       25 passed, 0 failed
+//     a_removed_import_whose_name_survives_only_as_a_type_alias_right_hand_side_is_not_reported_unused
+//     each_authored_channel_lands_in_the_field_whose_authority_supplied_it
+//   the import-member filter deleted:            2 failed
+//     an_import_member_name_is_not_an_authored_reference
+//     removing_membership_nothing_bound_through_is_admitted_as_unused   <- PRE-EXISTING
+//   nothing mutated:                             27 passed
 //
-// THE MORE INFORMATIVE HALF OF THAT RECEIPT IS WHAT DID NOT MOVE, and it is why these arms are on
-// the removal side rather than beside the add-side arm above. Under BOTH mutations,
-// `membership_declared_by_an_import_whose_names_appear_only_in_pattern_arms` -- which exercises the
-// same pattern channel from the ADD direction -- stayed GREEN. Its import-claim disjunct answers
-// first, so it passes with the repair and without it; it is a correct arm about a different
-// predicate, and it would have been worthless as evidence for this one. Anyone extending this
-// family must run the revert arm before believing a new fixture covers anything.
+// THE THIRD MUTATION IS THE ONE WORTH READING. Its second casualty is an arm nobody wrote for
+// this change: consuming every `TypeOccurrence` the transport carries folds in IMPORT MEMBER
+// NAMES, so each import becomes bound-through by its own member and
+// `UnusedSubjectMembershipRemoved` stops being reachable at all. A disposition going
+// permanently quiet is worse than the false green this file exists to close, and no arm added
+// here would have caught it -- the existing suite did. That is the argument for running the
+// whole file under each mutation rather than the arms one believes are relevant.
 //
-// Arms four and five stay green under both mutations BY DESIGN: one asserts that no support is
-// FABRICATED and one that an ordinary Node-visible reference still works, so a channel's absence
-// cannot make either fail. They bound the repair from the other side -- without them, every arm
-// above is satisfied by a reader that simply collects more.
+// THE MORE INFORMATIVE HALF REMAINS WHAT DOES NOT MOVE. Under BOTH channel mutations, the
+// pre-existing add-side arm `membership_declared_by_an_import_whose_names_appear_only_in_pattern_arms`
+// stayed GREEN: gunbc#9490's import-claim disjunct answers first, so an add-side fixture over
+// these channels passes with the repair and without it. Anyone extending this family must run
+// the revert arm before believing a new fixture covers anything.
+//
+// Two arms stay green under every mutation BY DESIGN and bound the repair from the other side:
+// one requires that a locally declared spelling fabricate no support for a foreign target, and
+// one requires that an ordinary Node-visible reference still be seen. Without them, every arm
+// above is satisfied by a reader that simply collects more -- which, as the third mutation
+// shows, is not a hypothetical failure mode here.
 
 const FIELD_TYPE_HOME: &str =
     "module probe.payload\n\ntype Wrapper\n  = Wrapped { inner: String }\n  | Empty\n";
@@ -874,7 +884,7 @@ const BOTH_CHANNELS_HOME: &str =
 const BOTH_CHANNELS_HEAD: &str = "module probe.consumer\n\ntype Holder = Held { w: Wrapper }\n\nfn describe(h: Holder) -> String {\n  match h.w {\n    Wrapped { inner: i } => i\n    Empty => \"empty\"\n  }\n}\n";
 
 #[test]
-fn one_name_reached_through_both_authored_channels_is_one_support_relation() {
+fn each_authored_channel_lands_in_the_field_whose_authority_supplied_it() {
     let dir = scratch("both_channels");
     author(&dir, "payload.dag", BOTH_CHANNELS_HOME);
     author(&dir, "consumer.dag", BOTH_CHANNELS_HEAD);
@@ -882,26 +892,84 @@ fn one_name_reached_through_both_authored_channels_is_one_support_relation() {
     let record = v1_compiler::cli_run::declaration_index::index_get(&index, "probe.consumer")
         .expect("PLANT NEVER REACHED: the consumer module must be indexed");
 
+    // THE DECLARED FIELD TYPE COMES FROM THE PARSER, and it must arrive in the parser's field.
+    // Asserting the UNION here would pass on a build that had quietly re-derived it from the
+    // Node, which is exactly the second authority the ruling forbids -- so the arm pins the
+    // channel, not merely the presence.
     let wrapper_rows: Vec<_> = record
-        .referenced
+        .authored_type_references
         .iter()
         .filter(|(_, name)| name == "Wrapper")
         .collect();
     assert_eq!(
         wrapper_rows.len(),
         1,
-        "`Wrapper` is authored once, as the declared type of `Held.w`; a second row would mean \
-         the projection appended rather than inserted into the keyed set, and every downstream \
-         count that reads `referenced` would inflate with it, got: {:?}",
+        "`Wrapper` is authored once as the declared type of `Held.w`, and the transport is what \
+         sees it; a second row means the reader appended rather than inserted, and zero rows \
+         means the transport was not consumed, got: {:?}",
         wrapper_rows
     );
+    assert!(
+        !record.referenced.iter().any(|(_, name)| name == "Wrapper"),
+        "a declared field type must NOT also appear in the Node walk's own set -- if it does, \
+         something reconstructed it from the tree and the two fields are no longer one \
+         authority each, got: {:?}",
+        record.referenced
+    );
 
-    // AND THE PATTERN CHANNEL IS PRESENT IN THE SAME RECORD -- otherwise this arm would pass on
-    // a projection that reads neither channel, which is the shape it exists to exclude.
+    // AND THE PATTERN HEAD COMES FROM THE AUTHORED STRING, because the parser mints no
+    // occurrence for it. It belongs in `referenced` and must be absent from the parser's field:
+    // were it to appear there, the transport would have started carrying it and this reader's
+    // whole justification would have expired.
     assert!(
         record.referenced.iter().any(|(_, name)| name == "Wrapped"),
         "the variant-pattern head `Wrapped` must be an authored reference, got: {:?}",
         record.referenced
+    );
+    assert!(
+        !record
+            .authored_type_references
+            .iter()
+            .any(|(_, name)| name == "Wrapped"),
+        "the transport does not stamp a pattern head today; if this fires, it now does, and the \
+         String-reading block in `collect_reference_occurrences` should be deleted rather than \
+         kept beside it, got: {:?}",
+        record.authored_type_references
+    );
+}
+
+// AN IMPORT MEMBER IS NOT A REFERENCE, and this arm exists because the first cut of the
+// transport reader treated it as one. The transport stamps an import's member name as a
+// `TypeOccurrence` enclosed by the import target, so consuming every TypeOccurrence made each
+// import bound-through by its own member and `UnusedSubjectMembershipRemoved` became
+// unreachable. That is a disposition going permanently quiet, which is worse than the false
+// green this change closes -- and it was caught by a PRE-EXISTING arm rather than by review.
+#[test]
+fn an_import_member_name_is_not_an_authored_reference() {
+    let dir = scratch("import_member_not_reference");
+    author(
+        &dir,
+        "other.dag",
+        "module probe.other\n\ndata gadget: String = \"g\"\n",
+    );
+    author(
+        &dir,
+        "consumer.dag",
+        "module probe.consumer\n\nimport probe.other { gadget }\n\nfn use_it() -> String { \"x\" }\n",
+    );
+    let index = index_of(&dir);
+    let record = v1_compiler::cli_run::declaration_index::index_get(&index, "probe.consumer")
+        .expect("PLANT NEVER REACHED: the consumer module must be indexed");
+
+    assert!(
+        !record
+            .authored_type_references
+            .iter()
+            .any(|(enclosing, _)| enclosing == "probe.other"),
+        "`probe.other` is an import target, not a declaration this module declares, so nothing \
+         may be keyed under it; a row here means an import member is being counted as a use of \
+         itself, got: {:?}",
+        record.authored_type_references
     );
 }
 

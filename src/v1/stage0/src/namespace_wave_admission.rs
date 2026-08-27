@@ -763,12 +763,24 @@ fn membership_bound_through(
     record: &ModuleDeclarationRecord,
     target: &str,
 ) -> bool {
-    record.referenced.iter().any(|(_, spelling)| {
-        declaring_candidates(index, record, spelling).contains(target)
-            || module_prefix_of(index, spelling)
-                .map(|(m, _)| m == target)
-                .unwrap_or(false)
-    })
+    // THE UNION OF BOTH AUTHORED-REFERENCE CHANNELS, and the two are peers rather than one
+    // widened set for the reason `authored_type_references` states: they have different
+    // authorities. `referenced` is the index's own walk over the final tree; the other is the
+    // parser's stamped answer, which reaches a declared type parked in `inferred` that no walk
+    // over the tree can see. A consumer asking "is anything here bound through that import"
+    // wants every authored reference regardless of which channel could observe it, so it takes
+    // both -- and asking only the walk is what let this predicate report a live import as
+    // unused.
+    record
+        .referenced
+        .iter()
+        .chain(record.authored_type_references.iter())
+        .any(|(_, spelling)| {
+            declaring_candidates(index, record, spelling).contains(target)
+                || module_prefix_of(index, spelling)
+                    .map(|(m, _)| m == target)
+                    .unwrap_or(false)
+        })
 }
 
 /// How many modules' closures moved in a way this target participates in.
@@ -954,7 +966,7 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
     Ok(fill
         .modules
         .iter()
-        .map(|module| record_from_module(module, &source_indices, rel))
+        .map(|module| record_from_module(module, &source_indices, rel, &fill.occurrence_transport))
         .collect())
 }
 

@@ -18412,6 +18412,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                             module,
                             &source_indices,
                             &rel,
+                            &fill.occurrence_transport,
                         ));
                     }
                     records.lock().expect("record lock").extend(built);
