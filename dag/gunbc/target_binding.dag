@@ -1,7 +1,8 @@
 module gunbc.target_binding
 
 import extdeps.bazel.label {
-  Label, render_label, label_is_canonical,
+  Label, LabelCanonicalityCause, LabelCanonical, LabelNonCanonical,
+  render_label, label_canonicality,
 }
 import v2.std.optional { Optional, Present, Absent }
 import std.types { String }
@@ -35,7 +36,7 @@ type TargetBindingIndex sole_constructor {
 }
 
 type TargetBindingIndexRefusal
-  = TargetLabelNotCanonical { target: Label }
+  = TargetLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
   | DuplicateTargetIdentity { target: Label }
   | DuplicateTargetBinding { target: Label }
   | BindingNamesUnknownTarget { target: Label }
@@ -52,13 +53,12 @@ type TargetBindingIndexAcc {
 fn index_target(acc: TargetBindingIndexAcc, target: Label) -> TargetBindingIndexAcc {
   match acc.refusal {
     Present { value: _ } => acc
-    Absent =>
-      if !label_is_canonical(label: target) {
-        TargetBindingIndexAcc {
+    Absent => match label_canonicality(label: target) {
+      LabelNonCanonical { cause: cause } => TargetBindingIndexAcc {
           index: acc.index
-          refusal: Present { value: TargetLabelNotCanonical { target: target } }
+          refusal: Present { value: TargetLabelNotCanonical { target: target, cause: cause } }
         }
-      } else {
+      LabelCanonical => {
         let key = render_label(l: target)
         match map_get(acc.index.targets_by_identity, key) {
           Present { value: _ } => TargetBindingIndexAcc {
@@ -74,19 +74,22 @@ fn index_target(acc: TargetBindingIndexAcc, target: Label) -> TargetBindingIndex
           }
         }
       }
+    }
   }
 }
 
 fn index_binding(acc: TargetBindingIndexAcc, binding: TargetBinding) -> TargetBindingIndexAcc {
   match acc.refusal {
     Present { value: _ } => acc
-    Absent =>
-      if !label_is_canonical(label: binding.target) {
-        TargetBindingIndexAcc {
+    Absent => match label_canonicality(label: binding.target) {
+      LabelNonCanonical { cause: cause } => TargetBindingIndexAcc {
           index: acc.index
-          refusal: Present { value: TargetLabelNotCanonical { target: binding.target } }
+          refusal: Present { value: TargetLabelNotCanonical {
+            target: binding.target,
+            cause: cause
+          } }
         }
-      } else {
+      LabelCanonical => {
         let key = render_label(l: binding.target)
         match map_get(acc.index.targets_by_identity, key) {
           Absent => TargetBindingIndexAcc {
@@ -109,6 +112,7 @@ fn index_binding(acc: TargetBindingIndexAcc, binding: TargetBinding) -> TargetBi
             }
         }
       }
+    }
   }
 }
 
@@ -139,7 +143,7 @@ type TargetBindingLookup
   = TargetProducerBound { binding: TargetBinding }
   | KnownTargetBindingMissing { target: Label }
   | TargetUnknown { target: Label }
-  | TargetLookupLabelNotCanonical { target: Label }
+  | TargetLookupLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
 
 // Query admission repeats the canonicality decision deliberately. A typed key with a sole mint
 // would be preferable only if the substrate made that mint unforgeable; records and variants are
@@ -147,9 +151,10 @@ type TargetBindingLookup
 // to forge it. Until unforgeable construction exists, every boundary that turns a Label into the
 // rendered map key must refuse noncanonical input explicitly.
 fn target_binding_lookup(index: TargetBindingIndex, target: Label) -> TargetBindingLookup {
-  if !label_is_canonical(label: target) {
-    TargetLookupLabelNotCanonical { target: target }
-  } else {
+  match label_canonicality(label: target) {
+    LabelNonCanonical { cause: cause } =>
+      TargetLookupLabelNotCanonical { target: target, cause: cause }
+    LabelCanonical => {
     let key = render_label(l: target)
     match map_get(index.targets_by_identity, key) {
       Absent => TargetUnknown { target: target }
@@ -159,6 +164,7 @@ fn target_binding_lookup(index: TargetBindingIndex, target: Label) -> TargetBind
           Absent => KnownTargetBindingMissing { target: target }
         }
     }
+  }
   }
 }
 

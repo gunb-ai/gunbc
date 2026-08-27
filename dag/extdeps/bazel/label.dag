@@ -245,11 +245,27 @@ fn label_structural_eq(a: Label, b: Label) -> Bool {
 
 // label_eq is deliberately NOT used here: package_eq renders both packages, so
 // PackagePath(["a", "b"]) and PackagePath(["a/b"]) compare equal. Canonicality instead
-// compares the segment structure that parse_label constructs.
-fn label_is_canonical(label: Label) -> Bool {
+// compares the segment structure that parse_label constructs. The result retains whether the
+// rendered spelling was outside the grammar or reparsed to different structure; those causes
+// have different remedies and must not collapse into one false bit.
+type LabelCanonicalityCause
+  = RenderedLabelRefused { cause: LabelRefusal }
+  | RenderedLabelStructureMismatch { reparsed: Label }
+
+type LabelCanonicality
+  = LabelCanonical
+  | LabelNonCanonical { cause: LabelCanonicalityCause }
+
+fn label_canonicality(label: Label) -> LabelCanonicality {
   match parse_label(text: render_label(l: label)) {
-    LabelParsed { label: parsed } => label_structural_eq(a: label, b: parsed)
-    LabelRefused { cause: _ } => false
+    LabelParsed { label: parsed } =>
+      if label_structural_eq(a: label, b: parsed) {
+        LabelCanonical {}
+      } else {
+        LabelNonCanonical { cause: RenderedLabelStructureMismatch { reparsed: parsed } }
+      }
+    LabelRefused { cause: cause } =>
+      LabelNonCanonical { cause: RenderedLabelRefused { cause: cause } }
   }
 }
 
