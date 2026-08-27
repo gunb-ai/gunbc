@@ -3,6 +3,11 @@ module gunbc.fleet_fan_wiring
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
+import gunbc.operator_fan_declaration {
+  DeclarationCoversHeader,
+  arctic_p8_2u_chassis_declaration,
+  declaration_reach,
+}
 import gunbc.fleet_fan_tach_expectation {
   ChassisBayHeader,
   FanHeaderExpectationRow,
@@ -559,18 +564,18 @@ data dynatron_df126025bu_pwmh_ref: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
-data arctic_p8_pwm_pst_ref: DeclarationRef = DeclarationRef {
-  module_path: "extdeps.fans.arctic",
-  decl_name: "arctic_p8_pwm_pst_catalog",
-  field: WholeDeclaration,
-}
-
-// THE 2U CHASSIS BAYS CARRY A DECLARED PART, AND THE ARM IS OperatorDeclaredPart RATHER THAN
-// LabelObserved. The operator stated the model in their own words on 2026-08-27 -- "yes - those are
-// the fans i'm using" against an ARCTIC P8 PWM PST listing -- which is a statement about what was
-// PURCHASED, not a label read off a hub with the case open. That is exactly the weaker of the two
-// arms and it is chosen deliberately: this binding may pick a curve or order a spare, and
-// physical_inventory_confirmation refuses it for the inventory question.
+// THE 2U CHASSIS BAYS DERIVE THEIR PART FROM ONE DECLARATION, AND THE ARM IS OperatorDeclaredPart
+// RATHER THAN LabelObserved. The operator stated the model in their own words against an ARCTIC P8
+// PWM PST listing, which is a statement about the machines they run and not a label read off a hub
+// with the case open. That is the weaker of the two arms and it is chosen deliberately: this
+// binding may pick a curve or order a spare, and physical_inventory_confirmation refuses it for the
+// inventory question.
+//
+// THE DECLARANT, DATE, QUOTATION, PROMPT AND SCOPE NOW LIVE IN gunbc.operator_fan_declaration
+// RATHER THAN IN THIS COMMENT. They previously sat here as prose beside six rows that each authored
+// the declared arm independently, so the six agreed only because one author wrote them in one
+// sitting - a seventh row on an undeclared 4U bay would have contradicted nothing a machine could
+// read. The scope is now consulted per header, so a bay outside it cannot inhabit the declared arm.
 //
 // THE CLAIM WAS HELD UNBOUND FOR A DAY WHILE THE PROVENANCE WAS UNRESOLVED, and the reason is on
 // the record because it is the failure this axis exists to prevent. A review round asserted the
@@ -580,37 +585,53 @@ data arctic_p8_pwm_pst_ref: DeclarationRef = DeclarationRef {
 // then would have put a fabricated citation in the inventory carrier -- the kind that reads correct
 // forever because nothing re-derives it.
 //
-// PST IS A PROPERTY OF THE PART AND IS NOT AN OBSERVATION ABOUT THESE HOSTS. PWM Sharing Technology
-// lets one header drive a daisy chain with a single tach returning, which is the same topology the
-// splitter case models -- so a PST fan CAN inhabit driven_fan_count > 1 with one represented rotor.
-// Whether these six are chained or individually headered is a WIRING fact nobody has inspected, and
-// the live per-header tach readings are consistent with either. The rows below therefore keep the
-// observed one-fan-per-header standing they already had; the part's capability does not license a
-// claim about how it was installed.
 // THE DECLARATION IS SCOPED TO THE 2U CHASSIS, AND THAT IS WHY THERE ARE TWO HELPERS RATHER THAN
 // ONE. The operator named the 80mm fans in the 2U machines. srv1 and srv2 are 4U with a different
 // bay size, and the same helper served all four hosts -- so binding the part inside the shared
 // helper would have asserted an ARCTIC P8 in srv1's and srv2's 4U bays, which nobody declared and
 // which the frame size alone makes unlikely. A declaration is scoped to what was said about.
+//
+// NOT-DAISY-CHAINED DOES NOT ESTABLISH ONE FAN PER HEADER, AND BOTH HELPERS PREVIOUSLY ASSERTED
+// THAT IT DID. Each carried DrivenFanCountOperatorDeclared { count: 1 } and a tach representation
+// of exactly one rotor, on the strength of "they are not daisy chained today, nothign is". PWM
+// Sharing Technology chains fan to fan, so the statement rules that topology out - and a Y-splitter
+// or a powered hub puts two fans on one header without any fan-to-fan chain at all. THIS FLEET
+// CONTAINS SUCH A SPLITTER: srv1 and srv2 drive FAN1 through the NA-YC1 that ships with the
+// NH-D9 AMP-4926. So the operator's sentence is true of a fleet that demonstrably has a splitter in
+// it, which refutes the inference by counter-example from this module's own rows rather than by
+// argument about what they might have meant.
+//
+// The tach half was the same overreach one level down, and it is the mistake this module already
+// corrected for srv1's FAN1: a BMC publishing one rpm value establishes that the header CARRIES a
+// signal and nothing about how many rotors that signal speaks for. Reading a live tach as
+// "represented_fan_count: 1" is exactly the inference the splitter case exists to refuse, so
+// applying it to the P8 bays used a stronger evidence reading than the fleet's own known topology
+// permits.
 fn chassis_bay_wiring(header: NonEmptyStr) -> FanHeaderWiring {
   FanHeaderWiring {
     header: header,
-    driven_fan_count: DrivenFanCountOperatorDeclared { count: 1 },
+    driven_fan_count: DrivenFanCountUnobserved,
     model: FanModelUnobserved,
-    tach_source: TachCarriedByDrivenFan {
-      representation: TachRepresentationObserved { represented_fan_count: 1 },
-    },
+    tach_source: TachCarriedByDrivenFan { representation: TachRepresentationUnobserved },
   }
 }
 
-fn chassis_bay_wiring_2u(header: NonEmptyStr) -> FanHeaderWiring {
+// THE SCOPE DECIDES THE ARM, so a header the declaration does not reach falls back to unobserved
+// instead of quietly inheriting the declared part from its neighbours.
+fn chassis_bay_wiring_2u(host: HostIdentity, header: NonEmptyStr) -> FanHeaderWiring {
   FanHeaderWiring {
     header: header,
-    driven_fan_count: DrivenFanCountOperatorDeclared { count: 1 },
-    model: FanModelOperatorDeclaredPart { catalog: arctic_p8_pwm_pst_ref },
-    tach_source: TachCarriedByDrivenFan {
-      representation: TachRepresentationObserved { represented_fan_count: 1 },
+    driven_fan_count: DrivenFanCountUnobserved,
+    model: match declaration_reach(
+      declaration: arctic_p8_2u_chassis_declaration,
+      host: host,
+      header: header,
+    ) {
+      DeclarationCoversHeader =>
+        FanModelOperatorDeclaredPart { catalog: arctic_p8_2u_chassis_declaration.model }
+      other => FanModelUnobserved
     },
+    tach_source: TachCarriedByDrivenFan { representation: TachRepresentationUnobserved },
   }
 }
 
@@ -682,9 +703,9 @@ data srv3_fan_wiring: HostFanWiring = HostFanWiring {
         representation: TachRepresentationObserved { represented_fan_count: 1 },
       },
     },
-    chassis_bay_wiring_2u(header: "FAN3"),
-    chassis_bay_wiring_2u(header: "FAN4"),
-    chassis_bay_wiring_2u(header: "FAN5"),
+    chassis_bay_wiring_2u(host: operator_host_srv3, header: "FAN3"),
+    chassis_bay_wiring_2u(host: operator_host_srv3, header: "FAN4"),
+    chassis_bay_wiring_2u(host: operator_host_srv3, header: "FAN5"),
   ],
 }
 
@@ -702,8 +723,8 @@ data srv4_fan_wiring: HostFanWiring = HostFanWiring {
         representation: TachRepresentationObserved { represented_fan_count: 1 },
       },
     },
-    chassis_bay_wiring_2u(header: "FAN2"),
-    chassis_bay_wiring_2u(header: "FAN3"),
-    chassis_bay_wiring_2u(header: "FAN4"),
+    chassis_bay_wiring_2u(host: operator_host_srv4, header: "FAN2"),
+    chassis_bay_wiring_2u(host: operator_host_srv4, header: "FAN3"),
+    chassis_bay_wiring_2u(host: operator_host_srv4, header: "FAN4"),
   ],
 }

@@ -17,7 +17,17 @@ import gunbc.fleet_fan_tach_expectation {
   srv3_fan_tach_expectation,
   srv4_fan_tach_expectation,
 }
+import gunbc.operator_fan_declaration {
+  DeclarationCoversHeader,
+  DeclarationSilentOnHeader,
+  DeclarationSilentOnHost,
+  arctic_p8_2u_chassis_declaration,
+  declaration_reach,
+  declared_header_count,
+  declaration_establishes_one_fan_per_header,
+}
 import gunbc.fleet_fan_wiring {
+  chassis_bay_wiring_2u,
   FanHeaderIdentity,
   FanHeaderWiring,
   AssemblyBundledFanSpecification,
@@ -51,7 +61,6 @@ import gunbc.fleet_fan_wiring {
   catalog_selection,
   installed_fan_count_standing,
   dynatron_df126025bu_pwmh_ref,
-  arctic_p8_pwm_pst_ref,
   dynatron_w1_bundled_fan,
   installed_fan_catalog,
   srv2_fan_wiring,
@@ -92,10 +101,36 @@ fn srv3_srv4_differ_by_identity_not_count() -> Bool {
 // readback. What this variant models is the other realization -- a splitter that returns nothing
 // -- where two physical fans derive ONE control endpoint and ZERO tach endpoints while the fan
 // count is still 2. Three numbers a single header list would have collapsed into one.
-data srv1_splitter_variant: HostFanWiring = HostFanWiring {
+// A CHASSIS BAY WHOSE ROTOR COUNT AND FAN COUNT ARE BOTH ESTABLISHED, authored here for the same
+// reason the declared driven counts are: the live rows no longer claim either. Both the splitter
+// contrast and the tach-readback population need a header that DOES report a known rotor count, and
+// after the not-daisy-chained inference was withdrawn no production row supplies one. Reusing the
+// live rows would leave every header unobserved, which is a uniform population rather than the
+// contrast these fixtures exist to draw.
+fn established_chassis_binding(binding: FanHeaderWiring) -> FanHeaderWiring {
+  FanHeaderWiring {
+    header: binding.header,
+    driven_fan_count: DrivenFanCountOperatorDeclared { count: 1 },
+    model: binding.model,
+    tach_source: TachCarriedByDrivenFan {
+      representation: TachRepresentationObserved { represented_fan_count: 1 },
+    },
+  }
+}
+
+data srv1_established_chassis: HostFanWiring = HostFanWiring {
   host: srv1_fan_wiring.host,
   headers: map(
     srv1_fan_wiring.headers,
+    binding =>
+      if binding.header == "FAN1" { binding } else { established_chassis_binding(binding: binding) },
+  ),
+}
+
+data srv1_splitter_variant: HostFanWiring = HostFanWiring {
+  host: srv1_established_chassis.host,
+  headers: map(
+    srv1_established_chassis.headers,
     binding =>
       if binding.header == "FAN1" {
         FanHeaderWiring {
@@ -144,7 +179,7 @@ fn tach_suppressed_header_is_actuated_but_unobserved() -> Bool {
 // alive; the two counts are what make that difference sayable at all.
 fn splitter_reports_fewer_rotors_than_it_drives() -> Bool {
   let driven_is_derived = fold(
-    filter(srv1_fan_wiring.headers, binding => binding.header == "FAN1"),
+    filter(srv1_established_chassis.headers, binding => binding.header == "FAN1"),
     init: false,
     f: (acc, binding) =>
       match binding.driven_fan_count {
@@ -154,14 +189,14 @@ fn splitter_reports_fewer_rotors_than_it_drives() -> Bool {
       },
   )
   let representation_unobserved = match represented_fan_count_for_header(
-    wiring: srv1_fan_wiring,
+    wiring: srv1_established_chassis,
     header: "FAN1",
   ) {
     RepresentedFanCountUnobserved { header } => true
     other => false
   }
   let chassis_observed = match represented_fan_count_for_header(
-    wiring: srv1_fan_wiring,
+    wiring: srv1_established_chassis,
     header: "FAN3",
   ) {
     RepresentedFanCountObserved { header, count } => count == 1
@@ -228,6 +263,26 @@ data srv3_chassis_headers_counted: HostFanWiring = HostFanWiring {
 // srv3's own total is MIXED as well -- its FAN1 is the Dynatron cooler and equally assembly-derived
 // -- which I got wrong on the first pass and the witness caught: I had written srv3 as the exact
 // control on the assumption that only the Noctua hosts carried a derived count.
+// AN EXPLICITLY DECLARED CHASSIS POPULATION, AUTHORED HERE BECAUSE PRODUCTION NO LONGER CARRIES
+// ONE. The 2U bays previously stood at DrivenFanCountOperatorDeclared on the strength of
+// "not daisy chained"; that inference was withdrawn, so every live row is now unobserved and the
+// declared arm has no production inhabitant. The arm is not dead - its mechanism exists and this
+// operation's denominator can reach it - so the fixture authors the state rather than the witness
+// dropping the coverage along with the live population.
+data srv3_chassis_headers_declared: HostFanWiring = HostFanWiring {
+  host: srv3_fan_wiring.host,
+  headers: map(
+    filter(srv3_fan_wiring.headers, binding => binding.header != "FAN1"),
+    binding =>
+      FanHeaderWiring {
+        header: binding.header,
+        driven_fan_count: DrivenFanCountOperatorDeclared { count: 1 },
+        model: binding.model,
+        tach_source: binding.tach_source,
+      },
+  ),
+}
+
 data srv3_chassis_headers_only: HostFanWiring = HostFanWiring {
   host: srv3_fan_wiring.host,
   headers: filter(srv3_fan_wiring.headers, binding => binding.header != "FAN1"),
@@ -249,11 +304,11 @@ fn the_total_carries_its_weakest_provenance() -> Bool {
       unobserved_headers,
     } =>
       observed_count == 0
-        && declared_additional == 4
+        && declared_additional == 0
         && assembly_expected_additional == 2
-        && declared_headers.length() == 4
+        && declared_headers.length() == 0
         && assembly_derived_headers.length() == 1
-        && unobserved_headers.length() == 0
+        && unobserved_headers.length() == 4
     InstalledFanCountObservedExact { count } => false
   }
   let srv3_is_mixed_too = match installed_fan_count_standing(wiring: srv3_fan_wiring) {
@@ -265,11 +320,11 @@ fn the_total_carries_its_weakest_provenance() -> Bool {
       assembly_derived_headers,
       unobserved_headers,
     } =>
-      observed_count == 0 && declared_additional == 3 && assembly_expected_additional == 1
+      observed_count == 0 && declared_additional == 0 && assembly_expected_additional == 1
     InstalledFanCountObservedExact { count } => false
   }
   let chassis_only_is_declared = match installed_fan_count_standing(
-    wiring: srv3_chassis_headers_only,
+    wiring: srv3_chassis_headers_declared,
   ) {
     InstalledFanCountMixed {
       observed_count,
@@ -612,6 +667,11 @@ data srv3_wiring_with_a_duplicated_header: HostFanWiring = HostFanWiring {
 }
 
 // A HEADER WHOSE DRIVEN COUNT NOBODY OBSERVED, for the partial-total control.
+// ONE UNOBSERVED HEADER AMONG FOUR DECLARED ONES. Both halves are authored here now: the chassis
+// bays are given the declared arm the live rows no longer carry, and FAN1 is forced to unobserved.
+// Taking the live rows would have made every header unobserved, which still exercises "an
+// unobserved header is NAMED and not silently dropped" but stops discriminating it from the mixed
+// case - the property this fixture exists for.
 data srv1_wiring_with_unobserved_driven_count: HostFanWiring = HostFanWiring {
   host: srv1_fan_wiring.host,
   headers: map(
@@ -625,7 +685,12 @@ data srv1_wiring_with_unobserved_driven_count: HostFanWiring = HostFanWiring {
           tach_source: binding.tach_source,
         }
       } else {
-        binding
+        FanHeaderWiring {
+          header: binding.header,
+          driven_fan_count: DrivenFanCountOperatorDeclared { count: 1 },
+          model: binding.model,
+          tach_source: binding.tach_source,
+        }
       },
   ),
 }
@@ -698,7 +763,7 @@ fn arctic_declaration_is_bound_and_scoped() -> Bool {
     f: (acc, binding) =>
       match binding.model {
         FanModelOperatorDeclaredPart { catalog } =>
-          if catalog == arctic_p8_pwm_pst_ref { acc + 1 } else { acc }
+          if catalog == arctic_p8_2u_chassis_declaration.model { acc + 1 } else { acc }
         other => acc
       },
   )
@@ -741,13 +806,105 @@ fn declared_2u_bays_refuse_physical_inventory() -> Bool {
 
 fn catalog_selection_admits_this(standing: InstalledFanModelStanding) -> Bool {
   match installed_fan_catalog(standing: standing) {
-    Present { value } => value == arctic_p8_pwm_pst_ref
+    Present { value } => value == arctic_p8_2u_chassis_declaration.model
     none => false
   }
 }
 
+// THE SCOPE IS CONSULTED, NOT DOCUMENTED. Six headers inhabit the declared arm and they are exactly
+// the six the declaration enumerates; the reach function refuses a host it never mentioned and a
+// header on a host it did mention, and those two refusals stay distinct because they have different
+// owners. Without this, the declaration carrier would be a comment with a type annotation.
+fn the_declaration_decides_which_headers_bind() -> Bool {
+  let covers_declared = match declaration_reach(
+    declaration: arctic_p8_2u_chassis_declaration,
+    host: "srv4",
+    header: "FAN3",
+  ) {
+    DeclarationCoversHeader => true
+    other => false
+  }
+  let silent_on_4u_host = match declaration_reach(
+    declaration: arctic_p8_2u_chassis_declaration,
+    host: "srv1",
+    header: "FAN3",
+  ) {
+    DeclarationSilentOnHost { host } => host == "srv1"
+    other => false
+  }
+  let silent_on_undeclared_bay = match declaration_reach(
+    declaration: arctic_p8_2u_chassis_declaration,
+    host: "srv3",
+    header: "FAN1",
+  ) {
+    DeclarationSilentOnHeader { host, header } => host == "srv3" && header == "FAN1"
+    other => false
+  }
+  covers_declared
+    && silent_on_4u_host
+    && silent_on_undeclared_bay
+    && declared_header_count(declaration: arctic_p8_2u_chassis_declaration) == 6
+}
+
+// WHAT THE OPERATOR SAID STOPS SHORT OF WHAT THE ROWS USED TO ASSERT. The declaration records
+// NotDaisyChained, and the fleet's own NA-YC1 splitter on srv1/srv2 FAN1 is the counter-example
+// showing that statement is compatible with two fans on one header. So no live row may claim a
+// driven count or a represented rotor count from it, and this conjunct asserts that absence over
+// the whole 2U population rather than trusting the helper to keep refusing.
+// THE HELPER ITSELF IS EXERCISED OFF ITS LIVE POPULATION, and this conjunct exists because the
+// scope check passed a mutation without it. Every production call of chassis_bay_wiring_2u happens
+// to pass a header the declaration names, so replacing the whole reach match with an unconditional
+// FanModelOperatorDeclaredPart left every witness green - the check was reachable in principle and
+// never reached in practice, which is a decoration cited as coverage.
+//
+// srv4 has no FAN5 and the declaration names none, so the call below is the out-of-scope case a
+// live row cannot supply. The unconditional mutation now goes red here.
+fn the_scope_check_refuses_an_undeclared_header() -> Bool {
+  let out_of_scope = chassis_bay_wiring_2u(host: "srv4", header: "FAN5")
+  let in_scope = chassis_bay_wiring_2u(host: "srv4", header: "FAN2")
+  match out_of_scope.model {
+    FanModelUnobserved => true
+    other => false
+  } && match in_scope.model {
+    FanModelOperatorDeclaredPart { catalog } =>
+      catalog == arctic_p8_2u_chassis_declaration.model
+    other => false
+  }
+}
+
+fn not_daisy_chained_does_not_establish_one_fan_per_header() -> Bool {
+  let topology_stops_short =
+    !declaration_establishes_one_fan_per_header(declaration: arctic_p8_2u_chassis_declaration)
+  let no_2u_bay_claims_a_count = fold(
+    flat_map([srv3_fan_wiring.headers, srv4_fan_wiring.headers], g => g),
+    init: true,
+    f: (acc, binding) =>
+      if binding.header == "FAN1" {
+        acc
+      } else {
+        acc
+          && match binding.driven_fan_count {
+            DrivenFanCountUnobserved => true
+            other => false
+          }
+          && match binding.tach_source {
+            TachCarriedByDrivenFan { representation } =>
+              match representation {
+                TachRepresentationUnobserved => true
+                other => false
+              }
+            other => false
+          }
+      },
+  )
+  topology_stops_short && no_2u_bay_claims_a_count
+}
+
 fn fan_wiring_witness() -> ProcessExit {
-  if srv3_srv4_differ_by_identity_not_count()
+  if the_scope_check_refuses_an_undeclared_header()
+    && the_declaration_decides_which_headers_bind()
+    && not_daisy_chained_does_not_establish_one_fan_per_header()
+    && srv3_srv4_differ_by_identity_not_count()
     && unobserved_tach_is_not_an_expected_readback()
     && tach_suppressed_header_is_actuated_but_unobserved()
     && splitter_reports_fewer_rotors_than_it_drives()
