@@ -73,22 +73,24 @@ type ConsumerImport {
 // resolved interface with its implementation spelling. The emitted-and-unused provider import is an
 // excellent specimen witness of exactly that and is not the classifier -- a consumer that never
 // spells either name is NoConsumerOccurrence below, which is not a member of the population.
+// ReboundToDifferentTargetDeclaration -- the realization spelling is bound in the consumer to a
+// DIFFERENT target declaration, so one spelling names two types after resolution. This is the arm
+// that produces a type error. CurrentlyCompatible -- the spelling is not re-bound here; the same
+// substitution has happened and nothing refuses it today.
 type BypassManifestation
-  // The realization spelling is bound in the consumer to a DIFFERENT target declaration, so one
-  // spelling names two types after resolution. This is the arm that produces a type error.
   = ReboundToDifferentTargetDeclaration { rebound_to: String }
-  // The realization spelling is not re-bound here. The same substitution has happened and nothing
-  // refuses it today.
   | CurrentlyCompatible
 
+// ProviderDeclarationPreserved -- the consumer refers to the provider declaration by name: the
+// healthy control. ProviderInterfaceBypass -- the population. NoConsumerOccurrence -- the consumer
+// imports the name and spells NEITHER it nor its realization, so there is no occurrence and the
+// predicate has no subject; counted separately so it cannot inflate either arm above.
 type UseSiteDisposition
-  // The consumer refers to the provider declaration by name. The healthy control.
   = ProviderDeclarationPreserved {
       consumer_file: String
       declaring_file: String
       name: String
     }
-  // The population.
   | ProviderInterfaceBypass {
       consumer_file: String
       declaring_file: String
@@ -96,8 +98,6 @@ type UseSiteDisposition
       realization: String
       manifestation: BypassManifestation
     }
-  // The consumer imports the name and spells NEITHER it nor its realization: there is no occurrence
-  // here, so the predicate has no subject. Counted separately so it cannot inflate either arm above.
   | NoConsumerOccurrence {
       consumer_file: String
       declaring_file: String
@@ -134,6 +134,28 @@ type OpaqueSubjectRow {
 
 // ---------------------------------------------------------------------------------------------
 
+// WHERE THE EMITTED TREE CAME FROM IS A FACT THE MEASUREMENT CARRIES, never an assumption. A census
+// that emitted its own subject and a census handed a directory are different provenances, and a
+// consumer must not have to guess which it is reading.
+//
+// WHY THE SUPPLIED ARM EXISTS AT ALL, stated because a second mode is otherwise a smell: the
+// emitter is a separate process holding its own copy of the closure, and running it from inside the
+// interpreter that then holds the whole emitted corpus put both on one machine at once -- measured,
+// the runner was killed at 97% of its memory and the emit stderr stops mid-phase. Emitting and
+// censusing are two computations over one artifact, not one computation, and separating them is the
+// decomposition rather than a way around the failure. The census refuses either way if no readable
+// file reaches it; it never reports an empty tree as a clean result.
+type EmittedTreeProvenance
+  = EmittedByThisRun { entry: String }
+  | SuppliedTree { src_dir: String }
+
+fn tree_provenance_text(p: EmittedTreeProvenance) -> String {
+  match p {
+    EmittedByThisRun { entry: e } => concat("emitted-by-this-run entry=", e)
+    SuppliedTree { src_dir: d } => concat("supplied-tree src_dir=", d)
+  }
+}
+
 type CensusStage
   = StageWorkspace
   | StageBinaries
@@ -142,12 +164,12 @@ type CensusStage
 
 type OpaqueRealizationCensus
   = CensusUnestablished {
-      entry: String
+      provenance: EmittedTreeProvenance
       stage: CensusStage
       cause: String
     }
   | CensusTaken {
-      entry: String
+      provenance: EmittedTreeProvenance
       emitted_file_count: Int
       dispositions: List<UseSiteDisposition>
       opaque_subjects: List<OpaqueSubjectRow>
@@ -702,12 +724,45 @@ fn disposition_subject_key(d: UseSiteDisposition) -> String {
   }
 }
 
+fn census_emitted_tree(provenance: EmittedTreeProvenance, src_dir: String, emit_detail: String) -> OpaqueRealizationCensus {
+  let files = read_emitted_tree(src_dir: src_dir)
+  if (files |> count) == 0 {
+    CensusUnestablished {
+      provenance: provenance,
+      stage: StageArtifactListing,
+      cause: concat(
+        "no readable .rs file was found under the emitted src directory, so no use site could be examined; detail: ",
+        emit_detail
+      )
+    }
+  } else {
+    let claims = all_claims(files: files)
+    let index = claim_index(claims: claims)
+    let dispositions = fold(files, init: [], f: (acc, f) => concat(acc, classify_file(file: f, claims: index)))
+    CensusTaken {
+      provenance: provenance,
+      emitted_file_count: files |> count,
+      dispositions: dispositions,
+      opaque_subjects: opaque_subject_rows(dispositions: dispositions, files: files, claims: claims)
+    }
+  }
+}
+
+fn census_supplied_tree(src_dir: String) -> OpaqueRealizationCensus {
+  census_emitted_tree(
+    provenance: SuppliedTree { src_dir: src_dir },
+    src_dir: src_dir,
+    emit_detail: "the directory was supplied to this run; nothing was emitted by it"
+  )
+}
+
 fn census_entry_emission(entry: String) -> OpaqueRealizationCensus {
+  let provenance = EmittedByThisRun { entry: entry }
   let root = git.Inspect.Toplevel()
   let out_dir = shell.Mktemp.Dir()
   if !out_dir.success {
     CensusUnestablished {
-      entry: entry,
+      provenance: provenance,
       stage: StageWorkspace,
       cause: "could not create a temporary directory for the emitted crate"
     }
@@ -715,7 +770,7 @@ fn census_entry_emission(entry: String) -> OpaqueRealizationCensus {
     let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
     if !gunbc_built {
       CensusUnestablished {
-        entry: entry,
+        provenance: provenance,
         stage: StageBinaries,
         cause: "the gunbc release binary is not buildable — the census invokes the compiler it is measuring as a subprocess, so an absent binary is a refusal and never a clean measurement"
       }
@@ -733,27 +788,11 @@ fn census_entry_emission(entry: String) -> OpaqueRealizationCensus {
           "--dependency-pool-index", "primary-precedence"
         ]
       )
-      let files = read_emitted_tree(src_dir: concat(out_dir.path, "/src"))
-      if (files |> count) == 0 {
-        CensusUnestablished {
-          entry: entry,
-          stage: StageArtifactListing,
-          cause: concat(
-            "the emitter produced no readable .rs file for this entry, so no use site could be examined; emitter stderr: ",
-            emit.stderr
-          )
-        }
-      } else {
-        let claims = all_claims(files: files)
-        let index = claim_index(claims: claims)
-        let dispositions = fold(files, init: [], f: (acc, f) => concat(acc, classify_file(file: f, claims: index)))
-        CensusTaken {
-          entry: entry,
-          emitted_file_count: files |> count,
-          dispositions: dispositions,
-          opaque_subjects: opaque_subject_rows(dispositions: dispositions, files: files, claims: claims)
-        }
-      }
+      census_emitted_tree(
+        provenance: provenance,
+        src_dir: concat(out_dir.path, "/src"),
+        emit_detail: concat("emitter exit_code=", concat(to_string(value: emit.exit_code), concat("; stderr: ", emit.stderr)))
+      )
     }
   }
 }
@@ -845,18 +884,18 @@ fn policy_standing_text(p: ReferenceRealizationPolicyStanding) -> String {
 
 fn census_report_text(c: OpaqueRealizationCensus) -> String {
   match c {
-    CensusUnestablished { entry: e, stage: st, cause: cause } =>
+    CensusUnestablished { provenance: pv, stage: st, cause: cause } =>
       join([
         "opaque-realization-census UNESTABLISHED",
-        concat("entry\t", e),
+        concat("provenance\t", tree_provenance_text(p: pv)),
         concat("stage\t", census_stage_text(stage: st)),
         concat("cause\t", cause),
         ""
       ], "\n")
-    CensusTaken { entry: e, emitted_file_count: n, dispositions: ds, opaque_subjects: subs } =>
+    CensusTaken { provenance: pv, emitted_file_count: n, dispositions: ds, opaque_subjects: subs } =>
       join([
         "opaque-realization-census TAKEN",
-        concat("entry\t", e),
+        concat("provenance\t", tree_provenance_text(p: pv)),
         concat("emitted_files\t", to_string(value: n)),
         concat("bypass_rebound\t", to_string(value: filter(ds, d => disposition_is_bypass_rebound(d: d)) |> count)),
         concat("bypass_currently_compatible\t", to_string(value: filter(ds, d => disposition_is_bypass_compatible(d: d)) |> count)),
@@ -876,8 +915,24 @@ fn census_report_text(c: OpaqueRealizationCensus) -> String {
 
 fn census_completed(c: OpaqueRealizationCensus) -> Bool {
   match c {
-    CensusTaken { entry: _, emitted_file_count: _, dispositions: _, opaque_subjects: _ } => true
-    CensusUnestablished { entry: _, stage: _, cause: _ } => false
+    CensusTaken { provenance: _, emitted_file_count: _, dispositions: _, opaque_subjects: _ } => true
+    CensusUnestablished { provenance: _, stage: _, cause: _ } => false
+  }
+}
+
+fn write_census(c: OpaqueRealizationCensus, report: String) -> ProcessExit {
+  let write = Filesystem.Write(path: report, content: census_report_text(c: c))
+  if !write.success {
+    exit_failure(reason: concat("could not write the report to ", report))
+  } else if census_completed(c: c) {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: concat(
+        "the census did not reach a readable emitted artifact; the report at ",
+        concat(report, " names the stage that refused")
+      )
+    )
   }
 }
 
@@ -887,19 +942,16 @@ fn measure(entry: String, report: String) -> ProcessExit {
   } else if report == "" {
     exit_failure(reason: "measure: --arg report=<path> is required — the measurement is written, not printed")
   } else {
-    let c = census_entry_emission(entry: entry)
-    let write = Filesystem.Write(path: report, content: census_report_text(c: c))
-    if !write.success {
-      exit_failure(reason: concat("measure: could not write the report to ", report))
-    } else if census_completed(c: c) {
-      ExitSuccess
-    } else {
-      exit_failure(
-        reason: concat(
-          "measure: the census did not reach the emitted artifact; the report at ",
-          concat(report, " names the stage that refused")
-        )
-      )
-    }
+    write_census(c: census_entry_emission(entry: entry), report: report)
+  }
+}
+
+fn measure_tree(src_dir: String, report: String) -> ProcessExit {
+  if src_dir == "" {
+    exit_failure(reason: "measure_tree: --arg src_dir=<the src/ directory of an already-emitted crate> is required")
+  } else if report == "" {
+    exit_failure(reason: "measure_tree: --arg report=<path> is required — the measurement is written, not printed")
+  } else {
+    write_census(c: census_supplied_tree(src_dir: src_dir), report: report)
   }
 }
