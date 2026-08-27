@@ -40,6 +40,11 @@ import gunbc.compiler_frontend_program_status {
   observe_outstanding,
   standing_from_evidence,
   ratchet_observation_outstanding,
+  MilestoneStandingClass,
+  ClassClear,
+  ClassOutstanding,
+  standing_class,
+  standing_class_label,
   milestone_status,
   milestone_startability,
   startability_from_populations,
@@ -57,20 +62,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // independently of the live one -- so a claim cannot be satisfied by the tree happening to be in
 // one state.
 
-fn standing_is_clear(s: MilestoneStanding) -> Bool {
-  match s {
-    Clear { evidence: _ } => true
-    Outstanding { evidence: _ } => false
-    NotDerivable { why: _, cause: _ } => false
-  }
-}
+// THE CLASSIFIERS ARE THE CARRIER'S OWN (review 56456). This file previously hand-rolled
+// `standing_is_clear` and `standing_is_outstanding` as Boolean matches over MilestoneStanding --
+// a second representation of a classification the carrier already owns as `standing_class`, and
+// one that would keep answering the old way if a variant were added or its meaning moved. A test
+// that forks the judgement it is testing checks its own copy (DESIGN section 3).
 
-fn standing_is_outstanding(s: MilestoneStanding) -> Bool {
-  match s {
-    Clear { evidence: _ } => false
-    Outstanding { evidence: _ } => true
-    NotDerivable { why: _, cause: _ } => false
-  }
+fn standing_is(s: MilestoneStanding, want: MilestoneStandingClass) -> Bool {
+  standing_class_label(c: standing_class(s: s)) == standing_class_label(c: want)
 }
 
 fn standing_outstanding_members(s: MilestoneStanding) -> List<String> {
@@ -84,8 +83,7 @@ fn standing_outstanding_members(s: MilestoneStanding) -> List<String> {
 // THE POSITIVE CONTROL FOR Clear. Without it, every live arm below could be green because the fold
 // is incapable of returning Clear at all -- the permanently-red twin of a decoration.
 test fn an_empty_observed_population_is_clear() -> Bool {
-  standing_is_clear(
-    s: standing_from_evidence(
+  standing_is(want: ClassClear, s: standing_from_evidence(
       e: observe_outstanding(subject: "fixture" as NonEmptyStr, outstanding: [])
     )
   )
@@ -96,7 +94,7 @@ test fn a_populated_observation_is_outstanding_not_clear() -> Bool {
   let s = standing_from_evidence(
     e: observe_outstanding(subject: "fixture" as NonEmptyStr, outstanding: ["planted-member"])
   )
-  standing_is_outstanding(s: s)
+  standing_is(want: ClassOutstanding, s: s)
     && count(standing_outstanding_members(s: s)) == 1
 }
 
@@ -108,14 +106,14 @@ test fn a_populated_observation_is_outstanding_not_clear() -> Bool {
 test fn the_emitter_artifact_milestone_reports_both_halves_of_its_population() -> Bool {
   let s = milestone_status(m: SelfHostEmitterProducesEveryRetainedArtifact)
   let members = standing_outstanding_members(s: s)
-  standing_is_outstanding(s: s)
+  standing_is(want: ClassOutstanding, s: s)
     && any(members, n => n == "stage0-divergent:main")
     && any(members, n => starts_with(s: n, prefix: "cli-emitter-gap:"))
 }
 
 // S4a, live. Today the ratchet runner declares NoConsumer, so the milestone is OUTSTANDING.
 test fn the_ratchet_observation_milestone_is_outstanding_today() -> Bool {
-  standing_is_outstanding(s: milestone_status(m: SelfHostRatchetObservationEnrolled))
+  standing_is(want: ClassOutstanding, s: milestone_status(m: SelfHostRatchetObservationEnrolled))
 }
 
 // AND THE FUNCTION BEHIND IT IS NOT CONSTANT, which is what keeps the arm above from being a
@@ -146,12 +144,24 @@ test fn a_milestone_with_no_prerequisites_is_startable() -> Bool {
   }
 }
 
-// THE ANTI-INFLATION CLAIM, and it is written to RED on a genuine climb rather than to survive one.
-// No milestone in this program is CLEAR today. The day one is, this claim fails and whoever made it
-// true must re-read this file rather than inherit a status carrier that quietly started saying DONE.
-test fn no_milestone_reads_clear_today() -> Bool {
-  all(program_milestones, m => !standing_is_clear(s: milestone_status(m: m)))
-}
+// THE ANTI-INFLATION CLAIM IS STRUCTURAL, AND THE WITNESS THAT USED TO STAND HERE WAS DELETED
+// (review 56456, and it was right against an earlier APPROVE that had praised this arm by name).
+// `no_milestone_reads_clear_today` asserted count(clear) == 0 over the LIVE roster. That is a live
+// population compared to a bare literal with none of the four groundings DESIGN section 5 allows:
+// not a controlled fixture, not an external or versioned authority, not a policy budget, and as a
+// monotone debt contract it ran BACKWARD -- it ratcheted against the program making progress. The
+// day a milestone legitimately became Clear, CI would red and the only closing move would be to
+// hand-edit the expectation. That is hand-ticking a ledger, which is the precise failure this
+// carrier exists to dissolve, reintroduced one layer out in the check that was supposed to guard
+// it. It is the laundering shape DESIGN already records for the rustfmt gate: a gate whose sole
+// closing move is the forbidden action is not strict.
+//
+// Its annotation defended it as "written to RED on a genuine climb rather than to survive one",
+// which described the behaviour accurately and mistook it for a virtue. Nothing is lost by the
+// deletion, and that is checkable rather than asserted: Clear has exactly one route -- a fold over
+// an observed population minted through sole_constructor -- and the two arms at the top of this
+// file exercise that fold in BOTH directions at fixture grain. The guarantee was always the
+// construction; the snapshot only re-stated today's output of it.
 
 // THE ROSTER IS A COUNTED SECOND REPRESENTATION, and this claim is stated at exactly the strength
 // it has rather than one step above it. `program_milestones` is authored beside the interlock's
@@ -162,10 +172,24 @@ test fn no_milestone_reads_clear_today() -> Bool {
 // that the roster carries fourteen DISTINCT milestones -- a duplicated entry, which would silently
 // double a row in the report and inflate any population read off it, reds. The missing wall is a
 // derived enumeration, and it is this module's own next-rung trigger for the roster.
+//
+// THE `count(labels) == 14` PIN WAS REMOVED (review 56456). It was the same tree-copied oracle as
+// the deleted snapshot above, one size smaller: a live population against a literal measured from
+// the current tree, whose only closing move on a legitimate fourteenth-to-fifteenth transition is
+// to hand-edit the number. Roster SIZE is not a law and was never the thing worth holding.
+// DISTINCTNESS is: a duplicated entry silently doubles a row in the report and inflates every
+// population read off it, and that reds here regardless of how many milestones exist.
+//
+// RUNG, stated rather than implied, because review 56456 was right that prose alone leaves this
+// without a disposition: MITIGATABLE. A milestone variant added to the interlock and omitted from
+// this roster is silently absent from the report, and nothing detects it. The class is not a
+// ratchet -- it is decidable -- so it is a WALL AFTER GROUNDING in DESIGN section 5's vocabulary,
+// blocked on one missing language capability. NEXT-RUNG TRIGGER: `.dag` gaining a way to enumerate
+// a closed coproduct's inhabitants, at which point `program_milestones` and `all_missing_instruments`
+// are both DERIVED and both hand rosters are deleted rather than checked.
 test fn the_milestone_roster_entries_are_distinct() -> Bool {
   let labels = program_milestones |> map(m => milestone_label(m: m))
-  count(labels) == 14
-    && all(labels, l => count(labels |> filter(other => other == l)) == 1)
+  all(labels, l => count(labels |> filter(other => other == l)) == 1)
 }
 
 // The report renders. It is the operator-facing surface and a report that returns nothing is the
