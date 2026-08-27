@@ -1,7 +1,7 @@
 module v2.std.text
 
-import std.algebra { FreeMonoid }
-import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, fold_list, is_empty, list_head, list_tail }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
+import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, fold_list, is_empty, length, list_head, list_reverse, list_starts_with, list_tail, skip }
 import v2.std.logic { Bool }
 import std.types { Char }
 type String = FreeMonoid<Char>
@@ -56,6 +56,66 @@ fn fold_source<R>(src: String, algebra: SourceFold<R>) -> R {
         true => acc
         false => algebra.step(acc)
       }
+    }
+  )
+}
+
+// WHY THE DELIMITER IS A FreeSemigroup AND NOT A String: an empty delimiter names no field
+// boundary, so every consumer of a host `split` inherits a degenerate arm whose answer is a
+// convention rather than a grammar. The nonempty carrier has no empty inhabitant, so that arm is
+// unwritable here rather than validated away (DESIGN §4b, structurally impossible).
+type StringSplitState {
+  rest: String
+  field_reversed: String
+  fields_reversed: FreeMonoid<String>
+}
+
+fn char_eq(a: Char, b: Char) -> Bool {
+  a == b
+}
+
+fn string_split_step(state: StringSplitState, delimiter: String) -> StringSplitState {
+  if list_starts_with(xs: state.rest, prefix: delimiter, eq: char_eq) {
+    StringSplitState {
+      rest: skip(xs: state.rest, n: length(xs: delimiter)),
+      field_reversed: Empty,
+      fields_reversed: Cons {
+        head: list_reverse(xs: state.field_reversed),
+        tail: state.fields_reversed
+      }
+    }
+  } else {
+    match state.rest {
+      Empty => state
+      Cons { head: c, tail: t } => StringSplitState {
+        rest: t,
+        field_reversed: Cons { head: c, tail: state.field_reversed },
+        fields_reversed: state.fields_reversed
+      }
+    }
+  }
+}
+
+fn string_split(source: String, delimiter: FreeSemigroup<Char>) -> FreeMonoid<String> {
+  let delimiter_text = Cons { head: delimiter.head, tail: delimiter.tail }
+  let final_state = fold_source(
+    src: source,
+    algebra: SourceFold {
+      init: fn(src) {
+        StringSplitState { rest: src, field_reversed: Empty, fields_reversed: Empty }
+      },
+      step: fn(state) {
+        string_split_step(state: state, delimiter: delimiter_text)
+      },
+      is_done: fn(state) {
+        string_is_empty(s: state.rest)
+      }
+    }
+  )
+  list_reverse(
+    xs: Cons {
+      head: list_reverse(xs: final_state.field_reversed),
+      tail: final_state.fields_reversed
     }
   )
 }

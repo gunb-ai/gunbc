@@ -6,9 +6,13 @@ import gunbc.ci_runner_target {
   ci_runner_target_ram_speed_budget,
   selected_ci_runner_target,
 }
+import gunbc.session_reservation_policy {
+  ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
+  session_reservation_bytes,
+}
 import std.measure { Memory, One }
 
-data gunbc_ci_budget_tree_deconfliction_disposition: Disposition = std.disposition.Terminal { reason: "DESIGN §3 deliberate carrier split: this BudgetNode governs INTER-run co-residence (host_ram partitioned as overhead + sessions_slice + runner_slice, conserving by construction via byte_size_saturating_sub). srv1_floor_memory_budget returns gunbc_ci_runner_slot_ram_speed_ceiling (min of declared MemoryHigh and declared MemoryMax from gunbc.runner_slot_allocation — 13GiB/14GiB under the 2026-08-05 ruling; see srv1_floor_memory_budget_live_note for kernel-effective vs deploy drop-in shadow caveat). The session sibling is sized by session_pool_bytes_live, which resolves through gunbc_ci_session_reservation_mode -- NOT by any per-container cap. A transcribed 31.27 GiB per-container figure (gunbc_ci_dashboard_session_container_cap) formerly stood here and was deleted: it never reached this tree, so it described nothing this carrier computes. Do NOT reintroduce a per-container cap as the pool term; per-container and aggregate are different axes. See gunbc_ci_footprint_granularity_disposition." }
+data gunbc_ci_budget_tree_deconfliction_disposition: Disposition = std.disposition.Terminal { reason: "DESIGN §3 deliberate carrier split: this BudgetNode governs INTER-run co-residence (host_ram partitioned as overhead + sessions_slice + runner_slice, conserving by construction via byte_size_saturating_sub). srv1_floor_memory_budget returns gunbc_ci_runner_slot_ram_speed_ceiling (min of declared MemoryHigh and declared MemoryMax from gunbc.runner_slot_allocation — 13GiB/14GiB under the 2026-08-05 ruling; see srv1_floor_memory_budget_live_note for kernel-effective vs deploy drop-in shadow caveat). The session sibling is sized by session_pool_bytes_live, which resolves through gunbc.session_reservation_policy session_reservation_bytes PER HOST -- NOT by any per-container cap, and NOT by a fleet-wide row. The fleet-wide gunbc_ci_session_reservation_mode it formerly resolved through charged every host one 20 GiB literal; it is deleted, and the three-arm resolution that replaces it distinguishes a host that owes nothing (residency observed absent, charge zero) from a host whose reservation could not be established (refuse by charging the whole allocatable, so the runner pool saturates to zero and the tree declines to conserve). A transcribed 31.27 GiB per-container figure (gunbc_ci_dashboard_session_container_cap) formerly stood here and was deleted: it never reached this tree, so it described nothing this carrier computes. Do NOT reintroduce a per-container cap as the pool term; per-container and aggregate are different axes. See gunbc_ci_footprint_granularity_disposition." }
 
 fn host_overhead_bytes(offer: ComputeOffer) -> ByteSize {
   match gunbc_ci_host_fixed_overhead_for(host: offer.supply.physical.identity) {
@@ -29,9 +33,10 @@ fn host_allocatable_bytes(offer: ComputeOffer) -> ByteSize {
 }
 
 fn session_pool_bytes_live(offer: ComputeOffer) -> ByteSize {
-  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode, oomd: gunbc_fleet_oomd_evidence) {
-    SessionSliceResolved { bytes: s, per_session_cap: _, concurrency: _ } => s
-    SessionSliceUnresolved { reason: _ } => host_allocatable_bytes(offer: offer)
+  match session_reservation_bytes(host: offer.supply.physical.identity) {
+    ReservationBytes { bytes: s } => s
+    ReservationBytesNotApplicable => byte_size(0)
+    ReservationBytesUnestablished { cause: _ } => host_allocatable_bytes(offer: offer)
   }
 }
 
