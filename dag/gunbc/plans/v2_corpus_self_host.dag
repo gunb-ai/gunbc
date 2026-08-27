@@ -146,6 +146,9 @@ fn section_9() -> List<MarkdownBlock> {
 // module-item grain and this list cannot carry them inline:
 //   emit_subject_clean_frontier + emit_subject_clean_ratchet -- the ratchet the plan
 //     enrols at S4: the identity-grain frontier and its runner.
+//   dag_compile_clean_shard_roster compile_clean_shard_entry_discovery -- the discoverer
+//     the runner takes its universe from, which hands back the roots it scanned so the
+//     policy recorded in the universe is derived rather than asserted beside it.
 //   emission_entry_instrument -- the measurement S2 and S3 run.
 //   whole_corpus_compile_admission -- the hosting decision in section 3.
 //   compiler_frontend_program_interlock -- the cross-program precedence relation
@@ -157,7 +160,7 @@ data v2_corpus_self_host_ratchet_bindings: List<DeclarationRef> = [
   decl_ref(module_path: "gunbc.emit_subject_clean_frontier", decl_name: "RatchetUniverse"),
   decl_ref(module_path: "gunbc.emit_subject_clean_frontier", decl_name: "roster_identity_derived"),
   decl_ref(module_path: "tools.emit_subject_clean_ratchet", decl_name: "emit_ratchet_roster"),
-  decl_ref(module_path: "tools.emit_subject_clean_ratchet", decl_name: "emit_subject_clean_roster_policy"),
+  decl_ref(module_path: "tools.dag_compile_clean_shard_roster", decl_name: "compile_clean_shard_entry_discovery"),
   decl_ref(module_path: "tools.emission_entry_instrument", decl_name: "measure_entry_emission"),
   decl_ref(module_path: "gunbc.whole_corpus_compile_admission", decl_name: "whole_corpus_compile_admission_at_budget"),
   decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "milestone_prerequisites"),
