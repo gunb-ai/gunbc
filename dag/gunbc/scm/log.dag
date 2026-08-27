@@ -21,7 +21,6 @@ module gunbc.scm.log
 import std.types { Bool, List, String }
 import gunbc.scm.object_store { ObjectId, ObjectStore, store_contains }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
-import gunbc.scm.ancestry { RepositoryCommitRef }
 
 // WHETHER THIS COMMIT'S PROGRAM IS ACTUALLY HELD, which is decidable here and therefore reported.
 // The envelope's own encoder refuses on RepositoryCommitRootNotInStore, so "this commit names a root
