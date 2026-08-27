@@ -57,24 +57,32 @@ fn image_config_layer_count(c: ImageConfiguration) -> Int {
   }
 }
 
+// THE BARE-BINDING ARM DID NOT UNWRAP, AND NOTHING NOTICED BECAUSE NOTHING RAN.
+//
+// This read `match c.config { null => [] ; cfg => match cfg.Entrypoint { ... } }`. The bare arm
+// binds the OPTIONAL, not its payload, so the inner field read refused at runtime with
+// `NoSuchField { type_name: "Optional", field: "Entrypoint" }`. It typechecked and had witnesses,
+// and the defect surfaced the first time a consumer actually called it -- which is precisely the
+// specification-without-execution failure DESIGN section 5 names, found the way that section says
+// it is found. Present/Absent binds the payload.
 fn image_config_entrypoint(c: ImageConfiguration) -> List<String> {
   match c.config {
-    null => []
-    cfg =>
+    Absent => []
+    Present { value: cfg } =>
       match cfg.Entrypoint {
-        null => []
-        ep => ep
+        Absent => []
+        Present { value: entrypoint } => entrypoint
       }
   }
 }
 
 fn image_config_cmd(c: ImageConfiguration) -> List<String> {
   match c.config {
-    null => []
-    cfg =>
+    Absent => []
+    Present { value: cfg } =>
       match cfg.Cmd {
-        null => []
-        cmd => cmd
+        Absent => []
+        Present { value: cmd } => cmd
       }
   }
 }
@@ -90,17 +98,16 @@ fn image_config_start_command(c: ImageConfiguration) -> List<String> {
   append(image_config_entrypoint(c: c), items: image_config_cmd(c: c))
 }
 
+// Same defect as image_config_entrypoint above, repaired together rather than left for the next
+// consumer to rediscover: it is one class in one file, and fixing only the arm this change happens
+// to call would leave a known-broken sibling behind.
 fn image_config_first_exposed_port(c: ImageConfiguration) -> ContainerExposedPort? {
   match c.config {
-    null => null
-    cfg =>
+    Absent => none
+    Present { value: cfg } =>
       match cfg.ExposedPorts {
-        null => null
-        ports =>
-          match ports |> get(0) {
-            null => null
-            port => port
-          }
+        Absent => none
+        Present { value: ports } => ports |> get(0)
       }
   }
 }
@@ -114,8 +121,9 @@ fn image_config_has_exposed_port(
   expected_port: Int,
   protocol: ContainerPortProtocol,
 ) -> Bool {
-  match image_config_first_exposed_port(c) {
-    null => false
-    port => container_exposed_port_is(port: port, expected_port: expected_port, protocol: protocol)
+  match image_config_first_exposed_port(c: c) {
+    Absent => false
+    Present { value: port } =>
+      container_exposed_port_is(port: port, expected_port: expected_port, protocol: protocol)
   }
 }
