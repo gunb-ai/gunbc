@@ -277,7 +277,7 @@ fn row_covers_sample(row: SurfaceCensusRow, census: SurfaceCensus) -> Bool {
     == length(xs: census.sample_entries)
 }
 
-fn sample_repeated_entry_diagnostic(census: SurfaceCensus) -> Diagnostic {
+fn sample_repeated_entry_diagnostic() -> Diagnostic {
   textual_whole_file_diagnostic(
     reason: ^surface_census_sample_names_one_entry_more_than_once,
     module_file: ^surface_census,
@@ -285,7 +285,7 @@ fn sample_repeated_entry_diagnostic(census: SurfaceCensus) -> Diagnostic {
   )
 }
 
-fn census_undiscriminating_diagnostic(census: SurfaceCensus) -> Diagnostic {
+fn census_undiscriminating_diagnostic() -> Diagnostic {
   textual_whole_file_diagnostic(
     reason: ^surface_census_sample_too_small_to_exhibit_variation,
     module_file: ^surface_census,
@@ -333,9 +333,9 @@ fn refused_row_count(census: SurfaceCensus) -> Int {
 // unrepresentable.
 fn canonical_seed_admission(census: SurfaceCensus) -> Outcome<SurfaceCensus> {
   if sample_repeats_an_entry(census: census) {
-    outcome_rejected(d: sample_repeated_entry_diagnostic(census: census))
+    outcome_rejected(d: sample_repeated_entry_diagnostic())
   } else if census_can_discriminate(census: census) == false {
-    outcome_rejected(d: census_undiscriminating_diagnostic(census: census))
+    outcome_rejected(d: census_undiscriminating_diagnostic())
   } else {
     match uncovered_rows(census: census) {
       Cons { head: uncovered, tail: _ } =>
