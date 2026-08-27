@@ -5,7 +5,7 @@ import std.minted_identity { MintedId, MintedIdAllocator }
 import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.object_store { ObjectStore, ObjectId, empty_store, store_node, Stored, LocatorCollision }
-import gunbc.scm.ancestry { RootCommit, DescendsFrom, RepositoryCommitRef }
+import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   RepositoryCommitMinted,

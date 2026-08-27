@@ -12,10 +12,9 @@ import gunbc.scm.object_store {
   Stored,
   LocatorCollision,
 }
-import gunbc.scm.ancestry { RootCommit, DescendsFrom, RepositoryCommitRef }
+import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
-  RepositoryCommit,
   RepositoryCommitMinted,
   RepositoryCommitMintAllocatorInvalid,
   RepositoryCommitMintRootMissing,

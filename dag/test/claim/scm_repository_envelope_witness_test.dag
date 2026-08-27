@@ -1111,3 +1111,16 @@ test fn scm_env_reordering_does_not_silently_retarget_a_parent() -> Bool {
   }
   scm_env_encode_cause_tag(outcome: encode_repository_checked(repo: reordered)) == "commit_parent"
 }
+
+test fn scm_env_reordering_rows_does_not_change_which_commit_a_key_names() -> Bool {
+  let repo = scm_env_two_commit_repository()
+  let reordered = reverse(repo.commits)
+  match commit_at_reference(commits: reordered, reference: scm_env_ref(ordinal: 0)) {
+    Absent => false
+    Present { value: first } =>
+      match commit_at_reference(commits: reordered, reference: scm_env_ref(ordinal: 1)) {
+        Absent => false
+        Present { value: second } => first.message == "first" && second.message == "second"
+      }
+  }
+}
