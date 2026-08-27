@@ -16,6 +16,8 @@ import gunbc.deleted_cadence_reference_census {
   HistoricalReceipt,
   ReboundToExecutingConsumer,
   PremiseInvalidated,
+  LostWithDeletedCadence,
+  deleted_cadence_reference_drop,
   TerminalVerdictObserved,
   NeverReachedTerminal,
   deleted_cadence_reference_row_holds,
@@ -130,6 +132,29 @@ data green_historical_receipt_on_dark_cadence: DeletedCadenceReference = Deleted
       observed_population: "six SelfEmitted wet bindings" as NonEmptyStr,
     },
   },
+}
+
+// The class-level DESIGN 4b(3) drop row, exercised at both polarities on the same drop, so the
+// arm is covered by execution rather than by existing.
+data green_drop_on_dark_cadence: DeletedCadenceReference = DeletedCadenceReference {
+  site: decl_ref(module_path: "test.fixture.green", decl_name: "drop_on_dark_cadence"),
+  standing: LostWithDeletedCadence {
+    drop: deleted_cadence_reference_drop,
+    lost_with: FalsifierSubstrateLongLane,
+  },
+}
+
+data red_drop_on_live_cadence: DeletedCadenceReference = DeletedCadenceReference {
+  site: decl_ref(module_path: "test.fixture.red", decl_name: "drop_on_live_cadence"),
+  standing: LostWithDeletedCadence {
+    drop: deleted_cadence_reference_drop,
+    lost_with: DiscoverySelection,
+  },
+}
+
+test fn rung_drop_over_a_live_cadence_refuses() -> Bool {
+  deleted_cadence_reference_row_holds(row: green_drop_on_dark_cadence)
+    && !deleted_cadence_reference_row_holds(row: red_drop_on_live_cadence)
 }
 
 test fn rebound_to_a_cadence_with_no_scheduled_route_refuses() -> Bool {

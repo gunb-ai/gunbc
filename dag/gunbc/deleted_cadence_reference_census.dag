@@ -297,12 +297,15 @@ fn deleted_cadence_reference_census_live_holds() -> Bool {
   deleted_cadence_reference_census_holds(rows: deleted_cadence_references())
 }
 
+fn deleted_cadence_reference_is_rebound(row: DeletedCadenceReference) -> Bool {
+  match row.standing {
+    HistoricalReceipt { event: _ } => false
+    ReboundToExecutingConsumer { consumer: _ } => true
+    LostWithDeletedCadence { drop: _, lost_with: _ } => false
+    PremiseInvalidated { affected_decision: _, current_coverage: _ } => false
+  }
+}
+
 fn deleted_cadence_reference_any_rebound() -> Bool {
-  deleted_cadence_references()
-    |> any(row => match row.standing {
-      HistoricalReceipt { event: _ } => false
-      ReboundToExecutingConsumer { consumer: _ } => true
-      LostWithDeletedCadence { drop: _, lost_with: _ } => false
-      PremiseInvalidated { affected_decision: _, current_coverage: _ } => false
-    })
+  deleted_cadence_references() |> any(row => deleted_cadence_reference_is_rebound(row: row))
 }
