@@ -1,0 +1,242 @@
+module test.claim.repository_convergence_witness_test
+
+import std.types { String, Bool, List }
+import extdeps.git.enumeration {
+  GitRefIdentity, GitRefSetObserved, GitRefSetReadRefused,
+}
+import extdeps.git.worktree_enumeration {
+  GitWorktreeIdentity, GitWorktreeOnBranch, GitWorktreeDetachedAt,
+  GitWorktreeSetObserved, GitWorktreeSetReadRefused,
+}
+import gunbc.live_deploy.repository_convergence {
+  RepositoryState,
+  RepositoryConvergenceOutcome,
+  ConvergenceCompleted, ConvergenceAlreadyAtCandidate,
+  ConvergencePreStateUnobservable, ConvergencePostStateUnobservable,
+  ConvergenceRefDisappeared, ConvergenceWorktreeDisappeared, ConvergenceWorktreeRebound,
+  ConvergenceHeadNotAtCandidate, ConvergenceHeadMovedWithoutReflog,
+  repository_convergence_verdict,
+  repository_convergence_converged,
+}
+
+data old_sha: String = "1111111111111111111111111111111111111111"
+data new_sha: String = "2222222222222222222222222222222222222222"
+data dispatch_sha: String = "3333333333333333333333333333333333333333"
+data base_ref: String = "refs/remotes/origin/main"
+data primary: String = "/opt/gunbc/gunbc"
+data linked: String = "/opt/gunbc/dispatch-worktrees/attempt-a"
+
+fn ref_row(name: String, oid: String) -> GitRefIdentity {
+  GitRefIdentity { refname: name, objectname: oid as GitObjectId, symref: "" }
+}
+
+fn primary_wt(oid: String) -> GitWorktreeIdentity {
+  GitWorktreeIdentity {
+    path: primary,
+    checkout: GitWorktreeOnBranch { head: oid as GitObjectId, branch: "main" },
+    locked: false,
+    prunable: false,
+  }
+}
+
+fn linked_wt() -> GitWorktreeIdentity {
+  GitWorktreeIdentity {
+    path: linked,
+    checkout: GitWorktreeOnBranch { head: dispatch_sha as GitObjectId, branch: "dispatch/attempt-a" },
+    locked: false,
+    prunable: false,
+  }
+}
+
+fn state(
+  refs: List<GitRefIdentity>,
+  worktrees: List<GitWorktreeIdentity>,
+  head: String,
+  reflog: String,
+) -> RepositoryState {
+  RepositoryState {
+    refs: GitRefSetObserved { refs: refs },
+    worktrees: GitWorktreeSetObserved { worktrees: worktrees },
+    head: head,
+    reflog: reflog,
+  }
+}
+
+fn before_state() -> RepositoryState {
+  state(
+    refs: [ref_row(name: base_ref, oid: old_sha), ref_row(name: "refs/dispatch/attempt-a", oid: dispatch_sha)],
+    worktrees: [primary_wt(oid: old_sha), linked_wt()],
+    head: old_sha,
+    reflog: "old-reflog",
+  )
+}
+
+fn verdict_for(after: RepositoryState) -> RepositoryConvergenceOutcome {
+  repository_convergence_verdict(
+    before: before_state(),
+    after: after,
+    candidate: new_sha,
+    base_ref: base_ref,
+    primary_path: primary,
+  )
+}
+
+fn is_completed(o: RepositoryConvergenceOutcome) -> Bool {
+  match o {
+    ConvergenceCompleted { candidate: _, refs_preserved: _, worktrees_preserved: _ } => true
+    _ => false
+  }
+}
+
+// THE GREEN CONTROL. Base ref advanced, dispatch ref untouched, linked worktree still bound to its
+// own branch, HEAD at the candidate, reflog grew. Without this every RED below would be satisfied by
+// a function that refuses unconditionally.
+test fn a_clean_transition_converges() -> Bool {
+  let after = state(
+    refs: [ref_row(name: base_ref, oid: new_sha), ref_row(name: "refs/dispatch/attempt-a", oid: dispatch_sha)],
+    worktrees: [primary_wt(oid: new_sha), linked_wt()],
+    head: new_sha,
+    reflog: "old-reflog\nnew-entry",
+  )
+  is_completed(o: verdict_for(after: after)) && repository_convergence_converged(outcome: verdict_for(after: after))
+}
+
+// THE PACKED-REFS DELETION TRAP, which is the defect a wholesale `packed-refs` replacement causes.
+// The dispatch ref is simply gone from the post-state. Note the CARDINALITY IS UNCHANGED -- one ref
+// left and the base ref moved -- so a count-equality check would pass here. Identity is the check.
+test fn a_dispatch_ref_that_vanished_refuses() -> Bool {
+  let after = state(
+    refs: [ref_row(name: base_ref, oid: new_sha)],
+    worktrees: [primary_wt(oid: new_sha), linked_wt()],
+    head: new_sha,
+    reflog: "old-reflog\nnew-entry",
+  )
+  match verdict_for(after: after) {
+    ConvergenceRefDisappeared { refname: r, objectname: _ } => r == "refs/dispatch/attempt-a"
+    _ => false
+  }
+}
+
+// A LINKED WORKTREE'S REGISTRATION DROPPED. That is somebody's in-flight dispatch attempt, and it
+// has nothing to do with this release.
+test fn a_linked_worktree_that_vanished_refuses() -> Bool {
+  let after = state(
+    refs: [ref_row(name: base_ref, oid: new_sha), ref_row(name: "refs/dispatch/attempt-a", oid: dispatch_sha)],
+    worktrees: [primary_wt(oid: new_sha)],
+    head: new_sha,
+    reflog: "old-reflog\nnew-entry",
+  )
+  match verdict_for(after: after) {
+    ConvergenceWorktreeDisappeared { path: p } => p == linked
+    _ => false
+  }
+}
+
+// A LINKED WORKTREE SILENTLY DETACHED. Present, same path, still counted -- and no longer on its
+// branch, so the attempt's commits would land nowhere. Presence is not preservation.
+test fn a_linked_worktree_rebound_to_detached_refuses() -> Bool {
+  let detached = GitWorktreeIdentity {
+    path: linked,
+    checkout: GitWorktreeDetachedAt { head: dispatch_sha as GitObjectId },
+    locked: false,
+    prunable: false,
+  }
+  let after = state(
+    refs: [ref_row(name: base_ref, oid: new_sha), ref_row(name: "refs/dispatch/attempt-a", oid: dispatch_sha)],
+    worktrees: [primary_wt(oid: new_sha), detached],
+    head: new_sha,
+    reflog: "old-reflog\nnew-entry",
+  )
+  match verdict_for(after: after) {
+    ConvergenceWorktreeRebound { path: p, detail: _ } => p == linked
+    _ => false
+  }
+}
+
+// THE SIGNATURE OF THE REALIZATION THIS REPLACES. HEAD reached the candidate and the reflog did not
+// grow, so whatever moved it was not git -- a file written over `refs/**` leaves exactly this trace.
+// Everything else about the post-state looks correct, which is why the check has to exist.
+test fn a_head_that_moved_without_a_reflog_entry_refuses() -> Bool {
+  let after = state(
+    refs: [ref_row(name: base_ref, oid: new_sha), ref_row(name: "refs/dispatch/attempt-a", oid: dispatch_sha)],
+    worktrees: [primary_wt(oid: new_sha), linked_wt()],
+    head: new_sha,
+    reflog: "old-reflog",
+  )
+  match verdict_for(after: after) {
+    ConvergenceHeadMovedWithoutReflog { candidate: c } => c == new_sha
+    _ => false
+  }
+}
+
+// THE NO-OP IS NOT THE REFLOG DEFECT, and this is the pair that keeps the check above honest. An
+// already-converged repository legitimately adds no reflog entry; refusing it would fire on the
+// healthy case. The two differ only in whether the BEFORE head was already the candidate.
+test fn an_already_converged_repository_is_not_the_reflog_defect() -> Bool {
+  let already = state(
+    refs: [ref_row(name: base_ref, oid: new_sha), ref_row(name: "refs/dispatch/attempt-a", oid: dispatch_sha)],
+    worktrees: [primary_wt(oid: new_sha), linked_wt()],
+    head: new_sha,
+    reflog: "same-reflog",
+  )
+  let v = repository_convergence_verdict(
+    before: state(
+      refs: [ref_row(name: base_ref, oid: new_sha), ref_row(name: "refs/dispatch/attempt-a", oid: dispatch_sha)],
+      worktrees: [primary_wt(oid: new_sha), linked_wt()],
+      head: new_sha,
+      reflog: "same-reflog",
+    ),
+    after: already,
+    candidate: new_sha,
+    base_ref: base_ref,
+    primary_path: primary,
+  )
+  match v {
+    ConvergenceAlreadyAtCandidate { candidate: c } => c == new_sha
+    _ => false
+  }
+}
+
+// THE PRIMARY IS EXEMPT AND THE EXEMPTION IS NARROW. Its head moved from old to new, which is the
+// operation's own effect, and that must not read as a rebinding. If the primary were checked like a
+// linked worktree this returns Rebound and the operation could never succeed.
+test fn the_primary_moving_is_not_a_rebinding() -> Bool {
+  is_completed(o: verdict_for(after: state(
+    refs: [ref_row(name: base_ref, oid: new_sha), ref_row(name: "refs/dispatch/attempt-a", oid: dispatch_sha)],
+    worktrees: [primary_wt(oid: new_sha), linked_wt()],
+    head: new_sha,
+    reflog: "old-reflog\nnew-entry",
+  )))
+}
+
+// AN UNOBSERVABLE POST-STATE IS NOT A PRESERVED ONE. A refused enumeration carries no refs, and a
+// comparison that treated it as an empty set would find nothing missing and report success -- the
+// empty-observation narrow. This is the arm that makes ordering the observability check first
+// load-bearing rather than tidy.
+test fn an_unreadable_post_state_refuses_rather_than_reporting_preservation() -> Bool {
+  let after = RepositoryState {
+    refs: GitRefSetReadRefused { exit_code: 128, stderr: "not a git repository" },
+    worktrees: GitWorktreeSetObserved { worktrees: [primary_wt(oid: new_sha), linked_wt()] },
+    head: new_sha,
+    reflog: "old-reflog\nnew-entry",
+  }
+  match verdict_for(after: after) {
+    ConvergencePostStateUnobservable { detail: d } => string_contains(s: d, pattern: "not a git repository")
+    _ => false
+  }
+}
+
+// HEAD SHORT OF THE CANDIDATE IS ITS OWN ARM, not folded into a generic failure: the remedy is to
+// look at why the transition did not land, which is different from every preservation fault.
+test fn a_head_short_of_the_candidate_refuses() -> Bool {
+  let after = state(
+    refs: [ref_row(name: base_ref, oid: new_sha), ref_row(name: "refs/dispatch/attempt-a", oid: dispatch_sha)],
+    worktrees: [primary_wt(oid: old_sha), linked_wt()],
+    head: old_sha,
+    reflog: "old-reflog\nnew-entry",
+  )
+  match verdict_for(after: after) {
+    ConvergenceHeadNotAtCandidate { candidate: c, observed: o } => c == new_sha && o == old_sha
+    _ => false
+  }
+}
