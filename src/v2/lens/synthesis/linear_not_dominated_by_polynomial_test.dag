@@ -1,5 +1,6 @@
 module v2.test.lens_synthesis.linear_not_dominated_by_polynomial
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost {
   LinearCost,
   PolynomialCost,
@@ -10,12 +11,12 @@ import v2.lens.cost {
 import v2.std.cardinality { NonZeroNat }
 import v2.std.logic { Bool }
 import v2.std.nat { Zero }
-import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Node, TypeNode }
 
 data synthesis_lin_poly_x: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_lin_poly_x_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data synthesis_polynomial_degree_two: PolynomialDegree = PolynomialDegree {

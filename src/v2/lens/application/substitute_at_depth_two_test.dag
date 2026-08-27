@@ -1,20 +1,21 @@
 module v2.test.lens_application.substitute_at_depth_two
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.application { substitute_at }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
 
 data substitute_original_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^substitute_original_leaf_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data substitute_replacement_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^substitute_replacement_leaf_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data substitute_middle: Node = Node {
@@ -25,7 +26,7 @@ data substitute_middle: Node = Node {
       target: substitute_original_leaf
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data substitute_root: Node = Node {
@@ -36,7 +37,7 @@ data substitute_root: Node = Node {
       target: substitute_middle
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data substitute_expected_root: Node = Node {
@@ -52,11 +53,11 @@ data substitute_expected_root: Node = Node {
             target: substitute_replacement_leaf
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 test fn substitute_at_depth_two_claim_holds() -> Bool {

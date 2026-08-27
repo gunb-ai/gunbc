@@ -1,7 +1,7 @@
 module gunbc.plans.structural_quadratic_wall_coverage_audit
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote, cell, row }
 
@@ -58,6 +58,7 @@ fn structural_quadratic_wall_coverage_audit_body() -> List<MarkdownBlock> {
 }
 
 data structural_quadratic_wall_coverage_audit_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "structural-quadratic-wall-coverage-audit",
   title: "Structural-quadratic wall -- coverage audit and execution receipt",
   body: structural_quadratic_wall_coverage_audit_body(),

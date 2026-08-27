@@ -1,6 +1,7 @@
 module v2.test.manual.chained_generic_field_access
 
-import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Conj, Node, TypeNode }
 import v2.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -29,7 +30,7 @@ data witness_chained_generic_field: Bool = use_chained() == 9
 data chained_generic_field_claim_payload: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data claim_chained_generic_field_compiles: TestClaim = CompilesClaim {

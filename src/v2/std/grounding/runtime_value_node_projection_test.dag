@@ -1,5 +1,6 @@
 module v2.test.std_grounding.runtime_value_node_projection
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
@@ -8,8 +9,7 @@ import v2.std.node {
   Atom,
   Node,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.node_query { find_named_child }
 import v2.std.runtime {
@@ -39,7 +39,7 @@ fn rvnp_test_type_node(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

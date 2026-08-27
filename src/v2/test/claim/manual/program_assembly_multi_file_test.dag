@@ -1,5 +1,6 @@
 module v2.test.manual.program_assembly_multi_file
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve {
@@ -37,8 +38,7 @@ import v2.std.node {
   Named,
   Node,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.qualified_name { QualifiedName }
 
@@ -58,7 +58,7 @@ fn pa_qn_node(seg: Symbol) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   )
@@ -81,11 +81,11 @@ fn pa_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node 
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -106,11 +106,11 @@ fn pa_subject_with_import_use() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pa_imported_decl } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

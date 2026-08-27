@@ -1,7 +1,7 @@
 module gunbc.plans.cardinality_refinement
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol }
 
@@ -58,6 +58,7 @@ fn cardinality_refinement_body() -> List<MarkdownBlock> {
 }
 
 data cardinality_refinement_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "cardinality-refinement",
   title: "Plan — Cardinality refinement (the decidable fold-propagated refinement axis)",
   body: cardinality_refinement_body(),

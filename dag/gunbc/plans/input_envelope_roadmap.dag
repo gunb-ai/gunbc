@@ -1,7 +1,7 @@
 module gunbc.plans.input_envelope_roadmap
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol }
 
@@ -33,6 +33,7 @@ fn input_envelope_roadmap_body() -> List<MarkdownBlock> {
 }
 
 data input_envelope_roadmap_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "input-envelope-roadmap",
   title: "InputEnvelope: bounded input declaration for WorkDemand + CI corpus instance",
   body: input_envelope_roadmap_body(),

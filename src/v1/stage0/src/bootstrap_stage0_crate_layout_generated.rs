@@ -31,6 +31,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "target_invocation_host.rs",
     "behavioral_receipt_host.rs",
     "partition_crate_boundary_host.rs",
+    "generated_artifact_boundary_host.rs",
     "emitted_closure_compile_host.rs",
     "v2_compiler_compile.rs",
     "v2_compiler_program_assembly.rs",

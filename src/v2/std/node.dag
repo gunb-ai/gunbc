@@ -1,7 +1,6 @@
 module v2.std.node
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -12,68 +11,6 @@ import std.content_hash {
 
 type Symbol
 type Hash = Fnv1a64Structural
-
-data node_occurrence_id_v2_facade_note: String = "TEMPORARY COMPATIBILITY: v2 callers still construct and match this source-compatible coproduct while std.occurrence_identity.NodeOccurrenceId is the sole shared semantic authority. The total conversions below are the only bridge; new consumers use the shared carrier directly."
-
-type NodeOccurrenceId
-  = SyntheticOccurrence
-  | MintedOccurrence { id: std.occurrence_identity.OccurrenceId }
-
-fn node_occurrence_id_to_shared(
-  occurrence: NodeOccurrenceId
-) -> std.occurrence_identity.NodeOccurrenceIdentity {
-  match occurrence {
-    SyntheticOccurrence =>
-      std.occurrence_identity.OccurrenceSynthetic
-    MintedOccurrence { id: id } =>
-      std.occurrence_identity.OccurrenceMinted { id: id }
-  }
-}
-
-// THE FACADE CANNOT REPRESENT A PROJECTOR-CREATED OCCURRENCE, AND IT SAYS SO RATHER THAN GUESSING.
-//
-// std.occurrence_identity.NodeOccurrenceIdentity carries a third arm -- an occurrence a projector
-// created, naming the scoped reference it was created for. This coproduct has two arms and is
-// declared TEMPORARY COMPATIBILITY above, so the correct answer to "widen it" is no: growing a
-// surface whose whole purpose is to disappear buys nothing and delays the disappearance. What the
-// conversion owes instead is honesty about its own boundary, which is why it now returns a
-// narrowing rather than a NodeOccurrenceId.
-//
-// Collapsing the projected arm into SyntheticOccurrence would have been the available alternative
-// and it is the one this shape exists to refuse: it discards the cause at exactly the seam that was
-// built to preserve it, and it discards it silently, since every caller keeps compiling. The
-// refusal carries the payload it could not represent so that a caller reaching this arm can route
-// the value through the shared carrier instead of re-deriving what was lost.
-type NodeOccurrenceFacadeNarrowing
-  = FacadeRepresentable { occurrence: NodeOccurrenceId }
-  | FacadeCannotRepresentProjected {
-      id: std.occurrence_identity.OccurrenceId,
-      caused_by: std.occurrence_identity.ScopedOccurrenceRef,
-    }
-
-fn node_occurrence_id_from_shared(
-  occurrence: std.occurrence_identity.NodeOccurrenceIdentity
-) -> NodeOccurrenceFacadeNarrowing {
-  match occurrence {
-    std.occurrence_identity.OccurrenceSynthetic =>
-      FacadeRepresentable { occurrence: SyntheticOccurrence }
-    std.occurrence_identity.OccurrenceMinted { id: id } =>
-      FacadeRepresentable { occurrence: MintedOccurrence { id: id } }
-    std.occurrence_identity.OccurrenceProjected { id: id, caused_by: caused_by } =>
-      FacadeCannotRepresentProjected { id: id, caused_by: caused_by }
-  }
-}
-
-// THIS BUILDS THE FACADE ARM DIRECTLY RATHER THAN ROUTING THROUGH THE NARROWING, and the reason is
-// that the narrowing has an arm this function cannot answer. It previously went out to the shared
-// mint and back; that route now returns a coproduct, and the only ways to consume it here are to
-// fabricate a value for an arm that cannot occur or to change this function's return type for a
-// case its own argument makes unreachable. Both are worse than constructing the v2 arm that
-// corresponds to the shared mint, whose agreement with it is what the round-trip witnesses in
-// dag/test/claim/occurrence_identity_witness_test.dag execute.
-fn node_occurrence_minted(id: std.occurrence_identity.OccurrenceId) -> NodeOccurrenceId {
-  MintedOccurrence { id: id }
-}
 
 type Connective
   = Atom { identity: Symbol }
@@ -175,7 +112,7 @@ type NodeShape {
 fn node_with_occurrence_id(
   kind: NodeKind,
   children: List<Edge>,
-  occurrence_id: NodeOccurrenceId
+  occurrence_id: NodeOccurrenceIdentity
 ) -> Node {
   Node { kind: kind, children: children, occurrence_id: occurrence_id }
 }
@@ -192,7 +129,7 @@ fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: kind,
     children: children,
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   )
 }
 
@@ -200,7 +137,7 @@ fn node_for_structural_equality(n: Node) -> Node {
   node_with_occurrence_id(
     kind: n.kind,
     children: n.children,
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   )
 }
 
@@ -229,7 +166,7 @@ fn canonicalize_node_strip_provenance(n: Node) -> Node {
 type Node {
   kind: NodeKind
   children: List<Edge>
-  occurrence_id: NodeOccurrenceId
+  occurrence_id: NodeOccurrenceIdentity
 }
 type NodeFold<R> {
   init: fn(Node) -> R
@@ -808,7 +745,7 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
   Node {
     kind: base.kind,
     children: canonicalize_edges_for_content_hash(kind: base.kind, children: base.children),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1708,4 +1645,3 @@ type Diff {
   edits: List<Edit>
 }
 
-data node_occurrence_id_v2_facade_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: the counted v2.std.node imports of NodeOccurrenceId, SyntheticOccurrence, and MintedOccurrence reach zero after the bounded v2 import migration; then delete this compatibility coproduct and its two conversions.")
