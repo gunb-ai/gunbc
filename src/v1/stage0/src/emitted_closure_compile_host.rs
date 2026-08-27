@@ -43,12 +43,10 @@ use super::{
 };
 use crate::extdeps_cargo::{CargoDepSource, CargoDependency};
 use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
-use crate::gunbc_stage0_crate_partition_generated::{
-    GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
-};
+use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind;
 use crate::v1_compiler_stage0_crates::{
-    render_stage0_crate_dep, render_stage0_crate_features_section,
-    stage0_foundation_runtime_dependencies, stage0_partition_row_features,
+    render_stage0_crate_dep, render_stage0_crate_features_section, stage0_features_for_crate_kind,
+    stage0_foundation_runtime_dependencies,
 };
 
 const REQUIRED_EMIT_COMPILE_ENTRIES_DATA_NAME: &str = "required_emit_compile_entries";
@@ -356,19 +354,15 @@ fn probe_manifest(workspace: &Path, entry: &str) -> String {
     // authored here: the corpus already carries two hand-concatenated `[features]` blocks for
     // exactly this reason, each with a note explaining the failure, and adding a third string
     // would be the second representation those notes are evidence against.
-    let features = render_stage0_crate_features_section(stage0_partition_row_features(
-        std::rc::Rc::new(GeneratedPartitionCrateRow {
-            package_name: probe_package_name(entry),
-            crate_dir: String::new(),
-            // The foundation kind is the one that carries the feature the emitted `v1_rt.rs`
-            // gates on, and the emitted closure always contains `v1_rt`.
-            kind: GeneratedPartitionCrateKind::GeneratedFoundationCrate,
-            // `im::Vector`, not `std::Vec`: the generated row's list fields are the corpus
-            // `List<T>`, which that module aliases to `im::Vector`.
-            modules: std::rc::Rc::new(im::Vector::new()),
-            reexport_packages: std::rc::Rc::new(im::Vector::new()),
-            carries_non_empty_wrappers: false,
-        }),
+    // THE KIND IS THE WHOLE SUBJECT, so the kind is what is passed. An earlier revision handed
+    // over a fabricated `GeneratedPartitionCrateRow` -- blank crate_dir, empty module lists --
+    // to reach a function that reads `row.kind` and nothing else. That row was not merely
+    // wasteful: it ASSERTED this probe is a generated partition crate, which it is not. It is a
+    // per-entry crate written outside the repository, and the only thing it shares with a
+    // partition crate is needing the foundation kind's feature set, because the emitted
+    // `v1_rt.rs` gates on it.
+    let features = render_stage0_crate_features_section(stage0_features_for_crate_kind(
+        GeneratedPartitionCrateKind::GeneratedFoundationCrate,
     ));
     format!(
         "{}\nedition = \"2021\"\n{features}\n[dependencies]\n{rendered}",
@@ -963,10 +957,14 @@ pub fn emit_compile_report(
         selection.not_selected.len(),
         emit_compile_selection_not_selected_digest(&selection),
     ));
-    let retained_dir = std::env::temp_dir()
-        .join("gunbc-emit-compile")
-        .to_string_lossy()
-        .to_string();
+    // THROUGH `probe_root()`, NEVER BY RESPELLING IT. This line composed the directory name a
+    // second time, so when the root moved to `RUNNER_TEMP` one spelling was repaired and the
+    // other kept the old behaviour: in one run, the crate dirs were written under the runner's
+    // per-job temp while the retention file was still being written to the host-shared `/tmp`,
+    // where it hit the same `EACCES` the reroot existed to escape. Two homes for one fact is the
+    // §3 violation, and the tell was visible in the phase's own log as two different paths in
+    // adjacent lines. `probe_root()` is the authority; nothing else composes this name.
+    let retained_dir = probe_root().to_string_lossy().to_string();
     let retention_error = match retain_not_selected_identities(&selection, &retained_dir) {
         Ok(path) => {
             lines.push(format!(
@@ -1200,6 +1198,32 @@ mod tests {
     /// EVERY NON-`Discriminated` MUTATION ARM FAILS THE PHASE. Stated as a test because the
     /// tempting weakening -- treating the mutation as advisory beside a green baseline -- is
     /// exactly what would turn this phase into the decoration it exists not to be.
+    /// THE PROBE ROOT HAS EXACTLY ONE SPELLING.
+    ///
+    /// It had two. When the root moved to `RUNNER_TEMP`, the `probe_root()` authority was
+    /// repaired and a hand-composed copy inside the report was not, so one run wrote its crate
+    /// dirs under the runner's per-job temp and its retention file to the host-shared `/tmp` --
+    /// where it hit the very `EACCES` the reroot existed to escape. The defect was not a missed
+    /// callsite; it was the directory name being a fact with two homes.
+    ///
+    /// So this pins the SPELLING rather than the behaviour: a second composition of the name is
+    /// exactly what a behavioural test would not catch, because both spellings are correct until
+    /// the authority moves.
+    #[test]
+    fn the_probe_root_name_is_composed_in_exactly_one_place() {
+        let src = include_str!("emitted_closure_compile_host.rs");
+        // The needle is ASSEMBLED rather than written, because a literal one appears in this
+        // file the moment it is written down -- the test would then count itself and report two
+        // spellings where there is one. Caught by the test failing on its own text.
+        let needle = format!("join({:?})", "gunbc-emit-compile");
+        let compositions = src.matches(needle.as_str()).count();
+        assert_eq!(
+            compositions, 1,
+            "the probe root directory name must be composed only by probe_root(); a second \
+             spelling silently keeps the old root when the authority moves"
+        );
+    }
+
     /// A FAILED RESTORE MUST WIN OVER EVERY NON-TERMINAL FAULT VERDICT.
     ///
     /// The two conditions are independent and therefore co-occur: the fault arm can be green,
