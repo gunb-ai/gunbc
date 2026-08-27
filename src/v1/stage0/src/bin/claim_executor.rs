@@ -430,7 +430,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                          citations={} debt={} in_fixtures={} outside_index={} kernel_named={} lens_modules={} \
                          cited_authorities_without_import_edges={} retained={:?} \
                          cited_and_called={} called_retained={:?} cited_not_called={} not_called_retained={:?} \
-                         outside_dag_v2_entry_roots={} outside_entry_retained={:?}",
+                         primary_dag_entries={} primary_dag_retained={:?} src_v2_pool_only={} pool_only_retained={:?}",
                         population.modules,
                         population.declarations,
                         population.import_members,
@@ -446,8 +446,10 @@ fn run() -> Result<ExitCode, ExitCode> {
                         population.cited_and_called_without_import_edges,
                         population.cited_not_called_without_import_edges.len(),
                         population.cited_not_called_without_import_edges,
-                        population.cited_authorities_outside_dag_v2_entry_roots.len(),
-                        population.cited_authorities_outside_dag_v2_entry_roots,
+                        population.cited_authorities_under_primary_dag_entry_root.len(),
+                        population.cited_authorities_under_primary_dag_entry_root,
+                        population.cited_authorities_in_src_v2_dependency_pool_only.len(),
+                        population.cited_authorities_in_src_v2_dependency_pool_only,
                     );
                     for finding in &findings {
                         eprintln!(

@@ -757,9 +757,12 @@ pub struct DeclarationIndexPopulation {
     /// coverage; gunbc#9453 demonstrates the import-edge repair for one called specimen only.
     pub cited_and_called_without_import_edges: Vec<String>,
     pub cited_not_called_without_import_edges: Vec<String>,
-    /// Retained citees outside the `dag`/`src/v2` roots admitted as corpus-compile entries.
-    /// These cannot be folded into that existing capability's memory-envelope question.
-    pub cited_authorities_outside_dag_v2_entry_roots: Vec<String>,
+    /// Retained citees under `dag/`, the FIRST and therefore entry-producing root of the
+    /// existing `--source-root dag --source-root src/v2` corpus compile.
+    pub cited_authorities_under_primary_dag_entry_root: Vec<String>,
+    /// Retained citees under `src/v2/`, which that invocation indexes only as a dependency
+    /// pool. With no inbound import edge these identities are structurally unreachable there.
+    pub cited_authorities_in_src_v2_dependency_pool_only: Vec<String>,
     /// Import members admitted ONLY because they name a kernel type, over a target that
     /// declares no such name. Counted rather than skipped — see `import_member_findings`.
     pub import_members_kernel_named: usize,
@@ -837,13 +840,25 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
         .filter(|target| !cited_and_called_without_import_edges.contains(target))
         .cloned()
         .collect();
-    let cited_authorities_outside_dag_v2_entry_roots: Vec<String> =
+    let cited_authorities_under_primary_dag_entry_root: Vec<String> =
         cited_authorities_without_import_edges
             .iter()
             .filter(|module_path| {
-                index.modules.get(*module_path).is_some_and(|record| {
-                    !record.rel_path.starts_with("dag/") && !record.rel_path.starts_with("src/v2/")
-                })
+                index
+                    .modules
+                    .get(*module_path)
+                    .is_some_and(|record| record.rel_path.starts_with("dag/"))
+            })
+            .cloned()
+            .collect();
+    let cited_authorities_in_src_v2_dependency_pool_only: Vec<String> =
+        cited_authorities_without_import_edges
+            .iter()
+            .filter(|module_path| {
+                index
+                    .modules
+                    .get(*module_path)
+                    .is_some_and(|record| record.rel_path.starts_with("src/v2/"))
             })
             .cloned()
             .collect();
@@ -878,7 +893,8 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
         cited_authorities_without_import_edges,
         cited_and_called_without_import_edges,
         cited_not_called_without_import_edges,
-        cited_authorities_outside_dag_v2_entry_roots,
+        cited_authorities_under_primary_dag_entry_root,
+        cited_authorities_in_src_v2_dependency_pool_only,
         import_members_kernel_named: import_member_kernel_named_count(index),
         lens_modules: index
             .modules
