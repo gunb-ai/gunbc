@@ -337,9 +337,14 @@ fn decode_curve_side(container: JsonValue, path: DocumentPath, side: CurveSide) 
 //
 // This is a floor-level miss, not a subtlety: the comparison `boxes.first().value == 99` places a
 // record against an Int and typechecks clean. It is reported rather than only dodged, per the
-// standing rule that noticing a workaround is the line-stop signal. The rename is that workaround,
-// marked as one, and it dissolves when field access through an optional either resolves the
-// record's field or refuses the ambiguity.
+// standing rule that noticing a workaround is the line-stop signal.
+//
+// THE DEFECT NOW HAS A HOME, AND THIS FILE IS NOT IT. The seam is named and the class is filed as
+// item 0 of the audit queue in docs/plans/compiler-guarantee-recovery-gap-analysis.md, which is
+// the authority for compiler guarantee classes, their rungs and their triggers -- including the
+// split between the language-semantics question and the type-conformance half that is below floor
+// regardless of how the first is answered. What is claimed HERE is only the local fact: the rename
+// to `magnitude` is a workaround, and no compiler guarantee is claimed by this module.
 fn indexed_decimal_value_at(entries: List<IndexedDecimal>, index: Int) -> ExactDecimal {
   let matched = indexed_decimal_entries_with(entries: entries, index: index)
   let entry = matched.first()
