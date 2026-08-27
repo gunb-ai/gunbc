@@ -40,17 +40,26 @@ test fn witness_roundtrip_template() -> Bool {
   }
 }
 
-// A HYPHENATED SEGMENT IS NOT A DOT DEREFERENCE, AND THIS IS THE ROW THAT SAYS SO.
+// THIS IS A CANONICALIZATION ROW, NOT AN EXTERNAL-VALIDITY ROW, AND THE DISTINCTION MUST TRAVEL
+// WITH IT.
 //
-// `-` is the subtraction operator in this expression language, so `needs.a-b.result` does not
-// reach a property: it parses as arithmetic over three undefined operands and renders empty.
-// The cited grammar's answer is index notation, and the serializer chooses it from the segment
-// rather than from the caller.
+// Forcing the dot arm does NOT produce syntax GitHub rejects. The cited production admits a
+// hyphen after a valid start character, so `needs.a-b.result` is valid upstream; what the dot
+// arm violates is THIS WRITER'S CANONICAL SPELLING, which is index notation for anything outside
+// that narrow production. A reader who takes this row as evidence that GitHub refuses the dot
+// form will believe the consumer rejects something it accepts -- which is why the row is named
+// for the rendering rather than for validity.
+//
+// THREE PROPERTIES ARE IN PLAY AND ONLY ONE OF THEM IS THIS ROW: (1) a round trip proves
+// agreement between THIS writer and THIS reader; (2) a canonical-rendering check proves the
+// writer emits the chosen spelling; (3) external-grammar acceptance proves the consumer takes
+// it. (1) establishes neither of the others. This row is (2). Nothing in this module is (3),
+// and nothing here claims to be.
 //
 // THE RED IS AUTHORABLE AND SHARP: make `render_path_segment_with` always take the dot arm and
 // this row goes red on the rendering, while every other row in this file stays green -- their
-// segments (`os`, `arch`, `event`, `number`) are all dot-safe, so nothing else here can see the
-// distinction. That is the same read-path gap the job-id rows had.
+// segments (`os`, `arch`, `event`, `number`) all take the dot form, so nothing else here can see
+// the distinction. Measured: 1 red of 11.
 fn hyphenated_expr() -> Expression {
   ContextAccess { context: Needs, path: ["required-witnesses-build", "result"] }
 }

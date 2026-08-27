@@ -119,47 +119,65 @@ data default_expression_spellings: ExpressionSpellings = {
   index_close: "']",
 }
 
-// A PATH SEGMENT IS NOT ALWAYS DEREFERENCEABLE WITH A DOT, AND THE UPSTREAM GRAMMAR IS WHERE
-// THAT FACT LIVES.
+// THIS WRITER HAS A CANONICAL SPELLING FOR PATH SEGMENTS, AND THE CHOICE IS OURS RATHER THAN
+// THE GRAMMAR'S.
 //
-// The cited authority (docs.github.com expressions, this module's anchor) admits two forms for
-// reaching a property: dot notation, and index notation `['name']`. They are not stylistic
-// alternatives. `-` is the SUBTRACTION OPERATOR in this expression language, so a dot
-// dereference of a name containing one does not name a property at all -- `needs.a-b.result`
-// parses as arithmetic over three undefined operands and evaluates to the empty string.
+// The cited authority (docs.github.com, this module's anchor) admits two forms for reaching a
+// property: index notation `['name']`, and property dereference `.name`. Its rule for the second
+// is quoted rather than paraphrased, because an earlier revision of this comment paraphrased it
+// wrongly: "In order to use property dereference syntax, the property name must start with a
+// letter or `_` and contain only alphanumeric characters, `-`, or `_`."
 //
-// WHY THIS IS MODELED HERE RATHER THAN AT THE ONE CALL SITE THAT NEEDED IT. The rule is a fact
-// about the upstream language, so a consumer that hand-spelled `['...']` for its own case would
-// be a second account of the grammar (DESIGN 3), and every later consumer would rediscover the
-// same defect. Choosing the form from the segment makes the invalid rendering unspellable by a
-// caller instead of something callers must remember (DESIGN 5, construction over validation).
+// SO A HYPHEN IS ADMITTED BY THE DOT FORM, AND AN EARLIER REVISION OF THIS COMMENT SAID THE
+// OPPOSITE. It read that `-` is the subtraction operator, that `needs.a-b.result` "does not name
+// a property at all", and that it evaluates to the empty string. THAT IS FALSE and it was never
+// measured -- it was asserted from recall by one session, deferred to by another, and written
+// into an authority where a reader would have taken it as established. It is corrected in place
+// rather than deleted, because the correction is the more useful record: the two of us AGREEING
+// was produced by deference, not by evidence, and an agreement whose generator is deference is
+// not corroboration.
 //
-// THE FAILURE IT PREVENTS IS NOT A NOISY ONE. An empty dereference yields an empty string, which
-// downstream shell then compares against `success` -- so the mis-rendered form does not refuse,
-// it silently answers "not success" on EVERY run including all-green ones. A gate whose only
-// reachable state is red carries exactly as much information as one that can never go red.
-fn dot_safe_code_point(c: Int) -> Bool {
+// WHAT THE POLICY ACTUALLY IS: index notation for anything outside the narrow dereference
+// production, dot notation otherwise. That is a claim about US, not about GitHub. It is chosen
+// because index notation is explicit, reaches ARBITRARY keys uniformly, and does not depend on
+// the narrower production at all -- so a segment this writer has never seen before cannot be
+// rendered into a form the consumer might read as an operator expression. Both forms are valid
+// for the segments we emit today; this one stays valid for the segments we do not.
+//
+// WHY IT IS MODELED HERE AND NOT AT A CALL SITE. The production is a fact about the upstream
+// language, so a consumer hand-spelling `['...']` for its own case would be a second account of
+// the grammar (DESIGN 3). Choosing the form from the SEGMENT means a caller cannot spell it
+// wrong -- construction rather than a rule callers must remember (DESIGN 5).
+//
+// THE PREDICATE IS NARROWER THAN THE PRODUCTION, DELIBERATELY, and its name says which question
+// it answers. `path_segment_takes_dot_form` is THIS WRITER'S canonical choice; it is not
+// `path_segment_is_valid_with_a_dot`, which would be a different function with `-` admitted. A
+// reader who confuses the two will conclude GitHub rejects something GitHub accepts.
+fn dot_form_code_point(c: Int) -> Bool {
   (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c == 95)
 }
 
-fn dot_safe_leading_code_point(c: Int) -> Bool {
+fn dot_form_leading_code_point(c: Int) -> Bool {
   (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c == 95)
 }
 
-// A LEADING DIGIT IS REFUSED SEPARATELY FROM THE REST, because the upstream rule is not one
-// alphabet: `needs.0a.result` is not a property dereference even though every character in `0a`
-// is individually dot-safe. Folding the two checks into one alphabet would admit it.
-fn path_segment_is_dot_safe(segment: String) -> Bool {
+// THE START CHARACTER IS A SEPARATE RULE FROM THE REST, AND THAT SHAPE IS THE UPSTREAM
+// PRODUCTION'S, NOT A CONVENIENCE. The cited sentence says the name must START WITH a letter or
+// `_` and then CONTAIN ONLY the wider set, so `0a` is excluded by the start rule while every one
+// of its characters is individually admitted. Folding the two into one alphabet would admit it,
+// and this is the one place where the predicate and the production agree exactly rather than the
+// predicate being the narrower canonical choice.
+fn path_segment_takes_dot_form(segment: String) -> Bool {
   match segment.chars().first() {
     Absent => false
     Present { value: lead } =>
-      dot_safe_leading_code_point(c: lead)
-        && all(segment.chars(), c => dot_safe_code_point(c: c))
+      dot_form_leading_code_point(c: lead)
+        && all(segment.chars(), c => dot_form_code_point(c: c))
   }
 }
 
 fn render_path_segment_with(segment: String, sp: ExpressionSpellings) -> String {
-  if path_segment_is_dot_safe(segment: segment) {
+  if path_segment_takes_dot_form(segment: segment) {
     concat(sp.path_sep, segment)
   } else {
     join([sp.index_open, segment, sp.index_close], "")

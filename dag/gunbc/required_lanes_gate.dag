@@ -390,12 +390,21 @@ fn required_lanes_refusal_stmts(
 //
 // IT WAS LATENT UNTIL A SEGMENT NEEDED QUOTING, and that is why it survived review. Every
 // expression the gate carried happened to contain no character bash escapes, so the escaped
-// rendering and the verbatim one were the same bytes. A job id containing a `-` must be
-// dereferenced with the cited grammar's INDEX form (`needs['a-b'].result`), which contains
-// single quotes; passed through a single-quoted shell literal those became `'\''` sequences
-// INSIDE the `${{ }}` delimiters, and a backslash is not a token GitHub's expression grammar
-// admits -- so the whole workflow document would have failed to parse, taking both lane jobs
-// with it.
+// rendering and the verbatim one were the same bytes -- and A SERIALIZER FED ONLY INPUTS ON
+// WHICH TWO RENDERINGS AGREE HAS NOT BEEN TESTED AT ALL: its whole green history says nothing
+// about which of the two it implements. The defect was revealed by the first discriminating
+// input, not introduced by it.
+//
+// That input was a job id carrying a `-`, which `extdeps.github.expressions` renders in the
+// cited grammar's INDEX form as this writer's canonical spelling. The index form contains single
+// quotes; passed through a single-quoted shell literal those became `'\''` sequences INSIDE the
+// `${{ }}` delimiters, and a backslash is not a token GitHub's expression grammar admits -- so
+// the whole workflow document would have failed to parse, taking both lane jobs with it.
+//
+// THE HYPHEN IS NOT WHY, AND SAYING SO MATTERS BECAUSE AN EARLIER REVISION IMPLIED IT WAS. The
+// dot form is admitted by the upstream production for a hyphenated name; index notation is our
+// choice, not a repair. Any expression containing a quote would have detonated here, so the
+// defect is the SEAM and the hyphen was merely the first value to reach it.
 //
 // THE FIX IS THE SEAM, NOT THE ESCAPING. Binding through `env:` puts the expression in a yaml
 // scalar, which `extdeps.languages.yaml.emit` emits verbatim for an expression, and leaves the
