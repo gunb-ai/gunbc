@@ -1,0 +1,90 @@
+module gunbc.scm.repository_load
+
+// LOADING A REPOSITORY FROM A PATH, AND THE THREE WAYS IT CAN FAIL THAT ARE NOT EACH OTHER.
+//
+// `gunbc.scm.repository_envelope` decodes a JsonValue and is PURE. This module is the effectful
+// seam above it: a path becomes bytes, bytes become a document, a document becomes an envelope.
+// The split follows DESIGN section 3 -- the codec owns the interface shape, the host effect is one
+// realization bound to it -- so the decoder stays testable without a filesystem and this module
+// carries the only host effect in the read path.
+//
+// THE OUTCOME HAS FOUR ARMS BECAUSE THE FAILURES HAVE THREE DIFFERENT OWNERS.
+//
+//   file unreadable      the OPERATOR's fact. Wrong path, absent file, no permission. Nothing is
+//                        wrong with any document, because no document was obtained.
+//   document unparseable the SERIALIZATION's fact. Bytes exist and are not JSON. The repository
+//                        schema has not been consulted and has no opinion.
+//   document refused     the REPOSITORY SCHEMA's fact. Valid JSON that is not a valid repository:
+//                        a dangling parent, a duplicate identity, an unknown member.
+//
+// Collapsing any two of these is the not-applicable-rendered-as-malformed failure DESIGN lists
+// among its recurring modes: they have opposite remedies. "Check the path you typed" and "this
+// repository document is corrupt" must never be produced by one arm, because a user who is told
+// their repository is corrupt when they mistyped a path will go looking for damage that is not
+// there -- and may take a destructive step to repair it.
+//
+// A MISSING FILE IS NOT AN EMPTY REPOSITORY, AND THAT IS THE ARM THIS TYPE EXISTS TO FORBID.
+// The tempting fourth spelling is `Absent => empty_repository()`, which reads as helpful and is
+// the empty-observation narrow: it renders "I could not observe anything" as the verdict "there is
+// nothing here". A `log` built on it would print an empty history for a repository that exists at
+// a path the caller got slightly wrong, and a `commit` built on it would mint a first commit into
+// a repository that already has a hundred. There is no arm here that can produce an envelope
+// without having decoded one.
+//
+// EVERY ARM CARRIES THE PATH. A refusal that does not say which path it was reading is not located,
+// and a caller loading two repositories cannot tell which one refused.
+//
+// WHY THERE IS NO LoadStanding PROJECTION HERE. `gunbc.scm.load_standing` answers what a loader may
+// do next AT A PUBLICATION BOUNDARY -- whether a damaged generation may supersede a head slot. That
+// is a real question and it is not this one. Three of the four arms have no publication meaning at
+// all: a mistyped path is not a standing about a document. A consumer that IS at a publication
+// boundary calls `repository_envelope_load_standing` on the decode cause it holds, which is that
+// function's job. Manufacturing a standing for "file missing" would invent the entailment DESIGN
+// names as authority substitution.
+
+import std.types { String }
+import extdeps.filesystem.filesystem_io
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParse,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  JsonDocumentGap,
+}
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  decode_repository,
+  RepositoryDecodeOutcome,
+  RepositoryDecoded,
+  RepositoryDecodeRefused,
+  RepositoryDecodeRefusal,
+}
+
+type RepositoryLoad
+  = RepositoryLoaded { path: String, envelope: RepositoryEnvelope }
+  | RepositoryFileUnreadable { path: String, error: String }
+  | RepositoryDocumentUnparseable { path: String, gap: JsonDocumentGap }
+  | RepositoryDocumentRefused { path: String, cause: RepositoryDecodeRefusal }
+
+// THE ONLY HOST EFFECT IN THE READ PATH. `read.success` is consulted rather than inferred from an
+// empty `content`: an EMPTY FILE and an ABSENT FILE both yield empty content, and only the success
+// channel separates them. Deciding on content alone would fuse a legitimate empty document with a
+// missing one -- the same conflation this type's four arms exist to prevent, one level down.
+fn load_repository(path: String) -> RepositoryLoad {
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    RepositoryFileUnreadable { path: path, error: read.error }
+  } else {
+    match parse_json_document(s: read.content) {
+      JsonDocumentUnreadable { gap: gap } =>
+        RepositoryDocumentUnparseable { path: path, gap: gap }
+      JsonDocumentParsed { value: v } =>
+        match decode_repository(v: v) {
+          RepositoryDecoded { envelope: envelope } =>
+            RepositoryLoaded { path: path, envelope: envelope }
+          RepositoryDecodeRefused { cause: cause } =>
+            RepositoryDocumentRefused { path: path, cause: cause }
+        }
+    }
+  }
+}
