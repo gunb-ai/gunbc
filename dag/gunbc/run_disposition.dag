@@ -1,0 +1,321 @@
+module gunbc.run_disposition
+
+import std.types { Bool, Int, String }
+import extdeps.github.actions_runs {
+  WorkflowRunRecord,
+  RunConclusion,
+  RunSettlement,
+  RunSettlementInFlight,
+  RunSettled,
+  RunSuccess,
+  RunFailure,
+  RunCancelled,
+  RunSkipped,
+  RunTimedOut,
+  RunActionRequired,
+  RunNeutral,
+  RunStale,
+  RunStartupFailure,
+  RunConclusionUnknown,
+  run_conclusion_wire,
+  workflow_run_settlement
+}
+import gunbc.witness_floor_workflow { witness_floor_cancel_in_progress_event }
+
+// `cancelled` IS ONE WORD OVER AT LEAST TWO STATES WITH OPPOSITE OWNERS AND OPPOSITE REMEDIES.
+//
+// This module exists because a measured claim went into circulation and was very nearly acted on:
+// half of all settled witnesses.yml runs never reach a verdict. The LEVEL was correct and
+// replicated at four independent depths. The SUBJECT was not. The overwhelming majority of those
+// cancellations were LAWFUL SUPERSESSION -- an author pushed a new commit and GitHub cancelled the
+// run their own push had made obsolete -- and a small remainder were runs killed from outside while
+// working. Those two have nothing in common except the word
+// GitHub prints for both, and they have opposite remedies: a supersession needs NO action, because
+// the newer run is the authoritative one, while an external cancellation means the head was never
+// judged at all.
+//
+// Reading them as one state is what turned a healthy concurrency guard into an eviction-storm
+// level, and a fleet-capacity ask was minutes from being justified by a figure that was 95%
+// authors superseding themselves. That is the state-space conflation DESIGN carries as a recurring
+// failure mode, in its most expensive form: not a missing variant that produced a wrong answer, but
+// a merged variant that produced a plausible one.
+//
+// THIS MODULE IS POLICY, NOT UPSTREAM SHAPE. The record and the conclusion vocabulary belong to
+// extdeps.github.actions_runs. What is decided here -- whether a cancellation COULD have been
+// lawful -- depends on THIS repository's concurrency configuration, so it is a workflow-layer fact
+// and modelling it in extdeps would be a layer inversion.
+//
+// IT IS NOT A GATE. Nothing here blocks a merge and nothing is enrolled in the required run. It is
+// a classifier and its report is a measurement.
+
+// SUPERSESSION AVAILABILITY IS DERIVED, NOT RESTATED.
+//
+// GitHub cancels an in-flight run for a newer one only where the workflow's `cancel-in-progress`
+// evaluates true. witnesses.yml sets that per event, so for any event where it is false a
+// cancellation CANNOT be a supersession no matter what else is observed -- and a push run is
+// therefore structurally incapable of the benign explanation.
+//
+// The event name comes from gunbc.witness_floor_workflow, which owns the expression the workflow
+// actually emits. Restating `pull_request` here would be a second spelling of one fact that
+// nothing relates back to the emitted YAML, so a change to the workflow would silently leave this
+// classifier answering for a configuration that no longer exists.
+fn supersession_available_for_event(event: String) -> Bool {
+  event == witness_floor_cancel_in_progress_event
+}
+
+// WHETHER A REPLACEMENT RUN WAS OBSERVED IS THREE STATES, AND COLLAPSING THE LAST TWO IS THE
+// EMPTY-OBSERVATION NARROW.
+//
+// `ReplacementAbsent` says a look happened and found nothing. `ReplacementUnobserved` says no look
+// happened, or the look could not answer. DESIGN names the conflation of those two as the mirror
+// of the absorbing fallback and the worse half of it: an absorbing fallback WIDENS and is merely
+// expensive, while reading "I could not observe a replacement" as "there was no replacement"
+// NARROWS, and silently reclassifies a benign supersession as an unexplained eviction. A consumer
+// counting evictions would then count the runs it failed to look at.
+//
+// The lag is carried on the observed arm because the SIGN of it is the discriminator, and a
+// carrier that reported only presence could not express the confound below.
+type ReplacementObservation
+  = ReplacementUnobserved { cause: String }
+  | ReplacementAbsent
+  | ReplacementObserved { lag_seconds: Int }
+
+// THE CONFOUND, AND WHY THE DISCRIMINATOR HAS A SIGN.
+//
+// "Is there a newer run on this branch" does NOT separate the two populations, because BOTH produce
+// one. A supersession produces a newer run that arrives BEFORE the cancellation and causes it. An
+// eviction produces a newer run too -- the lane notices its run died and pushes a retry -- which
+// arrives AFTER the cancellation and is caused BY it. Presence is identical; direction is opposite.
+//
+// So the rule is the sign of
+//     lag = (this run's conclusion time) - (the replacement run's creation time)
+// A positive lag means the replacement already existed when this run was cancelled, so supersession
+// is available as the cause. A negative lag means the replacement did not exist yet, so supersession
+// is IMPOSSIBLE however suggestive the presence looked, and the run is classified external.
+//
+// Measured on two independently drawn windows, the wider one carrying several hundred candidates:
+// ZERO negative in both, with the positive lags clustered in the tens of seconds. A separation in
+// DIRECTION rather than a weighting is what makes this a discriminator rather than a heuristic, and
+// direction is the part that does not move between windows. The magnitudes are not transcribed
+// here, per the standing rule that a measurement is cited by naming its producer -- a copied number
+// rots without anyone touching either end.
+data replacement_lag_supersession_floor_s: Int = 0
+
+// A THIRD CANCEL POPULATION EXISTS AND THIS CARRIER DELIBERATELY DOES NOT SEPARATE IT, because it
+// is not a RUN-grain fact and everything here is.
+//
+// The runner-acquisition failure -- a job that is never claimed, ending at a fixed ~181 seconds with
+// no runner name and ZERO steps -- can land on the AGGREGATOR job specifically: the one-step job
+// whose only purpose is to read the other two lanes' results. When it does, both real lanes have
+// SUCCEEDED and the run still reports failure. Specimen: commit 62ad8d7d7, floor success steps=16,
+// build success steps=12, aggregator cancelled steps=0 with no runner.
+//
+// That is the OPPOSITE of the eviction this module's cancel arms describe, on every axis: not a long
+// job killed mid-work but a trivial one that never started, and the consumer-visible harm is a FALSE
+// RED OVER VERIFIED WORK rather than a lost verdict. A lane hitting it goes looking for a defect in a
+// diff that has none. So the remedies differ again, which is exactly the argument this module makes
+// about the other two.
+//
+// WHY IT IS OUT OF SCOPE RATHER THAN MISSING: separating it requires the JOB roster -- which job was
+// cancelled, its step count, whether it held a runner -- and a WorkflowRunRecord carries none of
+// that. A run-grain carrier cannot express the distinction, so inventing an arm for it here would be
+// a variant no input could ever select. Naming the limitation is the honest form; the arm belongs to
+// a job-grain carrier that does not exist yet.
+
+// THE DISPOSITIONS. Every settled run is exactly one of these, and the two cancel arms are the
+// point of the module.
+//
+// DispositionCancelAttributionUnestablished is NOT a wastebasket. It is the honest arm for a
+// cancellation whose replacement could not be observed, and it exists so that the classifier can
+// refuse to answer rather than defaulting to either neighbour. A count of it rising is a deficit in
+// the observation, which is exactly the signal an absorbing arm would have destroyed.
+type RunDisposition
+  = DispositionInFlight
+  | DispositionVerdictGreen
+  | DispositionVerdictRed
+  | DispositionSuperseded { lag_seconds: Int }
+  | DispositionExternallyCancelled { supersession_was_available: Bool }
+  | DispositionCancelAttributionUnestablished { cause: String }
+  | DispositionOtherSettlement { conclusion: RunConclusion }
+
+// THE ONE TOTAL CLASSIFICATION.
+//
+// It descends: settlement first, then conclusion, then -- only for a cancellation -- the event's
+// supersession availability, and only then the replacement observation and its sign. Each step is
+// a separate question and none of them is answered by a wildcard, so a new upstream conclusion
+// spelling lands in DispositionOtherSettlement carrying its own name rather than inheriting a
+// neighbour's remedy.
+fn classify_run(record: WorkflowRunRecord, replacement: ReplacementObservation) -> RunDisposition {
+  match workflow_run_settlement(record: record) {
+    RunSettlementInFlight => DispositionInFlight
+    RunSettled { conclusion: c } => classify_settled(record: record, conclusion: c, replacement: replacement)
+  }
+}
+
+fn classify_settled(
+  record: WorkflowRunRecord,
+  conclusion: RunConclusion,
+  replacement: ReplacementObservation
+) -> RunDisposition {
+  match conclusion {
+    RunSuccess => DispositionVerdictGreen
+    RunFailure => DispositionVerdictRed
+    RunCancelled => classify_cancellation(record: record, replacement: replacement)
+    RunSkipped => DispositionOtherSettlement { conclusion: conclusion }
+    RunTimedOut => DispositionOtherSettlement { conclusion: conclusion }
+    RunActionRequired => DispositionOtherSettlement { conclusion: conclusion }
+    RunNeutral => DispositionOtherSettlement { conclusion: conclusion }
+    RunStale => DispositionOtherSettlement { conclusion: conclusion }
+    RunStartupFailure => DispositionOtherSettlement { conclusion: conclusion }
+    RunConclusionUnknown { spelling: _ } => DispositionOtherSettlement { conclusion: conclusion }
+  }
+}
+
+// THE CANCELLATION DESCENT, in the order the questions actually gate each other.
+//
+// Availability is checked FIRST and dominates, because where the guard cannot fire, no observation
+// about replacements can make a supersession possible. That ordering is what makes a cancelled push
+// run report `supersession_was_available: false` -- a strictly stronger statement than "no
+// replacement was found", and the reason the two main-branch specimens in the measured window are
+// non-benign by construction rather than merely unexplained.
+fn classify_cancellation(record: WorkflowRunRecord, replacement: ReplacementObservation) -> RunDisposition {
+  if !supersession_available_for_event(event: record.event) {
+    DispositionExternallyCancelled { supersession_was_available: false }
+  } else {
+    match replacement {
+      ReplacementUnobserved { cause: r } => DispositionCancelAttributionUnestablished { cause: r }
+      ReplacementAbsent => DispositionExternallyCancelled { supersession_was_available: true }
+      ReplacementObserved { lag_seconds: lag } =>
+        if lag < replacement_lag_supersession_floor_s {
+          DispositionExternallyCancelled { supersession_was_available: true }
+        } else {
+          DispositionSuperseded { lag_seconds: lag }
+        }
+    }
+  }
+}
+
+data disposition_in_flight_name: String = "in-flight"
+data disposition_verdict_green_name: String = "verdict-green"
+data disposition_verdict_red_name: String = "verdict-red"
+data disposition_superseded_name: String = "superseded"
+data disposition_externally_cancelled_name: String = "externally-cancelled"
+data disposition_attribution_unestablished_name: String = "cancel-attribution-unestablished"
+data disposition_other_settlement_name: String = "other-settlement"
+
+fn disposition_name(disposition: RunDisposition) -> String {
+  match disposition {
+    DispositionInFlight => disposition_in_flight_name
+    DispositionVerdictGreen => disposition_verdict_green_name
+    DispositionVerdictRed => disposition_verdict_red_name
+    DispositionSuperseded { lag_seconds: _ } => disposition_superseded_name
+    DispositionExternallyCancelled { supersession_was_available: _ } => disposition_externally_cancelled_name
+    DispositionCancelAttributionUnestablished { cause: _ } => disposition_attribution_unestablished_name
+    DispositionOtherSettlement { conclusion: _ } => disposition_other_settlement_name
+  }
+}
+
+// THE TWO QUESTIONS THAT WERE BEING ANSWERED BY ONE COUNT.
+//
+// `disposition_reached_verdict` asks whether this run said anything about its subject.
+// `disposition_lost_a_verdict` asks whether a verdict that SHOULD have existed did not.
+// A supersession answers no to the first and NO to the second -- nothing was lost, because the
+// newer run carries the head. Conflating these is precisely how a large majority of cancellations,
+// every one of them lawful, was added to a capacity figure. The magnitude is deliberately not
+// transcribed here: it is a property of one window and it moves, and this repository's standing
+// rule is to name the instrument rather than copy its output.
+fn disposition_reached_verdict(disposition: RunDisposition) -> Bool {
+  match disposition {
+    DispositionInFlight => false
+    DispositionVerdictGreen => true
+    DispositionVerdictRed => true
+    DispositionSuperseded { lag_seconds: _ } => false
+    DispositionExternallyCancelled { supersession_was_available: _ } => false
+    DispositionCancelAttributionUnestablished { cause: _ } => false
+    DispositionOtherSettlement { conclusion: _ } => false
+  }
+}
+
+// WHETHER A VERDICT WAS LOST IS THREE-STATE, BECAUSE ONE ARM COVERS SETTLEMENTS THIS REPOSITORY
+// HAS NO GROUNDING FOR.
+//
+// An earlier shape of this function returned Bool and answered `false` for DispositionOtherSettlement.
+// That match was EXHAUSTIVE over RunDisposition and wrong one level down -- the arm carries
+// `timed_out`, `startup_failure`, `stale`, `skipped`, `neutral` and `action_required`, and those do
+// not share a remedy: a timed-out run lost a verdict, a skipped one never owed one. Answering
+// `false` for all of them silently UNDERCOUNTS lost verdicts, which is the fail-open direction for
+// the one count this module exists to get right.
+//
+// DESIGN names that shape directly -- total at the level examined, blind one level down -- and its
+// tell is exactly what was here: a `_` in the arm that carries the payload. The repair is not to
+// guess a Bool per conclusion, because this repository has no grounded reading of GitHub's
+// remedy for each of those words. It is to REFUSE to answer, so the count of unestablished
+// judgements is visible rather than absorbed into `false`.
+//
+// AND THE ARM IS OCCUPIED, so this is a live wall rather than a decoration: `startup_failure` is
+// among the conclusions this workflow actually produces. An arm being quiet would not have made it
+// deletable -- DESIGN separates mechanism existence from current occupancy -- but it is not even
+// quiet.
+type VerdictLossJudgement
+  = VerdictLost
+  | VerdictNotLost
+  | VerdictLossUnestablished { conclusion: RunConclusion }
+
+fn disposition_lost_a_verdict(disposition: RunDisposition) -> VerdictLossJudgement {
+  match disposition {
+    DispositionInFlight => VerdictNotLost
+    DispositionVerdictGreen => VerdictNotLost
+    DispositionVerdictRed => VerdictNotLost
+    DispositionSuperseded { lag_seconds: _ } => VerdictNotLost
+    DispositionExternallyCancelled { supersession_was_available: _ } => VerdictLost
+    DispositionCancelAttributionUnestablished { cause: _ } => VerdictLossUnestablished { conclusion: RunCancelled }
+    DispositionOtherSettlement { conclusion: c } => VerdictLossUnestablished { conclusion: c }
+  }
+}
+
+data verdict_lost_name: String = "lost"
+data verdict_not_lost_name: String = "not-lost"
+data verdict_loss_unestablished_name: String = "loss-unestablished"
+
+fn verdict_loss_judgement_name(judgement: VerdictLossJudgement) -> String {
+  match judgement {
+    VerdictLost => verdict_lost_name
+    VerdictNotLost => verdict_not_lost_name
+    VerdictLossUnestablished { conclusion: _ } => verdict_loss_unestablished_name
+  }
+}
+
+// A run belongs to the VERDICT-BEARING denominator when it was in a position to report on its
+// subject at all. Lawful supersessions are excluded, because including them measures how often
+// authors push twice rather than how often the fleet answers. This is the denominator to quote.
+fn disposition_in_verdict_bearing_denominator(disposition: RunDisposition) -> Bool {
+  match disposition {
+    DispositionInFlight => false
+    DispositionVerdictGreen => true
+    DispositionVerdictRed => true
+    DispositionSuperseded { lag_seconds: _ } => false
+    DispositionExternallyCancelled { supersession_was_available: _ } => true
+    DispositionCancelAttributionUnestablished { cause: _ } => true
+    DispositionOtherSettlement { conclusion: _ } => true
+  }
+}
+
+// THE CLASSIFIER RULE, RENDERED BESIDE EVERY COUNT.
+//
+// A number whose partition rule is not printed next to it is what produced the error this module
+// exists to prevent: three sessions quoted one percentage, all arithmetically correct, none of them
+// stating what it partitioned on. So the report carries the rule as data rather than leaving it to
+// a reader's recollection, and a consumer changing the rule changes the text that ships with the
+// number.
+fn classifier_rule_rows() -> List<String> {
+  [
+    "rule\tsettled-only\ta run with status != completed is in-flight and is not classified",
+    concat(
+      "rule\tsupersession-availability\tcancellation can be lawful only for event=",
+      concat(witness_floor_cancel_in_progress_event, " (witnesses.yml cancel-in-progress); any other event is external by construction")
+    ),
+    "rule\treplacement-sign\tlag = (this run concluded) - (replacement created); lag >= 0 is supersession, lag < 0 is a retry AFTER the cancel and is external",
+    "rule\tunobserved-is-not-absent\ta replacement that could not be observed is attribution-unestablished, never external",
+    "rule\tverdict-bearing-denominator\tlawful supersessions are excluded from the denominator; in-flight runs are excluded"
+  ]
+}
