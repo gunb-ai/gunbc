@@ -94,11 +94,9 @@ fn entry_with_entry_specific_module() -> v2.compiler.self_host.emitted_surface_j
   v2.compiler.self_host.emitted_surface_join.EntryObservation {
     entry: "a.dag",
     observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved {
-      rows: [
-        declaration_row(source_module: "v2.std.node", members: ["Node", "Edge"]),
-        reexport_row(source_module: "v2.std.node", members: ["ContentHash"]),
-        declaration_row(source_module: "v2.std.only_here", members: ["OnlyHere"]),
-        reexport_row(source_module: "v2.std.only_here", members: ["Elsewhere"])
+      modules: [
+        surface(source_module: "v2.std.node", reexports: ["ContentHash"], declarations: ["Node", "Edge"]),
+        surface(source_module: "v2.std.only_here", reexports: ["Elsewhere"], declarations: ["OnlyHere"])
       ]
     }
   }
@@ -108,9 +106,8 @@ fn entry_sharing_one_module() -> v2.compiler.self_host.emitted_surface_join.Entr
   v2.compiler.self_host.emitted_surface_join.EntryObservation {
     entry: "b.dag",
     observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved {
-      rows: [
-        declaration_row(source_module: "v2.std.node", members: ["Node", "Edge"]),
-        reexport_row(source_module: "v2.std.node", members: ["ContentHash"])
+      modules: [
+        surface(source_module: "v2.std.node", reexports: ["ContentHash"], declarations: ["Node", "Edge"])
       ]
     }
   }

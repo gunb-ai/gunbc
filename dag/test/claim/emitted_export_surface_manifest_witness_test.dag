@@ -164,7 +164,7 @@ fn witness_unexpected_nonempty_line_refuses() -> Bool {
       concat("a line that is not a row", gunbc.stage0_emitted_population_manifest.emitted_population_manifest_line_separator)
     )
   ) {
-    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => false
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { modules: _ } => false
     gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => true
   }
 }
@@ -178,7 +178,7 @@ fn witness_unexpected_nonempty_line_refuses() -> Bool {
 // rather than universal.
 fn witness_trailing_empty_line_still_observes() -> Bool {
   match gunbc.stage0_emitted_export_surface_observation.observe_emitted_export_surface(content: two_module_manifest()) {
-    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => true
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { modules: _ } => true
     gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => false
   }
 }

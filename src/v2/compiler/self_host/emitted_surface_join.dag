@@ -18,7 +18,17 @@ import v2.compiler.self_host.emitted_surface_census {
 }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { contains, filter, fold_list, is_empty, list_map, list_snoc_item }
+import v2.std.algebra {
+  HeadAbsent,
+  HeadFound,
+  contains,
+  filter,
+  fold_list,
+  is_empty,
+  list_head,
+  list_map,
+  list_snoc_item
+}
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -161,19 +171,17 @@ fn module_present_under_entry(eo: EntryObservation, source_module: String) -> Bo
 }
 
 fn reexport_members_under_entry(eo: EntryObservation, source_module: String) -> List<String> {
-  fold_list(
-    xs: module_surfaces_under_entry(eo: eo, source_module: source_module),
-    empty: no_members(),
-    cons: fn(inner, surface) { surface.reexports }
-  )
+  match list_head(xs: module_surfaces_under_entry(eo: eo, source_module: source_module)) {
+    HeadFound { value: surface } => surface.reexports
+    HeadAbsent => no_members()
+  }
 }
 
 fn target_filename_under_entry(eo: EntryObservation, source_module: String) -> String {
-  fold_list(
-    xs: module_surfaces_under_entry(eo: eo, source_module: source_module),
-    empty: "",
-    cons: fn(inner, surface) { surface.target_filename }
-  )
+  match list_head(xs: module_surfaces_under_entry(eo: eo, source_module: source_module)) {
+    HeadFound { value: surface } => surface.target_filename
+    HeadAbsent => ""
+  }
 }
 
 fn observations_of_module(observations: List<EntryObservation>, source_module: String, vintage: String) -> List<EmittedMemberIdentity> {
@@ -206,11 +214,10 @@ fn declared_members_for(observations: List<EntryObservation>, entry: String, sou
     xs: filter(xs: observations, predicate: eo => eo.entry == entry),
     empty: no_members(),
     cons: fn(acc, eo) {
-      fold_list(
-        xs: module_surfaces_under_entry(eo: eo, source_module: source_module),
-        empty: acc,
-        cons: fn(inner, surface) { surface.declarations }
-      )
+      match list_head(xs: module_surfaces_under_entry(eo: eo, source_module: source_module)) {
+        HeadFound { value: surface } => surface.declarations
+        HeadAbsent => acc
+      }
     }
   )
 }
@@ -230,11 +237,10 @@ fn target_filename_for(observations: List<EntryObservation>, source_module: Stri
     xs: observations,
     empty: "",
     cons: fn(acc, eo) {
-      fold_list(
-        xs: module_surfaces_under_entry(eo: eo, source_module: source_module),
-        empty: acc,
-        cons: fn(inner, surface) { surface.target_filename }
-      )
+      match list_head(xs: module_surfaces_under_entry(eo: eo, source_module: source_module)) {
+        HeadFound { value: surface } => surface.target_filename
+        HeadAbsent => acc
+      }
     }
   )
 }
