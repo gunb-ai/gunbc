@@ -177,7 +177,7 @@ import v1.compiler.languages {
 }
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
-  escape_json_string, module_to_filename, make_indent,
+  escape_json_string, module_to_filename, module_filename_collision_diagnostics, make_indent,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   sanitize_service_name, capitalize_first, service_var_name, to_pascal,
   escape_string_literal_body, unique_strings, to_string, to_string_helper,
@@ -2532,6 +2532,10 @@ fn merged_module_source_indices(modules: List<TypedModule>) -> Map<String, Newli
 }
 
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
+  let filename_collisions = module_filename_collision_diagnostics(typed: typed)
+  if filename_collisions |> count > 0 {
+    return EmitResult { files: [], diagnostics: filename_collisions }
+  }
   let base_info = build_emit_graph_info(modules: typed.modules)
   let ownership = build_ownership_results(modules: typed.modules)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)

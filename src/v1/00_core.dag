@@ -203,6 +203,7 @@ type CompilerDiagnostic
   | DataReferenceVisibilityBudgetExceeded { name: String, span: SourceSpan }
   | ParameterDefaultFormNotAdmitted { parameter: String, admitted: List<String>, span: SourceSpan }
   | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
+  | ModuleFilenameCollision { filename: String, modules: List<String>, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
   | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: SourceSpan }
   | CallArgumentDuplicate { callee: String, argument: String, span: SourceSpan }
@@ -354,6 +355,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     DataReferenceVisibilityBudgetExceeded { name: _, span: s } => s
     ParameterDefaultFormNotAdmitted { parameter: _, admitted: _, span: s } => s
     AmbiguousAnonymousRecordLiteral { candidates: _, span: s } => s
+    ModuleFilenameCollision { filename: _, modules: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
     CallPositionalSurplus { callee: _, supplied: _, capacity: _, span: s } => s
     CallArgumentDuplicate { callee: _, argument: _, span: s } => s
@@ -438,6 +440,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ParameterDefaultFormNotAdmitted { parameter: p, admitted: forms, span: _ } =>
       concat("default value for parameter '", p, "' is not an admitted form (admitted: ", join(forms, separator: ", "), ")")
     AmbiguousAnonymousRecordLiteral { candidates: cs, span: _ } => concat("ambiguous anonymous record literal shape matches ", to_string(value: cs |> count), " structs: ", join(cs, separator: ", "), " — add a nominal type")
+    ModuleFilenameCollision { filename: f, modules: ms, span: _ } => concat("module filename collision: ", to_string(value: ms |> count), " modules render one emitted file name '", f, "': ", join(ms, separator: ", "), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
       concat("call shape mismatch calling '", c, "': no parameter named '", a, "' (declared: [", join(ds, separator: ", "), "])")
     CallPositionalSurplus { callee: c, supplied: s, capacity: cap, span: _ } =>
