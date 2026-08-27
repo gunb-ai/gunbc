@@ -180,11 +180,30 @@ fn occurrence_transport_round_trips_with_node_identity_and_paths() {
         node_ids, sidecar_ids,
         "parser node identities must equal sidecar identities"
     );
-    node_ids.dedup();
+    let mut unique_node_ids = node_ids.clone();
+    unique_node_ids.dedup();
+    let mut unique_sidecar_ids = sidecar_ids.clone();
+    unique_sidecar_ids.dedup();
     assert_eq!(
-        node_ids.len(),
-        sidecar_ids.len(),
-        "authored node identities must be distinct"
+        unique_node_ids, unique_sidecar_ids,
+        "authored node and sidecar identity sets must agree despite shared node reachability"
+    );
+    let mut equal_parameter_ids: Vec<i64> = module
+        .children
+        .iter()
+        .flat_map(|declaration| declaration.params.iter())
+        .filter(|parameter| parameter.name == "x")
+        .map(|parameter| match parameter.occurrence_identity.as_ref() {
+            NodeOccurrenceIdentity::OccurrenceMinted { id } => id.value,
+            _ => panic!("authored parameter did not carry a minted identity"),
+        })
+        .collect();
+    equal_parameter_ids.sort_unstable();
+    equal_parameter_ids.dedup();
+    assert_eq!(
+        equal_parameter_ids.len(),
+        2,
+        "structurally equal authored parameters must have distinct identities"
     );
     assert_eq!(
         synthetic_count, 0,
