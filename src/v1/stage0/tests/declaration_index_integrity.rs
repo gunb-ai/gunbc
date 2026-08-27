@@ -479,6 +479,63 @@ fn citation_to_a_deleted_module_is_refused_and_a_foreign_namespace_is_not() {
     assert_eq!(population.citations_outside_index, 1);
 }
 
+// DESIGN's third emit-stage escape mode is a JOIN, not a specimen count: a module is in
+// the retained population when an ordinary module cites it as an authority and no import
+// edge reaches it. Both directions are planted so a collector that merely counts citations,
+// or one that mistakes deliberately-false fixture text for authority demand, cannot pass.
+#[test]
+fn cited_authority_without_an_import_edge_is_named_until_an_edge_reaches_it() {
+    let dir = scratch_root("cited_authority_reachability");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data citation: DeclarationRef = DeclarationRef {\n  \
+         module_path: \"probe.authority\",\n  decl_name: \"real_declaration\",\n  \
+         field: WholeDeclaration\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    assert_eq!(
+        index_population(&sweep.index).cited_authorities_without_import_edges,
+        vec!["probe.authority"],
+        "the retained population carries its identity, not only one counted specimen"
+    );
+
+    author(
+        &dir,
+        "consumer.dag",
+        "module probe.consumer\n\nimport probe.authority { real_declaration }\n\n\
+         data consumes_authority: Bool = real_declaration\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    assert_eq!(
+        index_population(&sweep.index).cited_authorities_without_import_edges,
+        Vec::<String>::new(),
+        "one real import edge reaches and therefore removes the authority from the remainder"
+    );
+}
+
+#[test]
+fn fixture_citation_does_not_claim_authority_reachability() {
+    let dir = scratch_root("fixture_citation_reachability");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "citer_test.dag",
+        "module probe.citer_test\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data citation: DeclarationRef = DeclarationRef {\n  \
+         module_path: \"probe.authority\",\n  decl_name: \"real_declaration\",\n  \
+         field: WholeDeclaration\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    assert_eq!(
+        index_population(&sweep.index).cited_authorities_without_import_edges,
+        Vec::<String>::new(),
+        "fixture text is evidence input, not a claim that its target is a live authority"
+    );
+}
+
 // ARM 3 — module authorship. The live corpus is 72 of 72 green, so this is the arm whose
 // red MUST be authorable somewhere or the check is a decoration. It is authorable here.
 #[test]

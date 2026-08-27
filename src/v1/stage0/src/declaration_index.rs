@@ -35,6 +35,8 @@
 //!   2. the cited-symbol wall — an authored `DeclarationRef` naming a symbol that
 //!      does not resolve (§3: cite the symbol, not the position)
 //!   3. module authorship — a top-level lens with no `construction_justification`
+//!   4. cited-authority reachability — a non-fixture module cited as a fact's home by
+//!      another non-fixture module, while no authored import edge reaches that home
 //!
 //! WHAT THIS IS NOT. It is not a widening of the required floor's source roots, and
 //! the objection `gunbc.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder`
@@ -730,6 +732,12 @@ pub struct DeclarationIndexPopulation {
     /// Citations naming a namespace no swept module declares — hand-Rust and other
     /// universes. Counted rather than dropped, so a green names what it did NOT cover.
     pub citations_outside_index: usize,
+    /// Distinct in-corpus modules cited as authorities from ordinary authored modules, but
+    /// reached by no authored import edge. A citation asserts that the target is a fact's
+    /// home; without an import edge no consumer closure typechecks that home. Identities are
+    /// carried rather than only a count so the unobserved remainder cannot be mistaken for a
+    /// specimen list or a percentage (DESIGN's third emit-stage escape mode).
+    pub cited_authorities_without_import_edges: Vec<String>,
     /// Import members admitted ONLY because they name a kernel type, over a target that
     /// declares no such name. Counted rather than skipped — see `import_member_findings`.
     pub import_members_kernel_named: usize,
@@ -766,6 +774,29 @@ pub fn index_records(index: &DeclarationIndex) -> Vec<&ModuleDeclarationRecord> 
 }
 
 pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation {
+    let imported_modules: BTreeSet<String> = index
+        .modules
+        .values()
+        .flat_map(|record| record.imports.iter())
+        .filter_map(|import| {
+            resolve_cited_module(index, &import.target).map(|target| target.module_path.clone())
+        })
+        .collect();
+    let cited_authorities_without_import_edges: Vec<String> = index
+        .modules
+        .values()
+        .filter(|record| !record.is_fixture_carrier)
+        .flat_map(|record| record.cited.iter().map(move |cited| (record, cited)))
+        .filter_map(|(record, cited)| {
+            resolve_cited_module(index, &cited.module_path).filter(|target| {
+                !target.is_fixture_carrier && target.module_path != record.module_path
+            })
+        })
+        .map(|target| target.module_path.clone())
+        .filter(|target| !imported_modules.contains(target))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
     DeclarationIndexPopulation {
         modules: index.modules.len(),
         declarations: index.modules.values().map(|r| r.declared.len()).sum(),
@@ -794,6 +825,7 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
             .flat_map(|r| r.cited.iter())
             .filter(|c| citation_is_outside_index(index, &c.module_path))
             .count(),
+        cited_authorities_without_import_edges,
         import_members_kernel_named: import_member_kernel_named_count(index),
         lens_modules: index
             .modules
