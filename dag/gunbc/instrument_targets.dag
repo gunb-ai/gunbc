@@ -4,6 +4,8 @@ import extdeps.bazel.label { Label, PackageName, PackagePath, TargetName }
 import gunbc.build_target { BuildTarget, TestRule }
 import gunbc.target_binding {
   TargetBinding,
+  BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
+  BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialProducer,
   HeadsReadingDifferentialStanding,
   HeadsReadingDifferentialCompleted,
@@ -56,6 +58,18 @@ fn heads_reading_differential_label() -> Label {
   }
 }
 
+fn behavioral_receipt_plan_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "behavioral-receipt-plan" } }
+}
+
+fn behavioral_receipt_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "behavioral-receipt-census" } }
+}
+
+fn behavioral_receipt_selftest_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "behavioral-receipt-selftest" } }
+}
+
 // THE INSTRUMENT IS A `TestRule` WITH NO DEPENDENCIES, and both halves are measurements rather
 // than placeholders. It answers a test question — does the heads reading read the same grammar as
 // the full reading — so it is not a `BuildRule`; and it depends on no other target in this graph,
@@ -68,11 +82,39 @@ fn heads_reading_differential_target() -> BuildTarget {
   }
 }
 
+fn instrument_test_target(label: Label) -> BuildTarget {
+  BuildTarget { label: label kind: TestRule {} dependencies: [] }
+}
+
+fn behavioral_receipt_plan_target() -> BuildTarget {
+  instrument_test_target(label: behavioral_receipt_plan_label())
+}
+
+fn behavioral_receipt_census_target() -> BuildTarget {
+  instrument_test_target(label: behavioral_receipt_census_label())
+}
+
+fn behavioral_receipt_selftest_target() -> BuildTarget {
+  instrument_test_target(label: behavioral_receipt_selftest_label())
+}
+
 fn heads_reading_differential_binding() -> TargetBinding {
   TargetBinding {
     target: heads_reading_differential_label()
     producer: HeadsReadingDifferentialProducer {}
   }
+}
+
+fn behavioral_receipt_plan_binding() -> TargetBinding {
+  TargetBinding { target: behavioral_receipt_plan_label() producer: BehavioralReceiptPlanProducer {} }
+}
+
+fn behavioral_receipt_census_binding() -> TargetBinding {
+  TargetBinding { target: behavioral_receipt_census_label() producer: BehavioralReceiptCensusProducer {} }
+}
+
+fn behavioral_receipt_selftest_binding() -> TargetBinding {
+  TargetBinding { target: behavioral_receipt_selftest_label() producer: BehavioralReceiptSelftestProducer {} }
 }
 
 // THE SUBJECT IS THE INSTRUMENT'S OWN FACT, NOT AN ARGUMENT THE CALLER SUPPLIES.
@@ -84,6 +126,12 @@ fn heads_reading_differential_binding() -> TargetBinding {
 // standing. These are the two roots the existing `--heads-reading-differential` mode already
 // reads, so this row moves the literal out of argv rather than inventing a third population.
 fn heads_reading_differential_source_roots() -> List<String> {
+  ["dag", "src/v2"]
+}
+
+// One modeled subject shared by the three behavioral producers. The host leaf receives this
+// population; it does not decide it.
+fn behavioral_receipt_source_roots() -> List<String> {
   ["dag", "src/v2"]
 }
 
@@ -103,11 +151,17 @@ fn heads_reading_differential_source_roots() -> List<String> {
 // standing was about source X". Direct invocation and its immediate rendering are what this seam
 // claims, and they need none of them.
 fn instrument_targets() -> List<Label> {
-  [heads_reading_differential_label()]
+  [
+    heads_reading_differential_label(), behavioral_receipt_plan_label(),
+    behavioral_receipt_census_label(), behavioral_receipt_selftest_label()
+  ]
 }
 
 fn instrument_bindings() -> List<TargetBinding> {
-  [heads_reading_differential_binding()]
+  [
+    heads_reading_differential_binding(), behavioral_receipt_plan_binding(),
+    behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding()
+  ]
 }
 
 // THE PRODUCTION ENTRY: the generic route, bound to the live population, in one place. Every

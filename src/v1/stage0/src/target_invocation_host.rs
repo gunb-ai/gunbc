@@ -157,6 +157,9 @@ pub fn parse_label(text: &str) -> Result<Label, LabelRefusal> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetProducer {
     HeadsReadingDifferential,
+    BehavioralReceiptPlan,
+    BehavioralReceiptCensus,
+    BehavioralReceiptSelftest,
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -170,13 +173,34 @@ fn heads_reading_differential_source_roots() -> Vec<String> {
 }
 
 fn instrument_registry() -> Vec<(Label, TargetProducer)> {
-    vec![(
-        Label {
-            package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-            target: "heads-reading-differential".to_string(),
-        },
-        TargetProducer::HeadsReadingDifferential,
-    )]
+    vec![
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "heads-reading-differential".to_string(),
+            },
+            TargetProducer::HeadsReadingDifferential,
+        ),
+        (
+            instrument_label("behavioral-receipt-plan"),
+            TargetProducer::BehavioralReceiptPlan,
+        ),
+        (
+            instrument_label("behavioral-receipt-census"),
+            TargetProducer::BehavioralReceiptCensus,
+        ),
+        (
+            instrument_label("behavioral-receipt-selftest"),
+            TargetProducer::BehavioralReceiptSelftest,
+        ),
+    ]
+}
+
+fn instrument_label(target: &str) -> Label {
+    Label {
+        package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+        target: target.to_string(),
+    }
 }
 
 /// `gunbc.target_invocation` `TargetInvocationRefusal`, MINUS ONE ARM, and the omission is
@@ -342,6 +366,34 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::HeadsReadingDifferential => {
             run_heads_reading_differential(&heads_reading_differential_source_roots())
         }
+        TargetProducer::BehavioralReceiptPlan => behavioral_outcome(
+            cli_run::behavioral_receipt_host::run_plan(&behavioral_receipt_source_roots()),
+        ),
+        TargetProducer::BehavioralReceiptCensus => behavioral_outcome(
+            cli_run::behavioral_receipt_host::run_census(&behavioral_receipt_source_roots()),
+        ),
+        TargetProducer::BehavioralReceiptSelftest => behavioral_outcome(
+            cli_run::behavioral_receipt_host::run_selftest(&behavioral_receipt_source_roots()),
+        ),
+    }
+}
+
+fn behavioral_receipt_source_roots() -> Vec<String> {
+    vec!["dag".to_string(), "src/v2".to_string()]
+}
+
+fn behavioral_outcome(
+    outcome: cli_run::behavioral_receipt_host::BehavioralHostOutcome,
+) -> InvocationOutcome {
+    use cli_run::behavioral_receipt_host::BehavioralHostTermination;
+    InvocationOutcome {
+        termination: match outcome.termination {
+            BehavioralHostTermination::ObservationHeld => Termination::ObservationHeld,
+            BehavioralHostTermination::ObservationDidNotHold => Termination::ObservationDidNotHold,
+            BehavioralHostTermination::SubjectUnreached => Termination::SubjectUnreached,
+            BehavioralHostTermination::Refused => Termination::Refused,
+        },
+        message: outcome.message,
     }
 }
 
