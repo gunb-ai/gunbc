@@ -105,6 +105,24 @@ type UseSiteDisposition
       realization: String
     }
 
+// ONE DECLARATION CAN RECEIVE BOTH DISPOSITIONS INSIDE ONE CLOSURE, and that is derived here rather
+// than left for a reader to aggregate out of the rows. It is the load-bearing observation the census
+// produces: a rule keyed on WHICH DECLARATION a reference resolves to answers identically for every
+// occurrence of that declaration, so it cannot produce a split, and a split therefore forecloses a
+// declaration-keyed repair before one is built. Stated as a sentence it is a plausible objection;
+// derived as a row it is re-derivable by running the instrument, which a prose claim is not.
+type SubjectConsistency
+  = SubjectUniformlyPreserved { preserved: Int }
+  | SubjectUniformlyBypassed { bypassed: Int }
+  | SubjectDispositionSplit { preserved: Int, bypassed: Int }
+  | SubjectHasNoOccurrences
+
+type SubjectConsistencyRow {
+  declaring_file: String
+  name: String
+  consistency: SubjectConsistency
+}
+
 // WHETHER A GIVEN BYPASS WAS INTENDED IS NOT DECIDABLE FROM THIS TREE, and this carrier says so
 // rather than inferring intent from whether rustc happens to accept the output. The intended split
 // -- preserve the provider declaration, versus inline the target representation, which is the right
@@ -172,6 +190,7 @@ type OpaqueRealizationCensus
       provenance: EmittedTreeProvenance
       emitted_file_count: Int
       dispositions: List<UseSiteDisposition>
+      subject_consistency: List<SubjectConsistencyRow>
       opaque_subjects: List<OpaqueSubjectRow>
     }
 
@@ -743,6 +762,7 @@ fn census_emitted_tree(provenance: EmittedTreeProvenance, src_dir: String, emit_
       provenance: provenance,
       emitted_file_count: files |> count,
       dispositions: dispositions,
+      subject_consistency: subject_consistency_rows(dispositions: dispositions, claims: claims),
       opaque_subjects: opaque_subject_rows(dispositions: dispositions, files: files, claims: claims)
     }
   }
@@ -870,6 +890,78 @@ fn opaque_subject_row_text(r: OpaqueSubjectRow) -> String {
   join([r.declaring_file, r.name, r.source_module, standing_text(s: r.standing)], "\t")
 }
 
+fn subject_preserved_count(dispositions: List<UseSiteDisposition>, key: String) -> Int {
+  dispositions
+    |> filter(d => disposition_subject_key(d: d) == key && disposition_is_preserved(d: d))
+    |> count
+}
+
+fn subject_bypassed_count(dispositions: List<UseSiteDisposition>, key: String) -> Int {
+  dispositions
+    |> filter(d => disposition_subject_key(d: d) == key
+        && (disposition_is_bypass_rebound(d: d) || disposition_is_bypass_compatible(d: d)))
+    |> count
+}
+
+fn subject_consistency_of(preserved: Int, bypassed: Int) -> SubjectConsistency {
+  if preserved > 0 && bypassed > 0 {
+    SubjectDispositionSplit { preserved: preserved, bypassed: bypassed }
+  } else if preserved > 0 {
+    SubjectUniformlyPreserved { preserved: preserved }
+  } else if bypassed > 0 {
+    SubjectUniformlyBypassed { bypassed: bypassed }
+  } else {
+    SubjectHasNoOccurrences
+  }
+}
+
+fn subject_consistency_rows(dispositions: List<UseSiteDisposition>, claims: List<RealizationClaim>) -> List<SubjectConsistencyRow> {
+  fold(
+    claims,
+    init: [],
+    f: (acc, claim) =>
+      let key = claim_key(declaring_file: claim.declaring_file, name: claim.name)
+      if acc |> any(r => claim_key(declaring_file: r.declaring_file, name: r.name) == key) {
+        acc
+      } else {
+        let preserved = subject_preserved_count(dispositions: dispositions, key: key)
+        let bypassed = subject_bypassed_count(dispositions: dispositions, key: key)
+        if preserved == 0 && bypassed == 0 {
+          acc
+        } else {
+          list_push(acc, SubjectConsistencyRow {
+            declaring_file: claim.declaring_file,
+            name: claim.name,
+            consistency: subject_consistency_of(preserved: preserved, bypassed: bypassed)
+          })
+        }
+      }
+  )
+}
+
+fn subject_consistency_text(c: SubjectConsistency) -> String {
+  match c {
+    SubjectUniformlyPreserved { preserved: p } => concat("uniformly-preserved\t", to_string(value: p))
+    SubjectUniformlyBypassed { bypassed: b } => concat("uniformly-bypassed\t", to_string(value: b))
+    SubjectDispositionSplit { preserved: p, bypassed: b } =>
+      join(["SPLIT", concat("preserved=", to_string(value: p)), concat("bypassed=", to_string(value: b))], "\t")
+    SubjectHasNoOccurrences => "no-occurrences\t0"
+  }
+}
+
+fn subject_consistency_row_text(r: SubjectConsistencyRow) -> String {
+  join([r.declaring_file, r.name, subject_consistency_text(c: r.consistency)], "\t")
+}
+
+fn subject_is_split(r: SubjectConsistencyRow) -> Bool {
+  match r.consistency {
+    SubjectDispositionSplit { preserved: _, bypassed: _ } => true
+    SubjectUniformlyPreserved { preserved: _ } => false
+    SubjectUniformlyBypassed { bypassed: _ } => false
+    SubjectHasNoOccurrences => false
+  }
+}
+
 fn reference_realization_policy_standing() -> ReferenceRealizationPolicyStanding {
   PolicyUnestablished {
     reason: "no declaration in the corpus carries a reference-realization mode, so whether a given bypass was intended cannot be read from this tree; the census reports the bypass and never infers intent from whether the emitted artifact happens to compile"
@@ -892,7 +984,7 @@ fn census_report_text(c: OpaqueRealizationCensus) -> String {
         concat("cause\t", cause),
         ""
       ], "\n")
-    CensusTaken { provenance: pv, emitted_file_count: n, dispositions: ds, opaque_subjects: subs } =>
+    CensusTaken { provenance: pv, emitted_file_count: n, dispositions: ds, subject_consistency: cons, opaque_subjects: subs } =>
       join([
         "opaque-realization-census TAKEN",
         concat("provenance\t", tree_provenance_text(p: pv)),
@@ -901,10 +993,14 @@ fn census_report_text(c: OpaqueRealizationCensus) -> String {
         concat("bypass_currently_compatible\t", to_string(value: filter(ds, d => disposition_is_bypass_compatible(d: d)) |> count)),
         concat("provider_declaration_preserved\t", to_string(value: filter(ds, d => disposition_is_preserved(d: d)) |> count)),
         concat("no_consumer_occurrence\t", to_string(value: filter(ds, d => disposition_is_no_occurrence(d: d)) |> count)),
+        concat("subjects_with_split_disposition\t", to_string(value: filter(cons, r => subject_is_split(r: r)) |> count)),
         concat("reference_realization_policy\t", policy_standing_text(p: reference_realization_policy_standing())),
         "",
         "# disposition\tconsumer\tdeclaring\tname\trealization\tmanifestation",
         join(map(ds, d => disposition_row(d: d)), "\n"),
+        "",
+        "# declaring\tname\tconsistency\tcounts",
+        join(map(cons, r => subject_consistency_row_text(r: r)), "\n"),
         "",
         "# declaring\tname\tsource_module\tdeclaration_standing",
         join(map(subs, r => opaque_subject_row_text(r: r)), "\n"),
@@ -915,7 +1011,7 @@ fn census_report_text(c: OpaqueRealizationCensus) -> String {
 
 fn census_completed(c: OpaqueRealizationCensus) -> Bool {
   match c {
-    CensusTaken { provenance: _, emitted_file_count: _, dispositions: _, opaque_subjects: _ } => true
+    CensusTaken { provenance: _, emitted_file_count: _, dispositions: _, subject_consistency: _, opaque_subjects: _ } => true
     CensusUnestablished { provenance: _, stage: _, cause: _ } => false
   }
 }
