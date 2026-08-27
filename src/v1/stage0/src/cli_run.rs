@@ -46834,31 +46834,18 @@ pub fn run_required_floor(
             );
         }
     }
-    {
-        let functions = floor_decode_module_prefix_roster(
-            &hermetic,
-            "v2.workflow.required_floor.required_floor_shared_claim_producer_prewarms",
-        )?;
-        if functions.is_empty() {
-            return Err(
-                "required_floor_shared_claim_producer_prewarms: no producer calls produced"
-                    .to_string(),
-            );
-        }
-        for function in functions {
-            let value = v1_interpreter::run_in_context(&hermetic, &function, false)
-                .map_err(|e| format!("required floor producer prewarm {function}: {e}"))?;
-            match value {
-                v1_interpreter::Value::Bool(_) => {}
-                other => {
-                    return Err(format!(
-                    "required floor producer prewarm {function}: expected Bool artifact, got {}",
-                    floor_value_shape(Some(&other))
-                ))
-                }
-            }
-            eprintln!("[floor-shared-fill] claim producer primed function={function}");
-        }
+    // Decode now, but execute each producer only after its witness module's scope is loaded.
+    // The preparation context intentionally contains the floor's declarer closure, not every
+    // test module, so attempting the calls here would turn an absent declaration into a floor
+    // bootstrap refusal before the claim fold began.
+    let shared_claim_producer_prewarms = floor_decode_module_prefix_roster(
+        &hermetic,
+        "v2.workflow.required_floor.required_floor_shared_claim_producer_prewarms",
+    )?;
+    if shared_claim_producer_prewarms.is_empty() {
+        return Err(
+            "required_floor_shared_claim_producer_prewarms: no producer calls produced".to_string(),
+        );
     }
 
     // AND THIS ROSTER NEEDS NO SEPARATE FREEZE-DISJOINTNESS CHECK, which is worth saying because
@@ -47181,6 +47168,33 @@ pub fn run_required_floor(
                 ambiguous_max = ambiguous_max.max(built.ambiguous_bare_names);
             }
             current_scope = Some((claim.module_path.clone(), built));
+            let module_prefix = format!("{}.", claim.module_path);
+            let prewarm_frame = evaluation_frame(
+                &current_scope
+                    .as_ref()
+                    .expect("the new scope was just installed")
+                    .1,
+                claim.execution_mode,
+                None,
+                published.clone(),
+            );
+            for function in shared_claim_producer_prewarms
+                .iter()
+                .filter(|function| function.starts_with(&module_prefix))
+            {
+                let value = v1_interpreter::run_in_context(&prewarm_frame, function, false)
+                    .map_err(|e| format!("required floor producer prewarm {function}: {e}"))?;
+                match value {
+                    v1_interpreter::Value::Bool(_) => {}
+                    other => {
+                        return Err(format!(
+                            "required floor producer prewarm {function}: expected Bool artifact, got {}",
+                            floor_value_shape(Some(&other))
+                        ))
+                    }
+                }
+                eprintln!("[floor-shared-fill] claim producer primed function={function}");
+            }
         }
         let scope = &current_scope
             .as_ref()
