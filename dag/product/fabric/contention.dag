@@ -319,15 +319,6 @@ type DemandAdmission<P>
   | QuoteExceedsReservationPrice { quoted: MoneyAmountMicro, reservation: MoneyAmountMicro }
   | GrantOccupiesNoBilledTime { duration: Second }
 
-fn affordability_admits(a: DemandOfferAffordability) -> Bool {
-  match a {
-    Affordable => true
-    AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => true
-    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
-    QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
-  }
-}
-
 // The affordability verdict travels onto the admitted record rather than being
 // collapsed to a Bool, because affordable-under-a-known-total and
 // affordable-under-a-projected-one are different facts a later decision receipt
@@ -346,37 +337,68 @@ fn admit_demand_for_offer<P>(
     budget_currency: demand.admission.buy.currency,
     duration: duration,
   )
-  if !affordability_admits(a: affordability) {
-    DemandNotAffordable { refusal: affordability }
+  match affordability {
+    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } =>
+      DemandNotAffordable { refusal: affordability }
+    QuoteCurrencyMismatch { quoted: _, budgeted: _ } =>
+      DemandNotAffordable { refusal: affordability }
+    Affordable => admit_priced_pair(demand: demand, offer: offer, duration: duration, affordability: affordability)
+    AffordableUnderEstimate { duration_seconds: _, projected_total: _ } =>
+      admit_priced_pair(demand: demand, offer: offer, duration: duration, affordability: affordability)
+  }
+}
+
+// THE AFFORDABILITY ARMS ARE MATCHED AT THE CALL SITE RATHER THAN COLLAPSED TO A
+// BOOL, and the reason is a state that does not exist yet.
+//
+// An earlier cut asked affordability_admits(a) -> Bool and branched on it. The
+// full verdict still travelled onto the refusal, so nothing was lost TODAY --
+// which is exactly why the shape is worth removing before it costs something.
+// std.pareto deleted pair_dominates for the neighbouring reason: a Bool over a
+// coproduct invites a consumer to read one arm's meaning into another's.
+//
+// The concrete cost is the arm arriving with the supply lane's priceability
+// work: an affordability verdict meaning THE SCREEN COULD NOT BE RUN, because a
+// rate quote times an unobserved duration is not a number. Under a Bool the
+// path of least resistance is to answer false, which files it as one more way
+// of being unaffordable -- and it is not. Unaffordable means the buyer's
+// ceiling is too low and the remedy is a bigger budget; unpriceable means
+// nobody measured the job and the remedy is a measurement. Matching here means
+// that arm cannot be added without this fold failing to compile and somebody
+// choosing which outcome it produces.
+fn admit_priced_pair<P>(
+  demand: Demand<P>,
+  offer: SupplierOffer<P>,
+  duration: GrantDuration,
+  affordability: DemandOfferAffordability,
+) -> DemandAdmission<P> {
+  let projected = offer_quoted_total_for_grant(
+    quote: offer.quote,
+    duration: duration,
+    quantum: offer.billing_quantum,
+  )
+  let reservation = demand.admission.buy.reservation_price
+  let occupancy = second(count: billed_seconds(
+    seconds: second_count(s: grant_duration_seconds(d: duration)),
+    quantum_seconds: second_count(s: offer.billing_quantum),
+  ))
+  if money_amount_micro_count(m: projected) > money_amount_micro_count(m: reservation) {
+    QuoteExceedsReservationPrice { quoted: projected, reservation: reservation }
+  } else if second_count(s: occupancy) == 0 {
+    GrantOccupiesNoBilledTime { duration: grant_duration_seconds(d: duration) }
   } else {
-    let projected = offer_quoted_total_for_grant(
-      quote: offer.quote,
-      duration: duration,
-      quantum: offer.billing_quantum,
-    )
-    let reservation = demand.admission.buy.reservation_price
-    let occupancy = second(count: billed_seconds(
-      seconds: second_count(s: grant_duration_seconds(d: duration)),
-      quantum_seconds: second_count(s: offer.billing_quantum),
-    ))
-    if money_amount_micro_count(m: projected) > money_amount_micro_count(m: reservation) {
-      QuoteExceedsReservationPrice { quoted: projected, reservation: reservation }
-    } else if second_count(s: occupancy) == 0 {
-      GrantOccupiesNoBilledTime { duration: grant_duration_seconds(d: duration) }
-    } else {
-      DemandAdmitted {
-        admitted: AdmittedDemand {
-          demand: demand,
-          offer: offer.id,
-          projected_total: projected,
-          surplus: money_amount_micro(
-            count: money_amount_micro_count(m: reservation) - money_amount_micro_count(m: projected),
-          ),
-          billed_occupancy: occupancy,
-          occupancy_basis: occupancy_basis_of(duration: duration),
-          affordability: affordability,
-        },
-      }
+    DemandAdmitted {
+      admitted: AdmittedDemand {
+        demand: demand,
+        offer: offer.id,
+        projected_total: projected,
+        surplus: money_amount_micro(
+          count: money_amount_micro_count(m: reservation) - money_amount_micro_count(m: projected),
+        ),
+        billed_occupancy: occupancy,
+        occupancy_basis: occupancy_basis_of(duration: duration),
+        affordability: affordability,
+      },
     }
   }
 }
@@ -480,6 +502,65 @@ fn duplicated_candidates<P>(
 // an ordinary market outcome -- the capacity goes unsold, and the remedy is
 // more demand or a cheaper offer -- while a refusal means the policy could not
 // decide among demands that did clear it.
+// THE SELECTION SAYS WHEN PREFERRING THE RATE COST TOTAL MARGIN, AND THAT IS
+// WHAT KEEPS THE DECLARED CONTINGENCY FROM BEING A SILENT DEFAULT.
+//
+// The zero-quote note above records that rate-preferring is right when a freed
+// remainder can be resold and wrong when it lapses idle, and that the fact
+// deciding it has no carrier. Review 56501 pressed the obvious objection: a
+// fold that DEFAULTS while acknowledging it lacks the deciding fact is
+// producing a possibly-wrong winner with no signal, which is the shape DESIGN
+// section 5 refuses.
+//
+// THE OBJECTION IS RIGHT ABOUT THE SILENCE AND ITS TWO PROPOSED REMEDIES ARE
+// BOTH UNAVAILABLE, so this is the third. Carrying opportunity cost means
+// reading a fact no carrier states -- it could only arrive as a caller-supplied
+// flag, a requester-stated input on the exact axis priority_class was deleted
+// to remove. Refusing whenever the fact is absent refuses ALWAYS, because it is
+// absent always: the contingency is not special to zero quotes, it applies
+// wherever the rate and total orderings disagree, including the continuous
+// case this policy exists for. A fold that refuses every interesting field is
+// not fail-closed, it is not a fold.
+//
+// What IS derivable from what the field already carries is whether the question
+// even arises: preferring the rate costs total margin exactly when some
+// candidate's margin strictly exceeds the winner's. That is computed here, from
+// the candidates, with no external fact and no caller input. When it is empty
+// the two orderings agree and no opportunity-cost fact could change the winner
+// -- the verdict is unconditional. When it is not, the verdict names precisely
+// who would have won under total margin, so a consumer sees a contingent
+// decision as contingent and knows what the alternative was.
+//
+// This does not make the choice right; it stops the choice from being invisible,
+// which is what the objection was actually about. NEXT-RUNG TRIGGER is
+// unchanged and is the supply lane's opportunity-cost carrier: when it lands,
+// this field becomes the INPUT to deciding between the two orderings rather
+// than a report that they disagreed.
+type OrderingStanding<P>
+  = OrderingUncontested
+  | OrderingForgoesGreaterTotalMargin { outbid_on_total: List<FabricIdentity<P, DemandKey>> }
+
+fn candidates_with_greater_total_margin<P>(
+  winner: AdmittedDemand<P>,
+  field: List<AdmittedDemand<P>>,
+) -> List<FabricIdentity<P, DemandKey>> {
+  field
+    |> filter(c => money_amount_micro_count(m: c.surplus)
+                     > money_amount_micro_count(m: winner.surplus))
+    |> map(c => admitted_identity(a: c))
+}
+
+fn ordering_standing<P>(
+  winner: AdmittedDemand<P>,
+  field: List<AdmittedDemand<P>>,
+) -> OrderingStanding<P> {
+  match candidates_with_greater_total_margin(winner: winner, field: field) {
+    Empty {} => OrderingUncontested
+    Cons { head: h, tail: t } =>
+      OrderingForgoesGreaterTotalMargin { outbid_on_total: concat([h], t) }
+  }
+}
+
 // THE SELECTION CARRIES THE BASIS OF THE WHOLE FIELD, NOT OF ITS WINNER.
 //
 // A decision is only as measured as the comparison that produced it. The winner
@@ -498,7 +579,11 @@ fn duplicated_candidates<P>(
 // only place a later reader looks.
 type ContentionOutcome<P>
   = NoAdmissibleDemand
-  | DemandSelected { winner: AdmittedDemand<P>, basis: OccupancyBasis }
+  | DemandSelected {
+      winner: AdmittedDemand<P>,
+      basis: OccupancyBasis,
+      standing: OrderingStanding<P>,
+    }
   | ContentionRefused { refusal: ContentionRefusal<P> }
 
 fn field_occupancy_basis<P>(field: List<AdmittedDemand<P>>) -> OccupancyBasis {
@@ -566,7 +651,11 @@ fn select_from_field<P>(field: List<AdmittedDemand<P>>) -> ContentionOutcome<P> 
           },
         }
       } else {
-        DemandSelected { winner: leader, basis: field_occupancy_basis(field: field) }
+        DemandSelected {
+          winner: leader,
+          basis: field_occupancy_basis(field: field),
+          standing: ordering_standing(winner: leader, field: field),
+        }
       }
     }
   }

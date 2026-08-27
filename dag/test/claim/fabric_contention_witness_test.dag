@@ -36,6 +36,7 @@ import product.fabric.contention {
   QuoteExceedsReservationPrice, GrantOccupiesNoBilledTime,
   ContentionOutcome, NoAdmissibleDemand, DemandSelected, ContentionRefused,
   OccupancyBasis, MeasuredOccupancy, ProjectedOccupancy,
+  OrderingStanding, OrderingUncontested, OrderingForgoesGreaterTotalMargin,
   admitted_occupancy_basis,
   ContentionRefusal, DemandsIndistinguishable, DuplicateCandidateIdentity,
   CandidatesJudgedAgainstDifferentOffers,
@@ -133,7 +134,7 @@ fn id_key(i: FabricIdentity<NonEmptyStr, DemandKey>) -> NonEmptyStr {
 
 fn winner_key(o: ContentionOutcome<NonEmptyStr>) -> NonEmptyStr {
   match o {
-    DemandSelected { winner: w, basis: _ } => id_key(i: admitted_identity(a: w))
+    DemandSelected { winner: w, basis: _, standing: _ } => id_key(i: admitted_identity(a: w))
     NoAdmissibleDemand => "none" as NonEmptyStr
     ContentionRefused { refusal: _ } => "refused" as NonEmptyStr
   }
@@ -408,7 +409,7 @@ test fn the_same_demand_admitted_twice_refuses_rather_than_winning_against_itsel
         DemandsIndistinguishable { tied: _ } => false
         CandidatesJudgedAgainstDifferentOffers { contended: _, mismatched: _ } => false
       }
-    DemandSelected { winner: _, basis: _ } => false
+    DemandSelected { winner: _, basis: _, standing: _ } => false
     NoAdmissibleDemand => false
   }
 }
@@ -449,7 +450,7 @@ test fn two_indistinguishable_bidders_refuse_instead_of_one_winning_silently() -
         DuplicateCandidateIdentity { duplicated: _ } => false
         CandidatesJudgedAgainstDifferentOffers { contended: _, mismatched: _ } => false
       }
-    DemandSelected { winner: _, basis: _ } => false
+    DemandSelected { winner: _, basis: _, standing: _ } => false
     NoAdmissibleDemand => false
   }
 }
@@ -524,7 +525,7 @@ test fn a_field_judged_against_two_offers_refuses_rather_than_comparing() -> Boo
         DemandsIndistinguishable { tied: _ } => false
         DuplicateCandidateIdentity { duplicated: _ } => false
       }
-    DemandSelected { winner: _, basis: _ } => false
+    DemandSelected { winner: _, basis: _, standing: _ } => false
     NoAdmissibleDemand => false
   }
 }
@@ -536,7 +537,7 @@ test fn a_field_judged_against_two_offers_refuses_rather_than_comparing() -> Boo
 test fn an_empty_field_reports_no_admissible_demand_rather_than_refusing() -> Bool {
   match contend(offer: continuous_offer(), candidates: []) {
     NoAdmissibleDemand => true
-    DemandSelected { winner: _, basis: _ } => false
+    DemandSelected { winner: _, basis: _, standing: _ } => false
     ContentionRefused { refusal: _ } => false
   }
 }
@@ -619,7 +620,7 @@ test fn a_selection_decided_against_a_projected_rival_reports_a_projected_basis(
     demand: long_demand(), offer: continuous_offer(),
     duration: EstimatedGrantDuration { seconds: second(count: 300) }))
   match contend(offer: continuous_offer(), candidates: concat(exact_winner, estimated_rival)) {
-    DemandSelected { winner: w, basis: b } =>
+    DemandSelected { winner: w, basis: b, standing: _ } =>
       id_key(i: admitted_identity(a: w)) == "demand-short"
         && !basis_is_projected(b: admitted_occupancy_basis(a: w))
         && basis_is_projected(b: b)
@@ -632,7 +633,61 @@ test fn a_selection_decided_against_a_projected_rival_reports_a_projected_basis(
 // satisfied by a fold that answers ProjectedOccupancy for every field.
 test fn a_field_of_exact_durations_reports_a_measured_basis() -> Bool {
   match contend(offer: continuous_offer(), candidates: field_against(offer: continuous_offer())) {
-    DemandSelected { winner: _, basis: b } => !basis_is_projected(b: b)
+    DemandSelected { winner: _, basis: b, standing: _ } => !basis_is_projected(b: b)
+    NoAdmissibleDemand => false
+    ContentionRefused { refusal: _ } => false
+  }
+}
+
+// THE CONTINGENCY IS REPORTED, NOT SILENT, AND THIS IS THE PAIR THAT SHOWS IT
+// DISCRIMINATES.
+//
+// Review 56501 objected that defaulting to the rate while acknowledging the
+// deciding fact is absent produces a possibly-wrong winner with no signal. The
+// verdict now says when preferring the rate cost total margin, computed from
+// the candidates rather than from any caller-supplied fact.
+//
+// UNCONTESTED is the half that makes the other half mean something. On
+// continuous capacity the short job wins on BOTH orderings -- 110 against 100
+// on totals, 110/90 against 100/300 on rate -- so no opportunity-cost fact
+// could change the winner and the verdict is unconditional. A carrier that
+// reported every selection as contingent would be permanently green in the
+// unhelpful direction and would tell a consumer nothing.
+test fn a_winner_that_also_leads_on_total_margin_reports_an_uncontested_ordering() -> Bool {
+  match contend(offer: continuous_offer(), candidates: field_against(offer: continuous_offer())) {
+    DemandSelected { winner: _, basis: _, standing: st } =>
+      match st {
+        OrderingUncontested => true
+        OrderingForgoesGreaterTotalMargin { outbid_on_total: _ } => false
+      }
+    NoAdmissibleDemand => false
+    ContentionRefused { refusal: _ } => false
+  }
+}
+
+// AND THE CONTESTED HALF NAMES WHO WOULD HAVE WON ON TOTALS. The quick bidder
+// takes the free offer on 200/90 against 500/300 while the slow bidder's 500
+// margin is strictly larger, so the decision turns on whether the freed
+// remainder can be resold -- a fact nothing in this model states. The verdict
+// says so and names the alternative, which is what a consumer needs to know
+// that a choice was made rather than a defect suffered.
+test fn a_winner_that_forgoes_a_larger_total_names_who_would_have_won_on_totals() -> Bool {
+  let quick = admitted_or_none(a: admit_demand_for_offer(
+    demand: short_demand(), offer: paid_through_offer(), duration: short_duration()))
+  let slow = admitted_or_none(a: admit_demand_for_offer(
+    demand: rich_slow_demand(), offer: paid_through_offer(), duration: long_duration()))
+  match contend(offer: paid_through_offer(), candidates: concat(quick, slow)) {
+    DemandSelected { winner: w, basis: _, standing: st } =>
+      id_key(i: admitted_identity(a: w)) == "demand-short"
+        && match st {
+             OrderingForgoesGreaterTotalMargin { outbid_on_total: o } =>
+               (o |> count) == 1
+                 && match o {
+                      Cons { head: h, tail: _ } => id_key(i: h) == "demand-rich-slow"
+                      Empty {} => false
+                    }
+             OrderingUncontested => false
+           }
     NoAdmissibleDemand => false
     ContentionRefused { refusal: _ } => false
   }
