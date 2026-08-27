@@ -1174,6 +1174,73 @@ fn occurrence_index_contains(
   )
 }
 
+fn occurrence_index_unique(entries: List<OccurrenceIndexEntry>) -> List<OccurrenceIndexEntry> {
+  fold(
+    entries,
+    init: [],
+    f: (unique, entry) =>
+      if occurrence_index_contains(entries: unique, occurrence: entry.projection.occurrence) {
+        unique
+      } else {
+        list_push(unique, entry)
+      }
+  )
+}
+
+fn declaration_occurrences_contain(
+  declarations: List<DeclarationOccurrence>,
+  occurrence: OccurrenceId
+) -> Bool {
+  fold(
+    declarations,
+    init: false,
+    f: (found, declaration) =>
+      found || declaration.occurrence.value == occurrence.value
+  )
+}
+
+fn declaration_occurrences_unique(
+  declarations: List<DeclarationOccurrence>
+) -> List<DeclarationOccurrence> {
+  fold(
+    declarations,
+    init: [],
+    f: (unique, declaration) =>
+      if declaration_occurrences_contain(declarations: unique, occurrence: declaration.occurrence) {
+        unique
+      } else {
+        list_push(unique, declaration)
+      }
+  )
+}
+
+fn reference_occurrences_contain(
+  references: List<ReferenceOccurrence>,
+  occurrence: OccurrenceId
+) -> Bool {
+  fold(
+    references,
+    init: false,
+    f: (found, reference) =>
+      found || reference.occurrence.value == occurrence.value
+  )
+}
+
+fn reference_occurrences_unique(
+  references: List<ReferenceOccurrence>
+) -> List<ReferenceOccurrence> {
+  fold(
+    references,
+    init: [],
+    f: (unique, reference) =>
+      if reference_occurrences_contain(references: unique, occurrence: reference.occurrence) {
+        unique
+      } else {
+        list_push(unique, reference)
+      }
+  )
+}
+
 fn stamp_parsed_node_list(
   nodes: List<Node>,
   ancestors: FreeMonoid<OccurrenceId>,
@@ -1593,9 +1660,11 @@ fn stamp_parsed_node(
 
 fn occurrence_transport_from_parse_context(ctx: ParseContext) -> OccurrenceTransport {
   OccurrenceTransport {
-    index: parse_context_occurrence_index(ctx: ctx),
-    declarations: parse_context_declaration_occurrences(ctx: ctx),
-    references: parse_context_reference_occurrences(ctx: ctx),
+    index: OccurrenceIndex {
+      entries: occurrence_index_unique(entries: parse_context_occurrence_index(ctx: ctx).entries),
+    },
+    declarations: declaration_occurrences_unique(declarations: parse_context_declaration_occurrences(ctx: ctx)),
+    references: reference_occurrences_unique(references: parse_context_reference_occurrences(ctx: ctx)),
   }
 }
 
