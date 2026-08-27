@@ -113,11 +113,6 @@ fn identity(module_path: String, function: String) -> DeclinedLiveIdentity {
 // reverses an operator cut. Neither is this session's call to make silently.
 // ---------------------------------------------------------------------------
 
-data doc_graph_stale_probe_root_count: Int = 19
-data doc_graph_dangling_link_count_measured: Int = 16
-data doc_graph_orphan_count_measured: Int = 35
-data doc_graph_declared_root_count_measured: Int = 228
-
 data permanent_evidence_ruling_question: String = "STATED AS A VIOLATION THAT ALREADY LANDED, NOT AS A NEUTRAL PAIR OF OPTIONS, BECAUSE THE FRAMING DECIDES WHO HAS TO ACT (manager ruling, swift-badger-524, 2026-08-25). DESIGN 4b(4) says a climb dissolves the redundant lower-rung PRODUCTION machinery and NEVER the evidence: the discriminating RED and its positive control stay enrolled, because deleting them recreates specification-without-execution one rung up. Three of the 19 dead binds are the g1-cited-symbol-control-* rows, declared PlanHasNoRetirement precisely so that a climb could not delete them. The 2026-08-24 measurement bankruptcy deleted them anyway, by a sweep that took docs/probes/ whole. So the two available closures are NOT peers. Deleting the three binds FINISHES a deletion 4b(4) forbids and makes it invisible; restoring the three files from history reverses part of an operator cut. Only the second is reversible by anyone other than the operator, which is why the question is theirs and why no lane may quietly take the first. The other sixteen dead binds carry ordinary retirements and need no ruling."
 
 data doc_reachability_rows: List<ClassifiedRow> = [
