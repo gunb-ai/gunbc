@@ -4177,7 +4177,7 @@ fn empty_override_map() -> Map<String, Node> {
 
 fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope) -> ArgInferResult {
   let ar = infer_expr(texpr: arg_value(n: arg), scope: scope, expected: Present { value: element_type })
-  ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
+  ArgInferResult { typed_arg: make_arg_node(occurrence_identity: arg.occurrence_identity, name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
 }
 
 fn binding_is_namespace_root_nominal(binding: TypeBinding) -> Bool {
@@ -4877,7 +4877,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               diagnostics: arg_diags
             }
           } else {
-          match infer_variant_constructor_call(func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
+          match infer_variant_constructor_call(occurrence_identity: texpr.occurrence_identity, func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
             Present { value: ctor_result } => ctor_result
             Absent =>
               let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
@@ -5687,7 +5687,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
   }
 }
 
-fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult? {
+fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, func_name: String, call_args: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult? {
   match lookup_variant_parent_enum(scope: scope, name: func_name) {
     Absent => none
     Present { value: parent_enum } =>
@@ -5719,7 +5719,7 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
                             name_span: kernel_span(name: "0")
                           )
                           Present { value: infer_record_lit(
-                            occurrence_identity: texpr.occurrence_identity,
+                            occurrence_identity: occurrence_identity,
                             type_name: Present { value: func_name },
                             field_inits: [payload_init],
                             span: span,
@@ -6344,7 +6344,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
     }
     let typed_field_nodes = typed_fields
-    let texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Present { value: Resolved { node: anon_node } }, span: span)
+    let texpr = make_expr_node(occurrence_identity: occurrence_identity, expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Present { value: Resolved { node: anon_node } }, span: span)
     InferResult {
       typed: texpr,
       diagnostics: concat(fi_diags, alias_struct_diags)

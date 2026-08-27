@@ -4,6 +4,8 @@
 use self::AliasKind::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
+pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::*;
 pub use crate::std_syntax::LiteralValue;
@@ -174,6 +176,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 
 pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: structural.name.clone(),
         ident: structural.ident.clone(),
         span: structural.span.clone(),
@@ -554,6 +557,7 @@ pub fn substitute_type_slots_scoped(
                                         __result
                                     });
                                     Rc::new(Node {
+                                        occurrence_identity: child.occurrence_identity.clone(),
                                         name: child.name.clone(),
                                         span: child.span.clone(),
                                         ident_span: child.ident_span.clone(),
@@ -604,6 +608,7 @@ pub fn substitute_type_slots_scoped(
                     _ => n.inferred.clone(),
                 };
                 Rc::new(Node {
+                    occurrence_identity: n.occurrence_identity.clone(),
                     name: n.name.clone(),
                     span: n.span.clone(),
                     ident_span: n.ident_span.clone(),
@@ -728,6 +733,7 @@ pub fn resolve_nominal_alias_rhs(
                 let validation = resolve_node(n.clone(), env.clone(), module_name.clone());
                 Rc::new(NodeResolveResult {
                     resolved: Rc::new(Node {
+                        occurrence_identity: n.occurrence_identity.clone(),
                         name: n.name.clone(),
                         ident: n.ident.clone(),
                         span: n.span.clone(),
@@ -819,6 +825,7 @@ pub fn resolve_node_bounded(
                                 let base_diags = base_result.diagnostics.clone();
                                 Rc::new(NodeResolveResult {
                                     resolved: Rc::new(Node {
+                                        occurrence_identity: n.occurrence_identity.clone(),
                                         name: n.name.clone(),
                                         span: n.span.clone(),
                                         ident_span: n.ident_span.clone(),
@@ -870,6 +877,9 @@ pub fn resolve_node_bounded(
                                             let rt_diags = rt_result.diagnostics.clone();
                                             Rc::new(NodeResolveResult {
                                                 resolved: Rc::new(Node {
+                                                    occurrence_identity: child
+                                                        .occurrence_identity
+                                                        .clone(),
                                                     name: child.name.clone(),
                                                     span: child.span.clone(),
                                                     ident_span: child.ident_span.clone(),
@@ -921,6 +931,7 @@ pub fn resolve_node_bounded(
                             });
                             Rc::new(NodeResolveResult {
                                 resolved: Rc::new(Node {
+                                    occurrence_identity: n.occurrence_identity.clone(),
                                     name: n.name.clone(),
                                     span: n.span.clone(),
                                     ident_span: n.ident_span.clone(),
@@ -1024,6 +1035,7 @@ pub fn resolve_node_bounded(
                                                                     rt_result.diagnostics.clone();
                                                                 Rc::new(NodeResolveResult {
     resolved: Rc::new(Node {
+    occurrence_identity: field_child.occurrence_identity.clone(),
     name: field_child.name.clone(),
     span: field_child.span.clone(),
     ident_span: field_child.ident_span.clone(),
@@ -1071,6 +1083,9 @@ pub fn resolve_node_bounded(
                                             });
                                             Rc::new(NodeResolveResult {
                                                 resolved: Rc::new(Node {
+                                                    occurrence_identity: variant_child
+                                                        .occurrence_identity
+                                                        .clone(),
                                                     name: variant_child.name.clone(),
                                                     span: variant_child.span.clone(),
                                                     ident_span: variant_child.ident_span.clone(),
@@ -1116,6 +1131,7 @@ pub fn resolve_node_bounded(
                                 });
                                 Rc::new(NodeResolveResult {
                                     resolved: Rc::new(Node {
+                                        occurrence_identity: n.occurrence_identity.clone(),
                                         name: n.name.clone(),
                                         span: n.span.clone(),
                                         ident_span: n.ident_span.clone(),
@@ -1275,6 +1291,9 @@ pub fn resolve_node_bounded(
                             let is_recursive =
                                 is_recursive_type_by_name(env.clone(), type_name.clone());
                             let expanded_node = Rc::new(Node {
+                                occurrence_identity: Rc::new(
+                                    NodeOccurrenceIdentity::OccurrenceSynthetic,
+                                ),
                                 name: type_name.clone(),
                                 span: n.span.clone(),
                                 ident_span: n.ident_span.clone(),
@@ -1295,6 +1314,7 @@ pub fn resolve_node_bounded(
                                 ident: None,
                             });
                             let resolved_node = Rc::new(Node {
+                                occurrence_identity: n.occurrence_identity.clone(),
                                 name: type_name.clone(),
                                 span: n.span.clone(),
                                 ident_span: n.ident_span.clone(),
@@ -1341,6 +1361,9 @@ pub fn resolve_node_bounded(
                             let is_recursive =
                                 is_recursive_type_by_name(env.clone(), type_name.clone());
                             let expanded_node = Rc::new(Node {
+                                occurrence_identity: Rc::new(
+                                    NodeOccurrenceIdentity::OccurrenceSynthetic,
+                                ),
                                 name: type_name.clone(),
                                 span: n.span.clone(),
                                 ident_span: n.ident_span.clone(),
@@ -1362,6 +1385,7 @@ pub fn resolve_node_bounded(
                             });
                             let result = Rc::new(NodeResolveResult {
                                 resolved: Rc::new(Node {
+                                    occurrence_identity: n.occurrence_identity.clone(),
                                     name: type_name.clone(),
                                     span: n.span.clone(),
                                     ident_span: n.ident_span.clone(),
@@ -1441,6 +1465,7 @@ pub fn resolve_node_bounded(
                                 }
                             };
                             let resolved_key_child = Rc::new(Node {
+                                occurrence_identity: key_child_node.occurrence_identity.clone(),
                                 name: key_param_name.clone(),
                                 span: key_child_node.span.clone(),
                                 ident_span: key_child_node.ident_span.clone(),
@@ -1463,6 +1488,7 @@ pub fn resolve_node_bounded(
                                 ident: None,
                             });
                             let resolved_val_child = Rc::new(Node {
+                                occurrence_identity: val_child_node.occurrence_identity.clone(),
                                 name: val_param_name.clone(),
                                 span: val_child_node.span.clone(),
                                 ident_span: val_child_node.ident_span.clone(),
@@ -1486,6 +1512,7 @@ pub fn resolve_node_bounded(
                             });
                             Rc::new(NodeResolveResult {
                                 resolved: Rc::new(Node {
+                                    occurrence_identity: n.occurrence_identity.clone(),
                                     name: type_name.clone(),
                                     span: n.span.clone(),
                                     ident_span: n.ident_span.clone(),
@@ -1539,6 +1566,9 @@ pub fn resolve_node_bounded(
                                             }
                                         };
                                         let resolved_child = Rc::new(Node {
+                                            occurrence_identity: child_node
+                                                .occurrence_identity
+                                                .clone(),
                                             name: el_param_name.clone(),
                                             span: child_node.span.clone(),
                                             ident_span: child_node.ident_span.clone(),
@@ -1562,6 +1592,7 @@ pub fn resolve_node_bounded(
                                         });
                                         Rc::new(NodeResolveResult {
                                             resolved: Rc::new(Node {
+                                                occurrence_identity: n.occurrence_identity.clone(),
                                                 name: type_name.clone(),
                                                 span: n.span.clone(),
                                                 ident_span: n.ident_span.clone(),
@@ -1874,6 +1905,7 @@ pub fn resolve_optional_node(
                 ..
             } => Rc::new(NodeResolveResult {
                 resolved: make_expr_error_node(
+                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     ExprErrorKind::SemanticExprError,
                     msg.clone(),
                     sp.clone(),
@@ -1888,6 +1920,7 @@ pub fn resolve_optional_node(
             }),
             InferredNode::TypeVariable { id: tv, .. } => Rc::new(NodeResolveResult {
                 resolved: Rc::new(Node {
+                    occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: tv.clone(),
                     span: kernel_span(tv.clone()),
                     ident_span: Some(kernel_span(tv.clone())),
@@ -1944,6 +1977,7 @@ pub fn resolve_field(
         };
         Rc::new(FieldResolveResult {
             field: make_field_node(
+                field.occurrence_identity.clone(),
                 field_node_name_at(field.clone(), env.source_indices.clone()),
                 type_resolved.clone(),
                 field_node_cardinality(field.clone()),
@@ -1951,7 +1985,17 @@ pub fn resolve_field(
                     Some(result) => Some(result.expr.clone()),
                     None => None,
                 },
-                field_node_from_key(field.clone(), env.source_indices.clone()),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for p in field.properties.clone().iter().cloned() {
+                        if (field_init_node_name_at(p.clone(), env.source_indices.clone())
+                            == "from_key".to_string())
+                        {
+                            __result.push(p);
+                        }
+                    }
+                    __result
+                }),
                 field.span.clone(),
                 node_name_span(field.clone()),
             ),
@@ -1971,6 +2015,7 @@ pub fn resolve_param(
         let type_resolved = type_result.resolved.clone();
         let rendered_type = if ((authored_type.children.clone().len() as i64) > 0) {
             Rc::new(Node {
+                occurrence_identity: authored_type.occurrence_identity.clone(),
                 name: authored_type.name.clone(),
                 span: authored_type.span.clone(),
                 ident_span: authored_type.ident_span.clone(),
@@ -2021,6 +2066,7 @@ pub fn resolve_param(
         };
         Rc::new(ParamResolveResult {
             param: make_resolved_param_node(
+                param.occurrence_identity.clone(),
                 param_node_name_at(param.clone(), env.source_indices.clone()),
                 rendered_type.clone(),
                 default_expr.clone(),
@@ -2048,6 +2094,7 @@ pub fn resolve_resource_use(
         let type_diags = type_result.diagnostics.clone();
         Rc::new(ResourceUseResult {
             resource_use: make_resource_use_node(
+                ru.occurrence_identity.clone(),
                 resource_use_name_at(ru.clone(), env.source_indices.clone()),
                 type_resolved.clone(),
                 ru.span.clone(),
@@ -2070,6 +2117,7 @@ pub fn resolve_named_arg(
         let value_diags = value_result.diagnostics.clone();
         Rc::new(NamedArgResolveResult {
             arg: make_arg_node(
+                arg.occurrence_identity.clone(),
                 arg_name_at(arg.clone(), env.source_indices.clone()),
                 value_expr.clone(),
                 arg.span.clone(),
@@ -2095,6 +2143,7 @@ pub fn resolve_field_init(
         let value_diags = value_result.diagnostics.clone();
         Rc::new(FieldInitResolveResult {
             field_init: make_field_init_node(
+                field_init.occurrence_identity.clone(),
                 field_init_node_name_at(field_init.clone(), env.source_indices.clone()),
                 value_expr.clone(),
                 field_init.span.clone(),
@@ -2130,6 +2179,7 @@ pub fn resolve_match_arm(
         let body_diags = body_result.diagnostics.clone();
         Rc::new(MatchArmResolveResult {
             arm: make_arm_node(
+                arm.occurrence_identity.clone(),
                 arm_pattern(arm.clone()),
                 match guard_result.clone() {
                     Some(result) => Some(result.expr.clone()),
@@ -2192,6 +2242,7 @@ pub fn resolve_transport_binding(
                         );
                         Rc::new(FieldInitResolveResult {
                             field_init: make_field_init_node(
+                                p.occurrence_identity.clone(),
                                 field_init_node_name_at(p.clone(), env.source_indices.clone()),
                                 val_result.expr.clone(),
                                 p.span.clone(),
@@ -2257,6 +2308,7 @@ pub fn resolve_transport_binding(
                 };
             Rc::new(TransportResolveResult {
                 transport: make_transport_node(
+                    transport.occurrence_identity.clone(),
                     resolved_props.clone(),
                     resolved_children.clone(),
                     transport.body.clone(),
@@ -2283,7 +2335,12 @@ pub fn resolve_expr_types(
                 diagnostics: Rc::new(vec![]),
             }),
             ExprData::ExprError { kind, message, .. } => Rc::new(ExprResolveResult {
-                expr: make_expr_error_node(kind.clone(), message.clone(), texpr.span.clone()),
+                expr: make_expr_error_node(
+                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                    kind.clone(),
+                    message.clone(),
+                    texpr.span.clone(),
+                ),
                 diagnostics: Rc::new(vec![make_error_node(
                     Rc::new(CompilerDiagnostic::InternalError {
                         message: message.clone(),
@@ -2330,6 +2387,7 @@ pub fn resolve_expr_types(
                                 resolve_expr_types(val.clone(), env.clone(), module_name.clone());
                             Rc::new(ExprResolveResult {
                                 expr: make_arg_node(
+                                    arg_node.occurrence_identity.clone(),
                                     if (arg_node.ident_span.clone() == None) {
                                         None
                                     } else {
@@ -2361,6 +2419,7 @@ pub fn resolve_expr_types(
                 });
                 Rc::new(ExprResolveResult {
                     expr: make_named_expr_node(
+                        texpr.occurrence_identity.clone(),
                         expr_call_func_at(texpr.clone(), env.source_indices.clone()),
                         Rc::new(ExprData::ExprCall {
                             call_semantics: cs.clone(),
@@ -2421,6 +2480,7 @@ pub fn resolve_expr_types(
                                     );
                                     Rc::new(ExprResolveResult {
                                         expr: make_arg_node(
+                                            child.occurrence_identity.clone(),
                                             if (child.ident_span.clone() == None) {
                                                 None
                                             } else {
@@ -2457,6 +2517,7 @@ pub fn resolve_expr_types(
                 });
                 Rc::new(ExprResolveResult {
                     expr: make_named_expr_node(
+                        texpr.occurrence_identity.clone(),
                         expr_method_name_at(texpr.clone(), env.source_indices.clone()),
                         Rc::new(ExprData::ExprMethodCall {
                             method_semantics: ms.clone(),
@@ -2536,6 +2597,7 @@ pub fn resolve_expr_types(
                                             };
                                             Rc::new(ExprResolveResult {
                                                 expr: make_arm_node(
+                                                    child.occurrence_identity.clone(),
                                                     match child.match_pattern.clone() {
                                                         Some(p) => p.clone(),
                                                         None => Rc::new(MatchPattern::Wildcard),
@@ -2565,6 +2627,7 @@ pub fn resolve_expr_types(
                                             };
                                             Rc::new(ExprResolveResult {
                                                 expr: make_arm_node(
+                                                    child.occurrence_identity.clone(),
                                                     match child.match_pattern.clone() {
                                                         Some(p) => p.clone(),
                                                         None => Rc::new(MatchPattern::Wildcard),
@@ -2599,6 +2662,7 @@ pub fn resolve_expr_types(
                 });
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
+                        texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprMatch),
                         resolved_children.clone(),
                         texpr.inferred.clone(),
@@ -2637,6 +2701,7 @@ pub fn resolve_expr_types(
                 };
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
+                        texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprIf),
                         resolved_children.clone(),
                         texpr.inferred.clone(),
@@ -2701,6 +2766,7 @@ pub fn resolve_expr_types(
                     }
                 };
                 let let_node = Rc::new(Node {
+                    occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: let_binding_name_at(texpr.clone(), env.source_indices.clone()),
                     span: texpr.span.clone(),
                     ident_span: default_ident_span(
@@ -2752,6 +2818,7 @@ pub fn resolve_expr_types(
                                 resolve_expr_types(val.clone(), env.clone(), module_name.clone());
                             Rc::new(ExprResolveResult {
                                 expr: make_field_init_node(
+                                    fi_node.occurrence_identity.clone(),
                                     authored_name(env.clone(), fi_node.clone()),
                                     vr.expr.clone(),
                                     fi_node.span.clone(),
@@ -2779,6 +2846,7 @@ pub fn resolve_expr_types(
                 });
                 Rc::new(ExprResolveResult {
                     expr: make_named_expr_node(
+                        texpr.occurrence_identity.clone(),
                         authored_name_at(env.source_indices.clone(), texpr.clone()),
                         Rc::new(ExprData::ExprRecordLit {
                             parent_enum: pe.clone(),
@@ -2819,6 +2887,7 @@ pub fn resolve_expr_types(
                 });
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
+                        texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprListLit),
                         resolved_children.clone(),
                         texpr.inferred.clone(),
@@ -2849,6 +2918,7 @@ pub fn resolve_expr_types(
                 };
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
+                        texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprBinOp {
                             op: op.clone(),
                             algebra_field: af.clone(),
@@ -2870,6 +2940,7 @@ pub fn resolve_expr_types(
                 };
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
+                        texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprUnaryOp { op: op.clone() }),
                         Rc::new(vec![r.expr.clone()]),
                         texpr.inferred.clone(),
@@ -2897,6 +2968,7 @@ pub fn resolve_expr_types(
                 };
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
+                        texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprLambda),
                         v1_rt::concat(Rc::new(vec![r.expr.clone()]), lam_param_nodes.clone()),
                         texpr.inferred.clone(),
@@ -2923,6 +2995,7 @@ pub fn resolve_expr_types(
                                     );
                                     Rc::new(ExprResolveResult {
                                         expr: make_interp_part_node(
+                                            part_node.occurrence_identity.clone(),
                                             r.expr.clone(),
                                             part_node.span.clone(),
                                         ),
@@ -2954,6 +3027,7 @@ pub fn resolve_expr_types(
                 });
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
+                        texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprStringInterp),
                         resolved_children.clone(),
                         texpr.inferred.clone(),
@@ -2990,6 +3064,7 @@ pub fn resolve_expr_types(
                 });
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
+                        texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprBlock),
                         resolved_children.clone(),
                         texpr.inferred.clone(),
@@ -3018,6 +3093,7 @@ pub fn resolve_expr_types(
                 };
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
+                        texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprCast),
                         Rc::new(vec![r.expr.clone(), tr.resolved.clone()]),
                         texpr.inferred.clone(),
@@ -3044,6 +3120,7 @@ pub fn resolve_expr_types(
                 };
                 Rc::new(ExprResolveResult {
                     expr: make_named_expr_node(
+                        texpr.occurrence_identity.clone(),
                         foreach_variable_at(texpr.clone(), env.source_indices.clone()),
                         Rc::new(ExprData::ExprForEach),
                         Rc::new(vec![cr.expr.clone(), br.expr.clone()]),
@@ -3076,6 +3153,7 @@ pub fn resolve_expr_types(
                 };
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
+                        texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprIndex),
                         Rc::new(vec![br.expr.clone(), ir.expr.clone()]),
                         texpr.inferred.clone(),
@@ -3115,6 +3193,7 @@ pub fn resolve_expr_types(
                 };
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
+                        texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprSlice),
                         Rc::new(vec![br.expr.clone(), sr.expr.clone(), er.expr.clone()]),
                         texpr.inferred.clone(),
@@ -3138,6 +3217,7 @@ pub fn resolve_expr_types(
                 };
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
+                        texpr.occurrence_identity.clone(),
                         Rc::new(ExprData::ExprReturn),
                         Rc::new(vec![r.expr.clone()]),
                         texpr.inferred.clone(),
@@ -3366,7 +3446,10 @@ pub fn resolve_item_types(
         let anno_diags = anno_resolved.diagnostics.clone();
         let transport_resolved = if (item.transport.clone() == None) {
             Rc::new(TransportResolveResult {
-                transport: local_transport_node(no_span()),
+                transport: local_transport_node(
+                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                    no_span(),
+                ),
                 diagnostics: Rc::new(vec![]),
             })
         } else {
@@ -3427,6 +3510,7 @@ pub fn resolve_item_types(
                         );
                         Rc::new(ItemResolveResult {
                             item: Rc::new(Node {
+                                occurrence_identity: child.occurrence_identity.clone(),
                                 name: child.name.clone(),
                                 span: child.span.clone(),
                                 ident_span: child.ident_span.clone(),
@@ -3481,6 +3565,9 @@ pub fn resolve_item_types(
                                         );
                                         Rc::new(ItemResolveResult {
                                             item: Rc::new(Node {
+                                                occurrence_identity: field
+                                                    .occurrence_identity
+                                                    .clone(),
                                                 name: field.name.clone(),
                                                 span: field.span.clone(),
                                                 ident_span: field.ident_span.clone(),
@@ -3527,6 +3614,7 @@ pub fn resolve_item_types(
                             });
                             Rc::new(ItemResolveResult {
                                 item: Rc::new(Node {
+                                    occurrence_identity: variant.occurrence_identity.clone(),
                                     name: variant.name.clone(),
                                     span: variant.span.clone(),
                                     ident_span: variant.ident_span.clone(),
@@ -3582,6 +3670,7 @@ pub fn resolve_item_types(
         });
         Rc::new(ItemResolveResult {
             item: Rc::new(Node {
+                occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: item.name.clone(),
                 span: item.span.clone(),
                 ident_span: item.ident_span.clone(),

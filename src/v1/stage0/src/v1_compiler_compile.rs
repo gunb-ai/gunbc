@@ -12,12 +12,13 @@ use crate::std_induction::SubValueRelation::{
     StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_occurrence_identity::OccurrenceId;
 pub use crate::std_occurrence_identity::{
     occurrence_id_allocator_initial, occurrence_transport_refusal,
 };
 pub use crate::std_occurrence_identity::{
-    OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
+    NodeOccurrenceIdentity, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
 };
 pub use crate::std_source_annotation::{
     source_annotation_graph_concat, source_annotation_graph_empty,

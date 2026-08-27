@@ -1579,6 +1579,7 @@ mod cross_claim_memo_tests {
         let _ = ctx_b.sym("zzz_decoy_b_three");
 
         let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
@@ -1648,6 +1649,7 @@ mod cross_claim_memo_tests {
         let variant_c = ctx_c.sym("VariantY"); // same ordinal as variant_a -- collides
 
         let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
@@ -1698,6 +1700,7 @@ mod cross_claim_memo_tests {
         let field_c = ctx_c.sym("beta"); // same ordinal as field_a, DIFFERENT string
 
         let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
@@ -1743,6 +1746,7 @@ mod cross_claim_memo_tests {
     fn cross_claim_memo_key_hashes_a_map_arg_with_string_keys_without_panicking() {
         let ctx = fresh_ctx();
         let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
@@ -1783,6 +1787,7 @@ mod cross_claim_memo_tests {
     fn cross_claim_memo_key_hashes_a_map_arg_with_a_free_monoid_list_key_under_held_borrow() {
         let ctx = fresh_ctx();
         let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             Rc::new(ExprData::NoExprData),
             Rc::new(im_vec![]),
             None,
@@ -6989,6 +6994,7 @@ mod cast_identity_empty_kernel_tests {
         // target child is missing: name "", inferred CompilerError (not Resolved) — the only
         // shape `cast_target_seed_name_uncached` returns "" for, i.e. an empty kernel.
         let malformed_target = make_expr_error_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "malformed node: missing cast target".to_string(),
             no_span(),
@@ -7010,6 +7016,7 @@ mod cast_identity_empty_kernel_tests {
         // is the negative control: it proves the deletion above did not also remove the
         // legitimate String-kernel identity case.
         let string_target = make_expr_error_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             ExprErrorKind::InternalExprError,
             "unused".to_string(),
             no_span(),
@@ -16203,6 +16210,9 @@ mod map_shell_outputs_optional_stream_tests {
 
     fn bare_type_node(name: &str, span: Rc<crate::v1_std_core::SourceSpan>) -> Rc<Node> {
         Rc::new(Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
             name: name.to_string(),
             span: span.clone(),
             ident_span: None,
@@ -16249,23 +16259,34 @@ mod map_shell_outputs_optional_stream_tests {
         let span = no_span();
         let str_type = bare_type_node("String", span.clone());
         let mut field = make_field_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             from_key.to_string(),
             str_type,
             Cardinality::CardOptional,
             None,
-            Some(from_key.to_string()),
+            Rc::new(vec![]),
             span.clone(),
             span.clone(),
         );
         // make_field_node's from_key stub is not a LitStr; extract_from_key needs one.
         let from_key_prop = make_field_init_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             "from_key".to_string(),
-            make_text_part_node(from_key.to_string(), span.clone()),
+            make_text_part_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                from_key.to_string(),
+                span.clone(),
+            ),
             span.clone(),
             span.clone(),
         );
         Rc::make_mut(&mut field).properties = Rc::new(im_vec![from_key_prop]);
         let return_type = Rc::new(Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
             name: "FixtureShellRecord".to_string(),
             span: span.clone(),
             ident_span: None,
@@ -16286,6 +16307,9 @@ mod map_shell_outputs_optional_stream_tests {
             ident: None,
         });
         let op_node = Rc::new(Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
             name: "fixture_shell_op".to_string(),
             span: span.clone(),
             ident_span: None,
@@ -16699,10 +16723,29 @@ mod argv_arg_limit_test {
     fn shell_check_style_transport(command: &str) -> Rc<Node> {
         let span = no_span();
         shell_transport_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             Rc::new(im_vec![
-                make_text_part_node("sh".to_string(), span.clone()),
-                make_text_part_node("-c".to_string(), span.clone()),
-                make_text_part_node(command.to_string(), span.clone()),
+                make_text_part_node(
+                    Rc::new(
+                        crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic
+                    ),
+                    "sh".to_string(),
+                    span.clone()
+                ),
+                make_text_part_node(
+                    Rc::new(
+                        crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic
+                    ),
+                    "-c".to_string(),
+                    span.clone()
+                ),
+                make_text_part_node(
+                    Rc::new(
+                        crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic
+                    ),
+                    command.to_string(),
+                    span.clone()
+                ),
             ]),
             Rc::new(im_vec![]),
             None,

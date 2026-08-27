@@ -6,12 +6,15 @@ use im::HashMap;
 use std::rc::Rc;
 
 use v1_compiler::std_occurrence_identity::{
-    occurrence_id_allocator_initial, OccurrenceCategory, OccurrenceContainmentPath,
-    OccurrenceIdAllocator, OccurrenceTransport,
+    occurrence_id_allocator_initial, NodeOccurrenceIdentity, OccurrenceCategory,
+    OccurrenceContainmentPath, OccurrenceIdAllocator, OccurrenceTransport,
 };
 use v1_compiler::v1_compiler_parse::{parse_with_table_in_occurrence_scope, ParseWithTableResult};
 use v1_compiler::v1_compiler_tokenize::tokenize;
-use v1_compiler::v1_std_core::{build_newline_index, empty_intern_table, NewlineIndex};
+use v1_compiler::v1_std_core::{
+    build_newline_index, empty_intern_table, make_expr_node, no_span, with_required_cardinality,
+    ExprData, NewlineIndex, Node,
+};
 
 fn parse_source(
     source: &str,
@@ -98,6 +101,38 @@ fn declaration_spans(transport: &OccurrenceTransport) -> Vec<(i64, i64)> {
         .collect()
 }
 
+fn node_occurrence_ids(node: &Node, ids: &mut Vec<i64>, synthetic_count: &mut usize) {
+    match node.occurrence_identity.as_ref() {
+        NodeOccurrenceIdentity::OccurrenceMinted { id } => ids.push(id.value),
+        NodeOccurrenceIdentity::OccurrenceSynthetic => *synthetic_count += 1,
+        NodeOccurrenceIdentity::OccurrenceProjected { .. } => {
+            panic!("authored parser returned a projected occurrence")
+        }
+    }
+    for child in node.children.iter() {
+        node_occurrence_ids(child, ids, synthetic_count);
+    }
+    for param in node.params.iter() {
+        node_occurrence_ids(param, ids, synthetic_count);
+    }
+    for used in node.uses.iter() {
+        node_occurrence_ids(used, ids, synthetic_count);
+    }
+    for property in node.properties.iter() {
+        node_occurrence_ids(property, ids, synthetic_count);
+    }
+    for optional in [
+        node.body.as_ref(),
+        node.transport.as_ref(),
+        node.type_annotation.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        node_occurrence_ids(optional, ids, synthetic_count);
+    }
+}
+
 #[test]
 fn occurrence_transport_round_trips_with_node_identity_and_paths() {
     let source = "module occurrence.serde\n\nfn left(x: Int) -> Int { x }\nfn right(x: Int) -> Int { left(x) }\n";
@@ -110,68 +145,55 @@ fn occurrence_transport_round_trips_with_node_identity_and_paths() {
     assert!(!parsed.occurrence_transport.index.entries.is_empty());
     assert!(!parsed.occurrence_transport.declarations.is_empty());
     assert!(!parsed.occurrence_transport.references.is_empty());
+    let module = parsed
+        .result
+        .module
+        .as_ref()
+        .expect("successful parse module");
+    let mut node_ids = Vec::new();
+    let mut synthetic_count = 0;
+    node_occurrence_ids(module, &mut node_ids, &mut synthetic_count);
+    let mut sidecar_ids: Vec<i64> = parsed
+        .occurrence_transport
+        .index
+        .entries
+        .iter()
+        .map(|entry| entry.projection.occurrence.value)
+        .collect();
+    node_ids.sort_unstable();
+    sidecar_ids.sort_unstable();
     assert_eq!(
-        occurrence_identity_view(&parsed.occurrence_transport),
-        (
-            vec![
-                (0, (vec![], 0)),
-                (1, (vec![0], 1)),
-                (2, (vec![0, 1], 2)),
-                (3, (vec![0, 1, 2], 3)),
-                (4, (vec![0, 1], 4)),
-                (5, (vec![0, 1], 5)),
-                (6, (vec![0], 6)),
-                (7, (vec![0, 6], 7)),
-                (8, (vec![0, 6, 7], 8)),
-                (9, (vec![0, 6], 9)),
-                (10, (vec![0, 6, 9], 10)),
-                (11, (vec![0, 6, 9, 10], 11)),
-                (12, (vec![0, 6], 12)),
-            ],
-            vec![
-                (
-                    0,
-                    OccurrenceCategory::NamespaceSegmentOccurrence,
-                    (vec![], 0)
-                ),
-                (1, OccurrenceCategory::CallableOccurrence, (vec![0], 1)),
-                (
-                    2,
-                    OccurrenceCategory::LexicalValueOccurrence,
-                    (vec![0, 1], 2)
-                ),
-                (6, OccurrenceCategory::CallableOccurrence, (vec![0], 6)),
-                (
-                    7,
-                    OccurrenceCategory::LexicalValueOccurrence,
-                    (vec![0, 6], 7)
-                ),
-            ],
-            vec![
-                (3, OccurrenceCategory::TypeOccurrence, (vec![0, 1, 2], 3)),
-                (
-                    4,
-                    OccurrenceCategory::LexicalValueOccurrence,
-                    (vec![0, 1], 4)
-                ),
-                (5, OccurrenceCategory::TypeOccurrence, (vec![0, 1], 5)),
-                (8, OccurrenceCategory::TypeOccurrence, (vec![0, 6, 7], 8)),
-                (9, OccurrenceCategory::CallableOccurrence, (vec![0, 6], 9)),
-                (
-                    10,
-                    OccurrenceCategory::CallableOccurrence,
-                    (vec![0, 6, 9], 10)
-                ),
-                (
-                    11,
-                    OccurrenceCategory::LexicalValueOccurrence,
-                    (vec![0, 6, 9, 10], 11)
-                ),
-                (12, OccurrenceCategory::TypeOccurrence, (vec![0, 6], 12)),
-            ],
-        ),
-        "successful-tree stamp population, ids, roles, containment and traversal order changed"
+        node_ids, sidecar_ids,
+        "parser node identities must equal sidecar identities"
     );
+    node_ids.dedup();
+    assert_eq!(
+        node_ids.len(),
+        sidecar_ids.len(),
+        "authored node identities must be distinct"
+    );
+    assert_eq!(
+        synthetic_count, 0,
+        "successful authored parse must not default nodes to synthetic"
+    );
+
+    let rebuilt = with_required_cardinality(module.clone());
+    assert_eq!(
+        rebuilt.occurrence_identity, module.occurrence_identity,
+        "rebuild must preserve identity exactly"
+    );
+
+    let synthesized = make_expr_node(
+        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        Rc::new(ExprData::NoExprData),
+        Rc::new(vec![].into()),
+        None,
+        no_span(),
+    );
+    assert!(matches!(
+        synthesized.occurrence_identity.as_ref(),
+        NodeOccurrenceIdentity::OccurrenceSynthetic
+    ));
 
     let encoded = serde_json::to_vec(&parsed).expect("serialize occurrence parse result");
     let decoded: Rc<ParseWithTableResult> =

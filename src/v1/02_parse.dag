@@ -484,7 +484,7 @@ type FromKeyResult { properties: List<Node>, tokens: TokenStream, ctx: ParseCont
 
 type PostfixResult { expr: Node, changed: Bool, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type PipeCalleeResult { spine: Node?, method: String, method_span: SourceSpan, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
-type ParserParam { name: String, span: SourceSpan }
+type ParserParam { occurrence_identity: NodeOccurrenceIdentity, name: String, span: SourceSpan }
 type LambdaCheckResult { is_lambda: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type IdentCollectResult { success: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type RangeArgsResult { min_val: Int?, max_val: Int?, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
@@ -2712,8 +2712,8 @@ fn parse_optional_from_key(tokens: TokenStream, ctx: ParseContext) -> FromKeyRes
             let key = tok2.value.text
             let value_mint = mint_parsed_node_identity(ctx: ctx)
             let property_mint = mint_parsed_node_identity(ctx: value_mint.ctx)
-            let value = make_named_expr_node(occurrence_identity: value_mint.identity, name: key, expr_data: NoExprData, children: [], inferred: none, span: token_span(tok: tok2.value), name_span: token_span(tok: tok2.value))
-            let property = make_field_init_node(occurrence_identity: property_mint.identity, name: "from_key", value: value, span: token_span(tok: tok.value), name_span: token_span(tok: tok.value))
+            let value = make_named_expr_node(occurrence_identity: value_mint.identity, name: key, expr_data: NoExprData, children: [], inferred: none, span: token_span(tok: tok2), name_span: token_span(tok: tok2))
+            let property = make_field_init_node(occurrence_identity: property_mint.identity, name: "from_key", value: value, span: token_span(tok: tok), name_span: token_span(tok: tok))
             FromKeyResult { properties: [property], tokens: token_stream_advance(stream: tokens, n: 2), ctx: property_mint.ctx, err: none }
           }
           _ =>
@@ -4719,7 +4719,8 @@ fn parse_ident_expr(tokens: TokenStream, ctx: ParseContext, name: String) -> Exp
   if tok_is_fat_arrow(tok: token_stream_first(stream: tokens)) {
     let r = parse_lambda_body(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
     if has_err(err: r.err) { return r }
-    parsed_expr_result(tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLambda, children: concat([r.expr], [parsed_name_leaf(name: name, span: span)]), inferred: none, span: span))
+    let param_mint = mint_parsed_node_identity(ctx: r.ctx)
+    parsed_expr_result(tokens: r.tokens, ctx: param_mint.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLambda, children: concat([r.expr], [parsed_name_leaf(occurrence_identity: param_mint.identity, name: name, span: span)]), inferred: none, span: span))
   } else {
     if is_uppercase_start(name: name) && tok_is_lbrace(tok: token_stream_first(stream: tokens)) {
       parse_record_literal(tokens: tokens, ctx: ctx, name: name, span: span)
@@ -5658,7 +5659,7 @@ fn parse_paren_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     if lambda_r.is_lambda {
       let r = parse_lambda_body(tokens: lambda_r.tokens, ctx: lambda_r.ctx)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      parsed_expr_result(tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLambda, children: concat([r.expr], lambda_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span))
+      parsed_expr_result(tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLambda, children: concat([r.expr], lambda_r.params |> map(p => parsed_name_leaf(occurrence_identity: p.occurrence_identity, name: p.name, span: p.span))), inferred: none, span: span))
     } else {
       let r = parse_expr(tokens: lambda_r.tokens, ctx: lambda_r.ctx)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -5683,7 +5684,7 @@ fn parse_fn_lambda(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let tokens = skip_newlines(tokens: r3.tokens)
   let body_r = parse_brace_expr(tokens: tokens, ctx: params_r.ctx)
   if has_err(err: body_r.err) { return body_r }
-  parsed_expr_result(tokens: body_r.tokens, ctx: body_r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLambda, children: concat([body_r.expr], params_r.params |> map(p => parsed_name_leaf(name: p.name, span: p.span))), inferred: none, span: span))
+  parsed_expr_result(tokens: body_r.tokens, ctx: body_r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprLambda, children: concat([body_r.expr], params_r.params |> map(p => parsed_name_leaf(occurrence_identity: p.occurrence_identity, name: p.name, span: p.span))), inferred: none, span: span))
 }
 
 fn collect_fn_lambda_params(tokens: TokenStream, ctx: ParseContext, acc: List<ParserParam>) -> IdentCollectResult {
@@ -5697,9 +5698,11 @@ fn collect_fn_lambda_params(tokens: TokenStream, ctx: ParseContext, acc: List<Pa
     } else {
       let tokens = skip_newlines(tokens: name_r.tokens)
       if tok_is_comma(tok: token_stream_first(stream: tokens)) {
-        collect_fn_lambda_params(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, acc: list_push(acc, ParserParam { name: name_r.name, span: name_r.span }))
+        let minted = mint_parsed_node_identity(ctx: ctx)
+        collect_fn_lambda_params(tokens: token_stream_advance(stream: tokens, n: 1), ctx: minted.ctx, acc: list_push(acc, ParserParam { occurrence_identity: minted.identity, name: name_r.name, span: name_r.span }))
       } else {
-        IdentCollectResult { success: true, params: list_push(acc, ParserParam { name: name_r.name, span: name_r.span }), tokens: tokens, ctx: ctx, err: none }
+        let minted = mint_parsed_node_identity(ctx: ctx)
+        IdentCollectResult { success: true, params: list_push(acc, ParserParam { occurrence_identity: minted.identity, name: name_r.name, span: name_r.span }), tokens: tokens, ctx: minted.ctx, err: none }
       }
     }
   }
@@ -5726,13 +5729,14 @@ fn try_lambda_params(tokens: TokenStream, ctx: ParseContext) -> LambdaCheckResul
 fn collect_lambda_idents(tokens: TokenStream, ctx: ParseContext, acc: List<ParserParam>) -> IdentCollectResult {
   if tok_is_ident(tok: token_stream_first(stream: tokens)) {
     let tok = token_stream_first(stream: tokens)
-    let param = ParserParam { name: tok.value.text, span: tok.value.span }
+    let minted = mint_parsed_node_identity(ctx: ctx)
+    let param = ParserParam { occurrence_identity: minted.identity, name: tok.value.text, span: tok.value.span }
     let new_acc = list_push(acc, param)
     match eat(tokens: token_stream_advance(stream: tokens, n: 1), expected: ExpectComma) {
     EatConsumed { token: _, tokens: __ec } =>
-      collect_lambda_idents(tokens: __ec, ctx: ctx, acc: new_acc)
+      collect_lambda_idents(tokens: __ec, ctx: minted.ctx, acc: new_acc)
     EatUnchanged { tokens: __eu } =>
-      IdentCollectResult { success: true, params: new_acc, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
+      IdentCollectResult { success: true, params: new_acc, tokens: token_stream_advance(stream: tokens, n: 1), ctx: minted.ctx, err: none }
     }
   } else {
     IdentCollectResult { success: false, params: acc, tokens: tokens, ctx: ctx, err: none }

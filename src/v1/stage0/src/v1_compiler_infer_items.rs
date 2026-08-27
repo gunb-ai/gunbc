@@ -9,7 +9,8 @@ pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
-pub use crate::std_occurrence_identity::OccurrenceTransport;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
+pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceTransport};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 pub use crate::v1_compiler_infer_env::empty_type_env_cache;
@@ -153,6 +154,9 @@ pub fn inferred_to_outputs(
                                         __result.push({
                                             let child_type = child_type_node(child.clone());
                                             make_field_node(
+                                                Rc::new(
+                                                    NodeOccurrenceIdentity::OccurrenceSynthetic,
+                                                ),
                                                 authored_name_at(
                                                     source_indices.clone(),
                                                     child.clone(),
@@ -160,7 +164,7 @@ pub fn inferred_to_outputs(
                                                 child_type.clone(),
                                                 Cardinality::Required,
                                                 None,
-                                                None,
+                                                Rc::new(vec![]),
                                                 span.clone(),
                                                 node_name_span(child.clone()),
                                             )
@@ -170,22 +174,24 @@ pub fn inferred_to_outputs(
                                 })
                             } else {
                                 Rc::new(vec![make_field_node(
+                                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                     "value".to_string(),
                                     rt.clone(),
                                     Cardinality::Required,
                                     None,
-                                    None,
+                                    Rc::new(vec![]),
                                     span.clone(),
                                     no_span(),
                                 )])
                             }
                         } else {
                             Rc::new(vec![make_field_node(
+                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                 "value".to_string(),
                                 rt.clone(),
                                 Cardinality::Required,
                                 None,
-                                None,
+                                Rc::new(vec![]),
                                 span.clone(),
                                 no_span(),
                             )])
@@ -198,11 +204,12 @@ pub fn inferred_to_outputs(
                         Rc::new(vec![])
                     } else {
                         Rc::new(vec![make_field_node(
+                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                             "value".to_string(),
                             rt.clone(),
                             Cardinality::Required,
                             None,
-                            None,
+                            Rc::new(vec![]),
                             span.clone(),
                             no_span(),
                         )])

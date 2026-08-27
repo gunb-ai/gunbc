@@ -3,6 +3,8 @@
 
 use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
+pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::*;
 pub use crate::std_syntax::LiteralValue;
@@ -287,6 +289,7 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let inner = extract_optional_inner_node(scrut.clone());
         let value_field = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "value".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("value".to_string())),
@@ -309,6 +312,7 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             ident: None,
         });
         let present_node = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Present".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Present".to_string())),
@@ -339,6 +343,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             None => error_type(),
         };
         let value_field = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "value".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("value".to_string())),
@@ -361,6 +366,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             ident: None,
         });
         Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Holds".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Holds".to_string())),
@@ -386,6 +392,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
 pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let diagnostic_type = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Diagnostic".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Diagnostic".to_string())),
@@ -406,6 +413,7 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             ident: None,
         });
         let diagnostic_field = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "diagnostic".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("diagnostic".to_string())),
@@ -428,6 +436,7 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             ident: None,
         });
         Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "Violates".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Violates".to_string())),

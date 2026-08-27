@@ -48,6 +48,9 @@ fn shell_node(
     params: Vec<Rc<Node>>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: Rc::new(
+            v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        ),
         name: name.to_string(),
         ident: None,
         span: synth_span(),

@@ -677,7 +677,6 @@ fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResolve
   }
   FieldResolveResult {
     field: make_field_node(occurrence_identity: field.occurrence_identity,
-      occurrence_identity: field.occurrence_identity,
       name: field_node_name_at(n: field, source_indices: env.source_indices),
       type_expr: type_resolved,
       cardinality: field_node_cardinality(n: field),
