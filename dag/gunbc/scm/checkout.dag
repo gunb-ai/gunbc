@@ -9,6 +9,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommit,
   commit_at_reference,
 }
+import gunbc.scm.ancestry { RepositoryCommitRef }
 
 import gunbc.scm.object_store {
   ObjectId,
@@ -117,7 +118,7 @@ fn commit_of_root(root: ObjectId) -> Commit {
 // ------------------------------------------------------------------------------------------------
 
 // TWO GRAINS OF ONE VERB, IN THE MODULE THAT OWNS IT. Above, checkout answers what a commit MEANS --
-// it reconstructs the program from the root closure. Here it answers what a repository is POSITIONED
+// it reconstructs the program from the root closure. Here it answers which intrinsic commit a repository selects.
 // AT. Those are the two halves of the same operation, and putting the second in its own module would
 // have minted a second name for one verb: the module would have had to be called something that is
 // not "checkout" while being exactly checkout, which is the nicknaming DESIGN section 3 forbids.
@@ -156,23 +157,23 @@ fn commit_of_root(root: ObjectId) -> Commit {
 // arm fails to compile at every site rather than being silently absorbed into a false.
 //
 // THE TWO REFUSALS ARE SEPARATE BECAUSE THEIR OWNERS ARE OPPOSITE. An unresolved reference is the
-// CALLER'S fact -- they named a position this repository has no commit at. An unreconstructable
+// CALLER'S fact -- they named an identity this repository has no commit for. An unreconstructable
 // program is the STORE'S fact -- the repository holds the commit and has lost an object it needs.
 // One is a bad argument, the other is damage, and collapsing them would hand a user "no such commit"
 // for a commit that plainly exists in their log.
 type RepositoryCheckout
   = RepositoryCheckedOut { repository: RepositoryEnvelope, program: Node }
-  | CheckoutReferenceUnresolved { reference: String }
-  | CheckoutProgramUnreconstructable { reference: String, cause: CheckoutRefusal }
+  | CheckoutReferenceUnresolved { reference: RepositoryCommitRef }
+  | CheckoutProgramUnreconstructable { reference: RepositoryCommitRef, cause: CheckoutRefusal }
 
 // THIS WRITES NOTHING. It answers a NEW envelope with the selection moved, leaving its argument
 // untouched, so the verb stays a pure transform over facts the repository already holds. Persisting
 // the result is a separate operation at a boundary this module deliberately does not reach.
 //
-// The reference is a commit reference -- the same image-local position `log` renders and `status`
+// The reference is the same intrinsic commit identity `log` renders and `status`
 // resolves -- so the three verbs name commits the one way, and resolution goes through
 // commit_at_reference rather than a second lookup that could drift from it.
-fn checkout_repository_at(repo: RepositoryEnvelope, reference: String) -> RepositoryCheckout {
+fn checkout_repository_at(repo: RepositoryEnvelope, reference: RepositoryCommitRef) -> RepositoryCheckout {
   match commit_at_reference(commits: repo.commits, reference: reference) {
     Absent => CheckoutReferenceUnresolved { reference: reference }
     Present { value: selected } =>
@@ -184,6 +185,7 @@ fn checkout_repository_at(repo: RepositoryEnvelope, reference: String) -> Reposi
             repository: RepositoryEnvelope {
               store: repo.store,
               commits: repo.commits,
+              commit_allocator: repo.commit_allocator,
               checked_out: Present { value: reference },
             },
             program: program,

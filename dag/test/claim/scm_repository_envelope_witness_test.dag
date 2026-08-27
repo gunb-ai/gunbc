@@ -508,7 +508,7 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
       match cause {
         RepositoryEncodeUncontainedTarget { target: _ } => "uncontained_target"
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
-        RepositoryCheckoutNotInCommits { reference: _ } => "checked_out"
+        RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
         RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
         RepositoryCommitReferenceDuplicated { reference: _ } => "commit_duplicate"
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => "commit_outside_allocator"
@@ -604,7 +604,7 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
             acc || object_id_eq(left: id, right: t)
           })
         RepositoryCommitRootNotInStore { root: _ } => false
-        RepositoryCheckoutNotInCommits { reference: _ } => false
+        RepositoryCheckoutNotInCommits { selected: _ } => false
         RepositoryCommitParentNotInCommits { parent: _ } => false
         RepositoryCommitReferenceDuplicated { reference: _ } => false
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => false

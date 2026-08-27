@@ -165,20 +165,13 @@ type RepositoryCommit sole_constructor {
 // Measured before the repair: checking out the second of two shared-root commits and asking `status`
 // reported the FIRST one's message. A user was told they were on a commit they had not selected.
 //
-// THE WIRE WAS ALREADY RIGHT AND THE CONVERSION WAS THE DEFECT. This module's own annotation on
-// `checked_out` says the encoded reference "means the commit at this position in this document and
-// nothing outside it". Decode then threw that away by resolving the position to a root, and encode
-// recovered a position by searching for the first row with that root -- so a repository selected at
-// position 1 with a shared root ROUND-TRIPPED TO POSITION 0. Carrying the reference end to end
-// deletes both conversions rather than adding a check, and the wire format is unchanged.
+// THE SELECTION NOW CARRIES THAT ROW'S MINTED COMMIT IDENTITY END TO END. Decode no longer converts
+// a wire position to a root, and encode no longer searches for a row to recover a position. The
+// selected identity remains stable when unrelated rows are inserted, deleted, or reordered.
 //
-// This does NOT redefine commit identity. The header above still holds: a commit's identity is its
-// root, and two rows with one root name one program. A SELECTION is a different question from an
-// IDENTITY -- it names a row in this document's list, exactly as the wire always said.
-//
-// The reference is a bare String because that is this layer's existing spelling for image-local
-// positions, which RepositoryDecodeRefusal's own note already records as declared, un-dissolved
-// conflation. Typing it is that note's repair, not this one's.
+// A root still identifies the program reconstructed by a commit; the minted reference identifies
+// the commit record that carries that root, message, and ancestry. Two commits may therefore share
+// a root without sharing an identity or making checkout ambiguous.
 type RepositoryEnvelope {
   store: ObjectStore
   commits: List<RepositoryCommit>
@@ -506,7 +499,7 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
         Absent =>
           match unresolved_checkout_selection(commits: repo.commits, selected: repo.checked_out) {
             Present { value: reference } =>
-              RepositoryEncodeRefused { cause: RepositoryCheckoutNotInCommits { reference: reference } }
+              RepositoryEncodeRefused { cause: RepositoryCheckoutNotInCommits { selected: reference } }
             Absent =>
               match admit_commit_order(
                 commits: repo.commits,
