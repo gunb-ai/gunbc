@@ -15,8 +15,9 @@
 use std::path::{Path, PathBuf};
 
 use v1_compiler::cli_run::namespace_wave_admission::{
-    adjudicate, base_records, diff_sides, disposition_label, report_unadjudicated, DeltaSubject,
-    NamespaceDeltaDisposition, TransitionAdmission, WaveAdmissionReport,
+    adjudicate, base_records, diff_sides, disposition_label, report_unadjudicated,
+    AdmissionSubject, DeltaSubject, NamespaceDeltaDisposition, TransitionAdmission,
+    WaveAdmissionReport,
 };
 use v1_compiler::cli_run::run_dag_parse_sweep;
 
@@ -314,10 +315,10 @@ fn an_exact_transition_admission_admits_that_delta_and_only_that_delta() {
 
     let admissions = [TransitionAdmission {
         label: "fixture-transition",
-        subject: DeltaSubject::Binding {
-            module: "probe.consumer".to_string(),
-            in_declaration: "use_it".to_string(),
-            spelling: "widget".to_string(),
+        subject: AdmissionSubject::Binding {
+            module: "probe.consumer",
+            in_declaration: "use_it",
+            spelling: "widget",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     }];
@@ -333,6 +334,129 @@ fn an_exact_transition_admission_admits_that_delta_and_only_that_delta() {
     assert!(
         admitted.stale_admissions.is_empty(),
         "an admission that matched must not also be reported stale"
+    );
+}
+
+// THE ROSTER IS INHABITABLE, AND THIS TEST IS THE ONLY THING THAT SAYS SO.
+//
+// The two arms above prove the MATCHING mechanism works, and they proved it while the production
+// roster could not hold a single row. They build their admissions in a `let` with `.to_string()`,
+// so nothing in them ever touched the constraint that actually bound
+// `NAMESPACE_TRANSITION_ADMISSIONS`: it is a `const`, and `String::from` is not callable there.
+// Every authorable production row had to name the empty module, which matches no delta.
+//
+// SO THE COVERAGE MADE THE DEFECT MORE HIDDEN RATHER THAN LESS. A reader auditing the admission
+// path found two thorough tests, green, exercising exact-match and wrong-subject-refuses — and
+// none of it was evidence about the roster a human would actually author. That is the shape where
+// a fixture cannot see the carrier it is a fixture for.
+//
+// THE DISCRIMINATING PROPERTY IS COMPILATION, NOT THE ASSERTION, and the boundary is exact rather
+// than "a const row would not compile". Measured against main's own types, both arms:
+//
+//   module: String::from("probe.consumer")  ->  error[E0015]: cannot call non-const associated
+//                                               function `<String as From<&str>>::from` in
+//                                               constants — three times, one per field
+//   module: String::new()                   ->  compiles clean, emits metadata
+//
+// So a const row was always AUTHORABLE; what no const row could do was NAME A REAL MODULE. Stating
+// it as "the roster could not hold a row" would have been the overclaim — it held exactly one
+// shape, the shape that matches nothing, and the arm below pins what that shape does.
+//
+// This test stays enrolled after the climb rather than dissolving with the defect, because what it
+// now guards is that the roster REMAINS authorable AT A REAL MODULE NAME (DESIGN §4b — a climb
+// deletes the redundant production machinery, never the evidence).
+const AUTHORED_LIKE_PRODUCTION: &[TransitionAdmission] = &[TransitionAdmission {
+    label: "authored-in-a-const",
+    subject: AdmissionSubject::Binding {
+        module: "probe.consumer",
+        in_declaration: "use_it",
+        spelling: "widget",
+    },
+    disposition: NamespaceDeltaDisposition::TargetChanged,
+}];
+
+#[test]
+fn a_row_authored_in_a_const_admits_its_delta_exactly_as_a_runtime_row_would() {
+    let base = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_HOME),
+    ];
+    let head = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+    ];
+
+    // THE POSITIVE CONTROL FIRST: without it, an admitted result is equally consistent with this
+    // pair producing no delta at all, and the test would pass while proving nothing.
+    let refused = compare("const_admission_before", &base, &head);
+    assert!(
+        !report_unadjudicated(&refused).is_empty(),
+        "PLANT NEVER REACHED: the un-admitted arm must refuse, or admitting below proves nothing"
+    );
+
+    let admitted = compare_with(
+        "const_admission_after",
+        &base,
+        &head,
+        AUTHORED_LIKE_PRODUCTION,
+    );
+    assert!(
+        admitted
+            .deltas
+            .iter()
+            .any(|d| d.admitted_by.as_deref() == Some("authored-in-a-const")),
+        "a row authored in a const must admit its exact subject, got: {:?}",
+        admitted.deltas
+    );
+    assert!(
+        admitted.stale_admissions.is_empty(),
+        "a const-authored admission that matched must not also be reported stale"
+    );
+}
+
+// AN EMPTY-MODULE ROW REFUSES, LOUDLY, AND THIS ARM RECORDS THAT THE OLD DEFECT WAS NEVER SILENT.
+//
+// Before `AdmissionSubject`, the only authorable row named the empty module. It was reported as an
+// escape hatch that accepts a row and silently matches nothing; that reading was withdrawn, and
+// this is the executing evidence for why. Such a row matches no delta, lands in
+// `stale_admissions`, and the ADMITTED arm is conjoined on that list being empty — so it REFUSES,
+// with its own named cause. The defect was a hatch with no working position, never one that lied.
+#[test]
+fn a_row_naming_the_empty_module_refuses_rather_than_admitting_silently() {
+    let base = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_HOME),
+    ];
+    let head = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+    ];
+    let admissions = [TransitionAdmission {
+        label: "names-the-empty-module",
+        subject: AdmissionSubject::Binding {
+            module: "",
+            in_declaration: "",
+            spelling: "",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    }];
+    let report = compare_with("empty_module_row", &base, &head, &admissions);
+    assert!(
+        report.deltas.iter().all(|d| d.admitted_by.is_none()),
+        "a row naming the empty module must admit nothing, got: {:?}",
+        report.deltas
+    );
+    assert!(
+        report
+            .stale_admissions
+            .iter()
+            .any(|s| s.contains("names-the-empty-module")),
+        "an unmatched row must be reported stale BY LABEL, or its refusal is unattributable: {:?}",
+        report.stale_admissions
     );
 }
 
@@ -353,10 +477,10 @@ fn an_admission_naming_a_different_subject_does_not_admit_and_reports_stale() {
     // failure the ruling's "exact operator-authored transition admission" forbids.
     let admissions = [TransitionAdmission {
         label: "wrong-subject",
-        subject: DeltaSubject::Binding {
-            module: "probe.consumer".to_string(),
-            in_declaration: "use_it".to_string(),
-            spelling: "gadget".to_string(),
+        subject: AdmissionSubject::Binding {
+            module: "probe.consumer",
+            in_declaration: "use_it",
+            spelling: "gadget",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     }];

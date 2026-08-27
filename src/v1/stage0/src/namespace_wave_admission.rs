@@ -259,13 +259,106 @@ pub struct NamespaceDelta {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransitionAdmission {
     pub label: &'static str,
-    pub subject: DeltaSubject,
+    pub subject: AdmissionSubject,
     pub disposition: NamespaceDeltaDisposition,
+}
+
+/// WHAT AN ADMISSION ROW IS ABOUT — a PATTERN naming one subject, not a subject.
+///
+/// THIS IS A SEPARATE TYPE FROM `DeltaSubject` AND THE SEPARATION IS WHAT MAKES THE ROSTER
+/// INHABITABLE. `DeltaSubject` is built at runtime from discovered module names, so its fields
+/// are `String`. `TransitionAdmission` is authored in a `const`, where `String::from` and
+/// `.to_string()` are not callable. Measured against those exact types, both arms:
+///
+///   `module: String::from("probe.consumer")` -> `E0015` three times, one per field
+///   `module: String::new()`                  -> compiles clean, emits metadata
+///
+/// So the roster was NOT uninhabitable, and saying so would have been the overclaim. It held
+/// exactly one shape — every field the empty string — and an empty module name matches no delta.
+/// What no const row could do was NAME A REAL MODULE.
+///
+/// WHAT THAT DEFECT WAS AND WAS NOT. A row authored anyway does not silently pass: it matches
+/// nothing, lands in `stale_admissions`, prints with its own cause, and the ADMITTED arm is
+/// conjoined on that list being empty — so it REFUSES. Both failure paths are loud, and an
+/// earlier report of this as an escape hatch that accepts rows and silently matches nothing was
+/// withdrawn at source. What was real is narrower and still worth fixing: a hatch with no working
+/// position, whose refusal arm executed while its admission arm was fiction (DESIGN §4b —
+/// decoration cited as coverage, sitting inside an otherwise real wall).
+///
+/// CONST-NESS IS DOING SAFETY WORK, WHICH IS WHY THE FIX IS `&'static str` AND NOT A FUNCTION
+/// RETURNING A `Vec`. A const roster cannot be COMPUTED, so no code path can synthesise an
+/// admission: the admission set is exactly what a human authored and a reviewer read. Making the
+/// roster a function restores authorability by making admissions computable, which is an escape
+/// hatch arriving through a type signature (DESIGN §5 — no escape hatches).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AdmissionSubject {
+    /// `module` gained or lost `target` as a direct dependency.
+    Membership {
+        module: &'static str,
+        target: &'static str,
+    },
+    /// A spelling inside one top-level declaration changed which declarations it admits.
+    Binding {
+        module: &'static str,
+        in_declaration: &'static str,
+        spelling: &'static str,
+    },
+}
+
+impl AdmissionSubject {
+    /// Whether this authored pattern names exactly this discovered subject.
+    ///
+    /// EXACT EQUALITY ON EVERY FIELD, AND THE SHAPES MUST AGREE. A membership row never matches a
+    /// binding delta however its strings read: the two are different questions, and letting one
+    /// admit the other would make a row's grain wider than what its author could see.
+    pub fn matches(&self, subject: &DeltaSubject) -> bool {
+        match (self, subject) {
+            (
+                AdmissionSubject::Membership { module, target },
+                DeltaSubject::Membership {
+                    module: m,
+                    target: t,
+                },
+            ) => *module == m.as_str() && *target == t.as_str(),
+            (
+                AdmissionSubject::Binding {
+                    module,
+                    in_declaration,
+                    spelling,
+                },
+                DeltaSubject::Binding {
+                    module: m,
+                    in_declaration: d,
+                    spelling: sp,
+                },
+            ) => *module == m.as_str() && *in_declaration == d.as_str() && *spelling == sp.as_str(),
+            _ => false,
+        }
+    }
+}
+
+pub fn admission_subject_render(subject: &AdmissionSubject) -> String {
+    match subject {
+        AdmissionSubject::Membership { module, target } => {
+            format!("membership {module} -> {target}")
+        }
+        AdmissionSubject::Binding {
+            module,
+            in_declaration,
+            spelling,
+        } => format!("binding {module}::{in_declaration} `{spelling}`"),
+    }
 }
 
 /// EMPTY, and empty is the correct landing state: no wave has run, so no transition has been
 /// authorised. A row here that no longer matches a delta is itself a finding
 /// (`stale_admissions`), so the roster can only shrink toward its subject.
+///
+/// EMPTY IS NOW A CHOICE RATHER THAN A CONSTRAINT, and until `AdmissionSubject` landed the
+/// sentence above was describing the second as if it were the first. A reader took it as evidence
+/// the hatch was merely unused; it was unusable. The roster's inhabitability is enforced by
+/// `a_membership_admission_row_is_authorable_and_admits_its_delta`, which authors a row in a
+/// const and requires it to admit — a test that could not have compiled before this change.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
@@ -674,7 +767,9 @@ pub fn adjudicate(
     let mut used: BTreeSet<usize> = BTreeSet::new();
     for delta in deltas.iter_mut() {
         for (i, admission) in admissions.iter().enumerate() {
-            if admission.subject == delta.subject && admission.disposition == delta.disposition {
+            if admission.subject.matches(&delta.subject)
+                && admission.disposition == delta.disposition
+            {
                 delta.admitted_by = Some(admission.label.to_string());
                 used.insert(i);
                 break;
@@ -690,7 +785,7 @@ pub fn adjudicate(
                 "{} ({} {}) matches no delta in this run",
                 a.label,
                 disposition_label(a.disposition),
-                delta_subject_render(&a.subject)
+                admission_subject_render(&a.subject)
             )
         })
         .collect();
