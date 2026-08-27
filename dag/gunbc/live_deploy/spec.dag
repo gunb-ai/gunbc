@@ -229,6 +229,28 @@ fn deployment_belt_timer_unit_name(names: DeploymentNames) -> NonEmptyStr {
   join([deployment_belt_unit_stem(names: names), "-belt.timer"], "") as NonEmptyStr
 }
 
+// THE BELT'S CREDENTIAL FILE IS A PATH THIS GRAPH NAMES AND A SECRET THIS GRAPH NEVER HOLDS.
+// `belt_publication_credential` (gunbc.roadmap_belt_actuate) resolves GITHUB_TOKEN from the tick's
+// environment, and the belt unit supplied none -- so `github.Pulls.List` was never attempted and
+// publish_pass refused on every tick since the unit was installed. The refusal was correct and the
+// deployment was incomplete: the model carried a CredentialSource the deployed unit could not
+// satisfy.
+//
+// The path DERIVES from the belt stem rather than joining DeploymentNames, on the precedent
+// belt_timer_is_a_deploy_member_note states for the belt's other two files: a value identical in
+// every constructor is the second representation DESIGN section 2 forbids, and tree-sync carries its
+// env path as a field only because production's name predates the derivation.
+//
+// IT IS NOT A DEPLOYMENT MEMBER AND THE APPLY DOES NOT WRITE IT. gunbc-tree-sync.env is written by
+// the apply because its content is a RUNNER PATH the deploy knows; a token is not derivable from
+// anything in this graph and must not become one. So the host owns the file, the graph owns only its
+// name, and a fresh instance whose file is absent gets a located refusal naming the path rather than
+// a belt that dies -- see EnvironmentFileIfPresent in extdeps.systemd.unit_file for why the optional
+// form is the one that preserves that refusal.
+fn deployment_belt_env_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/", deployment_belt_unit_stem(names: names), "-belt.env"], "") as NonEmptyStr
+}
+
 // THE DEPLOYED TREE'S REMOTE IS A MEMBER, and it needs a unit of its own for an ordering reason
 // rather than an aesthetic one. The convergence must run AS THE SERVICE USER -- the tree is
 // service-user-owned and the deploy principal is the unprivileged ci-runner (emit_deploy_principal_note),
