@@ -51,7 +51,6 @@ test fn witness_wif_binding_perturbation_reddens() -> Bool {
 // `gunbc.tailscale_acl_phase2_credential`, enforced by the compiler. The strategy is carried
 // structurally too: `tailscale_acl_operator_adc_strategy` is passed to `gcp_oauth_access_token`,
 // so a strategy that does not inhabit `GcpOAuth2AccessTokenStrategy` refuses at that call.
-
 test fn witness_ephemeral_lifetime_matches_optional_impersonation_cap() -> Bool {
   second_count(s: tailscale_acl_ephemeral_lifetime) == 3600
     && string_contains(s: tailscale_acl_ephemeral_token_secret_id as String, pattern: "ephemeral")
