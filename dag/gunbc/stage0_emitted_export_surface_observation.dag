@@ -164,6 +164,33 @@ fn export_surface_payloads(content: String) -> List<String> {
   )
 }
 
+// A NONEMPTY LINE THAT IS NOT A ROW IS CORRUPTION, AND SKIPPING IT DEFEATS THE WALL BELOW.
+//
+// `export_surface_payloads` selects the lines carrying the row prefix. Selection is the right
+// operation for finding rows and the WRONG one for deciding whether the artifact is intact: a line
+// that fails the prefix test was silently dropped, so the row wall below -- which refuses the whole
+// observation on a single malformed ROW -- never saw it. The guarantee covered malformed payloads
+// and not malformed lines, and the gap sat one gate upstream of the sentence promising it.
+//
+// The consequence is the exact failure the row wall was written against, reached by another route: a
+// manifest whose row was truncated or corrupted still answers ExportSurfaceObserved as long as one
+// valid row survives, the affected module is then absent from the join's population, and the census
+// reads the absence as agreement. A partial read of this artifact is not a degraded answer, it is a
+// wrong one, and it is wrong in the direction that looks clean.
+//
+// NONEMPTY IS LOAD-BEARING AND IS NOT DEFENSIVENESS. The writer ends the file with a trailing
+// separator, so splitting always yields a final empty string. That empty line is an artifact of the
+// grammar rather than content, and refusing it would refuse every well-formed manifest -- a wall
+// whose only reachable state is red is not strict, it is broken.
+fn unexpected_manifest_lines(content: String) -> List<String> {
+  filter(
+    xs: split(s: content, delimiter: emitted_population_manifest_line_separator),
+    predicate: fn(line) {
+      line != "" && starts_with(s: line, prefix: emitted_population_manifest_line_prefix) == false
+    }
+  )
+}
+
 type ExportSurfaceRowAccumulator
   = ExportSurfaceRowsSoFar { rows: List<EmittedExportSurfaceRow> }
   | ExportSurfaceRowsRefused { detail: String }
@@ -175,6 +202,17 @@ type ExportSurfaceRowAccumulator
 // then read the missing module as agreement. A partial read of this artifact is not a degraded
 // answer, it is a wrong one.
 fn export_surface_rows(content: String) -> ExportSurfaceRowAccumulator {
+  match list_head(xs: unexpected_manifest_lines(content: content)) {
+    HeadFound { value: unexpected } =>
+      ExportSurfaceRowsRefused {
+        detail: concat("manifest carries a nonempty line that is not a row, so the artifact is not intact and a missing row would render as agreement: ", unexpected)
+      }
+    HeadAbsent =>
+      export_surface_rows_from_payloads(content: content)
+  }
+}
+
+fn export_surface_rows_from_payloads(content: String) -> ExportSurfaceRowAccumulator {
   fold_list(
     xs: export_surface_payloads(content: content),
     empty: ExportSurfaceRowsSoFar { rows: [] },

@@ -146,6 +146,43 @@ fn witness_well_formed_manifest_is_observed() -> Bool {
   }
 }
 
+// RED 3: A NONEMPTY LINE THAT IS NOT A ROW REFUSES THE WHOLE OBSERVATION.
+//
+// The manifest below is VALID except for one interloping line, and that is the point: the reader
+// selected row-prefixed lines and dropped the rest, so a corrupted artifact answered Observed as
+// long as one good row survived. The affected module then vanishes from the consuming census's
+// population, and the census reads an absent module as agreeing with itself.
+//
+// This is the same failure the malformed-ROW wall was written against, reached one gate earlier --
+// the wall guarded payloads it was handed, and the hand-off had already discarded the evidence.
+fn witness_unexpected_nonempty_line_refuses() -> Bool {
+  match gunbc.stage0_emitted_export_surface_observation.observe_emitted_export_surface(
+    content: concat(
+      manifest(rows: [
+        row(source_module: "v2.std.node", target_filename: "v2_std_node", tag: gunbc.stage0_emitted_population_manifest.emitted_export_surface_reexport_tag, members: ["Symbol"])
+      ]),
+      concat("a line that is not a row", gunbc.stage0_emitted_population_manifest.emitted_population_manifest_line_separator)
+    )
+  ) {
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => false
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => true
+  }
+}
+
+// THE GREEN CONTROL THAT KEEPS THE ABOVE FROM BEING A WALL THAT ALWAYS FIRES.
+//
+// The writer terminates the file with a trailing separator, so every well-formed manifest splits
+// with a final EMPTY line. Refusing on "not a row" without excepting the empty string would refuse
+// every real artifact, and a check whose only reachable state is red carries no information. This
+// asserts the ordinary manifest still observes, which is what makes the refusal above discriminating
+// rather than universal.
+fn witness_trailing_empty_line_still_observes() -> Bool {
+  match gunbc.stage0_emitted_export_surface_observation.observe_emitted_export_surface(content: two_module_manifest()) {
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => true
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => false
+  }
+}
+
 test fn emitted_export_surface_manifest_witnesses() -> Bool {
   witness_module_envelopes_round_trip()
     && witness_declared_empty_row_survives_the_round_trip()
@@ -154,4 +191,6 @@ test fn emitted_export_surface_manifest_witnesses() -> Bool {
     && witness_row_missing_fixed_fields_refuses()
     && witness_content_without_rows_is_unobserved()
     && witness_well_formed_manifest_is_observed()
+    && witness_unexpected_nonempty_line_refuses()
+    && witness_trailing_empty_line_still_observes()
 }
