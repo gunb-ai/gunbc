@@ -214,13 +214,15 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
         content: "[Service]\nMemoryMax=17179869184\n",
       }
       !fleet_converge_observed_baseline_matches(
-        host: witness_host_srv1,
         observed_baseline_hex: artifact.observed_baseline_hex,
-        observed_timers: [],
-        observed_caps: [drifted],
-        observed_spark: [],
-        observed_slots: [],
-        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed: FullHostConverge {
+          host: witness_host_srv1,
+          observed_timers: [],
+          observed_caps: [drifted],
+          observed_spark: [],
+          observed_slots: [],
+          observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        },
       )
     }
     Absent => false
@@ -350,12 +352,14 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
       }
       !fleet_converge_member_set_fingerprint_matches(
         planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
-        host: witness_host_srv1,
-        observed_timers: [],
-        observed_caps: [drifted],
-        observed_spark: [],
-        observed_slots: [],
-        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed: FullHostConverge {
+          host: witness_host_srv1,
+          observed_timers: [],
+          observed_caps: [drifted],
+          observed_spark: [],
+          observed_slots: [],
+          observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        },
       )
     }
     Absent => false
@@ -661,21 +665,25 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
     Present { value: artifact } =>
       fleet_converge_member_set_fingerprint_matches(
         planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
-        host: witness_host_srv1,
-        observed_timers: [],
-        observed_caps: [],
-        observed_spark: [],
-        observed_slots: [],
-        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed: FullHostConverge {
+          host: witness_host_srv1,
+          observed_timers: [],
+          observed_caps: [],
+          observed_spark: [],
+          observed_slots: [],
+          observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        },
       )
       && (fleet_converge_member_set_fingerprint_matches(
         planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
-        host: witness_host_srv1,
-        observed_timers: [],
-        observed_caps: [],
-        observed_spark: [],
-        observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv1-01")],
-        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed: FullHostConverge {
+          host: witness_host_srv1,
+          observed_timers: [],
+          observed_caps: [],
+          observed_spark: [],
+          observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv1-01")],
+          observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        },
       ) == false)
     Absent => false
   }

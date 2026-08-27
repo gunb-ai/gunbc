@@ -308,6 +308,26 @@ fn fleet_converge_apply_subject_admits(
     ) == ContentHashEqual
 }
 
+// THIS PREDICATE IS NOT THE ONE PRODUCTION CALLS, AND SAYING SO HERE IS THE POINT. The wet apply
+// path calls fleet_converge_apply_subject_host_matches and the two comparison helpers separately;
+// it does not call this composed predicate, whose only callers are witnesses. So the canonical
+// admission decision -- host AND scope AND fingerprint, judged together -- exists beside production
+// rather than being what production runs, which is the SAME two-authorities shape the helpers were
+// just ported out of, one level up.
+//
+// WHY IT CANNOT SIMPLY BE SWITCHED OVER, WHICH IS THE USEFUL PART. This takes a
+// FleetConvergePlanSubject, and the subject carries SCOPE. The apply CLI does not have a subject:
+// it has a host it observed, plus a fingerprint string and a baseline hex READ BACK FROM FILES the
+// plan wrote. Nothing in that artifact records which scope was planned, so a subject cannot be
+// reconstructed at apply time without inventing the one field that decides routing. Persisting the
+// planned scope in the artifact is therefore the precondition, not a follow-up polish -- and until
+// it lands, apply compares a scope it OBSERVED against a fingerprint whose scope it can only infer
+// from whether the comparison happens to succeed.
+//
+// AN EARLIER COMMIT ON THIS BRANCH SAID PRODUCTION APPLY HAD STOPPED CONSUMING THE PREDECESSOR
+// SEAM. That was true of the two helpers and false of this predicate, and the difference is
+// exactly the thing a reader would take on trust from the sentence.
+
 // A SCOPE COMPARISON THAT IS TOTAL IN BOTH ARGUMENTS. Written as a match rather than as equality
 // so that a third scope cannot silently join the admitted set: adding an arm to FleetConvergeScope
 // makes this fail to compile, where a derived == would quietly answer false and route nothing.
@@ -355,9 +375,23 @@ fn fleet_converge_apply_generation_stale(planned_generation: Int, store_generati
 // five loose family parameters, which meant the request coproduct was the authority everywhere
 // EXCEPT on the live apply path -- the canonical decision standing beside the predecessor seam
 // instead of replacing it, which is DESIGN section 3's two-authorities case arriving as a
-// leftover rather than as a fork. Taking the request also carries SCOPE into apply by
-// construction: a fabric-only plan re-observed as a full host now cannot reach these at all,
-// because the caller had to say which request it observed.
+// leftover rather than as a fork.
+//
+// WHAT TAKING THE REQUEST DOES FOR SCOPE, AT THE STRENGTH IT ACTUALLY HAS. A scope crossing is
+// REFUSED HERE, NOT PREVENTED, and the difference is not pedantic: these take a request of either
+// arm beside a fingerprint STRING, and nothing binds the two, so a full-host observation can be
+// handed to a fabric-only plan's fingerprint perfectly well. What happens then is that the
+// comparison FAILS -- because scope is inside the baseline the fingerprint hashes -- so the
+// crossing is caught by a value comparison at runtime rather than made unwritable by a type.
+//
+// AN EARLIER REVISION OF THIS ANNOTATION SAID SUCH A CROSSING "cannot reach these at all", WHICH
+// WAS FALSE, and it is the SECOND time on this branch that a comment described a refusal as an
+// impossibility. Recorded rather than quietly rewritten because one instance is a slip and two is
+// a habit worth naming: a wall I have just built reads to me as stronger than it is, and the tell
+// both times was an absolute -- "cannot", "at all" -- attached to a mechanism that in fact
+// compares two values and says no. Making the crossing genuinely unwritable would mean the plan
+// artifact handing over its scope as a typed field rather than a hex string, which this commit
+// does not do.
 fn fleet_converge_member_set_fingerprint_matches(
   planned_fingerprint_text: String,
   observed: FleetConvergeRequest,
