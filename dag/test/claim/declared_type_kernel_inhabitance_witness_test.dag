@@ -31,12 +31,72 @@ module test.claim.declared_type_kernel_inhabitance_witness_test
 // distinction. `correct_value_at_every_closed_position_still_compiles` carries the conforming
 // spelling at all four positions in one module, so a refusal anywhere in the set fails it.
 //
+// THE COVERAGE STANDING IS PER SPELLING, NOT PER POSITION, and this sentence is the narrowing that
+// makes the rest of this header read at the scope it actually measures. Every probe above declares
+// its type by a DIRECT name, so what they establish is "a kernel value is refused at a DIRECTLY
+// named declared type" at those positions. They do NOT establish "a kernel value is refused at that
+// declared type", because a reader who takes the second reading has silently generalised over a
+// variable the census never varied: the SPELLING of the declared type. Under a one-hop alias the
+// second reading was false, at every position that consults the relation without peeling first, and
+// the alias section below is what makes it true. THIS IS NOT A CORRECTION OF ANYTHING ABOVE. Each
+// claim is true of the position it tests, and its author had no reason to think "declared type
+// name" and "declared type name via an alias" were two questions -- nobody knew they were until
+// 2026-08-27. The distinction is recorded here because the carrier that answers "is this seam
+// covered?" must not return a correct yes that licenses an unsound conclusion, which is exactly how
+// this defect survived.
+//
 // WHAT IS NOT ASSERTED HERE, stated rather than implied covered. Three of the seven measured
 // positions are NOT closed by this change and are declared with their triggers in the gap analysis
 // (`docs/plans/compiler-guarantee-recovery-gap-analysis.md`): the variant POSITIONAL payload, the
 // callable-type RETURN and the callable-type PARAMETER. Each still admits a kernel today. A reader
 // who takes this file as the class's closure will build on a guarantee covering four positions of
 // seven.
+//
+// THE ALIAS SECTION BELOW IS A SECOND DEFECT AT THE SAME SEAM, ADDED 2026-08-27, AND IT DOES NOT
+// CORRECT ANYTHING ABOVE. Every claim above is about a declared type written as a DIRECT name and
+// stays true as written. What the census never varied is the SPELLING of the declared type, and a
+// bare `type KAlias = KOuter` declaration turned out to defeat the relation those probes exercise:
+// it is neither Conj nor Disj and has no children of its own, because its structure lives on the
+// declaration it names, so the judgment fell through to the admitting arm. `5` inhabited `KAlias`
+// while the identical `5` was refused at `KOuter`, one name away.
+//
+// Measured on a binary built from committed main, one variable changed between the two:
+//
+//   alias over a record, record-field position   6 files emitted, 0 diagnostics   THE DEFECT
+//   bare record, same position                   refused: expected Product, got Primitive
+//
+// THE ALIAS PROBES LIVE HERE RATHER THAN IN A CARRIER OF THEIR OWN because they are the same
+// relation asked about the same question, and `kernel_in_named_field_still_refuses` above is
+// already this seam's control. A second file would have been a second authority for one fact.
+//
+// WHAT THE SCOPE ACTUALLY WAS, because "aliases were unchecked" overstates it in one direction and
+// understates it in another. An alias whose right-hand side is a KERNEL type
+// (`type KIntAlias = Int`) was already covered, but not by this relation:
+// `peel_nominal_alias_identity` drops the brand for a transparent primitive right-hand side, so the
+// formal arrives spelled `Int` and never reaches the arm that failed. An alias over a RECORD or a
+// COPRODUCT keeps its brand, arrives spelled `KAlias`, and was admitted -- at every position that
+// consults the relation without peeling first. The record-literal field seam peels and was covered;
+// `declared_type_inhabitance` (the four positions above) and `direct_call_arg_type_mismatch` pass
+// the authored formal straight through and were not.
+//
+// THE REPAIR FOLLOWS THE ALIAS AND RE-ASKS THE SAME QUESTION rather than restating any part of it
+// (DESIGN section 3): the relation re-enters itself at the alias target, so every exemption it
+// already owns -- name equality, `dag_can_cast`, the structural-carrier template, the single-child
+// refinement shape -- is carried to the followed name instead of being re-derived beside it. The
+// walk is depth-bounded because `type A = B` / `type B = A` is authorable source; the bound falls to
+// the admitting arm, which is where an unfollowable alias already landed, never to a fabricated
+// verdict.
+//
+// WHAT THE ALIAS SECTION DOES NOT CLOSE, stated rather than implied covered. A bare kernel value at
+// a CONTAINER-typed field -- `subject: List<KOuter>` with `subject: 5` -- is still admitted, aliased
+// or not. It is named here because it was measured while closing the alias axis and would otherwise
+// look like a hole in it; it is NOT one. The discriminating control is `type KAliasList = List<KOuter>`
+// against a bare `List<KOuter>` at the same position: BOTH admit, before and after the repair, so
+// the alias is not the variable. What is unjudged there is a kernel at a CONTAINER, which this
+// relation deliberately does not decide -- `declared_type_kernel_inhabitance_mismatch_at_element`
+// owns one level of element peeling, and a bare scalar where the container itself is declared is
+// neither that shape nor an alias one. Following the alias reaches the container and stops, which is
+// the correct place for this relation to stop.
 //
 // dissolve-on: none. Per DESIGN section 4b(4) the evidence stays enrolled when the class climbs --
 // deleting it would recreate specification-without-execution one rung up.
@@ -113,6 +173,11 @@ test fn kernel_where_coproduct_declared_list_element_must_refuse() -> Bool {
 // THE POSITION THAT WAS ALREADY CLOSED, enrolled as the discriminator that this change REUSES the
 // existing relation rather than minting a second one beside it. If this reds, the record-literal
 // field seam and the positions above have drifted apart and there are two authorities for one fact.
+//
+// ITS SCOPE IS THE DIRECT SPELLING, and saying so is the whole of the narrowing above applied to the
+// one probe most likely to be cited as this seam's coverage. `KOuter` here is written as a direct
+// name. Its aliased twin is `kernel_at_aliased_named_field_must_refuse` below, and until that probe
+// existed the aliased spelling of this exact position admitted.
 test fn kernel_in_named_field_still_refuses() -> Bool {
   !compile_dag_rust_emit_check(
     kernel_inhabitance_named_field_fixture_source(),
@@ -127,6 +192,135 @@ test fn correct_value_at_every_closed_position_still_compiles() -> Bool {
   compile_dag_rust_emit_check(
     kernel_inhabitance_positive_control_source(),
     "src/kin_control.rs",
+    [],
+    []
+  )
+}
+
+fn alias_inhabitance_fn_return_fixture_source() -> String {
+  "module ka.ret\n\nimport std.types \{ Int \}\n\ntype KInner \{ value: Int \}\n\ntype KOuter\n  = KWrapped \{ inner: KInner \}\n\ntype KAlias = KOuter\n\nfn ka_ret() -> KAlias \{\n  5\n\}\n"
+}
+
+fn alias_inhabitance_data_annotation_fixture_source() -> String {
+  "module ka.data\n\nimport std.types \{ Int \}\n\ntype KInner \{ value: Int \}\n\ntype KOuter\n  = KWrapped \{ inner: KInner \}\n\ntype KAlias = KOuter\n\ndata ka_data: KAlias = 5\n"
+}
+
+fn alias_inhabitance_named_field_fixture_source() -> String {
+  "module ka.field\n\nimport std.types \{ Int \}\n\ntype KInner \{ value: Int \}\n\ntype KOuter\n  = KWrapped \{ inner: KInner \}\n\ntype KAlias = KOuter\n\ntype KHold \{ subject: KAlias \}\n\nfn ka_field() -> KHold \{\n  KHold \{ subject: 5 \}\n\}\n"
+}
+
+fn alias_inhabitance_direct_call_argument_fixture_source() -> String {
+  "module ka.call\n\nimport std.types \{ Int \}\n\ntype KInner \{ value: Int \}\n\ntype KOuter\n  = KWrapped \{ inner: KInner \}\n\ntype KAlias = KOuter\n\nfn ka_take(subject: KAlias) -> Int \{\n  1\n\}\n\nfn ka_call() -> Int \{\n  ka_take(subject: 5)\n\}\n"
+}
+
+fn alias_inhabitance_chained_alias_fixture_source() -> String {
+  "module ka.chain\n\nimport std.types \{ Int \}\n\ntype KInner \{ value: Int \}\n\ntype KOuter\n  = KWrapped \{ inner: KInner \}\n\ntype KAliasOne = KOuter\n\ntype KAliasTwo = KAliasOne\n\ntype KAliasThree = KAliasTwo\n\nfn ka_chain() -> KAliasThree \{\n  5\n\}\n"
+}
+
+fn applied_alias_inhabitance_named_field_fixture_source() -> String {
+  "module ka.applied\n\nimport std.types \{ Int \}\n\ntype KGen2<T> \{ value: T \}\n\ntype KAliasG = KGen2<Int>\n\ntype KHoldAG \{ subject: KAliasG \}\n\nfn ka_applied() -> KHoldAG \{\n  KHoldAG \{ subject: 5 \}\n\}\n"
+}
+
+fn alias_inhabitance_positive_control_source() -> String {
+  "module ka.control\n\nimport std.types \{ Int \}\n\ntype KInner \{ value: Int \}\n\ntype KOuter\n  = KWrapped \{ inner: KInner \}\n\ntype KAlias = KOuter\n\ntype KHold \{ subject: KAlias \}\n\nfn ka_wrapped() -> KAlias \{\n  KWrapped \{ inner: KInner \{ value: 7 \} \}\n\}\n\ndata ka_ok_data: KAlias = KWrapped \{ inner: KInner \{ value: 7 \} \}\n\nfn ka_ok_field() -> KHold \{\n  KHold \{ subject: ka_wrapped() \}\n\}\n"
+}
+
+fn alias_over_kernel_positive_control_source() -> String {
+  "module ka.kernel\n\nimport std.types \{ Int \}\n\ntype KIntAlias = Int\n\ntype KIntHold \{ subject: KIntAlias \}\n\nfn ka_kernel_take(subject: KIntAlias) -> Int \{\n  subject\n\}\n\ndata ka_kernel_data: KIntAlias = 5\n\nfn ka_kernel_field() -> KIntHold \{\n  KIntHold \{ subject: ka_kernel_take(subject: 5) \}\n\}\n"
+}
+
+// THE DECLARED RETURN, through one alias. `5` is not a `KOuter`, and spelling `KOuter` as `KAlias`
+// does not change what the value is.
+test fn kernel_at_aliased_declared_return_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    alias_inhabitance_fn_return_fixture_source(),
+    "src/ka_ret.rs",
+    [],
+    []
+  )
+}
+
+// THE MODULE-SCOPE `data` ANNOTATION, through one alias.
+test fn kernel_at_aliased_data_annotation_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    alias_inhabitance_data_annotation_fixture_source(),
+    "src/ka_data.rs",
+    [],
+    []
+  )
+}
+
+// THE RECORD-LITERAL FIELD, through one alias. This is the seam that was ALREADY closed for the
+// un-aliased spelling -- `KHold \{ subject: 5 \}` at a bare `KOuter` refuses today -- so its aliased
+// twin is the sharpest available statement of the defect: two spellings of one declared type, one
+// refused and one admitted, at the identical position.
+test fn kernel_at_aliased_named_field_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    alias_inhabitance_named_field_fixture_source(),
+    "src/ka_field.rs",
+    [],
+    []
+  )
+}
+
+// THE DIRECT-CALL ARGUMENT, through one alias -- the second position that passes the authored formal
+// straight through without peeling, and so the second one the defect reached.
+test fn kernel_at_aliased_direct_call_argument_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    alias_inhabitance_direct_call_argument_fixture_source(),
+    "src/ka_call.rs",
+    [],
+    []
+  )
+}
+
+// DEPTH IS NOT SPECIAL-CASED, and this is the probe that says so. The repair re-enters the same
+// relation rather than peeling a fixed number of levels, so a three-link alias chain is decided by
+// the same code as a one-link one. A repair that peeled once would pass the four probes above and
+// red here.
+test fn kernel_at_chained_alias_declared_return_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    alias_inhabitance_chained_alias_fixture_source(),
+    "src/ka_chain.rs",
+    [],
+    []
+  )
+}
+
+// THE POSITIVE CONTROL. Without it a relation that refused every aliased declaration would satisfy
+// all five reds above, and the reds would measure the mechanism rather than the distinction.
+test fn conforming_value_through_an_alias_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    alias_inhabitance_positive_control_source(),
+    "src/ka_control.rs",
+    [],
+    []
+  )
+}
+
+// THE EXEMPTION CONTROL, and it is the one that would catch the likeliest way to get this wrong. The
+// repair follows the alias and then re-applies the relation's own exemptions at the followed name;
+// a repair that followed the alias and then judged on the DECLARATION SHAPE alone would newly refuse
+// an alias over a kernel type, where the value is perfectly good. Every position the reds above
+// cover is carried here with a conforming value at `type KIntAlias = Int`.
+test fn kernel_value_at_an_alias_over_that_kernel_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    alias_over_kernel_positive_control_source(),
+    "src/ka_kernel.rs",
+    [],
+    []
+  )
+}
+
+// THE APPLIED ALIAS -- `type KAliasG = KGen2<Int>`, an alias whose right-hand side is a type
+// APPLICATION rather than a bare name. It is enrolled separately from the bare-name probes above
+// because its binding has a different shape: it arrives carrying a CHILD (the argument) where a
+// bare-name alias arrives with none, so a repair that keyed on childlessness would pass every probe
+// above and red here. Measured: admits before the repair, refuses after.
+test fn kernel_at_applied_alias_named_field_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    applied_alias_inhabitance_named_field_fixture_source(),
+    "src/ka_applied.rs",
     [],
     []
   )
