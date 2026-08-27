@@ -1,7 +1,7 @@
 module product.fabric.contention
 
 import std.types { Bool, Int, List }
-import std.algebra { Ordering }
+import std.algebra { BoundedLattice, Ordering }
 import std.currency { CurrencyCode }
 import std.measure {
   MoneyAmountMicro, money_amount_micro, money_amount_micro_count,
@@ -244,11 +244,53 @@ fn occupancy_basis_of(duration: GrantDuration) -> OccupancyBasis {
   }
 }
 
-fn basis_is_measured(b: OccupancyBasis) -> Bool {
-  match b {
-    MeasuredOccupancy => true
-    ProjectedOccupancy => false
+// OccupancyBasis IS AN EVIDENCE GRADE, SO IT INHABITS THE LATTICE RATHER THAN
+// CARRYING A HAND-ROLLED COMBINE.
+//
+// An earlier cut answered basis_is_measured(b) -> Bool and combined two bases by
+// conjoining the Bools. Review 56516 called for a canonical combination surface
+// instead, and it is right about the shape even though the type is not
+// substrate and lives in this module: what the fold actually wants is a MEET on
+// a two-point evidence lattice, and std.algebra already models BoundedLattice.
+// std.termination's DescentEvidence is the precedent -- evidence-graded,
+// fail-closed at the bottom -- and std.computation_identity says in its own
+// header that it mirrors it. Reaching for a Bool here re-coined the meet under
+// another name, which is the operation-by-inhabitance point of DESIGN section 4:
+// the combination comes from the algebra the type inhabits, not from a
+// per-consumer predicate.
+//
+// The orientation is what makes the bottom fail-closed. MeasuredOccupancy is
+// TOP and ProjectedOccupancy is BOTTOM, so combining a measured denominator
+// with a projected one yields PROJECTED: evidence degrades to the weakest
+// member, and no fold over a field can report a stronger basis than its worst
+// candidate. The join is present because a BoundedLattice has one; this module
+// consumes only the meet, since taking the BEST evidence in a field would be
+// exactly the overclaim the meet exists to prevent.
+fn occupancy_basis_meet(a: OccupancyBasis, b: OccupancyBasis) -> OccupancyBasis {
+  match a {
+    ProjectedOccupancy => ProjectedOccupancy
+    MeasuredOccupancy => match b {
+      MeasuredOccupancy => MeasuredOccupancy
+      ProjectedOccupancy => ProjectedOccupancy
+    }
   }
+}
+
+fn occupancy_basis_join(a: OccupancyBasis, b: OccupancyBasis) -> OccupancyBasis {
+  match a {
+    MeasuredOccupancy => MeasuredOccupancy
+    ProjectedOccupancy => match b {
+      MeasuredOccupancy => MeasuredOccupancy
+      ProjectedOccupancy => ProjectedOccupancy
+    }
+  }
+}
+
+data occupancy_basis_bounded_lattice: BoundedLattice<OccupancyBasis> = {
+  meet: occupancy_basis_meet
+  join: occupancy_basis_join
+  top: MeasuredOccupancy
+  bottom: ProjectedOccupancy
 }
 
 // ADMISSION IS THE WALL, AND IT IS THE ONLY ROUTE INTO RANKING.
@@ -586,13 +628,13 @@ type ContentionOutcome<P>
     }
   | ContentionRefused { refusal: ContentionRefusal<P> }
 
+// The fold is the lattice's own meet over the field, seeded at TOP. An empty
+// field never reaches here -- select_from_field answers NoAdmissibleDemand
+// first -- so the seed is the identity of the meet rather than a claim about
+// nothing.
 fn field_occupancy_basis<P>(field: List<AdmittedDemand<P>>) -> OccupancyBasis {
-  fold(field, init: MeasuredOccupancy, f: fn(acc, c) {
-    if basis_is_measured(b: acc) && basis_is_measured(b: c.occupancy_basis) {
-      MeasuredOccupancy
-    } else {
-      ProjectedOccupancy
-    }
+  fold(field, init: occupancy_basis_bounded_lattice.top, f: fn(acc, c) {
+    occupancy_basis_bounded_lattice.meet(acc, c.occupancy_basis)
   })
 }
 

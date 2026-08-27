@@ -36,6 +36,7 @@ import product.fabric.contention {
   QuoteExceedsReservationPrice, GrantOccupiesNoBilledTime,
   ContentionOutcome, NoAdmissibleDemand, DemandSelected, ContentionRefused,
   OccupancyBasis, MeasuredOccupancy, ProjectedOccupancy,
+  occupancy_basis_meet, occupancy_basis_bounded_lattice,
   OrderingStanding, OrderingUncontested, OrderingForgoesGreaterTotalMargin,
   admitted_occupancy_basis,
   ContentionRefusal, DemandsIndistinguishable, DuplicateCandidateIdentity,
@@ -690,5 +691,28 @@ test fn a_winner_that_forgoes_a_larger_total_names_who_would_have_won_on_totals(
            }
     NoAdmissibleDemand => false
     ContentionRefused { refusal: _ } => false
+  }
+}
+
+// THE LATTICE'S BOTTOM IS FAIL-CLOSED, AND THIS PINS THE ORIENTATION RATHER
+// THAN ONLY THE FOLD THAT USES IT.
+//
+// field_occupancy_basis already witnesses the combination through the selection
+// verdict, but only for the two orderings a field happens to produce. This
+// asserts the meet's own law at every point: measured combines with measured to
+// measured, and ANY projected member drags the result to projected regardless
+// of which side it is on. Flipping top and bottom -- the one-character error
+// that would let a field of one measured and one projected candidate report
+// MEASURED -- turns this red, and the selection witnesses alone would catch it
+// only in the orderings they happen to exercise.
+test fn occupancy_evidence_degrades_to_the_weakest_member() -> Bool {
+  match occupancy_basis_meet(a: MeasuredOccupancy, b: MeasuredOccupancy) {
+    MeasuredOccupancy =>
+      basis_is_projected(b: occupancy_basis_meet(a: MeasuredOccupancy, b: ProjectedOccupancy))
+        && basis_is_projected(b: occupancy_basis_meet(a: ProjectedOccupancy, b: MeasuredOccupancy))
+        && basis_is_projected(b: occupancy_basis_meet(a: ProjectedOccupancy, b: ProjectedOccupancy))
+        && !basis_is_projected(b: occupancy_basis_bounded_lattice.top)
+        && basis_is_projected(b: occupancy_basis_bounded_lattice.bottom)
+    ProjectedOccupancy => false
   }
 }
