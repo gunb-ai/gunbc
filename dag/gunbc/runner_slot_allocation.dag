@@ -10,6 +10,11 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equ
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
+import gunbc.session_reservation_policy {
+  SessionReservationBytesResolution,
+  ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
+  session_reservation_bytes,
+}
 import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 
@@ -149,10 +154,35 @@ fn width_axis_standing_label(standing: WidthAxisStanding) -> String {
   }
 }
 
+// A HOST WHOSE SESSION DENOMINATOR IS UNKNOWN HAS NO MEMORY ADMISSION TO STATE, and the memory arm
+// now says so the way the disk arm beside it already does. This axis was built as AxisAdmits
+// unconditionally, so srv2 reported `AxisAdmits { memory, 5 }` -- a positive capacity claim -- while
+// the reservation policy and its witnesses said the derivation cannot run at all. The prose note in
+// this module was corrected to call that 5 a HELD allocation, and a note cannot turn an AxisAdmits
+// value into a hold: the contradiction was in the value, one layer below the sentence describing it.
+//
+// The repair mints nothing. WidthAxisStanding already carries AxisUnmeasured for exactly this, and
+// the disk arm already routes through it -- its own comment says rendering an unmeasured axis as a
+// width "would turn an absence of observation into a positive clearance". Memory now does the same.
+fn host_memory_width_is_established(host: HostIdentity) -> Bool {
+  match session_reservation_bytes(host: host) {
+    ReservationBytes { bytes: _ } => true
+    ReservationBytesNotApplicable => true
+    ReservationBytesUnestablished { cause: _ } => false
+  }
+}
+
 fn host_width_axes(host: HostIdentity) -> List<WidthAxisStanding> {
-  let memory = AxisAdmits {
-    axis: "memory" as NonEmptyStr,
-    slots: host_memory_admitted_width(host: host),
+  let memory = if host_memory_width_is_established(host: host) {
+    AxisAdmits {
+      axis: "memory" as NonEmptyStr,
+      slots: host_memory_admitted_width(host: host),
+    }
+  } else {
+    AxisUnmeasured {
+      axis: "memory" as NonEmptyStr,
+      reason: "session reservation unestablished on this host, so the memory subtraction has no denominator and states no width" as NonEmptyStr,
+    }
   }
   let cpu = AxisAdmits {
     axis: "cores" as NonEmptyStr,
@@ -211,7 +241,31 @@ fn host_width_binding_label(host: HostIdentity) -> String {
   ], "")
 }
 
+// THE HELD WIDTH IS A SEPARATE FACT FROM A DERIVED ONE AND IS REACHED BY ITS OWN PATH. srv2 runs
+// five slots today; that is what it currently holds while its session denominator is re-grounded,
+// not what the conservation wall was shown to pass. With the memory axis now honestly unmeasured
+// there is no memory term to take a minimum over, so deriving srv2's width from
+// host_memory_admitted_width would be reading the held number back out as though it were an
+// admission -- the exact substitution this change exists to stop. The hold is named, and it is the
+// only path by which a host with an unestablished denominator gets a width at all.
+fn host_held_runner_width(host: HostIdentity) -> Int? {
+  if host_memory_width_is_established(host: host) {
+    none
+  } else if (host as String) == (operator_host_srv2 as String) {
+    Present { value: 5 }
+  } else {
+    none
+  }
+}
+
 fn gunbc_runner_slots_per_host(host: HostIdentity) -> Int {
+  match host_held_runner_width(host: host) {
+    Present { value: held } => held
+    Absent => gunbc_derived_runner_slots_per_host(host: host)
+  }
+}
+
+fn gunbc_derived_runner_slots_per_host(host: HostIdentity) -> Int {
   let by_memory = host_memory_admitted_width(host: host)
   let by_cpu = host_cpu_admitted_width(host: host)
   let by_mem_cpu = if by_cpu < by_memory { by_cpu } else { by_memory }
