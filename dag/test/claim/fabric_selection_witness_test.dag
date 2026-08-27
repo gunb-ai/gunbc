@@ -192,7 +192,7 @@ fn t_rented_candidate(
 // roster. Returning an unconstructable value or re-binding in a loop were the alternatives,
 // and both hide the same mistake.
 fn t_bound(offer: SupplierOffer<NonEmptyStr>, inputs: DispatchInputs<NonEmptyStr>) -> List<CandidateOffer<NonEmptyStr>> {
-  match bind_candidate(offer: offer, inputs: inputs) {
+  match bind_candidate(offer: offer, dispatch: inputs) {
     CandidateBound { candidate: c } => [c]
     DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
   }
@@ -437,7 +437,7 @@ test fn nothing_admissible_returns_every_typed_cause_and_selects_nothing() -> Bo
 test fn dispatch_inputs_naming_another_offer_refuse_to_bind() -> Bool {
   match bind_candidate(
     offer: t_owned_offer(),
-    inputs: t_inputs(
+    dispatch: t_inputs(
       key: "offer-rented-hourly",
       availability: t_ready_now(),
       commitment: PayAsYouGo,

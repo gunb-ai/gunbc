@@ -7,6 +7,7 @@ import std.measure {
   Second, second, second_count,
 }
 import std.currency { CurrencyCode }
+import std.nat { Nat, nat_min }
 import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { ExecutionRequirements }
@@ -280,12 +281,13 @@ fn cost_basis_for(duration: GrantDuration) -> CostBasis {
 // Nat subtraction with a floor at zero, written once. Every use below is a duration remainder
 // where the negative case means "already covered", never a defect: a commitment extending
 // past the grant leaves zero billable seconds, not minus some.
+//
+// It takes at most what is there rather than branching on whether it can. The guarded form was
+// written first and could not be typed without a Nat zero literal, which std does not carry;
+// clamping the SUBTRAHEND removes both the branch and the need for one, and an unreachable
+// negative case stops being something a reader has to check the guard for.
 fn saturating_difference(from: Nat, take: Nat) -> Nat {
-  if take >= from {
-    0
-  } else {
-    from - take
-  }
+  from - nat_min(a: from, b: take)
 }
 
 // AN UNREAD AXIS IS A TYPED, LOCATED, COUNTABLE REFUSAL rather than a zero entering a sum.
@@ -417,14 +419,21 @@ fn quote_bills_time(q: OfferQuote) -> Bool {
   }
 }
 
+// The interval a commitment already covers, which is zero unless the quote bills TIME and an
+// interval is actually paid through. Every arm answers in Second rather than in a count, so the
+// two zeros are durations rather than bare numbers standing in for one.
+fn covered_interval(commitment: CommitmentState, quote: OfferQuote) -> Second {
+  match commitment {
+    PayAsYouGo => second(count: 0)
+    CommitmentUnread { obligation: _ } => second(count: 0)
+    PaidThrough { remaining: r, receipt: _ } =>
+      if quote_bills_time(q: quote) { r } else { second(count: 0) }
+  }
+}
+
 fn billable_duration(duration: GrantDuration, commitment: CommitmentState, quote: OfferQuote) -> GrantDuration {
   let full = second_count(s: grant_duration_seconds(d: duration))
-  let covered = match commitment {
-    PayAsYouGo => 0
-    CommitmentUnread { obligation: _ } => 0
-    PaidThrough { remaining: r, receipt: _ } =>
-      if quote_bills_time(q: quote) { second_count(s: r) } else { 0 }
-  }
+  let covered = second_count(s: covered_interval(commitment: commitment, quote: quote))
   let remaining = second(count: saturating_difference(from: full, take: covered))
   match duration {
     ExactGrantDuration { seconds: _ } => ExactGrantDuration { seconds: remaining }
