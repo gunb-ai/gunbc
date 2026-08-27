@@ -81,6 +81,20 @@ fn git_worktree_first_fault(attributes: GitWorktreeAttributes, reason: String) -
 // admitted. The reason is git's prose for a human and carries no decidable fact this
 // decoder consumes, so it is deliberately not retained -- keeping it would invent a
 // second authority for a string git may reword at any release.
+// EVERY SINGLETON ATTRIBUTE REFUSES ITS OWN REPETITION, all six of them, and the history of this
+// function is why that is stated as a closed set rather than left to be read off the arms.
+//
+// HEAD refused a repeat from the start. `branch` was then given the same guard, and the four BOOLEAN
+// attributes were left setting their field to true unconditionally -- so two `detached` records, or
+// two `bare`, decoded into a SUCCESSFUL observation. The defect was invisible for the reason
+// repetition defects usually are: setting a flag twice is idempotent, so nothing downstream looks
+// wrong. It is the WIRE that was malformed, and a decoder that quietly normalizes malformed input is
+// not lenient, it is answering a question nobody asked.
+//
+// THE ASYMMETRY WAS THE TELL, and it was introduced by a diff that stated the invariant while
+// applying it to two arms of six. An unknown attribute refused loudly; a KNOWN attribute in an
+// impossible arrangement was accepted quietly. When adding a seventh attribute, the guard is part of
+// the arm, not a follow-up.
 fn git_worktree_attribute_step(
   attributes: GitWorktreeAttributes,
   attribute: String,
@@ -130,47 +144,75 @@ fn git_worktree_attribute_step(
       }
     } else {
       if attribute == "detached" {
-        GitWorktreeAttributes {
-          head: attributes.head,
-          branch: attributes.branch,
-          detached: true,
-          bare: attributes.bare,
-          locked: attributes.locked,
-          prunable: attributes.prunable,
-          fault: attributes.fault,
-        }
-      } else {
-        if attribute == "bare" {
+        if attributes.detached {
+          git_worktree_first_fault(
+            attributes: attributes,
+            reason: "entry carries more than one detached",
+          )
+        } else {
           GitWorktreeAttributes {
             head: attributes.head,
             branch: attributes.branch,
-            detached: attributes.detached,
-            bare: true,
+            detached: true,
+            bare: attributes.bare,
             locked: attributes.locked,
             prunable: attributes.prunable,
             fault: attributes.fault,
           }
-        } else {
-          if attribute == "locked" || starts_with(s: attribute, prefix: "locked ") {
+        }
+      } else {
+        if attribute == "bare" {
+          if attributes.bare {
+            git_worktree_first_fault(
+              attributes: attributes,
+              reason: "entry carries more than one bare",
+            )
+          } else {
             GitWorktreeAttributes {
               head: attributes.head,
               branch: attributes.branch,
               detached: attributes.detached,
-              bare: attributes.bare,
-              locked: true,
+              bare: true,
+              locked: attributes.locked,
               prunable: attributes.prunable,
               fault: attributes.fault,
             }
-          } else {
-            if attribute == "prunable" || starts_with(s: attribute, prefix: "prunable ") {
+          }
+        } else {
+          if attribute == "locked" || starts_with(s: attribute, prefix: "locked ") {
+            if attributes.locked {
+              git_worktree_first_fault(
+                attributes: attributes,
+                reason: "entry carries more than one locked",
+              )
+            } else {
               GitWorktreeAttributes {
                 head: attributes.head,
                 branch: attributes.branch,
                 detached: attributes.detached,
                 bare: attributes.bare,
-                locked: attributes.locked,
-                prunable: true,
+                locked: true,
+                prunable: attributes.prunable,
                 fault: attributes.fault,
+              }
+            }
+          } else {
+            if attribute == "prunable" || starts_with(s: attribute, prefix: "prunable ") {
+              if attributes.prunable {
+                git_worktree_first_fault(
+                  attributes: attributes,
+                  reason: "entry carries more than one prunable",
+                )
+              } else {
+                GitWorktreeAttributes {
+                  head: attributes.head,
+                  branch: attributes.branch,
+                  detached: attributes.detached,
+                  bare: attributes.bare,
+                  locked: attributes.locked,
+                  prunable: true,
+                  fault: attributes.fault,
+                }
               }
             } else {
               git_worktree_first_fault(

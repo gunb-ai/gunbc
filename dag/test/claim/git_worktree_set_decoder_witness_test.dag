@@ -257,3 +257,72 @@ test fn an_entry_carrying_two_branches_refuses() -> Bool {
   ])
   is_undecodable(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
 }
+
+// THE FOUR BOOLEAN SINGLETONS, EACH WITH ITS OWN POSITIVE CONTROL -- and the controls are the
+// substance of these rows rather than politeness. A first cut of these witnesses built every fixture
+// as worktree + HEAD + the doubled attribute, and three of the four then refused FOR THE WRONG
+// REASON: `bare` with a HEAD is already refused by the bare-carries-no-head rule, and `locked` or
+// `prunable` alone describe no checkout at all, so the entry failed the exactly-one-of check before
+// duplication was ever consulted. All four went green while testing almost nothing.
+//
+// So each fixture below is a VALID entry that duplication alone spoils, and each is paired with the
+// same entry carrying ONE occurrence, which must decode. A duplicate arm whose single-occurrence
+// twin also refuses is not evidence about duplication.
+test fn an_entry_carrying_two_detached_attributes_refuses() -> Bool {
+  let dup = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "detached",
+    "detached",
+  ])
+  let one = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "detached",
+  ])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: dup, exit_code: 0, stderr: ""))
+    && count(observed_worktrees(observation: git_worktree_set_observation_of(raw: one, exit_code: 0, stderr: ""))) == 1
+}
+
+test fn an_entry_carrying_two_bare_attributes_refuses() -> Bool {
+  let dup = entry(attributes: [concat("worktree ", "/opt/gunbc/bare"), "bare", "bare"])
+  let one = entry(attributes: [concat("worktree ", "/opt/gunbc/bare"), "bare"])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: dup, exit_code: 0, stderr: ""))
+    && count(observed_worktrees(observation: git_worktree_set_observation_of(raw: one, exit_code: 0, stderr: ""))) == 1
+}
+
+test fn an_entry_carrying_two_locked_attributes_refuses() -> Bool {
+  let dup = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "branch refs/heads/main",
+    "locked",
+    "locked",
+  ])
+  let one = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "branch refs/heads/main",
+    "locked",
+  ])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: dup, exit_code: 0, stderr: ""))
+    && count(observed_worktrees(observation: git_worktree_set_observation_of(raw: one, exit_code: 0, stderr: ""))) == 1
+}
+
+test fn an_entry_carrying_two_prunable_attributes_refuses() -> Bool {
+  let dup = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "branch refs/heads/main",
+    "prunable",
+    "prunable",
+  ])
+  let one = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "branch refs/heads/main",
+    "prunable",
+  ])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: dup, exit_code: 0, stderr: ""))
+    && count(observed_worktrees(observation: git_worktree_set_observation_of(raw: one, exit_code: 0, stderr: ""))) == 1
+}
