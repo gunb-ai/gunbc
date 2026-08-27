@@ -8,7 +8,6 @@ import gunbc.ci_runner_placement {
   FixedOverheadUnavailable, CompilePoolUnavailable,
   HostAllocationOversubscribedOnHost, HostAllocationUnchargeableOnHost,
   ZeroRunnerWidth, HostNotEnrolledInFleet,
-  RunnerDeploymentPlan,
   FleetDeploymentComplete, FleetDeploymentIncomplete, fleet_deployment_completion,
   host_deployment_refusal_text,
   RunnerHostDeployment,

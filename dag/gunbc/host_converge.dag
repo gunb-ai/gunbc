@@ -15,7 +15,6 @@ import gunbc.package_delivery { codex_runtime_version_identity_marker }
 import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
   HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
-  RunnerDeploymentPlan,
   RunnerHostDeployment,
   runner_deployment_plan,
   workload_class_cpu_weight,
