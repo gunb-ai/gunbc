@@ -2573,13 +2573,23 @@ pub fn render_rust_alias_rhs_type(
                         Some(carrier) => carrier.clone(),
                         None => {
                             let leaf = qualified_last_segment(name.clone());
-                            let rendered =
-                                rust_render_type_leaf_name(leaf.clone(), variant_to_enum.clone());
-                            render_rust_shared_type_if_needed(
+                            match rust_scalar_checkpoint_reference_base(
                                 leaf.clone(),
-                                rendered.clone(),
-                                shared_types.clone(),
-                            )
+                                type_reference_decl_file(n.clone()),
+                            ) {
+                                Some(scalar) => scalar.clone(),
+                                None => {
+                                    let rendered = rust_render_type_leaf_name(
+                                        leaf.clone(),
+                                        variant_to_enum.clone(),
+                                    );
+                                    render_rust_shared_type_if_needed(
+                                        leaf.clone(),
+                                        rendered.clone(),
+                                        shared_types.clone(),
+                                    )
+                                }
+                            }
                         }
                     },
                 }
