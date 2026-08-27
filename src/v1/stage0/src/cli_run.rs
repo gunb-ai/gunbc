@@ -44248,12 +44248,15 @@ pub struct PreparedClaimScope {
     ///
     /// THE COUNT IS UNCHANGED AND ITS SUBJECT HAS NARROWED, which is worth saying because a
     /// reader who takes it as the silent-pick population will now overcount.
-    /// [`v1_interpreter::InterpContext::lookup_fn_from`] resolves a reference to the referring
-    /// file's own module before this shared slot, so for every name in this count the one
-    /// direction that used to be decided by nothing the author wrote — a module losing its OWN
-    /// declaration to an unrelated homonym — is decided by the module now. What remains counted
-    /// here is the genuinely undecided direction: a bare reference to a name the referring
-    /// module does not declare, claimed by two or more modules it reached.
+    /// [`v1_interpreter::InterpContext::lookup_fn_from`] resolves a reference through the
+    /// referring file's own declarations and then its explicit imports before this shared slot,
+    /// so for every name in this count the two directions that used to be decided by nothing the
+    /// author wrote — a module losing its
+    /// OWN declaration to an unrelated homonym, and an explicit `import a.b.c { x }` being inert
+    /// against one — are decided by what the author wrote now. What remains counted here is the
+    /// genuinely undecided residue: a bare reference to a name the referring module neither
+    /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
+    /// modules it reached.
     pub ambiguous_bare_names: usize,
 }
 

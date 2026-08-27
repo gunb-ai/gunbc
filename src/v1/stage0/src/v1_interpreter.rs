@@ -29,14 +29,15 @@ use crate::v1_std_core::{
     expr_method_call_semantics, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
     field_init_node_value, find_property, find_property_string, foreach_body, foreach_collection,
-    foreach_variable_at, if_condition, if_else_branch, if_then_branch, index_base, index_expr,
-    is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, param_node_default_value, param_node_name_at, qualified_last_segment,
-    record_lit_type_name_at, return_value, slice_base, slice_end, slice_start, transport_stdin,
-    type_name_compatible, unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode,
-    ExprData, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
+    foreach_variable_at, if_condition, if_else_branch, if_then_branch, import_is_all,
+    import_specific_names_at, index_base, index_expr, is_file_transport, is_rest_transport,
+    is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
+    let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
+    param_node_default_value, param_node_name_at, qualified_last_segment, record_lit_type_name_at,
+    return_value, slice_base, slice_end, slice_start, transport_stdin, type_name_compatible,
+    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
+    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -2364,6 +2365,18 @@ pub struct PreparedScopeIndexes {
     /// `v1_compiler_infer_sigs::lookup_resolved_sig` already applies at typecheck, which is why
     /// the collapse was silent: the type layer resolved per module and the runtime did not.
     file_module_paths: HashMap<String, String>,
+    /// (SOURCE FILE, IMPORTED NAME) -> THE MODULE PATH THAT FILE IMPORTED THE NAME FROM.
+    ///
+    /// The braced list of an `import a.b.c { x, y }` survives on the module node's `params`, so
+    /// what the author wrote about WHERE a name comes from is recoverable and does not have to be
+    /// guessed from a precedence order. It has to be read from here rather than from
+    /// `ResolvedFuncEnv.parents`, which is the FLATTENED TRANSITIVE closure: `parents` keeps
+    /// module identity only, drops the per-import name list, and does not separate a direct
+    /// import from a module merely reachable through one — so a first-hit fold over it answers
+    /// with whichever closure member sorts first, which is the same silent pick one level out.
+    ///
+    /// Wildcard (`import a.b.c` with no braces) binds no names and contributes nothing here.
+    file_import_bindings: HashMap<(String, String), String>,
     service_ops: HashMap<String, ServiceOp>,
 }
 
@@ -2674,9 +2687,33 @@ impl InterpContext {
         let mut fn_nodes = HashMap::new();
         let mut bare_name_counts = HashMap::<String, usize>::new();
         let mut file_module_paths = HashMap::<String, String>::new();
+        let mut file_import_bindings = HashMap::<(String, String), String>::new();
         let mut service_ops = HashMap::new();
         for module in modules_to_walk {
             let module_path = authored_name_at(source_indices.clone(), module.module.clone());
+            // WHAT THE AUTHOR WROTE ABOUT WHERE EACH NAME COMES FROM, read once per module from
+            // the import list the parser kept. FIRST WRITE WINS within a file: two imports of one
+            // spelling from different modules is a double bind the grammar does not yet refuse,
+            // and picking the later one would make this tier depend on statement order in exactly
+            // the way it exists to stop depending on walk order.
+            for imp in crate::v1_std_core::module_imports(module.module.clone()).iter() {
+                if import_is_all(imp.clone()) {
+                    continue;
+                }
+                let source_module = authored_name_at(source_indices.clone(), imp.clone());
+                if source_module.is_empty() {
+                    continue;
+                }
+                for imported in import_specific_names_at(imp.clone(), source_indices.clone()).iter()
+                {
+                    if imported.is_empty() || module.module.span.file.is_empty() {
+                        continue;
+                    }
+                    file_import_bindings
+                        .entry((module.module.span.file.to_string(), imported.clone()))
+                        .or_insert_with(|| source_module.clone());
+                }
+            }
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
                 if !module_path.is_empty() && !item.span.file.is_empty() {
@@ -2733,6 +2770,7 @@ impl InterpContext {
             fn_nodes,
             ambiguous_bare_function_names,
             file_module_paths,
+            file_import_bindings,
             service_ops,
         })
     }
@@ -2988,8 +3026,17 @@ impl InterpContext {
         self.indexes.fn_nodes.get(name)
     }
 
-    /// [`lookup_fn`], but a BARE name claimed by more than one module in this scope resolves to
-    /// the declaration in the referring file's OWN module before the shared bare slot.
+    /// Is this bare spelling claimed by more than one module in this scope?
+    pub(crate) fn bare_name_is_ambiguous(&self, name: &str) -> bool {
+        self.indexes.ambiguous_bare_function_names.contains(name)
+    }
+
+    /// [`lookup_fn`], but a BARE name claimed by more than one module in this scope resolves
+    /// through the referring file's own declarations, then its explicit imports, before the
+    /// shared bare slot — the same `local`-then-declared-source order the type layer already
+    /// applies in `lookup_resolved_sig`. That the two layers DISAGREED is what made every defect
+    /// in this class silent: typecheck bound the reference per module and execution rebound it
+    /// globally, so nothing refused and the program simply ran a different function.
     ///
     /// The bare slot is a single map entry: whichever module the walk visited last (or first,
     /// under a precedence order) owns it, and every other module's references to that spelling
@@ -3002,12 +3049,22 @@ impl InterpContext {
     /// exactly one module declares is byte-for-byte what it was. Only the colliding population
     /// moves, and it moves toward the module that authored the reference.
     ///
-    /// THIS IS NOT THE NAMESPACE PROGRAM AND DOES NOT CLAIM TO BE. A bare reference to a name
-    /// the referring module does NOT declare still falls through to the shared slot, so a
-    /// cross-module homonym reached from a third module is still picked by precedence with
-    /// nothing said about it. That residue is `PreparedClaimScope::ambiguous_bare_names`'s
-    /// subject and retires with namespace-only resolution, where a reference has exactly one
-    /// declarer by construction.
+    /// WHY THE IMPORT TIER IS NOT OPTIONAL, and it took a floor red to establish rather than
+    /// reasoning: `test.claim.ilm4926_designation_witness` imports `extdeps_external_authority_anchor`
+    /// explicitly from `extdeps.cpu_attachment.ilm4926` — a name 630 modules declare, one per
+    /// extdeps module by repository convention. With the own-module tier alone that import was
+    /// inert: the witness's reference still landed on `extdeps.vendor.lotes`, which it imports one
+    /// line earlier and which wins the shared slot, while the attestation row inside `ilm4926`
+    /// correctly reached ilm4926's own. The row and the query then disagreed and the filter
+    /// returned empty. Before the own-module tier existed BOTH sides read lotes, so the equality
+    /// matched and the witness was green on a query that meant nothing.
+    ///
+    /// THIS IS NOT THE NAMESPACE PROGRAM AND DOES NOT CLAIM TO BE. Two residues stay on the
+    /// shared slot: a bare reference to a name the referring module neither declares nor imports,
+    /// and a name reached through a WILDCARD import, which binds no names and so says nothing
+    /// about where anything comes from. Both are still picked by precedence with nothing said.
+    /// That residue is `PreparedClaimScope::ambiguous_bare_names`'s subject and retires with
+    /// namespace-only resolution, where a reference has exactly one declarer by construction.
     fn lookup_fn_from(&self, name: &str, site_file: &str) -> Option<&Rc<Node>> {
         if !name.contains('.')
             && !site_file.is_empty()
@@ -3015,6 +3072,22 @@ impl InterpContext {
         {
             if let Some(module_path) = self.indexes.file_module_paths.get(site_file) {
                 let qualified = format!("{}.{}", module_path, name);
+                if let Some(node) = self.indexes.fn_nodes.get(&qualified) {
+                    return Some(node);
+                }
+            }
+            // THEN WHERE THE AUTHOR SAID IT COMES FROM. A name this file explicitly imported
+            // resolves to the module it was imported FROM, which is a fact the author wrote and
+            // the shared slot discards. Without this tier an `import a.b.c { anchor }` is inert
+            // whenever any other module in the scope also declares `anchor` -- the reference
+            // still lands on whichever module won a precedence race, and the import line reads
+            // as though it decided something it did not.
+            if let Some(source_module) = self
+                .indexes
+                .file_import_bindings
+                .get(&(site_file.to_string(), name.to_string()))
+            {
+                let qualified = format!("{}.{}", source_module, name);
                 if let Some(node) = self.indexes.fn_nodes.get(&qualified) {
                     return Some(node);
                 }
@@ -3127,9 +3200,28 @@ pub fn call_env_depth_peak_snapshot() -> usize {
     CALL_ENV_DEPTH_PEAK.with(|peak| peak.get())
 }
 
+/// Pre-evaluate module-level `data` into the base environment.
+///
+/// A NAME CLAIMED BY MORE THAN ONE MODULE IS DELIBERATELY NOT PRE-BOUND, and leaving it out is
+/// what makes [`InterpContext::lookup_fn_from`] reachable for `data` at all. This binds by BARE
+/// name through the global `lookup_fn`, and `eval_var` consults the environment BEFORE the item
+/// registry, so a pre-bound ambiguous name shadows per-module resolution everywhere — the same
+/// single-slot collapse as `fn_nodes`, one layer earlier and harder to see, because it looks like
+/// an ordinary variable lookup succeeding. Measured: with the tiers in place and this loop
+/// unchanged, a `data` reference explicitly imported from one of two declarers still read the
+/// other's value, while the function form of the same collision resolved correctly — functions
+/// are not pre-bound here and so were never affected.
+///
+/// Skipping them costs nothing a consumer can observe: the reference falls through to
+/// `eval_var`'s registry path, which resolves per module and memoizes through `data_cache`, and a
+/// name only ONE module declares still takes this fast path untouched. Locals are unaffected in
+/// both cases — they live in extended scopes and shadow by ordinary lexical rule.
 fn build_initial_env(ctx: &InterpContext) -> InterpResult<Rc<Env>> {
     let mut bindings = HashMap::new();
     for (name, info) in ctx.item_registry.iter() {
+        if ctx.bare_name_is_ambiguous(name) {
+            continue;
+        }
         if info.kind == ItemKind::DataItem {
             if let Some(node) = ctx.lookup_fn(name) {
                 if let Some(ref body) = node.body {

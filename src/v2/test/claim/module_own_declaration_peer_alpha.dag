@@ -18,3 +18,9 @@ fn section_sentinel() -> Int {
 fn alpha_entry() -> Int {
   section_sentinel()
 }
+
+// THE IMPORT-TIER SUBJECT. A name BOTH peers declare, exported so a third module can import it
+// explicitly and state which one it means. `alpha_entry` above cannot cover this: it is a
+// reference from the declaring module itself, which the own-module tier settles. This one is
+// reached from OUTSIDE both declarers, where the only thing distinguishing them is the import.
+data shared_anchor: Int = 11

@@ -12,3 +12,7 @@ fn section_sentinel() -> Int {
 fn beta_entry() -> Int {
   section_sentinel()
 }
+
+// The beta half of the import-tier pair, differing only in value so a reading LOCATES the
+// declarer rather than merely disagreeing with it.
+data shared_anchor: Int = 22
