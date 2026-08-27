@@ -236,7 +236,7 @@ test fn witness_bounded_poll_early_exit_on_grounded_read() -> Bool {
   )
 }
 
-test fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
+test fn witness_red_control_readiness_never_ready_refuses_at_poll_bound() -> Bool {
   let max_attempts = live_deploy_service_ready_poll_max_attempts()
   let r = live_deploy_poll_service_ready_after_attempts(
     spec: deployment_spec_srv1(),
