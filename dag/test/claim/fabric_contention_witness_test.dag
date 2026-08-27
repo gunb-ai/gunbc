@@ -28,12 +28,14 @@ import product.fabric.demand {
 import product.fabric.supply {
   SupplierOffer, OfferQuote, QuotedPerSecond, QuotedPerHour, QuotedFlatPerGrant, ObservedSupply,
   GrantDuration, ExactGrantDuration, EstimatedGrantDuration,
+  UnobservedGrantDuration,
   DemandOfferAffordability, Affordable, AffordableUnderEstimate,
   QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch,
 }
 import product.fabric.contention {
   AdmittedDemand, DemandAdmission, DemandAdmitted, DemandNotAffordable,
   QuoteExceedsReservationPrice, GrantOccupiesNoBilledTime,
+  DemandNotRankableWithoutDuration,
   ContentionOutcome, NoAdmissibleDemand, DemandSelected, ContentionRefused,
   OccupancyBasis, MeasuredOccupancy, ProjectedOccupancy,
   occupancy_basis_meet, occupancy_basis_bounded_lattice,
@@ -119,12 +121,77 @@ fn short_duration() -> GrantDuration { ExactGrantDuration { seconds: second(coun
 
 fn long_duration() -> GrantDuration { ExactGrantDuration { seconds: second(count: 300) } }
 
+fn unobserved_duration() -> GrantDuration {
+  UnobservedGrantDuration {
+    obligation: "Nobody has measured how long this job runs. Time it, or bound it, before asking the fabric to rank it against another buyer.",
+  }
+}
+
+// AN UNMEASURED JOB IS REFUSED, NOT RANKED, AND THE REFUSAL CARRIES THE REMEDY.
+//
+// This is the executing evidence for the arm gunbc#9397 forced. The
+// discriminating input is the duration: hold the demand and the offer fixed at
+// the values that admit under short_duration -- proven by the positive control
+// below -- and swap only the duration for an unobserved one. If the refusal
+// ever regresses to a substituted number, this flips.
+//
+// WHICH OBLIGATION ARRIVES IS ASSERTED, NOT JUST THE VARIANT, and it is not the
+// one this fixture authored. That is the point of pinning it.
+//
+// Two obligations exist for this call: the one carried on the duration itself
+// (unobserved_duration below, naming the job to measure) and the one supply.dag
+// raises when a RATE quote cannot be totalled without a duration. The second is
+// what reaches the caller, because the affordability screen prices the quote
+// before anything looks at the duration's own text, and the refusal is
+// constructed from the quote's failure.
+//
+// THIS WITNESS WAS AUTHORED ASSERTING THE OTHER ONE AND WENT RED, which is the
+// only reason the precedence is written down. A variant-only assertion would
+// have passed either way and left a reader to assume the duration's obligation
+// survives. It does not, and a caller building a remediation message from this
+// refusal gets "measure the running time", never "measure THIS job".
+test fn an_unobserved_duration_refuses_to_rank_rather_than_substituting_a_number() -> Bool {
+  match admit_demand_for_offer(
+    demand: short_demand(),
+    offer: hourly_offer(),
+    duration: unobserved_duration(),
+  ) {
+    DemandNotRankableWithoutDuration { obligation: why } =>
+      why == "A rate quote cannot be totalled over an unobserved grant duration. Measure the work's running time, or bound it, before asking this quote for a per-grant total."
+    DemandAdmitted { admitted: _ } => false
+    DemandNotAffordable { refusal: _ } => false
+    QuoteExceedsReservationPrice { quoted: _, reservation: _ } => false
+    GrantOccupiesNoBilledTime { duration: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL, AND IT IS WHAT MAKES THE WITNESS ABOVE DISCRIMINATING
+// RATHER THAN MERELY GREEN. Without it, the refusal is equally consistent with
+// this demand/offer pair being unrankable for some unrelated reason -- an
+// affordability screen, a reservation ceiling -- and the witness would pass
+// while proving nothing about the duration. The two differ in exactly one
+// argument.
+test fn the_same_pair_admits_once_the_duration_is_measured() -> Bool {
+  match admit_demand_for_offer(
+    demand: short_demand(),
+    offer: hourly_offer(),
+    duration: short_duration(),
+  ) {
+    DemandAdmitted { admitted: _ } => true
+    DemandNotRankableWithoutDuration { obligation: _ } => false
+    DemandNotAffordable { refusal: _ } => false
+    QuoteExceedsReservationPrice { quoted: _, reservation: _ } => false
+    GrantOccupiesNoBilledTime { duration: _ } => false
+  }
+}
+
 fn admitted_or_none(a: DemandAdmission<NonEmptyStr>) -> List<AdmittedDemand<NonEmptyStr>> {
   match a {
     DemandAdmitted { admitted: x } => [x]
     DemandNotAffordable { refusal: _ } => []
     QuoteExceedsReservationPrice { quoted: _, reservation: _ } => []
     GrantOccupiesNoBilledTime { duration: _ } => []
+    DemandNotRankableWithoutDuration { obligation: _ } => []
   }
 }
 
@@ -389,6 +456,7 @@ test fn a_grant_billing_no_time_is_refused_rather_than_ranked_at_zero() -> Bool 
     DemandAdmitted { admitted: _ } => false
     DemandNotAffordable { refusal: _ } => false
     QuoteExceedsReservationPrice { quoted: _, reservation: _ } => false
+    DemandNotRankableWithoutDuration { obligation: _ } => false
   }
 }
 
@@ -484,10 +552,12 @@ test fn a_bid_below_the_bill_cannot_enter_contention_at_all() -> Bool {
         DemandAdmitted { admitted: _ } => false
         DemandNotAffordable { refusal: _ } => false
         GrantOccupiesNoBilledTime { duration: _ } => false
+        DemandNotRankableWithoutDuration { obligation: _ } => false
       }
     DemandNotAffordable { refusal: _ } => false
     QuoteExceedsReservationPrice { quoted: _, reservation: _ } => false
     GrantOccupiesNoBilledTime { duration: _ } => false
+    DemandNotRankableWithoutDuration { obligation: _ } => false
   }
 }
 
@@ -507,6 +577,7 @@ test fn clearing_the_grant_ceiling_is_not_clearing_the_buyers_own_price() -> Boo
     DemandAdmitted { admitted: _ } => false
     DemandNotAffordable { refusal: _ } => false
     GrantOccupiesNoBilledTime { duration: _ } => false
+    DemandNotRankableWithoutDuration { obligation: _ } => false
   }
 }
 
