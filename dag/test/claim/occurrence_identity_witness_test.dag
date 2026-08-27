@@ -3,40 +3,31 @@ module test.claim.occurrence_identity_witness_test
 import std.types { Bool }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import std.occurrence_identity {
-  OccurrenceId,
-  OccurrenceIdAllocator,
-  OccurrenceIdAllocResult,
   NodeOccurrenceIdentity,
-  OccurrenceSynthetic,
+  OccurrenceId,
+  OccurrenceIdAllocResult,
+  OccurrenceIdAllocator,
   OccurrenceMinted,
-  authored_token_ordinal_space_from_allocator,
-  occurrence_id_allocator_initial,
+  OccurrenceProjected,
+  OccurrenceSynthetic,
+  ScopedOccurrenceRef,
   alloc_occurrence_id,
-  occurrence_id_eq,
-  occurrence_id_allocator_advance_to,
+  authored_token_ordinal_space_from_allocator,
   node_occurrence_identity_minted,
   node_occurrence_identity_projected,
-  OccurrenceProjected,
-  ScopedOccurrenceRef,
-  scoped_occurrence_ref_same_scope,
-  scoped_occurrence_ref_in_scope,
-  occurrence_identity_acceptance_law_rebuilt_reference,
+  occurrence_id_allocator_advance_to,
+  occurrence_id_allocator_initial,
+  occurrence_id_eq,
   occurrence_identity_acceptance_law_collector_dedupe,
   occurrence_identity_acceptance_law_distinct_occurrences,
-  occurrence_identity_acceptance_law_pattern_reachability,
   occurrence_identity_acceptance_law_parser_isolation,
+  occurrence_identity_acceptance_law_pattern_reachability,
+  occurrence_identity_acceptance_law_rebuilt_reference,
   occurrence_identity_acceptance_laws,
+  scoped_occurrence_ref_in_scope,
+  scoped_occurrence_ref_same_scope,
 }
-import v2.std.node {
-  NodeOccurrenceId,
-  SyntheticOccurrence,
-  MintedOccurrence,
-  node_occurrence_id_to_shared,
-  node_occurrence_id_from_shared,
-  NodeOccurrenceFacadeNarrowing,
-  FacadeRepresentable,
-  FacadeCannotRepresentProjected,
-}
+import v2.std.node { Atom, Node, TypeNode }
 
 test fn occurrence_identity_initial_allocator_starts_at_zero_holds() -> Bool {
   occurrence_id_allocator_initial().next_id == 0
@@ -107,50 +98,6 @@ test fn occurrence_identity_minted_and_synthetic_are_distinct_holds() -> Bool {
   minted_holds && synthetic_holds
 }
 
-test fn occurrence_identity_v2_synthetic_facade_round_trip_holds() -> Bool {
-  let facade: NodeOccurrenceId = SyntheticOccurrence
-  match node_occurrence_id_from_shared(
-    occurrence: node_occurrence_id_to_shared(occurrence: facade)
-  ) {
-    FacadeRepresentable { occurrence: narrowed } =>
-      match narrowed {
-        SyntheticOccurrence => true
-        _ => false
-      }
-    _ => false
-  }
-}
-
-test fn occurrence_identity_v2_minted_facade_round_trip_holds() -> Bool {
-  let facade: NodeOccurrenceId = MintedOccurrence {
-    id: std.occurrence_identity.OccurrenceId { value: 11 },
-  }
-  match node_occurrence_id_from_shared(
-    occurrence: node_occurrence_id_to_shared(occurrence: facade)
-  ) {
-    FacadeRepresentable { occurrence: narrowed } =>
-      match narrowed {
-        MintedOccurrence { id: id } => id.value == 11
-        _ => false
-      }
-    _ => false
-  }
-}
-
-test fn occurrence_identity_v2_shared_constructor_equivalence_holds() -> Bool {
-  let shared: std.occurrence_identity.NodeOccurrenceIdentity = std.occurrence_identity.OccurrenceMinted {
-    id: std.occurrence_identity.OccurrenceId { value: 12 },
-  }
-  match node_occurrence_id_from_shared(occurrence: shared) {
-    FacadeRepresentable { occurrence: facade } =>
-      match node_occurrence_id_to_shared(occurrence: facade) {
-        std.occurrence_identity.OccurrenceMinted { id: id } => id.value == 12
-        _ => false
-      }
-    _ => false
-  }
-}
-
 test fn occurrence_identity_acceptance_law_denominator_is_exact_holds() -> Bool {
   occurrence_identity_acceptance_laws == [
     occurrence_identity_acceptance_law_rebuilt_reference,
@@ -206,23 +153,30 @@ test fn occurrence_identity_projected_cause_is_not_in_a_foreign_scope_holds() ->
     && scoped_occurrence_ref_same_scope(left: cause, right: cause)
 }
 
-// THE V2 FACADE REFUSES THE PROJECTED ARM RATHER THAN FLATTENING IT TO SyntheticOccurrence. This is
-// the discriminating RED for the narrowing: were the conversion to collapse the arm, this witness
-// would go green on the FacadeRepresentable branch and the cause would be silently discarded at the
-// one seam built to preserve it.
-test fn occurrence_identity_v2_facade_refuses_projected_holds() -> Bool {
+// THE V2 NODE CARRIER HOLDS THE PROJECTED ARM ITSELF, which is the whole content of the facade
+// cut. Before it, v2.std.node.Node.occurrence_id was a two-arm compatibility coproduct and a
+// projector-created occurrence had no spelling on a Node at all: it had to be narrowed at the
+// conversion, and every caller that ignored the narrowing's refusal arm silently lost the cause.
+// This witness is the discriminating one -- it does not typecheck against the deleted facade, so
+// it goes RED against any reintroduction of a Node carrier that cannot represent a projection.
+test fn occurrence_identity_v2_node_carrier_holds_projected_occurrence_holds() -> Bool {
   let cause = ScopedOccurrenceRef {
     scope: oi_scope_a(),
     occurrence: OccurrenceId { value: 7 },
   }
-  match node_occurrence_id_from_shared(
-    occurrence: node_occurrence_identity_projected(
+  let n = Node {
+    kind: TypeNode { connective: Atom { identity: ^occurrence_identity_v2_carrier_probe } },
+    children: [],
+    occurrence_id: node_occurrence_identity_projected(
       id: OccurrenceId { value: 41 },
       caused_by: cause,
-    )
-  ) {
-    FacadeCannotRepresentProjected { id: id, caused_by: caused_by } =>
-      id.value == 41 && caused_by.occurrence.value == 7
+    ),
+  }
+  match n.occurrence_id {
+    OccurrenceProjected { id: id, caused_by: caused_by } =>
+      id.value == 41
+        && caused_by.occurrence.value == 7
+        && scoped_occurrence_ref_in_scope(occurrence_ref: caused_by, scope: oi_scope_a())
     _ => false
   }
 }

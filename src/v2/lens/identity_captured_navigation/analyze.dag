@@ -101,23 +101,34 @@ data mention_scan_note: String = "collect_value_identifiers_into skips ^grammar_
 
 data node_source_symbol_note: String = "The dag surface grammar stamps a caret-literal's referenced identifier (dag_grammar_caret_symbol_expr's right-hand terminal) with StampClass, not StampLexeme (src/v2/extdeps/languages/dag.dag), so node_atom_identity_optional on that terminal returns only the generic ^dag_token_ident token-CLASS symbol for every caret literal, never the specific text - a real grammar limitation this lens does not touch (out of scope: dag.dag's parse/identity machinery). node_source_symbol recovers the actual referenced identifier out-of-band via the same span/provenance machinery std.diagnostic's Locus and std.provenance's SpanIndex already provide for diagnostics: look up the node's minted occurrence in the SpanIndex, resolve it to a Textual\{file, extent: ByteRange\} locus, slice the original source text, and intern the slice as a Symbol. A synthetic (unminted) node or a non-textual/non-byte-range locus fail-closed to Absent - never a fabricated symbol."
 
+// AN OCCURRENCE THAT CARRIES AN ID IS RESOLVED THROUGH THE SPAN INDEX WHATEVER MINTED IT.
+// Both OccurrenceMinted and OccurrenceProjected name a real OccurrenceId, so both ask the index
+// the same question; only OccurrenceSynthetic has nothing to ask with. Special-casing the
+// projected arm to Absent would answer "no source symbol" for a cause the index may well have
+// recorded, which is a fabricated verdict rather than a fail-closed one.
+fn node_source_symbol_of_occurrence(occ_id: OccurrenceId, span_index: SpanIndex, source_text: String) -> Optional<Symbol> {
+  match span_index_resolve_textual_locus(index: span_index, id: occ_id) {
+    Violates { diagnostic: _ } => Absent
+    Holds { value: locus } =>
+      match locus {
+        Textual { file: _, extent: extent } =>
+          match extent {
+            WholeFile => Absent
+            ByteRange { start: start, end: end } =>
+              Present { value: symbol_intern_lexeme(lexeme: substring(s: source_text, start: start, end: end)) }
+          }
+        _ => Absent
+      }
+  }
+}
+
 fn node_source_symbol(node: Node, span_index: SpanIndex, source_text: String) -> Optional<Symbol> {
   match node.occurrence_id {
-    SyntheticOccurrence => Absent
-    MintedOccurrence { id: occ_id } =>
-      match span_index_resolve_textual_locus(index: span_index, id: occ_id) {
-        Violates { diagnostic: _ } => Absent
-        Holds { value: locus } =>
-          match locus {
-            Textual { file: _, extent: extent } =>
-              match extent {
-                WholeFile => Absent
-                ByteRange { start: start, end: end } =>
-                  Present { value: symbol_intern_lexeme(lexeme: substring(s: source_text, start: start, end: end)) }
-              }
-            _ => Absent
-          }
-      }
+    OccurrenceSynthetic => Absent
+    OccurrenceMinted { id: occ_id } =>
+      node_source_symbol_of_occurrence(occ_id: occ_id, span_index: span_index, source_text: source_text)
+    OccurrenceProjected { id: occ_id, caused_by: _ } =>
+      node_source_symbol_of_occurrence(occ_id: occ_id, span_index: span_index, source_text: source_text)
   }
 }
 

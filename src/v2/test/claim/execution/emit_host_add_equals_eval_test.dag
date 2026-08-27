@@ -1,5 +1,6 @@
 module v2.test.execution.emit_host_add_equals_eval
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
@@ -53,8 +54,7 @@ import v2.std.node {
   Named,
   Node,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.runtime {
   BindInterpreter,

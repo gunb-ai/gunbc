@@ -98,7 +98,7 @@ fn probe_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -111,7 +111,7 @@ fn dead_wire_decl() -> FnArrowDecl {
       children: [
         Edge { label: Positional, target: probe_atom(s: ^wiring_corpus_present_input) }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     params: [
       FnArrowParam {

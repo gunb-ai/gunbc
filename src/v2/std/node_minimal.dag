@@ -1,5 +1,6 @@
 module v2.std.node_minimal
 
+import std.occurrence_identity { NodeOccurrenceIdentity }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import v2.std.algebra { any }
@@ -10,8 +11,7 @@ import v2.std.node {
   Edge,
   Node,
   NodeKind,
-  NodeOccurrenceId,
-  Symbol
+  Symbol,
 }
 
 type NodeSupersetField
@@ -178,7 +178,7 @@ type MinimalResolvedNode
   = MrnSubstrateGraph {
       kind: NodeKind
       children: List<Edge>
-      occurrence_id: NodeOccurrenceId
+      occurrence_id: NodeOccurrenceIdentity
     }
   | MrnSurfaceExprLeaf {
       expr: SurfaceExprTag

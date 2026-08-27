@@ -32554,7 +32554,6 @@ pub fn emit_module_storage_binding_manifest(
     out.push_str("import std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.diagnostic { ByteRange, Textual }\n");
     out.push_str("import v2.std.integer { Int }\n");
-    out.push_str("import v2.std.node { MintedOccurrence }\n");
     out.push_str("import v2.std.provenance { FromSource, span_index_empty, span_index_record }\n");
     out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
@@ -32635,7 +32634,7 @@ fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> Strin
     let end = span.end.max(start);
     let occurrence_id = start.max(1);
     format!(
-        "span_index_record(\n  index: span_index_empty(),\n  id: MintedOccurrence {{ id: v2.std.node.OccurrenceId {{ value: {occurrence_id} }} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
+        "span_index_record(\n  index: span_index_empty(),\n  id: std.occurrence_identity.OccurrenceId {{ value: {occurrence_id} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
     )
 }
 

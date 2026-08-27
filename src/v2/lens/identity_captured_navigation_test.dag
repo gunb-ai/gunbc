@@ -9,7 +9,7 @@ fn synth_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -25,7 +25,7 @@ fn synth_conj(children: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: children,
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

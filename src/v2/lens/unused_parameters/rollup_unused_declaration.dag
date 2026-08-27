@@ -7,7 +7,7 @@ data rollup_function: Node = Node {
   children: [
     Edge { label: Named { name: ^rollup_edge_symbol }, target: rollup_parameter }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data rollup_contains_dependency: DependencyView = DependencyView {

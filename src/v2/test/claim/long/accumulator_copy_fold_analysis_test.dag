@@ -180,7 +180,7 @@ fn no_edges() -> List<Edge> {
 }
 
 fn opaque_head_node() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
 fn edge_target_is_mystery(e: Edge) -> Bool {

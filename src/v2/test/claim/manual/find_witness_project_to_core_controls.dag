@@ -85,10 +85,10 @@ fn surface_only_node(surface: Symbol) -> Node {
     children: [
       Edge {
         label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: v2.std.node.SyntheticOccurrence }
+        target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: v2.std.node.OccurrenceSynthetic }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -113,18 +113,18 @@ fn surface_wrapped_core_node(core: Symbol, surface: Symbol) -> Node {
           children: [
             Edge {
               label: v2.std.node.Named { name: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: core } }, children: [], occurrence_id: SyntheticOccurrence }
+              target: Node { kind: TypeNode { connective: Atom { identity: core } }, children: [], occurrence_id: OccurrenceSynthetic }
             },
             Edge {
               label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: SyntheticOccurrence }
+              target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: OccurrenceSynthetic }
             }
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -152,18 +152,18 @@ fn nested_project_to_core_node(nested_core: Symbol, nested_surface: Symbol) -> N
           children: [
             Edge {
               label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: nested_core } }, children: [], occurrence_id: SyntheticOccurrence }
+              target: Node { kind: TypeNode { connective: Atom { identity: nested_core } }, children: [], occurrence_id: OccurrenceSynthetic }
             },
             Edge {
               label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-              target: Node { kind: TypeNode { connective: Atom { identity: nested_surface } }, children: [], occurrence_id: SyntheticOccurrence }
+              target: Node { kind: TypeNode { connective: Atom { identity: nested_surface } }, children: [], occurrence_id: OccurrenceSynthetic }
             }
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -200,10 +200,10 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
     children: [
       Edge {
         label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
+        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: OccurrenceSynthetic }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 },
   candidates: control_candidate_set(
     candidates: [
@@ -212,10 +212,10 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
         children: [
           Edge {
             label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-            target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
+            target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: OccurrenceSynthetic }
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     ],
     closedness_evidence: Node {
@@ -223,10 +223,10 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
       children: [
         Edge {
           label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-          target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
+          target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: OccurrenceSynthetic }
         }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   ),
   derivation_algebra: Node {
@@ -234,10 +234,10 @@ data witness_project_to_core_rejects_different_connective_same_core_children: Bo
     children: [
       Edge {
         label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: SyntheticOccurrence }
+        target: Node { kind: TypeNode { connective: Atom { identity: ^connective_source_core } }, children: [], occurrence_id: OccurrenceSynthetic }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 },
   multiplicity_policy: UniqueOnly
 ) {
@@ -262,11 +262,11 @@ fn i32_value_set_interval_first() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_kind_interval } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -293,7 +293,7 @@ fn malformed_interval_value_set() -> Node {
     interval: Node {
       kind: TypeNode { connective: Atom { identity: ^malformed_interval_payload } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   )
 }
@@ -307,7 +307,7 @@ fn unbounded_value_set_with_extra_field() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_kind_unbounded } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       },
       Edge {
@@ -315,11 +315,11 @@ fn unbounded_value_set_with_extra_field() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_field_extra } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
