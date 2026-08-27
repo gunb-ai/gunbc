@@ -1,6 +1,6 @@
 module product.fabric.contention
 
-import std.types { Bool, Int, List }
+import std.types { Bool, Int, List, NonEmptyStr }
 import std.algebra { BoundedLattice, Ordering }
 import std.currency { CurrencyCode }
 import std.measure {
@@ -16,11 +16,14 @@ import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, fabric_ide
 import product.fabric.demand { Demand }
 import product.fabric.supply {
   SupplierOffer, GrantDuration, ExactGrantDuration, EstimatedGrantDuration,
+  UnobservedGrantDuration,
   DemandOfferAffordability,
   Affordable, AffordableUnderEstimate,
   QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch,
+  QuoteNotPriceableWithoutDuration,
+  QuotedTotalDerived, QuotedTotalNeedsDuration,
   offer_affordability_for, offer_quoted_total_for_grant,
-  billed_seconds, grant_duration_seconds,
+  billed_seconds,
 }
 
 // WHICH DEMAND WINS SCARCE CAPACITY. THE MIRROR OF SUPPLY SELECTION, AND THE
@@ -255,31 +258,62 @@ fn headroom_rate_comparison(
 // The duration coproduct is the authority for how well the duration is known,
 // and it is matched directly here.
 //
-// THE MATCH IS DELIBERATE WHERE A CALL WOULD HAVE DONE, and it is the only
-// reason it exists. grant_duration_seconds already extracts the seconds from
-// either arm, so classifying by calling it would be shorter. Matching means
-// that when supply.dag gains a third arm -- an unobserved duration, which the
-// fleet needs and which has no spelling in GrantDuration today -- THIS FOLD
-// STOPS COMPILING and somebody has to decide what contention does with a
-// duration nobody measured. A call would keep working and keep answering with a
-// number, which is the absorbing fallback: the fold always returns something,
-// so the measurement deficit never surfaces and never ranks for fixing.
+// THE MATCH IS DELIBERATE WHERE A CALL WOULD HAVE DONE, AND IT WORKED. An
+// earlier cut of this fold classified by calling the accessor that extracts the
+// seconds, which was shorter. Matching meant that when supply.dag gained a third
+// arm -- an unobserved duration, which the fleet needed and which had no
+// spelling in GrantDuration at the time -- THIS FOLD STOPPED COMPILING and
+// somebody had to decide what contention does with a duration nobody measured. A
+// call would have kept working and kept answering with a number, which is the
+// absorbing fallback: the fold always returns something, so the measurement
+// deficit never surfaces and never ranks for fixing.
 //
-// NEXT-RUNG TRIGGER, owned by the supply lane rather than this one: an
-// unobserved arm on GrantDuration. When it lands, the honest outcome here is a
-// refusal to rank rather than a substituted worst case -- refusing names the
-// remedy (measure the job) while a substituted number hides that anything is
-// missing. It is not modeled ahead of the carrier, because a refusal arm for a
-// state that has no spelling would be permanently unreachable and would read as
-// coverage.
+// THE TRIGGER FIRED. The arm landed with the supply lane's partiality work, this
+// fold refused to compile exactly as designed, and the prescribed outcome -- a
+// refusal to rank rather than a substituted worst case -- is what the projection
+// below now produces. The refusal arm was NOT modeled ahead of the carrier,
+// because a refusal for a state with no spelling would have been permanently
+// unreachable and would have read as coverage; it is modeled now because the
+// state exists and is reachable.
+//
+// THAT REACHABILITY IS NOT OBVIOUS AND IS WORTH STATING, because the natural
+// assumption is that an unmeasured duration cannot get this far. It can. A
+// QuotedFlatPerGrant quote prices the grant whole, so supply.dag totals it with
+// no duration at all and screens it Affordable -- deliberately, per its own
+// annotation. So a flat-priced, affordable, entirely unmeasured grant arrives
+// here on a live path: priced fine, and rankable by nothing, because the
+// occupancy denominator is what needs the measurement and the price never did.
 type OccupancyBasis
   = MeasuredOccupancy
   | ProjectedOccupancy
 
-fn occupancy_basis_of(duration: GrantDuration) -> OccupancyBasis {
+// THE TRIGGER ABOVE HAS FIRED, AND THIS IS THE FOLD IT NAMED. The unobserved
+// arm landed on GrantDuration, this fold stopped compiling, and the outcome the
+// annotation prescribed -- refuse to rank rather than substitute a worst case --
+// is what it now produces.
+//
+// The projection returns the seconds and the basis TOGETHER because they are one
+// fact read off one arm. Answering them as two values a caller pairs up would
+// let a measured duration be labelled projected, which is the authority
+// substitution the annotation above already caught once: both halves true and
+// only the arrow between them invented. Paired in the carrier, that state has no
+// spelling.
+//
+// The obligation travels out of the unobserved arm unchanged. Nothing here
+// authors a reason, because the supplier of the duration already stated one and
+// a second wording would be a second authority for one fact.
+type GrantDurationObservation
+  = DurationObserved { seconds: Second, basis: OccupancyBasis }
+  | DurationUnobserved { obligation: NonEmptyStr }
+
+fn grant_duration_observation(duration: GrantDuration) -> GrantDurationObservation {
   match duration {
-    ExactGrantDuration { seconds: _ } => MeasuredOccupancy
-    EstimatedGrantDuration { seconds: _ } => ProjectedOccupancy
+    ExactGrantDuration { seconds: s } =>
+      DurationObserved { seconds: s, basis: MeasuredOccupancy }
+    EstimatedGrantDuration { seconds: s } =>
+      DurationObserved { seconds: s, basis: ProjectedOccupancy }
+    UnobservedGrantDuration { obligation: why } =>
+      DurationUnobserved { obligation: why }
   }
 }
 
@@ -394,11 +428,31 @@ type AdmittedDemand<P> sole_constructor {
 // buyers who are perfectly distinguishable; the honest answer is that a grant
 // consuming no capacity is not contending for capacity, and whoever built it
 // has a duration defect to fix rather than an auction to run.
+//
+// DemandNotRankableWithoutDuration IS THE ARM BESIDE IT, AND KEEPING THEM APART
+// IS THE POINT. Both say the fold will not rank this pair, and their remedies
+// are opposite: a grant billing zero seconds is a duration DEFECT in whoever
+// built it, while an unmeasured grant is a duration nobody has OBSERVED, and the
+// second is repaired by measuring the job rather than by fixing anything. One
+// arm serving both would answer every unmeasured grant with a refusal that reads
+// as legitimate and names the wrong repair -- the worse failure, because a
+// caller acting on it looks for a bug that is not there.
+//
+// ONE ARM SERVES BOTH ROUTES INTO IT, and that is not the same collapse. A rate
+// quote refuses because no total can be derived; a flat quote totals fine and
+// refuses because no occupancy can be. Different stages, one underlying fact --
+// nobody measured the grant -- and one remedy. A second arm per route would be a
+// second name for one concept.
+//
+// The obligation is carried rather than authored. Whichever authority hit the
+// absence stated what would resolve it, and restating it here in this module's
+// own words would be a second account of one fact, free to drift from the first.
 type DemandAdmission<P>
   = DemandAdmitted { admitted: AdmittedDemand<P> }
   | DemandNotAffordable { refusal: DemandOfferAffordability }
   | QuoteExceedsReservationPrice { quoted: MoneyAmountMicro, reservation: MoneyAmountMicro }
   | GrantOccupiesNoBilledTime { duration: Second }
+  | DemandNotRankableWithoutDuration { obligation: NonEmptyStr }
 
 // The affordability verdict travels onto the admitted record rather than being
 // collapsed to a Bool, because affordable-under-a-known-total and
@@ -423,9 +477,63 @@ fn admit_demand_for_offer<P>(
       DemandNotAffordable { refusal: affordability }
     QuoteCurrencyMismatch { quoted: _, budgeted: _ } =>
       DemandNotAffordable { refusal: affordability }
-    Affordable => admit_priced_pair(demand: demand, offer: offer, duration: duration, affordability: affordability)
+    QuoteNotPriceableWithoutDuration { obligation: why } =>
+      DemandNotRankableWithoutDuration { obligation: why }
+    Affordable =>
+      admit_screened_pair(demand: demand, offer: offer, duration: duration, affordability: affordability)
     AffordableUnderEstimate { duration_seconds: _, projected_total: _ } =>
-      admit_priced_pair(demand: demand, offer: offer, duration: duration, affordability: affordability)
+      admit_screened_pair(demand: demand, offer: offer, duration: duration, affordability: affordability)
+  }
+}
+
+// WHERE THE PARTIALITY IS RESOLVED, AND IT IS RESOLVED ONCE. Two facts about
+// this pair can be absent, and both are absent for the SAME underlying reason:
+// nobody measured how long the grant runs. The duration yields no seconds, and a
+// rate quote yields no total. They are answered here, together, so that
+// admit_priced_pair below receives values rather than possibilities.
+//
+// THE ALTERNATIVE WAS TO MATCH INSIDE admit_priced_pair, and it is worse for a
+// reason that is about scope rather than taste: an admission fold holding a
+// duration it cannot read has to invent something to say about it, and every
+// candidate -- zero, the estimate, a substituted worst case -- is the fabrication
+// the unobserved arm exists to prevent. Resolving here means the fold below
+// cannot be reached with an unmeasured grant at all, so there is no arm to get
+// wrong.
+//
+// THE QuotedTotalNeedsDuration ARM CANNOT BE REACHED FROM HERE, because the
+// observation above has already established a bound and a rate quote totals over
+// any bound. It is answered rather than dropped, since offer_quoted_total_for_grant
+// is a shared authority and another caller can reach it with a raw unobserved
+// duration -- the same reason product.fabric.selection gives for answering the
+// unreachable priceability arm in its own screen. Both routes carry the
+// obligation their own authority stated, and neither invents one.
+fn admit_screened_pair<P>(
+  demand: Demand<P>,
+  offer: SupplierOffer<P>,
+  duration: GrantDuration,
+  affordability: DemandOfferAffordability,
+) -> DemandAdmission<P> {
+  match grant_duration_observation(duration: duration) {
+    DurationUnobserved { obligation: why } =>
+      DemandNotRankableWithoutDuration { obligation: why }
+    DurationObserved { seconds: s, basis: b } =>
+      match offer_quoted_total_for_grant(
+        quote: offer.quote,
+        duration: duration,
+        quantum: offer.billing_quantum,
+      ) {
+        QuotedTotalNeedsDuration { obligation: why } =>
+          DemandNotRankableWithoutDuration { obligation: why }
+        QuotedTotalDerived { amount: projected } =>
+          admit_priced_pair(
+            demand: demand,
+            offer: offer,
+            observed_seconds: s,
+            basis: b,
+            projected: projected,
+            affordability: affordability,
+          )
+      }
   }
 }
 
@@ -450,23 +558,20 @@ fn admit_demand_for_offer<P>(
 fn admit_priced_pair<P>(
   demand: Demand<P>,
   offer: SupplierOffer<P>,
-  duration: GrantDuration,
+  observed_seconds: Second,
+  basis: OccupancyBasis,
+  projected: MoneyAmountMicro,
   affordability: DemandOfferAffordability,
 ) -> DemandAdmission<P> {
-  let projected = offer_quoted_total_for_grant(
-    quote: offer.quote,
-    duration: duration,
-    quantum: offer.billing_quantum,
-  )
   let reservation = demand.admission.buy.reservation_price
   let occupancy = second(count: billed_seconds(
-    seconds: second_count(s: grant_duration_seconds(d: duration)),
+    seconds: second_count(s: observed_seconds),
     quantum_seconds: second_count(s: offer.billing_quantum),
   ))
   if money_amount_micro_count(m: projected) > money_amount_micro_count(m: reservation) {
     QuoteExceedsReservationPrice { quoted: projected, reservation: reservation }
   } else if second_count(s: occupancy) == 0 {
-    GrantOccupiesNoBilledTime { duration: grant_duration_seconds(d: duration) }
+    GrantOccupiesNoBilledTime { duration: observed_seconds }
   } else {
     DemandAdmitted {
       admitted: AdmittedDemand {
@@ -477,7 +582,7 @@ fn admit_priced_pair<P>(
           count: money_amount_micro_count(m: reservation) - money_amount_micro_count(m: projected),
         ),
         billed_occupancy: occupancy,
-        occupancy_basis: occupancy_basis_of(duration: duration),
+        occupancy_basis: basis,
         affordability: affordability,
       },
     }
