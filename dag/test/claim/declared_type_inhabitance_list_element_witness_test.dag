@@ -114,7 +114,7 @@ data undefined_name_source: String = "module probe_inhabit_reach\nimport std.typ
 // artifact of the probe rather than evidence about the name.
 data defined_name_source: String = "module probe_inhabit_reach_ok\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn mk() -> Rel { SameRev }\nfn probe() -> List<Rel> { [mk()] }\n"
 
-test fn w_undefined_name_at_the_same_position_still_refuses() -> Bool {
+test fn w_undefined_name_at_the_list_element_position_still_refuses() -> Bool {
   violation_count(source: undefined_name_source, wanted: "InternalError") > 0
     && violation_count(source: undefined_name_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
