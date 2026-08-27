@@ -53,6 +53,16 @@ enum Commands {
         entry: Option<String>,
     },
 
+    /// Run one target by its absolute label and report the standing its own producer
+    /// answers in. The label is exact: a target PATTERN refuses, and an unbound or
+    /// unknown target refuses rather than reporting a pass.
+    Test {
+        /// Absolute label of exactly one target, e.g.
+        /// `//gunbc/instruments:heads-reading-differential`.
+        #[arg(value_name = "LABEL")]
+        target: String,
+    },
+
     /// Execute a .dag program directly (interpreter)
     Run {
         /// Source root directories (searched recursively for .dag files)
@@ -616,6 +626,29 @@ fn main() {
             &args,
         )
         .apply(),
+
+        // THE TARGET DISPATCH SEAM, AND THE WHOLE ARM IS A CALL.
+        //
+        // There is deliberately no mode switch here and no arm per instrument: which producer a
+        // label names is decided by the registry in `target_invocation_host`, mirroring
+        // `gunbc.instrument_targets`, and the realization that runs it is selected one level
+        // below that. A second instrument adds a row there and nothing at all here.
+        //
+        // The status is the producer's own termination, not an aggregate verdict: 0 the reading
+        // held, 1 it did not, 2 no reading was taken. `gunbc.build_target`'s
+        // `test_standing_verdict` and the Blaze status export are both deliberately NOT consulted
+        // -- each refuses instrument producers by design, so either would answer a question this
+        // verb is not asking.
+        Commands::Test { target } => {
+            let outcome = cli_run::target_invocation_host::test_verb(&target);
+            Verdict {
+                status: cli_run::target_invocation_host::invocation_exit_status(
+                    outcome.termination,
+                ),
+                message: Some(outcome.message),
+            }
+            .apply()
+        }
 
         // The refusal names a CONDITION, not a branch. An earlier revision said "not
         // available on integration/cli-run-cut", which the merge itself would have

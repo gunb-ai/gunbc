@@ -226,6 +226,49 @@ fn render_label(l: Label) -> String {
   )
 }
 
+// Label is presently a freely constructible record, so an authored value can sit outside the
+// cited grammar. Structural equality and canonicality live here with that grammar: consumers
+// using render_label as a key need its documented parse(render(label)) round trip to hold.
+fn label_structural_eq(a: Label, b: Label) -> Bool {
+  let packages_equal = match a.package {
+    RootPackage => match b.package {
+      RootPackage => true
+      PackagePath { segments: _ } => false
+    }
+    PackagePath { segments: a_segments } => match b.package {
+      RootPackage => false
+      PackagePath { segments: b_segments } => a_segments == b_segments
+    }
+  }
+  packages_equal && (a.target.name == b.target.name)
+}
+
+// label_eq is deliberately NOT used here: package_eq renders both packages, so
+// PackagePath(["a", "b"]) and PackagePath(["a/b"]) compare equal. Canonicality instead
+// compares the segment structure that parse_label constructs. The result retains whether the
+// rendered spelling was outside the grammar or reparsed to different structure; those causes
+// have different remedies and must not collapse into one false bit.
+type LabelCanonicalityCause
+  = RenderedLabelRefused { cause: LabelRefusal }
+  | RenderedLabelStructureMismatch { reparsed: Label }
+
+type LabelCanonicality
+  = LabelCanonical
+  | LabelNonCanonical { cause: LabelCanonicalityCause }
+
+fn label_canonicality(label: Label) -> LabelCanonicality {
+  match parse_label(text: render_label(l: label)) {
+    LabelParsed { label: parsed } =>
+      if label_structural_eq(a: label, b: parsed) {
+        LabelCanonical {}
+      } else {
+        LabelNonCanonical { cause: RenderedLabelStructureMismatch { reparsed: parsed } }
+      }
+    LabelRefused { cause: cause } =>
+      LabelNonCanonical { cause: RenderedLabelRefused { cause: cause } }
+  }
+}
+
 fn package_eq(a: PackageName, b: PackageName) -> Bool {
   render_package(p: a) == render_package(p: b)
 }

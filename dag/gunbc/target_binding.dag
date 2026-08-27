@@ -1,0 +1,254 @@
+module gunbc.target_binding
+
+import extdeps.bazel.label {
+  Label, LabelCanonicalityCause, LabelCanonical, LabelNonCanonical,
+  render_label, label_canonicality,
+}
+import v2.std.optional { Optional, Present, Absent }
+import std.types { String }
+import std.integer { Int }
+
+// A TARGET AND THE MECHANISM THAT REALIZES IT ARE PEER FACTS. BuildTarget owns the stable graph
+// identity and dependency edges; this relation answers the separate realization question. In
+// particular, no command line, function name, or execution closure is carried here: selecting a
+// transport belongs to the later realization layer, not to either side of this model relation.
+type TargetProducer
+  = RequiredFloorProducer
+  | BazelProducer
+  | BehavioralReceiptPlanProducer
+  | BehavioralReceiptCensusProducer
+  | BehavioralReceiptSelftestProducer
+  | HeadsReadingDifferentialProducer
+
+type TargetBinding {
+  target: Label
+  producer: TargetProducer
+}
+
+// THE REGISTRY IS INDEXED ON THE LABEL'S CANONICAL RENDERING, which is derived from the one target
+// identity rather than accepted as a second key. Construction refuses duplicate targets, a second
+// producer for one target, and bindings for unknown targets. Lookup is then one map_get, never a
+// first-match scan through the population. sole_constructor keeps those admission facts attached
+// to the carrier: an external module cannot forge map contents that bypass the builder.
+type TargetBindingIndex sole_constructor {
+  targets_by_identity: Map<String, Label>
+  bindings_by_identity: Map<String, TargetBinding>
+}
+
+type TargetBindingIndexRefusal
+  = TargetLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
+  | DuplicateTargetIdentity { target: Label }
+  | DuplicateTargetBinding { target: Label }
+  | BindingNamesUnknownTarget { target: Label }
+
+type TargetBindingIndexBuild
+  = TargetBindingIndexReady { index: TargetBindingIndex }
+  | TargetBindingIndexRefused { cause: TargetBindingIndexRefusal }
+
+type TargetBindingIndexAcc {
+  index: TargetBindingIndex
+  refusal: Optional<TargetBindingIndexRefusal>
+}
+
+fn index_target(acc: TargetBindingIndexAcc, target: Label) -> TargetBindingIndexAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent => match label_canonicality(label: target) {
+      LabelNonCanonical { cause: cause } => TargetBindingIndexAcc {
+          index: acc.index
+          refusal: Present { value: TargetLabelNotCanonical { target: target, cause: cause } }
+        }
+      LabelCanonical => {
+        let key = render_label(l: target)
+        match map_get(acc.index.targets_by_identity, key) {
+          Present { value: _ } => TargetBindingIndexAcc {
+            index: acc.index
+            refusal: Present { value: DuplicateTargetIdentity { target: target } }
+          }
+          Absent => TargetBindingIndexAcc {
+            index: TargetBindingIndex {
+              targets_by_identity: map_insert(acc.index.targets_by_identity, key, target)
+              bindings_by_identity: acc.index.bindings_by_identity
+            }
+            refusal: Absent {}
+          }
+        }
+      }
+    }
+  }
+}
+
+fn index_binding(acc: TargetBindingIndexAcc, binding: TargetBinding) -> TargetBindingIndexAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent => match label_canonicality(label: binding.target) {
+      LabelNonCanonical { cause: cause } => TargetBindingIndexAcc {
+          index: acc.index
+          refusal: Present { value: TargetLabelNotCanonical {
+            target: binding.target,
+            cause: cause
+          } }
+        }
+      LabelCanonical => {
+        let key = render_label(l: binding.target)
+        match map_get(acc.index.targets_by_identity, key) {
+          Absent => TargetBindingIndexAcc {
+            index: acc.index
+            refusal: Present { value: BindingNamesUnknownTarget { target: binding.target } }
+          }
+          Present { value: _ } =>
+            match map_get(acc.index.bindings_by_identity, key) {
+              Present { value: _ } => TargetBindingIndexAcc {
+                index: acc.index
+                refusal: Present { value: DuplicateTargetBinding { target: binding.target } }
+              }
+              Absent => TargetBindingIndexAcc {
+                index: TargetBindingIndex {
+                  targets_by_identity: acc.index.targets_by_identity
+                  bindings_by_identity: map_insert(acc.index.bindings_by_identity, key, binding)
+                }
+                refusal: Absent {}
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn build_target_binding_index(
+  targets: List<Label>,
+  bindings: List<TargetBinding>
+) -> TargetBindingIndexBuild {
+  let empty = TargetBindingIndexAcc {
+    index: TargetBindingIndex {
+      targets_by_identity: empty_map()
+      bindings_by_identity: empty_map()
+    }
+    refusal: Absent {}
+  }
+  let targets_indexed = fold(targets, init: empty, f: fn(acc, target) {
+    index_target(acc: acc, target: target)
+  })
+  let bindings_indexed = fold(bindings, init: targets_indexed, f: fn(acc, binding) {
+    index_binding(acc: acc, binding: binding)
+  })
+  match bindings_indexed.refusal {
+    Present { value: cause } => TargetBindingIndexRefused { cause: cause }
+    Absent => TargetBindingIndexReady { index: bindings_indexed.index }
+  }
+}
+
+type TargetBindingLookup
+  = TargetProducerBound { binding: TargetBinding }
+  | KnownTargetBindingMissing { target: Label }
+  | TargetUnknown { target: Label }
+  | TargetLookupLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
+
+// Query admission repeats the canonicality decision deliberately. A typed key with a sole mint
+// would be preferable only if the substrate made that mint unforgeable; records and variants are
+// freely constructible here, so such a key would rename this validation while leaving callers able
+// to forge it. Until unforgeable construction exists, every boundary that turns a Label into the
+// rendered map key must refuse noncanonical input explicitly.
+fn target_binding_lookup(index: TargetBindingIndex, target: Label) -> TargetBindingLookup {
+  match label_canonicality(label: target) {
+    LabelNonCanonical { cause: cause } =>
+      TargetLookupLabelNotCanonical { target: target, cause: cause }
+    LabelCanonical => {
+    let key = render_label(l: target)
+    match map_get(index.targets_by_identity, key) {
+      Absent => TargetUnknown { target: target }
+      Present { value: _ } =>
+        match map_get(index.bindings_by_identity, key) {
+          Present { value: binding } => TargetProducerBound { binding: binding }
+          Absent => KnownTargetBindingMissing { target: target }
+        }
+    }
+  }
+  }
+}
+
+// PRODUCER OBSERVATIONS KEEP COMPLETION APART FROM WHAT WAS OBSERVED. None of these types decides
+// whether an observation blocks an aggregate. The four instruments are deliberately outside
+// //:required, so that policy has no honest row to add here.
+type BehavioralReceiptPlanObservation
+  = BehavioralReceiptAgreed
+  | BehavioralReceiptDiverged
+
+type BehavioralReceiptPlanRefusalCause
+  = ReceiptPlanMergeBaseUnresolvable
+  | ReceiptPlanChangedAuthoritySetUnreadable
+  | ReceiptPlanModuleCorpusUnreadable
+  | ReceiptPlanExecutionRefused
+
+type BehavioralReceiptPlanStanding
+  = BehavioralReceiptPlanCompleted { observation: BehavioralReceiptPlanObservation }
+  | BehavioralReceiptPlanNoSubject { head: String }
+  | BehavioralReceiptPlanRefused { cause: BehavioralReceiptPlanRefusalCause }
+
+type BehavioralReceiptCensusObservation {
+  modules_planned: Int
+  modules_in_population: Int
+  modules_out_of_scope: List<String>
+  functions_parsed: Int
+  functions_derivable: Int
+  functions_refused: Int
+  derived_calls: Int
+}
+
+type BehavioralReceiptCensusRefusalCause
+  = ReceiptCensusSourceCorpusUnreadable
+  | ReceiptCensusModuleParseRefused
+  | ReceiptCensusTypeReadRefused
+
+// Census constructs its subject from the source-root corpus supplied to the producer. There is no
+// external diff subject that can be absent: failure to construct or read that corpus is one of the
+// typed producer refusals below, while a completed partial census carries its out-of-scope
+// population in the observation rather than reporting subject absence.
+type BehavioralReceiptCensusStanding
+  = BehavioralReceiptCensusCompleted { observation: BehavioralReceiptCensusObservation }
+  | BehavioralReceiptCensusRefused { cause: BehavioralReceiptCensusRefusalCause }
+
+type BehavioralReceiptSelftestObservation
+  = BehavioralReceiptArmsDiscriminate
+  | BehavioralReceiptArmsDoNotDiscriminate
+
+type BehavioralReceiptSelftestRefusalCause
+  = ReceiptSelftestFixtureAuthorityUnreadable
+  | ReceiptSelftestFixturePlanningRefused
+  | ReceiptSelftestFixturePreconditionUnsatisfied
+  | ReceiptSelftestCandidateUnreadable
+  | ReceiptSelftestExecutionRefused
+
+// Selftest owns a fixed authored fixture and two fixed candidate arms, so it likewise has no
+// caller-selected subject that can be absent. An unreadable fixture, an underived discriminating
+// input, or an execution failure is a typed producer refusal; a completed control whose arms no
+// longer discriminate remains an observation.
+type BehavioralReceiptSelftestStanding
+  = BehavioralReceiptSelftestCompleted { observation: BehavioralReceiptSelftestObservation }
+  | BehavioralReceiptSelftestRefused { cause: BehavioralReceiptSelftestRefusalCause }
+
+type HeadsReadingDifferentialObservation {
+  modules_compared: Int
+  divergent: List<String>
+  narrowed: List<String>
+  regressed: List<String>
+  both_refused: List<String>
+}
+
+type HeadsReadingDifferentialSubjectCause
+  = DifferentialSourceRootAbsent
+  | DifferentialSourceRootUnreadable
+  | DifferentialSourcePopulationIndexRefused
+
+type HeadsReadingDifferentialRefusalCause
+  = DifferentialReadingExecutionRefused
+  | DifferentialObservationAssemblyRefused
+
+type HeadsReadingDifferentialStanding
+  = HeadsReadingDifferentialCompleted { observation: HeadsReadingDifferentialObservation }
+  | HeadsReadingDifferentialSubjectUnreached {
+      source_roots: List<String>
+      cause: HeadsReadingDifferentialSubjectCause
+    }
+  | HeadsReadingDifferentialRefused { cause: HeadsReadingDifferentialRefusalCause }

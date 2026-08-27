@@ -79,6 +79,20 @@ test fn witness_shell_on_bmc_typed_mismatch() -> Bool {
   ))
 }
 
+test fn witness_runner_local_probe_remote_transport_refuses_before_execution() -> Bool {
+  match host_effect_apply(
+    target: RunnerLocalHost,
+    effect: ProbeToolchainHomeInterference {},
+    evidence: host_effect_identity_evidence,
+    transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
+  ) {
+    NotConverged { reason: why, applied: _ } =>
+      string_contains(s: why, pattern: "requires LocalShell on RunnerLocalHost")
+        && string_contains(s: why, pattern: "SshShell")
+    Converged { evidence: _, applied: _ } => false
+  }
+}
+
 test fn witness_converge_policy_redrives_not_converged() -> Bool {
   directive_is_redrive(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
@@ -220,4 +234,3 @@ test fn witness_converge_plan_redrives_on_frontier() -> Bool {
     transport: LocalShell
   )))
 }
-
