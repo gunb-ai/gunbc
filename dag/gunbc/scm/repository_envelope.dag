@@ -349,6 +349,14 @@ fn mint_repository_commit_admitted(
 // interior node as a selection. Resolution now asks the keyed commit population. The key is carried
 // by the commit and remains the same when rows move; the fold is only a collection lookup and derives
 // no identity from traversal order.
+//
+// COST SHAPE: this lookup is O(n), and std.types.List's fold has no early-exit arm: after a match,
+// every remaining row is still visited while the accumulator carries the answer forward. The mint
+// performs one lookup for each non-root commit, so minting a chain of n commits is O(n^2). This is
+// declared rather than hidden behind the keyed vocabulary: the key makes references stable but does
+// not make a List a keyed index. Dissolve when the repository has one structural keyed carrier whose
+// lookup can stop at the key, not by adding a parallel Map that becomes a second authority over the
+// commit population.
 fn commit_at_reference(commits: List<RepositoryCommit>, reference: RepositoryCommitRef) -> RepositoryCommit? {
   fold(commits, init: none, f: fn(found, c) {
     match found {

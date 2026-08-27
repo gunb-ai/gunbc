@@ -4,9 +4,9 @@ module test.claim.scm_checkout_verb_witness
 // scm_object_store_witness; these claims are about SELECTION -- which commit a repository is
 // positioned at, what refuses, and what checkout does and does not depend on.
 //
-// Checkout does not consult ancestry. Internally constructed repositories cannot contain a commit
-// with a missing parent: mint_repository_commit requires the parent to be admitted first. External
-// bytes meet repository_envelope's permanent admission wall before checkout can observe them.
+// THE CLAIM THIS FILE EXISTS FOR is scm_ck_a_commit_with_a_missing_parent_still_checks_out. Checkout
+// does not consult ancestry: a fixture can mint a valid parent and child, then assemble an envelope
+// retaining only the child. The history is truncated while the child's program remains intact.
 
 import std.types { Bool, Int, String, List }
 import std.minted_identity { MintedId, MintedIdAllocator }
@@ -196,6 +196,66 @@ test fn scm_ck_a_lost_object_is_the_stores_fact_not_the_callers() -> Bool {
            }
     CheckoutReferenceUnresolved { reference: _ } => false
     RepositoryCheckedOut { repository: _, program: _ } => false
+  }
+}
+
+// Both commits are constructed through the mint while the parent is present. The envelope is a
+// separate, unsealed carrier, so retaining only the child is still authorable and demonstrates the
+// precise boundary of the construction wall: the mint admits one commit; it does not seal every
+// later assembly of a commit list.
+fn scm_ck_truncated_history_repository() -> RepositoryEnvelope {
+  let parent = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^parent))
+  let child = scm_ck_put(store: parent.store, n: scm_ck_atom(name: ^child))
+  let with_parent = scm_ck_minted_or(
+    repo: scm_ck_repository_with_store(store: child.store),
+    root: parent.identity,
+    message: "parent",
+    parent: none,
+  )
+  let with_child = scm_ck_minted_or(
+    repo: with_parent,
+    root: child.identity,
+    message: "child",
+    parent: Present { value: scm_ck_ref(ordinal: 0) },
+  )
+  match commit_at_reference(commits: with_child.commits, reference: scm_ck_ref(ordinal: 1)) {
+    Absent => with_child
+    Present { value: child_commit } =>
+      RepositoryEnvelope {
+        store: with_child.store,
+        commits: [child_commit],
+        commit_allocator: with_child.commit_allocator,
+        checked_out: none,
+      }
+  }
+}
+
+// Checkout reconstructs the selected commit's root closure, not its ancestry graph. Losing a parent
+// must not cost access to a program whose own closure remains complete.
+test fn scm_ck_a_commit_with_a_missing_parent_still_checks_out() -> Bool {
+  match checkout_repository_at(
+    repo: scm_ck_truncated_history_repository(),
+    reference: scm_ck_ref(ordinal: 1),
+  ) {
+    RepositoryCheckedOut { repository: _, program: _ } => true
+    CheckoutReferenceUnresolved { reference: _ } => false
+    CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
+  }
+}
+
+// The positive control proves that the same fixture's history really is truncated; otherwise the
+// checkout claim above could pass without demonstrating checkout's independence from ancestry.
+test fn scm_ck_that_same_commit_has_a_broken_ancestry() -> Bool {
+  let repo = scm_ck_truncated_history_repository()
+  match ancestry_walk(
+    start: scm_ck_ref(ordinal: 1),
+    history: repository_history(commits: repo.commits),
+  ) {
+    AncestryBrokenAt { commit: at, missing_parent: missing } =>
+      at == scm_ck_ref(ordinal: 1) && missing == scm_ck_ref(ordinal: 0)
+    AncestryTraced { chain: _ } => false
+    AncestryStartNotInHistory { start: _ } => false
+    AncestryRevisitsACommit { detected_from: _ } => false
   }
 }
 
