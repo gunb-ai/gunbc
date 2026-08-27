@@ -69,6 +69,8 @@ pub mod behavioral_receipt_host;
 #[path = "target_invocation_host.rs"]
 pub mod target_invocation_host;
 
+#[path = "generated_artifact_boundary_host.rs"]
+mod generated_artifact_boundary_host;
 #[path = "partition_crate_boundary_host.rs"]
 mod partition_crate_boundary_host;
 
@@ -48597,6 +48599,18 @@ pub use partition_crate_boundary_host::{
     compile_partition_crates, partition_package_names, run_partition_crate_boundary,
     BoundaryFileDisposition, PartitionCompileOutcome, PartitionCrateBoundaryOutcome,
     RenderedBoundaryFile, PARTITION_CRATE_PRODUCING_COMMAND,
+};
+
+/// The committed generated-artifact population, produced from `gunbc.generated_artifact_emit`
+/// and adjudicated against the tree.
+///
+/// Re-exported here rather than reached directly so every required phase addresses the producer
+/// through one surface, the way the regen and partition-crate paths do.
+pub use generated_artifact_boundary_host::{
+    artifact_disposition, artifact_disposition_name, boundary_divergent, boundary_is_clean,
+    generated_artifact_body_for_path, generated_artifact_ctx, run_generated_artifact_boundary,
+    AdjudicatedArtifact, ArtifactDisposition, GeneratedArtifactBoundaryOutcome,
+    GeneratedArtifactPathBody, UnadjudicatedArtifact, GENERATED_ARTIFACT_PRODUCING_COMMAND,
 };
 
 /// The emitted-closure compile phase: one entry's closure emitted, written as a crate, and
