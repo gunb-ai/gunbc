@@ -1,0 +1,489 @@
+module test.claim.customer_image_admission_witness
+
+import extdeps.container.engine {
+  ContainerEngine,
+  ContainerEngineDeployed,
+  ContainerEngineDeploymentRefused,
+  RootfulDaemon,
+  RootlessDaemon,
+  container_engine_deployment,
+}
+import extdeps.container.docker_engine { docker_engine }
+import extdeps.vendor.docker_inc { docker_inc }
+import extdeps.container.oci.descriptor { OciDescriptor }
+import extdeps.container.oci.digest { OciContentDigest, oci_sha256_content_digest }
+import extdeps.container.oci.image_config {
+  ContainerImageConfig,
+  ImageConfiguration,
+  ImageRootfs,
+  RootfsLayers,
+}
+import extdeps.container.oci.manifest { ImageManifest }
+import extdeps.container.oci.media_types {
+  media_type_oci_image_config_v1,
+  media_type_oci_image_layer_v1_tar_gzip,
+  media_type_oci_image_manifest_v1,
+  oci_image_schema_version,
+}
+import extdeps.container.oci.reference {
+  OciImageReference,
+  OciReferenceIdentifier,
+  OciRepositoryName,
+  ReferenceByDigest,
+  ReferenceByTag,
+  oci_repository_name,
+  oci_tag,
+  render_oci_image_reference,
+}
+import extdeps.toolchain.types { Aarch64, Architecture, Linux, X86_64 }
+import gunbc.fleet_container { fleet_container_execution_target }
+import product.fabric.customer_image {
+  ArchitectureUnsupported,
+  ConfigurationRefused,
+  CustomerImageAdmission,
+  CustomerImageAdmitted,
+  CustomerImageRefused,
+  CustomerSuppliedImage,
+  ExecutionTarget,
+  LayerCountDisagreement,
+  ManifestRefused,
+  NoStartCommand,
+  ReferenceNotDigestPinned,
+  TargetHasNoContainerEngine,
+  admit_customer_image,
+  customer_image_admitted,
+}
+import std.error_primitives { Ok, Err }
+import std.types { Bool, Int, List, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// HOW TO CHECK THAT THESE ROWS DISCRIMINATE, STATED AS A PROCEDURE RATHER THAN AS A TRANSCRIBED
+// RESULT, so a later reader re-derives it instead of trusting a number that has since rotted.
+//
+// Run this module through `claim_batch --claim-run`, then delete ONE check in
+// product.fabric.customer_image and run it again. Each of these three deletions must turn exactly
+// ONE row red and leave every other row green:
+//
+//   customer_image_layers_agree returning true unconditionally
+//     -> only w_layer_count_disagreement_is_refused_with_both_counts
+//   admit_customer_image skipping the digest-pin test
+//     -> only w_tag_reference_is_refused_unpinned
+//   admit_customer_image_platform skipping the architecture comparison
+//     -> only w_foreign_architecture_image_is_refused_naming_both_sides
+//
+// A deletion that turns NOTHING red means the row is agreeing with the fold's shape rather than
+// testing its decision; a deletion that turns SEVERAL red means the rows are not independent and
+// one defect would be reported three times. Both are failures of this file, not of the fold.
+
+// THE FIRST EXECUTING CONSUMER OF THE OCI MODEL.
+//
+// Nine OCI modules typechecked for months with zero product consumers: accept_image_manifest and
+// accept_image_configuration were never called by anything that ships. That is the
+// specification-without-execution state DESIGN section 5 names, and a join that only typechecked
+// would have reproduced it one layer up. Each case below drives the real admission fold and the
+// refusal cases are DISCRIMINATING: each one differs from the admitted case in exactly the fact its
+// refusal names, so an admission fold that stopped checking would go red here rather than quietly
+// widen.
+
+data fixture_config_hex: String = "1111111111111111111111111111111111111111111111111111111111111111"
+data fixture_layer_a_hex: String = "2222222222222222222222222222222222222222222222222222222222222222"
+data fixture_layer_b_hex: String = "3333333333333333333333333333333333333333333333333333333333333333"
+
+type FixtureCase
+  = WellFormedArm64Image
+  | TagReferencedImage
+  | ForeignArchitectureImage
+  | LayerCountDisagreementImage
+  | EmptyDiffIdsImage
+  | EmptyLayersImage
+  | NoStartCommandImage
+
+// A DELIBERATELY NARROWER ENGINE THAN ANY REAL PRODUCT ROW, so the refusing arm of
+// container_engine_deployment has a reachable red. It is a fixture and is not a claim about any
+// vendor's product: the vendor field is filled because ContainerEngine requires one.
+fn rootful_only_engine_fixture() -> ContainerEngine {
+  ContainerEngine {
+    vendor: docker_inc,
+    product_name: "rootful-only-fixture-engine",
+    privilege_modes: [RootfulDaemon],
+  }
+}
+
+fn fixture_descriptor(digest: OciContentDigest, config: Bool) -> OciDescriptor {
+  OciDescriptor {
+    mediaType: if config { media_type_oci_image_config_v1 } else { media_type_oci_image_layer_v1_tar_gzip },
+    digest: digest,
+    size: 1024,
+  }
+}
+
+fn fixture_manifest(config_digest: OciContentDigest, layers: List<OciContentDigest>) -> ImageManifest {
+  ImageManifest {
+    schemaVersion: oci_image_schema_version,
+    mediaType: media_type_oci_image_manifest_v1,
+    config: fixture_descriptor(digest: config_digest, config: true),
+    layers: map(layers, d => fixture_descriptor(digest: d, config: false)),
+  }
+}
+
+fn fixture_configuration(
+  architecture: Architecture,
+  diff_ids: List<OciContentDigest>,
+  cmd: List<String>,
+) -> ImageConfiguration {
+  ImageConfiguration {
+    architecture: architecture,
+    os: Linux,
+    config: Present {
+      value: ContainerImageConfig {
+        User: none,
+        Env: none,
+        Entrypoint: none,
+        Cmd: Present { value: cmd },
+        WorkingDir: none,
+        ExposedPorts: none,
+      }
+    },
+    rootfs: RootfsLayers { diff_ids: diff_ids },
+  }
+}
+
+fn fixture_repository() -> OciRepositoryName? {
+  match oci_repository_name(raw: "acme/build-image") {
+    Err { value: _ } => none
+    Ok { value: name } => Present { value: name }
+  }
+}
+
+fn fixture_identifier(case: FixtureCase, digest: OciContentDigest) -> OciReferenceIdentifier? {
+  match case {
+    TagReferencedImage =>
+      match oci_tag(raw: "latest") {
+        Err { value: _ } => none
+        Ok { value: tag } => Present { value: ReferenceByTag(tag) }
+      }
+    _ => Present { value: ReferenceByDigest(digest) }
+  }
+}
+
+fn fixture_architecture(case: FixtureCase) -> Architecture {
+  match case {
+    ForeignArchitectureImage => X86_64
+    _ => Aarch64
+  }
+}
+
+fn fixture_layer_digests(case: FixtureCase, a: OciContentDigest, b: OciContentDigest) -> List<OciContentDigest> {
+  match case {
+    EmptyLayersImage => []
+    LayerCountDisagreementImage => [a, b]
+    _ => [a]
+  }
+}
+
+fn fixture_diff_ids(case: FixtureCase, a: OciContentDigest, b: OciContentDigest) -> List<OciContentDigest> {
+  match case {
+    EmptyDiffIdsImage => []
+    _ => [a]
+  }
+}
+
+fn fixture_cmd(case: FixtureCase) -> List<String> {
+  match case {
+    NoStartCommandImage => []
+    _ => ["/usr/bin/build"]
+  }
+}
+
+fn fixture_image_from_parts(
+  case: FixtureCase,
+  repository: OciRepositoryName,
+  identifier: OciReferenceIdentifier,
+  config_digest: OciContentDigest,
+  a: OciContentDigest,
+  b: OciContentDigest,
+) -> CustomerSuppliedImage {
+  CustomerSuppliedImage {
+    reference: OciImageReference {
+      registry: none,
+      repository: repository,
+      identifier: identifier,
+    },
+    manifest: fixture_manifest(
+      config_digest: config_digest,
+      layers: fixture_layer_digests(case: case, a: a, b: b),
+    ),
+    configuration: fixture_configuration(
+      architecture: fixture_architecture(case: case),
+      diff_ids: fixture_diff_ids(case: case, a: a, b: b),
+      cmd: fixture_cmd(case: case),
+    ),
+  }
+}
+
+// Absent means the FIXTURE could not be built, never that admission said nothing. Every witness
+// below fails on Absent rather than treating it as a pass, so a broken fixture is a red.
+fn fixture_image(case: FixtureCase) -> CustomerSuppliedImage? {
+  match fixture_repository() {
+    Absent => none
+    Present { value: repository } =>
+      match oci_sha256_content_digest(hex: fixture_config_hex) {
+        Absent => none
+        Present { value: config_digest } =>
+          match oci_sha256_content_digest(hex: fixture_layer_a_hex) {
+            Absent => none
+            Present { value: a } =>
+              match oci_sha256_content_digest(hex: fixture_layer_b_hex) {
+                Absent => none
+                Present { value: b } =>
+                  match fixture_identifier(case: case, digest: a) {
+                    Absent => none
+                    Present { value: identifier } =>
+                      Present {
+                        value: fixture_image_from_parts(
+                          case: case,
+                          repository: repository,
+                          identifier: identifier,
+                          config_digest: config_digest,
+                          a: a,
+                          b: b,
+                        )
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE TARGET IS THE REAL FLEET, NOT A FIXTURE TARGET.
+//
+// srv1's architecture is read from its declared Ampere CPU and its engine from the surface, so the
+// foreign-architecture refusal below is a claim about what this fleet would actually do with an
+// amd64 image, not about a target authored to make the test pass.
+fn fixture_admission(case: FixtureCase) -> CustomerImageAdmission? {
+  match fleet_container_execution_target() {
+    Absent => none
+    Present { value: target } =>
+      match fixture_image(case: case) {
+        Absent => none
+        Present { value: image } =>
+          Present { value: admit_customer_image(image: image, target: target) }
+      }
+  }
+}
+
+fn admission_is_refused_with(case: FixtureCase, expected: Bool) -> Bool {
+  match fixture_admission(case: case) {
+    Absent => false
+    Present { value: admission } => customer_image_admitted(admission: admission) == expected
+  }
+}
+
+test fn w_fleet_declares_a_container_execution_target() -> Bool {
+  match fleet_container_execution_target() {
+    Absent => false
+    Present { value: target } =>
+      target.architecture == Aarch64
+        && target.os == Linux
+        && match target.engine {
+          Absent => false
+          Present { value: engine } => engine.privilege_mode == RootlessDaemon
+        }
+  }
+}
+
+test fn w_well_formed_digest_pinned_arm64_image_is_admitted() -> Bool {
+  admission_is_refused_with(case: WellFormedArm64Image, expected: true)
+}
+
+test fn w_tag_reference_is_refused_unpinned() -> Bool {
+  match fixture_admission(case: TagReferencedImage) {
+    Absent => false
+    Present { value: admission } =>
+      match admission {
+        CustomerImageAdmitted { image: _, engine: _ } => false
+        CustomerImageRefused { refusal: refusal } =>
+          match refusal {
+            ReferenceNotDigestPinned { reference_wire: wire } => wire == "acme/build-image:latest"
+            _ => false
+          }
+      }
+  }
+}
+
+test fn w_foreign_architecture_image_is_refused_naming_both_sides() -> Bool {
+  match fixture_admission(case: ForeignArchitectureImage) {
+    Absent => false
+    Present { value: admission } =>
+      match admission {
+        CustomerImageAdmitted { image: _, engine: _ } => false
+        CustomerImageRefused { refusal: refusal } =>
+          match refusal {
+            ArchitectureUnsupported { image: image_arch, target: target_arch } =>
+              image_arch == X86_64 && target_arch == Aarch64
+            _ => false
+          }
+      }
+  }
+}
+
+// THE CROSS-MODULE INVARIANT, AND THE ONLY WITNESS HERE THAT NEITHER OCI MODULE COULD CARRY.
+//
+// Both halves accept in isolation: two layers is a valid manifest and one diff_id is a valid
+// rootfs. Only the join sees that they describe different images.
+test fn w_layer_count_disagreement_is_refused_with_both_counts() -> Bool {
+  match fixture_admission(case: LayerCountDisagreementImage) {
+    Absent => false
+    Present { value: admission } =>
+      match admission {
+        CustomerImageAdmitted { image: _, engine: _ } => false
+        CustomerImageRefused { refusal: refusal } =>
+          match refusal {
+            LayerCountDisagreement { manifest_layers: layers, config_diff_ids: diff_ids } =>
+              layers == 2 && diff_ids == 1
+            _ => false
+          }
+      }
+  }
+}
+
+test fn w_empty_layers_manifest_is_refused_by_the_manifest_authority() -> Bool {
+  match fixture_admission(case: EmptyLayersImage) {
+    Absent => false
+    Present { value: admission } =>
+      match admission {
+        CustomerImageAdmitted { image: _, engine: _ } => false
+        CustomerImageRefused { refusal: refusal } =>
+          match refusal {
+            ManifestRefused { reason: _ } => true
+            _ => false
+          }
+      }
+  }
+}
+
+test fn w_empty_diff_ids_is_refused_by_the_image_config_authority() -> Bool {
+  match fixture_admission(case: EmptyDiffIdsImage) {
+    Absent => false
+    Present { value: admission } =>
+      match admission {
+        CustomerImageAdmitted { image: _, engine: _ } => false
+        CustomerImageRefused { refusal: refusal } =>
+          match refusal {
+            ConfigurationRefused { reason: _ } => true
+            _ => false
+          }
+      }
+  }
+}
+
+test fn w_image_with_no_entrypoint_and_no_cmd_is_refused() -> Bool {
+  match fixture_admission(case: NoStartCommandImage) {
+    Absent => false
+    Present { value: admission } =>
+      match admission {
+        CustomerImageAdmitted { image: _, engine: _ } => false
+        CustomerImageRefused { refusal: refusal } =>
+          match refusal {
+            NoStartCommand => true
+            _ => false
+          }
+      }
+  }
+}
+
+// A TARGET WITH NO ENGINE RUNS NOTHING, AND SAYS SO RATHER THAN ADMITTING.
+//
+// This is the fail-closed arm of the dissolution: the old surface could carry `Docker` and be
+// believed; a deployment that cannot be constructed produces no engine at all, and the admission
+// refuses instead of proceeding against a runtime nobody established exists.
+test fn w_target_without_an_engine_refuses_every_image() -> Bool {
+  match fixture_image(case: WellFormedArm64Image) {
+    Absent => false
+    Present { value: image } =>
+      match admit_customer_image(
+        image: image,
+        target: ExecutionTarget { architecture: Aarch64, os: Linux, engine: none },
+      ) {
+        CustomerImageAdmitted { image: _, engine: _ } => false
+        CustomerImageRefused { refusal: refusal } =>
+          match refusal {
+            TargetHasNoContainerEngine => true
+            _ => false
+          }
+      }
+  }
+}
+
+// THE ENGINE HUB REFUSES A MODE THE PRODUCT DOES NOT DECLARE, WHICH IS WHAT MAKES THE SURFACE'S
+// `none` MEAN SOMETHING. Docker Engine declares both modes, so both deploy; the refusing arm is
+// exercised against an engine row that declares only one.
+test fn w_engine_deployment_refuses_an_undeclared_privilege_mode() -> Bool {
+  match container_engine_deployment(engine: docker_engine, privilege_mode: RootlessDaemon) {
+    ContainerEngineDeploymentRefused { refusal: _ } => false
+    ContainerEngineDeployed { deployment: deployment } =>
+      deployment.privilege_mode == RootlessDaemon
+        && match container_engine_deployment(
+          engine: rootful_only_engine_fixture(),
+          privilege_mode: RootlessDaemon,
+        ) {
+          ContainerEngineDeployed { deployment: _ } => false
+          ContainerEngineDeploymentRefused { refusal: _ } => true
+        }
+  }
+}
+
+test fn w_reference_wire_renders_digest_form() -> Bool {
+  match fixture_image(case: WellFormedArm64Image) {
+    Absent => false
+    Present { value: image } =>
+      render_oci_image_reference(reference: image.reference)
+        == join(["acme/build-image@sha256:", fixture_layer_a_hex], "")
+  }
+}
+
+
+// THE REFERENCE GRAMMAR REFUSES WHAT THE DISTRIBUTION SPEC DOES NOT ADMIT.
+//
+// The separator alternatives are the discriminating part: "a__b" and "a-b" and "a.b" are names and
+// "a..b", "a___b" and a leading or trailing separator are not, so a predicate that merely allowed
+// the character class would go red on the second half of this witness.
+test fn w_repository_path_component_grammar_discriminates() -> Bool {
+  fixture_repository_accepts(raw: "acme/build-image")
+    && fixture_repository_accepts(raw: "a__b")
+    && fixture_repository_accepts(raw: "a.b")
+    && fixture_repository_accepts(raw: "a---b/c")
+    && !fixture_repository_accepts(raw: "a..b")
+    && !fixture_repository_accepts(raw: "a___b")
+    && !fixture_repository_accepts(raw: "-abc")
+    && !fixture_repository_accepts(raw: "abc-")
+    && !fixture_repository_accepts(raw: "Abc")
+    && !fixture_repository_accepts(raw: "")
+}
+
+fn fixture_repository_accepts(raw: String) -> Bool {
+  match oci_repository_name(raw: raw) {
+    Err { value: _ } => false
+    Ok { value: _ } => true
+  }
+}
+
+fn fixture_tag_accepts(raw: String) -> Bool {
+  match oci_tag(raw: raw) {
+    Err { value: _ } => false
+    Ok { value: _ } => true
+  }
+}
+
+test fn w_tag_grammar_discriminates_leading_character_and_length() -> Bool {
+  fixture_tag_accepts(raw: "latest")
+    && fixture_tag_accepts(raw: "v1.2.3-rc1")
+    && fixture_tag_accepts(raw: "_underscore")
+    && !fixture_tag_accepts(raw: ".leading-dot")
+    && !fixture_tag_accepts(raw: "-leading-hyphen")
+    && !fixture_tag_accepts(raw: "has/slash")
+    && !fixture_tag_accepts(raw: "")
+}
