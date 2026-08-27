@@ -1,5 +1,52 @@
 module gunbc.live_deploy.repository_convergence
 
+// WHAT THIS MODULE DOES NOT ESTABLISH, enumerated because the PR that lands it is APPROVED and the
+// gaps below are not defects a reviewer found and left -- they are obligations this construction
+// knowingly does not discharge. A capability whose limits are unstated gets cited for the whole
+// claim, which is the rung inflation DESIGN section 4b calls worse than sitting low.
+//
+// 1. NO WET EXECUTION EVIDENCE. Every witness over this module is a PURE adjudication over decoded
+//    observations the test authors. Not one calls repository_converge_wet, so nothing here shows the
+//    four git operations render and execute correctly together, or that the wet sequence produces
+//    the observations the pure adjudicator expects. The hermetic floor cannot supply it -- a shell
+//    operation is refused at shell.Test.IsExecutable before the subprocess is reached, and mocking
+//    the result would fabricate the exact observation the claim is about. What is owed is a
+//    deterministic scratch-repository matrix: detached primary A to B, packed and loose target-only
+//    dispatch refs surviving, linked worktrees surviving, a CAS race, a reset refusal after a
+//    successful CAS, unreadable HEAD/reflog/worktree observations, already-at-B over a stale index,
+//    and a wrong primary standing -- with a control proving replay consumed recorded observations
+//    rather than reaching live git.
+//
+// 2. THE POST-STATE IS NOT PROVED COHERENT, only consistent with a transition. The measured defect
+//    on the deployed tree is a THREE-WAY disagreement among HEAD, index and working tree, and this
+//    adjudication observes HEAD, refs, worktrees, the reflog and untracked residue. It does NOT
+//    observe the index tree or tracked working-tree cleanliness, so it cannot assert
+//    `index write-tree == candidate^{tree}` or `tracked tree clean against index`. Successful
+//    termination of `reset --hard` is not an independent readback of what it produced.
+//
+// 3. ConvergenceAlreadyAtCandidate IS WEAKER THAN IT READS. The wet path resets even when the
+//    pre-state HEAD already equals the candidate, so if that reset repairs a stale index or working
+//    tree the receipt still says "no transition performed" -- the operation may have done its most
+//    consequential repair while reporting it did nothing. Splitting a RepairedAtCandidate arm needs
+//    the coherence observations in (2) and lands with them.
+//
+// 4. PRE-MUTATION OBSERVABILITY IS PARTIAL. Only the ref enumeration is adjudicated readable before
+//    the first mutation; an unreadable worktree roster, HEAD or reflog is discovered AFTER the fetch,
+//    the CAS and the reset, when it is too late to be an admission rather than a report.
+//
+// 5. THE PRESERVATION JOIN IS ONE-WAY AND LOSSY. It compares refname plus objectname, so a symbolic
+//    ref that retargets while resolving to the same object passes, and refs ADDED during the
+//    transition are not noticed at all. Worktree preservation compares path and checkout binding and
+//    discards the linked worktree's HEAD object, `locked` and `prunable`. primary_path is also taken
+//    from the caller rather than derived from git's roster, so a wrong path exempts the wrong
+//    worktree -- which the primary/linked split declared in extdeps.git.worktree_enumeration closes.
+//
+// NOTHING HERE IS BOUND. No production caller reaches this module; gunbc.live_deploy.apply refuses
+// through repository_transition_admission while deployed_tree_repository_transition is
+// LegacyGitFileSync. These obligations are therefore prerequisites of the BINDING change, not
+// standing risks in the tree -- and that ordering is the reason they may be declared rather than
+// fixed here, not an excuse for having declared them.
+
 import std.types { String, Bool, Int, List, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
