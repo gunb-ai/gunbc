@@ -1,0 +1,317 @@
+module gunbc.live_deploy.repository_convergence
+
+import std.types { String, Bool, Int, List }
+import extdeps.git.enumeration {
+  GitRefIdentity,
+  GitRefSetObservation,
+  GitRefSetObserved,
+  GitRefSetReadRefused,
+  GitRefSetUndecodable,
+}
+import extdeps.git.worktree_enumeration {
+  GitWorktreeIdentity,
+  GitWorktreeCheckout,
+  GitWorktreeOnBranch,
+  GitWorktreeDetachedAt,
+  GitWorktreeBare,
+  GitWorktreeSetObservation,
+  GitWorktreeSetObserved,
+  GitWorktreeSetReadRefused,
+  GitWorktreeSetUndecodable,
+}
+
+// WHY THIS MODULE EXISTS, AS A MEASUREMENT RATHER THAN A PREFERENCE.
+//
+// The deployed-tree sync moves tracked bytes with rsync, moves `HEAD`/`objects`/`packed-refs`/`refs`
+// by copying them as FILES, and excludes `index` entirely. Those are three transports over one
+// repository, so nothing makes them agree. Measured on srv1 2026-08-27, `/opt/gunbc/gunbc` reports
+// 5650 divergent paths from `git status --porcelain`: 1964 tracked-and-staged-present but absent
+// from the worktree, 1731 present but unknown to HEAD, 1500 differing at BOTH levels. The first
+// status column is index-vs-HEAD and the second is worktree-vs-index, so both are wrong.
+//
+// THAT IS ONE DEPLOYMENT'S OUTPUT, NOT TWO RACING. No lease, queue or concurrency group addresses
+// it, which is why this cut is ordered ahead of the serialization work: the priority question is
+// whether ONE isolated execution can produce a valid target state, and for the file-copy
+// realization the answer is no.
+//
+// THE REPLACEMENT IS NOT "rsync PLUS THE INDEX". Copying `index` too would add a fourth file to the
+// set that must agree, and the index references object content and path timestamps, so a copy
+// between machines is exactly the fragile direction. The fix is to stop transporting repository
+// state at all and let git perform the transition, which is the only thing that owns all three
+// simultaneously.
+
+// THE PRE- AND POST-STATE ARE THE SAME SHAPE, so one type carries both and the adjudication below is
+// a comparison rather than two vocabularies that must be kept in step.
+type RepositoryState {
+  refs: GitRefSetObservation
+  worktrees: GitWorktreeSetObservation
+  head: String
+  reflog: String
+}
+
+// EVERY ARM HAS A DIFFERENT OWNER, which is the whole reason this is not a Bool.
+//
+// A CAS that lost (`ConvergenceBaseRefMoved`) means another actor moved the ref and the remedy is to
+// re-observe and retry; a refused update means git declined and the remedy is about the repository.
+// A ref that VANISHED is the packed-refs deletion trap and the remedy is a bug fix here. A worktree
+// that lost its binding stranded someone's dispatch attempt. Collapsing any of these into "failed"
+// would hand every one of them the same response.
+//
+// `ConvergenceHeadMovedWithoutReflog` is the arm that catches the defect this module replaces:
+// a file-level copy of `refs/**` moves HEAD and leaves no reflog entry, so a non-noop transition
+// whose reflog did not grow was not performed by git. A converged HEAD alone cannot distinguish
+// "git moved this" from "a file was written over it", and those are exactly the two states whose
+// conflation produced the 5650 divergent paths.
+type RepositoryConvergenceOutcome
+  = ConvergenceCompleted { candidate: String, refs_preserved: Int, worktrees_preserved: Int }
+  | ConvergenceAlreadyAtCandidate { candidate: String }
+  | ConvergencePreStateUnobservable { detail: String }
+  | ConvergencePostStateUnobservable { detail: String }
+  | ConvergenceBaseRefMoved { expected: String, observed: String }
+  | ConvergenceRefDisappeared { refname: String, objectname: String }
+  | ConvergenceWorktreeDisappeared { path: String }
+  | ConvergenceWorktreeRebound { path: String, detail: String }
+  | ConvergenceHeadNotAtCandidate { candidate: String, observed: String }
+  | ConvergenceHeadMovedWithoutReflog { candidate: String }
+
+fn convergence_ref_matches(identity: GitRefIdentity, refname: String, objectname: String) -> Bool {
+  identity.refname == refname && (identity.objectname as String) == objectname
+}
+
+fn convergence_refs_contain(refs: List<GitRefIdentity>, refname: String, objectname: String) -> Bool {
+  any(refs, r => convergence_ref_matches(identity: r, refname: refname, objectname: objectname))
+}
+
+fn convergence_refs_contain_name(refs: List<GitRefIdentity>, refname: String) -> Bool {
+  any(refs, r => r.refname == refname)
+}
+
+// PRESERVATION IS CHECKED BY NAME, NOT BY COUNT, and the difference is the whole check. Equal
+// cardinality is satisfied by a set that lost one ref and gained another, which is precisely what a
+// wholesale `packed-refs` replacement does. DESIGN section 5 says completeness is an identity join.
+//
+// THE BASE REF IS EXEMPT BY NAME because it is the ref this operation exists to move. Exempting it
+// by "whichever ref changed" would exempt the corruption too.
+fn convergence_first_lost_ref(
+  before: List<GitRefIdentity>,
+  after: List<GitRefIdentity>,
+  base_ref: String,
+) -> GitRefIdentity? {
+  let moved_or_lost = before |> filter(r =>
+    r.refname != base_ref && !convergence_refs_contain(
+      refs: after,
+      refname: r.refname,
+      objectname: r.objectname as String,
+    )
+  )
+  moved_or_lost.first()
+}
+
+fn convergence_checkout_binding(checkout: GitWorktreeCheckout) -> String {
+  match checkout {
+    GitWorktreeOnBranch { head: _, branch: b } => join(["branch:", b], "")
+    GitWorktreeDetachedAt { head: _ } => "detached"
+    GitWorktreeBare => "bare"
+  }
+}
+
+fn convergence_worktree_at(worktrees: List<GitWorktreeIdentity>, path: String) -> GitWorktreeIdentity? {
+  worktrees |> filter(w => w.path == path) |> first()
+}
+
+// THE PRIMARY IS EXEMPT FROM THE BINDING CHECK AND THE LINKED WORKTREES ARE NOT. The primary is the
+// tree being converged, so its head moves by design; every LINKED worktree is somebody's in-flight
+// dispatch attempt, and a transition that silently reboundedit -- or dropped its registration --
+// destroys work that has nothing to do with this release. Checking the primary the same way would
+// make the operation refuse its own effect; not checking the linked ones is the failure this arm
+// exists for.
+fn convergence_first_worktree_fault(
+  before: List<GitWorktreeIdentity>,
+  after: List<GitWorktreeIdentity>,
+  primary_path: String,
+) -> RepositoryConvergenceOutcome? {
+  let linked = before |> filter(w => w.path != primary_path)
+  let faults = linked |> filter(w =>
+    match convergence_worktree_at(worktrees: after, path: w.path) {
+      Absent => true
+      Present { value: seen } =>
+        convergence_checkout_binding(checkout: seen.checkout)
+          != convergence_checkout_binding(checkout: w.checkout)
+    }
+  )
+  match faults.first() {
+    Absent => Absent
+    Present { value: w } =>
+      match convergence_worktree_at(worktrees: after, path: w.path) {
+        Absent => Present { value: ConvergenceWorktreeDisappeared { path: w.path } }
+        Present { value: seen } =>
+          Present {
+            value: ConvergenceWorktreeRebound {
+              path: w.path,
+              detail: join([
+                "expected ", convergence_checkout_binding(checkout: w.checkout),
+                ", observed ", convergence_checkout_binding(checkout: seen.checkout),
+              ], ""),
+            },
+          }
+      }
+  }
+}
+
+fn convergence_refs_of(observation: GitRefSetObservation) -> List<GitRefIdentity>? {
+  match observation {
+    GitRefSetObserved { refs: rs } => Present { value: rs }
+    GitRefSetReadRefused { exit_code: _, stderr: _ } => Absent
+    GitRefSetUndecodable { record_index: _, raw_record: _, reason: _ } => Absent
+  }
+}
+
+fn convergence_worktrees_of(observation: GitWorktreeSetObservation) -> List<GitWorktreeIdentity>? {
+  match observation {
+    GitWorktreeSetObserved { worktrees: ws } => Present { value: ws }
+    GitWorktreeSetReadRefused { exit_code: _, stderr: _ } => Absent
+    GitWorktreeSetUndecodable { entry_index: _, raw_entry: _, reason: _ } => Absent
+  }
+}
+
+fn convergence_ref_observation_detail(observation: GitRefSetObservation) -> String {
+  match observation {
+    GitRefSetObserved { refs: _ } => ""
+    GitRefSetReadRefused { exit_code: c, stderr: e } =>
+      join(["ref enumeration refused (exit ", to_string(c), "): ", e], "")
+    GitRefSetUndecodable { record_index: i, raw_record: r, reason: why } =>
+      join(["ref record ", to_string(i), " undecodable (", why, "): ", r], "")
+  }
+}
+
+fn convergence_worktree_observation_detail(observation: GitWorktreeSetObservation) -> String {
+  match observation {
+    GitWorktreeSetObserved { worktrees: _ } => ""
+    GitWorktreeSetReadRefused { exit_code: c, stderr: e } =>
+      join(["worktree enumeration refused (exit ", to_string(c), "): ", e], "")
+    GitWorktreeSetUndecodable { entry_index: i, raw_entry: r, reason: why } =>
+      join(["worktree entry ", to_string(i), " undecodable (", why, "): ", r], "")
+  }
+}
+
+// THE ORDER OF THESE CHECKS IS LOAD-BEARING, not stylistic. Unobservability is adjudicated FIRST,
+// because every later comparison would otherwise read an absent observation as a preserved-nothing
+// set and report preservation it never established -- the empty-observation narrow DESIGN names,
+// where a read that could not answer becomes the answer. Only once both sides are genuinely
+// observed does comparing them mean anything.
+//
+// THE REFLOG CHECK IS LAST AND ONLY ON A NON-NOOP. An already-converged repository legitimately adds
+// no entry, so requiring growth unconditionally would refuse the correct no-op -- and a check that
+// fires on the healthy case is worse than absent, because it will be disabled.
+fn repository_convergence_verdict(
+  before: RepositoryState,
+  after: RepositoryState,
+  candidate: String,
+  base_ref: String,
+  primary_path: String,
+) -> RepositoryConvergenceOutcome {
+  match convergence_refs_of(observation: before.refs) {
+    Absent =>
+      ConvergencePreStateUnobservable {
+        detail: convergence_ref_observation_detail(observation: before.refs),
+      }
+    Present { value: refs_before } =>
+      match convergence_worktrees_of(observation: before.worktrees) {
+        Absent =>
+          ConvergencePreStateUnobservable {
+            detail: convergence_worktree_observation_detail(observation: before.worktrees),
+          }
+        Present { value: worktrees_before } =>
+          match convergence_refs_of(observation: after.refs) {
+            Absent =>
+              ConvergencePostStateUnobservable {
+                detail: convergence_ref_observation_detail(observation: after.refs),
+              }
+            Present { value: refs_after } =>
+              match convergence_worktrees_of(observation: after.worktrees) {
+                Absent =>
+                  ConvergencePostStateUnobservable {
+                    detail: convergence_worktree_observation_detail(observation: after.worktrees),
+                  }
+                Present { value: worktrees_after } =>
+                  repository_convergence_compare(
+                    refs_before: refs_before,
+                    refs_after: refs_after,
+                    worktrees_before: worktrees_before,
+                    worktrees_after: worktrees_after,
+                    before_head: before.head,
+                    after_head: after.head,
+                    before_reflog: before.reflog,
+                    after_reflog: after.reflog,
+                    candidate: candidate,
+                    base_ref: base_ref,
+                    primary_path: primary_path,
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn repository_convergence_compare(
+  refs_before: List<GitRefIdentity>,
+  refs_after: List<GitRefIdentity>,
+  worktrees_before: List<GitWorktreeIdentity>,
+  worktrees_after: List<GitWorktreeIdentity>,
+  before_head: String,
+  after_head: String,
+  before_reflog: String,
+  after_reflog: String,
+  candidate: String,
+  base_ref: String,
+  primary_path: String,
+) -> RepositoryConvergenceOutcome {
+  if after_head != candidate {
+    ConvergenceHeadNotAtCandidate { candidate: candidate, observed: after_head }
+  } else {
+    match convergence_first_lost_ref(before: refs_before, after: refs_after, base_ref: base_ref) {
+      Present { value: lost } =>
+        ConvergenceRefDisappeared {
+          refname: lost.refname,
+          objectname: lost.objectname as String,
+        }
+      Absent =>
+        match convergence_first_worktree_fault(
+          before: worktrees_before,
+          after: worktrees_after,
+          primary_path: primary_path,
+        ) {
+          Present { value: fault } => fault
+          Absent =>
+            if before_head == candidate {
+              ConvergenceAlreadyAtCandidate { candidate: candidate }
+            } else {
+              if before_reflog == after_reflog {
+                ConvergenceHeadMovedWithoutReflog { candidate: candidate }
+              } else {
+                ConvergenceCompleted {
+                  candidate: candidate,
+                  refs_preserved: count(refs_before),
+                  worktrees_preserved: count(worktrees_before),
+                }
+              }
+            }
+        }
+    }
+  }
+}
+
+fn repository_convergence_converged(outcome: RepositoryConvergenceOutcome) -> Bool {
+  match outcome {
+    ConvergenceCompleted { candidate: _, refs_preserved: _, worktrees_preserved: _ } => true
+    ConvergenceAlreadyAtCandidate { candidate: _ } => true
+    ConvergencePreStateUnobservable { detail: _ } => false
+    ConvergencePostStateUnobservable { detail: _ } => false
+    ConvergenceBaseRefMoved { expected: _, observed: _ } => false
+    ConvergenceRefDisappeared { refname: _, objectname: _ } => false
+    ConvergenceWorktreeDisappeared { path: _ } => false
+    ConvergenceWorktreeRebound { path: _, detail: _ } => false
+    ConvergenceHeadNotAtCandidate { candidate: _, observed: _ } => false
+    ConvergenceHeadMovedWithoutReflog { candidate: _ } => false
+  }
+}
