@@ -52,7 +52,6 @@ import gunbc.compiler_frontend_program_status {
   ClassOutstanding,
   ClassNotDerivable,
   StandingRow,
-  Underivability,
   DerivableOnlyViaPrerequisites,
   StartabilityClass,
   ClassStartable,
@@ -308,6 +307,14 @@ fn startability_matches(a: Startability, b: Startability) -> Bool {
          x => any(startability_blocking_members(s: a), y => y == x))
 }
 
+// THIS ARM ALSO SUBSUMES A DELETED NAMED-TRIO ARM, and that arm's own red during a plant is what
+// condemned it. It asserted three specific mixed milestones plus the literal three. When the S4a
+// rewire plant ran it went red beside the real wiring control and I reported that as corroboration
+// -- the graph relation working. It was not. S4a becoming Clear removes a known blocker, and
+// LEGITIMATE S4a enrolment produces exactly the same transition, so the arm was snapshotting the
+// present graph and I had read its snapshot behaviour as evidence of correctness. The relation
+// below states the same thing over all fourteen milestones instead of three names and a literal,
+// and moves with the program instead of pinning it.
 test fn every_milestone_startability_agrees_with_its_prerequisite_standings() -> Bool {
   all(program_milestones,
     m => startability_matches(a: milestone_startability(m: m), b: expected_startability(m: m)))
@@ -570,14 +577,3 @@ test fn a_mixed_prerequisite_set_preserves_both_identities() -> Bool {
         && any(blocking, b => b == "the emitter milestone")
   }
 }
-
-// THE NAMED-TRIO ARM WAS DELETED HERE, and its own red during a plant is what condemned it. It
-// asserted three specific mixed milestones plus the literal three. When the S4a rewire plant ran,
-// this arm went red beside the real wiring control and I reported that as corroboration -- the
-// graph relation working. It was not. S4a becoming Clear removes a known blocker, and LEGITIMATE
-// S4a enrolment produces exactly the same transition, so the arm was snapshotting the present graph
-// and I had read its snapshot behaviour as evidence of correctness.
-//
-// Everything it was reaching for is now carried by every_milestone_startability_agrees_with_its_
-// prerequisite_standings above, which states the same relation over all fourteen milestones instead
-// of three names and a literal, and moves with the program instead of pinning it.
