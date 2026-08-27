@@ -2,10 +2,10 @@ module test.claim.repository_convergence_witness_test
 
 import std.types { String, Bool, List }
 import extdeps.git.enumeration {
-  GitRefSetObservation, GitRefSetObserved, GitRefSetReadRefused, GitRefSetUndecodable, git_ref_set_observation_of,
+  GitRefSetObservation, GitRefSetReadRefused, git_ref_set_observation_of,
 }
 import extdeps.git.worktree_enumeration {
-  GitWorktreeSetObservation, GitWorktreeSetObserved, git_worktree_set_observation_of,
+  GitWorktreeSetObservation, git_worktree_set_observation_of,
 }
 import gunbc.live_deploy.repository_convergence {
   RepositoryState,
@@ -275,41 +275,3 @@ test fn a_head_short_of_the_candidate_refuses() -> Bool {
   }
 }
 
-test fn diag_refs_decode() -> Bool {
-  match refs_wire(records: [dispatch_ref_record(), base_ref_record(oid: old_sha)]) {
-    GitRefSetObserved { refs: rs } => count(rs) == 2
-    _ => false
-  }
-}
-
-test fn diag_refs_not_undecodable() -> Bool {
-  match refs_wire(records: [base_ref_record(oid: old_sha)]) {
-    GitRefSetUndecodable { record_index: _, raw_record: _, reason: _ } => false
-    _ => true
-  }
-}
-
-test fn diag_worktrees_decode() -> Bool {
-  match worktrees_wire(entries: [primary_entry(oid: old_sha), linked_entry()]) {
-    GitWorktreeSetObserved { worktrees: ws } => count(ws) == 2
-    _ => false
-  }
-}
-
-test fn diag_worktrees_single() -> Bool {
-  match worktrees_wire(entries: [primary_entry(oid: old_sha)]) {
-    GitWorktreeSetObserved { worktrees: ws } => count(ws) == 1
-    _ => false
-  }
-}
-
-test fn diag_primary_path_is_bare() -> Bool {
-  match worktrees_wire(entries: [primary_entry(oid: old_sha)]) {
-    GitWorktreeSetObserved { worktrees: ws } =>
-      match ws.first() {
-        Present { value: w } => w.path == primary
-        Absent => false
-      }
-    _ => false
-  }
-}
