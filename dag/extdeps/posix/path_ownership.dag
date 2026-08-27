@@ -1,7 +1,8 @@
 module extdeps.posix.path_ownership
 
 import std.types { String, Bool }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.identity { PosixOwnerSpec, posix_owner_spec_text }
 
@@ -10,6 +11,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/chown.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.path_ownership",
+      decl_name: "PathOwnershipIntent",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // OWNERSHIP CONVERGENCE, MODELED AS A DECISION RATHER THAN AS A PROCESS EXIT.

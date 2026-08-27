@@ -250,6 +250,37 @@ type EmissionMeasurement
       cargo_lines_scanned: Int
     }
 
+// THE SUBJECT PROJECTION, and it lives here rather than in a consumer because this module owns the
+// coproduct's shape. A consumer that matched these five arms to reach the subject would hold a
+// second copy of that shape and would have to be edited whenever an arm lands -- the duplication a
+// review of the ratchet's own verdict predicates already objected to once.
+//
+// EmissionSubjectUnestablished is the ONE arm carrying no subject, and it is exactly the arm where
+// establishing the subject is what failed. So the absence is a real state rather than a gap: an
+// unobserved subject is not the subject of nothing.
+type EmissionSubjectCarried
+  = SubjectCarried { subject: EmissionMeasurementSubject }
+  | SubjectNotCarried { entry: String }
+
+fn emission_measurement_subject(m: EmissionMeasurement) -> EmissionSubjectCarried {
+  match m {
+    EmissionSubjectUnestablished { entry: e, stage: _, cause: _ } => SubjectNotCarried { entry: e }
+    EmissionUnreached { subject: sub, stage: _, cause: _ } => SubjectCarried { subject: sub }
+    EmissionCargoUnreached { subject: sub, stage: _, cause: _, emit_diagnostics: _, emitted_files: _ } =>
+      SubjectCarried { subject: sub }
+    EmissionEmitRefused { subject: sub, exit_code: _, emit_diagnostics: _, emitted_files: _ } =>
+      SubjectCarried { subject: sub }
+    EmissionMeasured {
+      subject: sub,
+      emitted_files: _,
+      emit_diagnostics: _,
+      cargo_clean: _,
+      cargo_diagnostics: _,
+      cargo_lines_scanned: _
+    } => SubjectCarried { subject: sub }
+  }
+}
+
 // The measurement is COMPLETE whenever the instrument reached a verdict about the entry, which
 // includes an entry the compiler refused. It is INCOMPLETE only where the instrument itself could
 // not run. Conflating the two is how an instrument reports its own breakage as a finding about

@@ -1,0 +1,26 @@
+module gunbc.toolchain_home_interference_probe
+
+import gunbc.host_effect {
+  ProbeToolchainHomeInterference,
+  RunnerLocalHost,
+  LocalShell,
+  host_effect_identity_evidence,
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.realization_reconcile { Converged, NotConverged }
+
+// RunnerLocalHost identifies the foreign executor running this job. The probe touches only its
+// runner-local fixture and the current job's CARGO_HOME. LocalShell is the local host transport identity, not a shell
+// payload: ProbeToolchainHomeInterference has no String command field.
+func toolchain_home_interference_probe_wet() -> ProcessExit {
+  match host_effect_apply(
+    target: RunnerLocalHost,
+    effect: ProbeToolchainHomeInterference {},
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+  ) {
+    Converged { evidence: _, applied: _ } => ExitSuccess
+    NotConverged { reason: why, applied: _ } => exit_failure(reason: why)
+  }
+}

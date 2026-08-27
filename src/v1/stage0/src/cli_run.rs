@@ -55,6 +55,11 @@ pub(crate) mod materialization_provider_consumer;
 mod phase_profile;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
+// The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
+// the emitted crate's exported surface is unchanged; the obligation is enrolled in
+// `gunbc.target_invocation_seed_growth`.
+#[path = "target_invocation_host.rs"]
+pub mod target_invocation_host;
 
 #[path = "partition_crate_boundary_host.rs"]
 mod partition_crate_boundary_host;
@@ -3202,16 +3207,40 @@ pub(crate) fn brace_delta(line: &str) -> i32 {
 
 type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
+/// THE PANICKING WRAPPER, RETAINED FOR CALLERS WHOSE INPUTS ARE ALREADY
+/// INVARIANT-ESTABLISHED. New callers on a user-supplied path must use
+/// `try_build_module_index` -- a missing root, an unreadable directory or a non-UTF-8
+/// source is an ORDINARY, USER-CAUSED condition and owes a typed located refusal, not a
+/// panic four frames down (DESIGN §5).
 fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
+    try_build_module_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// The fallible core. Every filesystem condition and every corpus-authority violation
+/// returns a located `Err` instead of unwinding.
+fn try_build_module_index(source_roots: &[String]) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let anchored_root = anchor_source_root(root);
         let root_path = std::path::Path::new(&anchored_root);
+        if !root_path.exists() {
+            return Err(format!(
+                "source root does not exist: {root} (anchored to {})",
+                root_path.display()
+            ));
+        }
+        if !root_path.is_dir() {
+            return Err(format!(
+                "source root is not a directory: {root} (anchored to {}) -- --source-root names \
+                 a directory to walk, not a file",
+                root_path.display()
+            ));
+        }
         let mut dag_files = Vec::new();
-        collect_dag_files(root_path, &mut dag_files);
+        collect_dag_files_result(root_path, &mut dag_files)?;
         for path in dag_files {
             let content = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+                .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
             if let Some(module_path) = extract_module_path(&content) {
                 let rel_path = module_index_path_key(&path);
                 let rel_forward = rel_path.clone();
@@ -3224,14 +3253,11 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
                         if root_idx > 0 {
                             continue;
                         }
-                        panic!(
-                            "{}",
-                            module_path_collision_panic_message(
-                                &module_path,
-                                &existing.path,
-                                &rel_path,
-                            )
-                        );
+                        return Err(module_path_collision_panic_message(
+                            &module_path,
+                            &existing.path,
+                            &rel_path,
+                        ));
                     }
                     continue;
                 }
@@ -3245,22 +3271,28 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
             }
         }
     }
-    index
+    Ok(index)
 }
 
 /// `primary-precedence` pool indexing: the first root is authoritative; later roots
 /// fill only modules not already present (matches `gunbc compile --dependency-pool-index
 /// primary-precedence` in `dag_compile_clean_transport`).
 fn build_module_index_primary_precedence(source_roots: &[String]) -> ModuleSourceIndex {
+    try_build_module_index_primary_precedence(source_roots).unwrap_or_else(|e| panic!("{e}"))
+}
+
+fn try_build_module_index_primary_precedence(
+    source_roots: &[String],
+) -> Result<ModuleSourceIndex, String> {
     let mut index = ModuleSourceIndex::new();
     if source_roots.is_empty() {
-        return index;
+        return Ok(index);
     }
-    index_source_root_into_module_index(&source_roots[0], &mut index, false);
+    try_index_source_root_into_module_index(&source_roots[0], &mut index, false)?;
     for root in &source_roots[1..] {
-        index_source_root_into_module_index(root, &mut index, true);
+        try_index_source_root_into_module_index(root, &mut index, true)?;
     }
-    index
+    Ok(index)
 }
 
 fn index_source_root_into_module_index(
@@ -3268,16 +3300,31 @@ fn index_source_root_into_module_index(
     index: &mut ModuleSourceIndex,
     pool_fill_only: bool,
 ) {
+    try_index_source_root_into_module_index(root, index, pool_fill_only)
+        .unwrap_or_else(|e| panic!("{e}"))
+}
+
+fn try_index_source_root_into_module_index(
+    root: &str,
+    index: &mut ModuleSourceIndex,
+    pool_fill_only: bool,
+) -> Result<(), String> {
     let root_path = std::path::Path::new(root);
     if !root_path.exists() {
-        panic!("source root does not exist: {}", root);
+        return Err(format!("source root does not exist: {root}"));
+    }
+    if !root_path.is_dir() {
+        return Err(format!(
+            "source root is not a directory: {root} -- --source-root names a directory to \
+             walk, not a file"
+        ));
     }
     let mut dag_files = Vec::new();
-    collect_dag_files(root_path, &mut dag_files);
+    collect_dag_files_result(root_path, &mut dag_files)?;
     let mut within_root: HashMap<String, String> = HashMap::new();
     for path in dag_files {
         let content = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+            .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         if let Some(module_path) = extract_module_path(&content) {
             let rel_path = path.to_string_lossy().to_string();
             if pool_fill_only {
@@ -3286,17 +3333,17 @@ fn index_source_root_into_module_index(
                 }
             } else if let Some(existing) = index.get(&module_path) {
                 if existing.path != rel_path {
-                    panic!(
+                    return Err(format!(
                         "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
                         module_path, existing.path, rel_path
-                    );
+                    ));
                 }
             }
             if let Some(existing_path) = within_root.get(&module_path) {
-                panic!(
+                return Err(format!(
                     "duplicate module path '{}' within source root '{}': declared in both '{}' and '{}'",
                     module_path, root, existing_path, rel_path
-                );
+                ));
             }
             within_root.insert(module_path.clone(), rel_path.clone());
             index.insert(
@@ -3308,6 +3355,7 @@ fn index_source_root_into_module_index(
             );
         }
     }
+    Ok(())
 }
 
 fn load_compile_clean_entry_sources(
@@ -5341,6 +5389,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         }
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
+        CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { .. } => {
+            "DataReferenceVisibilityBudgetExceeded"
+        }
+        CompilerDiagnostic::ParameterDefaultFormNotAdmitted { .. } => {
+            "ParameterDefaultFormNotAdmitted"
+        }
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => {
             "AmbiguousAnonymousRecordLiteral"
         }
@@ -5399,6 +5453,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
+        CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name, .. } => name.clone(),
+        CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter, .. } => parameter.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates, .. } => {
             candidates.iter().cloned().collect::<Vec<_>>().join("|")
         }
@@ -7571,6 +7627,187 @@ mod entry_admission_tests {
         }
     }
 
+    /// SOURCE DISCOVERY REFUSES; IT DOES NOT PANIC.
+    ///
+    /// Every arm below was a `panic!` on the compile transaction's own path until this
+    /// change. A missing root, a file named where a directory belongs, an unreadable
+    /// source -- these are ORDINARY USER-CAUSED conditions, and DESIGN §5 owes them a
+    /// typed located refusal rather than `rc=101` with no phase and no cause.
+    ///
+    /// THE RED IS AUTHORABLE AND WAS OBSERVED BEFORE IT WAS WRITTEN: #9242's atomicity
+    /// test panicked with exactly `source root does not exist` because its fixture was
+    /// not yet committed. These arms would each have unwound the same way.
+    ///
+    /// A `#[should_panic]` test would assert the OLD behaviour; these assert the new one,
+    /// so they go red both if the panic returns AND if the refusal loses its phase.
+    #[test]
+    fn a_missing_source_root_refuses_at_source_discovery_instead_of_panicking() {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/definitely-not-a-real-root")],
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        });
+        let (phase, cause) = match &run.disposition {
+            CompileDisposition::NotExecuted {
+                earlier_phase,
+                cause,
+            } => (earlier_phase.clone(), cause.clone()),
+            other => panic!("expected NotExecuted, got {other:?}"),
+        };
+        assert_eq!(phase, "source-discovery", "cause: {cause}");
+        assert!(
+            cause.contains("source root does not exist"),
+            "the refusal must name the condition, not merely fail: {cause}"
+        );
+    }
+
+    /// THE GUARD'S OWN DISCRIMINATING RED, and it is a different claim from the three above.
+    /// Those establish that the refusal is TYPED AND LOCATED. This one establishes that the
+    /// refusal does not leave thread-local telemetry ARMED behind it -- the leak review 56292
+    /// found on two new arms, and that already existed on `subject-read` before this change.
+    ///
+    /// IT GOES RED WITHOUT THE GUARD. Delete the `Drop` impl, or return before `take()`, and
+    /// `resolution_silent_pick_is_enabled` is still true here: the enable at the top of the
+    /// transaction ran, the early return skipped every hand-written `disable`, and the flag
+    /// outlives the transaction that armed it. That is the state this assertion forbids, and
+    /// it was reachable on `origin/main`.
+    #[test]
+    fn a_refused_transaction_leaves_no_telemetry_armed() {
+        assert!(
+            !crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "precondition: the flag must be clear before the transaction arms it, or this test \
+             cannot tell an armed leak from an inherited one"
+        );
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/definitely-not-a-real-root")],
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        });
+        assert!(
+            matches!(run.disposition, CompileDisposition::NotExecuted { .. }),
+            "the arm under test is the REFUSAL path; a completed compile would exercise \
+             `take()` instead and prove nothing about early return"
+        );
+        assert!(
+            !crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "the refused transaction left resolution-silent-pick telemetry ARMED; the session \
+             guard's Drop did not run or was bypassed"
+        );
+    }
+
+    /// NESTING IS REFUSED BEFORE THE DESTRUCTIVE RESET, AND THIS TEST IS ABOUT THE *BEFORE*.
+    ///
+    /// A fixture asserting only that a second arm panics is not enough, and that is what the
+    /// first version of this test was. The assertion could sit AFTER
+    /// `resolution_silent_pick_enable`'s reset and such a test would still pass -- loudly
+    /// refusing re-entry while having already destroyed the enclosing transaction's counters.
+    /// Panicking and preserving are two different claims and only the second is the one worth
+    /// having.
+    ///
+    /// So this asserts the enclosing session SURVIVES the rejected attempt: observations taken
+    /// before and after the refusal must BOTH still be in the telemetry that `take` returns.
+    /// It goes red if the wall is moved after the reset, which the panic-only form does not.
+    ///
+    /// WHAT THIS DOES NOT COVER, stated because the wall's placement is a real limit and not an
+    /// oversight: `v1_rt::resolution_silent_pick_enable` is `pub`, so a direct caller of the raw
+    /// primitive still bypasses this and destroys an outer population. Closing that means putting
+    /// the assertion in the primitive itself, ahead of its reset -- and the primitive is
+    /// generated, so its authority is `src/v1/runtime_rust.dag` and the change carries the regen
+    /// chain with it. That is this class's next-rung trigger, not something this test hides.
+    #[test]
+    fn a_rejected_nested_session_leaves_the_enclosing_transaction_intact() {
+        fn observe(name: &str) {
+            crate::v1_rt::resolution_silent_pick_record_global_bare_lcp_pick(
+                "fixture.env".to_string(),
+                name.to_string(),
+                2,
+                "fixture.chosen".to_string(),
+            );
+        }
+
+        let outer = SilentPickSession::enable();
+        observe("before_the_rejected_attempt");
+
+        let nested = std::panic::catch_unwind(SilentPickSession::enable);
+        assert!(
+            nested.is_err(),
+            "arming a second session inside an armed one must refuse; it silently reset the \
+             enclosing transaction's telemetry instead"
+        );
+
+        assert!(
+            crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "the rejected attempt disarmed the enclosing session"
+        );
+        observe("after_the_rejected_attempt");
+
+        let telemetry = outer.take();
+        let seen: std::vec::Vec<&str> = telemetry
+            .global_bare_lcp_picks
+            .iter()
+            .map(|site| site.name.as_str())
+            .collect();
+        assert_eq!(
+            seen,
+            vec!["before_the_rejected_attempt", "after_the_rejected_attempt"],
+            "the enclosing transaction's observations did not survive the rejected nested \
+             attempt; the refusal happened AFTER the destructive reset, not before it"
+        );
+
+        assert!(
+            !crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "`take` must return the session to inactive"
+        );
+        let fresh = SilentPickSession::enable().take();
+        assert!(
+            fresh.global_bare_lcp_picks.is_empty(),
+            "a fresh session inherited the previous transaction's observations"
+        );
+    }
+
+    /// A FILE WHERE A DIRECTORY BELONGS IS ITS OWN STATE, not "missing". Collapsing the two
+    /// would tell an author to create a path that already exists.
+    #[test]
+    fn a_file_named_as_a_source_root_refuses_and_says_it_is_not_a_directory() {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/v2_emission_gate/green/subject.dag")],
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        });
+        let (phase, cause) = match &run.disposition {
+            CompileDisposition::NotExecuted {
+                earlier_phase,
+                cause,
+            } => (earlier_phase.clone(), cause.clone()),
+            other => panic!("expected NotExecuted, got {other:?}"),
+        };
+        assert_eq!(phase, "source-discovery", "cause: {cause}");
+        assert!(
+            cause.contains("not a directory"),
+            "a file root must be distinguished from a missing one: {cause}"
+        );
+    }
+
+    /// THE POSITIVE CONTROL. Without it, both refusals above would still pass if discovery
+    /// had simply stopped working for every input.
+    #[test]
+    fn a_valid_source_root_still_completes_through_the_fallible_route() {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            source_roots: vec![ws("fixtures/v2_emission_gate/green")],
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
+        });
+        assert!(
+            matches!(run.disposition, CompileDisposition::Completed { .. }),
+            "the fallible route must still compile a good tree: {:?}",
+            run.disposition.tag()
+        );
+    }
+
     /// THE ALL-OR-NOTHING PROPERTY, WITH A RED THAT IS ACTUALLY AUTHORABLE.
     ///
     /// The CLI writes a tree only after the AGGREGATE disposition is `Completed`, so one
@@ -7775,6 +8012,72 @@ mod entry_admission_tests {
             "an absent file and a file outside the root are different facts"
         );
         assert!(cause.contains("does not exist"), "{cause}");
+    }
+}
+
+// ARMING A THREAD-LOCAL ACROSS A FALLIBLE TRANSACTION IS A LEAK WAITING FOR THE NEXT AUTHOR.
+// `resolution_silent_pick_enable` sets a thread-local that stays set until someone calls
+// `disable`, and the compile transaction it wraps has SIX early returns between the two.
+// Keeping them paired by hand is a discipline, and the discipline had ALREADY FAILED before
+// this guard existed: the `subject-read` arm returns without disabling on `origin/main`, and
+// review 56292 caught two more that this PR added. Three leaks, two authors, one pattern.
+//
+// So the pairing is made structural rather than remembered (DESIGN §5, construction over
+// validation): arming returns a guard, every exit path drops it, and `take` is the one way to
+// consume the telemetry on the success path. An arm that forgets to disable is now unwritable
+// -- there is nothing to forget.
+struct SilentPickSession {
+    armed: bool,
+}
+
+impl SilentPickSession {
+    // NESTING IS REFUSED HERE RATHER THAN ACCOMMODATED, and the reason is a property of the
+    // primitive rather than a preference about guards.
+    //
+    // The ordinary law for a thread-local guard is that `Drop` restores the value the guard found
+    // on entry, never a blind `false` -- and this repository already has that idiom in
+    // `v1_rt::with_type_ref_hit_ne_bind_measure`, which does prev/set/restore. It is correct
+    // there because that flag is NON-DESTRUCTIVE.
+    //
+    // `resolution_silent_pick_enable` is destructive: its FIRST statement resets the telemetry to
+    // default. So by the time an inner session could restore an outer session's flag, the outer
+    // session's accumulated counters are already gone. A save-and-restore guard would then leave
+    // the flag `true` over silently zeroed telemetry -- an outer transaction reporting "no silent
+    // picks observed" when what actually happened is that its observations were discarded. That is
+    // a fabricated plausible output, and it is strictly worse than the state it replaces.
+    //
+    // So the double-arm is made LOUD instead. This is a programming-error invariant, not an
+    // input-derived condition: no input to the compile transaction can reach it, only a code edit
+    // that arms the flag around a call to `compile_emission`. Nesting is not reachable in
+    // production today -- `main.rs`'s other `resolution_silent_pick_enable` is the legacy
+    // `--source-dir` arm, which sits DOWNSTREAM of the `--source-root` transaction's
+    // `std::process::exit(0)` rather than around it -- but it is authorable in a fixture, which is
+    // the reachability test that decides whether a wall is a wall or a decoration.
+    fn enable() -> Self {
+        assert!(
+            !crate::v1_rt::resolution_silent_pick_is_enabled(),
+            "resolution-silent-pick telemetry was already armed when this compile transaction \
+             tried to arm it; `resolution_silent_pick_enable` RESETS the counters, so proceeding \
+             would silently discard the enclosing transaction's observations and report the \
+             emptied result as its own"
+        );
+        crate::v1_rt::resolution_silent_pick_enable();
+        Self { armed: true }
+    }
+
+    // Consumes the session AND the telemetry together, so the success path cannot both read
+    // the counters and leave the flag set.
+    fn take(mut self) -> crate::v1_rt::SilentPickTelemetry {
+        self.armed = false;
+        crate::v1_rt::resolution_silent_pick_disable()
+    }
+}
+
+impl Drop for SilentPickSession {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = crate::v1_rt::resolution_silent_pick_disable();
+        }
     }
 }
 
@@ -8232,25 +8535,47 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         }
     }
 
-    crate::v1_rt::resolution_silent_pick_enable();
+    let silent_pick_session = SilentPickSession::enable();
     // ONE INDEX BUILD, NOT TWO. The closure loader and the census fill both need the
     // module index, and calling `load_sources_for_entry_with_pool_index` and then building
     // a second index for the census parsed ~3,800 modules twice per invocation (review
     // 55167). Building it here and handing the SAME index to both also removes the
     // possibility that the closure and the census are computed against different
     // populations, which is a correctness property and not only a cost one.
+    // SOURCE DISCOVERY IS FALLIBLE ON THIS PATH AND ONLY ON THIS PATH. A missing root, a
+    // file where a directory was named, an unreadable directory, a non-UTF-8 source, or a
+    // module-path collision are ORDINARY USER-CAUSED conditions -- they owe a typed located
+    // refusal, not a panic four frames down in the index walk (DESIGN §5, fail-closed).
+    //
+    // FOUND BY EXECUTION, NOT BY READING: the atomicity test in #9242 panicked with
+    // `source root does not exist: fixtures/atomic_materialization` because its fixture was
+    // not yet committed -- an ordinary authoring mistake that produced `rc=101`, no phase and
+    // no located cause. Review had independently claimed this site; the panic is the receipt.
+    //
+    // THE PANICKING WRAPPERS SURVIVE for callers whose inputs are already
+    // invariant-established; this is the one route that takes a path straight from a CLI
+    // argument, so it is the one that must refuse instead.
     let index: Rc<MultiEntryIndex> = if primary_precedence {
-        Rc::new(build_multi_entry_index_primary_precedence(source_roots))
+        match try_build_multi_entry_index_primary_precedence(source_roots) {
+            Ok(idx) => Rc::new(idx),
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "source-discovery", cause)
+            }
+        }
     } else {
         // Strict routes through the process-shared index, so a second `--entry` compile in
         // one process is a cache hit rather than a rebuild.
-        process_shared_index(source_roots)
+        match try_process_shared_index(source_roots) {
+            Ok(idx) => idx,
+            Err(cause) => {
+                return compile_not_executed(&request.subject, started, "source-discovery", cause)
+            }
+        }
     };
     let closure = match &request.subject {
         CompileSubject::Entry(path) => match load_sources_for_entry_with_pool(&index, path) {
             Ok(closure) => closure,
             Err(e) => {
-                let _ = crate::v1_rt::resolution_silent_pick_disable();
                 return compile_not_executed(
                     &request.subject,
                     started,
@@ -8323,7 +8648,6 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             report_moduleless_dag_entry_skips(&moduleless);
 
             if entry_sources.is_empty() {
-                let _ = crate::v1_rt::resolution_silent_pick_disable();
                 return compile_not_executed(
                     &request.subject,
                     started,
@@ -8366,7 +8690,6 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             match extend_sources_to_both_closure_fixpoint(import_closure, &index) {
                 Ok(closure) => closure,
                 Err(e) => {
-                    let _ = crate::v1_rt::resolution_silent_pick_disable();
                     return compile_not_executed(
                         &request.subject,
                         started,
@@ -8421,7 +8744,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             result: v1_compiler_compile::emit_resolved_for_target(resolved.clone(), target.clone()),
         })
         .collect();
-    let silent_pick = crate::v1_rt::resolution_silent_pick_disable();
+    let silent_pick = silent_pick_session.take();
 
     // THE REFUSAL IS OVER EVERY TARGET, NOT THE FIRST. Emission is per target, so a target
     // that emits nothing or emits a blocking diagnostic must stop the line even when an
@@ -10737,6 +11060,13 @@ fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
 /// identity. The divergence census walls that site with parent-owned `Rc` identity;
 /// the class-wide next rung is canonical `SourceFile` identity at construction.
 pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
+    try_process_shared_index(source_roots).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Fallible twin of `process_shared_index`. The MEMO IS ONLY WRITTEN ON SUCCESS -- a failed
+/// discovery must not install a partial index that every later caller in the process would
+/// then read as complete.
+pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntryIndex>, String> {
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
@@ -10749,10 +11079,14 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
         })
     });
     if let Some(idx) = existing {
-        return idx;
+        return Ok(idx);
     }
     let build_started = std::time::Instant::now();
-    let idx = Rc::new(build_multi_entry_index(&roots));
+    let idx = Rc::new(new_multi_entry_index_shell(
+        try_build_module_index(&roots)?,
+        &roots,
+        None,
+    ));
     discovery_phase_totals::add(
         &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
         build_started.elapsed(),
@@ -10760,7 +11094,7 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     PROCESS_RESOLVE_INDEX.with(|s| {
         *s.borrow_mut() = Some((roots_key, idx.clone()));
     });
-    idx
+    Ok(idx)
 }
 
 pub fn resolve_entry_graph_shared(
@@ -11837,6 +12171,17 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
         source_roots,
         None,
     )
+}
+
+/// Fallible twin of the above, for the compile transaction. See `try_build_module_index`.
+fn try_build_multi_entry_index_primary_precedence(
+    source_roots: &[String],
+) -> Result<MultiEntryIndex, String> {
+    Ok(new_multi_entry_index_shell(
+        try_build_module_index_primary_precedence(source_roots)?,
+        source_roots,
+        None,
+    ))
 }
 
 pub fn build_multi_entry_index_with_shared_caches(
@@ -13020,92 +13365,6 @@ pub fn render_typecheck_concluded_line_mirror(
     )
 }
 
-/// Snapshot of the floor's active-batch progress, sampled by the detached
-/// floor-memory heartbeat thread. Armed only when `entry_total` is known and
-/// non-zero — never a fabricated 0-of-0 (observation law 2 / §5).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HeartbeatFeedSnapshot {
-    pub batch_index: u64,
-    pub batch_label: String,
-    pub entry_done: u64,
-    pub entry_total: u64,
-}
-
-struct HeartbeatFeedState {
-    batch_index: u64,
-    batch_label: String,
-    /// `None` while a discovery batch has entered but its roster entry-count is
-    /// not yet known — the heartbeat thread skips emit until this is `Some(n>0)`.
-    entry_total: Option<u64>,
-    entry_done: AtomicU64,
-}
-
-/// Process-wide feed the floor-memory heartbeat samples. Updated at batch-enter
-/// (label + total when known) and at each `index_schedule_entry_completed` (and
-/// SingleClaim completion) — the existing per-entry point, never a parallel counter.
-static HEARTBEAT_FEED: Mutex<Option<HeartbeatFeedState>> = Mutex::new(None);
-
-/// Enter a floor batch. `entry_total = Some(n)` arms the feed when `n > 0`;
-/// `None` leaves it pending (discovery: total filled once the roster is known).
-/// Resets `entry_done` to 0. A zero total is refused (§5: never fabricate 0-of-0).
-pub fn heartbeat_feed_enter_batch(batch_index: u64, label: &str, entry_total: Option<u64>) {
-    let total = match entry_total {
-        Some(0) => None,
-        other => other,
-    };
-    let mut g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
-    *g = Some(HeartbeatFeedState {
-        batch_index,
-        batch_label: label.to_string(),
-        entry_total: total,
-        entry_done: AtomicU64::new(0),
-    });
-}
-
-/// Fill the entry total once a discovery roster's entry-group count is known.
-/// No-op when `total == 0` (refuses to arm a 0-of-0). No-op when no batch is open.
-pub fn heartbeat_feed_set_entry_total(total: u64) {
-    if total == 0 {
-        return;
-    }
-    let mut g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
-    if let Some(state) = g.as_mut() {
-        state.entry_total = Some(total);
-    }
-}
-
-/// Record one completed entry (discovery source-file grain, or one SingleClaim).
-/// Caps at `entry_total` when known so a late double-complete cannot invent
-/// "entry N+1 of N".
-pub fn heartbeat_feed_entry_completed() {
-    let g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
-    if let Some(state) = g.as_ref() {
-        let prev = state.entry_done.fetch_add(1, Ordering::Relaxed);
-        if let Some(total) = state.entry_total {
-            if prev >= total {
-                // Undo the overshoot — saturating at total.
-                state.entry_done.store(total, Ordering::Relaxed);
-            }
-        }
-    }
-}
-
-/// The armed snapshot, or `None` when no batch is open / total still pending.
-/// The heartbeat thread skips emit on `None` rather than printing a fabricated
-/// progress line.
-pub fn heartbeat_feed_snapshot() -> Option<HeartbeatFeedSnapshot> {
-    let g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
-    let state = g.as_ref()?;
-    let entry_total = state.entry_total?;
-    let entry_done = state.entry_done.load(Ordering::Relaxed).min(entry_total);
-    Some(HeartbeatFeedSnapshot {
-        batch_index: state.batch_index,
-        batch_label: state.batch_label.clone(),
-        entry_done,
-        entry_total,
-    })
-}
-
 /// One in-flight witness attempt the floor has admitted but not yet finished.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActiveWorksetEntry {
@@ -13254,15 +13513,9 @@ fn index_schedule_entry_completed(
         let mut slot = index.schedule_retention.borrow_mut();
         match slot.as_mut() {
             Some(sr) => (sr.entry_completed(entry)?, sr.evict_enabled()),
-            None => {
-                // Schedule unarmed — the drain still advanced an entry; feed the heartbeat.
-                heartbeat_feed_entry_completed();
-                return Ok(());
-            }
+            None => return Ok(()),
         }
     };
-    // The same per-entry point feeds the observation heartbeat — one counter, not a fork.
-    heartbeat_feed_entry_completed();
     if !batch.typed_keys.is_empty() {
         let mut cache = index.typed_module_cache.borrow_mut();
         for key in &batch.typed_keys {
@@ -13356,44 +13609,6 @@ fn index_schedule_entry_completed(
         index.resolved_graph_memo.borrow().len(),
     );
     Ok(())
-}
-
-#[cfg(test)]
-mod heartbeat_feed_red_controls {
-    use super::{
-        heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_set_entry_total,
-        heartbeat_feed_snapshot,
-    };
-
-    #[test]
-    fn never_arms_a_fabricated_zero_of_zero() {
-        heartbeat_feed_enter_batch(0, "witness discovery", Some(0));
-        assert_eq!(
-            heartbeat_feed_snapshot(),
-            None,
-            "entry_total=0 must not arm the feed"
-        );
-        heartbeat_feed_enter_batch(0, "witness discovery", None);
-        assert_eq!(
-            heartbeat_feed_snapshot(),
-            None,
-            "pending total must not arm the feed"
-        );
-        heartbeat_feed_set_entry_total(0);
-        assert_eq!(
-            heartbeat_feed_snapshot(),
-            None,
-            "set_entry_total(0) must refuse to arm"
-        );
-        heartbeat_feed_set_entry_total(602);
-        let snap = heartbeat_feed_snapshot().expect("armed after real total");
-        assert_eq!(snap.batch_label, "witness discovery");
-        assert_eq!(snap.entry_done, 0);
-        assert_eq!(snap.entry_total, 602);
-        heartbeat_feed_entry_completed();
-        let snap = heartbeat_feed_snapshot().expect("still armed");
-        assert_eq!(snap.entry_done, 1);
-    }
 }
 
 #[cfg(test)]
@@ -27426,12 +27641,6 @@ fn run_discovery_corpus_with_options_inner(
             .then_some(options.execution_authority_source_roots.as_slice()),
         rows.iter().map(|row| row.entry.as_str()),
     );
-
-    // Arm the observation heartbeat's entry total at the same grain the drain walks
-    // (entry-groups), now that the roster is known — never a fabricated 0-of-0, and
-    // never earlier (batch-enter only had the opaque DiscoveryBatch runnable).
-    let discovery_entry_total = entry_row_groups(&rows).len() as u64;
-    heartbeat_feed_set_entry_total(discovery_entry_total);
 
     let floor_color = floor_color_enabled();
     let floor_stream = floor_stream_enabled();
@@ -45012,28 +45221,66 @@ fn process_cpu_ms() -> u64 {
 /// That is the attribution failure this PR's own thesis is about, introduced by this PR, caught
 /// by comparing the two runs rather than by reasoning about the code. `wall_s` was already
 /// right; only the CPU counter was absolute.
-fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
-    let stat = std::fs::read_to_string("/proc/self/stat").unwrap_or_default();
-    let f: Vec<&str> = stat
-        .rsplit(')')
-        .next()
-        .unwrap_or("")
-        .split_whitespace()
-        .collect();
-    // Fields are indexed from the field AFTER comm: utime/stime are 12/13 here, majflt is 10.
-    let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
-    let hz = 100u64;
-    let cpu_ms = ((tick(11) + tick(12)) * 1000 / hz).saturating_sub(cpu_baseline_ms);
-    let majflt = tick(9);
-    let rss_kb = std::fs::read_to_string("/proc/self/statm")
+/// The one spelling of "this reading would not read". Named rather than inlined so a check can
+/// bind to the arm that produces it: an unreadable field is `na` in every reader, and a fabricated
+/// number can only appear here by deleting this arm.
+const FLOOR_SAMPLE_UNREADABLE: &str = "na";
+
+/// ONE RENDERING FOR ONE STATE, for every numeric field of the heartbeat sample. A reading that
+/// would not read is the sentinel; a reading that read is its number. There is no third answer,
+/// and no field renders itself, so "fabricate a zero for this one field" is a change to a line
+/// that names the field -- which is what makes it detectable rather than a silent substitution.
+fn floor_sampled_field(v: Option<u64>) -> String {
+    match v {
+        Some(n) => n.to_string(),
+        None => FLOOR_SAMPLE_UNREADABLE.to_string(),
+    }
+}
+
+/// Resident kilobytes from `/proc/self/statm`, or `None` when the file will not read or parse.
+/// `None` is the ONLY absent answer -- never `Some(0)`, which is a resident set a live process
+/// cannot have and which read identically to an unreadable file before this was split out.
+fn floor_statm_rss_kb() -> Option<u64> {
+    const KB_PER_PAGE: u64 = 4;
+    std::fs::read_to_string("/proc/self/statm")
         .ok()
         .and_then(|m| {
             m.split_whitespace()
                 .nth(1)
                 .and_then(|v| v.parse::<u64>().ok())
         })
-        .map(|pages| pages * 4)
-        .unwrap_or(0);
+        .map(|pages| pages * KB_PER_PAGE)
+}
+
+fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
+    // ONE SENTINEL FOR ONE STATE. The cgroup and vmstat readers below answer `na` when their
+    // file will not read; these three answered a fabricated `0`, so `rss_kb=0` rendered
+    // identically whether the process held no resident pages -- which a live process cannot --
+    // or `/proc/self/statm` was unreadable. Those are different facts with opposite remedies,
+    // and this is the instrument that exists to settle a memory contradiction, so a zero it
+    // invented is worse here than anywhere else in the line. Same `na` convention now, and the
+    // cpu pair is all-or-nothing because a half-read stat cannot be summed.
+    let stat = std::fs::read_to_string("/proc/self/stat").ok();
+    let f: Vec<&str> = stat
+        .as_deref()
+        .unwrap_or("")
+        .rsplit(')')
+        .next()
+        .unwrap_or("")
+        .split_whitespace()
+        .collect();
+    // Fields are indexed from the field AFTER comm: utime/stime are 12/13 here, majflt is 10.
+    let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok());
+    let hz = 100u64;
+    let na = || FLOOR_SAMPLE_UNREADABLE.to_string();
+    let cpu_ms = floor_sampled_field(match (tick(11), tick(12)) {
+        (Some(utime), Some(stime)) => {
+            Some(((utime + stime) * 1000 / hz).saturating_sub(cpu_baseline_ms))
+        }
+        _ => None,
+    });
+    let majflt = floor_sampled_field(tick(9));
+    let rss_kb = floor_sampled_field(floor_statm_rss_kb());
     // THE CGROUP CHARGE AND THE THROTTLE EVENTS, on every beat, because the runs that most need
     // them are the ones that never reach an exit line. `floor_cgroup_envelope` reports the full
     // picture at entry; these three carry the parts that CHANGE, so a killed run still leaves
@@ -45075,7 +45322,7 @@ fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
                         .and_then(|l| l.split_whitespace().nth(1).map(|v| v.to_string()))
                 }
             })
-            .unwrap_or_else(|| "na".to_string())
+            .unwrap_or_else(na)
     };
     let cur_kb = cg("memory.current", usize::MAX);
     let ev_high = cg("memory.events", 1);
@@ -45132,7 +45379,7 @@ fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
                         .map(|v| v.trim().to_string())
                 })
             })
-            .unwrap_or_else(|| "na".to_string())
+            .unwrap_or_else(na)
     };
     let pswpin = vm("pswpin");
     let pgmajfault = vm("pgmajfault");
