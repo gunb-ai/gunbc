@@ -3770,12 +3770,16 @@ fn reference_derived_candidate_disposition(name: String, this_module_name: Strin
 //                       reference_is_host_realized_builtin misses them because it is keyed on .dag
 //                       vocabulary, so Vec and BTreeSet -- the Rust spellings of List and Set --
 //                       slip a filter built to remove exactly this.
-//   (b) OUT-OF-CLOSURE  empty_map 33, Optional 25, Present 47, Absent 13 -- REAL .dag declarations
-//                       in v2.std.collection and v2.std.optional whose providers were not selected
-//                       into the measured closure. Movable, and precisely the closure-conditioned
-//                       class this change exists to surface.
+//   (b) OUT-OF-CLOSURE  empty_map 33, Optional 25, and Optional's VARIANTS Present 47 and Absent 13
+//                       -- REAL .dag declarations in v2.std.collection and v2.std.optional whose
+//                       providers were not selected into the measured closure. Movable, and
+//                       precisely the closure-conditioned class this change exists to surface.
 //
-// The proportion between them is UNMEASURED. Class (b) is present because the census invocation's
+// The proportion is UNMEASURED IN BOTH DIRECTIONS, and the two ways of counting point OPPOSITE ways.
+// BY ROW the immovable names dominate (88 + 73 + 50 + 48 of 473). BY DISTINCT NAME the examined
+// sample is 4 of 63 and all four are movable. High counts at the immovable head, movable names in the
+// tail with small counts -- the structure that hid the signal, and the reason a sorted head answered
+// the wrong question here twice. Fifty-nine names are unexamined. Neither figure is a proportion. Class (b) is present because the census invocation's
 // --source-root flags are NOT the regen SUBJECT: regen_input_sources is rooted at SeedV1 and
 // DagCorpus and excludes src/v2 entirely, because stage0 IS the v1 seed and a seed reaching into
 // src/v2 would depend on the successor it bootstraps toward. So registry-absent is ENTRY-RELATIVE,
