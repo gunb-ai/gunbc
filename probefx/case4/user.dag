@@ -1,0 +1,7 @@
+module zqxbeta.user
+
+type ZqxAnswer = ZqxYes | ZqxNo
+
+fn zqx_probe_type_ref(c: ZqxProbeColor) -> ZqxAnswer {
+    ZqxYes
+}
