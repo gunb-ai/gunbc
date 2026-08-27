@@ -15,7 +15,7 @@ import std.pareto {
 import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, fabric_identity_eq }
 import product.fabric.demand { Demand }
 import product.fabric.supply {
-  SupplierOffer, GrantDuration,
+  SupplierOffer, GrantDuration, ExactGrantDuration, EstimatedGrantDuration,
   DemandOfferAffordability,
   Affordable, AffordableUnderEstimate,
   QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch,
@@ -151,6 +151,66 @@ fn margin_rate_comparison(
   )
 }
 
+// OCCUPANCY PROVENANCE, AND THE AUTHORITY IT IS READ FROM.
+//
+// The denominator this policy ranks by is BILLED SECONDS, which is derived from
+// the grant's duration. A duration is not always a measured quantity -- a
+// caller may only have an estimate -- so the denominator is not always a
+// measured quantity either, and a rank computed from a projected denominator is
+// a weaker claim than one computed from a known denominator. Collapsing the two
+// would be a guess wearing a derivation: comparable, orderable, and wrong in a
+// way nothing downstream could detect.
+//
+// THIS IS READ FROM GrantDuration'S OWN ARMS, AND AN EARLIER CUT READ IT FROM
+// THE WRONG PLACE. That cut inferred estimate-ness from the AFFORDABILITY
+// verdict, on the reasoning that AffordableUnderEstimate marks a projection.
+// It does mark one -- for AFFORDABILITY. offer_affordability_for answers plain
+// Affordable for an EstimatedGrantDuration whenever the quote is
+// QuotedFlatPerGrant, and that is CORRECT there, because a flat per-grant quote
+// does not depend on how long the grant runs. The occupancy denominator does.
+// So that pair produced a projected denominator carrying a verdict that said
+// nothing had been projected -- one authority borrowed to answer for another's
+// question, with both halves individually true and only the arrow between them
+// invented.
+//
+// The duration coproduct is the authority for how well the duration is known,
+// and it is matched directly here.
+//
+// THE MATCH IS DELIBERATE WHERE A CALL WOULD HAVE DONE, and it is the only
+// reason it exists. grant_duration_seconds already extracts the seconds from
+// either arm, so classifying by calling it would be shorter. Matching means
+// that when supply.dag gains a third arm -- an unobserved duration, which the
+// fleet needs and which has no spelling in GrantDuration today -- THIS FOLD
+// STOPS COMPILING and somebody has to decide what contention does with a
+// duration nobody measured. A call would keep working and keep answering with a
+// number, which is the absorbing fallback: the fold always returns something,
+// so the measurement deficit never surfaces and never ranks for fixing.
+//
+// NEXT-RUNG TRIGGER, owned by the supply lane rather than this one: an
+// unobserved arm on GrantDuration. When it lands, the honest outcome here is a
+// refusal to rank rather than a substituted worst case -- refusing names the
+// remedy (measure the job) while a substituted number hides that anything is
+// missing. It is not modeled ahead of the carrier, because a refusal arm for a
+// state that has no spelling would be permanently unreachable and would read as
+// coverage.
+type OccupancyBasis
+  = MeasuredOccupancy
+  | ProjectedOccupancy
+
+fn occupancy_basis_of(duration: GrantDuration) -> OccupancyBasis {
+  match duration {
+    ExactGrantDuration { seconds: _ } => MeasuredOccupancy
+    EstimatedGrantDuration { seconds: _ } => ProjectedOccupancy
+  }
+}
+
+fn basis_is_measured(b: OccupancyBasis) -> Bool {
+  match b {
+    MeasuredOccupancy => true
+    ProjectedOccupancy => false
+  }
+}
+
 // ADMISSION IS THE WALL, AND IT IS THE ONLY ROUTE INTO RANKING.
 //
 // gunbc.fabric_witness_run has carried the standing claim in prose since the
@@ -194,6 +254,7 @@ type AdmittedDemand<P> sole_constructor {
   projected_total: MoneyAmountMicro
   surplus: MoneyAmountMicro
   billed_occupancy: Second
+  occupancy_basis: OccupancyBasis
   affordability: DemandOfferAffordability
 }
 
@@ -272,6 +333,7 @@ fn admit_demand_for_offer<P>(
             count: money_amount_micro_count(m: reservation) - money_amount_micro_count(m: projected),
           ),
           billed_occupancy: occupancy,
+          occupancy_basis: occupancy_basis_of(duration: duration),
           affordability: affordability,
         },
       }
@@ -289,6 +351,10 @@ fn admitted_surplus<P>(a: AdmittedDemand<P>) -> MoneyAmountMicro {
 
 fn admitted_billed_occupancy<P>(a: AdmittedDemand<P>) -> Second {
   a.billed_occupancy
+}
+
+fn admitted_occupancy_basis<P>(a: AdmittedDemand<P>) -> OccupancyBasis {
+  a.occupancy_basis
 }
 
 fn admitted_projected_total<P>(a: AdmittedDemand<P>) -> MoneyAmountMicro {
@@ -374,10 +440,36 @@ fn duplicated_candidates<P>(
 // an ordinary market outcome -- the capacity goes unsold, and the remedy is
 // more demand or a cheaper offer -- while a refusal means the policy could not
 // decide among demands that did clear it.
+// THE SELECTION CARRIES THE BASIS OF THE WHOLE FIELD, NOT OF ITS WINNER.
+//
+// A decision is only as measured as the comparison that produced it. The winner
+// may carry an exact duration and still have beaten a rival whose denominator
+// was projected -- in which case the RANKING rested on a projection even though
+// the selected demand did not, and a consumer reading the winner's own basis
+// would conclude the opposite. So the basis reported here is measured only when
+// EVERY candidate's was, which is the question a consumer of the verdict is
+// actually asking: how much do I trust this ordering.
+//
+// It is reported rather than refused because an estimate is frequently all
+// anyone has, and refusing every projected field would make the fold useless at
+// exactly the moment it is needed. What must not happen is the projection going
+// unrecorded -- that is the fabricated-plausible-output failure, since a
+// projected ordering and a measured one would then be indistinguishable at the
+// only place a later reader looks.
 type ContentionOutcome<P>
   = NoAdmissibleDemand
-  | DemandSelected { winner: AdmittedDemand<P> }
+  | DemandSelected { winner: AdmittedDemand<P>, basis: OccupancyBasis }
   | ContentionRefused { refusal: ContentionRefusal<P> }
+
+fn field_occupancy_basis<P>(field: List<AdmittedDemand<P>>) -> OccupancyBasis {
+  fold(field, init: MeasuredOccupancy, f: fn(acc, c) {
+    if basis_is_measured(b: acc) && basis_is_measured(b: c.occupancy_basis) {
+      MeasuredOccupancy
+    } else {
+      ProjectedOccupancy
+    }
+  })
+}
 
 fn candidates_for_other_offers<P>(
   contended: FabricIdentity<P, OfferKey>,
@@ -434,7 +526,7 @@ fn select_from_field<P>(field: List<AdmittedDemand<P>>) -> ContentionOutcome<P> 
           },
         }
       } else {
-        DemandSelected { winner: leader }
+        DemandSelected { winner: leader, basis: field_occupancy_basis(field: field) }
       }
     }
   }

@@ -27,7 +27,7 @@ import product.fabric.demand {
 }
 import product.fabric.supply {
   SupplierOffer, OfferQuote, QuotedPerSecond, QuotedPerHour, QuotedFlatPerGrant, ObservedSupply,
-  GrantDuration, ExactGrantDuration,
+  GrantDuration, ExactGrantDuration, EstimatedGrantDuration,
   DemandOfferAffordability, Affordable, AffordableUnderEstimate,
   QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch,
 }
@@ -35,6 +35,8 @@ import product.fabric.contention {
   AdmittedDemand, DemandAdmission, DemandAdmitted, DemandNotAffordable,
   QuoteExceedsReservationPrice, GrantOccupiesNoBilledTime,
   ContentionOutcome, NoAdmissibleDemand, DemandSelected, ContentionRefused,
+  OccupancyBasis, MeasuredOccupancy, ProjectedOccupancy,
+  admitted_occupancy_basis,
   ContentionRefusal, DemandsIndistinguishable, DuplicateCandidateIdentity,
   CandidatesJudgedAgainstDifferentOffers,
   admit_demand_for_offer, select_demand_for_offer,
@@ -131,7 +133,7 @@ fn id_key(i: FabricIdentity<NonEmptyStr, DemandKey>) -> NonEmptyStr {
 
 fn winner_key(o: ContentionOutcome<NonEmptyStr>) -> NonEmptyStr {
   match o {
-    DemandSelected { winner: w } => id_key(i: admitted_identity(a: w))
+    DemandSelected { winner: w, basis: _ } => id_key(i: admitted_identity(a: w))
     NoAdmissibleDemand => "none" as NonEmptyStr
     ContentionRefused { refusal: _ } => "refused" as NonEmptyStr
   }
@@ -232,8 +234,19 @@ test fn an_hourly_quantum_gives_both_bidders_the_same_billed_occupancy() -> Bool
 // to sell.
 //
 // Cross-multiplied, the comparison is 110*300 = 33000 against 200*90 = 18000,
-// exactly and without rounding. Reverting the comparator to total margin turns
-// this red and leaves every other witness in this file green.
+// exactly and without rounding.
+//
+// MEASURED, because an earlier revision of this note asserted the wrong number
+// and the measurement is the only reason anyone knows: forcing the comparator
+// back to total margin and re-running the suite turns TWO witnesses red, not
+// one -- this one and a_free_offer_is_still_ranked_by_bid_per_second_not_by_bid,
+// with the other twelve green and the instrument control still false. That
+// second one discriminates for the same underlying reason and its own note
+// already said so, which is what makes the earlier "leaves every other witness
+// green" claim a prose error rather than a disagreement about behaviour. Two
+// independent witnesses over one comparator is stronger evidence than one; the
+// point of recording it is that the count came from running the mutation, not
+// from reasoning about which witness ought to notice.
 fn rich_slow_demand() -> Demand<NonEmptyStr> { c_demand(key: "demand-rich-slow", reservation: 500) }
 
 test fn a_larger_total_margin_loses_to_a_larger_margin_per_billed_second() -> Bool {
@@ -350,7 +363,7 @@ test fn the_same_demand_admitted_twice_refuses_rather_than_winning_against_itsel
         DemandsIndistinguishable { tied: _ } => false
         CandidatesJudgedAgainstDifferentOffers { contended: _, mismatched: _ } => false
       }
-    DemandSelected { winner: _ } => false
+    DemandSelected { winner: _, basis: _ } => false
     NoAdmissibleDemand => false
   }
 }
@@ -391,7 +404,7 @@ test fn two_indistinguishable_bidders_refuse_instead_of_one_winning_silently() -
         DuplicateCandidateIdentity { duplicated: _ } => false
         CandidatesJudgedAgainstDifferentOffers { contended: _, mismatched: _ } => false
       }
-    DemandSelected { winner: _ } => false
+    DemandSelected { winner: _, basis: _ } => false
     NoAdmissibleDemand => false
   }
 }
@@ -466,7 +479,7 @@ test fn a_field_judged_against_two_offers_refuses_rather_than_comparing() -> Boo
         DemandsIndistinguishable { tied: _ } => false
         DuplicateCandidateIdentity { duplicated: _ } => false
       }
-    DemandSelected { winner: _ } => false
+    DemandSelected { winner: _, basis: _ } => false
     NoAdmissibleDemand => false
   }
 }
@@ -478,7 +491,104 @@ test fn a_field_judged_against_two_offers_refuses_rather_than_comparing() -> Boo
 test fn an_empty_field_reports_no_admissible_demand_rather_than_refusing() -> Bool {
   match contend(offer: continuous_offer(), candidates: []) {
     NoAdmissibleDemand => true
-    DemandSelected { winner: _ } => false
+    DemandSelected { winner: _, basis: _ } => false
+    ContentionRefused { refusal: _ } => false
+  }
+}
+
+// THE DEFECT THIS PAIR EXISTS FOR: OCCUPANCY PROVENANCE READ FROM THE WRONG
+// AUTHORITY.
+//
+// An earlier cut inferred whether the denominator was projected from the
+// AFFORDABILITY verdict. This is the pair that catches it. Both demands carry
+// an ESTIMATED duration, so both denominators are projected. The first is
+// quoted per second, so affordability answers AffordableUnderEstimate and the
+// old inference happened to be right. The second is quoted FLAT PER GRANT,
+// where affordability correctly answers plain Affordable -- a flat quote does
+// not depend on how long the grant runs -- while the occupancy denominator
+// still does. Under the old inference that second demand reported a MEASURED
+// basis over a projected denominator.
+//
+// Both must report ProjectedOccupancy, and the flat-quote one is the arm that
+// goes red if provenance is ever read off affordability again.
+fn per_second_offer() -> SupplierOffer<NonEmptyStr> {
+  c_offer(
+    key: "offer-per-second",
+    quote: QuotedPerSecond(MoneyPerSecond { amount: money_amount_micro(count: 1), currency: Usd }),
+    quantum: second(count: 0),
+  )
+}
+
+fn flat_offer() -> SupplierOffer<NonEmptyStr> {
+  c_offer(
+    key: "offer-flat",
+    quote: QuotedFlatPerGrant(MoneyOnce { amount: money_amount_micro(count: 50), currency: Usd }),
+    quantum: second(count: 0),
+  )
+}
+
+fn estimated_short() -> GrantDuration { EstimatedGrantDuration { seconds: second(count: 90) } }
+
+fn basis_is_projected(b: OccupancyBasis) -> Bool {
+  match b {
+    ProjectedOccupancy => true
+    MeasuredOccupancy => false
+  }
+}
+
+test fn an_estimated_duration_projects_the_denominator_even_when_affordability_is_certain() -> Bool {
+  match admitted_or_none(a: admit_demand_for_offer(
+    demand: short_demand(), offer: per_second_offer(), duration: estimated_short())) {
+    Cons { head: metered, tail: _ } =>
+      match admitted_or_none(a: admit_demand_for_offer(
+        demand: short_demand(), offer: flat_offer(), duration: estimated_short())) {
+        Cons { head: flat, tail: _ } =>
+          basis_is_projected(b: admitted_occupancy_basis(a: metered))
+            && basis_is_projected(b: admitted_occupancy_basis(a: flat))
+        Empty {} => false
+      }
+    Empty {} => false
+  }
+}
+
+// AN EXACT DURATION IS THE POSITIVE CONTROL. Without it the witness above is
+// satisfied by a function that answers ProjectedOccupancy unconditionally,
+// which would be permanently green and carry no information.
+test fn an_exact_duration_reports_a_measured_denominator() -> Bool {
+  match admitted_or_none(a: admit_demand_for_offer(
+    demand: short_demand(), offer: per_second_offer(), duration: short_duration())) {
+    Cons { head: a, tail: _ } => !basis_is_projected(b: admitted_occupancy_basis(a: a))
+    Empty {} => false
+  }
+}
+
+// THE VERDICT'S BASIS IS THE FIELD'S, NOT THE WINNER'S, AND THIS IS THE CASE
+// WHERE THEY DISAGREE. The winner carries an EXACT duration and beats a rival
+// whose denominator was projected, so the ORDERING rested on a projection even
+// though the selected demand did not. A consumer reading the winner's own basis
+// would read this decision as measured; the outcome reports it as projected.
+test fn a_selection_decided_against_a_projected_rival_reports_a_projected_basis() -> Bool {
+  let exact_winner = admitted_or_none(a: admit_demand_for_offer(
+    demand: short_demand(), offer: continuous_offer(), duration: short_duration()))
+  let estimated_rival = admitted_or_none(a: admit_demand_for_offer(
+    demand: long_demand(), offer: continuous_offer(),
+    duration: EstimatedGrantDuration { seconds: second(count: 300) }))
+  match contend(offer: continuous_offer(), candidates: concat(exact_winner, estimated_rival)) {
+    DemandSelected { winner: w, basis: b } =>
+      id_key(i: admitted_identity(a: w)) == "demand-short"
+        && !basis_is_projected(b: admitted_occupancy_basis(a: w))
+        && basis_is_projected(b: b)
+    NoAdmissibleDemand => false
+    ContentionRefused { refusal: _ } => false
+  }
+}
+
+// AND AN ALL-EXACT FIELD REPORTS MEASURED, so the witness above is not
+// satisfied by a fold that answers ProjectedOccupancy for every field.
+test fn a_field_of_exact_durations_reports_a_measured_basis() -> Bool {
+  match contend(offer: continuous_offer(), candidates: field_against(offer: continuous_offer())) {
+    DemandSelected { winner: _, basis: b } => !basis_is_projected(b: b)
+    NoAdmissibleDemand => false
     ContentionRefused { refusal: _ } => false
   }
 }
