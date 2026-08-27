@@ -49,8 +49,14 @@ use serde::Serialize;
 
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
+// THE WAVE-ADMISSION WALL RIDES THE SAME SWEEP the index above is built by, which is why it is
+// registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
+// and a second acquisition of the corpus to answer a second question is the cost-shape defect
+// DESIGN §6 names.
 pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
+#[path = "namespace_wave_admission.rs"]
+pub mod namespace_wave_admission;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 #[path = "required_regen_host.rs"]

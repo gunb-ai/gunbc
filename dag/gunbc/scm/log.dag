@@ -8,29 +8,19 @@ module gunbc.scm.log
 // only be justified by how the output would LOOK cannot be derived from the envelope, and this
 // module is built entirely from what the envelope carries.
 //
-// WHAT THE ENVELOPE CARRIES, EXHAUSTIVELY: a RepositoryCommit is { root: ObjectId, message: String }
-// and nothing else. So a log row can name the commit, name the program it points at, and carry the
-// message. THREE FIELDS A USER WOULD EXPECT ARE ABSENT FROM THE MODEL, and their absence is reported
+// WHAT THE ENVELOPE CARRIES: a RepositoryCommit has its minted reference, root, message and explicit
+// ancestry. So a log row can name the commit, name the program it points at, and carry the message.
+// TWO FIELDS A USER WOULD EXPECT ARE ABSENT FROM THE MODEL, and their absence is reported
 // here rather than synthesised:
 //
 //   AUTHOR      -- no commit in this layer records who made it.
 //   TIMESTAMP   -- no commit records when.
-//   PARENT      -- RepositoryCommit has no parent field, so no log row can name one. What changed is
-//                  the REASON, and only half of the original claim survived: gunbc.scm.ancestry now
-//                  names an ancestry relation, so "nothing else in gunbc.scm names one" is false as
-//                  of that module. The envelope does not bind the relation to a commit, so this
-//                  module still has no fact to read and still reports the absence rather than
-//                  synthesising it. The operations git states in terms of ancestry -- merge-base,
-//                  ahead/behind, "the commits since X" -- still have no referent, now because none
-//                  of them is modelled rather than because no relation exists to state them over.
-//
 // Each would have to be invented to appear in a row, and inventing them is the fabricated-plausible-
 // output failure DESIGN section 5 forbids at a user-facing boundary.
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, List, String }
 import gunbc.scm.object_store { ObjectId, ObjectStore, store_contains }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
-import gunbc.scm.commit_closure_json_v2 { position_reference }
 
 // WHETHER THIS COMMIT'S PROGRAM IS ACTUALLY HELD, which is decidable here and therefore reported.
 // The envelope's own encoder refuses on RepositoryCommitRootNotInStore, so "this commit names a root
@@ -42,19 +32,11 @@ type LoggedCommitStanding
   = LoggedCommitRootHeld
   | LoggedCommitRootMissingFromStore
 
-// THE REFERENCE IS THE COMMIT'S IMAGE-LOCAL POSITION, spelled by the SAME authority the encoder uses
-// (commit_closure_json_v2 `position_reference`). It is not a second naming scheme invented for
-// display: it is the identifier a reader can hand back to any operation that takes a commit
-// reference, which is what makes a log row actionable rather than decorative.
-//
-// IT IS DERIVED FROM POSITION DURING THE WALK, NOT BY LOOKING THE ROOT UP. `commit_reference_of`
-// searches by identity and answers the FIRST match, and the envelope's own header states that two
-// commits may share a root and differ only in message -- they "name the SAME program, which is the
-// point of content addressing and not a collision". So an identity lookup would give both rows the
-// first row's reference, and the second commit would be unreachable through the very identifier its
-// row advertises.
+// The row exposes the commit's own opaque identity, not a value derived from its list position or
+// root. Consumers may hand it back as a reference; they must not inspect its ordinal for ordering or
+// recency, because the allocator watermark is uniqueness state rather than chronology.
 type CommitLogRow {
-  reference: String
+  reference: RepositoryCommitRef
   root: ObjectId
   message: String
   standing: LoggedCommitStanding
@@ -77,7 +59,6 @@ type CommitLog
   | CommitLogRows { rows: List<CommitLogRow> }
 
 type CommitLogAcc {
-  index: Int
   rows: List<CommitLogRow>
 }
 
@@ -91,12 +72,11 @@ fn logged_commit_standing(store: ObjectStore, root: ObjectId) -> LoggedCommitSta
 
 fn commit_log_step(store: ObjectStore, acc: CommitLogAcc, commit: RepositoryCommit) -> CommitLogAcc {
   CommitLogAcc {
-    index: acc.index + 1,
     rows: concat(
       acc.rows,
       [
         CommitLogRow {
-          reference: position_reference(n: acc.index),
+          reference: commit.reference,
           root: commit.root,
           message: commit.message,
           standing: logged_commit_standing(store: store, root: commit.root),
@@ -106,12 +86,7 @@ fn commit_log_step(store: ObjectStore, acc: CommitLogAcc, commit: RepositoryComm
   }
 }
 
-// ROWS COME BACK IN REFERENCE ORDER, AND THAT IS A STATED BASIS RATHER THAN AN ARTEFACT.
-//
-// The envelope's commit list order is load-bearing: references ARE indices into it
-// (repository_envelope `commit_reference_of`), and the corpus already witnesses that reversing two
-// commits changes the repository's root signature. So the order is a fact about the image, preserved
-// by the codec, and reporting rows in it means a row's position and its reference agree.
+// Rows preserve the authored commit-list order, but references do not derive from that order.
 //
 // WHAT THIS DELIBERATELY DOES NOT CLAIM IS RECENCY, and the reason is a finding rather than a
 // preference: NOTHING IN THE MODEL ESTABLISHES THAT A LATER INDEX IS A NEWER COMMIT. There is no
@@ -131,10 +106,10 @@ fn repository_log(envelope: RepositoryEnvelope) -> CommitLog {
   } else {
     match fold(
       envelope.commits,
-      init: CommitLogAcc { index: 0, rows: [] },
+      init: CommitLogAcc { rows: [] },
       f: fn(acc, c) { commit_log_step(store: envelope.store, acc: acc, commit: c) },
     ) {
-      CommitLogAcc { index: _, rows: rows } => CommitLogRows { rows: rows }
+      CommitLogAcc { rows: rows } => CommitLogRows { rows: rows }
     }
   }
 }

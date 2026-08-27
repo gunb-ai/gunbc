@@ -1,6 +1,6 @@
 module gunbc.witness_floor_workflow
 
-import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import gunbc.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
 }
@@ -44,7 +44,7 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command, required_ci_lane_build }
+import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { required_lanes_gate_stmts }
 import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
@@ -105,8 +105,16 @@ import std.types { List, String, Int }
 //
 // WHAT WAS WRONG WITH THE FIRST CUT OF THE SPLIT, measured rather than argued (found in review
 // of gunbc#9203, and confirmed against the live ruleset rather than against the workflow): the
-// repository's `passing CI` ruleset is ACTIVE, has NO bypass actors, and names exactly ONE
-// required status check -- `witnesses`. A GitHub required context is produced by the JOB, not
+// repository's `passing CI` ruleset is ACTIVE and names exactly ONE required status check --
+// `witnesses`. THIS CLAUSE PREVIOUSLY ALSO READ `has NO bypass actors`, AND THAT IS NOT A FACT
+// A SESSION CAN STATE: `bypass_actors` and `current_user_can_bypass` are answered RELATIVE TO
+// THE CREDENTIAL ASKING, and this repository's sessions authenticate as an integration rather
+// than a user. Read through a user credential the same ruleset reports a `RepositoryRole`
+// bypass at `bypass_mode=always`. Both readings are correct about different subjects, and the
+// emptier one was taken twice through the same kind of credential and mistaken for
+// corroboration. Nothing in this paragraph rests on it -- every measurement here was taken
+// against runs and check-runs -- so the clause is removed rather than repaired. A GitHub
+// required context is produced by the JOB, not
 // by the workflow, so a second job publishes its own check under its own name and that check is
 // not required. The first cut therefore moved regen and v2-emission into a `build` job whose
 // failure COULD NOT BLOCK A MERGE: the required `witnesses` check would go green over a regen
@@ -123,21 +131,49 @@ import std.types { List, String, Int }
 //
 // WHAT IT COSTS, and it is not the parallelism. The two lane jobs still carry no `needs` edge
 // on each other and still start together; only the aggregator waits, and it does nothing but
-// read two results. The floor job is renamed to `floor` so its log is still findable by lane
-// name, and the aggregator's own output names which lane to open.
+// read two results. Each lane job's log is findable by its lane name, and the aggregator's own
+// output names which lane to open.
 data witness_floor_workflow_job_id: String = "witnesses"
 
-// The witness floor lane's job id. It was `witnesses` until the aggregation job took that name;
-// the check it publishes is not required and is not meant to be -- `witnesses` answers for it.
-data floor_lane_job_id: String = "floor"
+// THE LANE JOB IDS ARE THEIR OWN DECLARATIONS, AND UN-FUSING THEM FROM THE LANE WORDS IS THE
+// WHOLE OF THIS CHANGE.
+//
+// WHY A UNIQUE NAME IS NEEDED AT ALL. A GitHub required status check names a CONTEXT, and a
+// context is the job's name -- which workflow published it is not part of the name. So `build`
+// is not a name this repository owns: `gunbc.fleet_converge_workflow` declares a job whose id
+// is also exactly `build`, and a rule naming `build` names two jobs in two workflows, answered
+// by whichever green arrives. Enforcement cannot be moved onto a lane job until that lane's
+// context is unique across every workflow emitted here.
+//
+// WHY THE NAME IS NOT COMPUTED FROM THE LANE WORD, and this is the modeling content rather
+// than a spelling preference. `build_lane_job_id` was DEFINED AS `required_ci_lane_build`, and
+// that read as single authority because the two strings coincided. They are two facts with
+// different authorities and different consumers: the LANE WORD is a CLI argument this
+// workflow passes to `claim_executor --required-lane`, owned by `gunbc.fabric_witness_run` and
+// consumed by an exhaustive `RequiredCiPhase::lane` match inside the binary; the JOB ID is a
+// GitHub required-context name, owned here and consumed by a repository ruleset that is not a
+// `.dag` fact at all. Their coincidence was the accident, not the authority. Deriving the job
+// id from the lane word -- including by concatenating a prefix onto it -- re-fuses them
+// through a different door and in the dangerous direction: a lane rename, which is an ordinary
+// CLI-vocabulary edit, would silently move a REQUIRED CONTEXT NAME and a check would stop being
+// required with nothing going red. The rows below are therefore spelled, and what protects
+// them is that every reference to a job id in this file is taken FROM these declarations rather
+// than typed, so a rename here moves the `needs` list and the `needs.*.result` expressions with
+// it.
+//
+// WHAT THIS DOES NOT DO: it does not move enforcement. `witnesses` remains the aggregation job
+// and remains the one required context the ruleset names, produced exactly as before, so the
+// gate is unchanged rather than weakened and no window opens. The lane contexts are published
+// and ignored until an operator names them in the ruleset -- a repository setting, and not
+// something any wall in this repository can constrain. Until that edit lands the aggregator is
+// still what gates; after it, the aggregator's role is diagnosis rather than enforcement,
+// because a same-run dependent job is SKIPPED when a lane fails or the run is cancelled at run
+// level, and a SKIPPED required context does not block a merge (measured: `mergeable=MERGEABLE
+// mergeStateStatus=UNSTABLE`), while root jobs carrying no `needs` edge take
+// cancelled/success/failure and are never skipped.
+data floor_lane_job_id: String = "required-witnesses-floor"
 
-// THE BUILD LANE'S JOB ID, and it is the lane word from `gunbc.fabric_witness_run` rather than
-// a second name for the same thing. The job id is what GitHub publishes as the check name and
-// what a required-status-check rule names; spelling it differently from the lane the job passes
-// to the binary would be the §3 fork, and it would fail in the quiet direction -- a check name
-// that no longer matches a branch-protection rule stops being required without anything going
-// red.
-data build_lane_job_id: String = required_ci_lane_build
+data build_lane_job_id: String = "required-witnesses-build"
 
 // The workflow's own name, hoisted to a declaration because a second consumer now joins on
 // it. gunbc.fleet_desired_admission refuses a workflow_run payload whose workflow_name is
@@ -1284,17 +1320,11 @@ fn required_lanes_aggregate_script_outcome() -> String? {
   match bash_fold_serialize_program(
     stmts: required_lanes_gate_stmts(
       build_var: required_lanes_gate_build_var,
-      build_result_expression: required_lane_result_expression(job_id: build_lane_job_id),
       floor_var: required_lanes_gate_floor_var,
-      floor_result_expression: required_lane_result_expression(job_id: floor_lane_job_id),
       pull_request_var: required_lanes_gate_pull_request_var,
-      pull_request_expression: required_lanes_pull_request_expression(),
       event_name_var: required_lanes_gate_event_name_var,
-      event_name_expression: required_lanes_event_name_expression(),
       measured_head_var: required_lanes_gate_measured_head_var,
-      measured_head_expression: required_lanes_measured_head_expression(),
       run_id_var: required_lanes_gate_run_id_var,
-      run_id_expression: required_lanes_run_id_expression(),
       standing_var: required_lanes_gate_standing_var,
       verdict_var: required_lanes_gate_verdict_var,
       mechanism_var: required_lanes_gate_mechanism_var,
@@ -1332,13 +1362,33 @@ fn required_lanes_aggregate_script() -> String {
   }
 }
 
+// THE SUBJECT VALUES ARE BOUND AS ENVIRONMENT, WHICH IS THE ONLY PLACE AN EXPRESSION AND A
+// SHELL PROGRAM MAY MEET.
+//
+// A `${{ }}` expression is substituted into the workflow document before any shell exists, so
+// it has to reach the emitted yaml verbatim. A yaml scalar does that -- `emit_inline_scalar_text`
+// renders an expression unquoted and unescaped -- while a bash literal word cannot, because
+// quoting it is exactly what the bash serializer is for. `gunbc.required_lanes_gate` therefore
+// takes variable NAMES only and reads them as shell variables; the expressions live here, one
+// row per variable, joined to the gate by the same declarations the gate is handed.
+fn required_lanes_aggregate_step_env() -> List<YamlKeyValue> {
+  [
+    kv(key: required_lanes_gate_build_var, value: yaml_string(s: required_lane_result_expression(job_id: build_lane_job_id))),
+    kv(key: required_lanes_gate_floor_var, value: yaml_string(s: required_lane_result_expression(job_id: floor_lane_job_id))),
+    kv(key: required_lanes_gate_pull_request_var, value: yaml_string(s: required_lanes_pull_request_expression())),
+    kv(key: required_lanes_gate_event_name_var, value: yaml_string(s: required_lanes_event_name_expression())),
+    kv(key: required_lanes_gate_measured_head_var, value: yaml_string(s: required_lanes_measured_head_expression())),
+    kv(key: required_lanes_gate_run_id_var, value: yaml_string(s: required_lanes_run_id_expression()))
+  ]
+}
+
 fn required_lanes_aggregate_step() -> Step {
   RunStep {
     name: Present { value: "Both required lanes must have succeeded" },
     id: none,
     run: required_lanes_aggregate_script(),
     shell: none,
-    env: none,
+    env: Present { value: required_lanes_aggregate_step_env() },
     working_directory: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,
