@@ -1,0 +1,65 @@
+module test.claim.repository_transition_admission_witness_test
+
+import std.types { Bool, String }
+import std.logic { and }
+import gunbc.live_deploy.deployed_tree_scope {
+  RepositoryTransitionRealization,
+  LegacyGitFileSync,
+  GitNativeConvergence,
+  RepositoryTransitionAdmission,
+  RepositoryTransitionAdmitted,
+  LegacyGitFileSyncNotAdmitted,
+  deployed_tree_repository_transition,
+  repository_transition_admission,
+}
+
+fn is_admitted(a: RepositoryTransitionAdmission) -> Bool {
+  match a {
+    RepositoryTransitionAdmitted => true
+    LegacyGitFileSyncNotAdmitted { reason: _ } => false
+  }
+}
+
+fn refusal_reason(a: RepositoryTransitionAdmission) -> String {
+  match a {
+    RepositoryTransitionAdmitted => ""
+    LegacyGitFileSyncNotAdmitted { reason: r } => r
+  }
+}
+
+// THE PAIR IS THE WITNESS, not either arm alone. A wall asserted only on the arm that currently
+// refuses cannot distinguish a real decision from a function that returns the refusal
+// unconditionally -- which is exactly the permanently-green decoration DESIGN section 4b calls worse
+// than absent, inverted. Asserting BOTH arms over the same function makes a collapse in either
+// direction red: fuse them and the admitted case fails here.
+test fn the_two_realizations_are_admitted_differently() -> Bool {
+  and(
+    a: !is_admitted(a: repository_transition_admission(realization: LegacyGitFileSync)),
+    b: is_admitted(a: repository_transition_admission(realization: GitNativeConvergence)),
+  )
+}
+
+// THE BOUND REALIZATION IS THE LEGACY ONE TODAY, so a dispatch of the restored dashboard mode
+// refuses rather than converging a tree with a broken index. This is the row that flips when the
+// Git-native transition lands, and this witness is what makes that flip a deliberate, visible act
+// rather than a silent one -- it goes RED the moment the row changes, forcing the author to state
+// that the realization actually moved.
+test fn the_deployment_is_currently_bound_to_the_legacy_realization() -> Bool {
+  !is_admitted(a: repository_transition_admission(realization: deployed_tree_repository_transition))
+}
+
+// THE REFUSAL CARRIES ITS EVIDENCE. A refusal that said only "not admitted" would be a verdict an
+// operator has to trust; naming the mechanism lets them check it on the host instead.
+test fn the_refusal_names_the_mechanism_rather_than_only_a_verdict() -> Bool {
+  let r = refusal_reason(a: repository_transition_admission(realization: LegacyGitFileSync))
+  and(
+    a: string_contains(s: r, pattern: "index excluded"),
+    b: string_contains(s: r, pattern: "Git-native"),
+  )
+}
+
+// AN ADMITTED REALIZATION CARRIES NO REASON, which is the state-space half: the reason field exists
+// only on the arm that has something to say, so "admitted" cannot smuggle a stale explanation.
+test fn an_admitted_realization_carries_no_refusal_reason() -> Bool {
+  refusal_reason(a: repository_transition_admission(realization: GitNativeConvergence)) == ""
+}
