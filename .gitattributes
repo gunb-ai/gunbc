@@ -6,6 +6,9 @@
 
 # Integration policy — deterministic generated projections: provisional ours during merge,
 # then regenerate from merged authorities before commit (charter four-case policy row 1).
+# ROW ORDER IS LOAD-BEARING: the last matching line wins, so the stage0 unset rows must
+# follow the stage0 glob. Transposed, they are inert and a hand-maintained file silently
+# acquires the driver.
 
 .gitattributes merge=generated-artifact
 .githooks/generated-artifact-merge merge=generated-artifact
@@ -48,6 +51,7 @@ docs/plans/fold-ergonomics.md merge=generated-artifact
 docs/plans/format-model-reconciliation.md merge=generated-artifact
 docs/plans/host-effect-orchestration.md merge=generated-artifact
 docs/plans/idea-machine.md merge=generated-artifact
+docs/plans/import-namespace-program.md merge=generated-artifact
 docs/plans/inert-layer-lens.md merge=generated-artifact
 docs/plans/input-envelope-roadmap.md merge=generated-artifact
 docs/plans/intent-linearity-design-draft.md merge=generated-artifact
@@ -72,8 +76,49 @@ docs/plans/structural-quadratic-wall-coverage-audit.md merge=generated-artifact
 docs/plans/testgen-oracle.md merge=generated-artifact
 docs/plans/typescript-gap-census.md merge=generated-artifact
 docs/plans/v2-complexity-capability-parity.md merge=generated-artifact
+docs/plans/v2-corpus-self-host.md merge=generated-artifact
 docs/plans/v2-self-hosting.md merge=generated-artifact
 docs/plans/value-null-split.md merge=generated-artifact
 docs/plans/wiring-liveness-preflight.md merge=generated-artifact
 src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs merge=generated-artifact
 src/v1/stage0/src/v1_interpreter_dispatch_generated.rs merge=generated-artifact
+src/v1/stage0/src/*.rs merge=generated-artifact
+src/v1/stage0/Cargo.toml merge=generated-artifact
+src/v1/stage0/src/bounded_shell_host_drain.rs !merge
+src/v1/stage0/src/census_exclude_derive.rs !merge
+src/v1/stage0/src/cli_run.rs !merge
+src/v1/stage0/src/codex_app_server_stdio_session.rs !merge
+src/v1/stage0/src/coproduct_reflection.rs !merge
+src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs !merge
+src/v1/stage0/src/data_initializer_identity.rs !merge
+src/v1/stage0/src/declaration_index.rs !merge
+src/v1/stage0/src/derived_realization_schedule.rs !merge
+src/v1/stage0/src/main.rs !merge
+src/v1/stage0/src/memory_governor.rs !merge
+src/v1/stage0/src/namespace_wave_admission.rs !merge
+src/v1/stage0/src/partition_crate_boundary_host.rs !merge
+src/v1/stage0/src/phase_profile.rs !merge
+src/v1/stage0/src/pre_push.rs !merge
+src/v1/stage0/src/recorded_fixture.rs !merge
+src/v1/stage0/src/required_regen_host.rs !merge
+src/v1/stage0/src/resolved_graph_cache.rs !merge
+src/v1/stage0/src/shared_typecheck_store.rs !merge
+src/v1/stage0/src/std_lens_verdict.rs !merge
+src/v1/stage0/src/target_invocation_host.rs !merge
+src/v1/stage0/src/usv_pilot_v2_std_algebra.rs !merge
+src/v1/stage0/src/usv_pilot_v2_std_collection.rs !merge
+src/v1/stage0/src/usv_pilot_v2_std_node.rs !merge
+src/v1/stage0/src/v1_interpreter.rs !merge
+src/v1/stage0/src/v2_compiler_body_producer.rs !merge
+src/v1/stage0/src/v2_compiler_compile.rs !merge
+src/v1/stage0/src/v2_compiler_discovery_enumeration.rs !merge
+src/v1/stage0/src/v2_compiler_infer.rs !merge
+src/v1/stage0/src/v2_compiler_normalize.rs !merge
+src/v1/stage0/src/v2_compiler_parse_engine_hooks.rs !merge
+src/v1/stage0/src/v2_compiler_program_assembly.rs !merge
+src/v1/stage0/src/v2_compiler_program_partition.rs !merge
+src/v1/stage0/src/v2_compiler_resolve.rs !merge
+src/v1/stage0/src/v2_compiler_source_authority.rs !merge
+src/v1/stage0/src/v2_compiler_target_carriers.rs !merge
+src/v1/stage0/src/v2_compiler_tokenize.rs !merge
+src/v1/stage0/src/v2_compiler_use_site_verdict.rs !merge

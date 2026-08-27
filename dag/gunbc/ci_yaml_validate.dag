@@ -1,9 +1,39 @@
 module gunbc.ci_yaml_validate
 
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome,
+  FilesystemReadSucceeded,
+  FilesystemReadRefused,
+  filesystem_read_outcome,
+}
 import extdeps.languages.yaml.ingest { yaml_source_parses }
 
-fn ci_yml_parses(path: String) -> Bool {
+type CiYamlParseOutcome
+  = CiYamlParsed
+  | CiYamlParseRefused
+  | CiYamlReadRefused { error: String }
+
+fn ci_yml_parse_outcome(path: String) -> CiYamlParseOutcome {
   let read = Filesystem.Read(path: path)
-  read.success && yaml_source_parses(src: read.content)
+  ci_yaml_parse_outcome_from_read(
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
+}
+
+fn ci_yaml_parse_outcome_from_read(read: FilesystemReadOutcome) -> CiYamlParseOutcome {
+  match read {
+    FilesystemReadRefused { error } => CiYamlReadRefused { error: error }
+    FilesystemReadSucceeded { content } => {
+      if yaml_source_parses(src: content) { CiYamlParsed } else { CiYamlParseRefused }
+    }
+  }
+}
+
+fn ci_yml_parses(path: String) -> Bool {
+  match ci_yml_parse_outcome(path: path) {
+    CiYamlParsed => true
+    CiYamlParseRefused => false
+    CiYamlReadRefused { error: _ } => false
+  }
 }

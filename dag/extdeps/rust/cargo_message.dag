@@ -14,7 +14,9 @@ import extdeps.languages.json.emit {
   JsonObject
 }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -266,12 +268,12 @@ fn cargo_message_scan_line(
     CargoScanRefused { selection: s } => CargoScanRefused { selection: s }
     CargoScanning { hits: hits, line_number: previous } => {
       let line_number = previous + 1
-      match parse_json(s: line) {
-        Absent =>
+      match parse_json_document(s: line) {
+        JsonDocumentUnreadable { gap: _ } =>
           CargoScanRefused {
             selection: CargoMessageLineUnparseable { line_number: line_number }
           }
-        Present { value: doc } =>
+        JsonDocumentParsed { value: doc } =>
           match json_object_unique_member(v: doc, key: cargo_message_reason_member) {
             JsonMemberNotAnObject =>
               CargoScanRefused {

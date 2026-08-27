@@ -48,7 +48,7 @@ pub use crate::v1_compiler_emit_rust::item_generic_param_names;
 pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Connective::NoConnective;
+use crate::v1_std_core::Connective::{Arrow, NoConnective};
 use crate::v1_std_core::ContainerSpellingVerdict::{
     ContainerSpellingDeclared, ContainerSpellingUnknown, NotAContainerSpelling,
 };
@@ -56,7 +56,7 @@ use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::UnaryOpKind::*;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, generic_param_name_at,
-    param_node_type_expr,
+    param_node_type_expr, qualified_last_segment,
 };
 pub use crate::v1_std_core::{Connective, ContainerSpellingVerdict, NewlineIndex, Node};
 pub use crate::v1_std_core::{MatchPattern, UnaryOpKind};
@@ -3075,7 +3075,8 @@ pub fn v1_type_expr_clone_undecided_head(
     item_generic_params: Rc<BTreeSet<String>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = authored_name_at(source_indices.clone(), type_expr.clone());
+        let name =
+            qualified_last_segment(authored_name_at(source_indices.clone(), type_expr.clone()));
         if ((type_expr.children.clone().len() as i64) == 0) {
             "".to_string()
         } else {
@@ -3298,6 +3299,26 @@ pub fn v1_declared_arg_positions_need_clone_param(
     })
 }
 
+pub fn v1_callable_argument_and_return_type_exprs(type_expr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    v1_rt::concat(
+        Rc::new(vec![resolved_type(type_expr.clone())]),
+        Rc::new({
+            let mut __result = Vec::new();
+            for p in type_expr.params.clone().iter().cloned() {
+                __result.push(param_node_type_expr(p.clone()));
+            }
+            __result
+        }),
+    )
+}
+
+pub fn v1_callable_type_expr_component_type_exprs(type_expr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    match type_expr.connective.clone() {
+        Connective::Arrow => v1_callable_argument_and_return_type_exprs(type_expr.clone()),
+        _ => Rc::new(vec![]),
+    }
+}
+
 pub fn v1_type_expr_wf_needs_clone_param(
     param_name: String,
     type_expr: Rc<Node>,
@@ -3306,7 +3327,8 @@ pub fn v1_type_expr_wf_needs_clone_param(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = authored_name_at(source_indices.clone(), type_expr.clone());
+        let name =
+            qualified_last_segment(authored_name_at(source_indices.clone(), type_expr.clone()));
         if ((type_expr.children.clone().len() as i64) == 0) {
             false
         } else {
@@ -3415,6 +3437,44 @@ pub fn v1_item_field_type_exprs(
     }
 }
 
+pub fn v1_item_field_type_expr_wf_needs_clone_param(
+    param_name: String,
+    type_expr: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let callable_components = v1_callable_type_expr_component_type_exprs(type_expr.clone());
+        if ((callable_components.clone().len() as i64) > 0) {
+            {
+                let mut __found = false;
+                for c in callable_components.iter().cloned() {
+                    if v1_item_field_type_expr_wf_needs_clone_param(
+                        param_name.clone(),
+                        c.clone(),
+                        bounds.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+        } else {
+            v1_type_expr_wf_needs_clone_param(
+                param_name.clone(),
+                type_expr.clone(),
+                bounds.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            )
+        }
+    })
+}
+
 pub fn v1_item_param_wf_needs_clone(
     param_name: String,
     item: Rc<Node>,
@@ -3428,7 +3488,7 @@ pub fn v1_item_param_wf_needs_clone(
             .iter()
             .cloned()
         {
-            if v1_type_expr_wf_needs_clone_param(
+            if v1_item_field_type_expr_wf_needs_clone_param(
                 param_name.clone(),
                 te.clone(),
                 bounds.clone(),
@@ -3809,6 +3869,38 @@ pub fn v1_emit_type_params_with_bounds(
                 ">".to_string(),
             )
         }
+    }
+}
+
+pub fn v1_item_wf_propagated_clone_bounded_param_names(
+    item_name: String,
+    item: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    {
+        let field_type_exprs = v1_item_field_type_exprs(item.clone(), source_indices.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for g in v1_item_clone_bounded_param_names(
+                item_name.clone(),
+                generic_param_names.clone(),
+                bounds.clone(),
+            )
+            .iter()
+            .cloned()
+            {
+                if !v1_item_type_param_needs_clone_bound_struct(
+                    g.clone(),
+                    field_type_exprs.clone(),
+                    source_indices.clone(),
+                ) {
+                    __result.push(g);
+                }
+            }
+            __result
+        })
     }
 }
 

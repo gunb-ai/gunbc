@@ -21,7 +21,7 @@ import gunbc.executor_privileged_operation {
 }
 import gunbc.runner_host_deploy { RunnerHostDeploy, srv1_runner_host_deploy, srv3_runner_host_deploy, srv4_runner_host_deploy }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
-import gunbc.runner_lifecycle { runner_unit_name_for_instance }
+import gunbc.runner_unit { runner_unit_name_of_registration }
 
 // THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
 // gunbc.fleet_converge_plan and named nowhere: once as a bare literal in the lease guard's argv, and
@@ -49,7 +49,7 @@ fn runner_slot_activation_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
   flat_map(
     desired_runner_slot_members(deploy: deploy),
     m => {
-      let unit = runner_unit_name_for_instance(instance_name: m.instance_name as String)
+      let unit = runner_unit_name_of_registration(registration_name: m.instance_name)
       [SystemdEnableUnit { unit: unit }, SystemdStartUnit { unit: unit }]
     },
   )

@@ -18,7 +18,7 @@ import v2.std.diagnostic {
   ExternalContractUnknown,
   Unavailable,
   diagnostics_singleton,
-  port_locus,
+  invariant_port_locus,
   Diagnostics,
   None,
   NonEmptyDiagnostics,
@@ -309,7 +309,7 @@ fn front_end_bounded_diagnostics(last: FrontEndStage) -> NonEmptyDiagnostics {
   diagnostics_singleton(
     d: Diagnostic {
       reason: front_end_bound_reason(stage: last),
-      at: port_locus(port: ^staged_front_end_locus_port),
+      at: invariant_port_locus(port: ^staged_front_end_locus_port, invariant: front_end_bound_reason(stage: last)),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   )
@@ -319,7 +319,7 @@ fn front_end_incomplete_diagnostics() -> NonEmptyDiagnostics {
   diagnostics_singleton(
     d: Diagnostic {
       reason: ^staged_front_end_run_incomplete,
-      at: port_locus(port: ^staged_front_end_locus_port),
+      at: invariant_port_locus(port: ^staged_front_end_locus_port, invariant: ^staged_front_end_run_incomplete),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   )

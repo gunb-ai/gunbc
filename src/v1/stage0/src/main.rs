@@ -17,7 +17,8 @@ use v1_compiler::v1_std_core::{
 #[derive(Parser)]
 #[command(
     name = "gunbc",
-    about = "A causal compiler: write .dag, get Rust/Python/Go."
+    about = "A causal compiler: write .dag, get Rust/Python/Go.",
+    version = env!("GUNBC_BUILD_IDENTITY")
 )]
 struct Cli {
     #[command(subcommand)]
@@ -51,7 +52,16 @@ enum Commands {
         #[arg(long)]
         entry: Option<String>,
     },
-    Ci,
+
+    /// Run one target by its absolute label and report the standing its own producer
+    /// answers in. The label is exact: a target PATTERN refuses, and an unbound or
+    /// unknown target refuses rather than reporting a pass.
+    Test {
+        /// Absolute label of exactly one target, e.g.
+        /// `//gunbc/instruments:heads-reading-differential`.
+        #[arg(value_name = "LABEL")]
+        target: String,
+    },
 
     /// Execute a .dag program directly (interpreter)
     Run {
@@ -175,70 +185,6 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
     }
 }
 
-/// Extract the `module x.y.z` declaration from a .dag file's first lines.
-fn extract_module_path(content: &str) -> Option<String> {
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("module ") {
-            return Some(trimmed["module ".len()..].trim().to_string());
-        }
-        if !trimmed.is_empty() && !trimmed.starts_with("//") {
-            break;
-        }
-    }
-    None
-}
-
-/// Report `.dag` files dropped from the compile entry set for carrying no `module`
-/// declaration — counted, and each one located by path.
-///
-/// The deleted `cli_run` pair split this across `moduleless_dag_entry_paths` (a filter)
-/// and `report_moduleless_dag_entry_skips` (a printer), and the filter carried its own
-/// private copy of `extract_module_path` — a second implementation of the concept this
-/// file already owns above. Two copies of one rule is the §3 fork, and it decides which
-/// files get compiled, so a divergence between them would silently change the compiled
-/// population. One function reading the one local authority.
-///
-/// OBSERVED, NOT CHANGED: a skip here does not affect the exit code, so a tree containing
-/// a `.dag` with no `module` declaration compiles green while that file is silently
-/// absent from the compiled set. It is counted and located on stderr rather than truly
-/// silent, which is why this is an observation and not a repair — turning it into a
-/// refusal is a behavior change beyond this cut, and it belongs to whoever owns the
-/// compile entry policy rather than to the driver deletion.
-fn report_moduleless_dag_entry_skips(entry_files: &[(String, String)]) {
-    let skipped: Vec<&String> = entry_files
-        .iter()
-        .filter(|(_, content)| extract_module_path(content).is_none())
-        .map(|(path, _)| path)
-        .collect();
-    if skipped.is_empty() {
-        return;
-    }
-    eprintln!(
-        "skipped {} module-less .dag file(s) from compile entry set (no `module` declaration):",
-        skipped.len()
-    );
-    for path in skipped {
-        eprintln!("  {path}");
-    }
-}
-
-/// Extract import module paths from a .dag file's import declarations.
-fn extract_import_paths(content: &str) -> Vec<String> {
-    let mut imports = Vec::new();
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("import ") {
-            let rest = trimmed["import ".len()..].trim();
-            let module_path = rest.split('{').next().unwrap_or(rest).trim();
-            if !module_path.is_empty() {
-                imports.push(module_path.to_string());
-            }
-        }
-    }
-    imports
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DependencyPoolIndex {
     Strict,
@@ -259,123 +205,26 @@ fn parse_dependency_pool_index(value: &str) -> DependencyPoolIndex {
     }
 }
 
-fn insert_module_path(
-    index: &mut HashMap<String, std::path::PathBuf>,
-    module_path: String,
-    path: std::path::PathBuf,
-    within_root: &mut HashMap<String, std::path::PathBuf>,
-) {
-    if let Some(existing) = within_root.get(&module_path) {
-        panic!(
-            "duplicate module path '{}' within source root: declared in both {:?} and {:?}",
-            module_path, existing, path
-        );
-    }
-    within_root.insert(module_path.clone(), path.clone());
-    index.insert(module_path, path);
-}
-
-fn index_source_root(
-    root: &str,
-    index: &mut HashMap<String, std::path::PathBuf>,
-    pool_fill_only: bool,
-) {
-    let root_path = std::path::Path::new(root);
-    if !root_path.exists() {
-        panic!("source root does not exist: {}", root);
-    }
-    let mut dag_files = Vec::new();
-    collect_dag_files(root_path, &mut dag_files);
-    let mut within_root = HashMap::new();
-    for path in dag_files {
-        let content = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
-        if let Some(module_path) = extract_module_path(&content) {
-            if pool_fill_only {
-                if index.contains_key(&module_path) {
-                    continue;
-                }
-                insert_module_path(index, module_path, path, &mut within_root);
-            } else if let Some(existing) = index.get(&module_path) {
-                panic!(
-                    "duplicate module path '{}': declared in both {:?} and {:?}",
-                    module_path, existing, path
-                );
-            } else {
-                insert_module_path(index, module_path, path, &mut within_root);
-            }
-        }
-    }
-}
-
-fn build_module_index(
-    source_roots: &[String],
-    pool_index: DependencyPoolIndex,
-) -> HashMap<String, std::path::PathBuf> {
-    let mut index = HashMap::new();
-    if source_roots.is_empty() {
-        return index;
-    }
-    match pool_index {
-        DependencyPoolIndex::Strict => {
-            for root in source_roots {
-                index_source_root(root, &mut index, false);
-            }
-        }
-        DependencyPoolIndex::PrimaryPrecedence => {
-            index_source_root(&source_roots[0], &mut index, false);
-            for root in &source_roots[1..] {
-                index_source_root(root, &mut index, true);
-            }
-        }
-    }
-    index
-}
-
-/// Resolve imports transitively from entry modules.
-/// Fail-closed: panics on unreadable imported files.
-/// Returns sources sorted by path for deterministic fixed-point convergence.
-fn resolve_transitively_with_seen(
-    entry_sources: Vec<(String, String)>,
-    index: &HashMap<String, std::path::PathBuf>,
-    mut seen: HashMap<String, Rc<v1_compiler::v1_compiler_compile::SourceFile>>,
-) -> Vec<Rc<v1_compiler::v1_compiler_compile::SourceFile>> {
-    let mut queue: Vec<(String, String)> = entry_sources;
-
-    while let Some((_path, content)) = queue.pop() {
-        // Compile scope stays the IMPORT closure: widening it to reference-derived
-        // deps was measured to pull cross-tree modules into this pool-precedence
-        // view where their own bare names do not resolve (344 diagnostics — the
-        // Empty/Cons poisoning class). References instead widen the CENSUS
-        // (fill = whole tree; policy gates lookup, never fill): see
-        // census_only_sources below.
-        for module_path in extract_import_paths(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(file_path) = index.get(&module_path) {
-                let file_content = std::fs::read_to_string(file_path).unwrap_or_else(|e| {
-                    panic!(
-                        "failed to read imported module '{}' at {:?}: {}",
-                        module_path, file_path, e
-                    )
-                });
-                let rel_path = file_path.to_string_lossy().to_string();
-                let source = Rc::new(v1_compiler::v1_compiler_compile::SourceFile {
-                    path: rel_path.clone(),
-                    content: file_content.clone(),
-                });
-                seen.insert(module_path, source);
-                queue.push((rel_path, file_content));
-            }
-            // If not found in index, the compiler's resolve stage will report the error.
-        }
-    }
-
-    let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();
-    result.sort_by(|a, b| a.path.cmp(&b.path));
-    result
-}
+// SEVEN FUNCTIONS WERE DELETED HERE AND THE COMPILER IS WHAT FOUND THEM.
+//
+// `extract_module_path`, `report_moduleless_dag_entry_skips`, `extract_import_paths`,
+// `insert_module_path`, `index_source_root`, `build_module_index` and
+// `resolve_transitively_with_seen` were this handler's private copy of the module-indexing and
+// import-walking machinery. Routing the whole-root subject through `cli_run::compile_emission`
+// left every one of them with no caller, and they went out on that census rather than on a
+// judgement -- which is what DESIGN's delete-first doctrine means by the deletion BEING the
+// census: what breaks loudly is exactly what was load-bearing, and nothing did.
+//
+// Their surviving authorities are `cli_run`'s: `extract_module_path`, `extract_import_paths`,
+// `build_multi_entry_index*` and `resolve_transitively_bfs_legacy`.
+//
+// AN EARLIER REVISION OF THIS NOTE CLAIMED THE MODULE-LESS SKIP REPORT HAD NO COUNTERPART THERE.
+// That was false, and it is corrected here rather than quietly dropped because a note asserting
+// an ABSENCE is exactly the claim a later reader will not re-check. `report_moduleless_dag_entry_skips`
+// and `moduleless_dag_entry_paths` are both `pub` in `cli_run`, both carry tests, and neither was
+// ever deleted; the deletion note asserted their absence without grepping for it. The behaviour is
+// now wired into the transaction's `PrimaryRoot` arm through those same two functions, so nothing
+// is lost and no second authority was minted.
 
 fn render_target_from_name(
     target: &str,
@@ -389,9 +238,11 @@ fn render_target_from_name(
     }
 }
 
-fn parse_render_targets(
-    target: &str,
-) -> Vec<(String, v1_compiler::v1_compiler_artifact::RenderTarget)> {
+/// THE PARSE RETURNS TARGETS, NOT (NAME, TARGET) PAIRS. The authored spelling is discarded
+/// here deliberately: it is recoverable from the target through `cli_run::render_target_name`,
+/// which is this function's inverse, and keeping both would let a caller carry a name that
+/// disagrees with the target it names.
+fn parse_render_targets(target: &str) -> Vec<v1_compiler::v1_compiler_artifact::RenderTarget> {
     let mut targets = Vec::new();
     for part in target.split('+') {
         let trimmed = part.trim();
@@ -399,7 +250,7 @@ fn parse_render_targets(
             continue;
         }
         match render_target_from_name(trimmed) {
-            Some(render_target) => targets.push((trimmed.to_string(), render_target)),
+            Some(render_target) => targets.push(render_target),
             None => {
                 eprintln!(
                     "unknown target: {}. supported: rust, python, go, dag, rust+dag",
@@ -416,17 +267,130 @@ fn parse_render_targets(
     targets
 }
 
-fn write_output_files(output_dir: &str, result: &v1_compiler::v1_compiler_compile::PipelineResult) {
-    std::fs::create_dir_all(format!("{}/src", output_dir))
-        .unwrap_or_else(|e| panic!("failed to create output dir: {}", e));
+/// THE OUTPUT WRITER'S OWN REFUSAL VOCABULARY. Three causes, one per host effect the
+/// writer performs, each naming the path it failed on.
+///
+/// The parent-directory arm is the one that had no representation at all: it was
+/// `create_dir_all(parent).ok()`, and the very next statement panicked naming the WRITE, so
+/// a missing parent directory was reported as a write failure and the real cause was not
+/// recoverable from the message -- a silent arm feeding a misleading one, which is the
+/// absorbing failure arm DESIGN §5 forbids.
+///
+/// The form follows `Stage0CargoBinManifestParseRefusal` in `cli_run` (gunbc#9285), which is
+/// this seed's established shape for exactly this repair: a typed refusal with a `Display`,
+/// returned by `Result`, with the process exit taken at the command boundary.
+///
+/// THIS WIDENS main.rs's DECLARED DIVERGENCE FROM ITS EMITTED FORM, AND THE NEXT PERSON TO
+/// CLOSE THAT DIVERGENCE WILL DELETE THIS REPAIR UNLESS THEY READ THIS.
+///
+/// `v1.05_emit_rust` `emit_main_rs` still emits the OLD `write_output_files` verbatim -- the
+/// two `panic!`s and the `.ok()`. That is sanctioned today, not drift: `main.rs` is a
+/// `hand_maintained_stage0_filenames` member, suppressed from the derived generated
+/// population, and `gunbc.emit_diagnostic_observation` names it as this repository's one
+/// declared divergence from its emitted form. So nothing reds, and nothing will.
+///
+/// But `gunbc.plans.seed_debt_bundle_item_2` plans to wire the main-emit path, move `main.rs`
+/// into the generated population and regen. Executing that emits over this function and
+/// silently puts a panic back where this typed refusal now stands. Whoever does it owes
+/// `emit_main_rs` this same repair FIRST, or the regen is a safety regression wearing a
+/// green diff. Two bodies for one function currently carry OPPOSITE failure semantics; this
+/// one is authoritative until that wiring lands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum OutputWriteRefusal {
+    OutputDirectoryNotCreated {
+        path: String,
+        cause: String,
+    },
+    ParentDirectoryNotCreated {
+        path: String,
+        file: String,
+        cause: String,
+    },
+    FileNotWritten {
+        path: String,
+        cause: String,
+    },
+}
+
+impl std::fmt::Display for OutputWriteRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The wording deliberately avoids the `refused at {phase}` sentence the compile arms
+        // use. That sentence is the COMPILER disowning its own output; this one is the
+        // filesystem refusing to take output the compiler already stands behind.
+        write!(f, "gunbc compile: output write refused: ")?;
+        match self {
+            Self::OutputDirectoryNotCreated { path, cause } => {
+                write!(f, "could not create output directory {path}: {cause}")
+            }
+            Self::ParentDirectoryNotCreated { path, file, cause } => {
+                write!(
+                    f,
+                    "could not create parent directory {path} for {file}: {cause}"
+                )
+            }
+            Self::FileNotWritten { path, cause } => {
+                write!(f, "could not write {path}: {cause}")
+            }
+        }
+    }
+}
+
+impl OutputWriteRefusal {
+    /// THE BOUNDARY TRANSLATION, so no call site decides a status of its own.
+    ///
+    /// `1` already means "the compile refused, or the arguments were bad". Reusing it would
+    /// re-fuse at the exit status precisely what the typed refusal above splits at the
+    /// message -- and the exit status is what a machine consumer reads. So the writer gets
+    /// its own, `3`, chosen here and nowhere else.
+    fn verdict(self) -> Verdict {
+        Verdict {
+            status: 3,
+            message: Some(self.to_string()),
+        }
+    }
+}
+
+/// WRITING THE TREE IS A HOST EFFECT, NOT A COMPILE PHASE, AND IT NOW HAS A FAILURE CHANNEL.
+///
+/// This returned `()`. Its two reachable failures could therefore only be reported by
+/// `panic!` and its third not at all -- not a lazy choice over an available `Result`, but
+/// the only thing a unit return permits. The consequence at all three call sites was one
+/// observable outcome: exit 101, a Rust panic message, and no `compiled:` summary line,
+/// after a compile that had already SUCCEEDED through emit. Every consumer that reads this
+/// CLI then classifies it as a compile failure -- `gunbc.emit_diagnostic_observation` reads
+/// the absence of that line as "the compile refused and wrote no tree". "Your program is
+/// wrong" and "this disk would not take the output" are different states with opposite
+/// remedies, and the unit return is exactly what made them one symbol.
+fn write_output_files(
+    output_dir: &str,
+    result: &v1_compiler::v1_compiler_compile::PipelineResult,
+) -> Result<(), OutputWriteRefusal> {
+    let src_dir = format!("{}/src", output_dir);
+    if let Err(e) = std::fs::create_dir_all(&src_dir) {
+        return Err(OutputWriteRefusal::OutputDirectoryNotCreated {
+            path: src_dir,
+            cause: e.to_string(),
+        });
+    }
     for file in result.files.iter() {
         let out_path = format!("{}/{}", output_dir, file.path);
         if let Some(parent) = std::path::Path::new(&out_path).parent() {
-            std::fs::create_dir_all(parent).ok();
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                return Err(OutputWriteRefusal::ParentDirectoryNotCreated {
+                    path: parent.display().to_string(),
+                    file: out_path,
+                    cause: e.to_string(),
+                });
+            }
         }
-        std::fs::write(&out_path, &*file.content)
-            .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
+        if let Err(e) = std::fs::write(&out_path, &*file.content) {
+            return Err(OutputWriteRefusal::FileNotWritten {
+                path: out_path,
+                cause: e.to_string(),
+            });
+        }
     }
+    Ok(())
 }
 
 fn main() {
@@ -470,15 +434,44 @@ fn main() {
             // the board's producer can green while the board refuses, which is two answers
             // to one question (DESIGN §3). The handler keeps what is genuinely its own:
             // writing the tree, rendering diagnostics, and choosing an exit code.
-            if let (Some(entry_path), 1) = (&entry, render_targets.len()) {
-                let run = cli_run::compile_entry_emission(
-                    &source_roots,
-                    entry_path,
-                    matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),
-                    render_targets[0].1.clone(),
-                );
+            // ── BOTH CLI SUBJECTS REACH THE ONE TRANSACTION ──
+            //
+            // `--entry` compiles that file's reference-derived closure; without it, the first
+            // `--source-root` is the primary root and the rest stay a dependency pool. Until
+            // this routing landed the second case was a SECOND index/load/resolve/admit/
+            // compile/refuse pipeline open-coded here, beside the transaction rather than
+            // through it, so "the required phase is green" and "the CLI emitted" were two
+            // facts about two producers (DESIGN §3). The handler keeps what is genuinely its
+            // own: writing the tree, rendering diagnostics, and choosing an exit code.
+            //
+            // THE MULTI-TARGET CASE ROUTES HERE TOO, as of the transaction taking a target
+            // VECTOR. It did not, briefly, and that was a REGRESSION rather than a scope
+            // statement: `--source-root X --target rust+dag` fell past this gate into a branch
+            // whose only remaining subject is `--source-dir`, and exited with
+            // "provide --source-root or --source-dir" over an argv that provided one. The
+            // transaction now resolves once and emits per target, which is what the deleted
+            // loop did, so the fork is closed rather than documented.
+            let cli_subject = match (&entry, &source_roots.is_empty()) {
+                (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),
+                (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(
+                    source_roots[0].clone(),
+                )),
+                // `--source-dir` (no source roots at all) keeps the legacy flat scan below.
+                (None, true) => None,
+            };
+            if let Some(subject) = cli_subject {
+                let multi_target = render_targets.len() > 1;
+                let run = cli_run::compile_emission(&cli_run::CompileRequest {
+                    subject,
+                    source_roots: source_roots.clone(),
+                    primary_precedence: matches!(
+                        pool_index,
+                        DependencyPoolIndex::PrimaryPrecedence
+                    ),
+                    render_targets: render_targets.clone(),
+                });
                 match &run.disposition {
-                    cli_run::EntryEmissionDisposition::NotExecuted {
+                    cli_run::CompileDisposition::NotExecuted {
                         earlier_phase,
                         cause,
                     } => {
@@ -488,37 +481,63 @@ fn main() {
                         eprintln!("gunbc compile: {earlier_phase}: {cause}");
                         std::process::exit(1);
                     }
-                    cli_run::EntryEmissionDisposition::Refused { phase, cause } => {
+                    cli_run::CompileDisposition::Refused { phase, cause } => {
                         eprintln!(
-                            "resolved {} sources (reference-derived closure), {} indexed modules in the name census only",
-                            run.closure_modules, run.census_modules
+                            "resolved {} sources ({}), {} indexed modules in the name census only",
+                            run.closure_modules,
+                            run.subject.scope_receipt().render(),
+                            run.census_modules
                         );
-                        // The tree is NOT written on a refusal: the previous handler's
-                        // refusal arm exited before `write_output_files` too, and writing a
-                        // partial tree the compiler has disowned is a fabricated plausible
-                        // output (DESIGN §5).
+                        // The tree is NOT written on a refusal: writing a partial tree the
+                        // compiler has disowned is a fabricated plausible output (DESIGN §5).
                         eprintln!("gunbc compile: refused at {phase}: {cause}");
-                        if let Some(result) = &run.result {
-                            render_diagnostics(result);
+                        for emission in &run.emissions {
+                            render_diagnostics(&emission.result);
                         }
                         std::process::exit(1);
                     }
-                    cli_run::EntryEmissionDisposition::Completed { emitted_count } => {
+                    cli_run::CompileDisposition::Completed { emitted_count } => {
                         eprintln!(
-                            "resolved {} sources (reference-derived closure), {} indexed modules in the name census only",
-                            run.closure_modules, run.census_modules
+                            "resolved {} sources ({}), {} indexed modules in the name census only",
+                            run.closure_modules,
+                            run.subject.scope_receipt().render(),
+                            run.census_modules
                         );
-                        let result = run
-                            .result
-                            .clone()
-                            .expect("a completed emission carries its result");
-                        write_output_files(&output_dir, &result);
+                        // NOTHING IS MATERIALIZED UNTIL EVERY TARGET HAS COMPLETED. The
+                        // disposition above is over the whole emission set, so reaching here
+                        // means no target refused -- a per-target write inside the emit loop
+                        // would leave one target's tree on disk beside another target's
+                        // refusal, which is the partial fabricated output §5 forbids.
+                        //
+                        // A single target writes to `output_dir` itself; several write to
+                        // `output_dir/<name>`, which is the layout the deleted loop used and
+                        // which downstream consumers already read.
+                        let mut total_diagnostics = 0usize;
+                        for emission in &run.emissions {
+                            let target_dir = if multi_target {
+                                format!("{}/{}", output_dir, emission.target_name)
+                            } else {
+                                output_dir.clone()
+                            };
+                            if let Err(refusal) = write_output_files(&target_dir, &emission.result)
+                            {
+                                refusal.verdict().apply();
+                            }
+                            if multi_target {
+                                eprintln!(
+                                    "compiled[{}]: {} files emitted, {} diagnostics",
+                                    emission.target_name,
+                                    emission.result.files.len(),
+                                    emission.result.diagnostics.len()
+                                );
+                            }
+                            render_diagnostics(&emission.result);
+                            total_diagnostics += emission.result.diagnostics.len();
+                        }
                         eprintln!(
                             "compiled: {} files emitted, {} diagnostics",
-                            emitted_count,
-                            result.diagnostics.len()
+                            emitted_count, total_diagnostics
                         );
-                        render_diagnostics(&result);
                         std::process::exit(0);
                     }
                 }
@@ -526,212 +545,60 @@ fn main() {
 
             v1_rt::resolution_silent_pick_enable();
 
-            // Indexed modules outside the compile closure, included in the name
-            // census only (fill = whole tree; the compile scope stays the closure).
-            let mut census_only_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
-            // The refusal's SUBJECT is what THIS invocation compiled, supplied by the
-            // caller. It used to be hardcoded "v2 self-compile" inside the shared
-            // message, so a user compiling their own fixture was told a compile they
-            // never ran had failed.
-            let compile_subject = match (&entry, &source_dir) {
-                (Some(entry_path), _) => format!("compile of {entry_path}"),
-                (None, Some(dir)) => format!("compile of {dir}"),
-                (None, None) => format!("compile of {}", source_roots.join(", ")),
+            // THE WHOLE-ROOT PIPELINE THAT STOOD HERE IS DELETED, NOT DISABLED. It was ~200
+            // lines re-implementing indexing, memory admission, entry-set discovery, the
+            // import walk, census fill and the refusal check that `cli_run::compile_emission`
+            // already owns. Every `--source-root` invocation now routes through the
+            // transaction above and never reaches this point, so leaving the code here would
+            // be a second authority kept warm for nothing (DESIGN §3, delete-first).
+            //
+            // WHAT REMAINS BELOW IS THE `--source-dir` FLAT SCAN AND NOTHING ELSE: a legacy
+            // subject with no source roots, no index and no dependency pool, which the
+            // transaction's two subjects do not describe. It is named rather than swept in,
+            // and it is the remaining fork in this handler.
+            //
+            // THE CENSUS BEHIND "ONE COMPILATION CONCEPT", AT CALL-SITE GRAIN RATHER THAN
+            // FILE GRAIN, because a file-grain claim is not checkable and this one was
+            // overstated once already. Direct calls to the compile kernel
+            // (`compile_sources_with_options` / `compile_to_resolved_with_options` /
+            // `emit_resolved_for_target`) outside `cli_run::compile_emission`, in non-test
+            // code:
+            //
+            //   - main.rs, this handler, the `--source-dir` arm (3 sites) -- the legacy flat
+            //     scan above. A FORK, declared. It survives because the transaction models a
+            //     source-root subject and this one has no root, no index and no pool; the
+            //     terminal form is a third subject or the flag's deletion, and nothing in the
+            //     repository passes `--source-dir` today.
+            //   - cli_run compile-clean oracle (2 sites) -- deliberately index-independent
+            //     and cache-independent, which is the whole point of it: it exists to
+            //     disagree with the via-index path. Routing it through the transaction would
+            //     destroy the property it measures.
+            //   - cli_run synthesized-resolved emit (1 site) -- emits a `ResolvedPipelineResult`
+            //     assembled in memory, so there is no source set for a transaction to take.
+            //   - required_regen_host `compile_stage0` (1 site) -- calls `compile_sources`
+            //     directly over `regen_input_sources`. A FORK, declared. Its subject is an
+            //     EXACT SOURCE SET read from the regen roster, not a root and not an entry, so
+            //     neither of the transaction's two subjects describes it; the terminal form is
+            //     a third subject (`ExactSourceSet`) carrying the roster as its authority.
+            //     Note it also passes a hardcoded refusal subject ("v2 self-compile"), which
+            //     the transaction derives from the subject it was given.
+            //
+            // THIS CENSUS WAS WRONG ONCE, IN THE DIRECTION THAT FLATTERS. Its first revision
+            // omitted `required_regen_host` -- the file appeared in the file-level count I ran
+            // and did not survive into the call-site list I wrote from it, so a fork was
+            // reported as absent by a census whose whole purpose is to enumerate forks. Caught
+            // in review. The lesson is the one the floor's own first-execution receipt records:
+            // a list you transcribe from a wider measurement is not the measurement.
+            //
+            // NOT a claim that nothing else compiles: the test files and the witness bins call
+            // the kernel directly too, and they are outside this census by scope, not because
+            // they were checked and cleared.
+            let compile_subject = match &source_dir {
+                Some(dir) => format!("compile of {dir}"),
+                None => "compile".to_string(),
             };
-            let sources = if !source_roots.is_empty() {
-                // ARM-TIME ADMISSION for a whole-corpus compile (no --entry). The host
-                // budget was already readable at this point and was joined to nothing: the
-                // run started a resolve it could not hold and was SIGKILLed — exit 137, no
-                // diagnostic, and a harness grepping the captured output reads a fabricated
-                // zero rather than a failure. Refusing here stops the line where it can
-                // still be reported.
-                //
-                // Placed BEFORE the index because nothing about the corpus is an input to
-                // the decision — the threshold is a measured whole-tree demand figure, not a
-                // per-module derivation — so the cheapest correct place is the earliest one.
-                // Deliberately NOT applied to --entry: a scoped compile's working set is its
-                // closure, not the whole tree, and it was measured to fit on the very runner
-                // that killed the whole-corpus run. That is an unasked question, not an
-                // all-clear. Authority: gunbc.whole_corpus_compile_admission.
-                if entry.is_none() {
-                    let (budget, source) = v1_compiler::memory_governor::read_host_budget_bytes();
-                    let admission = v1_compiler::memory_governor::whole_corpus_compile_admission(
-                        budget, &source,
-                    );
-                    if let Some(diagnostic) =
-                        v1_compiler::memory_governor::whole_corpus_compile_refusal_diagnostic(
-                            &admission,
-                        )
-                    {
-                        eprintln!("gunbc compile: {diagnostic}");
-                        std::process::exit(1);
-                    }
-                }
-
-                let index = build_module_index(&source_roots, pool_index);
-                eprintln!(
-                    "indexed {} modules from {} source roots",
-                    index.len(),
-                    source_roots.len()
-                );
-
-                // Entry modules. With --entry: exactly the one named file (its
-                // transitive imports are resolved from the index below), so a small
-                // subtree compiles without a whole-tree pass. Without --entry: all
-                // .dag files in the FIRST source root (additional roots are dependency
-                // pools resolved via imports — `--source-root src/v1 --source-root dag`
-                // means 'compile src/v1, using dag as a dependency pool').
-                let mut entry_files = Vec::new();
-                if let Some(entry_path) = &entry {
-                    // An entry that cannot be read is an external fact observed at a boundary:
-                    // refuse with the path and the cause, never abort. The two errnos are kept
-                    // apart because their remedies are different -- NotFound means the caller
-                    // named a path that is not there (a wrong subject, and the message says so),
-                    // while any other error means the path exists and the read failed, which is
-                    // a permission or IO fault at the same path. Collapsing them sends the
-                    // caller looking in the wrong place.
-                    let content = match std::fs::read_to_string(entry_path) {
-                        Ok(content) => content,
-                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                            eprintln!(
-                                "gunbc compile: entry file does not exist: {entry_path} \
-                                 (--entry names a path relative to the working directory, \
-                                 not a module path)"
-                            );
-                            std::process::exit(1);
-                        }
-                        Err(e) => {
-                            eprintln!("gunbc compile: cannot read entry {entry_path}: {e}");
-                            std::process::exit(1);
-                        }
-                    };
-                    entry_files.push((entry_path.clone(), content));
-                } else {
-                    let first_root = std::path::Path::new(&source_roots[0]);
-                    if first_root.is_dir() {
-                        let mut dag_paths = Vec::new();
-                        collect_dag_files(first_root, &mut dag_paths);
-                        for path in dag_paths {
-                            // Same boundary, discovered rather than named: a path the walk
-                            // just produced cannot be NotFound without a race, so this arm
-                            // reports the path and the cause and stops the line.
-                            let content = match std::fs::read_to_string(&path) {
-                                Ok(content) => content,
-                                Err(e) => {
-                                    eprintln!(
-                                        "gunbc compile: cannot read source {}: {e}",
-                                        path.display()
-                                    );
-                                    std::process::exit(1);
-                                }
-                            };
-                            entry_files.push((path.to_string_lossy().to_string(), content));
-                        }
-                    }
-                }
-                report_moduleless_dag_entry_skips(&entry_files);
-
-                // Namespace Rule-1 (emit_import_closure_root): with imports
-                // stripped, a namespace-only module's cross-module deps are
-                // derivable ONLY from its references, not import edges. For a
-                // single --entry compile use the reference-derived closure (the
-                // SAME authority the witness loaders use — load_sources_for_entry
-                // → extend_with_bare_reference_closure + extend_with_reference_
-                // closure) so referenced PROVIDER modules enter the COMPILED +
-                // EMITTED set (emit needs their type/fn defs, not just a census
-                // name-lookup). This unifies compile with the witness closure and
-                // kills the import-only-vs-reference §3 fork that let a bare
-                // cross-module type ref (e.g. materialization_carriers →
-                // std.realization.Materialization) fall silently to census-only
-                // and render invalid dotted Rust. Without --entry (whole first
-                // root) the import-edge walk stays the authority — every module
-                // is already an entry, so reference derivation would only over-
-                // pull. Fill (whole-tree name census) is unchanged below.
-                let resolved = if let Some(entry_path) = &entry {
-                    // §3: build the reference-derived closure under the SAME
-                    // dependency-pool policy as the census pool above (line ~338,
-                    // `build_module_index(&source_roots, pool_index)`), so closure
-                    // and census cannot fork on a cross-root homonym module.
-                    cli_run::load_sources_for_entry_with_pool_index(
-                        &source_roots,
-                        entry_path,
-                        matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),
-                    )
-                    .unwrap_or_else(|e| {
-                        eprintln!("error: reference-derived closure load failed: {e}");
-                        std::process::exit(1);
-                    })
-                } else {
-                    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> =
-                        HashMap::new();
-                    let mut entry_for_queue = Vec::new();
-                    for (path, content) in &entry_files {
-                        if let Some(mod_path) = extract_module_path(content) {
-                            let source = Rc::new(v1_compiler_compile::SourceFile {
-                                path: path.clone(),
-                                content: content.clone(),
-                            });
-                            seen.insert(mod_path, source);
-                            entry_for_queue.push((path.clone(), content.clone()));
-                        }
-                    }
-                    let mut resolved =
-                        resolve_transitively_with_seen(entry_for_queue, &index, seen);
-                    for (path, content) in entry_files {
-                        if extract_module_path(&content).is_none() {
-                            continue;
-                        }
-                        let already_there = resolved.iter().any(|s| s.path == path);
-                        if !already_there {
-                            resolved
-                                .push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
-                        }
-                    }
-                    resolved
-                };
-                eprintln!(
-                    "resolved {} sources (transitive import closure)",
-                    resolved.len()
-                );
-                // Everything indexed but outside the closure enters the census only.
-                {
-                    // Key closure membership on MODULE PATH, not file path: the
-                    // reference-derived loader (cli_run) normalizes paths
-                    // differently from this handler's index, so a file-path
-                    // compare would fail to exclude closure modules and double-
-                    // load them into the census. Module path is the format-
-                    // independent identity.
-                    let closure_modules: std::collections::HashSet<String> = resolved
-                        .iter()
-                        .filter_map(|s| extract_module_path(&s.content))
-                        .collect();
-                    let mut pool_rest: Vec<(String, std::path::PathBuf)> = index
-                        .iter()
-                        .filter(|(m, _)| !closure_modules.contains(*m))
-                        .map(|(m, p)| (m.clone(), p.clone()))
-                        .collect();
-                    pool_rest.sort_by(|a, b| a.0.cmp(&b.0));
-                    for (module_path, file_path) in pool_rest {
-                        let content = std::fs::read_to_string(&file_path).unwrap_or_else(|e| {
-                            panic!(
-                                "failed to read indexed module '{}' at {:?}: {}",
-                                module_path, file_path, e
-                            )
-                        });
-                        census_only_sources.push(Rc::new(v1_compiler_compile::SourceFile {
-                            path: file_path.to_string_lossy().to_string(),
-                            content,
-                        }));
-                    }
-                    if !census_only_sources.is_empty() {
-                        eprintln!(
-                            "[census] {} indexed modules outside the closure enter the name census only (not compiled)",
-                            census_only_sources.len()
-                        );
-                    }
-                }
-                resolved
-            } else if let Some(dir) = source_dir {
+            let census_only_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
+            let sources = if let Some(dir) = source_dir {
                 // Legacy: flat directory scan (backward compatibility)
                 let mut dag_paths = Vec::new();
                 collect_dag_files(std::path::Path::new(&dir), &mut dag_paths);
@@ -764,7 +631,7 @@ fn main() {
             if render_targets.len() == 1 {
                 let result = v1_compiler_compile::compile_sources_with_options(
                     Rc::new(sources.into()),
-                    render_targets[0].1.clone(),
+                    render_targets[0].clone(),
                     pipeline_options.clone(),
                 );
                 if let Some(message) = v1_compiler_compile::stage0_self_compile_refusal_message(
@@ -774,7 +641,9 @@ fn main() {
                     eprintln!("{message}");
                     std::process::exit(1);
                 }
-                write_output_files(&output_dir, &result);
+                if let Err(refusal) = write_output_files(&output_dir, &result) {
+                    refusal.verdict().apply();
+                }
                 eprintln!(
                     "compiled: {} files emitted, {} diagnostics",
                     result.files.len(),
@@ -791,7 +660,8 @@ fn main() {
                 );
                 let mut total_files = 0usize;
                 let mut total_diagnostics = 0usize;
-                for (name, render_target) in render_targets {
+                for render_target in render_targets {
+                    let name = v1_compiler::cli_run::render_target_name(&render_target);
                     let result = v1_compiler_compile::emit_resolved_for_target(
                         resolved.clone(),
                         render_target,
@@ -804,7 +674,9 @@ fn main() {
                         std::process::exit(1);
                     }
                     let target_output_dir = format!("{}/{}", output_dir, name);
-                    write_output_files(&target_output_dir, &result);
+                    if let Err(refusal) = write_output_files(&target_output_dir, &result) {
+                        refusal.verdict().apply();
+                    }
                     eprintln!(
                         "compiled[{}]: {} files emitted, {} diagnostics",
                         name,
@@ -874,25 +746,29 @@ fn main() {
             &args,
         )
         .apply(),
-        // `ci` is NOT a second verb to wire: the deleted handler was `run` with fixed
-        // arguments, so it is a PARAMETERIZATION of the same seam. Wiring it as its own
-        // path would fork one route into two that must then be kept equal by hand.
-        // The roots come from `cli_run::witness_layer_roots`, which reads the single
-        // `.dag` authority live rather than a literal spelled here.
-        // `ci` passes dry_run: false DELIBERATELY, matching the deleted `handle_ci`,
-        // which took no dry-run parameter and always evaluated Wet. `--dry-run` is a
-        // global flag, so it is ACCEPTED here and ignored — a pre-existing hazard on the
-        // base, not one this seam introduces, and changing it would alter a verb's
-        // semantics under cover of a restoration.
-        Commands::Ci {} => run_verb(
-            &cli_run::witness_layer_roots(),
-            "main",
-            Some("dag/tools/gunbc_ci.dag"),
-            false,
-            false,
-            &[],
-        )
-        .apply(),
+
+        // THE TARGET DISPATCH SEAM, AND THE WHOLE ARM IS A CALL.
+        //
+        // There is deliberately no mode switch here and no arm per instrument: which producer a
+        // label names is decided by the registry in `target_invocation_host`, mirroring
+        // `gunbc.instrument_targets`, and the realization that runs it is selected one level
+        // below that. A second instrument adds a row there and nothing at all here.
+        //
+        // The status is the producer's own termination, not an aggregate verdict: 0 the reading
+        // held, 1 it did not, 2 no reading was taken. `gunbc.build_target`'s
+        // `test_standing_verdict` and the Blaze status export are both deliberately NOT consulted
+        // -- each refuses instrument producers by design, so either would answer a question this
+        // verb is not asking.
+        Commands::Test { target } => {
+            let outcome = cli_run::target_invocation_host::test_verb(&target);
+            Verdict {
+                status: cli_run::target_invocation_host::invocation_exit_status(
+                    outcome.termination,
+                ),
+                message: Some(outcome.message),
+            }
+            .apply()
+        }
 
         // The refusal names a CONDITION, not a branch. An earlier revision said "not
         // available on integration/cli-run-cut", which the merge itself would have
@@ -1117,7 +993,40 @@ fn render_one_diagnostic(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::Cli;
+    use clap::CommandFactory;
+    // THE TESTS SURVIVE THE FUNCTION AND ARE RE-POINTED AT THE SURVIVING AUTHORITY.
+    // They were written against this file's private copy of `extract_module_path`, which the
+    // fork closure deleted; the behaviour they pin is `cli_run`'s, so they now assert it there.
+    // Deleting them with the function would have retired the evidence along with one of the two
+    // implementations, which is exactly what DESIGN §4b(4) forbids: the redundant machinery
+    // goes, the discriminating cases stay enrolled.
+    use v1_compiler::cli_run::extract_module_path_public as extract_module_path;
+
+    #[test]
+    fn version_surface_reports_the_exact_source_commit() {
+        assert_eq!(
+            Cli::command().get_version(),
+            Some(env!("GUNBC_BUILD_IDENTITY"))
+        );
+        let identity = env!("GUNBC_BUILD_IDENTITY");
+        let commit = identity.strip_suffix("-dirty").unwrap_or(identity);
+        assert_eq!(commit.len(), 40);
+        assert!(commit.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert!(identity == commit || identity == format!("{commit}-dirty"));
+    }
+
+    #[test]
+    fn emitted_non_gunbc_cli_has_no_gunbc_build_environment_dependency() {
+        let rendered = v1_compiler::v1_compiler_emit_rust::emit_cli_struct(
+            std::rc::Rc::new(im::vector![]),
+            "user-program".to_string(),
+            "".to_string(),
+            "".to_string(),
+        );
+        assert!(!rendered.contains("GUNBC_BUILD_IDENTITY"));
+        assert!(!rendered.contains("version ="));
+    }
 
     #[test]
     fn extract_module_path_none_for_moduleless_parse_fixture() {
@@ -1187,6 +1096,12 @@ struct Verdict {
 impl Verdict {
     /// The ONE place a verdict becomes a process status. Nothing else in this file calls
     /// `std::process::exit` for a verb outcome.
+    ///
+    /// `OutputWriteRefusal::verdict` is the second producer, and it is not a verb outcome:
+    /// it is the output writer's refusal, which before this change had no channel at all.
+    /// The carrier is reused rather than a second status-plus-message pair authored beside
+    /// it, so the writer's status is decided where the writer decides to refuse and nowhere
+    /// else.
     fn apply(self) -> ! {
         if let Some(message) = self.message {
             eprintln!("{message}");
@@ -1362,6 +1277,79 @@ fn exit_status_for(class: cli_run::ExitClass, function: &str) -> (i32, Option<St
 #[cfg(test)]
 mod exit_status_tests {
     use super::*;
+
+    /// THE DISCRIMINATING RED FOR THE WRITER/COMPILER CONFLATION.
+    ///
+    /// The claim under test is not "a refusal type exists" -- that probe cannot fail for the
+    /// reason that matters. It is that a writer failure and a compiler refusal are
+    /// DISTINGUISHABLE AT THE EXIT STATUS, which is the thing that was impossible before:
+    /// the writer had no failure channel, so its only outcome was an unwind at 101 with no
+    /// summary line, which every consumer reads as a failed compile.
+    ///
+    /// The edits that make this red, named rather than assumed: changing the status in
+    /// `OutputWriteRefusal::verdict` to 1 (re-fusing the two states at the status a compile
+    /// refusal already exits with), or to 0 (a writer refusal reporting success). Restoring
+    /// the `panic!` makes it fail to compile instead, which is the stronger outcome.
+    #[test]
+    fn a_writer_refusal_does_not_exit_as_a_compile_refusal() {
+        // The status a compile refusal exits with, at every compile arm in `main`.
+        const COMPILE_REFUSAL_STATUS: i32 = 1;
+        for refusal in [
+            OutputWriteRefusal::OutputDirectoryNotCreated {
+                path: "/proc/nope/src".to_string(),
+                cause: "Not a directory".to_string(),
+            },
+            OutputWriteRefusal::ParentDirectoryNotCreated {
+                path: "/proc/nope".to_string(),
+                file: "/proc/nope/src/a.rs".to_string(),
+                cause: "Not a directory".to_string(),
+            },
+            OutputWriteRefusal::FileNotWritten {
+                path: "/proc/nope/src/a.rs".to_string(),
+                cause: "Permission denied".to_string(),
+            },
+        ] {
+            let verdict = refusal.verdict();
+            assert_ne!(
+                verdict.status, COMPILE_REFUSAL_STATUS,
+                "a writer refusal must not exit as a compile refusal"
+            );
+            assert_ne!(verdict.status, 0, "a writer refusal must never exit 0");
+        }
+    }
+
+    /// THE THREE CAUSES STAY THREE. The parent-directory arm is here specifically because it
+    /// had no representation at all -- `.ok()` discarded it and the write arm then reported
+    /// its own name for the failure. This goes red if any arm is collapsed into another's
+    /// wording, which is the state the repair removed.
+    #[test]
+    fn each_writer_cause_names_itself_and_its_path() {
+        assert_eq!(
+            OutputWriteRefusal::OutputDirectoryNotCreated {
+                path: "/out/src".to_string(),
+                cause: "Not a directory".to_string(),
+            }
+            .to_string(),
+            "gunbc compile: output write refused: could not create output directory /out/src: Not a directory"
+        );
+        assert_eq!(
+            OutputWriteRefusal::ParentDirectoryNotCreated {
+                path: "/out/src/deep".to_string(),
+                file: "/out/src/deep/a.rs".to_string(),
+                cause: "Not a directory".to_string(),
+            }
+            .to_string(),
+            "gunbc compile: output write refused: could not create parent directory /out/src/deep for /out/src/deep/a.rs: Not a directory"
+        );
+        assert_eq!(
+            OutputWriteRefusal::FileNotWritten {
+                path: "/out/src/a.rs".to_string(),
+                cause: "Permission denied".to_string(),
+            }
+            .to_string(),
+            "gunbc compile: output write refused: could not write /out/src/a.rs: Permission denied"
+        );
+    }
 
     #[test]
     fn success_is_zero() {

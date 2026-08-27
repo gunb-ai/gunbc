@@ -1,0 +1,271 @@
+module test.claim.legacy_binding_projection_witness
+
+import std.types { String, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { Fnv1a64Structural, structural_content_hash }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.occurrence_identity { OccurrenceId }
+import v2.workflow.legacy_binding_observation {
+  LegacyBindingObservationSubject,
+  ImportScopedPolicy,
+  NamespaceOnlyPolicy,
+  legacy_subject_identity
+}
+import v2.workflow.legacy_binding_delta {
+  ProjectionProvenance,
+  ProjectionProvenanceEntry,
+  ProjectedFromSource,
+  ProjectedAsInsertion
+}
+import v2.workflow.legacy_binding_projection {
+  ProjectionCarryDecision,
+  CarriedForward,
+  DroppedByProjection,
+  ProjectionEmission,
+  ProvenanceEmitted,
+  ProjectionDecisionMissing,
+  ProjectionDecisionForked,
+  ProjectionDecisionForeign,
+  ProjectionInsertionUnrepresentable,
+  ProjectionDroppedOccurrence,
+  emit_projection_provenance
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EACH FIXTURE VIOLATES EXACTLY ONE LAW, and that is a construction rule here rather than reviewer
+// diligence. The arms are ordered inside the emitter, so a fixture violating two laws would test
+// the ORDERING and pass while saying nothing about the law in its own name -- and worse, it would
+// decay: correct later work on an earlier law silently changes which arm such a fixture reaches.
+// This lane has already been bitten by that once, so every fixture below starts from the admitted
+// shape and applies exactly one typed mutation.
+//
+// EVERY ARM ALSO PERTURBS EXACTLY ONE AXIS, for the sharper reason: a two-axis perturbation cannot
+// discriminate which axis the emitter reads, so its green is the same green whether the second axis
+// is consulted at all. It is uninformative by construction.
+fn lbp_base_subject() -> LegacyBindingObservationSubject {
+  LegacyBindingObservationSubject {
+    semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
+    source_set_digest: structural_content_hash(digest: "2222222222222222"),
+    compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+    resolver_identity: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId"),
+    resolver_policy: ImportScopedPolicy,
+    occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
+    declaration_index_digest: structural_content_hash(digest: "5555555555555555")
+  }
+}
+
+fn lbp_projected_subject() -> LegacyBindingObservationSubject {
+  LegacyBindingObservationSubject {
+    semantic_source_digest: structural_content_hash(digest: "9999999999999999"),
+    source_set_digest: structural_content_hash(digest: "2222222222222222"),
+    compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+    resolver_identity: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId"),
+    resolver_policy: NamespaceOnlyPolicy,
+    occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
+    declaration_index_digest: structural_content_hash(digest: "5555555555555555")
+  }
+}
+
+fn lbp_carry(base: Int, projected: Int) -> ProjectionCarryDecision {
+  CarriedForward { base: OccurrenceId { value: base }, projected: OccurrenceId { value: projected } }
+}
+
+fn lbp_emit(
+  expected_base: List<Int>,
+  decisions: List<ProjectionCarryDecision>,
+  inserted: List<Int>
+) -> ProjectionEmission {
+  emit_projection_provenance(
+    base_subject: lbp_base_subject(),
+    projected_subject: lbp_projected_subject(),
+    expected_base: expected_base,
+    decisions: decisions,
+    inserted: inserted
+  )
+}
+
+// THE ADMITTED SHAPE, AND THE ORDINALS ALL SHIFT ON PURPOSE. If any part of the emitter compared a
+// base ordinal against a projected one rather than reading the decision, this arm would refuse --
+// which is the whole reason the correspondence is emitted rather than computed.
+test fn a_total_set_of_carry_decisions_emits_one_entry_per_occurrence() -> Bool {
+  match lbp_emit(
+    expected_base: [10, 20, 30],
+    decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 21), lbp_carry(base: 30, projected: 31)],
+    inserted: []
+  ) {
+    ProvenanceEmitted { provenance: p } => (p.entries |> count) == 3
+    ProjectionDecisionMissing { occurrences: _ } => false
+    ProjectionDecisionForked { occurrences: _ } => false
+    ProjectionDecisionForeign { occurrences: _ } => false
+    ProjectionInsertionUnrepresentable { occurrences: _ } => false
+    ProjectionDroppedOccurrence { occurrences: _ } => false
+  }
+}
+
+// THE EMITTED REFS CARRY THEIR OWN SUBJECT'S ADDRESS, which is what makes the relation indexable
+// across two allocator domains at all. Without it the delta's scope law has nothing to check and
+// the accidental equality of two independently-allocated ordinals reads as a correspondence.
+test fn each_emitted_entry_addresses_its_own_side_of_the_projection() -> Bool {
+  match lbp_emit(
+    expected_base: [10],
+    decisions: [lbp_carry(base: 10, projected: 11)],
+    inserted: []
+  ) {
+    ProvenanceEmitted { provenance: p } => p.entries |> all(entry => match entry {
+      ProjectedFromSource { source: s, target: t } =>
+        s.scope.digest == legacy_subject_identity(subject: lbp_base_subject()).digest
+          && t.scope.digest == legacy_subject_identity(subject: lbp_projected_subject()).digest
+          && s.occurrence.value == 10
+          && t.occurrence.value == 11
+      ProjectedAsInsertion { target: _, caused_by: _ } => false
+    })
+    ProjectionDecisionMissing { occurrences: _ } => false
+    ProjectionDecisionForked { occurrences: _ } => false
+    ProjectionDecisionForeign { occurrences: _ } => false
+    ProjectionInsertionUnrepresentable { occurrences: _ } => false
+    ProjectionDroppedOccurrence { occurrences: _ } => false
+  }
+}
+
+// LAW 1 -- DENOMINATOR: every expected base occurrence has a decision. Population: the base
+// observation's expected occurrences. One mutation from the admitted shape: drop 30's decision.
+test fn an_occurrence_with_no_carry_decision_refuses() -> Bool {
+  match lbp_emit(
+    expected_base: [10, 20, 30],
+    decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 21)],
+    inserted: []
+  ) {
+    ProjectionDecisionMissing { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 30))
+    ProvenanceEmitted { provenance: _ } => false
+    ProjectionDecisionForked { occurrences: _ } => false
+    ProjectionDecisionForeign { occurrences: _ } => false
+    ProjectionInsertionUnrepresentable { occurrences: _ } => false
+    ProjectionDroppedOccurrence { occurrences: _ } => false
+  }
+}
+
+// LAW 2 -- MULTIPLICITY: exactly one decision per base occurrence. Population: the same. One
+// mutation: 20 decided twice. This refuses HERE rather than reaching the delta as a repeated
+// source, because the two refusals mean different things -- the delta's says the provenance is not
+// total, this one says the emitter contradicted itself about one occurrence.
+test fn an_occurrence_decided_twice_refuses_as_a_fork() -> Bool {
+  match lbp_emit(
+    expected_base: [10, 20],
+    decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 21), lbp_carry(base: 20, projected: 22)],
+    inserted: []
+  ) {
+    ProjectionDecisionForked { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 20))
+    ProvenanceEmitted { provenance: _ } => false
+    ProjectionDecisionMissing { occurrences: _ } => false
+    ProjectionDecisionForeign { occurrences: _ } => false
+    ProjectionInsertionUnrepresentable { occurrences: _ } => false
+    ProjectionDroppedOccurrence { occurrences: _ } => false
+  }
+}
+
+// LAW 3 -- MEMBERSHIP, THE OTHER DIRECTION: a decision about an occurrence outside the base
+// denominator. One mutation: a decision for 99, which the base never expected. Note the fixture
+// keeps 10 and 20 decided, so the missing law is satisfied and only this one separates it.
+test fn a_decision_about_a_non_base_occurrence_refuses() -> Bool {
+  match lbp_emit(
+    expected_base: [10, 20],
+    decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 21), lbp_carry(base: 99, projected: 91)],
+    inserted: []
+  ) {
+    ProjectionDecisionForeign { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 99))
+    ProvenanceEmitted { provenance: _ } => false
+    ProjectionDecisionMissing { occurrences: _ } => false
+    ProjectionDecisionForked { occurrences: _ } => false
+    ProjectionInsertionUnrepresentable { occurrences: _ } => false
+    ProjectionDroppedOccurrence { occurrences: _ } => false
+  }
+}
+
+// LAW 4 -- THE CARRIER BOUNDARY, AND THIS ARM IS THE POINT OF THE MODULE'S HONESTY.
+//
+// An insertion is the one thing a qualifying projection genuinely does, and THIS MODULE STILL
+// REFUSES TO EMIT ONE. A caller declaring an inserted occurrence gets a refusal naming it, not a
+// fabricated cause and not a silent omission. The refusal is the executing evidence that this
+// module did not design around the absence.
+//
+// WHAT CHANGED, AND WHY THE ARM STAYS. The stated reason for the refusal used to be that
+// std.occurrence_identity NodeOccurrenceIdentity had no arm carrying a cause. That is now FALSE:
+// OccurrenceProjected carries one, and legacy_binding_delta insertion_provenance_entry derives a
+// ProjectedAsInsertion row from it. The CARRIER boundary is closed; the PROJECTOR has not yet been
+// wired across it, so the refusal is no longer a statement about what can be expressed, only about
+// what this module has been taught to do. The flip to a regression control over an emitted
+// insertion belongs to the change that does that wiring, not to the change that opened the carrier
+// -- and this comment is corrected here rather than left standing, because a refusal justified by a
+// reason that has stopped being true is the stale-prose failure inside the honesty argument itself.
+//
+// THE FUNCTION NAME CARRIES THE SAME CLAIM AND WAS CORRECTED WITH IT. It read
+// `..._because_no_carrier_can_express_its_cause`, which asserts the proposition this block just
+// retired. Correcting the annotation and leaving the name would have been the worse half-measure of
+// the two: a reader trusts a name without reading the body, so a false name outranks a true comment
+// sitting directly above it.
+test fn a_declared_insertion_refuses_because_this_projector_is_not_wired_to_the_cause_arm() -> Bool {
+  match lbp_emit(
+    expected_base: [10],
+    decisions: [lbp_carry(base: 10, projected: 11)],
+    inserted: [41]
+  ) {
+    ProjectionInsertionUnrepresentable { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 41))
+    ProvenanceEmitted { provenance: _ } => false
+    ProjectionDecisionMissing { occurrences: _ } => false
+    ProjectionDecisionForked { occurrences: _ } => false
+    ProjectionDecisionForeign { occurrences: _ } => false
+    ProjectionDroppedOccurrence { occurrences: _ } => false
+  }
+}
+
+// LAW 5 -- A DROP IS NAMED WHERE IT IS KNOWN. The delta would refuse an omitted occurrence as
+// ProvenanceSourceMissing, which is true but is a statement about the provenance rather than about
+// the projection. This arm requires the emitter to say the projection dropped the reference, which
+// is the fact it actually holds.
+test fn a_dropped_occurrence_refuses_at_the_emitter_rather_than_downstream() -> Bool {
+  match lbp_emit(
+    expected_base: [10, 20],
+    decisions: [lbp_carry(base: 10, projected: 11), DroppedByProjection { base: OccurrenceId { value: 20 } }],
+    inserted: []
+  ) {
+    ProjectionDroppedOccurrence { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 20))
+    ProvenanceEmitted { provenance: _ } => false
+    ProjectionDecisionMissing { occurrences: _ } => false
+    ProjectionDecisionForked { occurrences: _ } => false
+    ProjectionDecisionForeign { occurrences: _ } => false
+    ProjectionInsertionUnrepresentable { occurrences: _ } => false
+  }
+}
+
+// AND THE DISTINCTION THAT PAIR EXISTS FOR: a declared drop and an undeclared omission are
+// DIFFERENT REFUSALS over the same occurrence. Without both arms, one symbol would answer for "the
+// projection dropped this" and "the emitter said nothing about this", which have different owners
+// and different repairs.
+test fn a_declared_drop_and_an_undeclared_omission_are_different_refusals() -> Bool {
+  let declared = match lbp_emit(
+    expected_base: [10, 20],
+    decisions: [lbp_carry(base: 10, projected: 11), DroppedByProjection { base: OccurrenceId { value: 20 } }],
+    inserted: []
+  ) {
+    ProjectionDroppedOccurrence { occurrences: _ } => true
+    ProvenanceEmitted { provenance: _ } => false
+    ProjectionDecisionMissing { occurrences: _ } => false
+    ProjectionDecisionForked { occurrences: _ } => false
+    ProjectionDecisionForeign { occurrences: _ } => false
+    ProjectionInsertionUnrepresentable { occurrences: _ } => false
+  }
+  let omitted = match lbp_emit(
+    expected_base: [10, 20],
+    decisions: [lbp_carry(base: 10, projected: 11)],
+    inserted: []
+  ) {
+    ProjectionDecisionMissing { occurrences: _ } => true
+    ProvenanceEmitted { provenance: _ } => false
+    ProjectionDecisionForked { occurrences: _ } => false
+    ProjectionDecisionForeign { occurrences: _ } => false
+    ProjectionInsertionUnrepresentable { occurrences: _ } => false
+    ProjectionDroppedOccurrence { occurrences: _ } => false
+  }
+  declared && omitted
+}

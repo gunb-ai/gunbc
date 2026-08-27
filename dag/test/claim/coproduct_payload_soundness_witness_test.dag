@@ -160,20 +160,30 @@ test fn cpp_alias_mediated_payload_must_also_refuse() -> Bool {
 // FIX and are deliberately not cited here as a population -- nobody has sized this class, and the
 // finders asked that no count be inherited from two instances. What makes the class worth a wall
 // rather than two repairs is where the mis-routed value LANDS: per `gunbc.scm.load_standing`
-// `standing_may_supersede_generation`, `LoadDocumentMalformed` is the only standing permitting
-// supersession of a newer generation, so a silently-admitted wrong cause is a route into a
-// data-loss class.
+// `LoadStanding`, `LoadDocumentMalformed` is the only standing permitting supersession of a newer
+// generation, so a silently-admitted wrong cause is a route into a data-loss class.
 //
 // WHAT THIS ARM DOES NOT DO, AND THE BOUNDARY IS THE POINT. IT CLOSES ONE ROUTE INTO AN
 // UNDER-DEFENDED DESTINATION. IT DOES NOT CLOSE THE HAZARD. The destructive operation is authorized
-// by a value too lossy to carry the proof it needs: `standing_may_supersede_generation` is
-// `LoadStanding -> Bool`, and a Bool carries none of the exact generation observed, the content
-// identity examined, the schema identity under which malformedness was established, or a receipt
-// joining the refusal to this policy arm. This arm stops ONE PRODUCER from manufacturing a false
-// `LoadDocumentMalformed`; it does not make the destination REQUIRE proof, and another producer --
-// or an unknown one -- reaches the same arm unchanged. Making supersession proof-bearing and
-// generation-bound, so that actuation compares and swaps against the exact generation the evidence
-// was gathered from, is a SEPARATE CONTRACT and is deliberately not attempted here.
+// by a value too lossy to carry the proof it needs: the permission was `LoadStanding -> Bool`, and a
+// Bool carries none of the exact generation observed, the content identity examined, the schema
+// identity under which malformedness was established, or a receipt joining the refusal to this
+// policy arm. This arm stops ONE PRODUCER from manufacturing a false `LoadDocumentMalformed`; it
+// does not make the destination REQUIRE proof, and another producer -- or an unknown one -- reaches
+// the same arm unchanged.
+//
+// THAT SEPARATE CONTRACT LANDED AS gunbc#9258, and this paragraph is repointed rather than deleted
+// because the BOUNDARY it states is still exactly this file's. `gunbc.scm.supersession`
+// `supersede_head_slot` makes the destination proof-bearing and generation-bound: evidence is minted
+// from the slot by `observe_generation`, so a caller cannot state which generation it examined, and
+// the swap refuses unless the slot still holds it. A false `LoadDocumentMalformed` therefore no
+// longer authorizes replacing a generation nobody read. It still authorizes replacing the generation
+// the evidence DID name, which is why closing the producer route measured here remains load-bearing
+// and is not subsumed by the destination's repair.
+//
+// The two sentences above previously named `standing_may_supersede_generation`, which #9258 deleted.
+// They are corrected here rather than left standing: a citation naming a declaration that no longer
+// resolves is the class this file's neighbouring DESIGN row exists to teach.
 //
 // AND WHAT DOES NOT FOLLOW, recorded because it is the inference this file is most likely to invite.
 // DESIGN already records a SECOND, independent mechanism reaching that same destination
@@ -257,6 +267,119 @@ test fn dcp_unresolved_name_in_coproduct_field_still_refuses() -> Bool {
   !compile_dag_rust_emit_check(
     dcp_unresolved_name_fixture_source(),
     "src/dcp_unresolved.rs",
+    [],
+    []
+  )
+}
+
+// ============================================================================
+// THE FORMAL-SIDE KERNEL EXCLUSION: MEASURED, THEN NARROWED.
+//
+// The arm above excludes kernel names on BOTH sides and calls that a DISJOINTNESS condition with
+// `kernel_value_declared_type_mismatch`. That reasoning is sound on the ACTUAL side and buys nothing
+// on the FORMAL side, because the two walls are not triggered by the same fact.
+// `kernel_value_declared_type_mismatch` bails unless the ACTUAL resolves to a kernel type name
+// (`is_kernel_type(name: actual_name) == false -> false`). So when the FORMAL is `Bool` -- which
+// `dag/std/types.dag` declares as `True | False`, a real coproduct -- and the ACTUAL is a wholly
+// foreign coproduct, that wall is silent by construction, and the formal-side exclusion silenced the
+// only other arm that could have spoken. Two authorities cannot disagree over a fact neither of them
+// judges.
+//
+// MEASURED BY EXECUTION, both arms on the same harness and the same runner, the compiler files
+// reverted to main for the BEFORE arm and nothing else changed. All ten functions in this file were
+// run in each arm, and EXACTLY ONE ROW MOVED:
+//
+//   type BcpBeta = BcpB1 { c: Int } | BcpB2 { d: Int }
+//   type BcpHolder { flag: Bool }
+//
+//   BEFORE  bcp_foreign_coproduct_where_bool_required_must_refuse  FAIL  (the compile ACCEPTED it)
+//   AFTER   bcp_foreign_coproduct_where_bool_required_must_refuse  PASS
+//   BEFORE and AFTER, the other nine rows                          PASS
+//
+// The nine unmoved rows are what makes this a narrowing rather than a widening: the three payload
+// arms, the four `Dcp` arms, and both controls below are byte-identical across the pair.
+//
+// THE NARROWING IS THE MINIMUM ONE. The formal side keeps the empty-name and `Optional` exclusions --
+// `Optional` is the language's own cardinality carrier and an unnamed formal has nothing to compare --
+// and drops ONLY `is_kernel_type`. The ACTUAL side keeps the full kernel exclusion unchanged, which is
+// where the disjointness with `kernel_value_declared_type_mismatch` actually lives, and
+// `dcp_primitive_in_coproduct_field_still_refuses` above is the row that says so if it ever moves.
+//
+// WHAT THESE THREE ROWS CANNOT TELL YOU, AND IT IS NOT A PROPERTY OF THIS CHANGE. Every assertion
+// in this file reads `compile_dag_rust_emit_check`, which collapses the whole compile to a Bool --
+// `v1.compiler.infer_method`'s own registry note says so in line: a probe refusing for ANY hard
+// reason, a typo in the fixture source included, reads as the wall firing. So a NEGATIVE row here is
+// satisfied by causes unrelated to what it asserts, which is exactly the shape gunbc#9260 instance 15
+// names: a control that cannot flip for the right reason.
+//
+// FOR THE DISCRIMINATING RED ABOVE THAT IS ANSWERED, and not by the row -- by the PAIR. It FAILED
+// before the narrowing and PASSED after, with the two compiler files reverted to main for the BEFORE
+// arm and nothing else changed, so the cause of the flip is the wall and cannot be the fixture: a
+// typo would have failed both arms. A row that moves under exactly one edit is evidence about that
+// edit whatever its instrument collapses.
+//
+// FOR THE TWO CONTROLS IT IS NOT ANSWERED. `bcp_primitive_where_bool_required_still_refuses` passes
+// in both arms, so nothing separates "the kernel wall fired" from "this fixture failed to compile for
+// some other reason". THAT IS A REAL WEAKNESS AND IT IS NOT REPAIRED HERE, because it is not this
+// change's to repair: it belongs to the harness every one of the ten rows in this file shares, and the
+// seven that predate this change have it identically. The corpus already ships the stronger
+// instrument -- `gunbc.compile_diagnostic_census` with `census_blocking_count_for_class`, used by
+// `test.claim.direct_call_argument_type_witness_test` -- so migrating this file is a known, available
+// move over a population of ten, not a gap needing a new mechanism. Naming it here rather than
+// silently inheriting it is the whole of what this paragraph does.
+//
+// AND THE POPULATION IS NOT TEN, WHICH IS WHY THIS PARAGRAPH DOES NOT ALSO REPAIR IT. Counted by
+// gunbc#9260's owner rather than by this lane -- their measurement, restated here with its source
+// named and not adopted as mine: 82 files consume `compile_dag_rust_emit_check`, and 6 already use
+// the typed replacement. So the ten rows in this file are one file of eighty-two, the destination
+// ships and has adopters, and a migration of that size is a lane rather than a paragraph in a wall
+// repair. What this file owes is the disclosure, which is above; what it must not do is fix its own
+// ten and leave a reader counting one green file as evidence about the other eighty-one.
+//
+// dissolve-on: none. DESIGN section 4b(4) -- the evidence stays enrolled when the wall lands.
+
+fn bcp_foreign_into_bool_fixture_source() -> String {
+  "module bcp.probe\n\nimport std.types { Int, Bool }\n\ntype BcpBeta\n  = BcpB1 { c: Int }\n  | BcpB2 { d: Int }\n\ntype BcpHolder {\n  flag: Bool\n}\n\nfn bcp_beta() -> BcpBeta {\n  BcpB1 { c: 7 }\n}\n\nfn bcp_foreign_where_bool_required() -> BcpHolder {\n  BcpHolder { flag: bcp_beta() }\n}\n"
+}
+
+fn bcp_bool_into_bool_fixture_source() -> String {
+  "module bcp.control\n\nimport std.types { Int, Bool }\n\ntype BcpBeta\n  = BcpB1 { c: Int }\n  | BcpB2 { d: Int }\n\ntype BcpHolder {\n  flag: Bool\n}\n\nfn bcp_bool_where_bool_required() -> BcpHolder {\n  BcpHolder { flag: true }\n}\n"
+}
+
+fn bcp_primitive_into_bool_fixture_source() -> String {
+  "module bcp.primitive\n\nimport std.types { Int, Bool }\n\ntype BcpHolder {\n  flag: Bool\n}\n\nfn bcp_int() -> Int {\n  7\n}\n\nfn bcp_primitive_where_bool_required() -> BcpHolder {\n  BcpHolder { flag: bcp_int() }\n}\n"
+}
+
+// THE DISCRIMINATING RED FOR THE NARROWING. `BcpBeta` is not `Bool`, is not one of its arms, and is
+// not one of its arms' payloads. Before the narrowing this compiled clean, because the formal-side
+// kernel exclusion returned false ahead of every judgment.
+test fn bcp_foreign_coproduct_where_bool_required_must_refuse() -> Bool {
+  !compile_dag_rust_emit_check(
+    bcp_foreign_into_bool_fixture_source(),
+    "src/bcp_probe.rs",
+    [],
+    []
+  )
+}
+
+// THE POSITIVE CONTROL. A `Bool` field holding a `Bool` must still compile, or the red above is
+// satisfied by an arm that refuses every kernel-declared field.
+test fn bcp_bool_where_bool_required_still_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    bcp_bool_into_bool_fixture_source(),
+    "src/bcp_control.rs",
+    [],
+    []
+  )
+}
+
+// THE DISJOINTNESS CONTROL FOR THE HALF THAT IS KEPT. A kernel scalar into a kernel-declared field is
+// `kernel_value_declared_type_mismatch`'s judgment and must stay so: the ACTUAL-side exclusion is
+// untouched by this change, and this row is what says so if it ever moves.
+test fn bcp_primitive_where_bool_required_still_refuses() -> Bool {
+  !compile_dag_rust_emit_check(
+    bcp_primitive_into_bool_fixture_source(),
+    "src/bcp_primitive.rs",
     [],
     []
   )

@@ -1,0 +1,853 @@
+module gunbc.fabric_cell_observe
+
+import std.types { String, List, Bool, NonEmptyStr }
+import std.disposition { Disposition, SingleAuthority }
+import product.placement_supply { HostIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal }
+import gunbc.runner_slot_allocation { fabric_execution_slot_identities, committed_slot_identities }
+import gunbc.fleet_runner_connectivity { fleet_hosts }
+import std.string_type { string_is_lexicographically_before }
+import gunbc.fabric_cell_converge {
+  FabricCellResourceAddress,
+  FabricCellRootAddress,
+  FabricCellAttemptRootAddress,
+  FabricCellResourceBoundaryAddress,
+  fabric_cell_resource_addresses,
+  fabric_cell_resource_address_equal,
+  fabric_cell_slice_name,
+  fabric_cell_expected_slots,
+  ExpectedAddressBlocked,
+  UnexpectedCellEvidence,
+  ReadbackHostMismatch,
+  FabricCellMember,
+  FabricCellAddressObservation,
+  AddressObserved,
+  AddressAbsent,
+  AddressObservationRefused,
+  FabricCellReadback,
+  FabricCellHostReadback,
+  FabricCellObservationRefusal,
+  ForeignArtifactObserved,
+  DiscoveryUnavailable,
+  SuppliedProbeUnconsumed,
+  SuppliedNamespaceUnconsumed,
+  UnexpectedCommittedSlotArtifact,
+  CrossHostNamedArtifactObserved,
+  fabric_cell_refusal_insert_ordered,
+  fabric_cell_canonical_refusals,
+}
+
+data fabric_cell_observe_authority_disposition: Disposition = SingleAuthority
+
+// THIS MODULE IS THE PURE HALF OF THE OBSERVER AND CARRIES NO HOST EFFECT. It turns probe RESULTS
+// into the observation vocabulary gunbc.fabric_cell_converge already owns; acquiring those results
+// -- listing a directory, reading a cgroup -- is a realization handler bound to this shape, one of
+// N, and modelling a transport here would fuse dispatch into the interface (DESIGN section 3). The
+// split is what makes every law below authorable as a fixture: an adversarial probe result is a
+// value, and no fixture can author a host.
+
+// ABSENCE IS NOT A MISSING OUTPUT, AND THIS TYPE IS WHERE THAT BECOMES STRUCTURAL RATHER THAN
+// CHECKED. The failure this family keeps producing in new positions is the empty-observation
+// narrow: a probe that could not say what is there rendered as the verdict "nothing is there", so
+// the plan narrows to nothing instead of refusing. A namespace that could not be enumerated has no
+// entry list to be absent FROM -- so `AddressAbsent` is constructed only inside the arm that holds
+// one, and a refused or unattempted enumeration has no path to it at all. That is stronger than a
+// check because the wrong answer has no spelling here, not merely no caller who writes it
+// (DESIGN section 5, construction over validation).
+//
+// AN EXPLICIT NOT-FOUND IS EVIDENCE, NOT A MISSING OUTPUT, and leaving it out made the FIRST REAL
+// OBSERVATION unusable. With only enumerated-or-refused, consider srv3-06 before anything is
+// provisioned: `/opt/fabric-cells` lists and does not hold `srv3-06`, so the cell root is correctly
+// absent -- but `/opt/fabric-cells/srv3-06` DOES NOT EXIST, so its child namespace cannot be
+// enumerated, and an unsupplied namespace refuses. The attempt root therefore came back REFUSED and
+// the host was blocked rather than observed-empty, so the three ADD actions the first realization
+// needs were unreachable. The only way to make the absence law's positive control green was to
+// supply a child enumeration while also saying its parent entry was absent -- an impossible
+// filesystem state, which is the tell that the carrier was wrong rather than the fixture.
+//
+// "MISSING OUTPUT NEVER MEANS MISSING RESOURCE" IS UNCHANGED BY THIS ARM. An explicit not-found
+// result is not missing output; it is a successful observation whose content is absence. What still
+// has no path to absence is a listing that failed -- permission, transport, timeout, undecodable --
+// and those keep their refusal.
+type FabricCellNamespaceProbe
+  = NamespaceEnumerated { entries: List<String> }
+  | NamespaceObservedAbsent
+  | NamespaceEnumerationRefused { cause: String }
+
+// READING AN ENTRY'S STATE AND FINDING THE ENTRY ARE TWO OBSERVATIONS, NOT ONE. A listing that
+// holds the name establishes the resource EXISTS; it establishes nothing about its state, so a
+// refused state read at a name the listing holds is a refusal at that address -- never absence
+// (the resource is there) and never presence (its digest is unknown). Collapsing the two would
+// make an unreadable cgroup indistinguishable from an unprovisioned one, whose remedies differ.
+type FabricCellAddressProbe
+  = AddressStateRead { state_digest: NonEmptyStr }
+  | AddressStateReadRefused { cause: String }
+
+// THE NAMESPACE IS A MODELLED SUBJECT, NOT A PATH STRING, so a probe result cannot be filed against
+// a namespace that does not exist and an address cannot be resolved to one by string surgery. The
+// child namespace is per-slot because that is what the substrate is: `/opt/fabric-cells/srv3-06` is
+// its own directory, and enumerating the parent tells you the cell root exists while telling you
+// nothing about what is inside it.
+type FabricCellNamespace
+  = FabricCellsRootNamespace
+  | FabricCellChildNamespace { slot: RunnerSlotIdentity }
+  | FabricCellSliceNamespace
+
+fn fabric_cell_namespace_wire(n: FabricCellNamespace) -> String {
+  match n {
+    FabricCellsRootNamespace => "fabric-cells-root"
+    FabricCellChildNamespace { slot: s } => join(["fabric-cell:", runner_slot_instance_name(slot: s)], "")
+    FabricCellSliceNamespace => "fabric-slices"
+  }
+}
+
+// COMPARED STRUCTURALLY, NOT THROUGH THE RENDERED NAME. The namespace is already a typed coproduct
+// and its child arm already carries an exact `RunnerSlotIdentity`, so comparing two rendered
+// strings makes a DISPLAY projection the backward identity test for a fact the type owns -- the
+// same second-naming-scheme move `observation_targets` was repaired for in
+// gunbc.fabric_cell_converge. Rendering is for transport and display.
+fn fabric_cell_namespace_eq(a: FabricCellNamespace, b: FabricCellNamespace) -> Bool {
+  match a {
+    FabricCellsRootNamespace =>
+      match b {
+        FabricCellsRootNamespace => true
+        FabricCellChildNamespace { slot: _ } => false
+        FabricCellSliceNamespace => false
+      }
+    FabricCellSliceNamespace =>
+      match b {
+        FabricCellSliceNamespace => true
+        FabricCellsRootNamespace => false
+        FabricCellChildNamespace { slot: _ } => false
+      }
+    FabricCellChildNamespace { slot: sa } =>
+      match b {
+        FabricCellChildNamespace { slot: sb } => runner_slot_identity_equal(a: sa, b: sb)
+        FabricCellsRootNamespace => false
+        FabricCellSliceNamespace => false
+      }
+  }
+}
+
+// EACH ADDRESS NAMES THE NAMESPACE THAT WOULD PROVE IT ABSENT, AND THE ENTRY IT WOULD BE. This is
+// the parent-observation rule of the first type comment turned into a total function: there is no
+// address whose absence is decidable without enumerating something, so every address has exactly
+// one containing namespace, derived here and nowhere else.
+fn fabric_cell_address_namespace(slot: RunnerSlotIdentity, address: FabricCellResourceAddress) -> FabricCellNamespace {
+  match address {
+    FabricCellRootAddress => FabricCellsRootNamespace
+    FabricCellAttemptRootAddress => FabricCellChildNamespace { slot: slot }
+    FabricCellResourceBoundaryAddress => FabricCellSliceNamespace
+  }
+}
+
+// THE ENTRY NAME IS PROJECTED FORWARD FROM THE IDENTITY AUTHORITY, NEVER PARSED BACK OUT OF A
+// LISTING. `runner_slot_instance_name` and `fabric_cell_slice_name` are the single authorities for
+// how a slot and its slice are spelled; matching a discovered name means rendering every committed
+// identity forward and comparing, which stays correct when the spelling changes. A reverse parser
+// would be a second, uncited naming scheme that silently disagrees with the first.
+fn fabric_cell_address_entry_name(slot: RunnerSlotIdentity, address: FabricCellResourceAddress) -> String {
+  match address {
+    FabricCellRootAddress => runner_slot_instance_name(slot: slot)
+    FabricCellAttemptRootAddress => "attempts"
+    FabricCellResourceBoundaryAddress => fabric_cell_slice_name(slot: slot)
+  }
+}
+
+type FabricCellNamespaceProbeEntry { namespace: FabricCellNamespace, probe: FabricCellNamespaceProbe }
+
+type FabricCellAddressProbeEntry {
+  slot: RunnerSlotIdentity
+  address: FabricCellResourceAddress
+  probe: FabricCellAddressProbe
+}
+
+type FabricCellHostProbe {
+  host: HostIdentity
+  namespaces: List<FabricCellNamespaceProbeEntry>
+  addresses: List<FabricCellAddressProbeEntry>
+}
+
+// A NAMESPACE NOBODY PROBED IS A REFUSAL, NOT AN EMPTY LISTING. The tempting default -- treat a
+// missing probe entry as an enumeration returning nothing -- is the absorbing fallback's mirror:
+// it answers the question with the strongest possible claim (everything under it is absent) from
+// the weakest possible evidence (nothing ran). The refusal is typed and names the namespace, so
+// the deficit is countable rather than silently converted into a provisioning plan.
+type FabricCellNamespaceStanding
+  = NamespaceProbeSupplied { probe: FabricCellNamespaceProbe }
+  | NamespaceProbeAbsent
+
+fn fabric_cell_namespace_standing(
+  entries: List<FabricCellNamespaceProbeEntry>,
+  namespace: FabricCellNamespace,
+) -> FabricCellNamespaceStanding {
+  fold(
+    entries,
+    init: NamespaceProbeAbsent,
+    f: (acc, e) =>
+      if fabric_cell_namespace_eq(a: e.namespace, b: namespace) {
+        match acc {
+          NamespaceProbeAbsent => NamespaceProbeSupplied { probe: e.probe }
+          NamespaceProbeSupplied { probe: held } =>
+            NamespaceProbeSupplied {
+              probe: fabric_cell_merge_namespace_probe(first: held, second: e.probe, namespace: namespace),
+            }
+        }
+      } else { acc }
+  )
+}
+
+// TWO OBSERVATIONS OF ONE NAMESPACE AGREE OR REFUSE, AND THE THIRD ARM DOES NOT WEAKEN THAT. Any
+// refusal dominates; two enumerations must hold the same entries; and an explicit not-found beside
+// an enumeration is a CONTRADICTION -- the namespace cannot both not exist and list entries -- so it
+// refuses rather than letting either win by arriving first.
+fn fabric_cell_merge_namespace_probe(
+  first: FabricCellNamespaceProbe,
+  second: FabricCellNamespaceProbe,
+  namespace: FabricCellNamespace,
+) -> FabricCellNamespaceProbe {
+  match first {
+    NamespaceEnumerationRefused { cause: c } => NamespaceEnumerationRefused { cause: c }
+    NamespaceObservedAbsent =>
+      match second {
+        NamespaceObservedAbsent => NamespaceObservedAbsent
+        NamespaceEnumerationRefused { cause: c2 } => NamespaceEnumerationRefused { cause: c2 }
+        NamespaceEnumerated { entries: _ } =>
+          NamespaceEnumerationRefused {
+            cause: join([fabric_cell_namespace_wire(n: namespace), " was observed absent and also enumerated"], ""),
+          }
+      }
+    NamespaceEnumerated { entries: firsts } =>
+      match second {
+        NamespaceEnumerationRefused { cause: c2 } => NamespaceEnumerationRefused { cause: c2 }
+        NamespaceObservedAbsent =>
+          NamespaceEnumerationRefused {
+            cause: join([fabric_cell_namespace_wire(n: namespace), " was enumerated and also observed absent"], ""),
+          }
+        NamespaceEnumerated { entries: seconds } =>
+          if fabric_cell_entry_lists_agree(a: firsts, b: seconds) {
+            NamespaceEnumerated { entries: firsts }
+          } else {
+            NamespaceEnumerationRefused {
+              cause: join(["two enumerations of ", fabric_cell_namespace_wire(n: namespace), " disagreed"], ""),
+            }
+          }
+      }
+  }
+}
+
+// TWO ENUMERATIONS THAT DISAGREE REFUSE RATHER THAN LETTING ONE WIN BY ARRIVING FIRST. This is the
+// same rule fabric_cell_address_evidence already applies to address observations, held here at
+// namespace grain so the observer does not reintroduce order-dependence one layer above the fold
+// that forbids it.
+fn fabric_cell_entry_lists_agree(a: List<String>, b: List<String>) -> Bool {
+  fold(a, init: true, f: (acc, x) => acc && fabric_cell_entries_hold(entries: b, name: x))
+    && fold(b, init: true, f: (acc, x) => acc && fabric_cell_entries_hold(entries: a, name: x))
+}
+
+fn fabric_cell_entries_hold(entries: List<String>, name: String) -> Bool {
+  fold(entries, init: false, f: (acc, e) => acc || e == name)
+}
+
+type FabricCellAddressProbeStanding
+  = AddressProbeSupplied { probe: FabricCellAddressProbe }
+  | AddressProbeAbsent
+
+fn fabric_cell_address_probe_standing(
+  entries: List<FabricCellAddressProbeEntry>,
+  slot: RunnerSlotIdentity,
+  address: FabricCellResourceAddress,
+) -> FabricCellAddressProbeStanding {
+  fold(
+    entries,
+    init: AddressProbeAbsent,
+    f: (acc, e) =>
+      if runner_slot_identity_equal(a: e.slot, b: slot)
+        && fabric_cell_resource_address_equal(a: e.address, b: address) {
+        match acc {
+          AddressProbeAbsent => AddressProbeSupplied { probe: e.probe }
+          AddressProbeSupplied { probe: p } => fabric_cell_merge_address_probe(first: p, second: e.probe)
+        }
+      } else { acc }
+  )
+}
+
+fn fabric_cell_merge_address_probe(first: FabricCellAddressProbe, second: FabricCellAddressProbe) -> FabricCellAddressProbeStanding {
+  match first {
+    AddressStateReadRefused { cause: c } => AddressProbeSupplied { probe: AddressStateReadRefused { cause: c } }
+    AddressStateRead { state_digest: d1 } =>
+      match second {
+        AddressStateReadRefused { cause: c2 } => AddressProbeSupplied { probe: AddressStateReadRefused { cause: c2 } }
+        AddressStateRead { state_digest: d2 } =>
+          if (d1 as String) == (d2 as String) {
+            AddressProbeSupplied { probe: AddressStateRead { state_digest: d1 } }
+          } else {
+            AddressProbeSupplied {
+              probe: AddressStateReadRefused { cause: "two state reads of one address disagreed" },
+            }
+          }
+      }
+  }
+}
+
+// THE OBSERVATION FOR ONE ADDRESS. The ancestry question is answered by MATCHING THE PARENT'S
+// OBSERVATION, not by a Bool asking whether it was absent. An earlier cut asked
+// `is_absent_by_ancestry(...) -> Bool` and then, in a second function, matched the same coproduct
+// again to decide what to do about it -- two matches over one value, the first of which threw away
+// which state it had seen and could only answer "not absent" for both a REFUSED parent and an
+// OBSERVED one, states with nothing in common (codex review 55778). Descending here instead means a
+// new arm on the observation type fails to compile in this match rather than silently inheriting
+// whichever branch the Bool happened to fall into.
+//
+// ABSENCE DESCENDS, BECAUSE A CHILD OF SOMETHING THAT DOES NOT EXIST DOES NOT EXIST. The attempt
+// root lives inside the cell root; if the cells root enumerated and does not hold this cell, or was
+// itself observed absent, then no probe of the child namespace is possible and none is needed --
+// the answer is already established by the parent's SUCCESSFUL observation. Without this the first
+// real observation of an unprovisioned host blocked instead of planning. It is not a weakening of
+// the parent-observation law but that law applied one level up: the derivation runs only through
+// the arm that IS a successful observation of absence, and a refused parent derives nothing.
+fn fabric_cell_observe_address(
+  probe: FabricCellHostProbe,
+  slot: RunnerSlotIdentity,
+  address: FabricCellResourceAddress,
+) -> FabricCellAddressObservation {
+  match address {
+    FabricCellRootAddress => fabric_cell_observe_address_directly(probe: probe, slot: slot, address: address)
+    FabricCellResourceBoundaryAddress => fabric_cell_observe_address_directly(probe: probe, slot: slot, address: address)
+    FabricCellAttemptRootAddress =>
+      match fabric_cell_observe_address_directly(probe: probe, slot: slot, address: FabricCellRootAddress) {
+        AddressAbsent { slot: _, address: _ } =>
+          fabric_cell_absent_by_ancestry_unless_contradicted(probe: probe, slot: slot, address: address)
+        AddressObserved { member: _ } =>
+          fabric_cell_observe_address_directly(probe: probe, slot: slot, address: address)
+        AddressObservationRefused { slot: _, address: _, cause: _ } =>
+          fabric_cell_observe_address_directly(probe: probe, slot: slot, address: address)
+      }
+  }
+}
+
+// THE OBSERVATION FOR ONE ADDRESS FROM ITS OWN NAMESPACE, AND THE ONLY PLACE `AddressAbsent` IS
+// CONSTRUCTED FROM A PROBE. Read the arms as the parent-observation rule: absence is reachable only
+// through a SUCCESSFUL namespace observation -- an enumeration that does not hold the entry, or an
+// explicit not-found. Every other combination is a typed, located refusal naming which of them it
+// was: namespace never probed, enumeration refused, entry present with no state probe, entry
+// present with a refused state read.
+fn fabric_cell_observe_address_directly(
+  probe: FabricCellHostProbe,
+  slot: RunnerSlotIdentity,
+  address: FabricCellResourceAddress,
+) -> FabricCellAddressObservation {
+  let namespace = fabric_cell_address_namespace(slot: slot, address: address)
+  match fabric_cell_namespace_standing(entries: probe.namespaces, namespace: namespace) {
+    NamespaceProbeAbsent =>
+      AddressObservationRefused {
+        slot: slot,
+        address: address,
+        cause: join(["namespace ", fabric_cell_namespace_wire(n: namespace), " was never enumerated"], ""),
+      }
+    NamespaceProbeSupplied { probe: np } =>
+      match np {
+        NamespaceEnumerationRefused { cause: c } =>
+          AddressObservationRefused {
+            slot: slot,
+            address: address,
+            cause: join(["enumeration of ", fabric_cell_namespace_wire(n: namespace), " refused: ", c], ""),
+          }
+        NamespaceObservedAbsent => fabric_cell_absent_unless_contradicted(probe: probe, slot: slot, address: address)
+        NamespaceEnumerated { entries: es } =>
+          if !fabric_cell_entries_hold(entries: es, name: fabric_cell_address_entry_name(slot: slot, address: address)) {
+            fabric_cell_absent_unless_contradicted(probe: probe, slot: slot, address: address)
+          } else {
+            match fabric_cell_address_probe_standing(entries: probe.addresses, slot: slot, address: address) {
+              AddressProbeAbsent =>
+                AddressObservationRefused {
+                  slot: slot,
+                  address: address,
+                  cause: "the entry is present in its namespace and its state was never read",
+                }
+              AddressProbeSupplied { probe: ap } =>
+                match ap {
+                  AddressStateReadRefused { cause: c } =>
+                    AddressObservationRefused {
+                      slot: slot,
+                      address: address,
+                      cause: join(["the entry is present in its namespace and its state read refused: ", c], ""),
+                    }
+                  AddressStateRead { state_digest: d } =>
+                    AddressObserved { member: FabricCellMember { slot: slot, address: address, state_digest: d } }
+                }
+            }
+          }
+      }
+  }
+}
+
+
+// ABSENCE IS A JOIN OVER BOTH FACTS, NOT A PRECEDENCE BETWEEN THEM. The namespace says the entry is
+// not there and the address probe says its state was read: those are not two observations to be
+// ordered, they are a CONTRADICTION, and resolving it by taking whichever the control flow reached
+// first is how a physically impossible pair became a clean absence -- which then licenses an ADD.
+// The parent-observation law says a missing entry means absence; it does not say a missing entry
+// means absence NO MATTER WHAT ELSE WAS OBSERVED. This is the observer-side form of the conflict the
+// lower evidence algebra already knows as AddressObserved + AddressAbsent.
+fn fabric_cell_absent_unless_contradicted(
+  probe: FabricCellHostProbe,
+  slot: RunnerSlotIdentity,
+  address: FabricCellResourceAddress,
+) -> FabricCellAddressObservation {
+  match fabric_cell_address_probe_standing(entries: probe.addresses, slot: slot, address: address) {
+    AddressProbeAbsent => AddressAbsent { slot: slot, address: address }
+    AddressProbeSupplied { probe: _ } =>
+      AddressObservationRefused {
+        slot: slot,
+        address: address,
+        cause: "the entry is absent from its namespace and a state observation for it was supplied: the host cannot hold both, so this is a contradiction and not an absence",
+      }
+  }
+}
+
+// AND THE SAME JOIN ONE LEVEL UP. A cell root that does not exist cannot hold an enumerated child
+// namespace or a readable attempt root, so descendant evidence supplied against an absent ancestor
+// is a contradiction. An explicit child NamespaceObservedAbsent is NOT one -- it agrees with the
+// parent -- and a refused child enumeration is a refusal rather than a contradiction, because a read
+// that failed asserts nothing about what is there.
+fn fabric_cell_absent_by_ancestry_unless_contradicted(
+  probe: FabricCellHostProbe,
+  slot: RunnerSlotIdentity,
+  address: FabricCellResourceAddress,
+) -> FabricCellAddressObservation {
+  match fabric_cell_address_probe_standing(entries: probe.addresses, slot: slot, address: address) {
+    AddressProbeSupplied { probe: _ } =>
+      AddressObservationRefused {
+        slot: slot,
+        address: address,
+        cause: "the cell root is absent and a state observation for a descendant of it was supplied: the host cannot hold both, so this is a contradiction and not an absence",
+      }
+    AddressProbeAbsent =>
+      match fabric_cell_namespace_standing(
+        entries: probe.namespaces,
+        namespace: FabricCellChildNamespace { slot: slot },
+      ) {
+        NamespaceProbeAbsent => AddressAbsent { slot: slot, address: address }
+        NamespaceProbeSupplied { probe: np } =>
+          match np {
+            NamespaceObservedAbsent => AddressAbsent { slot: slot, address: address }
+            NamespaceEnumerated { entries: _ } =>
+              AddressObservationRefused {
+                slot: slot,
+                address: address,
+                cause: "the cell root is absent and its child namespace was enumerated: the host cannot hold both, so this is a contradiction and not an absence",
+              }
+            NamespaceEnumerationRefused { cause: c } =>
+              AddressObservationRefused {
+                slot: slot,
+                address: address,
+                cause: join(["the cell root is absent and enumeration of its child namespace refused: ", c], ""),
+              }
+          }
+      }
+  }
+}
+
+fn fabric_cell_observe_slot(probe: FabricCellHostProbe, slot: RunnerSlotIdentity) -> FabricCellReadback {
+  FabricCellReadback {
+    slot: slot,
+    observations: map(
+      fabric_cell_resource_addresses(),
+      a => fabric_cell_observe_address(probe: probe, slot: slot, address: a)
+    ),
+  }
+}
+
+// THE EXPECTED SIDE IS DRIVEN BY THE AUTHORITY, NOT BY WHAT THE PROBE HAPPENED TO CARRY. An observer
+// written as "report on the paths I probed" proves the probed paths complete and can never discover
+// a cell nobody asked about; one written as "report on the authority's slots" conserves the expected
+// side but is blind to an out-of-band artifact. Both are required, so both are produced here: this
+// fold covers the expected side, and fabric_cell_discovered_subjects covers the supplied one.
+fn fabric_cell_observe_host(probe: FabricCellHostProbe) -> FabricCellHostReadback {
+  FabricCellHostReadback {
+    host: probe.host,
+    cell_readbacks: map(
+      fabric_cell_expected_slots(host: probe.host),
+      s => fabric_cell_observe_slot(probe: probe, slot: s)
+    ),
+  }
+}
+
+// A DISCOVERED NAME THAT MATCHES NO COMMITTED IDENTITY IS FOREIGN, AND IT IS NOT SILENTLY DROPPED
+// AND NOT TURNED INTO A SLOT. The two tempting arms are both wrong in ways that only differ in
+// which direction they lie: dropping it makes an out-of-band cell unobservable, and reverse-parsing
+// "srv3-99" into a RunnerSlotIdentity mints an identity the slot authority never committed --
+// an uncited authority derived from a string, which the whole family exists to refuse. The third
+// arm keeps the observed name as what it is, an observed name, with the location that produced it.
+type FabricCellDiscoveredSubject
+  = DiscoveredExpectedCell { slot: RunnerSlotIdentity }
+  | DiscoveredUnexpectedCommittedSlot { slot: RunnerSlotIdentity }
+  | DiscoveredCrossHostNamedArtifact { observed_name: String, named_slot: RunnerSlotIdentity, observed_on: HostIdentity }
+  | DiscoveredForeignArtifact { observed_name: String, location: String }
+
+fn fabric_cell_discovered_subject_wire(s: FabricCellDiscoveredSubject) -> String {
+  match s {
+    DiscoveredExpectedCell { slot: sl } => join(["expected:", runner_slot_instance_name(slot: sl)], "")
+    DiscoveredUnexpectedCommittedSlot { slot: sl } => join(["unexpected-committed:", runner_slot_instance_name(slot: sl)], "")
+    DiscoveredCrossHostNamedArtifact { observed_name: n, named_slot: sl, observed_on: h } =>
+      join(["cross-host-named:", h as String, ":", n, ":names:", runner_slot_instance_name(slot: sl)], "")
+    DiscoveredForeignArtifact { observed_name: n, location: l } => join(["foreign:", l, ":", n], "")
+  }
+}
+
+// WHICH FAMILY-OWNED NAMESPACE AN ENTRY CAME FROM, BECAUSE A SLOT SPELLS ITSELF DIFFERENTLY IN
+// EACH. A cell root is named `srv3-06`; its resource boundary is named `fabric-cell-srv3-06.slice`.
+// Matching a discovered entry means rendering every committed identity FORWARD in the namespace's
+// own spelling and comparing -- never parsing an identity back out of an observed name, which
+// would be a second, uncited naming scheme that silently disagrees with the first the moment
+// either spelling changes.
+type FabricCellNamespaceRendering
+  = CellRootRendering
+  | SliceRendering
+
+fn fabric_cell_rendered_slot_name(rendering: FabricCellNamespaceRendering, slot: RunnerSlotIdentity) -> String {
+  match rendering {
+    CellRootRendering => runner_slot_instance_name(slot: slot)
+    SliceRendering => fabric_cell_slice_name(slot: slot)
+  }
+}
+
+// THE LOCATION LABEL IS THE NAMESPACE'S OWN WIRE WORD, NOT A SECOND SPELLING OF IT. Both labels
+// were written out twice -- once in `fabric_cell_namespace_wire` and once in a location helper --
+// so the same concept had two authorities and a rename would have moved one of them. A discovered
+// subject's location IS the namespace it was found in, so it is projected from that namespace
+// through the function that already owns how a namespace spells itself.
+fn fabric_cell_rendering_location(rendering: FabricCellNamespaceRendering) -> String {
+  match rendering {
+    CellRootRendering => fabric_cell_namespace_wire(n: FabricCellsRootNamespace)
+    SliceRendering => fabric_cell_namespace_wire(n: FabricCellSliceNamespace)
+  }
+}
+
+fn fabric_cell_committed_slot_named_on(
+  host: HostIdentity,
+  name: String,
+  rendering: FabricCellNamespaceRendering,
+) -> List<RunnerSlotIdentity> {
+  fold(
+    committed_slot_identities(host: host),
+    init: [],
+    f: (acc, s) =>
+      if fabric_cell_rendered_slot_name(rendering: rendering, slot: s) == name { concat(acc, [s]) } else { acc }
+  )
+}
+
+fn fabric_cell_committed_slot_named_anywhere(
+  name: String,
+  rendering: FabricCellNamespaceRendering,
+) -> List<RunnerSlotIdentity> {
+  fold(
+    fold(fleet_hosts(), init: [], f: (acc, h) => concat(acc, committed_slot_identities(host: h))),
+    init: [],
+    f: (acc, s) =>
+      if fabric_cell_rendered_slot_name(rendering: rendering, slot: s) == name { concat(acc, [s]) } else { acc }
+  )
+}
+
+fn fabric_cell_slot_is_fabric_expected(slot: RunnerSlotIdentity) -> Bool {
+  fold(
+    fabric_execution_slot_identities(),
+    init: false,
+    f: (acc, s) => acc || runner_slot_identity_equal(a: s, b: slot)
+  )
+}
+
+// CLASSIFIED AGAINST THIS HOST'S COMMITTED SLOTS, NOT THE FLEET'S. An earlier cut searched the
+// complete fleet population with no host argument, so an artifact named `srv3-06` found in srv4's
+// `/opt/fabric-cells` classified as `DiscoveredExpectedCell { srv3-06 }` -- because that name is
+// globally committed and globally fabric-expected. The observed fact is that an artifact named
+// srv3-06 exists ON srv4, which is not evidence that srv3's expected cell exists, and treating it
+// as such would let one host's listing satisfy another host's expectation. Same cross-host join
+// class gunbc.fabric_cell_converge just repaired one layer later, and it is the reason the fourth
+// arm exists rather than folding into ForeignArtifact: a name that IS a committed slot elsewhere is
+// a different remedy from a name nothing committed anywhere.
+fn fabric_cell_classify_discovered_name(
+  host: HostIdentity,
+  name: String,
+  rendering: FabricCellNamespaceRendering,
+) -> FabricCellDiscoveredSubject {
+  fold(
+    fabric_cell_committed_slot_named_on(host: host, name: name, rendering: rendering),
+    init: fabric_cell_classify_uncommitted_here(host: host, name: name, rendering: rendering),
+    f: (acc, s) =>
+      if fabric_cell_slot_is_fabric_expected(slot: s) {
+        DiscoveredExpectedCell { slot: s }
+      } else {
+        DiscoveredUnexpectedCommittedSlot { slot: s }
+      }
+  )
+}
+
+fn fabric_cell_classify_uncommitted_here(
+  host: HostIdentity,
+  name: String,
+  rendering: FabricCellNamespaceRendering,
+) -> FabricCellDiscoveredSubject {
+  fold(
+    fabric_cell_committed_slot_named_anywhere(name: name, rendering: rendering),
+    init: DiscoveredForeignArtifact {
+      observed_name: name,
+      location: fabric_cell_rendering_location(rendering: rendering),
+    },
+    f: (acc, s) =>
+      DiscoveredCrossHostNamedArtifact { observed_name: name, named_slot: s, observed_on: host }
+  )
+}
+
+fn fabric_cell_base_dir_name() -> String {
+  fabric_cell_namespace_wire(n: FabricCellsRootNamespace)
+}
+
+// EVERY ENTRY THE ROOT ENUMERATION RETURNED GETS A POSITION, AND A REFUSED ENUMERATION DISCOVERS
+// NOTHING RATHER THAN DISCOVERING AN EMPTY HOST. The distinction matters at exactly the same seam
+// as the address rule above: "the root listed and held no cells" and "the root could not be listed"
+// have opposite remedies, and only the first is evidence about the host.
+type FabricCellDiscovery
+  = DiscoveryEnumerated { host: HostIdentity, subjects: List<FabricCellDiscoveredSubject> }
+  | DiscoveryRefused { host: HostIdentity, cause: String }
+
+// DISCOVERY SPANS EVERY FAMILY-OWNED NAMESPACE, NOT JUST THE FILESYSTEM ONE, AND THE SLICE HALF WAS
+// MISSING. The acquisition layer was changed to ENUMERATE `fabric-cell-*.slice` rather than probe
+// one expected unit by name -- for the right reason, that probing desired names can never discover
+// an undesired unit -- and then this fold read the slice namespace only to answer whether each
+// EXPECTED boundary was present. So `fabric-cell-srv3-07.slice` on a host that does not declare
+// srv3-07 was enumerated, matched against nothing, and dropped: no output position, no refusal, no
+// baseline row. The new enumeration produced the evidence and the observer threw it away, which
+// left the old blindness intact one layer downstream.
+//
+// THE LAW IS THAT EVERY ENTRY IN EVERY FAMILY-OWNED NAMESPACE REACHES A MODELED SUBJECT OR A TYPED
+// REFUSAL. Both namespaces now fold into the same subject population through the same classifier,
+// distinguished only by how a slot spells itself there, so an unexpected slice becomes exactly the
+// unexpected-committed or foreign-artifact subject an unexpected cell directory already became.
+//
+// EITHER ENUMERATION FAILING REFUSES THE WHOLE DISCOVERY, because a population that was only half
+// enumerated is not a population: an out-of-band slice would be invisible while the cells root read
+// clean, and reporting the clean half as the answer is the empty-observation narrow.
+fn fabric_cell_discovered_subjects(probe: FabricCellHostProbe) -> FabricCellDiscovery {
+  match fabric_cell_discovered_entries(probe: probe, namespace: FabricCellsRootNamespace, rendering: CellRootRendering) {
+    NamespaceEntriesRefused { cause: c } => DiscoveryRefused { host: probe.host, cause: c }
+    NamespaceEntriesRead { subjects: root_subjects } =>
+      match fabric_cell_discovered_entries(probe: probe, namespace: FabricCellSliceNamespace, rendering: SliceRendering) {
+        NamespaceEntriesRefused { cause: c } => DiscoveryRefused { host: probe.host, cause: c }
+        NamespaceEntriesRead { subjects: slice_subjects } =>
+          DiscoveryEnumerated {
+            host: probe.host,
+            subjects: fold(
+              slice_subjects,
+              init: root_subjects,
+              f: (acc, sub) => fabric_cell_discovery_insert(acc: acc, s: sub),
+            ),
+          }
+      }
+  }
+}
+
+type FabricCellNamespaceEntries
+  = NamespaceEntriesRead { subjects: List<FabricCellDiscoveredSubject> }
+  | NamespaceEntriesRefused { cause: String }
+
+fn fabric_cell_discovered_entries(
+  probe: FabricCellHostProbe,
+  namespace: FabricCellNamespace,
+  rendering: FabricCellNamespaceRendering,
+) -> FabricCellNamespaceEntries {
+  match fabric_cell_namespace_standing(entries: probe.namespaces, namespace: namespace) {
+    NamespaceProbeAbsent =>
+      NamespaceEntriesRefused {
+        cause: join([fabric_cell_namespace_wire(n: namespace), " was never enumerated"], ""),
+      }
+    NamespaceProbeSupplied { probe: np } =>
+      match np {
+        NamespaceEnumerationRefused { cause: c } => NamespaceEntriesRefused { cause: c }
+        NamespaceObservedAbsent => NamespaceEntriesRead { subjects: [] }
+        NamespaceEnumerated { entries: es } =>
+          NamespaceEntriesRead {
+            subjects: fold(
+              es,
+              init: [],
+              f: (acc, e) => fabric_cell_discovery_insert(
+                acc: acc,
+                s: fabric_cell_classify_discovered_name(host: probe.host, name: e, rendering: rendering),
+              )
+            ),
+          }
+      }
+  }
+}
+
+// DISCOVERY IS PUT IN A CANONICAL ORDER AND DEDUPED BY SUBJECT, AND A LAW FOUND BOTH. An earlier cut
+// mapped the enumeration straight through, so `[srv3-06, srv3-99]` and `[srv3-99, srv3-06]` -- the
+// same host, listed twice -- produced two different subject sequences, and one artifact reported
+// twice produced two subjects. That is the same pair of obligations the classification kernel's
+// supplied side has (normalize by subject, then order), reappearing at the seam that FEEDS it: an
+// observer handing the kernel an order-dependent population defeats the kernel's own canonical
+// order no matter how correct the kernel is.
+//
+// THE ORDER IS LEXICOGRAPHIC OVER THE SUBJECT WIRE, on `std.string_type`
+// `string_is_lexicographically_before`. That is the one total order available over a population
+// whose members are not all identities -- a foreign artifact has an observed NAME and no slot index
+// to compare -- so ordering by index, as the kernel's supplied side does, is not even expressible
+// here. The wire is also what the dedupe compares, so the two obligations share one projection
+// rather than each minting a key.
+fn fabric_cell_discovery_insert(
+  acc: List<FabricCellDiscoveredSubject>,
+  s: FabricCellDiscoveredSubject,
+) -> List<FabricCellDiscoveredSubject> {
+  if fabric_cell_discovery_holds(acc: acc, wire: fabric_cell_discovered_subject_wire(s: s)) { acc }
+  else {
+    concat(
+      fold(acc, init: [], f: (kept, e) =>
+        if string_is_lexicographically_before(
+          left: fabric_cell_discovered_subject_wire(s: e),
+          right: fabric_cell_discovered_subject_wire(s: s),
+        ) { concat(kept, [e]) } else { kept }),
+      concat(
+        [s],
+        fold(acc, init: [], f: (kept, e) =>
+          if string_is_lexicographically_before(
+            left: fabric_cell_discovered_subject_wire(s: e),
+            right: fabric_cell_discovered_subject_wire(s: s),
+          ) { kept } else { concat(kept, [e]) }),
+      ),
+    )
+  }
+}
+
+fn fabric_cell_discovery_holds(acc: List<FabricCellDiscoveredSubject>, wire: String) -> Bool {
+  fold(acc, init: false, f: (seen, e) => seen || fabric_cell_discovered_subject_wire(s: e) == wire)
+}
+
+// ONE OBSERVER RESULT, BECAUSE TWO PARALLEL FUNCTIONS LET A CALLER TAKE HALF. The expected fold and
+// the discovery fold were separately callable, so a wet caller could read the authority's cells,
+// never enumerate the host, and hand a complete-looking readback to the classification kernel while
+// an out-of-band artifact sat on disk. The conservation law was true inside each function and
+// absent at the seam between them -- which is how a conservation law actually fails: not by losing
+// a subject, but by having a caller who never asks for one of the populations.
+//
+// THE PROJECTION IS THE ONLY THING THE WET PATH SHOULD CONSUME. Both halves come from ONE probe, so
+// they cannot disagree about which host was read, and `admit_fabric_cell_probe` now REQUIRES the
+// discovery-derived refusals, so there is no spelling for a population built from the expected side
+// alone.
+type FabricCellObserverProjection {
+  host: HostIdentity
+  expected_readback: FabricCellHostReadback
+  discovery: FabricCellDiscovery
+  unconsumed: List<FabricCellObservationRefusal>
+}
+
+fn fabric_cell_observe(probe: FabricCellHostProbe) -> FabricCellObserverProjection {
+  FabricCellObserverProjection {
+    host: probe.host,
+    expected_readback: fabric_cell_observe_host(probe: probe),
+    discovery: fabric_cell_discovered_subjects(probe: probe),
+    unconsumed: fabric_cell_unconsumed_probe_refusals(probe: probe),
+  }
+}
+
+// ONE PROJECTION FROM ONE PROBE MEANS ONE CALL PRODUCES EVERY REFUSAL THE PROBE IMPLIES. A caller
+// that has the projection cannot obtain the discovery half without the unconsumed half, which is
+// the same construction the required `discovered` argument applies one layer down.
+fn fabric_cell_projection_refusals(projection: FabricCellObserverProjection) -> List<FabricCellObservationRefusal> {
+  fabric_cell_canonical_refusals(refusals: concat(
+    fabric_cell_discovery_refusals(discovery: projection.discovery),
+    projection.unconsumed,
+  ))
+}
+
+// DISCOVERY PROJECTS INTO THE REFUSAL VOCABULARY gunbc.fabric_cell_converge OWNS, which is what
+// keeps the direction acyclic: this module imports that one, so that one cannot name
+// FabricCellDiscovery. ONLY ONE ARM PROJECTS NOTHING, and an earlier cut got that population wrong
+// in a way worth recording: it also dropped DiscoveredUnexpectedCommittedSlot, on the reasoning that
+// a committed slot "reaches the classification kernel through the readback". Only EXPECTED slots do
+// -- fabric_cell_observe_host folds fabric_cell_expected_slots -- so a committed non-fabric slot
+// discovered in the cells root became a typed distinction that existed in discovery and vanished
+// before the plan. It now carries its own refusal, which names the committed identity because the
+// host itself committed it; that is a forward-authority match, not a name parsed into an identity.
+//
+// A CROSS-HOST NAMED ARTIFACT IS ITS OWN REFUSAL AND NOT A FOREIGN ONE. Both were once
+// ForeignArtifactObserved, which is the total-at-the-level-examined collapse: an artifact matching
+// nothing anywhere and an artifact on srv4 whose name matches srv3's committed cell have different
+// remedies, and folding them into one arm left the remedy router unable to tell them apart without
+// re-parsing the name -- exactly the derivation the classifier refuses. The refusal carries the
+// matched slot, which does NOT assert the artifact IS that slot; it records the comparison discovery
+// actually performed against the committed authority.
+fn fabric_cell_discovery_refusals(discovery: FabricCellDiscovery) -> List<FabricCellObservationRefusal> {
+  match discovery {
+    DiscoveryRefused { host: h, cause: c } => [DiscoveryUnavailable { host: h, cause: c }]
+    DiscoveryEnumerated { host: h, subjects: ss } =>
+      fold(ss, init: [], f: (acc, sub) => concat(acc, fabric_cell_discovered_refusal(host: h, s: sub)))
+  }
+}
+
+fn fabric_cell_discovered_refusal(host: HostIdentity, s: FabricCellDiscoveredSubject) -> List<FabricCellObservationRefusal> {
+  match s {
+    DiscoveredExpectedCell { slot: _ } => []
+    DiscoveredUnexpectedCommittedSlot { slot: sl } =>
+      [UnexpectedCommittedSlotArtifact { host: host, slot: sl, location: fabric_cell_base_dir_name() }]
+    DiscoveredCrossHostNamedArtifact { observed_name: n, named_slot: sl, observed_on: h } =>
+      [CrossHostNamedArtifactObserved {
+        observed_on: h,
+        observed_name: n,
+        matched_committed_slot: sl,
+        location: fabric_cell_base_dir_name(),
+      }]
+    DiscoveredForeignArtifact { observed_name: n, location: l } =>
+      [ForeignArtifactObserved { host: host, observed_name: n, location: l }]
+  }
+}
+
+// THE SUPPLIED PROBE IS CONSERVED TOO, BECAUSE ITS EXTRAS COULD VANISH THE SAME WAY THE READBACK'S
+// COULD. `FabricCellHostProbe` admits namespace and address entries for ARBITRARY slots, and the
+// projection looks up only the pairs the authority expects -- so a state read for a slot this host
+// does not declare, or a child namespace for a cell nobody asked about, had no output position and
+// disappeared. That is the identical silent exclusion the classification kernel was repaired for,
+// one layer earlier, on the input side rather than the output side: the observer was conserving
+// what it PRODUCED while dropping part of what it was GIVEN.
+//
+// WHAT COUNTS AS UNCONSUMED IS DECIDED BY THE AUTHORITY, NOT BY THE PROBE. An entry is consumed if
+// its slot is one this host expects; everything else is refused, named by the exact coordinates it
+// carried, so the deficit is countable rather than absorbed. The root and slice namespaces are not
+// slot-scoped and are always consumed.
+fn fabric_cell_unconsumed_probe_refusals(probe: FabricCellHostProbe) -> List<FabricCellObservationRefusal> {
+  let expected = fabric_cell_expected_slots(host: probe.host)
+  concat(
+    fold(
+      probe.addresses,
+      init: [],
+      f: (acc, e) =>
+        if fabric_cell_slot_in(slots: expected, slot: e.slot) { acc }
+        else {
+          fabric_cell_refusal_insert_ordered(acc: acc, r: SuppliedProbeUnconsumed {
+            host: probe.host,
+            slot: e.slot,
+            address: e.address,
+          })
+        }
+    ),
+    fold(
+      probe.namespaces,
+      init: [],
+      f: (acc, e) =>
+        match e.namespace {
+          FabricCellsRootNamespace => acc
+          FabricCellSliceNamespace => acc
+          FabricCellChildNamespace { slot: s } =>
+            if fabric_cell_slot_in(slots: expected, slot: s) { acc }
+            else {
+              fabric_cell_refusal_insert_ordered(acc: acc, r: SuppliedNamespaceUnconsumed { host: probe.host, slot: s })
+            }
+        }
+    ),
+  )
+}
+
+fn fabric_cell_slot_in(slots: List<RunnerSlotIdentity>, slot: RunnerSlotIdentity) -> Bool {
+  fold(slots, init: false, f: (acc, s) => acc || runner_slot_identity_equal(a: s, b: slot))
+}
+

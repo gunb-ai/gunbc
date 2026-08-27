@@ -17,3 +17,20 @@ import v2.std.logic { Bool }
 fn shadow_pred(n: Int) -> Bool {
   true
 }
+
+// THE SENTINEL PAIR, and it is a SEPARATE symbol from shadow_pred above rather than a rewrite of
+// it. A Bool has two inhabitants, so a Bool-valued displacement can only ever say WHICH of two
+// answers came back; an Int sentinel says WHICH FUNCTION ANSWERED. This one returns 900 for every
+// input and ignores its argument, so it is total, same-arity, and same param-and-result types as
+// the local that displaces it -- every axis held equal except the value returned. A witness
+// asserting 2 and receiving 900 has located the producer, not merely disagreed with it.
+fn shadow_sentinel(n: Int) -> Int {
+  900
+}
+
+// NOT SHADOWED BY ANYTHING, and named so nothing is tempted to. It exists for the arm that asserts
+// the module free function is still reachable when NO local binding competes for its spelling --
+// the direction a repair that simply stopped consulting the free-function table would break.
+fn unshadowed_sentinel(n: Int) -> Int {
+  700
+}

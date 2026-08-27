@@ -1,0 +1,713 @@
+module gunbc.build_target
+
+import extdeps.bazel.label {
+  Label, RootPackage, TargetName, render_label, label_eq,
+  LabelCanonicalityCause, LabelCanonical, LabelNonCanonical, label_canonicality,
+}
+import extdeps.bazel.test_status {
+  BlazeTestStatus,
+  TestStatusNoStatus, TestStatusPassed, TestStatusTimeout,
+  TestStatusFailed, TestStatusIncomplete,
+  TestStatusFlaky, TestStatusRemoteFailure,
+  TestStatusFailedToBuild, TestStatusHaltedBeforeTesting,
+}
+import extdeps.bazel.build_event_stream { AbortReason }
+import v2.workflow.floor_terminal_ledger {
+  ClaimDisposition,
+  Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
+  PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
+  RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, ObservationUnreadableBeforeVerdict,
+  PanickedBeforeVerdict, NotAttemptedAfterAbort,
+}
+import gunbc.target_binding {
+  TargetProducer,
+  BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
+  BehavioralReceiptSelftestProducer, HeadsReadingDifferentialProducer,
+  BehavioralReceiptPlanStanding,
+  BehavioralReceiptCensusStanding,
+  BehavioralReceiptSelftestStanding,
+  HeadsReadingDifferentialStanding,
+}
+import v2.std.optional { Optional, Present, Absent }
+import std.types { String, Bool, NonEmptyStr }
+import std.integer { Int }
+
+// WHAT THIS MODULE IS AND WHAT IT DELIBERATELY IS NOT.
+//
+// It is the TARGET-GRAIN carrier: one identity per buildable or testable thing, the edges between
+// them, and the standing each one currently holds. It is NOT a second observer. Nothing here
+// runs a witness, compiles a module, or decides whether an attempt reached its subject — every
+// standing arrives already decided by the authority that made the observation, and this layer's
+// whole content is the JOIN: which identity, which edges, and does the aggregate hold.
+//
+// That split is why `TestStanding` carries `ClaimDisposition` rather than copying its arms. The
+// floor's per-identity disposition vocabulary is complete and owned one module away; a parallel
+// eleven-arm coproduct here would be one concept forked by layer — DESIGN §3 nicknaming — and a
+// fork gets consolidated later at someone else's cost. What this module adds is the POLICY over
+// that vocabulary, which is a downstream fact by the same section: whether an enrolled expected
+// red satisfies `//:required` is not something the floor's vocabulary may decide for its
+// consumers, and it is stated once, here, in `claim_disposition_verdict`.
+
+// ---------------------------------------------------------------------------------------------
+// TARGET IDENTITY
+// ---------------------------------------------------------------------------------------------
+
+// IDENTITY IS THE LABEL AND NOTHING BESIDE IT. There is no `id`, `slug`, or `name` field, and the
+// absence is the design: a target carrying both a label and a separate identifier would be two
+// answers to one question, and the moment they can disagree a consumer has to pick. `BuildTarget`
+// has one key, `label_eq` is the one comparison, and `target_identity` renders it for a human
+// without ever becoming a second key — it is derived from the label on every call, so it cannot
+// drift from it.
+type TargetKind
+  = BuildRule
+  | TestRule
+  | AggregateAlias
+
+type BuildTarget {
+  label: Label
+  kind: TargetKind
+  dependencies: List<Label>
+}
+
+fn target_identity(t: BuildTarget) -> String {
+  render_label(l: t.label)
+}
+
+fn target_eq(a: BuildTarget, b: BuildTarget) -> Bool {
+  label_eq(a: a.label, b: b.label)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE //:required AGGREGATE
+// ---------------------------------------------------------------------------------------------
+
+// `//:required` IS AN ORDINARY TARGET IN THE ROOT PACKAGE, and that is the point of spelling it as
+// a `Label` rather than as a distinguished constant of some `AggregateId` type. The repository's
+// required set is the thing every other target is ultimately built for, and modelling it as a
+// special case outside the target vocabulary would put the most important node in the graph
+// outside every operation the graph supports.
+fn required_aggregate_target_name() -> NonEmptyStr { "required" }
+
+fn required_aggregate_label() -> Label {
+  Label {
+    package: RootPackage {}
+    target: TargetName { name: required_aggregate_target_name() }
+  }
+}
+
+fn required_aggregate_target(dependencies: List<Label>) -> BuildTarget {
+  BuildTarget {
+    label: required_aggregate_label()
+    kind: AggregateAlias {}
+    dependencies: dependencies
+  }
+}
+
+fn is_required_aggregate(t: BuildTarget) -> Bool {
+  label_eq(a: t.label, b: required_aggregate_label())
+}
+
+// ---------------------------------------------------------------------------------------------
+// STANDINGS
+// ---------------------------------------------------------------------------------------------
+
+// BUILD STANDING, GROUNDED ON THE TWO EVENTS THE CITED BUILD EVENT STREAM ACTUALLY EMITS.
+//
+// Upstream says one of two things about a target: `TargetComplete { success }` — it was built and
+// here is whether that succeeded — or `Aborted { abort_reason }` — it never reached that question.
+// The distinction is not cosmetic and it is not derivable from a `Bool`: a target whose analysis
+// failed and a target that compiled and failed have different owners and different repairs, and a
+// single `built: Bool` reports them identically. So the carrier is the upstream pair, and
+// `TargetAborted` keeps the whole cited reason vocabulary rather than the two or three arms a
+// current consumer reads.
+type BuildStanding
+  = TargetCompleted { success: Bool }
+  | TargetAborted { reason: AbortReason }
+
+// TEST STANDING, WITH THE PRODUCER AS THE OUTER DISTINCTION.
+//
+// Two different mechanisms in this repository can answer "did this test target hold", and they
+// answer in two different vocabularies: the required floor answers in `ClaimDisposition`, and a
+// Bazel-shaped runner answers in `BlazeTestStatus`. `NotATestTarget` is the third state and it is
+// NOT `TestStatusNoStatus`: upstream's `NO_STATUS` means a test that did not run, and a library
+// with no test to run at all is a different fact with a different remedy — one is a run to
+// schedule, the other is a question that does not apply. Rendering them as one symbol is the
+// not-applicable-as-malformed conflation this repository keeps finding.
+type TestStanding
+  = NotATestTarget
+  | TestRunByFloor { disposition: ClaimDisposition }
+  | TestReportedByBazel { status: BlazeTestStatus }
+  | TestMeasuredByBehavioralReceiptPlan { standing: BehavioralReceiptPlanStanding }
+  | TestMeasuredByBehavioralReceiptCensus { standing: BehavioralReceiptCensusStanding }
+  | TestMeasuredByBehavioralReceiptSelftest { standing: BehavioralReceiptSelftestStanding }
+  | TestMeasuredByHeadsReadingDifferential { standing: HeadsReadingDifferentialStanding }
+
+type TargetStanding {
+  target: Label
+  build: BuildStanding
+  test: TestStanding
+}
+
+// ---------------------------------------------------------------------------------------------
+// SATISFACTION
+// ---------------------------------------------------------------------------------------------
+
+// WHY THE CAUSE IS CARRIED AND NOT A Bool. A dependency that failed to build, one that was
+// skipped, one whose witness answered false, and one whose witness never reached its subject all
+// make `//:required` refuse — and they have four different owners. A `Bool` sends every one of
+// them to the same place, which is nowhere.
+type StandingCause
+  = BuildDidNotSucceed
+  | BuildWasAborted { reason: AbortReason }
+  | FloorDispositionUnsatisfied { disposition: ClaimDisposition }
+  | BazelTestStatusUnsatisfied { status: BlazeTestStatus }
+  | TestProducerOutsideRequiredAggregate { producer: TargetProducer }
+
+type StandingVerdict
+  = StandingSatisfied
+  | StandingUnsatisfied { cause: StandingCause }
+
+// THE POLICY ROW, AND EVERY ARM IS NAMED RATHER THAN DEFAULTED.
+//
+// There is no wildcard here and there must not be one: a twelfth `ClaimDisposition` arm added
+// upstream must make THIS function fail to compile, so that the question "does the new state
+// satisfy the required aggregate" is answered by whoever adds it rather than inherited from
+// whichever arm a `_` happened to name. That is the descend-one-level rule DESIGN records, applied
+// at the seam where a collapsed match would be totally exhaustive and completely wrong.
+//
+// TWO ARMS ARE POLICY DECISIONS RATHER THAN READINGS, and both mirror what the required floor
+// already does with its counters rather than inventing a second stance:
+//
+//   `KnownRedHeld` SATISFIES. An enrolled expected red that failed exactly as enrolled is
+//   agreement between the roster and the tree. The floor reports it in its own counter, apart
+//   from `passed`, and does not fail the run on it; the aggregate takes the same position, and
+//   `TestRunByFloor` keeps the disposition so a consumer that wants a stricter line has the fact.
+//
+//   `PassedOverBudget` SATISFIES on the correctness axis. The claim reached a verdict and the
+//   verdict held; that it completed past a safety limit is a COST fact with its own authority and
+//   its own reporting line. Folding cost into the correctness verdict here would give the cost
+//   axis a second home and make a slow green witness indistinguishable from a wrong one.
+//
+// THE TWO ARMS ADDED BY `v2.workflow.floor_terminal_ledger` AFTER THIS FOLD WAS WRITTEN ARE
+// CLASSIFIED HERE RATHER THAN INHERITED, which is the whole reason this match carries no wildcard.
+// Both are UNSATISFIED and neither is a failure of the code under test:
+//
+//   `PanickedBeforeVerdict` is a claim whose evaluation panicked, so no verdict exists to admit.
+//   Reading it as satisfied would admit a claim that never answered.
+//
+//   `NotAttemptedAfterAbort` is a claim the run never reached because it was halted. This is the
+//   arm that would be most damaging to absorb: a required set that treated "never attempted" as
+//   satisfied would report itself green over a run that stopped early, which is the
+//   empty-observation narrow -- ⊥-as-answer conflated with ⊥-as-ignorance -- arriving as a green.
+//
+// `KnownRedNowPassing` does NOT satisfy, and it is the arm most likely to be argued about: the
+// witness passed, so nothing is broken in the tree — what is broken is the ROSTER, which still
+// enrols it as expected-red. Admitting it would let a stale enrolment survive indefinitely,
+// because the only signal it ever produces is this one.
+// `PanickedBeforeVerdict` and `NotAttemptedAfterAbort` are both UNSATISFIED, for the same reason
+// read in opposite directions: one claim executed and died, the other never executed at all, and
+// neither is a claim that satisfied its standing. Admitting an unattempted claim as satisfied
+// would be the fail-open — it would let an aborted run report a standing it never tested.
+fn claim_disposition_verdict(d: ClaimDisposition) -> StandingVerdict {
+  match d {
+    Passed => StandingSatisfied {}
+    PassedOverBudget => StandingSatisfied {}
+    KnownRedHeld => StandingSatisfied {}
+    Failed => StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: Failed {} } }
+    KnownRedNowPassing =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: KnownRedNowPassing {} } }
+    BudgetRefusedBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: BudgetRefusedBeforeVerdict {} } }
+    BudgetTerminalWithoutSafetyCause =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: BudgetTerminalWithoutSafetyCause {} } }
+    HostToolUnresolvedBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: HostToolUnresolvedBeforeVerdict {} } }
+    RouteGapBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: RouteGapBeforeVerdict {} } }
+    RuntimeErroredBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: RuntimeErroredBeforeVerdict {} } }
+    PanickedBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: PanickedBeforeVerdict {} } }
+    NotAttemptedAfterAbort =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: NotAttemptedAfterAbort {} } }
+    ObservationUnreadableBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: ObservationUnreadableBeforeVerdict {} } }
+  }
+}
+
+// THE BAZEL-REPORTED HALF OF THE SAME POLICY, DECIDED HERE RATHER THAN UPSTREAM.
+//
+// `extdeps.bazel.test_status` deliberately carries no green/not-green predicate — see the note at
+// the foot of that module. Whether `FLAKY` is tolerable is a consumer decision, so it is made at
+// this layer, arm by arm and wildcard-free, exactly as the floor policy above is. FLAKY is NOT
+// satisfied: upstream reports it for a test that failed an attempt and passed another, and a
+// required set that accepts it has accepted a test that fails sometimes.
+fn blaze_test_status_verdict(s: BlazeTestStatus) -> StandingVerdict {
+  match s {
+    TestStatusPassed => StandingSatisfied {}
+    TestStatusNoStatus =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusNoStatus {} } }
+    TestStatusFlaky =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusFlaky {} } }
+    TestStatusTimeout =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusTimeout {} } }
+    TestStatusFailed =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusFailed {} } }
+    TestStatusIncomplete =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusIncomplete {} } }
+    TestStatusRemoteFailure =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusRemoteFailure {} } }
+    TestStatusFailedToBuild =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusFailedToBuild {} } }
+    TestStatusHaltedBeforeTesting =>
+      StandingUnsatisfied { cause: BazelTestStatusUnsatisfied { status: TestStatusHaltedBeforeTesting {} } }
+  }
+}
+
+fn build_standing_verdict(b: BuildStanding) -> StandingVerdict {
+  match b {
+    TargetCompleted { success: s } =>
+      if s { StandingSatisfied {} } else { StandingUnsatisfied { cause: BuildDidNotSucceed {} } }
+    TargetAborted { reason: r } => StandingUnsatisfied { cause: BuildWasAborted { reason: r } }
+  }
+}
+
+// The four instrument producers are not members of //:required. Reaching aggregate policy with
+// one is therefore a typed wiring refusal; it does not reinterpret the producer's observation as
+// a pass or failure and does not invent a blocking policy for the instrument.
+fn test_standing_verdict(t: TestStanding) -> StandingVerdict {
+  match t {
+    NotATestTarget => StandingSatisfied {}
+    TestRunByFloor { disposition: d } => claim_disposition_verdict(d: d)
+    TestReportedByBazel { status: s } => blaze_test_status_verdict(s: s)
+    TestMeasuredByBehavioralReceiptPlan { standing: _ } => StandingUnsatisfied {
+      cause: TestProducerOutsideRequiredAggregate { producer: BehavioralReceiptPlanProducer {} }
+    }
+    TestMeasuredByBehavioralReceiptCensus { standing: _ } => StandingUnsatisfied {
+      cause: TestProducerOutsideRequiredAggregate { producer: BehavioralReceiptCensusProducer {} }
+    }
+    TestMeasuredByBehavioralReceiptSelftest { standing: _ } => StandingUnsatisfied {
+      cause: TestProducerOutsideRequiredAggregate { producer: BehavioralReceiptSelftestProducer {} }
+    }
+    TestMeasuredByHeadsReadingDifferential { standing: _ } => StandingUnsatisfied {
+      cause: TestProducerOutsideRequiredAggregate { producer: HeadsReadingDifferentialProducer {} }
+    }
+  }
+}
+
+// BUILD IS JUDGED FIRST, AND THE ORDER IS NOT A STYLE CHOICE. A target that did not build cannot
+// have run its test, so reporting the test standing of an unbuilt target would name a downstream
+// symptom as the cause. Upstream agrees with itself here: `FAILED_TO_BUILD` exists in
+// `BlazeTestStatus` precisely because the build answer dominates the test answer.
+fn target_standing_verdict(s: TargetStanding) -> StandingVerdict {
+  match build_standing_verdict(b: s.build) {
+    StandingUnsatisfied { cause: c } => StandingUnsatisfied { cause: c }
+    StandingSatisfied => test_standing_verdict(t: s.test)
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE AGGREGATE FOLD
+// ---------------------------------------------------------------------------------------------
+
+// A DEPENDENCY WITH NO STANDING IS NOT SATISFIED, AND IT IS NOT A FAILURE EITHER.
+//
+// `DependencyStandingAbsent` is its own arm because "the target failed" and "nobody observed the
+// target" have opposite remedies, and because collapsing the second into silence is the
+// empty-observation narrow: an aggregate over a standing list that lost half its rows would
+// report the surviving half as the whole answer and go green on a run that observed almost
+// nothing.
+//
+// `DependencyLabelNotCanonical` is the third arm and it is a fact about the AGGREGATE'S OWN edge
+// rather than about any observation: a dependency label that does not survive the label grammar's
+// round trip cannot be a lookup key, so no standing can be joined to it and none is missing
+// either. Collapsing it into `DependencyStandingAbsent` would report a malformed edge as an
+// unobserved target and send a repair to the observer instead of to whoever authored the edge.
+type AggregateFinding
+  = DependencyUnsatisfied { target: Label, cause: StandingCause }
+  | DependencyStandingAbsent { target: Label }
+  | DependencyLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
+
+// AN AGGREGATE OVER ZERO DEPENDENCIES REFUSES, IN ITS OWN ARM.
+//
+// `fold` over an empty list returns the identity, and for a conjunction the identity is TRUE — so
+// the natural implementation reports a `//:required` that requires nothing as fully satisfied.
+// That is the strongest possible green produced by the weakest possible evidence, and it is the
+// exact reading a mis-wired discovery pass would produce. `AggregateNoDependencies` makes the
+// vacuous case unrepresentable as a satisfied one rather than caught downstream by a count.
+//
+// `AggregateStandingsUnindexable` is a REFUSAL TO READ THE INPUT, kept apart from
+// `AggregateRefused`, which is a verdict reached by reading it. One says the observation set could
+// not be joined at all; the other says it was joined and these dependencies did not hold. A
+// consumer that saw them as one arm would report a corrupt standing population as a set of failing
+// targets, and every named target in that report would be a fabrication.
+type AggregateStanding
+  = AggregateSatisfied { dependency_count: Int }
+  | AggregateNoDependencies
+  | AggregateRefused { finding_count: Int, findings: List<AggregateFinding> }
+  | AggregateStandingsUnindexable { cause: TargetStandingIndexRefusal }
+
+// ---------------------------------------------------------------------------------------------
+// THE STANDING INDEX
+// ---------------------------------------------------------------------------------------------
+
+// THE JOIN IS AN INDEX BECAUSE FIRST-MATCH IS A SILENT PICK, AND BECAUSE THE SCAN IS QUADRATIC.
+//
+// The earlier form filtered the whole standing population once per dependency and read the first
+// survivor. Both halves were defects and they are independent:
+//
+//   CORRECTNESS. Two standings for one label were resolved by LIST ORDER. Whichever row the scan
+//   reached first became the answer and the other was discarded without a diagnostic — so a run
+//   in which one observer reported a target green and another reported it red went green or red
+//   according to concatenation order. That is a question with no honest answer at this layer:
+//   this module is the join, not a second observer (see the header), so it has no authority to
+//   prefer one observation over another and must stop the line instead.
+//
+//   COST. The join was dependency-count × standing-count over the largest population in the
+//   repository. DESIGN §6's bare-minimum-cost rule fixes a proven cost shape regardless of the
+//   realized n; here n is not small either.
+//
+// THE KEY IS THE CANONICAL RENDERING, AND CANONICALITY IS ADMITTED RATHER THAN ASSUMED.
+// `render_label` is injective only over labels that survive its documented parse(render(l)) round
+// trip, and `Label` is a freely constructible record whose segments are only `NonEmptyStr` — so
+// `PackagePath(["a", "b"]) + "c"` and `PackagePath(["a/b"]) + "c"` render the same String, and
+// `label_eq` calls them equal too because its package comparison renders before it compares.
+// `label_canonicality` is the one authority for that precondition and is REUSED from
+// `extdeps.bazel.label` rather than copied: canonicality is a property of the cited label grammar
+// — `render_label`'s own header already documents `parse(render(l)) == l` as what it guarantees —
+// so it is stated once beside that grammar and read here. A second canonicality predicate in a
+// consumer would be a §3 nickname for the first, and the two would drift the moment either was
+// refined.
+//
+// IT ANSWERS WITH A CAUSE RATHER THAN A BOOL, AND BOTH REFUSAL ARMS CARRY IT. A label outside the
+// cited grammar (`RenderedLabelRefused`) and one that renders identically to a canonical label but
+// reparses to a different structure (`RenderedLabelStructureMismatch`) have different owners: the
+// first is a malformed authored label, the second is precisely the rendered-key collision this
+// index exists to refuse. Collapsing them into "not canonical" at the call site would discard the
+// distinction the coproduct was introduced to carry.
+type TargetStandingIndex sole_constructor {
+  standings_by_identity: Map<String, TargetStanding>
+}
+
+// THE DUPLICATE ARM CARRIES BOTH STANDINGS, NOT JUST THE LABEL. The reader's next question after
+// "this target was observed twice" is always "did the two observers disagree, and how" — a
+// duplicate of one identical row and a green/red contradiction have different owners, and naming
+// only the label sends both to the same place. The list is the two rows in collision order: the
+// one already indexed, then the one that could not be admitted beside it.
+type TargetStandingIndexRefusal
+  = StandingLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
+  | DuplicateTargetStanding { target: Label, standings: List<TargetStanding> }
+
+type TargetStandingIndexBuild
+  = TargetStandingIndexReady { index: TargetStandingIndex }
+  | TargetStandingIndexRefused { cause: TargetStandingIndexRefusal }
+
+type TargetStandingIndexAcc {
+  index: TargetStandingIndex
+  refusal: Optional<TargetStandingIndexRefusal>
+}
+
+fn index_standing(acc: TargetStandingIndexAcc, standing: TargetStanding) -> TargetStandingIndexAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent => match label_canonicality(label: standing.target) {
+      LabelNonCanonical { cause: cause } => TargetStandingIndexAcc {
+        index: acc.index
+        refusal: Present {
+          value: StandingLabelNotCanonical { target: standing.target, cause: cause }
+        }
+      }
+      LabelCanonical => {
+        let key = render_label(l: standing.target)
+        match lookup(acc.index.standings_by_identity, key) {
+          Present { value: existing } => TargetStandingIndexAcc {
+            index: acc.index
+            refusal: Present {
+              value: DuplicateTargetStanding {
+                target: standing.target
+                standings: [existing, standing]
+              }
+            }
+          }
+          Absent => TargetStandingIndexAcc {
+            index: TargetStandingIndex {
+              standings_by_identity: map_insert(acc.index.standings_by_identity, key, standing)
+            }
+            refusal: Absent {}
+          }
+        }
+      }
+    }
+  }
+}
+
+// RUNG HONESTY (DESIGN §4b), declared rather than left to be rediscovered.
+//
+// WHAT IS CLOSED. `TargetStandingIndex` cannot be forged. It is `sole_constructor`, so a
+// cross-module record literal or cast refuses at compile time, and the only in-module constructions
+// are the empty index below — which satisfies the key law vacuously — and `index_standing`, which
+// derives the key from the standing it is inserting. So no route reaches a `TargetStandingIndex`
+// whose rendered key disagrees with the stored standing's target, and `target_standing_lookup` is
+// entitled to trust the entry it finds. Without this the type was an ordinary record and the wall
+// stopped at the construction path rather than at the carrier, which is exactly the gap review
+// 56266 named.
+//
+// MEASURED, NOT READ. A probe constructing the record from the witness module returned
+// "sole_constructor type 'TargetStandingIndex' cannot be constructed outside its defining module",
+// and the probe was removed after measurement. The keyword is recorded here with its executed
+// refusal because a seal asserted from its own spelling is the rung inflation §4b names — the
+// enrolled suite keeps it honest by reaching every index only through
+// `build_target_standing_index`.
+//
+// WHAT IS NOT CLOSED, and it is a property of the substrate rather than of this type: DESIGN §4b
+// records that a `sole_constructor` type's own EMITTED mirror is forgeable, so the guarantee here
+// is measured on the source→`.dag`-acceptance path and does not extend to a Rust-emission
+// realization of this module. NEXT-RUNG TRIGGER: unforgeable construction surviving emission,
+// which that section already tracks as the live capability gap.
+fn build_target_standing_index(standings: List<TargetStanding>) -> TargetStandingIndexBuild {
+  let empty = TargetStandingIndexAcc {
+    index: TargetStandingIndex { standings_by_identity: empty_map() }
+    refusal: Absent {}
+  }
+  let indexed = fold(standings, init: empty, f: fn(acc, standing) {
+    index_standing(acc: acc, standing: standing)
+  })
+  match indexed.refusal {
+    Present { value: cause } => TargetStandingIndexRefused { cause: cause }
+    Absent => TargetStandingIndexReady { index: indexed.index }
+  }
+}
+
+// `StandingNotObserved` IS NOT `Absent`, AND THE QUERY SIDE IS GATED TOO.
+//
+// A lookup has three outcomes and only one of them is a standing. Rendering the other two as one
+// absent value would put "nobody observed this target" and "this label cannot be a key at all" in
+// one symbol with opposite remedies. The canonicality check is repeated HERE rather than assumed
+// from construction: a forged dependency label that collides with a canonical standing's rendered
+// key would otherwise resolve to that standing's row, which is the same silent pick the index was
+// built to remove, arriving from the query side instead of the population side. A typed key with
+// a sole mint would be the construction-grade fix; while records stay freely constructible, every
+// boundary that turns a `Label` into the rendered key admits it explicitly.
+type TargetStandingLookup
+  = TargetStandingFound { standing: TargetStanding }
+  | StandingNotObserved { target: Label }
+  | StandingLookupLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
+
+// THE LOOKUP SPELLING IS `lookup`, NOT `map_get`, AND THE REASON IS RESOLUTION RATHER THAN TASTE.
+// Two declarations answer to the bare name `map_get` — the builtin, returning `Optional<V>`, and
+// `v2.std.collection.map_get`, returning `Outcome<Optional<V>>` — so in a module whose imports make
+// both visible the reference is ambiguous and refuses outright. `lookup` is the dual-dispatch
+// chokepoint, has one declaration, and already returns the `Optional` these matches read.
+fn target_standing_lookup(index: TargetStandingIndex, target: Label) -> TargetStandingLookup {
+  match label_canonicality(label: target) {
+    LabelNonCanonical { cause: cause } =>
+      StandingLookupLabelNotCanonical { target: target, cause: cause }
+    LabelCanonical =>
+      match lookup(index.standings_by_identity, render_label(l: target)) {
+        Present { value: s } => TargetStandingFound { standing: s }
+        Absent => StandingNotObserved { target: target }
+      }
+  }
+}
+
+fn dependency_finding(index: TargetStandingIndex, dep: Label) -> List<AggregateFinding> {
+  match target_standing_lookup(index: index, target: dep) {
+    StandingLookupLabelNotCanonical { target: t, cause: c } =>
+      [DependencyLabelNotCanonical { target: t, cause: c }]
+    StandingNotObserved { target: t } => [DependencyStandingAbsent { target: t }]
+    TargetStandingFound { standing: s } =>
+      match target_standing_verdict(s: s) {
+        StandingSatisfied => []
+        StandingUnsatisfied { cause: c } => [DependencyUnsatisfied { target: dep, cause: c }]
+      }
+  }
+}
+
+// THE FOLD REPORTS EVERY UNSATISFIED DEPENDENCY, NOT THE FIRST ONE. Stopping at the first would
+// make the aggregate a bisection tool: each repair reveals one more refusal, and the number of
+// runs needed to learn what is actually broken is the number of broken things. The count is
+// carried beside the list for the reason the floor's outcome carries its planned population
+// beside its executed one — a list a reader may truncate is not a number a reader may compare.
+//
+// THE `concat(acc, ...)` ACCUMULATOR IS NOT THE COPIED-ACCUMULATOR COST SHAPE IT RESEMBLES, and
+// this is recorded here because the shape §6 names is worth re-raising by default — a reader who
+// finds a `concat` fold inside the function whose purpose was removing a quadratic is right to
+// stop. It was checked against both realizations rather than assumed:
+//
+//   INTERPRETED. `Value::List` is `Rc<RrbVector<Value>>` and `RrbVector` is `im::Vector`, so the
+//   concat arm's `(*items).clone()` is an O(1) structural share and its `append` is an RRB
+//   concatenation, not an element copy. The arm's own `list_concat_items_copied` counter is
+//   charged only by `value_to_list_carrier`'s free-monoid branch, which materializes a NON-list
+//   argument; a list literal is already `Value::List` and is charged zero.
+//
+//   EMITTED. `rc_list_concat` takes `Rc<Vec<T>>` where `v1_rt`'s prelude binds `Vec` to
+//   `im::Vector`, so `Rc::make_mut`'s clone arm shares structure rather than copying the spine —
+//   `v1_rt` states exactly that about its own `rc_*` updates.
+//
+// So the accumulator's spine is never copied per dependency and the fold is linear in the
+// dependency count, times the vector's logarithmic node path. The finding list is also bounded by
+// the REFUSALS rather than by the dependency count, so on the satisfied path it stays empty.
+// This is a reading of the two carriers, not a measurement of a large aggregate.
+fn aggregate_findings(
+  aggregate: BuildTarget,
+  index: TargetStandingIndex,
+) -> List<AggregateFinding> {
+  fold(aggregate.dependencies, init: [], f: fn(acc, dep) {
+    concat(acc, dependency_finding(index: index, dep: dep))
+  })
+}
+
+// INDEXING PRECEDES EVERY QUESTION ABOUT THE AGGREGATE, INCLUDING THE ZERO-DEPENDENCY ONE.
+//
+// An unindexable standing population is a fact about the INPUT, decided before the aggregate is
+// consulted at all, and ordering it after the dependency count would let a zero-dependency
+// aggregate return `AggregateNoDependencies` — a specific diagnosis — over an observation set the
+// join has already refused to read. Two refusals with different owners must not be answered by
+// whichever check the control flow reached first; that is the shape this whole change removes.
+fn required_aggregate_standing(
+  aggregate: BuildTarget,
+  standings: List<TargetStanding>,
+) -> AggregateStanding {
+  match build_target_standing_index(standings: standings) {
+    TargetStandingIndexRefused { cause: c } => AggregateStandingsUnindexable { cause: c }
+    TargetStandingIndexReady { index: index } => {
+      let dependency_count = aggregate.dependencies |> count
+      if dependency_count == 0 {
+        AggregateNoDependencies {}
+      } else {
+        let findings = aggregate_findings(aggregate: aggregate, index: index)
+        let finding_count = findings |> count
+        if finding_count == 0 {
+          AggregateSatisfied { dependency_count: dependency_count }
+        } else {
+          AggregateRefused { finding_count: finding_count, findings: findings }
+        }
+      }
+    }
+  }
+}
+
+// THE ONE DECISION A GATE READS, AND IT IS TYPED RATHER THAN A `Bool`.
+//
+// An earlier revision returned `Bool` from here. That is the predicate-dissolution violation this
+// repository already ruled on: a `Bool` over a coproduct is a parallel surface beside a vocabulary
+// that already answers, and it discards the fact the caller most needs — a gate that learns only
+// `true` has to go back to the standing to say ANYTHING about why the line stopped, and a fourth
+// `AggregateStanding` arm would have been silently absorbed into one of the two boolean answers
+// with no call site asked to decide.
+//
+// It is not deleted outright, because the grouping it expresses is a real single authority: that
+// `AggregateNoDependencies` STOPS THE LINE — an aggregate requiring nothing has proven nothing —
+// is a policy every gate must agree on, and pushing the match to each gate would let them drift.
+// So the authority stays and the return type carries the reason.
+type RequiredGateDecision
+  = RequiredGateProceeds { dependency_count: Int }
+  | RequiredGateStops { standing: AggregateStanding }
+
+fn required_gate_decision(a: AggregateStanding) -> RequiredGateDecision {
+  match a {
+    AggregateSatisfied { dependency_count: n } => RequiredGateProceeds { dependency_count: n }
+    AggregateNoDependencies => RequiredGateStops { standing: AggregateNoDependencies {} }
+    AggregateRefused { finding_count: n, findings: fs } =>
+      RequiredGateStops { standing: AggregateRefused { finding_count: n, findings: fs } }
+    AggregateStandingsUnindexable { cause: c } =>
+      RequiredGateStops { standing: AggregateStandingsUnindexable { cause: c } }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// BAZEL-COMPATIBLE EXPORT
+// ---------------------------------------------------------------------------------------------
+
+// RENDERING A FLOOR DISPOSITION AS A BLAZE TEST STATUS IS LOSSY, AND THE LOSS IS DECLARED HERE
+// RATHER THAN DISCOVERED BY A READER.
+//
+// This is an EXPORT — the direction a Bazel-shaped consumer reads — and it is deliberately not the
+// carrier: `TestStanding` keeps the disposition, so nothing internal ever loses the distinction
+// this function drops. What it drops, precisely:
+//
+//   `KnownRedHeld` HAS NO UPSTREAM MEMBER. Bazel's vocabulary has no "expected to fail and did";
+//   it becomes `FAILED`, which is what the run literally observed, and the ENROLMENT — the fact
+//   that makes it acceptable here — is not exportable. A consumer reading only the exported
+//   status therefore sees a failing test, which is honest about the observation and silent about
+//   the policy. Exporting it as `PASSED` was rejected: that would fabricate an observation.
+//
+//   `NotAttemptedAfterAbort` HAS AN EXACT UPSTREAM MEMBER AND TAKES IT, AND THIS ARM IS WRITTEN
+//   DOWN BECAUSE IT HAS ALREADY BEEN DECIDED TWICE, THE OTHER WAY.
+//
+//   The disposition is constructed from `NotAttempted { halted_by }` -- a claim the run never
+//   reached because it was halted, with the halt named. `extdeps.bazel.test_status` carries
+//   `TestStatusHaltedBeforeTesting` as wire number 8, `BLAZE_HALTED_BEFORE_TESTING`, meaning a
+//   test that did not run because the build was halted. That is the same fact, so this is the one
+//   arm in this export that loses NOTHING.
+//
+//   `INCOMPLETE` is the reading to resist, and it is not hypothetical: gunbc#9343 classified this
+//   arm that way on main while gunbc#9336 classified it this way, and the two met in a merge. It
+//   is the anemic choice by DESIGN section 3 -- `extdeps` models what the upstream spec says and
+//   keeps its real names, so mapping an EXACTLY representable state onto a vaguer one is a lossy
+//   projection where a faithful one exists, and it lands the value in the very pile the paragraph
+//   below flags as lossy. A reader diffing this file against that history will find an
+//   unexplained divergence and be tempted to "fix" it back; this paragraph is what stops that.
+//
+//   `PanickedBeforeVerdict` has no such member and joins `FAILED` beside
+//   `RuntimeErroredBeforeVerdict`: both are the evaluation dying, and the distinction between
+//   them stays on the `TestStanding` this was computed from.
+//
+//   `HostToolUnresolvedBeforeVerdict` and `RouteGapBeforeVerdict` BOTH become `INCOMPLETE`. Their
+//   remedies differ, so this collapse would be a defect in a carrier; it is admissible in an
+//   export because the distinguishing fact stays on the `TestStanding` the export was computed
+//   from, one dereference away, and the export is never fed back into a decision.
+// The two abort-side arms are placed by the partition this match already draws — DID THE CLAIM
+// RUN — and not by severity. `PanickedBeforeVerdict` is `RuntimeErroredBeforeVerdict`'s neighbour:
+// the claim executed and died, so `FAILED`. `NotAttemptedAfterAbort` is `RouteGapBeforeVerdict`'s:
+// the claim never executed, so `INCOMPLETE`. `INCOMPLETE` here is the HONEST arm rather than the
+// soft one — rendering a claim that never ran as `FAILED` asserts that an assertion failed when no
+// assertion ever executed, which is exactly the execution-provenance loss DESIGN forbids, since a
+// stage refused before it ran must not inhabit the same carrier as a stage that ran and found a
+// defect.
+fn blaze_test_status_of_claim_disposition(d: ClaimDisposition) -> BlazeTestStatus {
+  match d {
+    Passed => TestStatusPassed {}
+    PassedOverBudget => TestStatusPassed {}
+    Failed => TestStatusFailed {}
+    KnownRedHeld => TestStatusFailed {}
+    KnownRedNowPassing => TestStatusPassed {}
+    BudgetRefusedBeforeVerdict => TestStatusTimeout {}
+    BudgetTerminalWithoutSafetyCause => TestStatusIncomplete {}
+    HostToolUnresolvedBeforeVerdict => TestStatusIncomplete {}
+    RouteGapBeforeVerdict => TestStatusIncomplete {}
+    RuntimeErroredBeforeVerdict => TestStatusFailed {}
+    PanickedBeforeVerdict => TestStatusFailed {}
+    NotAttemptedAfterAbort => TestStatusHaltedBeforeTesting {}
+    ObservationUnreadableBeforeVerdict => TestStatusIncomplete {}
+  }
+}
+
+type BlazeTestStatusExport
+  = BlazeTestStatusExported { status: BlazeTestStatus }
+  | TestStandingNotExportable { producer: TargetProducer }
+
+// A producer-specific instrument observation has no honest BlazeTestStatus. Refusing the export
+// preserves the same boundary as the carrier: a differential that completed and found divergence
+// is not Bazel FAILED, and a differential that did not complete is not NO_STATUS.
+fn blaze_test_status_of_test_standing(t: TestStanding) -> BlazeTestStatusExport {
+  match t {
+    NotATestTarget => BlazeTestStatusExported { status: TestStatusNoStatus {} }
+    TestReportedByBazel { status: s } => BlazeTestStatusExported { status: s }
+    TestRunByFloor { disposition: d } => BlazeTestStatusExported {
+      status: blaze_test_status_of_claim_disposition(d: d)
+    }
+    TestMeasuredByBehavioralReceiptPlan { standing: _ } => TestStandingNotExportable {
+      producer: BehavioralReceiptPlanProducer {}
+    }
+    TestMeasuredByBehavioralReceiptCensus { standing: _ } => TestStandingNotExportable {
+      producer: BehavioralReceiptCensusProducer {}
+    }
+    TestMeasuredByBehavioralReceiptSelftest { standing: _ } => TestStandingNotExportable {
+      producer: BehavioralReceiptSelftestProducer {}
+    }
+    TestMeasuredByHeadsReadingDifferential { standing: _ } => TestStandingNotExportable {
+      producer: HeadsReadingDifferentialProducer {}
+    }
+  }
+}

@@ -6570,7 +6570,7 @@ pub fn is_scc_container_child_descent(
                         Some(entry) => {
                             let best_edges = entry.params.clone().iter().cloned().fold(
                                 Rc::new(vec![]),
-                                |best: _, p: Rc<Node>| {
+                                |best: Rc<Vec<Rc<ParserProgressEdge>>>, p: Rc<Node>| {
                                     let pname = param_node_name_at(p.clone(), si.clone());
                                     let descent_vars = collect_descent_vars(
                                         entry.body.clone(),

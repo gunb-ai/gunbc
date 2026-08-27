@@ -263,3 +263,14 @@ data max_job_timeout_minutes: Int = 360
 data default_job_timeout_minutes: Int = 360
 
 data max_matrix_combinations: Int = 256
+
+// STRUCTURAL EQUALITY ON THE UPSTREAM REFERENCE. An action is identified by owner, repo and ref
+// together -- the same owner/repo at two refs is two different actions, which is the distinction
+// action_ref_double_bound_finding_note above records a live defect over.
+//
+// It lives here rather than in a consumer because it is a fact about THIS type. It was declared in
+// gunbc.ci_heal_credential first, and a second consumer asking that module what two ActionRefs mean
+// would have made a credential-healing module the authority on action identity.
+fn action_ref_eq(a: ActionRef, b: ActionRef) -> Bool {
+  a.owner == b.owner && a.repo == b.repo && a.ref == b.ref
+}

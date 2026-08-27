@@ -1,7 +1,8 @@
 module extdeps.posix.sh_invocation
 
 import std.types { String, NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 
@@ -10,6 +11,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/sh.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.sh_invocation",
+      decl_name: "posix_sh_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // WHY THIS IS A SEPARATE MODULE FROM extdeps.posix.shell_command_language, AND IT IS A CYCLE, NOT A

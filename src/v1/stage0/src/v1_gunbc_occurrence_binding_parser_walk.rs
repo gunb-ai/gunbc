@@ -103,7 +103,7 @@ pub fn parse_authored_occurrence_binding_source(
 pub fn declaration_exposure_from_containment_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Exposure derivation site: inputs are containment prefix shape and module path only — OccurrenceCategory is not consulted. Delegates to the single exposure authority std.occurrence_binding_candidates declaration_exposure_from_containment under ModuleLocalMemberExposure grounding (N3-B0): module-root and direct-module-child shapes => ModuleExposure; nested declaration => LexicalExposure whose exposing_scope is the nearest ancestor. Binder-as-own-path LexicalExposure (the hand-built §13 fixture shape) is correct only when uses nest under the binder in the parse tree (lets do; match-arm bodies currently do not — see parser_sibling_match_arm_pattern_binder_holds_note).".to_string()
+            "Exposure derivation site: inputs are containment prefix shape and module path only — OccurrenceCategory is not consulted. Delegates to the single exposure authority std.occurrence_binding_candidates declaration_exposure_from_containment under the grounding ITS CALLER SUPPLIES, which is why occurrence_binding_inputs_from_transport takes a DeclarationExposureGrounding rather than fixing one: the same parse transport is projected under ModuleLocalMemberExposure for an in-module binding walk and under CrossFileProviderExportedExposure when the file is being projected as a provider exporting to consumers, and only the caller knows which it is. Under ModuleLocalMemberExposure, module-root and direct-module-child shapes => ModuleExposure; nested declaration => LexicalExposure whose exposing_scope is the nearest ancestor. Binder-as-own-path LexicalExposure (the hand-built §13 fixture shape) is correct only when uses nest under the binder in the parse tree (lets do; match-arm bodies do not, and the reason is structural rather than incidental: v1.std.core make_arm_node stores the pattern in the arm node's match_pattern FIELD and puts the body in its children, so a match-arm binder is not a node in the parse tree at all and nothing can nest under it).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -136,6 +136,7 @@ pub fn occurrence_binding_inputs_accumulator_note() -> String {
 pub fn occurrence_binding_inputs_from_transport(
     module_path: String,
     transport: Rc<OccurrenceTransport>,
+    grounding: DeclarationExposureGrounding,
 ) -> Rc<OccurrenceBindingCandidateInputs> {
     Rc::new(OccurrenceBindingCandidateInputs {
         module_paths: v1_rt::reverse(
@@ -148,7 +149,7 @@ pub fn occurrence_binding_inputs_from_transport(
                 .cloned()
                 .fold(
                     Rc::new(vec![]),
-                    |acc: _, entry: Rc<OccurrenceIndexEntry>| {
+                    |acc: Rc<Vec<Rc<OccurrenceModulePathRow>>>, entry: Rc<OccurrenceIndexEntry>| {
                         v1_rt::concat(
                             Rc::new(vec![Rc::new(OccurrenceModulePathRow {
                                 occurrence: entry.projection.clone().occurrence.clone(),
@@ -161,14 +162,14 @@ pub fn occurrence_binding_inputs_from_transport(
         ),
         exposure_rows: v1_rt::reverse(transport.declarations.clone().iter().cloned().fold(
             Rc::new(vec![]),
-            |acc: _, declaration: Rc<DeclarationOccurrence>| {
+            |acc: Rc<Vec<Rc<DeclarationExposureRow>>>, declaration: Rc<DeclarationOccurrence>| {
                 v1_rt::concat(
                     Rc::new(vec![Rc::new(DeclarationExposureRow {
                         occurrence: declaration.occurrence.clone(),
                         exposure: declaration_exposure_from_containment(
                             module_path.clone(),
                             declaration.containment.clone(),
-                            DeclarationExposureGrounding::ModuleLocalMemberExposure,
+                            grounding.clone(),
                         ),
                     })]),
                     acc,
@@ -185,7 +186,7 @@ pub fn occurrence_binding_inputs_from_transport(
                 .cloned()
                 .fold(
                     Rc::new(vec![]),
-                    |acc: _, entry: Rc<OccurrenceIndexEntry>| {
+                    |acc: Rc<Vec<Rc<AuthoredOrderRow>>>, entry: Rc<OccurrenceIndexEntry>| {
                         v1_rt::concat(
                             Rc::new(vec![authored_order_row_from_entry(entry.clone())]),
                             acc,

@@ -1,0 +1,163 @@
+module test.claim.data_reference_ambiguous_refusal_witness_test
+
+import std.types { String, Bool, Int }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+
+// EXECUTING evidence for the ONE arm that data_reference_declaration_identity_witness_test
+// measured and could not enroll: a workflow parameter default naming a spelling that MORE THAN
+// ONE visible declaration answers to refuses, by name, instead of silently taking one.
+//
+// WHY THAT WITNESS COULD NOT HOLD IT, in its own words: the ambiguity fixture is an INVALID
+// program, "and the only harness that can hold one here is a real corpus module, which would make
+// whole-corpus emission refuse forever over a test." That is correct about a corpus-member
+// fixture, and it is the reason the arm was measured and then removed rather than committed. Its
+// NEXT-RUNG TRIGGER is "a multi-module compile fixture that is not a corpus member".
+//
+// THIS IS THAT HARNESS, AND IT NEEDED NO NEW MECHANISM. compile_dag_rust_emit_check compiles ONE
+// AUTHORED SOURCE and resolves its imports from the real tree, so the split falls out: the CORPUS
+// modules carry only the two DECLARATIONS, which are perfectly valid and already exist for the
+// sibling witness, and the AMBIGUOUS REFERENCE lives in the virtual entry below -- a module that
+// is compiled but never a corpus member, so whole-corpus emission never sees it. The invalid
+// program exists only for the length of this claim.
+//
+// NO NEW FIXTURES. The alpha and beta halves already declare `dri_model` with different values,
+// and shared already declares one `dri_shared_endpoint`; minting a second ambiguous pair for one
+// concept is the redundancy DESIGN section 2 forbids. This file authors only the two references.
+//
+// THE PAIR IS WHAT DISCRIMINATES. Both entries are the same shape -- imports, a `uses` type, one
+// workflow func whose `model` default names an imported spelling -- and differ ONLY in how many
+// imports answer to that spelling. Two answers refuses; one answer folds. A resolver that stopped
+// reading imported defaults at all would pass the refusal and FAIL the control, and a resolver
+// that kept guessing passes the control and FAILS the refusal. Neither arm is satisfiable by a
+// check that always answers the same way.
+
+data dra_ambiguous_entry_source: String = "module dra_probe_ambiguous\n\nimport test.fixture.data_reference_identity_alpha\nimport test.fixture.data_reference_identity_beta\n\ntype DraAmbNet \{\n  id: Int\n}\n\nfunc dra_amb_run(model: String = dri_model) -> String\n  uses net: DraAmbNet\n\{\n  model\n}\n"
+
+data dra_sole_entry_source: String = "module dra_probe_sole\n\nimport test.fixture.data_reference_identity_shared\n\ntype DraSoleNet \{\n  id: Int\n}\n\nfunc dra_sole_run(endpoint: String = dri_shared_endpoint) -> String\n  uses net: DraSoleNet\n\{\n  endpoint\n}\n"
+
+// THE REFUSAL. Two visible declarations answer to `dri_model`, so the fold answers with neither
+// and the unfolded default reaches validate_workflow_param_defaults -- one hard diagnostic,
+// emission refused. That is why this reads `== false`: the refusing path emits NO FILE AT ALL,
+// which is the fail-closed outcome (DESIGN section 5), not a missing substring. An excludes-only
+// assertion would have been weaker, because a compile that refused for any unrelated reason also
+// contains neither value; the control below is what rules that out.
+test fn an_ambiguously_visible_data_reference_refuses_rather_than_picking_one() -> Bool {
+  compile_dag_rust_emit_check(
+    dra_ambiguous_entry_source,
+    "src/main.rs",
+    [],
+    []
+  ) == false
+}
+
+// THE CONTROL. One import, one declaration, and the default folds through to the emitted CLI with
+// its value bound ADJACENT to its own field name -- the same value-to-field discipline the sibling
+// witness uses, so a resolver that resolved the reference but crossed it still reds. Without this
+// arm the refusal above is satisfied by an emitter that refuses every imported default, which
+// would be a narrowing dressed as a wall.
+test fn a_solely_visible_data_reference_still_folds_into_the_cli_default() -> Bool {
+  compile_dag_rust_emit_check(
+    dra_sole_entry_source,
+    "src/main.rs",
+    ["endpoint", "default_value = \"dri-shared-endpoint\""],
+    []
+  )
+}
+
+// THE CLASS-SPECIFIC ARM, ADDED ABOVE THE CLASS-AGNOSTIC ONE RATHER THAN REPLACING IT.
+//
+// The refusal arm above asserts THAT the compile refused, deliberately not WHICH diagnostic, so
+// that InternalError was never cemented as the contract. That is why it could not serve as
+// coverage for the reclassification: it is green before the repair and green after it, and a
+// probe whose verdict cannot move is a decoration. It stays enrolled as the refusal control --
+// dissolution on climb deletes redundant production machinery, never the evidence -- and the
+// discriminating assertion is added here.
+//
+// WHY A SECOND HARNESS RATHER THAN A STRONGER ASSERTION ON THE FIRST. compile_dag_rust_emit_check
+// returns Bool: it can say a compile refused and cannot say why, so an assertion written against
+// it would have measured no change and read as the repair not working.
+// compile_dag_diagnostic_census names the class, which is the fact under test.
+//
+// THE PAIR IS WHAT DISCRIMINATES, in both directions. AmbiguousReference == 1 alone would be
+// satisfied by an emitter that reported the ambiguity AND kept the InternalError beside it, which
+// is a rename rather than a reclassification; InternalError == 0 alone would be satisfied by an
+// emitter that stopped refusing altogether, which is strictly worse than the defect. Only both
+// together say the cause the module argued for four types deep survives its last expression.
+//
+// NOT-RUNNABLE IS NOT ZERO. Absent answers -1 for the reason the sibling callable-ambiguity
+// witness records: a census that could not run has observed nothing, and rendering that as "no
+// diagnostics of this class" would let a broken harness satisfy the InternalError == 0 half while
+// making the AmbiguousReference half unsatisfiable -- the empty-observation narrow. -1 is neither
+// the 0 a green asserts nor the positive count a red asserts.
+fn dra_blocking_count(source: String, wanted: String) -> Int {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: wanted) {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+test fn the_ambiguity_is_reported_as_an_ambiguous_reference() -> Bool {
+  dra_blocking_count(source: dra_ambiguous_entry_source, wanted: "AmbiguousReference") == 1
+}
+
+test fn the_ambiguity_is_no_longer_reported_as_a_compiler_bug() -> Bool {
+  dra_blocking_count(source: dra_ambiguous_entry_source, wanted: "InternalError") == 0
+}
+
+// THE CONTROL FOR THE PAIR ABOVE. The sole-declaration entry compiles clean, so a harness that
+// answered "1 AmbiguousReference" for every source, or "0 InternalError" because it never ran,
+// fails here. This is the same discrimination the emit-check control provides, asked of the
+// census instead.
+test fn the_sole_declaration_entry_carries_neither_class() -> Bool {
+  dra_blocking_count(source: dra_sole_entry_source, wanted: "AmbiguousReference") == 0
+    && dra_blocking_count(source: dra_sole_entry_source, wanted: "InternalError") == 0
+}
+
+// THE SECOND RECLASSIFIED ARM, MEASURED (codex review 56224, finding 2). A default whose FORM was
+// never admitted is a different question from an unresolvable data reference: the fold returns the
+// expression as itself, `cli_default_literal_value` finds no literal, and nothing lands in the
+// unresolvable map at all -- so this arm is reached through `Absent`, not through a cause. It used
+// to render as InternalError beside the two causes, which put "the compiler has a bug" on an
+// ordinary authoring mistake.
+//
+// THE FIXTURE IS A BINOP RATHER THAN A CALL, deliberately: `1 + 1` is the smallest expression that
+// is neither a literal nor a reference, so the arm is reached without dragging in name resolution
+// that could refuse first for an unrelated reason and satisfy the assertion by accident.
+data dra_inadmissible_default_entry_source: String = "module dra_probe_inadmissible\n\ntype DraFormNet \{\n  id: Int\n}\n\nfunc dra_form_run(model: String = 1 + 1) -> String\n  uses net: DraFormNet\n\{\n  model\n}\n"
+
+test fn an_inadmissible_default_form_is_reported_as_such() -> Bool {
+  dra_blocking_count(source: dra_inadmissible_default_entry_source, wanted: "ParameterDefaultFormNotAdmitted") == 1
+}
+
+test fn an_inadmissible_default_form_is_no_longer_a_compiler_bug() -> Bool {
+  dra_blocking_count(source: dra_inadmissible_default_entry_source, wanted: "InternalError") == 0
+}
+
+// THE THIRD RECLASSIFIED ARM, MEASURED AFTER ALL (codex reviews 56224 and 56229). I first declared
+// this one as a gap with its price named, on the grounds that its RED costs seventeen corpus files
+// and the arm has zero live exposure. The review held, twice, and it was right: DESIGN 4b asks
+// whether a RED is AUTHORABLE before excusing its absence, and this one is -- expensively, not
+// impossibly -- so declining it was specification-without-execution with a cost estimate attached.
+//
+// WHY SEVENTEEN AND NOT FEWER, derived from the mechanism rather than guessed.
+// data_reference_visibility_depth_limit is 16, and data_decl_reexporting_modules increments once
+// per RE-EXPORT hop, so hop_k is visited at depth k and hop_17 is refused by the bound before its
+// declaration is ever read. The chain length IS the bound; acyclicity rules out anything shorter,
+// and the declaration sits at the far end precisely so that a walk which somehow completed would
+// resolve rather than refuse -- the fixture cannot pass by having nothing to find.
+//
+// AN ALL-IMPORT WOULD NOT WORK AND THAT IS WHY EVERY HOP NAMES THE NAME. data_import_reexports_name
+// answers false for an all-import: visibility into a module is not re-export onward, so a chain of
+// bare imports would stop at hop_01 and the walk would complete with zero modules -- Absent, not
+// budget-exhausted, and this arm would never be reached.
+data dra_budget_chain_entry_source: String = "module dra_probe_budget\n\nimport test.fixture.data_reference_visibility_chain.hop_01 \{ dvb_endpoint }\n\ntype DraBudgetNet \{\n  id: Int\n}\n\nfunc dra_budget_run(endpoint: String = dvb_endpoint) -> String\n  uses net: DraBudgetNet\n\{\n  endpoint\n}\n"
+
+test fn an_exhausted_visibility_walk_is_reported_as_such() -> Bool {
+  dra_blocking_count(source: dra_budget_chain_entry_source, wanted: "DataReferenceVisibilityBudgetExceeded") == 1
+}
+
+test fn an_exhausted_visibility_walk_is_no_longer_a_compiler_bug() -> Bool {
+  dra_blocking_count(source: dra_budget_chain_entry_source, wanted: "InternalError") == 0
+}

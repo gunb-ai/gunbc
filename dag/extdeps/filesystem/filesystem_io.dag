@@ -48,6 +48,29 @@ type ReadError
 
 data write_owner_only_realization_note: String = "v1 realization: Unix OpenOptions create_new + mode 0600 at creation (O_EXCL); non-Unix hosts refuse rather than degrading to unmodeled write."
 
+// The operation below carries the transport observation as independent channels: the read
+// either supplied content or supplied an error, but the wire itself does not make those states
+// exclusive. Consumers that need the modeled result fold those channels through this coproduct.
+// Keeping the fold here makes the interface authority own the meaning while the file transport
+// remains only a realization of its scalar channels.
+type FilesystemReadOutcome
+  = FilesystemReadSucceeded { content: String }
+  | FilesystemReadRefused { error: String }
+
+fn filesystem_read_outcome(
+  content: String,
+  success: Bool,
+  error: String,
+) -> FilesystemReadOutcome {
+  if success {
+    FilesystemReadSucceeded { content: content }
+  } else {
+    FilesystemReadRefused { error: error }
+  }
+}
+
+data filesystem_read_outcome_adoption_standing: String = "RUNG: mitigatable. filesystem_read_outcome provides the single modeled fold from Filesystem.Read's scalar transport observation into FilesystemReadSucceeded | FilesystemReadRefused, but nothing forces callers through it. gunbc.ci_yaml_validate is the first converted consumer and preserves read refusal separately from YAML parse refusal. The raw operation remains directly consumed elsewhere, so content+success+error nonsense combinations remain writable at those sites. SUBJECT: an unconverted consumption site is a Filesystem Read call whose bound result has any success, error, or content projection outside the three arguments of filesystem_read_outcome. The call and those three projections remain after conversion because they supply the fold; adoption changes where they are consumed, not whether they exist. BASELINE measured on origin/main b21b710d5378387ae0c841f07323292c5d72faba: 92 unconverted consumption sites across 48 .dag files. REMAINDER after the first conversion: 91 unconverted consumption sites across 47 files. RE-DERIVATION: enumerate Filesystem Read assignment calls in tracked .dag source, excluding this adoption-standing data declaration so the instrument cannot count its own prose; for each bound result, classify it converted only when every success, error, and content projection is an argument of filesystem_read_outcome, otherwise classify it unconverted; count unconverted rows and distinct paths. NEXT-RUNG TRIGGER: the unconverted population reaches zero -- every Filesystem Read result projection occurs only as an argument to filesystem_read_outcome. The compiler-only filesystem_read intrinsic is a separate replacement migration and is not part of this population or this fold."
+
 service Filesystem {
 
   operation Write {
@@ -76,7 +99,7 @@ service Filesystem {
     input { path: String }
     output {
       content: String from "content"
-      success: Bool from "write_success"
+      success: Bool from "read_success"
       error: String from "error"
     }
     readonly
@@ -86,7 +109,7 @@ service Filesystem {
   operation Delete {
     input { path: String }
     output {
-      success: Bool from "write_success"
+      success: Bool from "delete_success"
       error: String from "error"
     }
     transport file { path: "{path}", verb: "delete" }
@@ -95,8 +118,8 @@ service Filesystem {
   operation List {
     input { path: String }
     output {
-      entries: String from "content"
-      success: Bool from "write_success"
+      entries: String from "entries"
+      success: Bool from "list_success"
       error: String from "error"
     }
     readonly

@@ -1,0 +1,160 @@
+module gunbc.scm.log
+
+// THE LOG VERB: which commits this envelope carries.
+//
+// It answers exactly that one question. It is not a formatting engine: the result is a sequence of
+// typed rows, and turning rows into text is a rendering concern that belongs with the process-output
+// boundary. Nothing here chooses a separator, a column order or a width, because a decision that can
+// only be justified by how the output would LOOK cannot be derived from the envelope, and this
+// module is built entirely from what the envelope carries.
+//
+// WHAT THE ENVELOPE CARRIES, EXHAUSTIVELY: a RepositoryCommit is { root: ObjectId, message: String }
+// and nothing else. So a log row can name the commit, name the program it points at, and carry the
+// message. THREE FIELDS A USER WOULD EXPECT ARE ABSENT FROM THE MODEL, and their absence is reported
+// here rather than synthesised:
+//
+//   AUTHOR      -- no commit in this layer records who made it.
+//   TIMESTAMP   -- no commit records when.
+//   PARENT      -- RepositoryCommit has no parent field, so no log row can name one. What changed is
+//                  the REASON, and only half of the original claim survived: gunbc.scm.ancestry now
+//                  names an ancestry relation, so "nothing else in gunbc.scm names one" is false as
+//                  of that module. The envelope does not bind the relation to a commit, so this
+//                  module still has no fact to read and still reports the absence rather than
+//                  synthesising it. The operations git states in terms of ancestry -- merge-base,
+//                  ahead/behind, "the commits since X" -- still have no referent, now because none
+//                  of them is modelled rather than because no relation exists to state them over.
+//
+// Each would have to be invented to appear in a row, and inventing them is the fabricated-plausible-
+// output failure DESIGN section 5 forbids at a user-facing boundary.
+
+import std.types { Bool, Int, List, String }
+import gunbc.scm.object_store { ObjectId, ObjectStore, store_contains }
+import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
+import gunbc.scm.commit_closure_json_v2 { position_reference }
+
+// WHETHER THIS COMMIT'S PROGRAM IS ACTUALLY HELD, which is decidable here and therefore reported.
+// The envelope's own encoder refuses on RepositoryCommitRootNotInStore, so "this commit names a root
+// the store does not contain" is a state the model already knows how to recognise. Listing such a
+// commit without saying so would present a row that cannot be checked out as though it were
+// ordinary -- the same reasoning that gives gunbc.scm.status its CheckedOutCommitMissing arm, and
+// the same refusal it is derived from.
+type LoggedCommitStanding
+  = LoggedCommitRootHeld
+  | LoggedCommitRootMissingFromStore
+
+// THE REFERENCE IS THE COMMIT'S IMAGE-LOCAL POSITION, spelled by the SAME authority the encoder uses
+// (commit_closure_json_v2 `position_reference`). It is not a second naming scheme invented for
+// display: it is the identifier a reader can hand back to any operation that takes a commit
+// reference, which is what makes a log row actionable rather than decorative.
+//
+// IT IS DERIVED FROM POSITION DURING THE WALK, NOT BY LOOKING THE ROOT UP. `commit_reference_of`
+// searches by identity and answers the FIRST match, and the envelope's own header states that two
+// commits may share a root and differ only in message -- they "name the SAME program, which is the
+// point of content addressing and not a collision". So an identity lookup would give both rows the
+// first row's reference, and the second commit would be unreachable through the very identifier its
+// row advertises.
+type CommitLogRow {
+  reference: String
+  root: ObjectId
+  message: String
+  standing: LoggedCommitStanding
+}
+
+// AN EMPTY HISTORY IS ITS OWN STATE, NOT AN EMPTY LIST.
+//
+// A consumer handed `[]` has to decide what it means, and the two available readings have different
+// remedies: "this repository has no commits yet" is the ordinary state of a fresh repository
+// (repository_envelope's header: `init` produces no commits and no root, and neither is an error),
+// while "the log produced nothing" is the shape a failed or unperformed observation takes. DESIGN
+// names that collapse the empty-observation narrow and rules it strictly worse than the widen it
+// mirrors, because a widen is merely expensive and a narrow is silently uncovered.
+//
+// Making the distinction structural means no consumer can accidentally treat one as the other:
+// there is no empty CommitLogRows value to confuse with NoCommitsYet, because the fresh-repository
+// case has its own constructor and never produces a row list at all.
+type CommitLog
+  = NoCommitsYet
+  | CommitLogRows { rows: List<CommitLogRow> }
+
+type CommitLogAcc {
+  index: Int
+  rows: List<CommitLogRow>
+}
+
+fn logged_commit_standing(store: ObjectStore, root: ObjectId) -> LoggedCommitStanding {
+  if store_contains(store: store, identity: root) {
+    LoggedCommitRootHeld
+  } else {
+    LoggedCommitRootMissingFromStore
+  }
+}
+
+fn commit_log_step(store: ObjectStore, acc: CommitLogAcc, commit: RepositoryCommit) -> CommitLogAcc {
+  CommitLogAcc {
+    index: acc.index + 1,
+    rows: concat(
+      acc.rows,
+      [
+        CommitLogRow {
+          reference: position_reference(n: acc.index),
+          root: commit.root,
+          message: commit.message,
+          standing: logged_commit_standing(store: store, root: commit.root),
+        },
+      ],
+    ),
+  }
+}
+
+// ROWS COME BACK IN REFERENCE ORDER, AND THAT IS A STATED BASIS RATHER THAN AN ARTEFACT.
+//
+// The envelope's commit list order is load-bearing: references ARE indices into it
+// (repository_envelope `commit_reference_of`), and the corpus already witnesses that reversing two
+// commits changes the repository's root signature. So the order is a fact about the image, preserved
+// by the codec, and reporting rows in it means a row's position and its reference agree.
+//
+// WHAT THIS DELIBERATELY DOES NOT CLAIM IS RECENCY, and the reason is a finding rather than a
+// preference: NOTHING IN THE MODEL ESTABLISHES THAT A LATER INDEX IS A NEWER COMMIT. There is no
+// commit-authoring verb -- every RepositoryCommit constructed anywhere in this repository today is
+// constructed by a witness -- so no producer defines what appending means, and no commit carries a
+// timestamp or a parent to recover an order from. Presenting these rows newest-first would therefore
+// manufacture chronology out of position, which is the same fabrication as inventing the timestamp
+// itself, one step less obvious.
+//
+// This is not a tiebreak waiting to be chosen. A tiebreak presumes an ordering basis that is merely
+// partial; here the basis for recency is ABSENT. It becomes derivable the moment a commit verb
+// exists to define it, and at that point this function gains a stated recency order rather than a
+// reinterpretation of position.
+fn repository_log(envelope: RepositoryEnvelope) -> CommitLog {
+  if count(envelope.commits) == 0 {
+    NoCommitsYet
+  } else {
+    match fold(
+      envelope.commits,
+      init: CommitLogAcc { index: 0, rows: [] },
+      f: fn(acc, c) { commit_log_step(store: envelope.store, acc: acc, commit: c) },
+    ) {
+      CommitLogAcc { index: _, rows: rows } => CommitLogRows { rows: rows }
+    }
+  }
+}
+
+// Whether every logged commit names a program this repository actually holds. A consumer deciding
+// whether the image is usable wants this without walking the rows itself, and it is a FACT rather
+// than a rendering, so it belongs beside the log rather than in whatever eventually prints it.
+fn commit_log_is_fully_held(log: CommitLog) -> Bool {
+  match log {
+    NoCommitsYet => true
+    CommitLogRows { rows: rows } =>
+      fold(rows, init: true, f: fn(held, r) {
+        if held {
+          match r.standing {
+            LoggedCommitRootHeld => true
+            LoggedCommitRootMissingFromStore => false
+          }
+        } else {
+          false
+        }
+      })
+  }
+}
