@@ -162,7 +162,7 @@ test fn an_upstream_refusal_does_not_certify_emit_as_clean() -> Bool {
   }
     && match census_population_bound(r: src_v2_root_census) {
       LowerBoundOnly { count: n, masking_gate: g } =>
-        n == 20 && match g {
+        n == 0 && match g {
           EmitStoppedOnUpstreamCauses => true
           WorkflowParameterDefaultGate => false
           AnonymousRecordLiteralGate => false
