@@ -334,9 +334,20 @@ fn unique_ints(ids: List<Int>) -> List<Int> {
 // revision took `expected_base: List<Int>` and nothing bound it to the base -- the same
 // wrong-population class that #9355 closed one module over, surviving here because this module was
 // authored before that fix landed. `CompleteLegacyObservation` is `sole_constructor` and minted only
-// by an admission that derived its population from the subject's own transport, so the denominator
-// now arrives PROVEN rather than asserted, and a caller who skipped the completeness join fails to
-// typecheck instead of being trusted.
+// by `admit_complete_observation`, which derives its population from the VALIDATED TRANSPORT IT
+// CONSUMES, so the denominator now arrives proven rather than asserted and a caller who skipped the
+// completeness join fails to typecheck instead of being trusted.
+//
+// AND THE RUNG STOPS THERE, WHICH THIS ANNOTATION PREVIOUSLY OVERSTATED. It read `derived its
+// population from the subject's own transport`, which claims one rung more than is built: nothing
+// yet binds the consumed transport to the transport digest the subject itself stores, so a caller
+// holding a validated transport for a DIFFERENT subject still typechecks here. Binding those two is
+// the named `std.occurrence_identity` next rung and is not claimed by this module.
+//
+// The overclaim is worth recording rather than silently editing, because of HOW it survived. The
+// stronger sentence was never true, and no deletion falsified it -- `admit_complete_observation`
+// arriving is an ADDITION, and an addition leaves every claim about what is still missing well-typed,
+// reachable, and quietly false. Deletion has an instrument: the dependents refuse. Addition has none.
 fn emit_projection_provenance<O>(
   base_admitted: CompleteLegacyObservation<O>,
   projected_subject: LegacyBindingObservationSubject,
