@@ -1,7 +1,7 @@
 module gunbc.plans.realization_measurement_loop
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone, ThematicBreak }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote, hr }
 
@@ -180,6 +180,7 @@ fn realization_measurement_loop_body() -> List<MarkdownBlock> {
 }
 
 data realization_measurement_loop_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "realization-measurement-loop",
   title: "Plan — Realization & Measurement: closing the cost → schedule loop (+ infra onto `.dag`)",
   body: realization_measurement_loop_body(),

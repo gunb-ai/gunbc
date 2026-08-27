@@ -30,6 +30,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "required_regen_host.rs",
     "target_invocation_host.rs",
     "partition_crate_boundary_host.rs",
+    "generated_artifact_boundary_host.rs",
     "v2_compiler_compile.rs",
     "v2_compiler_program_assembly.rs",
     "v2_compiler_source_authority.rs",

@@ -1,0 +1,112 @@
+module gunbc.generated_artifact_boundary_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+data generated_artifact_boundary_seed_growth_note: String = "Seed-growth obligation for the host that adjudicates the committed generated-artifact population against its authority. Homed here, beside the obligation it declares, rather than inside gunbc.seed_growth_admission, which owns the ROSTER and the join.\n\nWHAT THE CHANGE IS. A required-CI phase, generated-artifact, asks gunbc.generated_artifact committed_generated_artifact_paths for the roster and gunbc.generated_artifact_emit generated_artifact_body_for_path for each body, reads what the tree holds at each path, and refuses on any divergence. This file is the HOST REALIZATION of that route: it resolves the .dag closure once, marshals the projection's three-variant answer into Rust, and adjudicates.\n\nWHY THE PRODUCER IS NOT WHAT GREW. Nothing about generation is authored here. generated_artifact_body_for_path is a pure .dag projection over the three authorities main_wet already folds -- the committed-artifact roster, artifact_path, and the single artifact_generate dispatch -- and it existed before this change with a real writer beside it (tools.generated_artifact_gate main_wet). What did not exist was a CALLER that asked it about the whole population. The growth is the asking, not the answering, and that is the whole reason this obligation is small enough to state: no generator, no roster, no per-artifact knowledge is duplicated in Rust. This file names no individual artifact, and adding an artifact to generated_artifact_registry enrols it with zero edits here.\n\nWHY RUST IS NEEDED AT ALL, which is the question the roster below owes an answer to. The phase must compare the projection's bytes against WHAT IS ON DISK, and reading the committed file is a host effect the required floor's hermetic envelope refuses by construction -- a .dag witness whose subject is that read is counted executed while its assertion never runs, which is the boundary DESIGN's CI paragraph already names beside the floor's counters. So the leaf is Rust for the same reason ingestion is. What was REJECTED, so the choice is visible rather than implied: running the existing drift gate (tools.generated_artifact_gate main) through the interpreter in Wet mode would need no host adjudicator, and it is refused for two independent reasons. It makes the interpreter load-bearing for a NEW required phase at the moment two lanes are deleting it; and the gate body it would run is the one that also reaches artifact_extra_valid's ci_yml_parses, so the required phase would acquire a second subject nobody asked it to check. The Hermetic context this file installs is the construction that forecloses that: a generator reaching a host effect during the projection REFUSES here rather than being carried out on its behalf.\n\nRUNG, STATED HONESTLY AND NOT INFLATED. The CLASS this phase guards -- a committed projection that no longer equals what its authority generates -- moves from OUTSIDE THE LADDER to MECHANICALLY PREVENTABLE. Outside rather than mitigatable because nothing could be attempted: from the 2026-08-15 floor cut until this phase, no route compared any non-Rust-mirror projection to anything, so there was no degradation to contain. It is NOT structurally guaranteed and this row does not claim it: a hand edit to DESIGN.md remains perfectly writable and safety depends on the phase executing. THIS FILE ITSELF sits at MITIGATABLE, for the reason v1_compiler.required_regen_host does: the marshaling of the projection's three variants is hand-written beside the .dag type rather than derived from it, so a fourth variant added to GeneratedArtifactPathBody would be met by this file's unknown-variant refusal rather than by a compile error. That refusal is the mitigation and it is deliberate -- an unknown shape is ignorance and refuses -- but it is a runtime wall, not construction.\n\nADMITTED AGAINST THE v1 FREEZE BY PURPOSE, on the test gunbc.v1_maintenance_standing v1_seed_standing states: does the change serve the v2 self-host program. It does, by the same route gunbc.parse_refusal_location_seed_growth and gunbc.floor_non_verdict_enrollment were admitted -- DESIGN.md is the authority every lane in that program plans against, and a DESIGN.md that has silently diverged from gunbc.design_document is premise contamination for all of them. That is measured rather than argued: this phase's first execution found docs/plans/realization-measurement-loop.md wrong since #9394, when the ContainerRuntime nickname was dissolved in the authority and the projection kept naming it, and gunbc#9392 had already found 2198 characters standing in DESIGN.md that no authority held. Classified against all five refused classes. NewLanguageBehavior: no -- the compile pipeline is byte-untouched; no diagnostic is added, moved or removed, and resolve, infer and emit are not edited. NewCompatibilityObligation: no -- nothing is kept working for an old caller, and the direction is the opposite: three declarations that lived privately in bin/claim_executor.rs are DELETED there and hoisted here, so the projection has one host caller and not two. NewEscapeHatchOrAdmissionRow: no, and the direction is opposite -- this adds a wall and removes nothing. There is no flag, env var or mode that skips it, and there is no write path in this file at all, which is the construction that keeps a checker from becoming a healer. SeedFeatureCompletion: no -- the seed COMPILER gains no capability; it compiles exactly what it compiled before. PublicSurfaceGrowth: this is the nearest, and it is checked rather than asserted -- generated_artifact_boundary_host.rs is wired by #[path] mod inside cli_run.rs, exactly as required_regen_host.rs and partition_crate_boundary_host.rs are, so it contributes no pub mod line to the emitted lib.rs and its SeedRetainedIntrinsicRegistration carries has_pub_mod: false. What grows is the SeedRetained roster, enumerated below.\n\nHAND-ITEM DELTA: +19, all enumerated below rather than counted, and ZERO of them uncitable -- there is not one impl block in the file, which is deliberate and cost something. The first cut carried four inherent methods, and every impl method is uncitable as a DeclarationRef because std.decl_ref offers WholeDeclaration or NamedField and neither names a method on an impl block, so they would have grown the class gunbc.seed_growth_admission reports as seed_growth_uncitable_item_keys. They are free functions instead. THE DELTA IS A NET FIGURE AND THE NET IS NOT +19 ACROSS THE CHANGE: bin/claim_executor.rs LOSES three declarations (GeneratedArtifactPathBody, generated_artifact_ctx, generated_artifact_body_for_path) which are hoisted rather than added, so the corpus-wide hand-item delta for those three is ZERO and only their new home changed. They are listed below because the roster names where an obligation LIVES, not what a diff invented. src/v1/stage0/src/cli_run.rs adds no declaration -- one #[path] mod line and one pub use -- so its disposition is ExistingSeedItemModified and listing it would net a modification into an addition census.\n\nWHAT THIS ROSTER DOES NOT GUARANTEE is what gunbc.seed_growth already discloses of every such roster: it is AUTHORED, not derived, so a later helper added to this same file escapes it silently. That completeness join belongs to the honest-frontier lane. What is claimed here is enumeration, not a denominator."
+
+data generated_artifact_boundary_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "AUTHORITY_ENTRY",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "GENERATED_ARTIFACT_PRODUCING_COMMAND",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "GeneratedArtifactPathBody",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "generated_artifact_ctx",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "generated_artifact_body_for_path",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "committed_generated_artifact_paths",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "AdjudicatedArtifact",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "artifact_disposition",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "ArtifactDisposition",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "artifact_disposition_name",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "UnadjudicatedArtifact",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "GeneratedArtifactBoundaryOutcome",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "boundary_divergent",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "boundary_is_clean",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "run_generated_artifact_boundary",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "disposition_separates_absent_from_drifted",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "an_unadjudicated_member_is_not_clean_even_when_every_verdict_matched",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "a_carrier_refusal_is_not_clean_and_names_no_population",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.generated_artifact_boundary_host",
+      decl_name: "drift_is_reported_and_stops_the_line",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "The phase compares a modeled projection against BYTES ON DISK, and reading the committed file is a host effect the required floor's hermetic envelope refuses by construction -- so the leaf is Rust for the same reason ingestion is. The rejected alternative was running the existing tools.generated_artifact_gate main through the interpreter in Wet mode, refused because it makes the interpreter load-bearing for a NEW required phase while two lanes delete it, and because that gate body also reaches artifact_extra_valid's ci_yml_parses, so the required phase would acquire a second subject nobody asked it to check. What the growth buys is that a committed projection diverging from its authority stops the line at all: for the whole interval since the 2026-08-15 floor cut, DESIGN.md and ROADMAP.md were compared by nothing, and the first execution of this phase found four divergences, one of them wrong since #9394.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all 19 when the required run can execute a .dag adjudicator over this population -- that is, when a modeled operation can read a committed file's bytes inside the required envelope, at which point the whole comparison is gunbc.generated_artifact_emit plus one modeled read and this host has nothing left to do. A PARTIAL migration is admissible and is the expected shape: the four pure declarations here (AdjudicatedArtifact, ArtifactDisposition, artifact_disposition, artifact_disposition_name) are a fold over two strings and dissolve the moment anything models them, independently of the read. What does NOT dissolve them is moving them to another host file, and what does NOT dissolve them is a witness asserting this host agrees with the model -- that would raise the rung without removing the duplicate.",
+  current_boundary: "src/v1/stage0/src/generated_artifact_boundary_host.rs; src/v1/stage0/src/cli_run.rs (one #[path] mod line and one pub use, adding no declaration); src/v1/stage0/src/bin/claim_executor.rs (the phase body, and a NET LOSS of three declarations hoisted out of it); dag/gunbc/generated_artifact_boundary_seed_growth.dag"
+}

@@ -779,6 +779,104 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("partition-crates");
         }
 
+        // PHASE — the committed generated-artifact population, adjudicated against its
+        // authority. Independent of everything above it; runs whatever they answered.
+        //
+        // WHY THIS PHASE EXISTS. The generated-artifact drift gates went out with the
+        // 2026-08-15 floor cut and sit on the re-add queue that cut declared. In the interval,
+        // `DESIGN.md` and `ROADMAP.md` -- projections of `gunbc.design_document` and
+        // `gunbc.roadmap_authority` -- were maintained BY HAND in lockstep with their
+        // authorities, and gunbc#9392 found the accumulated result the only way an unguarded
+        // artifact is ever found: by accident, 2198 characters into the drift. The producer was
+        // never missing; the caller was.
+        //
+        // ONE POPULATION, NOT A SAMPLE. The roster is asked of the authority
+        // (`committed_generated_artifact_paths`), so an artifact added to the registry is
+        // enrolled here with no edit to this file, and the two counts below -- verdicts reached
+        // and members left unanswered -- are printed side by side so a run that asked nothing
+        // cannot render as a run that found nothing.
+        if required_ci_phase_selected(RequiredCiPhase::GeneratedArtifact, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase generated-artifact (every committed projection vs its authority)"
+            );
+            let outcome = v1_compiler::cli_run::run_generated_artifact_boundary(&source_roots);
+            match &outcome {
+                v1_compiler::cli_run::GeneratedArtifactBoundaryOutcome::CarrierRefused {
+                    cause,
+                } => {
+                    eprintln!(
+                        "required-ci: generated-artifact CarrierRefused cause={cause} \
+                         (the authority declined to answer; nothing was compared)"
+                    );
+                    phase_failures.push(format!("generated-artifact carrier refused: {cause}"));
+                }
+                v1_compiler::cli_run::GeneratedArtifactBoundaryOutcome::Adjudicated {
+                    artifacts,
+                    unadjudicated,
+                } => {
+                    let divergent = v1_compiler::cli_run::boundary_divergent(&outcome);
+                    eprintln!(
+                        "required-ci: generated-artifact rostered={} adjudicated={} matches={} \
+                         drifted={} absent={} unadjudicated={}",
+                        artifacts.len() + unadjudicated.len(),
+                        artifacts.len(),
+                        artifacts.len() - divergent.len(),
+                        divergent
+                            .iter()
+                            .filter(|a| v1_compiler::cli_run::artifact_disposition(a)
+                                == v1_compiler::cli_run::ArtifactDisposition::Drifted)
+                            .count(),
+                        divergent
+                            .iter()
+                            .filter(|a| v1_compiler::cli_run::artifact_disposition(a)
+                                == v1_compiler::cli_run::ArtifactDisposition::Absent)
+                            .count(),
+                        unadjudicated.len(),
+                    );
+                    for a in &divergent {
+                        eprintln!(
+                            "required-ci: generated-artifact {} {}",
+                            v1_compiler::cli_run::artifact_disposition_name(
+                                v1_compiler::cli_run::artifact_disposition(a)
+                            ),
+                            a.path
+                        );
+                    }
+                    for u in unadjudicated {
+                        eprintln!(
+                            "required-ci: generated-artifact UNADJUDICATED {} — {}",
+                            u.path, u.cause
+                        );
+                    }
+                    if !divergent.is_empty() {
+                        // THE REFUSAL NAMES A ROUTE THAT EXISTS -- the same discipline the
+                        // partition-crate header had to learn after it named a producer that had
+                        // been deleted. A stop whose only sanctioned move is unavailable does not
+                        // stop the line, it launders a hand edit.
+                        eprintln!(
+                            "required-ci: generated-artifact these are GENERATED projections of \
+                             their .dag authorities — do not hand-edit; regenerate with: {}",
+                            v1_compiler::cli_run::GENERATED_ARTIFACT_PRODUCING_COMMAND
+                        );
+                        phase_failures.push(format!(
+                            "generated-artifact ({} projection(s) not derived)",
+                            divergent.len()
+                        ));
+                    }
+                    if !unadjudicated.is_empty() {
+                        // KEPT SEPARATE FROM DRIFT. An unanswered member is not a clean member,
+                        // and it is not a drifted one either: it is a defect in the authority or
+                        // in this bridge, and it ranks differently from work an author does now.
+                        phase_failures.push(format!(
+                            "generated-artifact ({} rostered artifact(s) reached no verdict)",
+                            unadjudicated.len()
+                        ));
+                    }
+                }
+            }
+            ran.push("generated-artifact");
+        }
+
         // PHASE 4 — the witness floor. Independent; runs whatever happened above.
         if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
             eprintln!("required-ci: phase floor (one prepared subject, one fold)");
@@ -1159,6 +1257,7 @@ enum RequiredCiPhase {
     Regen,
     V2Emission,
     PartitionCrates,
+    GeneratedArtifact,
     Floor,
 }
 
@@ -1170,6 +1269,7 @@ impl RequiredCiPhase {
             RequiredCiPhase::Regen => "regen",
             RequiredCiPhase::V2Emission => "v2-emission",
             RequiredCiPhase::PartitionCrates => "partition-crates",
+            RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::Floor => "floor",
         }
     }
@@ -1195,17 +1295,23 @@ impl RequiredCiPhase {
             // `needs` edge, so this costs nothing until the build lane exceeds the floor's
             // wall clock; beside the floor it would be pure addition to the critical path.
             RequiredCiPhase::PartitionCrates => RequiredCiLane::Build,
+            // THE SAME QUESTION AS PARTITION-CRATES OVER A DIFFERENT POPULATION -- does a
+            // committed projection still equal what its authority generates -- so it sits in
+            // the same lane for the same reason. It resolves one .dag closure and evaluates a
+            // pure projection per rostered artifact; no build, no subprocess.
+            RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
             RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
         }
     }
 }
 
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 6] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 7] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::NamespaceWaveAdmission,
     RequiredCiPhase::Regen,
     RequiredCiPhase::V2Emission,
     RequiredCiPhase::PartitionCrates,
+    RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::Floor,
 ];
 
@@ -3515,109 +3621,19 @@ fn nondeterministic_call_functions(
     names
 }
 
-/// What the generated-artifact population says about one repo-relative path.
-///
-/// Three states because the honest answers are three. `NotGenerated` is a POSITIVE answer -- this
-/// path is not in the generated-artifact population at all -- and is what routes a caller to the
-/// mirror-emit population. Folding it into `Refused` would tell a caller that generation FAILED
-/// for an ordinary mirror, which is false and differently actionable.
-enum GeneratedArtifactPathBody {
-    Produced(String),
-    Refused(String),
-    NotGenerated,
-}
-
-/// Ask the already-resolved generated-artifact authority for the body it generates at a path.
-///
-/// THIS IS NOT A SECOND PRODUCER. The `.dag` side is a projection over the same three authorities
-/// `main_wet` uses -- the committed-artifact roster, `artifact_path`, and the single
-/// `artifact_generate` dispatch -- asked by path instead of by artifact. Reaching past it to a
-/// per-artifact emitter would have been the forked dispatch DESIGN §3 forbids.
-///
-/// COST SHAPE, and it is why this takes a CONTEXT rather than `source_roots`. The first draft
-/// resolved `generated_artifact_emit`'s whole closure inside the per-module loop, making the unit
-/// of computation the corpus while the unit of fact was one path -- DESIGN §6's cost-shape defect,
-/// where the rule is that a proven one is fixed regardless of the realized n. The caller resolves
-/// once; each path is then one interpreter call against that context.
-/// The generated-artifact authority's evaluation context, resolved AT MOST ONCE per run and
-/// shared by every caller that needs it.
-///
-/// One cell rather than one resolve per asking site: selection asks it for a module that yields
-/// no call, and the differential loop asks it for every selected module. Two resolves of one
-/// closure would be two producers of the same context and would pay the corpus-sized cost twice.
-fn generated_artifact_ctx<'a>(
-    source_roots: &[String],
-    cell: &'a mut Option<v1_compiler::v1_interpreter::InterpContext>,
-) -> Result<&'a v1_compiler::v1_interpreter::InterpContext, String> {
-    if cell.is_none() {
-        let entry = "dag/gunbc/generated_artifact_emit.dag";
-        let (graph, indices) =
-            v1_compiler::cli_run::resolve_entry_graph_shared(source_roots, entry)
-                .map_err(|e| format!("resolve {entry}: {e}"))?;
-        *cell = Some(v1_compiler::cli_run::make_eval_context(
-            &graph,
-            indices,
-            // HERMETIC, not Wet. The projection is pure -- it folds a roster and returns a String
-            // -- so a host effect reached during it would mean a generator is doing something
-            // this gate must not perform on its behalf. Hermetic refuses there instead of
-            // carrying it out.
-            v1_compiler::v1_interpreter::ExecutionMode::Hermetic,
-        ));
-    }
-    Ok(cell.as_ref().expect("the context was just installed"))
-}
-
-fn generated_artifact_body_for_path(
-    ctx: &v1_compiler::v1_interpreter::InterpContext,
-    repo_rel_path: &str,
-) -> Result<GeneratedArtifactPathBody, String> {
-    use v1_compiler::v1_interpreter::Value;
-    let out = v1_compiler::v1_interpreter::run_in_context_with_args(
-        ctx,
-        "generated_artifact_body_for_path",
-        &[(
-            Some("path".to_string()),
-            Value::Str(repo_rel_path.to_string().into()),
-        )],
-        false,
-    )
-    .map_err(|e| format!("generated_artifact_body_for_path({repo_rel_path}): {e:?}"))?;
-    let Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = &out
-    else {
-        // No default arm: a shape this code does not understand is ignorance, and guessing
-        // NotGenerated here would silently route a real generated artifact to the mirror emit
-        // and refuse it there for the wrong reason.
-        return Err(format!(
-            "generated_artifact_body_for_path({repo_rel_path}) returned a non-variant value"
-        ));
-    };
-    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathNotGenerated") {
-        return Ok(GeneratedArtifactPathBody::NotGenerated);
-    }
-    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathBodyProduced") {
-        return match ctx.field(fields, "content") {
-            Some(Value::Str(c)) => Ok(GeneratedArtifactPathBody::Produced(c.to_string())),
-            _ => Err(format!(
-                "GeneratedArtifactPathBodyProduced for {repo_rel_path} carried no String content"
-            )),
-        };
-    }
-    if ctx.sym_eq(*variant_name, "GeneratedArtifactPathBodyRefused") {
-        return match ctx.field(fields, "reason") {
-            Some(Value::Str(r)) => Ok(GeneratedArtifactPathBody::Refused(r.to_string())),
-            _ => Err(format!(
-                "GeneratedArtifactPathBodyRefused for {repo_rel_path} carried no String reason"
-            )),
-        };
-    }
-    Err(format!(
-        "generated_artifact_body_for_path({repo_rel_path}) returned an unknown variant"
-    ))
-}
+// THE GENERATED-ARTIFACT BRIDGE MOVED, and this note is what remains of it here.
+//
+// `GeneratedArtifactPathBody`, `generated_artifact_ctx` and `generated_artifact_body_for_path`
+// were declared in this binary and reachable from nowhere else, so the required
+// `generated-artifact` phase -- which asks the same authority about the same population -- could
+// not have used them without a second copy. They now live in
+// `v1_compiler::cli_run::generated_artifact_boundary_host` and are re-exported through
+// `cli_run`, the way the regen and partition-crate producers already are. Two hosts asking one
+// projection is the forked dispatch DESIGN §3 forbids, and this file's use below is unchanged
+// except for the path it names.
+use v1_compiler::cli_run::{
+    generated_artifact_body_for_path, generated_artifact_ctx, GeneratedArtifactPathBody,
+};
 
 /// Map an authority module path to the emitted mirror that declares it as its authority.
 ///

@@ -1,7 +1,7 @@
 module gunbc.plans.reference_grounding_migration
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
@@ -75,6 +75,7 @@ fn reference_grounding_migration_body() -> List<MarkdownBlock> {
 }
 
 data reference_grounding_migration_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "reference-grounding-migration",
   title: "Reference grounding -- migrate stringly-typed references to typed carriers",
   body: reference_grounding_migration_body(),
