@@ -86,6 +86,7 @@ import gunbc.fleet_converge_plan {
   FullHostConverge,
   FabricExecutionCellsConverge,
   fleet_converge_request_scope,
+  fleet_converge_scope_matches,
   fleet_converge_request_host,
   observed_baseline_text,
   fleet_converge_fabric_cell_lines,
@@ -1724,4 +1725,57 @@ fn scope_is_fabric_only(s: FleetConvergeScope) -> Bool {
     FabricExecutionCellsOnly => true
     FullHost => false
   }
+}
+
+// THE SUBJECT CARRIES SCOPE AS A ROUTING FACT, NOT ONLY INSIDE ITS FINGERPRINT. The baseline hash
+// already differs between scopes, so a crossing was refusable before this field existed -- but
+// refusing a crossing and KNOWING WHICH OBSERVERS TO RUN are different jobs, and a digest can only
+// do the first. This law asserts the second: the scope is readable off the subject.
+test fn witness_subject_carries_scope_as_a_readable_fact() -> Bool {
+  let population = fabric_cell_observation_unobserved(host: operator_host_srv3)
+  scope_is_fabric_only(s: fleet_converge_plan_subject(request: FabricExecutionCellsConverge {
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: population,
+  }).scope)
+    && scope_is_full_host(s: fleet_converge_plan_subject(request: FullHostConverge {
+        host: "srv3" as NonEmptyStr,
+        observed_timers: [],
+        observed_caps: [],
+        observed_spark: [],
+        observed_slots: [],
+        observed_fabric_cells: population,
+      }).scope)
+}
+
+// APPLY REFUSES A SCOPE CROSSING, AND REFUSES IT ON THE SCOPE RATHER THAN AS INCIDENTAL DRIFT. A
+// fabric-only plan re-observed as a full host is not a host that changed -- it is a different
+// question being answered -- and the two have different remedies: drift is re-planned, a crossing
+// means the apply was routed wrong. The positive control matters as much as the refusal: the same
+// subject against its OWN scope admits, so this is a scope wall and not a blanket refusal.
+test fn witness_apply_refuses_a_scope_crossing_and_admits_its_own_scope() -> Bool {
+  let population = fabric_cell_observation_unobserved(host: operator_host_srv3)
+  let fabric_request = FabricExecutionCellsConverge {
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: population,
+  }
+  let full_request = FullHostConverge {
+    host: "srv3" as NonEmptyStr,
+    observed_timers: [],
+    observed_caps: [],
+    observed_spark: [],
+    observed_slots: [],
+    observed_fabric_cells: population,
+  }
+  fleet_converge_apply_subject_admits(
+    planned_subject: fleet_converge_plan_subject(request: fabric_request),
+    observed: fabric_request,
+  )
+    && !fleet_converge_apply_subject_admits(
+        planned_subject: fleet_converge_plan_subject(request: fabric_request),
+        observed: full_request,
+      )
+    && !fleet_converge_apply_subject_admits(
+        planned_subject: fleet_converge_plan_subject(request: full_request),
+        observed: fabric_request,
+      )
 }

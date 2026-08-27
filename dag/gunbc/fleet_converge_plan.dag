@@ -179,9 +179,19 @@ data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN
 // operationally red for reasons no operator can act on.
 //
 // SO NEITHER STATE IS REPRESENTED: the fabric-only arm carries NO POSITION for timers, caps, spark
-// or slots. There is no field to pass empty and no field to pass refused, so the fabric-only CLI
-// branch cannot invoke those observers and then discard them -- it cannot reach them at all. That
-// is the section 5 construction move: the bad state has no spelling rather than being checked for.
+// or slots. There is no field to pass empty and no field to pass refused. That is the section 5
+// construction move: the bad state has no spelling rather than being checked for.
+//
+// WHAT THIS DOES NOT YET DO, STATED BECAUSE AN EARLIER REVISION OF THIS ANNOTATION CLAIMED IT DID.
+// It said "the fabric-only CLI branch cannot invoke those observers and then cannot reach them at
+// all", which describes the construction this type makes POSSIBLE and not any code that exists.
+// There is no fabric-only CLI branch today: the wet plan path observes timers, caps, slots and
+// fabric unconditionally and builds a FullHostConverge, and the wet apply path still routes through
+// the loose-family matchers below. So what this type currently buys is that the fabric-only request
+// CANNOT BE MISEXPRESSED once something constructs one -- not that anything constructs one yet. The
+// annotation is corrected rather than deleted because the overclaim is the point: a type that makes
+// a wall possible is not the wall, and describing the intended construction in the present tense is
+// how a reader concludes coverage exists that does not.
 type FleetConvergeScope
   = FullHost
   | FabricExecutionCellsOnly
@@ -225,8 +235,19 @@ fn fleet_converge_scope_wire(scope: FleetConvergeScope) -> String {
   }
 }
 
+// SCOPE IS CARRIED EXPLICITLY, NOT RECOVERED FROM THE FINGERPRINT. The baseline text includes the
+// scope row, so two scopes already hash differently and cannot be admitted against each other --
+// but that only DISTINGUISHES subjects, and apply needs to DECIDE which observers to run. A hash
+// cannot be inverted into FullHost versus FabricExecutionCellsOnly, so a subject carrying only the
+// fingerprint can refuse a scope crossing while being unable to route one. The two jobs are
+// different and only one of them a digest can do.
+//
+// It is a field rather than a parse of plan.txt for the same reason the bundle digest exists at
+// all: recovering a routing decision by reading back rendered human text would make the reviewed
+// artifact's PROSE load-bearing, and prose is the one part of a plan nobody hashes for meaning.
 type FleetConvergePlanSubject {
   host: NonEmptyStr
+  scope: FleetConvergeScope
   member_set_fingerprint: ContentHash
 }
 
@@ -236,7 +257,10 @@ fn fleet_converge_plan_lease_key(host: NonEmptyStr) -> NonEmptyStr {
 
 fn fleet_converge_plan_subject_identity_text(subject: FleetConvergePlanSubject) -> String {
   concat(
-    concat("host:", subject.host as String),
+    concat(
+      concat("host:", subject.host as String),
+      concat("\n", fleet_converge_scope_wire(scope: subject.scope)),
+    ),
     concat("\nmember_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
   )
 }
@@ -248,6 +272,7 @@ fn fleet_converge_plan_resource_fingerprint(subject: FleetConvergePlanSubject) -
 fn fleet_converge_plan_subject(request: FleetConvergeRequest) -> FleetConvergePlanSubject {
   FleetConvergePlanSubject {
     host: fleet_converge_request_host(request: request),
+    scope: fleet_converge_request_scope(request: request),
     member_set_fingerprint: fleet_converge_member_set_fingerprint(request: request),
   }
 }
@@ -273,10 +298,32 @@ fn fleet_converge_apply_subject_admits(
     planned_host: planned_subject.host,
     observed_host: fleet_converge_request_host(request: observed),
   )
+    && fleet_converge_scope_matches(
+      planned: planned_subject.scope,
+      observed: fleet_converge_request_scope(request: observed),
+    )
     && compare_content_hash(
       left: planned_subject.member_set_fingerprint,
       right: fleet_converge_member_set_fingerprint(request: observed),
     ) == ContentHashEqual
+}
+
+// A SCOPE COMPARISON THAT IS TOTAL IN BOTH ARGUMENTS. Written as a match rather than as equality
+// so that a third scope cannot silently join the admitted set: adding an arm to FleetConvergeScope
+// makes this fail to compile, where a derived == would quietly answer false and route nothing.
+fn fleet_converge_scope_matches(planned: FleetConvergeScope, observed: FleetConvergeScope) -> Bool {
+  match planned {
+    FullHost =>
+      match observed {
+        FullHost => true
+        FabricExecutionCellsOnly => false
+      }
+    FabricExecutionCellsOnly =>
+      match observed {
+        FabricExecutionCellsOnly => true
+        FullHost => false
+      }
+  }
 }
 
 fn fleet_converge_plan_held_lease(
