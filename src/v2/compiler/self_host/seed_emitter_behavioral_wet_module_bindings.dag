@@ -19,7 +19,7 @@ type SelfHostWetReceiptBinding {
   function: String
 }
 
-data falsifier_self_host_wet_module_bindings_revocation_note: String = "2026-07-25: the six SelfEmitted wet bindings were RED on cadence run 30126573464. Dissolve-on (reviews 44441/44453/44455/44460/44468): local wet receipt greens → restore SelfHostWetReceiptBinding here for nightly re-enrollment → witness-realization enables producer_emission_canonical_receipt_for_executed_verdict with execution-measured verdict digests. The frontier rows this clause used to gate on are gone with the self-host frontier roster; what remains gating is the binding itself, which stays absent until that path is host-wired."
+data falsifier_self_host_wet_module_bindings_revocation_note: String = "2026-07-25: the six SelfEmitted wet bindings were RED on cadence run 30126573464. Dissolve-on (reviews 44441/44453/44455/44460/44468): local wet receipt greens → restore SelfHostWetReceiptBinding here for re-enrollment onto a cadence that executes -- WHICH FalsifierSelfHostWet PRESENTLY IS NOT, falsifier.yml having been deleted at 611fd02770 (#8283, 2026-08-15), so this trigger names a capability the repository does not currently have and restoring a binding today would enroll these rows into nothing (censused in gunbc.deleted_cadence_reference_census) → witness-realization enables producer_emission_canonical_receipt_for_executed_verdict with execution-measured verdict digests. The frontier rows this clause used to gate on are gone with the self-host frontier roster; what remains gating is the binding itself, which stays absent until that path is host-wired."
 
 data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = []
 
