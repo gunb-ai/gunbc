@@ -175,15 +175,31 @@ type FanTachSourceStanding
 // asked was about the PST chassis fans, so the cooler headers keep their assembly derivation and
 // the reading is recorded here rather than quietly widened.
 type DrivenFanCountStanding
-  = DrivenFanCountObserved { count: Int }
-  | DrivenFanCountOperatorDeclared { count: Int }
+  = DrivenFanCountObserved { count: PositiveFanCount }
+  | DrivenFanCountOperatorDeclared { count: PositiveFanCount }
   | DrivenFanCountDerivedFromAssembly {
-      expected_count: Int
+      expected_count: PositiveFanCount
       specification: AssemblyBundledFanSpecification
     }
   | DrivenFanCountUnobserved
 
 // ONE HEADER'S REALIZATION.
+// A DRIVEN OR REPRESENTED COUNT IS AT LEAST ONE, AND THE CARRIER SAYS SO RATHER THAN A CHECK.
+// Zero is not a small count here, it is a DIFFERENT STATE with a different arm: a header driving no
+// fan is an empty bay, and a tach speaking for no rotor is TachNotCarried. Leaving these as plain
+// Int let the model represent a driven count of 0 or -1 beside arms that already mean exactly that,
+// which is the state-space conflation this module keeps closing elsewhere.
+//
+// THE RUNG IS mechanically preventable AND NOT structural impossibility, measured rather than
+// assumed. `where range(min: 1)` refuses a bare literal violation at resolve - `count: 0` does not
+// compile - but it admits a COMPUTED one: a field written `0 - 4` resolves clean and yields a
+// PositiveFanCount holding -4, confirmed by execution against a positive control. So this blocks
+// the realistic authoring failure, which is a hand-written literal, and does NOT make the invalid
+// state unrepresentable. Claiming the higher rung here would be the inflation DESIGN names as worse
+// than sitting low. NEXT-RUNG TRIGGER: the refinement checker reaching computed initialisers, which
+// is a compiler change and not this module's to make.
+type PositiveFanCount = Int where range(min: 1)
+
 type FanHeaderWiring {
   header: NonEmptyStr
   driven_fan_count: DrivenFanCountStanding
@@ -195,7 +211,7 @@ type FanHeaderWiring {
 // live rpm value establishes that the header CARRIES a signal; it establishes nothing about how
 // many spinning parts that one signal covers, which is precisely the fact a splitter changes.
 type TachRepresentationStanding
-  = TachRepresentationObserved { represented_fan_count: Int }
+  = TachRepresentationObserved { represented_fan_count: PositiveFanCount }
   | TachRepresentationUnobserved
 
 // THE EVIDENCE ARM DECIDES SOMETHING, or it is vocabulary. A physical-inventory claim - what is
