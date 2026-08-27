@@ -1,0 +1,469 @@
+module product.fabric.contention
+
+import std.types { Bool, Int, List }
+import std.algebra { Ordering }
+import std.currency { CurrencyCode }
+import std.measure {
+  MoneyAmountMicro, money_amount_micro, money_amount_micro_count,
+  Second, second, second_count,
+}
+import std.pareto {
+  AxisComparison, Better, Same, Worse,
+  HigherIsBetter,
+  axis_comparison,
+}
+import product.fabric.identity { FabricIdentity, DemandKey, OfferKey, fabric_identity_eq }
+import product.fabric.demand { Demand }
+import product.fabric.supply {
+  SupplierOffer, GrantDuration,
+  DemandOfferAffordability,
+  Affordable, AffordableUnderEstimate,
+  QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch,
+  offer_affordability_for, offer_quoted_total_for_grant,
+  billed_seconds, grant_duration_seconds,
+}
+
+// WHICH DEMAND WINS SCARCE CAPACITY. THE MIRROR OF SUPPLY SELECTION, AND THE
+// HALF THAT WAS MISSING.
+//
+// product.fabric.supply answers one question: given ONE demand, which offers
+// can serve it and which of those it can afford. That is the supply side of the
+// posted-offer market. Nothing in the fabric answered the demand side -- given
+// ONE offer with capacity for one grant, and several demands that all want it,
+// which demand gets it -- and scarce is the normal state, not the edge case. So
+// two demands could be admitted against the same last slot and nothing in the
+// model preferred either: the choice fell to whichever caller happened to fold
+// first, and an ordering produced by evaluation order is not an ordering, it is
+// an accident that stays stable until it does not.
+//
+// THIS IS A PEER OF SupplySelectionPolicy, NOT A SECOND MEMBER OF IT. The two
+// policies take different inputs and return different carriers -- one ranks
+// offers for a demand and consults shape, trust domain, capabilities and price;
+// the other ranks demands for an offer and consults none of those, because
+// admission has already decided them. Collapsing them into one axis is what
+// left the demand side with no vocabulary at all.
+
+// THE RANKING IS DERIVED, NEVER DECLARED.
+//
+// The field this module replaces was `AdmissionTerms.priority_class`, a String
+// a requester typed. The reason it is gone rather than typed harder is that a
+// requester is the party with the least knowledge of the whole population and
+// the most incentive to claim precedence, so any field on which they may state
+// their own rank is fail-open by shape -- the same argument
+// gunbc.fabric_capacity_class_gap makes for refusing to put a capacity class on
+// the supplier's own offer.
+//
+// So the ranking key is a DERIVATION over facts both sides already state: what
+// the buyer will pay at most (reservation_price) against what serving them from
+// this offer will actually cost (offer_quoted_total_for_grant). The margin is
+// the arbitrage this business is, in the operator's own framing -- connecting
+// the highest bidders to the cheapest opportunities -- and it is a fact about a
+// PAIR, never a property of the demand alone.
+//
+// THAT PAIRING IS THE POINT, AND IT IS WHY THE MARGIN IS NOT PRECOMPUTED ON THE
+// DEMAND. Billing mode decides what a bidder is worth. A ninety-second job
+// costs ninety seconds on continuous owned capacity, a full billed hour on an
+// hourly supplier that rounds up, and something between the two on a per-minute
+// one. The SAME two demands can therefore rank in OPPOSITE orders against two
+// different offers, and any design that scored a demand once and reused the
+// score across offers would be silently wrong in exactly the cross-mode case
+// the fleet is about to have. offer_quoted_total_for_grant already models the
+// quantum; this module's job is to not throw that away by ranking one step too
+// early.
+//
+// THE COMPARATOR IS MARGIN PER BILLED SECOND, NOT MARGIN. That distinction was
+// missed by the first cut of this module and it matters exactly where the mode
+// argument above matters. What an offer actually sells is OCCUPANCY, so the
+// question a scarce offer asks is not which buyer pays the larger margin but
+// which buyer pays the larger margin FOR THE CAPACITY THEY CONSUME. On
+// continuous capacity the offer is released the instant the grant ends and can
+// serve again, so a 90-second job earning 110 beats a 300-second job earning
+// 200: it earns more per second and hands back 210 seconds. Ranking those two
+// by total margin picks the second and is wrong.
+//
+// AND THE DENOMINATOR IS BILLED SECONDS RATHER THAN ELAPSED ONES, WHICH IS WHAT
+// MAKES THIS ONE DERIVATION INSTEAD OF A MODE SWITCH. Under an hourly quantum
+// two jobs of 90 and 300 seconds both consume one whole billed hour -- the
+// supplier rounds up, so occupancy inside that hour is not divisible and not
+// resellable. Their denominators are therefore EQUAL, the rate ordering
+// collapses exactly onto the total-margin ordering, and the hourly answer falls
+// out of the same expression that gives the continuous one. There is no arm on
+// billing mode here, and there must not be: a policy that branched on the
+// quantum would be a second authority for a fact billed_seconds already states.
+//
+// The alternative -- compare total margin always -- is the hourly answer
+// applied to every mode, which is the same class of error the two-mode witness
+// catches one layer up, committed one layer down. It happens to agree with this
+// one whenever the billed durations match, which is why a suite that only
+// exercised equal-duration bidders would not have caught it.
+type DemandSelectionPolicy =
+  | HighestMarginPerBilledSecondForOneOffer
+
+// WHAT THIS POLICY IS NOT, DECLARED SO NOBODY LATER READS IT AS ONE. It selects
+// among the demands contending for ONE offer, greedily. That is not a fleet-wide
+// allocation: a demand that wins offer A here might have been better served by
+// offer B, leaving A for a buyer who has no alternative, and a sequence of
+// locally best choices can total less than the best assignment. Answering that
+// needs a carrier this model does not have -- the simultaneous field of every
+// open demand against every open offer, which nothing in the fabric assembles,
+// because DemandPopulation is sealed per core and offers are not rostered at
+// all. NEXT-RUNG TRIGGER: a carrier holding that joint field; until it exists,
+// the honest scope is one offer, and stating that is what keeps per-offer
+// selection from being mistaken for an allocator.
+
+// WHY THIS IS A RANKING AND NOT std.pareto's DOMINANCE, since the spine is
+// right there and this module borrows its vocabulary. std.pareto answers which
+// candidates are NON-DOMINATED, which is the right answer when the question is
+// which options deserve consideration. One grant of scarce capacity goes to
+// exactly one demand, and a Pareto front of two is not a winner -- picking from
+// it would put the real decision below the spine where nothing names it. What
+// is borrowed is the ORIENTATION vocabulary: the sense in which more surplus is
+// better is stated once, in std.pareto's AxisGoal, rather than re-coined here.
+// THE RATES ARE COMPARED BY CROSS-MULTIPLICATION, NEVER BY DIVIDING FIRST.
+//
+// margin_a / billed_a against margin_b / billed_b is decided exactly by
+// margin_a * billed_b against margin_b * billed_a. Dividing first would round,
+// and rounding here does not merely blur a close call: two genuinely different
+// rates that round to the same integer become a TIE, which this module reports
+// as a refusal, so the arithmetic shortcut would manufacture unresolvable
+// contention out of demands the policy can in fact separate. It would also
+// round in the wrong direction for the fabric -- integer division floors, so
+// the cheaper-per-second bidder is the one whose advantage disappears.
+fn rate_ordering(
+  margin_a: MoneyAmountMicro, billed_a: Second,
+  margin_b: MoneyAmountMicro, billed_b: Second,
+) -> Ordering {
+  let left = money_amount_micro_count(m: margin_a) * second_count(s: billed_b)
+  let right = money_amount_micro_count(m: margin_b) * second_count(s: billed_a)
+  if left < right { Less } else if left > right { Greater } else { Equal }
+}
+
+fn margin_rate_comparison(
+  margin_a: MoneyAmountMicro, billed_a: Second,
+  margin_b: MoneyAmountMicro, billed_b: Second,
+) -> AxisComparison {
+  axis_comparison(
+    goal: HigherIsBetter,
+    value_order: rate_ordering(
+      margin_a: margin_a, billed_a: billed_a,
+      margin_b: margin_b, billed_b: billed_b,
+    ),
+  )
+}
+
+// ADMISSION IS THE WALL, AND IT IS THE ONLY ROUTE INTO RANKING.
+//
+// gunbc.fabric_witness_run has carried the standing claim in prose since the
+// floor's admission terms were written: a priority class orders demands that
+// can all be afforded, it does not admit one that cannot. That claim was a
+// comment beside a string, and a string-equality witness beside it asserted
+// nothing about the ordering because there was no ordering to assert about.
+//
+// It is now structural. Ranking does not take a Demand. It takes an
+// AdmittedDemand, which has no cross-module literal and exactly one route into
+// existence -- admit_demand_for_offer, which mints it only after the pair has
+// cleared BOTH ceilings. There is no spelling in which a caller ranks a demand
+// it has not first shown affordable, so the escape this fold could have opened
+// is not refused, it is unwritable.
+//
+// TWO CEILINGS, NOT ONE, and the second is a demand-side fact supply.dag does
+// not screen. maximum_buy_order is the ceiling on a single grant's liability
+// and offer_affordability_for enforces it. reservation_price is the most this
+// buyer will pay at all, and nothing consulted it before this module: a demand
+// could be "affordable" under a generous per-grant ceiling while the quote sat
+// above the price the buyer actually named. Enforcing it here is also what
+// makes the surplus REPRESENTABLE -- reservation minus projected is a
+// MoneyAmountMicro over Nat, so a pair that would produce a negative margin has
+// no admitted form rather than an underflowing one.
+//
+// THE OFFER IDENTITY TRAVELS ON THE RECORD because a surplus is a fact about a
+// pair. Without it a caller could contend for offer B with margins honestly
+// derived against cheaper offer A and every value would be individually true;
+// select_demand_for_offer refuses a field whose members do not all name the
+// same offer, which is a check that has something to check precisely because
+// the mint recorded what it judged.
+//
+// billed_occupancy IS THE DENOMINATOR, AND IT IS STORED RATHER THAN RE-DERIVED
+// AT COMPARISON TIME because it is a fact about the same pair the margin is a
+// fact about. A comparison that recomputed it would need the offer and the
+// duration back, which is a second account of what this mint already judged and
+// free to disagree with it.
+type AdmittedDemand<P> sole_constructor {
+  demand: Demand<P>
+  offer: FabricIdentity<P, OfferKey>
+  projected_total: MoneyAmountMicro
+  surplus: MoneyAmountMicro
+  billed_occupancy: Second
+  affordability: DemandOfferAffordability
+}
+
+// QuoteExceedsReservationPrice is this module's own arm rather than a fifth arm
+// on DemandOfferAffordability, because it is a BUYER-POLICY refusal about a
+// price the buyer named and supply.dag deliberately takes no demand carrier at
+// all -- it receives scalars precisely so that supply never imports demand.
+// Adding the arm there would put a demand fact in the supply vocabulary and
+// invert that edge.
+//
+// GrantOccupiesNoBilledTime IS A REFUSAL, NOT A DEGENERATE ADMISSION. A grant
+// billed zero seconds -- a zero-length grant on continuous capacity -- has no
+// rate: every such candidate cross-multiplies to zero against every other and
+// the field collapses into one undifferentiated tie, which this module would
+// then report as unresolvable contention. That is a fabricated verdict about
+// buyers who are perfectly distinguishable; the honest answer is that a grant
+// consuming no capacity is not contending for capacity, and whoever built it
+// has a duration defect to fix rather than an auction to run.
+type DemandAdmission<P>
+  = DemandAdmitted { admitted: AdmittedDemand<P> }
+  | DemandNotAffordable { refusal: DemandOfferAffordability }
+  | QuoteExceedsReservationPrice { quoted: MoneyAmountMicro, reservation: MoneyAmountMicro }
+  | GrantOccupiesNoBilledTime { duration: Second }
+
+fn affordability_admits(a: DemandOfferAffordability) -> Bool {
+  match a {
+    Affordable => true
+    AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => true
+    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
+    QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
+  }
+}
+
+// The affordability verdict travels onto the admitted record rather than being
+// collapsed to a Bool, because affordable-under-a-known-total and
+// affordable-under-a-projected-one are different facts a later decision receipt
+// must be able to tell apart: an estimate's error is inherited by the
+// projection, so a contention won on a projected margin is a weaker claim than
+// one won on an exact price, and a receipt that cannot say which was which
+// cannot be audited afterwards.
+fn admit_demand_for_offer<P>(
+  demand: Demand<P>,
+  offer: SupplierOffer<P>,
+  duration: GrantDuration,
+) -> DemandAdmission<P> {
+  let affordability = offer_affordability_for(
+    offer: offer,
+    maximum_buy_order: demand.admission.buy.maximum_buy_order,
+    budget_currency: demand.admission.buy.currency,
+    duration: duration,
+  )
+  if !affordability_admits(a: affordability) {
+    DemandNotAffordable { refusal: affordability }
+  } else {
+    let projected = offer_quoted_total_for_grant(
+      quote: offer.quote,
+      duration: duration,
+      quantum: offer.billing_quantum,
+    )
+    let reservation = demand.admission.buy.reservation_price
+    let occupancy = second(count: billed_seconds(
+      seconds: second_count(s: grant_duration_seconds(d: duration)),
+      quantum_seconds: second_count(s: offer.billing_quantum),
+    ))
+    if money_amount_micro_count(m: projected) > money_amount_micro_count(m: reservation) {
+      QuoteExceedsReservationPrice { quoted: projected, reservation: reservation }
+    } else if second_count(s: occupancy) == 0 {
+      GrantOccupiesNoBilledTime { duration: grant_duration_seconds(d: duration) }
+    } else {
+      DemandAdmitted {
+        admitted: AdmittedDemand {
+          demand: demand,
+          offer: offer.id,
+          projected_total: projected,
+          surplus: money_amount_micro(
+            count: money_amount_micro_count(m: reservation) - money_amount_micro_count(m: projected),
+          ),
+          billed_occupancy: occupancy,
+          affordability: affordability,
+        },
+      }
+    }
+  }
+}
+
+fn admitted_demand<P>(a: AdmittedDemand<P>) -> Demand<P> {
+  a.demand
+}
+
+fn admitted_surplus<P>(a: AdmittedDemand<P>) -> MoneyAmountMicro {
+  a.surplus
+}
+
+fn admitted_billed_occupancy<P>(a: AdmittedDemand<P>) -> Second {
+  a.billed_occupancy
+}
+
+fn admitted_projected_total<P>(a: AdmittedDemand<P>) -> MoneyAmountMicro {
+  a.projected_total
+}
+
+fn admitted_affordability<P>(a: AdmittedDemand<P>) -> DemandOfferAffordability {
+  a.affordability
+}
+
+fn admitted_identity<P>(a: AdmittedDemand<P>) -> FabricIdentity<P, DemandKey> {
+  a.demand.id
+}
+
+// TIED IS ITS OWN ANSWER, NOT A DEGENERATE WIN.
+//
+// Two demands offering the same margin against this offer are genuinely
+// indistinguishable to this policy, and every tie-break the model could reach
+// for today is a fabrication: submitted_at is a Timestamp, which std.types
+// aliases to String and which carries no ordering, and a DemandKey is a branded
+// string whose collation says nothing about desert. Returning one of them
+// anyway would be fabricated plausible output at the exact point the fabric
+// decides who gets paid capacity. The tie is reported instead, and the caller
+// -- which knows things this policy does not, such as whether it may simply run
+// both, or whether one demand is its own -- decides.
+type DemandPrecedence
+  = LeftPrecedes
+  | RightPrecedes
+  | TiedUnderPolicy
+
+fn compare_admitted<P>(left: AdmittedDemand<P>, right: AdmittedDemand<P>) -> DemandPrecedence {
+  match margin_rate_comparison(
+    margin_a: left.surplus, billed_a: left.billed_occupancy,
+    margin_b: right.surplus, billed_b: right.billed_occupancy,
+  ) {
+    Better => LeftPrecedes
+    Worse => RightPrecedes
+    Same => TiedUnderPolicy
+  }
+}
+
+// THE DUPLICATE ARM IS NOT DEFENSIVE, AND WITHOUT IT THE TIE SWEEP HAS A HOLE
+// SHAPED EXACTLY LIKE THE DEFECT IT CLOSES.
+//
+// ties_with_leader excludes the leader from the field by IDENTITY, which is the
+// only honest way to say "not itself". A field carrying one demand twice
+// therefore has its second copy excluded as though it were the leader, so a
+// perfect tie between a demand and itself is silently resolved rather than
+// refused -- first-one-wins reappearing inside the pass written to remove it.
+// std.pareto refuses a duplicate candidate identity for the same reason and
+// calls it the sentinel-through-presence-test shape. Refusing here also refuses
+// the real thing a duplicate means: the same demand was admitted twice against
+// one grant of capacity, and conserving supply is the whole point of contending
+// for it.
+type ContentionRefusal<P>
+  = DemandsIndistinguishable { tied: List<FabricIdentity<P, DemandKey>> }
+  | DuplicateCandidateIdentity { duplicated: List<FabricIdentity<P, DemandKey>> }
+  | CandidatesJudgedAgainstDifferentOffers {
+      contended: FabricIdentity<P, OfferKey>
+      mismatched: List<FabricIdentity<P, DemandKey>>
+    }
+
+fn candidate_occurrences<P>(
+  candidates: List<AdmittedDemand<P>>,
+  wanted: FabricIdentity<P, DemandKey>,
+) -> Int {
+  fold(candidates, init: 0, f: fn(acc, c) {
+    if fabric_identity_eq(left: admitted_identity(a: c), right: wanted) { acc + 1 } else { acc }
+  })
+}
+
+fn duplicated_candidates<P>(
+  candidates: List<AdmittedDemand<P>>,
+) -> List<FabricIdentity<P, DemandKey>> {
+  candidates
+    |> filter(c => candidate_occurrences(candidates: candidates, wanted: admitted_identity(a: c)) > 1)
+    |> map(c => admitted_identity(a: c))
+}
+
+// THE EMPTY CASE KEEPS ITS OWN ARM, for the reason arbitration.dag already
+// gives about an empty release plan: nothing admissible and a refusal are
+// different facts with different repairs. No demand could clear this offer is
+// an ordinary market outcome -- the capacity goes unsold, and the remedy is
+// more demand or a cheaper offer -- while a refusal means the policy could not
+// decide among demands that did clear it.
+type ContentionOutcome<P>
+  = NoAdmissibleDemand
+  | DemandSelected { winner: AdmittedDemand<P> }
+  | ContentionRefused { refusal: ContentionRefusal<P> }
+
+fn candidates_for_other_offers<P>(
+  contended: FabricIdentity<P, OfferKey>,
+  candidates: List<AdmittedDemand<P>>,
+) -> List<FabricIdentity<P, DemandKey>> {
+  candidates
+    |> filter(c => !fabric_identity_eq(left: c.offer, right: contended))
+    |> map(c => admitted_identity(a: c))
+}
+
+fn leader_step<P>(leader: AdmittedDemand<P>, challenger: AdmittedDemand<P>) -> AdmittedDemand<P> {
+  match compare_admitted(left: leader, right: challenger) {
+    LeftPrecedes => leader
+    RightPrecedes => challenger
+    TiedUnderPolicy => leader
+  }
+}
+
+// THE TIE SWEEP IS A SECOND PASS OVER THE WHOLE FIELD, NOT A FLAG THE LEADER
+// FOLD SETS.
+//
+// leader_step keeps the incumbent on a tie, which alone would let the
+// first-visited of two equal demands win silently -- the accident this module
+// exists to remove, reintroduced inside it. What makes the outcome invariant
+// under candidate order is that the leader is afterwards compared against every
+// candidate: anything not strictly behind it is a tie, and a nonempty tie set
+// refuses. std.pareto's field fold makes the same move for the same reason --
+// accumulate every challenge rather than latching the first, so the standing
+// cannot depend on visit order.
+fn ties_with_leader<P>(
+  leader: AdmittedDemand<P>,
+  field: List<AdmittedDemand<P>>,
+) -> List<FabricIdentity<P, DemandKey>> {
+  field
+    |> filter(c => !fabric_identity_eq(left: admitted_identity(a: c), right: admitted_identity(a: leader)))
+    |> filter(c => match compare_admitted(left: leader, right: c) {
+         LeftPrecedes => false
+         RightPrecedes => true
+         TiedUnderPolicy => true
+       })
+    |> map(c => admitted_identity(a: c))
+}
+
+fn select_from_field<P>(field: List<AdmittedDemand<P>>) -> ContentionOutcome<P> {
+  match field {
+    Empty {} => NoAdmissibleDemand
+    Cons { head: first, tail: rest } => {
+      let leader = fold(rest, init: first, f: fn(acc, c) { leader_step(leader: acc, challenger: c) })
+      let tied = ties_with_leader(leader: leader, field: field)
+      if (tied |> count) > 0 {
+        ContentionRefused {
+          refusal: DemandsIndistinguishable {
+            tied: concat([admitted_identity(a: leader)], tied),
+          },
+        }
+      } else {
+        DemandSelected { winner: leader }
+      }
+    }
+  }
+}
+
+// THE ANSWER TO "WHICH DEMAND WINS SCARCE CAPACITY", AND THE ONLY PLACE IT IS
+// ANSWERED.
+//
+// Every candidate has already been shown to clear this offer's price by
+// construction, so nothing here consults ceilings, currencies, shapes, trust
+// domains or capabilities -- deciding any of those a second time would be a
+// second authority for a verdict supply.dag already owns. What this fold owns,
+// and nothing else does, is the comparison BETWEEN buyers.
+fn select_demand_for_offer<P>(
+  contended: FabricIdentity<P, OfferKey>,
+  candidates: List<AdmittedDemand<P>>,
+) -> ContentionOutcome<P> {
+  let mismatched = candidates_for_other_offers(contended: contended, candidates: candidates)
+  let duplicated = duplicated_candidates(candidates: candidates)
+  if (mismatched |> count) > 0 {
+    ContentionRefused {
+      refusal: CandidatesJudgedAgainstDifferentOffers {
+        contended: contended,
+        mismatched: mismatched,
+      },
+    }
+  } else if (duplicated |> count) > 0 {
+    ContentionRefused { refusal: DuplicateCandidateIdentity { duplicated: duplicated } }
+  } else {
+    select_from_field(field: candidates)
+  }
+}

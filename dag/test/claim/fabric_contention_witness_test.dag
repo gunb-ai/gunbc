@@ -1,0 +1,484 @@
+module test.claim.fabric_contention_witness_test
+
+// THE SUBJECT IS WHICH DEMAND WINS ONE SCARCE OFFER, which nothing in the
+// fabric could answer before product.fabric.contention. A suite that only
+// proved a winner comes back would establish that the fold returns something,
+// which was never in doubt. What is in doubt, and what each witness below
+// isolates, is that the answer is DERIVED from the pair rather than declared by
+// the buyer, that it cannot be reached at all by a demand that did not clear
+// the price, that it is invariant under the order candidates arrive in, and
+// that every case the policy genuinely cannot decide refuses instead of
+// returning a plausible one.
+
+import std.nat { Nat }
+import std.types { Bool, List, NonEmptyStr }
+import std.currency { Usd }
+import std.measure {
+  MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce, Second,
+  money_amount_micro, money_amount_micro_count, second, second_count,
+  hardware_thread_count, HardwareThreadCount,
+}
+import product.fabric.identity { FabricIdentity, DemandKey, OfferKey }
+import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { current_runner_slot_profile }
+import product.fabric.demand {
+  Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, ObservationReceiptRef,
+}
+import product.fabric.supply {
+  SupplierOffer, OfferQuote, QuotedPerSecond, QuotedPerHour, QuotedFlatPerGrant, ObservedSupply,
+  GrantDuration, ExactGrantDuration,
+  DemandOfferAffordability, Affordable, AffordableUnderEstimate,
+  QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch,
+}
+import product.fabric.contention {
+  AdmittedDemand, DemandAdmission, DemandAdmitted, DemandNotAffordable,
+  QuoteExceedsReservationPrice, GrantOccupiesNoBilledTime,
+  ContentionOutcome, NoAdmissibleDemand, DemandSelected, ContentionRefused,
+  ContentionRefusal, DemandsIndistinguishable, DuplicateCandidateIdentity,
+  CandidatesJudgedAgainstDifferentOffers,
+  admit_demand_for_offer, select_demand_for_offer,
+  admitted_surplus, admitted_billed_occupancy, admitted_identity,
+}
+
+fn c_offer(key: NonEmptyStr, quote: OfferQuote, quantum: Second) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: "gunbc", key: key },
+    executor: "gunbc",
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+      envelope: unstated_envelope(),
+    },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: "gunbc.trust.internal-fleet",
+    isolation: current_runner_slot_profile(),
+    quantity_bound: 1,
+    ready_at: "2026-08-27T00:00:00Z",
+    quote: quote,
+    billing_quantum: quantum,
+    evidence: ObservedSupply {
+      observed_at: "2026-08-27T00:00:00Z",
+      receipt: "gunbc.observation.fleet-1",
+    },
+  }
+}
+
+// Continuous owned capacity: one micro per second, no quantum, so the bill is
+// the seconds used.
+fn continuous_offer() -> SupplierOffer<NonEmptyStr> {
+  c_offer(
+    key: "offer-owned",
+    quote: QuotedPerSecond(MoneyPerSecond { amount: money_amount_micro(count: 1), currency: Usd }),
+    quantum: second(count: 0),
+  )
+}
+
+// A rented hourly supplier: one hundred micros an hour, billed in whole hours
+// rounded up, so any job under an hour costs a full hour.
+fn hourly_offer() -> SupplierOffer<NonEmptyStr> {
+  c_offer(
+    key: "offer-hetzner",
+    quote: QuotedPerHour(MoneyPerHour { amount: money_amount_micro(count: 100), currency: Usd }),
+    quantum: second(count: 3600),
+  )
+}
+
+fn c_demand(key: DemandKey, reservation: Nat) -> Demand<NonEmptyStr> {
+  Demand {
+    id: FabricIdentity { principal: "operator", key: key },
+    work: FabricIdentity { principal: "operator", key: "work-1" },
+    origin: "gunbc.observation.pr-1",
+    submitted_at: "2026-08-27T00:00:00Z",
+    admission: AdmissionTerms {
+      deadline: none,
+      buy: BuyTerms {
+        budget_account: "fleet-ci",
+        currency: Usd,
+        reservation_price: money_amount_micro(count: reservation),
+        maximum_buy_order: money_amount_micro(count: 1000),
+      },
+    },
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: false,
+      step_reuse_permitted: true,
+    },
+  }
+}
+
+// THE TWO BIDDERS THE MODE WITNESS TURNS ON. Short is a ninety-second job that
+// will pay up to 200; long is a five-minute job that will pay up to 400.
+fn short_demand() -> Demand<NonEmptyStr> { c_demand(key: "demand-short", reservation: 200) }
+
+fn long_demand() -> Demand<NonEmptyStr> { c_demand(key: "demand-long", reservation: 400) }
+
+fn short_duration() -> GrantDuration { ExactGrantDuration { seconds: second(count: 90) } }
+
+fn long_duration() -> GrantDuration { ExactGrantDuration { seconds: second(count: 300) } }
+
+fn admitted_or_none(a: DemandAdmission<NonEmptyStr>) -> List<AdmittedDemand<NonEmptyStr>> {
+  match a {
+    DemandAdmitted { admitted: x } => [x]
+    DemandNotAffordable { refusal: _ } => []
+    QuoteExceedsReservationPrice { quoted: _, reservation: _ } => []
+    GrantOccupiesNoBilledTime { duration: _ } => []
+  }
+}
+
+fn id_key(i: FabricIdentity<NonEmptyStr, DemandKey>) -> NonEmptyStr {
+  i.key as NonEmptyStr
+}
+
+fn winner_key(o: ContentionOutcome<NonEmptyStr>) -> NonEmptyStr {
+  match o {
+    DemandSelected { winner: w } => id_key(i: admitted_identity(a: w))
+    NoAdmissibleDemand => "none" as NonEmptyStr
+    ContentionRefused { refusal: _ } => "refused" as NonEmptyStr
+  }
+}
+
+fn contend(
+  offer: SupplierOffer<NonEmptyStr>,
+  candidates: List<AdmittedDemand<NonEmptyStr>>,
+) -> ContentionOutcome<NonEmptyStr> {
+  select_demand_for_offer(contended: offer.id, candidates: candidates)
+}
+
+fn field_against(offer: SupplierOffer<NonEmptyStr>) -> List<AdmittedDemand<NonEmptyStr>> {
+  concat(
+    admitted_or_none(a: admit_demand_for_offer(
+      demand: short_demand(), offer: offer, duration: short_duration())),
+    admitted_or_none(a: admit_demand_for_offer(
+      demand: long_demand(), offer: offer, duration: long_duration())),
+  )
+}
+
+// THE MODE WITNESS, AND IT IS THE ONE THAT WOULD GO RED IF THE RANKING WERE
+// SCORED ON THE DEMAND ALONE.
+//
+// Two bidders, two suppliers, one rate structure each. On continuous owned
+// capacity the short job is billed the 90 seconds it uses (surplus 200-90=110)
+// and the long job the 300 it uses (400-300=100), so the SHORT job wins. On the
+// hourly supplier both are billed one whole hour at 100 (surplus 100 and 300),
+// so the LONG job wins. The same two demands rank in OPPOSITE orders against
+// two offers.
+//
+// That flip is the entire argument for deriving the rank from the PAIR. Any
+// design that gave a demand a standing priority -- a class string, an ordinal
+// tier, a precomputed bid score -- would return one of these two answers for
+// both suppliers and be silently wrong for the other, exactly in the cross-mode
+// case the fleet is about to have. If offer_quoted_total_for_grant ever stopped
+// seeing the billing quantum, both columns would collapse to the same winner
+// and this goes red.
+test fn the_same_two_bidders_rank_oppositely_on_continuous_and_hourly_supply() -> Bool {
+  winner_key(o: contend(offer: continuous_offer(), candidates: field_against(offer: continuous_offer())))
+    == "demand-short"
+  && winner_key(o: contend(offer: hourly_offer(), candidates: field_against(offer: hourly_offer())))
+    == "demand-long"
+}
+
+// THE SURPLUS IS THE DERIVED MARGIN, NOT THE POSTED PRICE. The long job posts
+// the HIGHER reservation price on both suppliers and wins on only one of them,
+// so the ordering cannot be reading the bid alone. This pins the arithmetic
+// that separates them rather than only the verdict, because a verdict alone
+// would still be produced by a fold that compared the wrong two numbers.
+test fn surplus_is_reservation_minus_the_projected_bill_for_this_offer() -> Bool {
+  match field_against(offer: continuous_offer()) {
+    Cons { head: s, tail: rest } =>
+      match rest {
+        Cons { head: l, tail: _ } =>
+          money_amount_micro_count(m: admitted_surplus(a: s)) == 110
+            && money_amount_micro_count(m: admitted_surplus(a: l)) == 100
+            && second_count(s: admitted_billed_occupancy(a: s)) == 90
+            && second_count(s: admitted_billed_occupancy(a: l)) == 300
+        Empty {} => false
+      }
+    Empty {} => false
+  }
+}
+
+// THE BILLED DENOMINATOR IS THE QUANTIZED ONE, AND THIS IS WHAT COLLAPSES THE
+// RATE ORDERING ONTO THE TOTAL ORDERING UNDER AN HOURLY QUANTUM. The same two
+// jobs that occupy 90 and 300 seconds of continuous capacity each occupy one
+// whole billed hour of the hourly supplier, so their denominators are EQUAL and
+// the comparator degenerates to comparing margins. If this ever reported the
+// elapsed seconds instead, the hourly column of the two-mode witness would be
+// decided by a rate nobody is billed for.
+test fn an_hourly_quantum_gives_both_bidders_the_same_billed_occupancy() -> Bool {
+  match field_against(offer: hourly_offer()) {
+    Cons { head: s, tail: rest } =>
+      match rest {
+        Cons { head: l, tail: _ } =>
+          second_count(s: admitted_billed_occupancy(a: s)) == 3600
+            && second_count(s: admitted_billed_occupancy(a: l)) == 3600
+        Empty {} => false
+      }
+    Empty {} => false
+  }
+}
+
+// THE CASE THAT SEPARATES MARGIN FROM MARGIN-PER-SECOND, AND THE FIRST CUT OF
+// THIS MODULE GOT IT WRONG.
+//
+// The two-mode witness above cannot decide between the two definitions, because
+// its short job wins on BOTH -- 110 total against 100, and 1.22/s against
+// 0.33/s. Agreement is not evidence, so this is the pair constructed to
+// disagree: on continuous capacity a 90-second job earning 110 against a
+// 300-second job earning 200. TOTAL margin says the long job (200 > 110).
+// MARGIN PER BILLED SECOND says the short one (110/90 = 1.22 against 200/300 =
+// 0.67), and the short one is right: continuous capacity is released the moment
+// the grant ends, so taking the long job sells 300 seconds for 200 where the
+// same 300 seconds could have sold the first 90 for 110 and still had 210 left
+// to sell.
+//
+// Cross-multiplied, the comparison is 110*300 = 33000 against 200*90 = 18000,
+// exactly and without rounding. Reverting the comparator to total margin turns
+// this red and leaves every other witness in this file green.
+fn rich_slow_demand() -> Demand<NonEmptyStr> { c_demand(key: "demand-rich-slow", reservation: 500) }
+
+test fn a_larger_total_margin_loses_to_a_larger_margin_per_billed_second() -> Bool {
+  let quick = admitted_or_none(a: admit_demand_for_offer(
+    demand: short_demand(), offer: continuous_offer(), duration: short_duration()))
+  let slow = admitted_or_none(a: admit_demand_for_offer(
+    demand: rich_slow_demand(), offer: continuous_offer(), duration: long_duration()))
+  match concat(quick, slow) {
+    Cons { head: q, tail: rest } =>
+      match rest {
+        Cons { head: r, tail: _ } =>
+          money_amount_micro_count(m: admitted_surplus(a: q)) == 110
+            && money_amount_micro_count(m: admitted_surplus(a: r)) == 200
+            && winner_key(o: contend(
+                 offer: continuous_offer(), candidates: concat(quick, slow))) == "demand-short"
+        Empty {} => false
+      }
+    Empty {} => false
+  }
+}
+
+// UNDER AN HOURLY QUANTUM THE SAME PAIR FLIPS BACK, AND THAT IS THE POINT OF
+// HAVING ONE DERIVATION RATHER THAN A MODE SWITCH.
+//
+// Those same two bidders on the hourly supplier both consume one whole billed
+// hour, so the denominators cancel and the larger total margin wins -- which is
+// correct there, because the supplier rounds up and the unused part of the hour
+// is not resellable. Nothing in the policy branches on the quantum to get this;
+// it falls out of billed_seconds being the denominator. A comparator that
+// switched on billing mode would be a second authority for a fact the quantum
+// already states, and it would agree with this one on exactly these two rows
+// while being free to disagree on the next supplier.
+test fn the_same_pair_flips_back_when_the_billed_hour_is_indivisible() -> Bool {
+  let quick = admitted_or_none(a: admit_demand_for_offer(
+    demand: short_demand(), offer: hourly_offer(), duration: short_duration()))
+  let slow = admitted_or_none(a: admit_demand_for_offer(
+    demand: rich_slow_demand(), offer: hourly_offer(), duration: long_duration()))
+  winner_key(o: contend(offer: hourly_offer(), candidates: concat(quick, slow)))
+    == "demand-rich-slow"
+}
+
+// THE PAID-THROUGH MODE: A ZERO QUOTE DOES NOT COLLAPSE THE RANKING TO RAW
+// HIGHEST BID.
+//
+// An hour already bought is sunk, so its marginal cost for the remainder is
+// zero, and the supply lane is making the quote reflect that. The exposure on
+// this side is what the ranking does when the projected bill goes to zero for
+// every candidate: the margin becomes the bid itself, and a comparator over
+// TOTAL margin would degenerate to whoever posted the larger number regardless
+// of how long they would hold the machine. It does not degenerate here, because
+// the denominator survives -- a free offer is still ranked by bid per second of
+// occupancy, which is the right question about capacity nobody is paying for.
+//
+// Discriminating on exactly that: the slow bidder posts 500 against the quick
+// bidder's 200 and still loses, because it would hold a free machine for 300
+// seconds to earn what the other earns in 90.
+fn paid_through_offer() -> SupplierOffer<NonEmptyStr> {
+  c_offer(
+    key: "offer-paid-through",
+    quote: QuotedFlatPerGrant(MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd }),
+    quantum: second(count: 0),
+  )
+}
+
+test fn a_free_offer_is_still_ranked_by_bid_per_second_not_by_bid() -> Bool {
+  let quick = admitted_or_none(a: admit_demand_for_offer(
+    demand: short_demand(), offer: paid_through_offer(), duration: short_duration()))
+  let slow = admitted_or_none(a: admit_demand_for_offer(
+    demand: rich_slow_demand(), offer: paid_through_offer(), duration: long_duration()))
+  match concat(quick, slow) {
+    Cons { head: q, tail: rest } =>
+      match rest {
+        Cons { head: r, tail: _ } =>
+          money_amount_micro_count(m: admitted_surplus(a: q)) == 200
+            && money_amount_micro_count(m: admitted_surplus(a: r)) == 500
+            && winner_key(o: contend(
+                 offer: paid_through_offer(), candidates: concat(quick, slow))) == "demand-short"
+        Empty {} => false
+      }
+    Empty {} => false
+  }
+}
+
+// A GRANT THAT BILLS NO TIME REFUSES RATHER THAN JOINING THE FIELD. Every
+// zero-occupancy candidate cross-multiplies to zero against every other, so
+// admitting one would report a field of perfectly distinguishable buyers as an
+// unresolvable tie -- a fabricated verdict, not a cautious one.
+test fn a_grant_billing_no_time_is_refused_rather_than_ranked_at_zero() -> Bool {
+  match admit_demand_for_offer(
+    demand: short_demand(),
+    offer: continuous_offer(),
+    duration: ExactGrantDuration { seconds: second(count: 0) },
+  ) {
+    GrantOccupiesNoBilledTime { duration: d } => second_count(s: d) == 0
+    DemandAdmitted { admitted: _ } => false
+    DemandNotAffordable { refusal: _ } => false
+    QuoteExceedsReservationPrice { quoted: _, reservation: _ } => false
+  }
+}
+
+// THE SAME DEMAND TWICE REFUSES. The tie sweep excludes the leader by identity,
+// which is the only honest way to say "not itself", so a duplicated candidate
+// is excluded as though it were the leader and its perfect tie goes unreported
+// -- first-one-wins reappearing inside the pass written to remove it. Refusing
+// also refuses what a duplicate actually means: one demand admitted twice
+// against one grant of capacity.
+test fn the_same_demand_admitted_twice_refuses_rather_than_winning_against_itself() -> Bool {
+  let once = admitted_or_none(a: admit_demand_for_offer(
+    demand: short_demand(), offer: continuous_offer(), duration: short_duration()))
+  match contend(offer: continuous_offer(), candidates: concat(once, once)) {
+    ContentionRefused { refusal: r } =>
+      match r {
+        DuplicateCandidateIdentity { duplicated: d } => (d |> count) == 2
+        DemandsIndistinguishable { tied: _ } => false
+        CandidatesJudgedAgainstDifferentOffers { contended: _, mismatched: _ } => false
+      }
+    DemandSelected { winner: _ } => false
+    NoAdmissibleDemand => false
+  }
+}
+
+// ORDER INVARIANCE. The leader fold keeps its incumbent on a tie, so a suite
+// that only ever presented candidates in one order could not tell a real
+// ordering from first-one-wins. Presenting the same field reversed must return
+// the same winner.
+test fn the_winner_does_not_depend_on_the_order_candidates_arrive_in() -> Bool {
+  let forward = field_against(offer: continuous_offer())
+  let reversed = concat(
+    admitted_or_none(a: admit_demand_for_offer(
+      demand: long_demand(), offer: continuous_offer(), duration: long_duration())),
+    admitted_or_none(a: admit_demand_for_offer(
+      demand: short_demand(), offer: continuous_offer(), duration: short_duration())),
+  )
+  winner_key(o: contend(offer: continuous_offer(), candidates: forward))
+    == winner_key(o: contend(offer: continuous_offer(), candidates: reversed))
+  && winner_key(o: contend(offer: continuous_offer(), candidates: reversed)) == "demand-short"
+}
+
+// A TIE REFUSES RATHER THAN PICKING ONE. Two demands with identical reservation
+// prices and identical durations have identical margins, and every tie-break
+// the model could reach for today -- submitted_at, the demand key -- is string
+// collation wearing a schedule's or a merit's name. The refusal names both
+// demands so the caller can decide something this policy cannot.
+test fn two_indistinguishable_bidders_refuse_instead_of_one_winning_silently() -> Bool {
+  let a = admitted_or_none(a: admit_demand_for_offer(
+    demand: c_demand(key: "demand-a", reservation: 200),
+    offer: continuous_offer(), duration: short_duration()))
+  let b = admitted_or_none(a: admit_demand_for_offer(
+    demand: c_demand(key: "demand-b", reservation: 200),
+    offer: continuous_offer(), duration: short_duration()))
+  match contend(offer: continuous_offer(), candidates: concat(a, b)) {
+    ContentionRefused { refusal: r } =>
+      match r {
+        DemandsIndistinguishable { tied: t } => (t |> count) == 2
+        DuplicateCandidateIdentity { duplicated: _ } => false
+        CandidatesJudgedAgainstDifferentOffers { contended: _, mismatched: _ } => false
+      }
+    DemandSelected { winner: _ } => false
+    NoAdmissibleDemand => false
+  }
+}
+
+// THE PRIVILEGE ESCAPE HAS NO SPELLING. A demand whose bid is below the bill
+// never becomes a candidate at all: admit_demand_for_offer returns a refusal,
+// AdmittedDemand is sole_constructor with no other route, and so there is no
+// value a caller could hand to select_demand_for_offer that represents an
+// unaffordable demand. This is the claim that used to be a prose note beside a
+// string field, and the string witness beside it could not have gone red for
+// it.
+//
+// The pair is discriminating in the way that matters: the SAME demand at the
+// SAME price is admitted against the cheap supplier and refused against the
+// expensive one, so the refusal is arithmetic about the pair and not a property
+// of the demand.
+test fn a_bid_below_the_bill_cannot_enter_contention_at_all() -> Bool {
+  let poor = c_demand(key: "demand-poor", reservation: 95)
+  let against_cheap = admit_demand_for_offer(
+    demand: poor, offer: continuous_offer(), duration: short_duration())
+  let against_hourly = admit_demand_for_offer(
+    demand: poor, offer: hourly_offer(), duration: short_duration())
+  match against_cheap {
+    DemandAdmitted { admitted: _ } =>
+      match against_hourly {
+        QuoteExceedsReservationPrice { quoted: q, reservation: r } =>
+          money_amount_micro_count(m: q) == 100
+            && money_amount_micro_count(m: r) == 95
+            && (admitted_or_none(a: against_hourly) |> count) == 0
+        DemandAdmitted { admitted: _ } => false
+        DemandNotAffordable { refusal: _ } => false
+        GrantOccupiesNoBilledTime { duration: _ } => false
+      }
+    DemandNotAffordable { refusal: _ } => false
+    QuoteExceedsReservationPrice { quoted: _, reservation: _ } => false
+    GrantOccupiesNoBilledTime { duration: _ } => false
+  }
+}
+
+// THE RESERVATION PRICE IS A SECOND CEILING, AND IT IS THIS MODULE'S. The demand
+// above clears its maximum_buy_order of 1000 comfortably -- supply.dag's
+// affordability screen says Affordable -- and is still refused, because 100
+// exceeds the 50 the buyer said it would pay. Before this module nothing
+// consulted reservation_price at all, so an offer could be "affordable" under a
+// generous per-grant ceiling while sitting above the price the buyer named.
+test fn clearing_the_grant_ceiling_is_not_clearing_the_buyers_own_price() -> Bool {
+  match admit_demand_for_offer(
+    demand: c_demand(key: "demand-ceiling", reservation: 50),
+    offer: hourly_offer(),
+    duration: short_duration(),
+  ) {
+    QuoteExceedsReservationPrice { quoted: _, reservation: _ } => true
+    DemandAdmitted { admitted: _ } => false
+    DemandNotAffordable { refusal: _ } => false
+    GrantOccupiesNoBilledTime { duration: _ } => false
+  }
+}
+
+// MARGINS DERIVED AGAINST A DIFFERENT OFFER REFUSE. A surplus is a fact about a
+// pair, so a field mixing candidates judged against two suppliers holds values
+// that are each individually true and are not comparable. The mint records the
+// offer it judged, which is what gives this check something to check.
+test fn a_field_judged_against_two_offers_refuses_rather_than_comparing() -> Bool {
+  let owned = admitted_or_none(a: admit_demand_for_offer(
+    demand: short_demand(), offer: continuous_offer(), duration: short_duration()))
+  let rented = admitted_or_none(a: admit_demand_for_offer(
+    demand: long_demand(), offer: hourly_offer(), duration: long_duration()))
+  match contend(offer: continuous_offer(), candidates: concat(owned, rented)) {
+    ContentionRefused { refusal: r } =>
+      match r {
+        CandidatesJudgedAgainstDifferentOffers { contended: _, mismatched: m } => (m |> count) == 1
+        DemandsIndistinguishable { tied: _ } => false
+        DuplicateCandidateIdentity { duplicated: _ } => false
+      }
+    DemandSelected { winner: _ } => false
+    NoAdmissibleDemand => false
+  }
+}
+
+// NOTHING ADMISSIBLE IS AN OUTCOME, NOT A REFUSAL. Capacity going unsold is an
+// ordinary market result whose remedy is more demand or a cheaper offer;
+// collapsing it into the refusal arm would hand a caller a diagnostic for a
+// working market.
+test fn an_empty_field_reports_no_admissible_demand_rather_than_refusing() -> Bool {
+  match contend(offer: continuous_offer(), candidates: []) {
+    NoAdmissibleDemand => true
+    DemandSelected { winner: _ } => false
+    ContentionRefused { refusal: _ } => false
+  }
+}
