@@ -1,0 +1,93 @@
+module test.claim.required_regen_obligation_disposition_witness
+
+import gunbc.required_regen_obligation_disposition {
+  ObligationLifecycle,
+  Active,
+  Transferred,
+  Retired,
+  host_deletion_admitted,
+  carrier_deletion_admitted,
+  required_regen_derivation_routes,
+  some_derivation_route_remains_unexamined,
+  refuted_route_count,
+  required_regen_closure_membership_controls,
+  RouteRefuted,
+  RouteUnexamined
+}
+import std.decl_ref { decl_ref }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// Declared explicitly: a witness that declares no disposition is treated as ReadsLiveTree and
+// DECLINED -- discovered, counted, never executed. Every assertion below reads substrate values
+// only, so SubstrateInputsOnly is the honest declaration, and without it this evidence would be
+// the inert decoration the carrier it guards warns about.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data transferred_example: ObligationLifecycle = Transferred {
+  successor_authority: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run"),
+  successor_realization: "fixture successor realization",
+  equivalence_receipt: "fixture equivalence receipt"
+}
+
+data retired_example: ObligationLifecycle = Retired {
+  mirror_population_empty_receipt: "fixture mirror-population-empty receipt",
+  required_consumer_population_empty_receipt: "fixture consumer-population-empty receipt"
+}
+
+// THE ASYMMETRY, ASSERTED IN BOTH DIRECTIONS. Asserting only that the carrier survives a transfer
+// would pass over a pair of predicates that both answer false to everything, which is a fused row
+// again wearing types. The pair below is what makes the distinction load-bearing: the two
+// predicates must DISAGREE under Transferred and AGREE under Retired.
+test fn witness_transfer_admits_host_deletion_but_not_carrier_deletion() -> Bool {
+  host_deletion_admitted(lifecycle: transferred_example)
+    && carrier_deletion_admitted(lifecycle: transferred_example) == false
+}
+
+test fn witness_retirement_admits_both_deletions() -> Bool {
+  host_deletion_admitted(lifecycle: retired_example)
+    && carrier_deletion_admitted(lifecycle: retired_example)
+}
+
+test fn witness_active_admits_neither_deletion() -> Bool {
+  host_deletion_admitted(lifecycle: Active) == false
+    && carrier_deletion_admitted(lifecycle: Active) == false
+}
+
+// THIS IS THE GUARD AGAINST THE OVERCLAIM THIS MODULE WAS RECUT TO REMOVE. An earlier revision
+// concluded the class could not climb, on the strength of ONE refuted route. If someone later
+// marks every route refuted, that impossibility claim returns silently -- so the census must fail
+// rather than harden. A refuted-route count of exactly one keeps the receipts honest in the other
+// direction too: dropping the refuted route would erase real, measured evidence.
+test fn witness_no_impossibility_claim_is_reachable() -> Bool {
+  some_derivation_route_remains_unexamined()
+}
+
+test fn witness_exactly_one_route_is_refuted() -> Bool {
+  refuted_route_count() == 1
+}
+
+test fn witness_every_route_carries_its_reasoning() -> Bool {
+  required_regen_derivation_routes |> all(r => match r.status {
+    RouteRefuted { evidence: e } => e != ""
+    RouteUnexamined { why_it_remains_open: w } => w != ""
+  })
+}
+
+// Both arms of the control table, plus anti-vacuity: either arm alone passes over an empty table
+// and reports a rule nobody measured.
+test fn witness_unimported_modules_are_not_emitted() -> Bool {
+  required_regen_closure_membership_controls
+    |> filter(o => o.seed_importers == 0)
+    |> all(o => o.emitted == false)
+}
+
+test fn witness_imported_modules_are_emitted() -> Bool {
+  required_regen_closure_membership_controls
+    |> filter(o => o.seed_importers > 0)
+    |> all(o => o.emitted)
+}
+
+test fn witness_control_table_populates_both_arms() -> Bool {
+  length(xs: required_regen_closure_membership_controls |> filter(o => o.seed_importers == 0)) > 0
+    && length(xs: required_regen_closure_membership_controls |> filter(o => o.seed_importers > 0)) > 0
+}
