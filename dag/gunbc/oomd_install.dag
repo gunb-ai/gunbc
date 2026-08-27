@@ -15,6 +15,10 @@ import std.realization_reconcile {
   NotConverged,
   reconcile_grounded,
 }
+import gunbc.session_reservation_policy {
+  SessionReservationBytesResolution,
+  ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
+}
 import gunbc.ci_floor_measurement {
   OomdEnforcementEvidence,
   OomdEnforced,
@@ -22,9 +26,6 @@ import gunbc.ci_floor_measurement {
   RunnerSliceCapEffectiveness,
   CapEffective,
   CapUnbounded,
-  SessionAggregateReservation,
-  SessionAggregateMeasured,
-  SessionAggregateUnmeasured,
 }
 import extdeps.apt { package_systemd_oomd_defaults }
 import extdeps.systemd.oomd {
@@ -158,7 +159,7 @@ type OomdEffectiveRead {
 
 type OomdGroundingThresholds {
   per_session_cap: ByteSize
-  parent_slice_cap: SessionAggregateReservation
+  parent_slice_cap: SessionReservationBytesResolution
   pressure_limit: Percent
 }
 
@@ -210,10 +211,11 @@ fn cap_equals(eff: RunnerSliceCapEffectiveness, target: ByteSize) -> Bool {
   }
 }
 
-fn parent_slice_cap_ok(eff: RunnerSliceCapEffectiveness, agg: SessionAggregateReservation) -> Bool {
+fn parent_slice_cap_ok(eff: RunnerSliceCapEffectiveness, agg: SessionReservationBytesResolution) -> Bool {
   match agg {
-    SessionAggregateUnmeasured => false
-    SessionAggregateMeasured { bytes } => cap_equals(eff: eff, target: bytes)
+    ReservationBytesUnestablished { cause: _ } => false
+    ReservationBytesNotApplicable => false
+    ReservationBytes { bytes } => cap_equals(eff: eff, target: bytes)
   }
 }
 

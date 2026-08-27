@@ -157,7 +157,7 @@ data gunbc_ci_fleet_offer: ComputeOffer = ComputeOffer {
     execution: ExecutionSurface {
       os: gunbc_ci_linux_surface,
       isolation: PerJobFilesystem,
-      container_runtime: none,
+      container_engine: none,
       toolchains: [],
       mounted_storage: [],
       network: [],
