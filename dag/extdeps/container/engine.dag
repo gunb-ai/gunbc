@@ -90,10 +90,13 @@ fn container_engine_deployment(
 }
 
 fn container_engine_deployment_label(deployment: ContainerEngineDeployment) -> String {
-  concat(
-    deployment.engine.product_name as String,
-    " (",
-    engine_privilege_mode_label(mode: deployment.privilege_mode),
-    ")",
+  join(
+    [
+      deployment.engine.product_name as String,
+      " (",
+      engine_privilege_mode_label(mode: deployment.privilege_mode),
+      ")",
+    ],
+    "",
   )
 }

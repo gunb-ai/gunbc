@@ -239,7 +239,7 @@ fn oci_registry_wire(registry: OciRegistry) -> String {
   match registry.port {
     Absent => domain_name_wire(name: registry.host.name)
     Present { value: port } =>
-      concat(domain_name_wire(name: registry.host.name), ":", to_string(port))
+      join([domain_name_wire(name: registry.host.name), ":", to_string(port)], "")
   }
 }
 
@@ -250,11 +250,11 @@ fn render_oci_image_reference(reference: OciImageReference) -> String {
   let named = match reference.registry {
     Absent => oci_repository_name_wire(name: reference.repository)
     Present { value: registry } =>
-      concat(oci_registry_wire(registry: registry), "/", oci_repository_name_wire(name: reference.repository))
+      join([oci_registry_wire(registry: registry), "/", oci_repository_name_wire(name: reference.repository)], "")
   }
   match reference.identifier {
-    ReferenceByDigest(digest) => concat(named, "@", render_oci_content_digest_wire(d: digest))
-    ReferenceByTag(tag) => concat(named, ":", tag as String)
+    ReferenceByDigest(digest) => join([named, "@", render_oci_content_digest_wire(d: digest)], "")
+    ReferenceByTag(tag) => join([named, ":", tag as String], "")
   }
 }
 

@@ -172,23 +172,29 @@ fn customer_image_refusal_wire(refusal: CustomerImageRefusal) -> String {
     TargetHasNoContainerEngine =>
       "target declares no container engine deployment: it cannot run any image"
     ReferenceNotDigestPinned { reference_wire: wire } =>
-      concat("image reference is not digest-pinned: ", wire)
+      join(["image reference is not digest-pinned: ", wire], "")
     ManifestRefused { reason: _ } => "image manifest refused by the OCI manifest authority"
     ConfigurationRefused { reason: _ } =>
       "image configuration refused by the OCI image-config authority"
     LayerCountDisagreement { manifest_layers: layers, config_diff_ids: diff_ids } =>
-      concat(
-        "manifest layer count ",
-        to_string(layers),
-        " disagrees with config rootfs.diff_ids count ",
-        to_string(diff_ids),
+      join(
+        [
+          "manifest layer count ",
+          to_string(layers),
+          " disagrees with config rootfs.diff_ids count ",
+          to_string(diff_ids),
+        ],
+        "",
       )
     ArchitectureUnsupported { image: image_arch, target: target_arch } =>
-      concat(
-        "image architecture ",
-        architecture_diagnostic_name(arch: image_arch),
-        " is not the target architecture ",
-        architecture_diagnostic_name(arch: target_arch),
+      join(
+        [
+          "image architecture ",
+          architecture_diagnostic_name(arch: image_arch) as String,
+          " is not the target architecture ",
+          architecture_diagnostic_name(arch: target_arch) as String,
+        ],
+        "",
       )
     OperatingSystemUnsupported { image: _, target: _ } =>
       "image operating system is not the target operating system"
@@ -206,13 +212,16 @@ fn customer_image_admitted(admission: CustomerImageAdmission) -> Bool {
 fn customer_image_admission_wire(admission: CustomerImageAdmission) -> String {
   match admission {
     CustomerImageAdmitted { image: image, engine: engine } =>
-      concat(
-        "admitted ",
-        render_oci_image_reference(reference: image.reference),
-        " on ",
-        container_engine_deployment_label(deployment: engine),
+      join(
+        [
+          "admitted ",
+          render_oci_image_reference(reference: image.reference),
+          " on ",
+          container_engine_deployment_label(deployment: engine),
+        ],
+        "",
       )
     CustomerImageRefused { refusal: refusal } =>
-      concat("refused: ", customer_image_refusal_wire(refusal: refusal))
+      join(["refused: ", customer_image_refusal_wire(refusal: refusal)], "")
   }
 }

@@ -423,7 +423,7 @@ test fn w_reference_wire_renders_digest_form() -> Bool {
     Absent => false
     Present { value: image } =>
       render_oci_image_reference(reference: image.reference)
-        == concat("acme/build-image@sha256:", fixture_layer_a_hex)
+        == join(["acme/build-image@sha256:", fixture_layer_a_hex], "")
   }
 }
 
