@@ -839,14 +839,22 @@ fn in_sweep_scope(rel: &str) -> bool {
         && !rel.contains("/tests/fixtures/")
 }
 
-/// One base-side source parsed into records, or `None` when the parse refused.
+/// One base-side source parsed into records, or a refusal naming what could not be read.
 ///
-/// A BASE FILE THAT DOES NOT PARSE IS NOT A DEFECT THIS WALL MAY REPORT — it is history, and
-/// history is not this pull request's to repair. Its records are simply absent, which makes
-/// every row it would have carried a row with no base side, and rows with no base side are not
-/// deltas. That is the conservative direction: it can only make the wall quieter about a file
-/// nobody in this change authored.
-pub fn base_records(rel: &str, content: &str) -> Vec<ModuleDeclarationRecord> {
+/// A BASE FILE THAT DOES NOT PARSE IS AN UNOBSERVABLE BASELINE, NOT AN EMPTY ONE, and the
+/// difference decides the verdict. An earlier revision returned an empty vec here and argued
+/// that this was "the conservative direction" because it could only make the wall quieter.
+/// That argument is exactly backwards, and review 56449 was right to reject it: rows with no
+/// base side are not deltas, so every binding and membership row that file would have carried
+/// silently STOPS BEING COMPARED while the run still answers `Adjudicated`. Quieter is not
+/// safer here — it is the empty-observation narrow DESIGN names, ⊥-as-answer conflated with
+/// ⊥-as-ignorance, and it is strictly worse than the widen §5 already forbids: a widen is
+/// merely expensive, a narrow is silently uncovered.
+///
+/// The head side is measured by a sweep that refuses on diagnostics, so refusing here is also
+/// what keeps both sides measured by ONE instrument. History is still not this pull request's
+/// to repair — but "I cannot see the baseline" is a refusal to state, not a fact to assume.
+pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
     let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
         vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
             path: rel.to_string(),
@@ -855,7 +863,11 @@ pub fn base_records(rel: &str, content: &str) -> Vec<ModuleDeclarationRecord> {
         .into(),
     ));
     if !fill.diagnostics.is_empty() {
-        return Vec::new();
+        return Err(format!(
+            "{rel} does not parse at the base revision ({} diagnostic(s)), so its base-side \
+             declarations cannot be read",
+            fill.diagnostics.len()
+        ));
     }
     let source_indices: std::rc::Rc<
         im::HashMap<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>,
@@ -866,10 +878,11 @@ pub fn base_records(rel: &str, content: &str) -> Vec<ModuleDeclarationRecord> {
                 acc.update(i.file.clone(), i.clone())
             }),
     );
-    fill.modules
+    Ok(fill
+        .modules
         .iter()
         .map(|module| record_from_module(module, &source_indices, rel))
-        .collect()
+        .collect())
 }
 
 /// Run the wall for one required CI invocation.
@@ -916,14 +929,43 @@ pub fn run_required_wave_admission(
             crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
         }
     }
+    // ABSENCE AT THE BASE IS ESTABLISHED FROM AN AUTHORITATIVE LISTING, NEVER INFERRED FROM A
+    // FAILURE. An earlier revision read `git show <base>:<path>` and treated ANY error as proof
+    // the change had ADDED that path — so a read fault, a corrupt object or a permission problem
+    // all rendered as "new file", and the module's entire base side vanished from the comparison
+    // while the run still answered `Adjudicated`. Review 56449 was right to reject it: only ONE
+    // cause means added, and the rest are ignorance wearing its clothes.
+    //
+    // `ls-tree` separates the two: it answers what the base tree CONTAINS, so a path missing from
+    // its output is genuinely absent, and a failure to obtain the listing at all is a refusal
+    // rather than an empty answer.
+    let base_paths = git_stdout(&workspace, &["ls-tree", "-r", "--name-only", &base])?;
+    let base_paths: std::collections::BTreeSet<String> =
+        base_paths.lines().map(|l| l.trim().to_string()).collect();
     for rel in &changed {
-        // `git show <ref>:<path>` on a path the base does not carry is a file this change
-        // ADDED. Its absence from the base index is the fact, not an error.
-        let Ok(content) = git_stdout(&workspace, &["show", &format!("{base}:{rel}")]) else {
+        if !base_paths.contains(rel) {
+            // Genuinely added by this change: no base side to read, established by the listing.
             continue;
+        }
+        // The listing says the base carries this path, so a read failure here is UNOBSERVABLE
+        // BASELINE, not news about the file.
+        let content = git_stdout(&workspace, &["show", &format!("{base}:{rel}")]).map_err(|e| {
+            format!(
+                "cannot read {rel} at the base revision {base} ({e}), so the baseline is \
+                 partially unobservable and no verdict is available"
+            )
+        });
+        let content = match content {
+            Ok(c) => c,
+            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         };
-        for record in base_records(rel, &content) {
-            crate::cli_run::declaration_index::index_insert(&mut base_index, record);
+        match base_records(rel, &content) {
+            Ok(records) => {
+                for record in records {
+                    crate::cli_run::declaration_index::index_insert(&mut base_index, record);
+                }
+            }
+            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
         }
     }
 

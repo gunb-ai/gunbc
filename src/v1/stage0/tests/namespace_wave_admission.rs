@@ -15,8 +15,8 @@
 use std::path::{Path, PathBuf};
 
 use v1_compiler::cli_run::namespace_wave_admission::{
-    adjudicate, disposition_label, report_unadjudicated, DeltaSubject, NamespaceDeltaDisposition,
-    TransitionAdmission, WaveAdmissionReport,
+    adjudicate, base_records, disposition_label, report_unadjudicated, DeltaSubject,
+    NamespaceDeltaDisposition, TransitionAdmission, WaveAdmissionReport,
 };
 use v1_compiler::cli_run::run_dag_parse_sweep;
 
@@ -470,5 +470,43 @@ fn an_absent_authority_refuses_rather_than_proceeding_on_the_hosts_say_so() {
         1,
         "an absent authority is the state in which nothing checks the vocabulary; it must \
          refuse, got: {findings:?}"
+    );
+}
+
+// THE BASELINE-OBSERVABILITY ARMS (review 56449).
+//
+// These two are not mutations of the positive control above, because their subject is a
+// different question: not "what disposition does this delta get" but "is there a baseline to
+// compare against at all". A base file that does not parse used to return an EMPTY record
+// vec, and empty is indistinguishable from "this module declared nothing" — so every row that
+// file carried stopped being compared while the run still answered `Adjudicated`. Quieter, and
+// silently uncovered.
+
+/// RED for the empty-observation narrow at the base side.
+///
+/// The plant assertion is what keeps this arm honest: if the malformed source ever started
+/// parsing, `base_records` would legitimately return `Ok` and this arm would pass for a reason
+/// that has nothing to do with the wall. The control below is the other half — a source that
+/// DOES parse must return records, or "refuses on everything" would satisfy the same assertion.
+#[test]
+fn a_base_side_source_that_does_not_parse_refuses_instead_of_reading_as_empty() {
+    let malformed = "module probe.home\n\nfn broken( -> { this is not a program";
+    let refused = base_records("dag/probe/home.dag", malformed);
+    assert!(
+        refused.is_err(),
+        "an unparseable baseline is UNOBSERVABLE, not empty -- returning an empty record set \
+         deletes every row that file would have carried from the comparison while the run still \
+         reports Adjudicated. Got: {:?}",
+        refused.map(|r| r.len())
+    );
+
+    // POSITIVE CONTROL ON THE SAME FUNCTION: a well-formed base source still yields records, so
+    // the arm above is discriminating rather than a function that refuses unconditionally.
+    let wellformed = "module probe.home\n\ndata widget: Int = 1\n";
+    let read = base_records("dag/probe/home.dag", wellformed);
+    assert!(
+        read.as_ref().map(|r| !r.is_empty()).unwrap_or(false),
+        "a base source that parses must produce records, else the refusal above proves nothing \
+         about parsing. Got: {read:?}"
     );
 }
