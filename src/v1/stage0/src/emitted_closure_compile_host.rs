@@ -1255,7 +1255,8 @@ pub fn run_required_emit_compile(
 /// ITSELF: `establish_discriminating_red` runs on every required run, and a mutation that fails
 /// to go red stops the line. What these add is the discrimination the in-run arm cannot perform
 /// on itself -- that a non-`Discriminated` mutation is a FAILURE rather than a note, and that
-/// the fault prefers a closure member over the entry.
+/// the fault targets the ENTRY'S OWN emitted module, with its absence refused rather than
+/// substituted for.
 #[cfg(test)]
 mod tests {
     use super::*;
