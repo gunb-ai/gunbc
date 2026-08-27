@@ -129,6 +129,10 @@ const CONSUMER_IMPORTS_NOTHING: &str =
 const HOME_WITHOUT_WIDGET: &str = "module probe.home\n\ndata unrelated: String = \"u\"\n";
 const CONSUMER_BLANKET_HOME: &str =
     "module probe.consumer\n\nimport probe.home\n\nfn use_it() -> String { widget }\n";
+// THE SAME CONSUMER PLUS ONE UNRELATED NEW BLANKET IMPORT. `probe.other` here does NOT supply
+// `widget`, so nothing about this addition can explain `widget` beginning to resolve.
+const OTHER_WITHOUT_WIDGET: &str = "module probe.other\n\ndata gadget: String = \"g\"\n";
+const CONSUMER_BLANKET_HOME_AND_OTHER: &str = "module probe.consumer\n\nimport probe.home\nimport probe.other\n\nfn use_it() -> String { widget }\n";
 
 // ── THE POSITIVE CONTROL: an admitted run over a real, non-empty comparison ──
 
@@ -316,6 +320,67 @@ fn a_spelling_the_target_began_supplying_refuses_as_pool_coincidence() {
         !report_unadjudicated(&report).is_empty(),
         "a pool coincidence must remain unadjudicated, got: {:?}",
         report.deltas
+    );
+}
+
+#[test]
+fn an_unrelated_new_blanket_import_does_not_launder_a_pool_coincidence() {
+    // THE FAIL-OPEN THIS ARM EXISTS TO REFUSE (review 56882, on gunbc#9495). A blanket import
+    // names no leaf, so a leaf-blind "any new blanket target" test would read this unrelated
+    // addition as authorship of `widget` and auto-admit the coincidence beside it. The target
+    // that grew `widget` is `probe.home`, whose blanket import is UNCHANGED; the target the
+    // author added is `probe.other`, which does not supply `widget` at all.
+    let report = compare(
+        "unrelated_blanket",
+        &[
+            ("home.dag", HOME_WITHOUT_WIDGET),
+            ("other.dag", OTHER_WITHOUT_WIDGET),
+            ("consumer.dag", CONSUMER_BLANKET_HOME),
+        ],
+        &[
+            ("home.dag", HOME),
+            ("other.dag", OTHER_WITHOUT_WIDGET),
+            ("consumer.dag", CONSUMER_BLANKET_HOME_AND_OTHER),
+        ],
+    );
+    assert!(
+        dispositions_for(&report, "widget")
+            .contains(&NamespaceDeltaDisposition::NewPoolCoincidenceResolution),
+        "a pool coincidence beside an unrelated new blanket import must stay \
+         NewPoolCoincidenceResolution, got: {:?}",
+        report.deltas
+    );
+    assert!(
+        !report_unadjudicated(&report).is_empty(),
+        "it must still refuse, got: {:?}",
+        report.deltas
+    );
+}
+
+#[test]
+fn a_new_blanket_import_that_does_supply_the_leaf_is_an_authored_reference_resolution() {
+    // THE ARM'S OTHER HALF, so the scoping above is not just a narrowing to nothing: when the
+    // NEW blanket target is the one supplying the leaf, the author did write the claim that
+    // resolves it, and it auto-admits like any other authored reference.
+    let report = compare(
+        "supplying_blanket",
+        &[
+            ("home.dag", HOME),
+            ("consumer.dag", CONSUMER_IMPORTS_NOTHING),
+        ],
+        &[("home.dag", HOME), ("consumer.dag", CONSUMER_BLANKET_HOME)],
+    );
+    assert!(
+        dispositions_for(&report, "widget")
+            .contains(&NamespaceDeltaDisposition::AuthoredReferenceResolution),
+        "a new blanket import that supplies the leaf must be AuthoredReferenceResolution, \
+         got: {:?}",
+        report.deltas
+    );
+    assert!(
+        report_unadjudicated(&report).is_empty(),
+        "it must auto-admit, got: {:?}",
+        report_unadjudicated(&report)
     );
 }
 
