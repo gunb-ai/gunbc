@@ -690,6 +690,12 @@ fn decode_repository_checkout(
 // bare binding in a payload-carrying arm is the tell DESIGN names for "total at the level examined,
 // blind one level down", so a new cause in either population fails to compile HERE.
 //
+// THE TARGET-REFERENCE ARM CARRIES A MemberReadRefusal OF ITS OWN, and it was the one place that
+// claim was false: TargetReferenceMemberReadRefused was matched with a bare payload binding while the
+// sibling member-read arm descended the identical population a few lines above. Both now descend, so
+// the four member-read causes are enumerated wherever they are reached rather than only where they
+// arrive undecorated.
+//
 // THE IDENTITY RULE IS A PROTOCOL FACT, NOT DAMAGE, and this is the arm most likely to be got wrong.
 // A document naming an identity rule this build does not implement is bytes that may be perfectly
 // good and unreadable ONLY HERE -- the same shape as an unrecognized format tag. Calling it malformed
@@ -709,7 +715,13 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
       }
     RepositoryTargetReferenceRefused { cause: c } =>
       match c {
-        TargetReferenceMemberReadRefused { cause: _ } => LoadDocumentMalformed
+        TargetReferenceMemberReadRefused { cause: m } =>
+          match m {
+            MemberReadSubjectNotObject => LoadDocumentMalformed
+            MemberReadMissing { key: _ } => LoadDocumentMalformed
+            MemberReadDuplicated { key: _ } => LoadDocumentMalformed
+            MemberReadWrongShape { key: _ } => LoadDocumentMalformed
+          }
         TargetReferenceUnexpectedMember { key: _ } => LoadDocumentMalformed
         TargetReferenceNotOneArm { found: _ } => LoadDocumentMalformed
         TargetReferenceUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed
