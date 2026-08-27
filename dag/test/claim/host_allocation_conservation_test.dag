@@ -592,11 +592,20 @@ fn derived_width_matches_authored(host: HostIdentity) -> Bool {
   }
 }
 
-test fn derived_width_reproduces_every_authored_literal() -> Bool {
+// SPLIT FROM derived_width_reproduces_every_authored_literal, WHICH HAD STOPPED BEING TRUE OF
+// EVERY LITERAL. srv2's derivation is unestablished -- its session denominator is unknown, so the
+// subtraction cannot run -- and folding that into a witness named "every" let an unevaluable host
+// be counted as a reproduced one. The two claims have different subjects and different remedies, so
+// they are asserted separately: a host whose derivation RAN must match its copy, and a host whose
+// derivation could not run must say so rather than be skipped quietly.
+test fn every_derived_width_matches_its_authored_copy() -> Bool {
   derived_width_matches_authored(host: operator_host_srv1)
-    && derived_width_is_unestablished(s: derived_memory_admitted_width(host: operator_host_srv2))
     && derived_width_matches_authored(host: operator_host_srv3)
     && derived_width_matches_authored(host: operator_host_srv4)
+}
+
+test fn the_srv2_width_derivation_is_unestablished() -> Bool {
+  derived_width_is_unestablished(s: derived_memory_admitted_width(host: operator_host_srv2))
 }
 
 // THE TWO CLASSES ARE NO LONGER LEGACY-VERSUS-MANAGED, and renaming this row is the honest half of
@@ -604,6 +613,11 @@ test fn derived_width_reproduces_every_authored_literal() -> Bool {
 // line between them was the sessions slice plus the overhead difference. The upgrade moved srv1 to
 // the large-memory side and left srv2 alone on the small one, so the surviving split is srv2 versus
 // everyone else and it is a split about DIMM population, not about residency.
+// srv2's AUTHORED 5 IS A HELD ALLOCATION, NOT A PROVEN MEMORY ADMISSION, and this row must not be
+// read as re-proving it. The derivation cannot run on srv2 at all, so the only honest statement
+// about its memory axis is that it is unestablished; the 5 that gunbc.runner_slot_allocation still
+// carries is what the host is currently allocated while it is re-grounded, and nothing here
+// establishes it as the largest width the wall would pass.
 test fn derived_width_reproduces_the_surviving_host_classes() -> Bool {
   derived_width_is_unestablished(s: derived_memory_admitted_width(host: operator_host_srv2))
     && derived_width_slots_or(s: derived_memory_admitted_width(host: operator_host_srv1), fallback: 0) == 25
