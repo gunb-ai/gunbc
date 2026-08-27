@@ -16,6 +16,15 @@ import v2.workflow.floor_terminal_ledger {
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, ObservationUnreadableBeforeVerdict,
   PanickedBeforeVerdict, NotAttemptedAfterAbort,
 }
+import gunbc.target_binding {
+  TargetProducer,
+  BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
+  BehavioralReceiptSelftestProducer, HeadsReadingDifferentialProducer,
+  BehavioralReceiptPlanStanding,
+  BehavioralReceiptCensusStanding,
+  BehavioralReceiptSelftestStanding,
+  HeadsReadingDifferentialStanding,
+}
 import std.types { String, Bool, NonEmptyStr }
 import std.integer { Int }
 
@@ -124,6 +133,10 @@ type TestStanding
   = NotATestTarget
   | TestRunByFloor { disposition: ClaimDisposition }
   | TestReportedByBazel { status: BlazeTestStatus }
+  | TestMeasuredByBehavioralReceiptPlan { standing: BehavioralReceiptPlanStanding }
+  | TestMeasuredByBehavioralReceiptCensus { standing: BehavioralReceiptCensusStanding }
+  | TestMeasuredByBehavioralReceiptSelftest { standing: BehavioralReceiptSelftestStanding }
+  | TestMeasuredByHeadsReadingDifferential { standing: HeadsReadingDifferentialStanding }
 
 type TargetStanding {
   target: Label
@@ -144,6 +157,7 @@ type StandingCause
   | BuildWasAborted { reason: AbortReason }
   | FloorDispositionUnsatisfied { disposition: ClaimDisposition }
   | BazelTestStatusUnsatisfied { status: BlazeTestStatus }
+  | TestProducerOutsideRequiredAggregate { producer: TargetProducer }
 
 type StandingVerdict
   = StandingSatisfied
@@ -169,6 +183,18 @@ type StandingVerdict
 //   verdict held; that it completed past a safety limit is a COST fact with its own authority and
 //   its own reporting line. Folding cost into the correctness verdict here would give the cost
 //   axis a second home and make a slow green witness indistinguishable from a wrong one.
+//
+// THE TWO ARMS ADDED BY `v2.workflow.floor_terminal_ledger` AFTER THIS FOLD WAS WRITTEN ARE
+// CLASSIFIED HERE RATHER THAN INHERITED, which is the whole reason this match carries no wildcard.
+// Both are UNSATISFIED and neither is a failure of the code under test:
+//
+//   `PanickedBeforeVerdict` is a claim whose evaluation panicked, so no verdict exists to admit.
+//   Reading it as satisfied would admit a claim that never answered.
+//
+//   `NotAttemptedAfterAbort` is a claim the run never reached because it was halted. This is the
+//   arm that would be most damaging to absorb: a required set that treated "never attempted" as
+//   satisfied would report itself green over a run that stopped early, which is the
+//   empty-observation narrow -- ⊥-as-answer conflated with ⊥-as-ignorance -- arriving as a green.
 //
 // `KnownRedNowPassing` does NOT satisfy, and it is the arm most likely to be argued about: the
 // witness passed, so nothing is broken in the tree — what is broken is the ROSTER, which still
@@ -196,12 +222,12 @@ fn claim_disposition_verdict(d: ClaimDisposition) -> StandingVerdict {
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: RouteGapBeforeVerdict {} } }
     RuntimeErroredBeforeVerdict =>
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: RuntimeErroredBeforeVerdict {} } }
-    ObservationUnreadableBeforeVerdict =>
-      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: ObservationUnreadableBeforeVerdict {} } }
     PanickedBeforeVerdict =>
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: PanickedBeforeVerdict {} } }
     NotAttemptedAfterAbort =>
       StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: NotAttemptedAfterAbort {} } }
+    ObservationUnreadableBeforeVerdict =>
+      StandingUnsatisfied { cause: FloorDispositionUnsatisfied { disposition: ObservationUnreadableBeforeVerdict {} } }
   }
 }
 
@@ -242,11 +268,26 @@ fn build_standing_verdict(b: BuildStanding) -> StandingVerdict {
   }
 }
 
+// The four instrument producers are not members of //:required. Reaching aggregate policy with
+// one is therefore a typed wiring refusal; it does not reinterpret the producer's observation as
+// a pass or failure and does not invent a blocking policy for the instrument.
 fn test_standing_verdict(t: TestStanding) -> StandingVerdict {
   match t {
     NotATestTarget => StandingSatisfied {}
     TestRunByFloor { disposition: d } => claim_disposition_verdict(d: d)
     TestReportedByBazel { status: s } => blaze_test_status_verdict(s: s)
+    TestMeasuredByBehavioralReceiptPlan { standing: _ } => StandingUnsatisfied {
+      cause: TestProducerOutsideRequiredAggregate { producer: BehavioralReceiptPlanProducer {} }
+    }
+    TestMeasuredByBehavioralReceiptCensus { standing: _ } => StandingUnsatisfied {
+      cause: TestProducerOutsideRequiredAggregate { producer: BehavioralReceiptCensusProducer {} }
+    }
+    TestMeasuredByBehavioralReceiptSelftest { standing: _ } => StandingUnsatisfied {
+      cause: TestProducerOutsideRequiredAggregate { producer: BehavioralReceiptSelftestProducer {} }
+    }
+    TestMeasuredByHeadsReadingDifferential { standing: _ } => StandingUnsatisfied {
+      cause: TestProducerOutsideRequiredAggregate { producer: HeadsReadingDifferentialProducer {} }
+    }
   }
 }
 
@@ -379,6 +420,27 @@ fn required_gate_decision(a: AggregateStanding) -> RequiredGateDecision {
 //   status therefore sees a failing test, which is honest about the observation and silent about
 //   the policy. Exporting it as `PASSED` was rejected: that would fabricate an observation.
 //
+//   `NotAttemptedAfterAbort` HAS AN EXACT UPSTREAM MEMBER AND TAKES IT, AND THIS ARM IS WRITTEN
+//   DOWN BECAUSE IT HAS ALREADY BEEN DECIDED TWICE, THE OTHER WAY.
+//
+//   The disposition is constructed from `NotAttempted { halted_by }` -- a claim the run never
+//   reached because it was halted, with the halt named. `extdeps.bazel.test_status` carries
+//   `TestStatusHaltedBeforeTesting` as wire number 8, `BLAZE_HALTED_BEFORE_TESTING`, meaning a
+//   test that did not run because the build was halted. That is the same fact, so this is the one
+//   arm in this export that loses NOTHING.
+//
+//   `INCOMPLETE` is the reading to resist, and it is not hypothetical: gunbc#9343 classified this
+//   arm that way on main while gunbc#9336 classified it this way, and the two met in a merge. It
+//   is the anemic choice by DESIGN section 3 -- `extdeps` models what the upstream spec says and
+//   keeps its real names, so mapping an EXACTLY representable state onto a vaguer one is a lossy
+//   projection where a faithful one exists, and it lands the value in the very pile the paragraph
+//   below flags as lossy. A reader diffing this file against that history will find an
+//   unexplained divergence and be tempted to "fix" it back; this paragraph is what stops that.
+//
+//   `PanickedBeforeVerdict` has no such member and joins `FAILED` beside
+//   `RuntimeErroredBeforeVerdict`: both are the evaluation dying, and the distinction between
+//   them stays on the `TestStanding` this was computed from.
+//
 //   `HostToolUnresolvedBeforeVerdict` and `RouteGapBeforeVerdict` BOTH become `INCOMPLETE`. Their
 //   remedies differ, so this collapse would be a defect in a carrier; it is admissible in an
 //   export because the distinguishing fact stays on the `TestStanding` the export was computed
@@ -403,16 +465,37 @@ fn blaze_test_status_of_claim_disposition(d: ClaimDisposition) -> BlazeTestStatu
     HostToolUnresolvedBeforeVerdict => TestStatusIncomplete {}
     RouteGapBeforeVerdict => TestStatusIncomplete {}
     RuntimeErroredBeforeVerdict => TestStatusFailed {}
-    ObservationUnreadableBeforeVerdict => TestStatusIncomplete {}
     PanickedBeforeVerdict => TestStatusFailed {}
-    NotAttemptedAfterAbort => TestStatusIncomplete {}
+    NotAttemptedAfterAbort => TestStatusHaltedBeforeTesting {}
+    ObservationUnreadableBeforeVerdict => TestStatusIncomplete {}
   }
 }
 
-fn blaze_test_status_of_test_standing(t: TestStanding) -> BlazeTestStatus {
+type BlazeTestStatusExport
+  = BlazeTestStatusExported { status: BlazeTestStatus }
+  | TestStandingNotExportable { producer: TargetProducer }
+
+// A producer-specific instrument observation has no honest BlazeTestStatus. Refusing the export
+// preserves the same boundary as the carrier: a differential that completed and found divergence
+// is not Bazel FAILED, and a differential that did not complete is not NO_STATUS.
+fn blaze_test_status_of_test_standing(t: TestStanding) -> BlazeTestStatusExport {
   match t {
-    NotATestTarget => TestStatusNoStatus {}
-    TestReportedByBazel { status: s } => s
-    TestRunByFloor { disposition: d } => blaze_test_status_of_claim_disposition(d: d)
+    NotATestTarget => BlazeTestStatusExported { status: TestStatusNoStatus {} }
+    TestReportedByBazel { status: s } => BlazeTestStatusExported { status: s }
+    TestRunByFloor { disposition: d } => BlazeTestStatusExported {
+      status: blaze_test_status_of_claim_disposition(d: d)
+    }
+    TestMeasuredByBehavioralReceiptPlan { standing: _ } => TestStandingNotExportable {
+      producer: BehavioralReceiptPlanProducer {}
+    }
+    TestMeasuredByBehavioralReceiptCensus { standing: _ } => TestStandingNotExportable {
+      producer: BehavioralReceiptCensusProducer {}
+    }
+    TestMeasuredByBehavioralReceiptSelftest { standing: _ } => TestStandingNotExportable {
+      producer: BehavioralReceiptSelftestProducer {}
+    }
+    TestMeasuredByHeadsReadingDifferential { standing: _ } => TestStandingNotExportable {
+      producer: HeadsReadingDifferentialProducer {}
+    }
   }
 }
