@@ -3014,63 +3014,104 @@ pub fn kernel_value_declared_type_mismatch(
     type_env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if (((formal.connective.clone() == Connective::Arrow)
-        || (actual.connective.clone() == Connective::Arrow))
-        || ((actual.children.clone().len() as i64) > 0))
-    {
-        false
-    } else {
+    kernel_value_declared_type_mismatch_bounded(
+        formal.clone(),
+        actual.clone(),
+        type_env.clone(),
+        source_indices.clone(),
+        "".to_string(),
+        0,
+    )
+}
+
+pub fn kernel_value_declared_type_mismatch_bounded(
+    mut formal: Rc<Node>,
+    mut actual: Rc<Node>,
+    mut type_env: Rc<TypeEnv>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut formal_name_override: String,
+    mut depth: i64,
+) -> bool {
+    loop {
+        if (((formal.connective.clone() == Connective::Arrow)
+            || (actual.connective.clone() == Connective::Arrow))
+            || ((actual.children.clone().len() as i64) > 0))
         {
+            break false;
+        } else {
             let formal_base = peel_where_refinement_base(formal.clone(), type_env.clone());
             let actual_name = authored_name_at(source_indices.clone(), actual.clone());
             if ((is_kernel_type(actual_name.clone()) == false)
                 || (actual_name.clone() == "Unit".to_string()))
             {
-                false
+                break false;
             } else {
+                let formal_name = if (formal_name_override.clone() == "".to_string()) {
+                    authored_name_at(source_indices.clone(), formal_base.clone())
+                } else {
+                    formal_name_override.clone()
+                };
+                if (((formal_name.clone() == "".to_string())
+                    || (qualified_last_segment(formal_name.clone())
+                        == qualified_last_segment(actual_name.clone())))
+                    || dag_can_cast(actual_name.clone(), formal_name.clone()))
                 {
-                    let formal_name = authored_name_at(source_indices.clone(), formal_base.clone());
-                    if (((formal_name.clone() == "".to_string())
-                        || (qualified_last_segment(formal_name.clone())
-                            == qualified_last_segment(actual_name.clone())))
-                        || dag_can_cast(actual_name.clone(), formal_name.clone()))
-                    {
-                        false
+                    break false;
+                } else {
+                    if (structural_carrier_template_name(
+                        formal_base.clone(),
+                        source_indices.clone(),
+                    ) == structural_carrier_template_name(
+                        actual.clone(),
+                        source_indices.clone(),
+                    )) {
+                        break false;
                     } else {
-                        if (structural_carrier_template_name(
-                            formal_base.clone(),
-                            source_indices.clone(),
-                        ) == structural_carrier_template_name(
-                            actual.clone(),
-                            source_indices.clone(),
-                        )) {
-                            false
+                        if is_kernel_type(formal_name.clone()) {
+                            break true;
                         } else {
-                            if is_kernel_type(formal_name.clone()) {
-                                true
-                            } else {
-                                match lookup_type_by_name(type_env.clone(), formal_name.clone()) {
-                                    Some(decl) => {
-                                        let decl_is_refinement_over_actual =
-                                            (((decl.connective.clone() == Connective::Conj)
-                                                && ((decl.children.clone().len() as i64) == 1))
-                                                && ((decl.type_annotation.clone() != None)
-                                                    || match decl.children.clone().first().cloned()
-                                                    {
-                                                        Some(refinement_child) => {
-                                                            (authored_name_at(
-                                                                source_indices.clone(),
-                                                                refinement_child.clone(),
-                                                            ) == actual_name.clone())
-                                                        }
-                                                        None => false,
-                                                    }));
-                                        ((((decl.connective.clone() == Connective::Conj)
-                                            || (decl.connective.clone() == Connective::Disj))
-                                            && ((decl.children.clone().len() as i64) > 0))
-                                            && (decl_is_refinement_over_actual.clone() == false))
+                            match lookup_type_by_name(type_env.clone(), formal_name.clone()) {
+                                Some(decl) => {
+                                    let decl_is_refinement_over_actual =
+                                        (((decl.connective.clone() == Connective::Conj)
+                                            && ((decl.children.clone().len() as i64) == 1))
+                                            && ((decl.type_annotation.clone() != None)
+                                                || match decl.children.clone().first().cloned() {
+                                                    Some(refinement_child) => {
+                                                        (authored_name_at(
+                                                            source_indices.clone(),
+                                                            refinement_child.clone(),
+                                                        ) == actual_name.clone())
+                                                    }
+                                                    None => false,
+                                                }));
+                                    if (((decl.connective.clone() == Connective::Conj)
+                                        || (decl.connective.clone() == Connective::Disj))
+                                        && ((decl.children.clone().len() as i64) > 0))
+                                    {
+                                        break (decl_is_refinement_over_actual.clone() == false);
+                                    } else {
+                                        if (((depth.clone() >= 16)
+                                            || (decl.name.clone() == "".to_string()))
+                                            || (qualified_last_segment(decl.name.clone())
+                                                == qualified_last_segment(formal_name.clone())))
+                                        {
+                                            break false;
+                                        } else {
+                                            {
+                                                let __tco_0 = decl.clone();
+                                                let __tco_1 = decl.name.clone();
+                                                let __tco_2 = (depth + 1);
+                                                formal = __tco_0;
+                                                formal_name_override = __tco_1;
+                                                depth = __tco_2;
+                                                continue;
+                                            }
+                                        }
                                     }
-                                    None => false,
+                                }
+                                None => {
+                                    break false;
                                 }
                             }
                         }
