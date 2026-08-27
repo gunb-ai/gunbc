@@ -1,6 +1,7 @@
 module gunbc.seed_closed_vocabulary_wildcard_census
 
-import std.types { String }
+import std.types { String, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // WHAT THIS CARRIER IS. The .dag substrate's vocabularies are CLOSED coproducts, and
 // closure is a guarantee: a fold over one either names every member or fails to compile.
@@ -63,11 +64,32 @@ type SeedWildcardDisposition =
 // One hand-written seed site whose catch-all over a closed .dag vocabulary answers with a
 // value instead of refusing. Cited by SYMBOL (DESIGN section 3): the enclosing Rust
 // function and the file that declares it, never a line offset.
+//
+// `vocabulary_authority` IS A CITATION AND IS CARRIED AS ONE. It was a `String` reading
+// "v1.core Connective", and a String naming an authority is a citation the resolver cannot
+// see: six of the eight rows named a module that does not exist -- `v1.core` (no such
+// module; `Connective` and `ExprData` are declared by `v1.std.core`) and `v1.items` (no
+// such module; `ItemKind` is declared by `v1.compiler.infer_items`). Nothing was wrong with
+// the authors; nothing could tell them. As `DeclarationRef` the same mistake is caught at
+// ingestion by the declaration index, which is DESIGN section 5's construction-over-
+// validation: the repair is not to fix the spellings but to make an unresolvable authority
+// unwritable, at which point fixing the spellings is forced rather than remembered.
+//
+// It is a LIST because one row cites two authorities -- `ExprData` for the expression forms
+// and `LiteralValue` for the literal payloads -- which the flat String had rendered as the
+// word "and". A cardinality hidden inside a sentence is the DESIGN section 2 anemic-leaf
+// shape, and the fix for it falls out of modelling the leaf rather than being a separate
+// decision.
+//
+// The separate `vocabulary: String` field is GONE rather than kept beside this one. It held
+// the decl name -- "Connective" against an authority of "v1.core Connective" -- so it was a
+// second representation of a fact the citation already carries, and it is now
+// `decl_name` on the ref. Deriving it is DESIGN section 2; keeping both would have left the
+// two free to disagree, which is exactly how the module half drifted in the first place.
 type SeedWildcardSite {
   file: String
   symbol: String
-  vocabulary: String
-  vocabulary_authority: String
+  vocabulary_authority: List<DeclarationRef>
   unhandled_forms: String
   reachability: String
   harm: String
@@ -86,8 +108,9 @@ data seed_closed_vocabulary_wildcard_sites: List<SeedWildcardSite> = [
   SeedWildcardSite {
     file: "src/v1/stage0/src/coproduct_reflection.rs",
     symbol: "concept_decl_node",
-    vocabulary: "Connective",
-    vocabulary_authority: "v1.core Connective",
+    vocabulary_authority: [
+      DeclarationRef { module_path: "v1.std.core", decl_name: "Connective", field: WholeDeclaration },
+    ],
     unhandled_forms: "NoConnective, Arrow",
     reachability: "reached: 100 single-name alias type declarations parse to NoConnective and 7 fn-type aliases parse through the same non-variant path (source-form counts over dag/ and src/v2/ at the subject ref)",
     harm: "every alias declaration in the corpus is marshalled into concept_decl_facts as the UNIT type node -- the same node a genuinely empty record produces -- so a lens reading these facts cannot distinguish an alias from a fieldless record, and reads an alias as carrying no structure at all",
@@ -97,8 +120,9 @@ data seed_closed_vocabulary_wildcard_sites: List<SeedWildcardSite> = [
   SeedWildcardSite {
     file: "src/v1/stage0/src/coproduct_reflection.rs",
     symbol: "marshal_decl_fact_node",
-    vocabulary: "ItemKind",
-    vocabulary_authority: "v1.items ItemKind",
+    vocabulary_authority: [
+      DeclarationRef { module_path: "v1.compiler.infer_items", decl_name: "ItemKind", field: WholeDeclaration },
+    ],
     unhandled_forms: "ServiceItem, OtherItem",
     reachability: "reached: decl_facts_corpus_walk emits a row for every item at every one of the six kinds -- its own sort key enumerates all six -- and 110 service declarations exist under dag/ and src/v2/ at the subject ref",
     harm: "every service declaration enters decl_facts as the unit type node, so the fact population states that a service declares nothing",
@@ -108,8 +132,9 @@ data seed_closed_vocabulary_wildcard_sites: List<SeedWildcardSite> = [
   SeedWildcardSite {
     file: "src/v1/stage0/src/coproduct_reflection.rs",
     symbol: "marshal_export_signature_node",
-    vocabulary: "ItemKind",
-    vocabulary_authority: "v1.items ItemKind",
+    vocabulary_authority: [
+      DeclarationRef { module_path: "v1.compiler.infer_items", decl_name: "ItemKind", field: WholeDeclaration },
+    ],
     unhandled_forms: "ServiceItem, OtherItem",
     reachability: "reached: shares decl_facts_for_roots with marshal_decl_fact_node, so the same population arrives",
     harm: "an export signature for a service renders as the unit node, so an interface summary derived from these facts under-states the module's surface without saying so",
@@ -119,8 +144,9 @@ data seed_closed_vocabulary_wildcard_sites: List<SeedWildcardSite> = [
   SeedWildcardSite {
     file: "src/v1/stage0/src/data_initializer_identity.rs",
     symbol: "marshal_data_initializer_projection_for_item",
-    vocabulary: "ExprData",
-    vocabulary_authority: "v1.core ExprData",
+    vocabulary_authority: [
+      DeclarationRef { module_path: "v1.std.core", decl_name: "ExprData", field: WholeDeclaration },
+    ],
     unhandled_forms: "every form except ExprRecordLit and ExprVar -- 20 of the 22 members",
     reachability: "reached: a data declaration initialised by a list literal, a call or an interpolation is ordinary and common in this corpus",
     harm: "the projection answers NotVariantValue, which is a POSITIVE claim that the initializer was inspected and is not a variant value; the state it should report is that the form has no projection rule at all, and the two are indistinguishable downstream",
@@ -130,8 +156,9 @@ data seed_closed_vocabulary_wildcard_sites: List<SeedWildcardSite> = [
   SeedWildcardSite {
     file: "src/v1/stage0/src/cli_run.rs",
     symbol: "collect_argv_input_refs",
-    vocabulary: "ExprData",
-    vocabulary_authority: "v1.core ExprData",
+    vocabulary_authority: [
+      DeclarationRef { module_path: "v1.std.core", decl_name: "ExprData", field: WholeDeclaration },
+    ],
     unhandled_forms: "every form except ExprVar and ExprStringInterp",
     reachability: "reached by the same construction as extdeps_argv_expr_token, which this change repaired: the argv position admits any expression and a call there typechecks",
     harm: "an argv element the walk cannot read contributes NO input reference, and the dead-parameter reading folds over exactly these references -- so a declared input genuinely used through an unread form is reported as dead",
@@ -141,8 +168,10 @@ data seed_closed_vocabulary_wildcard_sites: List<SeedWildcardSite> = [
   SeedWildcardSite {
     file: "src/v1/stage0/src/cli_run.rs",
     symbol: "extdeps_argv_expr_token",
-    vocabulary: "ExprData and LiteralValue",
-    vocabulary_authority: "v1.core ExprData and std.syntax LiteralValue",
+    vocabulary_authority: [
+      DeclarationRef { module_path: "v1.std.core", decl_name: "ExprData", field: WholeDeclaration },
+      DeclarationRef { module_path: "std.syntax", decl_name: "LiteralValue", field: WholeDeclaration },
+    ],
     unhandled_forms: "every form except ExprLiteral(LitStr), ExprVar and ExprStringInterp",
     reachability: "PROVEN BY EXECUTION ON THE LIVE CORPUS, not inferred, and it is the only row in this census whose arm was watched being reached. Two live sites: extdeps.git git.Core.DiffUnified0 argv[3] and git.Core.DiffNameStatus argv[4], both ExprCall. The second was invisible to the refusal run, which aborted at the first -- it appeared only once the arm announced instead of refusing, which is the argument for announcing at all. Both operations are named in test.claim.operation_argv_corpus_witness s counted expression residue, so this is the same population the materialization side already types, not a new class",
     harm: "an argv element the projection cannot read is rendered as the EMPTY STRING, and no policy predicate matches an empty token, so a leak carried by an unreadable form is reported as clean. The two readings of one corpus therefore disagree: v2.std.operation_argv counts the same elements as typed ArgvRowExpressionResidue -- seven operations, pinned in test.claim.operation_argv_corpus_witness -- while this census renders them as clean tokens",
@@ -152,8 +181,9 @@ data seed_closed_vocabulary_wildcard_sites: List<SeedWildcardSite> = [
   SeedWildcardSite {
     file: "dag/tools/self_host_std_bridge_shims/v2_std_node.rs",
     symbol: "well_formed",
-    vocabulary: "Connective",
-    vocabulary_authority: "v2.std.node Connective",
+    vocabulary_authority: [
+      DeclarationRef { module_path: "v2.std.node", decl_name: "Connective", field: WholeDeclaration },
+    ],
     unhandled_forms: "Cardinality and Instantiation were answered well-formed; both are now checked, and Arrow is named as a declared residue",
     reachability: "the arm was reachable for any node of either form; no run was watched reaching it, so the defect is established against the authority rather than against an observed input",
     harm: "CLOSED by this change. The authority connective_edges_conform requires count(children) >= 1 for BOTH Cardinality and Instantiation, so an empty node of either form passed a check the authority fails -- a fail-open in the seed-linked normalize gate, one connective away from the case review 44739 caught in the same function",
@@ -163,8 +193,9 @@ data seed_closed_vocabulary_wildcard_sites: List<SeedWildcardSite> = [
   SeedWildcardSite {
     file: "src/v1/stage0/src/v2_compiler_target_carriers.rs",
     symbol: "target_fidelity_quotient_optional",
-    vocabulary: "NamedEdgeTargetLookup",
-    vocabulary_authority: "v2.std.node NamedEdgeTargetLookup",
+    vocabulary_authority: [
+      DeclarationRef { module_path: "v2.std.node", decl_name: "NamedEdgeTargetLookup", field: WholeDeclaration },
+    ],
     unhandled_forms: "Ambiguous, Absent",
     reachability: "reached whenever the named edge is absent, which is the ordinary case",
     harm: "an AMBIGUOUS named edge is answered as ABSENT, so a target model carrying two fidelity quotients reads as carrying none and decodes Lossless",

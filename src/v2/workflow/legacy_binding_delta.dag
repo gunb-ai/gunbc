@@ -2,11 +2,18 @@ module v2.workflow.legacy_binding_delta
 
 import std.types { String, Bool, Int, List }
 import std.content_hash { Fnv1a64Structural }
-import std.occurrence_identity { OccurrenceId }
+import std.occurrence_identity {
+  OccurrenceId,
+  ScopedOccurrenceRef,
+  NodeOccurrenceIdentity,
+  OccurrenceSynthetic,
+  OccurrenceMinted,
+  OccurrenceProjected,
+  scoped_occurrence_ref_in_scope
+}
 import v2.workflow.legacy_binding_observation {
   CompleteLegacyObservation,
   LegacyBindingObservationSubject,
-  SubjectOccurrenceRef,
   observed_occurrence_ids,
   legacy_subject_identity
 }
@@ -72,21 +79,67 @@ import v2.workflow.legacy_binding_observation {
 // unattributable, and the second names the occurrence on whose behalf the segment exists. A
 // projection that inserts a qualifier is acting FOR some reference, and it knows which.
 type ProjectionProvenanceEntry
-  = ProjectedFromSource { source: SubjectOccurrenceRef, target: SubjectOccurrenceRef }
-  | ProjectedAsInsertion { target: SubjectOccurrenceRef, caused_by: SubjectOccurrenceRef }
+  = ProjectedFromSource { source: ScopedOccurrenceRef, target: ScopedOccurrenceRef }
+  | ProjectedAsInsertion { target: ScopedOccurrenceRef, caused_by: ScopedOccurrenceRef }
+
+// THE INSERTION ROW IS DERIVED FROM THE NODE THE PROJECTOR BUILT, NEVER AUTHORED BESIDE IT.
+//
+// ProjectedAsInsertion was, until std.occurrence_identity grew its third arm, A CONSTRUCTOR NO
+// PRODUCER COULD REACH. The projector's only spelling for a node it created was OccurrenceSynthetic
+// -- "no authored occurrence", saying nothing about why the node exists -- so the causing reference
+// was gone at construction and no later pass could recover it. The dichotomy at the top of this
+// module closes every route by which it might have been reconstructed: there is no admissible
+// cross-compile key, and a cause is not a property of the finished tree.
+//
+// So the fact now rides on the node, and this function READS it rather than asking a caller to
+// restate it. That ordering is the whole point: a hand-authored insertion row is a second
+// representation of what the projector already knew, free to disagree with the node it describes,
+// and nothing would ever adjudicate the disagreement.
+//
+// THE THREE ARMS ARE THE THREE ARMS OF THE ALGEBRA, and the refusal is the one that did not exist
+// before. NotAnInsertion is not-applicable and is not a defect: a carried-forward node is minted in
+// the projected graph and its correspondence to the base is the copy the projector performed, which
+// this module takes as ProjectedFromSource. InsertionCauseLost is the defect -- a node the
+// projector created without stating what it was created FOR -- and it is now a typed, located
+// refusal instead of a silent OccurrenceSynthetic that read as a successful projection.
+type InsertionProvenanceDerivation
+  = InsertionEntryDerived { entry: ProjectionProvenanceEntry }
+  | NotAnInsertion { target: ScopedOccurrenceRef }
+  | InsertionCauseLost { target_scope: Fnv1a64Structural }
+
+fn insertion_provenance_entry(
+  target_scope: Fnv1a64Structural,
+  identity: NodeOccurrenceIdentity
+) -> InsertionProvenanceDerivation {
+  match identity {
+    OccurrenceProjected { id: id, caused_by: caused_by } =>
+      InsertionEntryDerived {
+        entry: ProjectedAsInsertion {
+          target: ScopedOccurrenceRef { scope: target_scope, occurrence: id },
+          caused_by: caused_by,
+        },
+      }
+    OccurrenceMinted { id: id } =>
+      NotAnInsertion {
+        target: ScopedOccurrenceRef { scope: target_scope, occurrence: id },
+      }
+    OccurrenceSynthetic =>
+      InsertionCauseLost { target_scope: target_scope }
+  }
+}
 
 type ProjectionProvenance {
   entries: List<ProjectionProvenanceEntry>
 }
 
-fn provenance_source_refs(provenance: ProjectionProvenance) -> List<SubjectOccurrenceRef> {
+fn provenance_source_refs(provenance: ProjectionProvenance) -> List<ScopedOccurrenceRef> {
   provenance.entries |> flat_map(entry => match entry {
     ProjectedFromSource { source: s, target: _ } => [s]
     ProjectedAsInsertion { target: _, caused_by: c } => [c]
   })
 }
 
-fn provenance_target_refs(provenance: ProjectionProvenance) -> List<SubjectOccurrenceRef> {
+fn provenance_target_refs(provenance: ProjectionProvenance) -> List<ScopedOccurrenceRef> {
   provenance.entries |> map(entry => match entry {
     ProjectedFromSource { source: _, target: t } => t
     ProjectedAsInsertion { target: t, caused_by: _ } => t
@@ -105,12 +158,16 @@ fn provenance_carried_source_ids(provenance: ProjectionProvenance) -> List<Int> 
   })
 }
 
-fn refs_in_scope(refs: List<SubjectOccurrenceRef>, identity: Fnv1a64Structural) -> List<Int> {
-  refs |> filter(r => r.subject_identity.digest == identity.digest) |> map(r => r.occurrence.value)
+fn refs_in_scope(refs: List<ScopedOccurrenceRef>, identity: Fnv1a64Structural) -> List<Int> {
+  refs
+    |> filter(r => scoped_occurrence_ref_in_scope(occurrence_ref: r, scope: identity))
+    |> map(r => r.occurrence.value)
 }
 
-fn refs_out_of_scope(refs: List<SubjectOccurrenceRef>, identity: Fnv1a64Structural) -> List<Int> {
-  refs |> filter(r => r.subject_identity.digest != identity.digest) |> map(r => r.occurrence.value)
+fn refs_out_of_scope(refs: List<ScopedOccurrenceRef>, identity: Fnv1a64Structural) -> List<Int> {
+  refs
+    |> filter(r => !scoped_occurrence_ref_in_scope(occurrence_ref: r, scope: identity))
+    |> map(r => r.occurrence.value)
 }
 
 // PROVENANCE TOTALITY IS SIX LAWS, AND EACH ONE FAILS A DIFFERENT LIE.

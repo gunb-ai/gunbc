@@ -165,8 +165,10 @@ test fn witness_managed_unit_owner_is_already_converged() -> Bool {
 // annotation indented into a declaration body is a located parse refusal rather than a style note --
 // and it refuses at PREPARATION, taking every witness in the corpus with it rather than failing the
 // row it sits in. Worth recording where the check does and does not live: --required-cited-symbol
-// parses the corpus and passed this file clean, because annotation grain is enforced in the floor's
-// preparation and not in that census. A green parse is not evidence that an annotation is placed
+// PARSED the corpus and passed this file clean, because annotation grain is enforced in the floor's
+// preparation and not in that census. Past tense as of 2026-08-26 -- that flag and its census are
+// deleted -- but the placement fact this row records is a property of the floor's preparation, so
+// it is unaffected by which census no longer runs beside it. A green parse is not evidence that an annotation is placed
 // legally, which is exactly the class of "my local check passed" this lane has now been bitten by
 // twice in one night.
 test fn witness_retired_runner_slot_owner_refuses() -> Bool {
