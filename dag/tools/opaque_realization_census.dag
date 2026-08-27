@@ -924,6 +924,55 @@ fn split_subject_count(rows: List<SubjectConsistencyRow>) -> Int {
   )
 }
 
+fn subject_consistency_of(preserved: Int, bypassed: Int) -> SubjectConsistency {
+  if preserved > 0 && bypassed > 0 {
+    SubjectDispositionSplit { preserved: preserved, bypassed: bypassed }
+  } else if preserved > 0 {
+    SubjectUniformlyPreserved { preserved: preserved }
+  } else if bypassed > 0 {
+    SubjectUniformlyBypassed { bypassed: bypassed }
+  } else {
+    SubjectHasNoOccurrences
+  }
+}
+
+fn standing_text(s: DeclarationBodyStanding) -> String {
+  match s {
+    DeclaredOpaque => "opaque"
+    DeclaredWithBody => "has-body"
+    DeclarationSourceUnresolved { attempted: a } => concat("source-unresolved(", concat(a, ")"))
+  }
+}
+
+fn subject_consistency_rows(dispositions: List<UseSiteDisposition>, claims: List<RealizationClaim>) -> List<SubjectConsistencyRow> {
+  fold(
+    claims,
+    init: [],
+    f: (acc, claim) =>
+      let key = realization_claim_key(declaring_file: claim.declaring_file, name: claim.name)
+      if acc |> any(r => realization_claim_key(declaring_file: r.declaring_file, name: r.name) == key) {
+        acc
+      } else {
+        let tally = subject_disposition_tally(dispositions: dispositions, key: key)
+        let preserved = tally.preserved
+        let bypassed = tally.bypass_rebound + tally.bypass_currently_compatible
+        if preserved == 0 && bypassed == 0 {
+          acc
+        } else {
+          list_push(acc, SubjectConsistencyRow {
+            declaring_file: claim.declaring_file,
+            name: claim.name,
+            consistency: subject_consistency_of(preserved: preserved, bypassed: bypassed)
+          })
+        }
+      }
+  )
+}
+
+fn opaque_subject_row_text(r: OpaqueSubjectRow) -> String {
+  join([r.declaring_file, r.name, r.source_module, standing_text(s: r.standing)], "\t")
+}
+
 fn subject_consistency_text(c: SubjectConsistency) -> String {
   match c {
     SubjectUniformlyPreserved { preserved: p } => concat("uniformly-preserved\t", to_string(value: p))
