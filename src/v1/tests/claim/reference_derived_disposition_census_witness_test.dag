@@ -92,4 +92,5 @@ test fn census_counts_each_arm_separately() -> Bool {
     && census.own_module == 1
     && census.registry_absent == 1
     && census.export_proof_failed == 1
+    && census.candidates == census.survived + census.own_module + census.registry_absent + census.export_proof_failed
 }
