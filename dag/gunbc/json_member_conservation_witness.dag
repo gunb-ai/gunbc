@@ -11,6 +11,7 @@ import extdeps.languages.json.member_conservation {
   MemberDefective,
   MemberDispositionedTwice,
   MemberForeignToObject,
+  PartitionSourcePathMismatch,
   MemberLost,
   MemberUnmodeled,
   MembersConserved,
@@ -115,7 +116,7 @@ data foreign_partition: ObjectMemberPartition = ObjectMemberPartition {
 
 fn a_foreign_occurrence_is_named() -> Bool {
   match conservation_verdict(partition: foreign_partition) {
-    MemberForeignToObject { object_path, ordinal } => ordinal == 3
+    MemberForeignToObject { object_path, occurrence_path, ordinal } => ordinal == 3
     other => false
   }
 }
@@ -129,12 +130,77 @@ fn duplicate_keys_are_separate_occurrences() -> Bool {
     && nth(occurrences: subject_occurrences, ordinal: 2).member.key == "type"
 }
 
+// THE CASE THE FIRST VERSION OF THIS WITNESS MISSED, AND IT IS THE COMMON ONE. The foreign
+// disposition above is a foreign ORDINAL from the same object; every real document instead has
+// many SIBLING objects that each carry an ordinal 0, an ordinal 1, and so on. Joining on the
+// ordinal alone accepts a member of one PID entry as the corresponding member of its sibling --
+// which is the silent substitution this module exists to stop, committed one level down inside the
+// module that stops it.
+data sibling_occurrences: List<JsonMemberOccurrence> = occurrences_of_object(object_path: "zones[0].pids[2]", value: subject)
+
+fn sibling_nth(ordinal: Int) -> JsonMemberOccurrence {
+  filter(sibling_occurrences, occurrence => occurrence.identity.ordinal == ordinal).first()
+}
+
+// THIS OBJECT'S OWN MEMBERS ARE ALL ACCOUNTED FOR EXACTLY ONCE, and one extra disposition names an
+// occurrence of the SIBLING object at an ordinal this object also has. Under a full-identity join
+// that extra is foreign and is named as such. Under an ordinal-only join it is indistinguishable
+// from a second claim on this object's ordinal 1 -- so the ordinal-only reading reports the wrong
+// defect about the wrong object, which is how a decoder's cross-object substitution would have
+// been described.
+data sibling_substituted_partition: ObjectMemberPartition = ObjectMemberPartition {
+  object_path: "zones[0].pids[1]",
+  source: subject_occurrences,
+  dispositions: [
+    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name" },
+    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type" },
+    MemberDefective { occurrence: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated" },
+    MemberUnmodeled { occurrence: nth(occurrences: subject_occurrences, ordinal: 3) },
+    MemberUnmodeled { occurrence: sibling_nth(ordinal: 1) },
+  ],
+}
+
+fn a_sibling_object_cannot_satisfy_this_objects_obligation() -> Bool {
+  let ordinals_all_present =
+    sibling_occurrences.length() == subject_occurrences.length()
+  let caught = match conservation_verdict(partition: sibling_substituted_partition) {
+    MemberForeignToObject { object_path, occurrence_path, ordinal } =>
+      object_path == "zones[0].pids[1]" && occurrence_path == "zones[0].pids[2]" && ordinal == 1
+    other => false
+  }
+  ordinals_all_present && caught
+}
+
+// THE PARTITION'S OWN PATH IS CHECKED AGAINST ITS SOURCE TOO, because it is a third authored copy
+// of the same fact: without this a partition can name one object while every occurrence in it
+// describes another, and the identity join then holds perfectly -- about something else.
+data mislabelled_partition: ObjectMemberPartition = ObjectMemberPartition {
+  object_path: "zones[0].pids[9]",
+  source: subject_occurrences,
+  dispositions: [
+    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 0), role: "controller_name" },
+    MemberConsumed { occurrence: nth(occurrences: subject_occurrences, ordinal: 1), role: "controller_type" },
+    MemberDefective { occurrence: nth(occurrences: subject_occurrences, ordinal: 2), cause: "identity field duplicated" },
+    MemberUnmodeled { occurrence: nth(occurrences: subject_occurrences, ordinal: 3) },
+  ],
+}
+
+fn a_partition_labelled_for_another_object_is_named() -> Bool {
+  match conservation_verdict(partition: mislabelled_partition) {
+    PartitionSourcePathMismatch { partition_path, occurrence_path, ordinal } =>
+      partition_path == "zones[0].pids[9]" && occurrence_path == "zones[0].pids[1]"
+    other => false
+  }
+}
+
 fn json_member_conservation_witness() -> ProcessExit {
   if the_honest_partition_conserves()
     && the_substitution_is_caught_and_named()
     && a_dropped_member_is_named()
     && a_foreign_occurrence_is_named()
-    && duplicate_keys_are_separate_occurrences() {
+    && duplicate_keys_are_separate_occurrences()
+    && a_sibling_object_cannot_satisfy_this_objects_obligation()
+    && a_partition_labelled_for_another_object_is_named() {
     ExitSuccess
   } else {
     exit_failure(reason: "JSON member conservation: the identity join, the substitution catch, or duplicate-key occurrence separation changed")

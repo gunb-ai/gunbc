@@ -73,7 +73,8 @@ type ConservationVerdict
   = MembersConserved { member_count: Int }
   | MemberLost { object_path: NonEmptyStr, ordinal: Int }
   | MemberDispositionedTwice { object_path: NonEmptyStr, ordinal: Int, times: Int }
-  | MemberForeignToObject { object_path: NonEmptyStr, ordinal: Int }
+  | MemberForeignToObject { object_path: NonEmptyStr, occurrence_path: NonEmptyStr, ordinal: Int }
+  | PartitionSourcePathMismatch { partition_path: NonEmptyStr, occurrence_path: NonEmptyStr, ordinal: Int }
 
 fn disposition_occurrence(disposition: MemberDisposition) -> JsonMemberOccurrence {
   match disposition {
@@ -119,12 +120,34 @@ fn occurrences_of_object(object_path: NonEmptyStr, value: JsonValue) -> List<Jso
   }
 }
 
-fn times_dispositioned(dispositions: List<MemberDisposition>, ordinal: Int) -> Int {
+// THE JOIN COMPARES THE WHOLE IDENTITY, AND THE FIRST VERSION OF THIS MODULE DID NOT. It declared
+// an identity of object path plus ordinal and then joined on the ordinal alone, so
+//
+//   source occurrence       zones[0].pids[0] / ordinal 0
+//   disposition occurrence  zones[0].pids[1] / ordinal 0
+//
+// were accepted as the same occurrence -- the axis that distinguishes them was never consulted.
+// That defeats the exact wall everything above it cites: a PID decoder could classify a member of
+// one controller as the corresponding member of its sibling and conserve cleanly, which is the
+// silent-substitution failure this module exists to stop, one level down.
+//
+// The first witness did not catch it because its "foreign" disposition was a foreign ORDINAL from
+// the same object, not a sibling object carrying an ordinal the subject also has. Two objects with
+// overlapping ordinals is the ordinary case -- every object has an ordinal 0 -- so the untested
+// half was the common one.
+fn occurrence_identity_equal(a: JsonOccurrenceIdentity, b: JsonOccurrenceIdentity) -> Bool {
+  a.object_path == b.object_path && a.ordinal == b.ordinal
+}
+
+fn times_dispositioned(dispositions: List<MemberDisposition>, identity: JsonOccurrenceIdentity) -> Int {
   fold(
     dispositions,
     init: 0,
     f: (acc, disposition) =>
-      if disposition_occurrence(disposition: disposition).identity.ordinal == ordinal {
+      if occurrence_identity_equal(
+        a: disposition_occurrence(disposition: disposition).identity,
+        b: identity,
+      ) {
         acc + 1
       } else {
         acc
@@ -132,8 +155,29 @@ fn times_dispositioned(dispositions: List<MemberDisposition>, ordinal: Int) -> I
   )
 }
 
-fn source_contains_ordinal(source: List<JsonMemberOccurrence>, ordinal: Int) -> Bool {
-  fold(source, init: false, f: (acc, occurrence) => acc || occurrence.identity.ordinal == ordinal)
+fn source_contains_identity(source: List<JsonMemberOccurrence>, identity: JsonOccurrenceIdentity) -> Bool {
+  fold(
+    source,
+    init: false,
+    f: (acc, occurrence) =>
+      acc || occurrence_identity_equal(a: occurrence.identity, b: identity),
+  )
+}
+
+// THE PARTITION'S OWN PATH IS A THIRD INDEPENDENTLY AUTHORED COPY OF THE SAME FACT, so the SOURCE
+// is checked against it rather than trusted. Without this a partition could name one object while
+// every occurrence in it describes another, and the identity join below would hold perfectly over
+// the wrong object -- consistent, and about something else.
+//
+// ONLY THE SOURCE IS CHECKED THIS WAY, AND THAT IS DELIBERATE. Guarding the DISPOSITIONS the same
+// way was written first and then removed, because it made the identity join's own path comparison
+// unreachable: with both populations pre-filtered to one path, comparing paths inside the join can
+// never decide anything, and a comparison whose disagreeing case cannot be authored is a
+// decoration that will be cited as coverage. Measured, not reasoned: under the disposition guard,
+// reducing the join to an ordinal-only comparison left the sibling-object witness GREEN. With the
+// guard gone the join is what catches a sibling occurrence, and that mutation goes red.
+fn first_path_mismatch(partition_path: NonEmptyStr, occurrences: List<JsonMemberOccurrence>) -> List<JsonMemberOccurrence> {
+  filter(occurrences, occurrence => occurrence.identity.object_path != partition_path)
 }
 
 // THE JOIN RUNS IN BOTH DIRECTIONS, and one direction alone is not the law. Source-to-dispositions
@@ -142,6 +186,14 @@ fn source_contains_ordinal(source: List<JsonMemberOccurrence>, ordinal: Int) -> 
 // Checking only the first would let a decoder pad its partition with occurrences from a sibling
 // object and still report every source member as covered.
 fn conservation_verdict(partition: ObjectMemberPartition) -> ConservationVerdict {
+  let stray_source = first_path_mismatch(partition_path: partition.object_path, occurrences: partition.source)
+  if stray_source.length() > 0 {
+    PartitionSourcePathMismatch {
+      partition_path: partition.object_path,
+      occurrence_path: stray_source.first().identity.object_path,
+      ordinal: stray_source.first().identity.ordinal,
+    }
+  } else {
   let lost_or_repeated = fold(
     partition.source,
     init: MembersConserved { member_count: partition.source.length() },
@@ -150,7 +202,7 @@ fn conservation_verdict(partition: ObjectMemberPartition) -> ConservationVerdict
         MembersConserved { member_count } => {
           let n = times_dispositioned(
             dispositions: partition.dispositions,
-            ordinal: occurrence.identity.ordinal,
+            identity: occurrence.identity,
           )
           if n == 0 {
             MemberLost {
@@ -178,17 +230,22 @@ fn conservation_verdict(partition: ObjectMemberPartition) -> ConservationVerdict
         f: (acc, disposition) =>
           match acc {
             MembersConserved { member_count: n } => {
-              let ordinal = disposition_occurrence(disposition: disposition).identity.ordinal
-              if source_contains_ordinal(source: partition.source, ordinal: ordinal) {
+              let identity = disposition_occurrence(disposition: disposition).identity
+              if source_contains_identity(source: partition.source, identity: identity) {
                 MembersConserved { member_count: n }
               } else {
-                MemberForeignToObject { object_path: partition.object_path, ordinal: ordinal }
+                MemberForeignToObject {
+                  object_path: partition.object_path,
+                  occurrence_path: identity.object_path,
+                  ordinal: identity.ordinal,
+                }
               }
             }
             other => acc
           },
       )
     other => lost_or_repeated
+  }
   }
 }
 
