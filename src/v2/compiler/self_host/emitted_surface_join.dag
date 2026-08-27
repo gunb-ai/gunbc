@@ -18,7 +18,7 @@ import v2.compiler.self_host.emitted_surface_census {
 }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { contains, filter, fold_list, list_map, list_snoc_item }
+import v2.std.algebra { contains, filter, fold_list, is_empty, list_map, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -157,10 +157,7 @@ fn module_surfaces_under_entry(eo: EntryObservation, source_module: String) -> L
 }
 
 fn module_present_under_entry(eo: EntryObservation, source_module: String) -> Bool {
-  match module_surfaces_under_entry(eo: eo, source_module: source_module) {
-    Empty => false
-    Cons { head: _, tail: _ } => true
-  }
+  is_empty(xs: module_surfaces_under_entry(eo: eo, source_module: source_module)) == false
 }
 
 fn reexport_members_under_entry(eo: EntryObservation, source_module: String) -> List<String> {
