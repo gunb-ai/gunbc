@@ -1,0 +1,14 @@
+module v2.test.claim.module_own_declaration_peer_beta
+
+import v2.std.integer { Int }
+
+// THE OTHER HALF OF THE HOMONYM PAIR. Structurally identical to the alpha peer and differing only
+// in the sentinel value, so neither peer is privileged by anything the author wrote -- which is
+// precisely the state in which a single shared bare slot has to pick one, and nothing says which.
+fn section_sentinel() -> Int {
+  200
+}
+
+fn beta_entry() -> Int {
+  section_sentinel()
+}

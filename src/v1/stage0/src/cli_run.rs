@@ -44245,6 +44245,15 @@ pub struct PreparedClaimScope {
     /// counted here so the population is a measured quantity rather than an assumption, which is
     /// what decides whether the honest arm — refusing the ambiguous lookup — is affordable or
     /// whether the terminal per-module-environment correction has to land first.
+    ///
+    /// THE COUNT IS UNCHANGED AND ITS SUBJECT HAS NARROWED, which is worth saying because a
+    /// reader who takes it as the silent-pick population will now overcount.
+    /// [`v1_interpreter::InterpContext::lookup_fn_from`] resolves a reference to the referring
+    /// file's own module before this shared slot, so for every name in this count the one
+    /// direction that used to be decided by nothing the author wrote — a module losing its OWN
+    /// declaration to an unrelated homonym — is decided by the module now. What remains counted
+    /// here is the genuinely undecided direction: a bare reference to a name the referring
+    /// module does not declare, claimed by two or more modules it reached.
     pub ambiguous_bare_names: usize,
 }
 

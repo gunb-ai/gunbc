@@ -2354,6 +2354,16 @@ pub struct PreparedScopeIndexes {
     pub emit_graph_info: Rc<EmitGraphInfo>,
     fn_nodes: HashMap<String, Rc<Node>>,
     ambiguous_bare_function_names: std::collections::HashSet<String>,
+    /// SOURCE FILE -> DECLARING MODULE PATH, for the one lookup tier that needs to know where a
+    /// reference was authored.
+    ///
+    /// `fn_nodes` holds one bare slot per name and one qualified slot per declaration, so two
+    /// modules that both declare `section_1` fight over the bare slot and the loser's callers
+    /// silently execute the winner's body. This map is what lets a reference authored inside a
+    /// module reach ITS OWN declaration first -- the same `local`-before-`parents` order
+    /// `v1_compiler_infer_sigs::lookup_resolved_sig` already applies at typecheck, which is why
+    /// the collapse was silent: the type layer resolved per module and the runtime did not.
+    file_module_paths: HashMap<String, String>,
     service_ops: HashMap<String, ServiceOp>,
 }
 
@@ -2621,7 +2631,18 @@ impl InterpContext {
     ///
     /// THIS IS STILL NAME-BASED RESOLUTION WITH A PRECEDENCE RULE, not a wall. An entry module
     /// now wins its own colliding helper, which makes the compute_board `refusal_is` theft
-    /// unwritable for that caller. A non-entry homonym in the same scope still binds by order.
+    /// unwritable for that caller.
+    ///
+    /// AND PRECEDENCE IS NO LONGER WHAT DECIDES A NON-ENTRY MODULE'S OWN REFERENCES. This clause
+    /// used to end "a non-entry homonym in the same scope still binds by order", which is the
+    /// state that emitted one plan document carrying another plan's entire body: two carriers
+    /// declaring `section_1` .. `section_9`, one bare slot, the loser's own body fold executing
+    /// the winner's sections. [`InterpContext::lookup_fn_from`] now resolves a reference to the
+    /// referring file's OWN module first whenever the bare name is claimed by more than one
+    /// module, so a module reaching its own declaration is no longer a fact about walk order.
+    /// The residue is narrower and named: a bare reference to a name the referring module does
+    /// NOT declare, claimed by two OTHER modules, is still picked by order with nothing said.
+    ///
     /// Next rung: DESIGN §3 namespace-only — a qualified reference has exactly one declarer, so
     /// ambiguous bare binding has no constructor (`floor_bare_name_ambiguity_next_rung_trigger`).
     pub fn build_scope_indexes_with_module_order(
@@ -2652,11 +2673,15 @@ impl InterpContext {
             };
         let mut fn_nodes = HashMap::new();
         let mut bare_name_counts = HashMap::<String, usize>::new();
+        let mut file_module_paths = HashMap::<String, String>::new();
         let mut service_ops = HashMap::new();
         for module in modules_to_walk {
             let module_path = authored_name_at(source_indices.clone(), module.module.clone());
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
+                if !module_path.is_empty() && !item.span.file.is_empty() {
+                    file_module_paths.insert(item.span.file.to_string(), module_path.clone());
+                }
                 if !name.is_empty() {
                     *bare_name_counts.entry(name.clone()).or_default() += 1;
                     if first_write_wins {
@@ -2707,6 +2732,7 @@ impl InterpContext {
             emit_graph_info: graph.emit_graph_info.clone(),
             fn_nodes,
             ambiguous_bare_function_names,
+            file_module_paths,
             service_ops,
         })
     }
@@ -2959,6 +2985,41 @@ impl InterpContext {
     }
 
     fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {
+        self.indexes.fn_nodes.get(name)
+    }
+
+    /// [`lookup_fn`], but a BARE name claimed by more than one module in this scope resolves to
+    /// the declaration in the referring file's OWN module before the shared bare slot.
+    ///
+    /// The bare slot is a single map entry: whichever module the walk visited last (or first,
+    /// under a precedence order) owns it, and every other module's references to that spelling
+    /// silently execute the winner's body. That is not shadowing the author wrote -- it is a
+    /// module losing its own declaration to an unrelated homonym, and it produced
+    /// `docs/plans/import-namespace-program.md` carrying `v2-corpus-self-host`'s entire body,
+    /// because both plan carriers declare `section_1` .. `section_9` and `status_block`.
+    ///
+    /// THE TIER IS GATED ON `ambiguous_bare_function_names`, so the resolution of every name
+    /// exactly one module declares is byte-for-byte what it was. Only the colliding population
+    /// moves, and it moves toward the module that authored the reference.
+    ///
+    /// THIS IS NOT THE NAMESPACE PROGRAM AND DOES NOT CLAIM TO BE. A bare reference to a name
+    /// the referring module does NOT declare still falls through to the shared slot, so a
+    /// cross-module homonym reached from a third module is still picked by precedence with
+    /// nothing said about it. That residue is `PreparedClaimScope::ambiguous_bare_names`'s
+    /// subject and retires with namespace-only resolution, where a reference has exactly one
+    /// declarer by construction.
+    fn lookup_fn_from(&self, name: &str, site_file: &str) -> Option<&Rc<Node>> {
+        if !name.contains('.')
+            && !site_file.is_empty()
+            && self.indexes.ambiguous_bare_function_names.contains(name)
+        {
+            if let Some(module_path) = self.indexes.file_module_paths.get(site_file) {
+                let qualified = format!("{}.{}", module_path, name);
+                if let Some(node) = self.indexes.fn_nodes.get(&qualified) {
+                    return Some(node);
+                }
+            }
+        }
         self.indexes.fn_nodes.get(name)
     }
 
@@ -3734,7 +3795,7 @@ fn eval_var(
     let name = ctx.resolve(sym);
     if let Some(info) = v1_rt::map_get(&ctx.item_registry, name.clone()) {
         if info.kind == ItemKind::DataItem {
-            if let Some(fn_node) = ctx.lookup_fn(&name) {
+            if let Some(fn_node) = ctx.lookup_fn_from(&name, node.span.file.as_str()) {
                 if let Some(ref body) = fn_node.body {
                     if let ExprData::ExprVar { .. } = &*body.expr_data {
                         if expr_var_name_at(body.clone(), ctx.si()) == name {
@@ -3752,7 +3813,7 @@ fn eval_var(
             }
         }
         if matches!(info.kind, ItemKind::FuncItem | ItemKind::FnItem) {
-            if let Some(fn_node) = ctx.lookup_fn(&name) {
+            if let Some(fn_node) = ctx.lookup_fn_from(&name, node.span.file.as_str()) {
                 return Ok(Value::Fn {
                     node: fn_node.clone(),
                 });
@@ -5330,7 +5391,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // because reaching it at all required the free-function table to have answered first.
     let fn_node = match lexically_bound_fn {
         Some(node) => node,
-        None => match ctx.lookup_fn(&func_name) {
+        None => match ctx.lookup_fn_from(&func_name, node.span.file.as_str()) {
             Some(node) => node.clone(),
             None => {
                 return Err(InterpError::NoSuchFunction {
