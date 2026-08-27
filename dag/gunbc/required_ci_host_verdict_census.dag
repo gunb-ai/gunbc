@@ -90,7 +90,7 @@ data required_ci_host_verdict_rows: List<RequiredCiHostVerdictRow> = [
     lane: BuildLane,
     host_site: "v1_compiler.cli_run run_required_v2_emission plus claim_executor RequiredCiPhase::V2Emission",
     relation: RealizesCarrier {
-      carrier: decl_ref(module_path: "v2.compiler.00_compile", decl_name: "compile"),
+      carrier: decl_ref(module_path: "v2.compiler.compile", decl_name: "compile"),
       host_effect_only: "the host supplies source acquisition and emission transport, then preserves the compiler's Completed, Refused, and NotExecuted distinction; the remaining defect is roster authority, not a second semantic compiler verdict"
     }
   },
