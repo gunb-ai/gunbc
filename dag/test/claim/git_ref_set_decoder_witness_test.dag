@@ -145,3 +145,38 @@ test fn nonzero_exit_refuses_the_read_and_preserves_its_cause() -> Bool {
     GitRefSetUndecodable { record_index: _, raw_record: _, reason: _ } => false
   }
 }
+
+// THE COMPARATOR'S RELATION TO GIT'S, MECHANISED RATHER THAN ONLY ASSERTED. The ordering witnesses
+// above establish that the check refuses a decreasing pair; they say nothing about WHICH ORDER it is
+// enforcing, and that is the fact the enumeration annotation actually claims. git orders refnames
+// BYTEWISE; string_is_lexicographically_before compares CODE POINTS; the two agree over well-formed
+// UTF-8 because that encoding is order-preserving.
+//
+// THE DISCRIMINATING PAIR IS ASCII-vs-MULTIBYTE, chosen because it separates our comparator from the
+// one plausible wrong replacement. "refs/heads/z" and "refs/heads/e-acute" (U+00E9, bytes C3 A9):
+//
+//   bytes       0x7A < 0xC3   -> z first
+//   code points 0x7A < 0xE9   -> z first
+//   locale collation           -> e-acute sorts near "e", BEFORE z
+//
+// So a locale-aware comparator disagrees with git on this exact pair, and it is the substitution the
+// annotation warns about because it looks like an improvement. These two rows fail if anyone makes
+// it: the ascending row would refuse and the descending row would be accepted. A pair of ASCII names
+// could not have caught it -- every comparator agrees there, which is why the existing rows above,
+// correct as they are, do not cover this claim.
+test fn a_multibyte_refname_orders_after_ascii_as_git_orders_it() -> Bool {
+  let raw = concat(
+    concat(ref_record(name: "refs/heads/z", oid: a_oid, symref: ""), "\n"),
+    concat(ref_record(name: "refs/heads/é", oid: b_oid, symref: ""), "\n"),
+  )
+  count(observed_refs(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: ""))) == 2
+}
+
+test fn a_multibyte_refname_before_ascii_refuses_as_out_of_order() -> Bool {
+  let raw = concat(
+    concat(ref_record(name: "refs/heads/é", oid: a_oid, symref: ""), "\n"),
+    concat(ref_record(name: "refs/heads/z", oid: b_oid, symref: ""), "\n"),
+  )
+  is_undecodable(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
