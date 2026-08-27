@@ -223,6 +223,44 @@ fn oci_digest_parser_does_not_reuse_authored_identity() {
 }
 
 #[test]
+fn expected_red_roster_items_remain_annotation_subjects() {
+    let parsed = parse_source(
+        include_str!("../../expected_red_roster_join.dag"),
+        "src/v1/expected_red_roster_join.dag",
+        occurrence_id_allocator_initial(),
+    );
+    assert!(parsed.result.error.is_none(), "{:?}", parsed.result.error);
+    let module = parsed
+        .result
+        .module
+        .as_ref()
+        .expect("successful parse module");
+    let synthetic_items: Vec<String> = module
+        .children
+        .iter()
+        .filter(|item| {
+            matches!(
+                item.occurrence_identity.as_ref(),
+                NodeOccurrenceIdentity::OccurrenceSynthetic
+            )
+        })
+        .map(|item| item.name.clone())
+        .collect();
+    let depth_one = parsed
+        .occurrence_transport
+        .index
+        .entries
+        .iter()
+        .filter(|entry| entry.containment.ancestors.len() == 1)
+        .count();
+    assert_eq!(
+        depth_one,
+        module.children.len() + module.params.len(),
+        "every module item/import must remain an annotation subject; synthetic items={synthetic_items:?}"
+    );
+}
+
+#[test]
 fn occurrence_transport_round_trips_with_node_identity_and_paths() {
     let source = "module occurrence.serde\n\nfn left(x: Int) -> Int { x }\nfn right(x: Int) -> Int { left(x) }\n";
     let parsed = parse_source(
