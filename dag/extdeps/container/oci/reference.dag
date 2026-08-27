@@ -1,0 +1,266 @@
+module extdeps.container.oci.reference
+
+import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire }
+import extdeps.dns.domain_name { HostName, domain_name_wire }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import std.error_primitives { Result, Ok, Err }
+import std.types { Bool, Int, List, Port, String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/distribution-spec/blob/main/spec.md"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.container.oci.reference",
+      decl_name: "OciImageReference",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.container.oci.reference.extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// HOW AN IMAGE IS NAMED, WHICH THE OCI MODEL IN THIS DIRECTORY DID NOT CARRY.
+//
+// manifest.dag and image_config.dag model what an image IS once you hold its bytes. Nothing
+// modelled how a party REFERS to one, so the only way to say "run this image" was a String -- the
+// anemic leaf DESIGN section 2 names, hiding a registry host, a repository path and a mutable-or-
+// immutable identifier behind one opaque scalar.
+//
+// BOTH IDENTIFIER ARMS ARE MODELLED, INCLUDING THE MUTABLE ONE, AND THAT IS DELIBERATE. A tag is a
+// real thing the distribution spec defines; refusing to admit a tag is POLICY, and policy in an
+// extdeps module is the layer inversion DESIGN section 3 rules out. The spec says what may be
+// written; the consumer says what it will accept.
+
+fn oci_code_point_at(text: String, index: Int) -> Int {
+  code_point(substring(s: text, start: index, end: index + 1))
+}
+
+fn oci_lower_alnum_code_point(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 122)
+}
+
+fn oci_separator_code_point(cp: Int) -> Bool {
+  cp == 46 || cp == 95 || cp == 45
+}
+
+// path-component := alpha-numeric [separator alpha-numeric]*
+// separator      := "." | "_" | "__" | "-"+
+//
+// The separator alternatives are enumerated rather than collapsed to "one or more of ._-" because
+// the spec admits a DOUBLE underscore and a single dot, and nothing else doubled: "a..b" and "a___b"
+// are not repository names. A permissive reading here would be a fail-open at the naming boundary.
+fn oci_hyphen_run(text: String, index: Int) -> Bool {
+  if index >= text.length() {
+    text.length() > 0
+  } else if oci_code_point_at(text: text, index: index) == 45 {
+    oci_hyphen_run(text: text, index: index + 1)
+  } else {
+    false
+  }
+}
+
+fn oci_separator_run_valid(run: String) -> Bool {
+  run == "." || run == "_" || run == "__" || oci_hyphen_run(text: run, index: 0)
+}
+
+fn oci_separator_run_end(text: String, index: Int) -> Int {
+  if index >= text.length() {
+    index
+  } else if oci_separator_code_point(cp: oci_code_point_at(text: text, index: index)) {
+    oci_separator_run_end(text: text, index: index + 1)
+  } else {
+    index
+  }
+}
+
+// Returns the index after a non-empty alpha-numeric run, or -1 when none starts at `index`.
+fn oci_alnum_run_end(text: String, index: Int, consumed: Int) -> Int {
+  if index >= text.length() {
+    if consumed > 0 { index } else { -1 }
+  } else if oci_lower_alnum_code_point(cp: oci_code_point_at(text: text, index: index)) {
+    oci_alnum_run_end(text: text, index: index + 1, consumed: consumed + 1)
+  } else if consumed > 0 {
+    index
+  } else {
+    -1
+  }
+}
+
+fn oci_path_component_from(text: String, index: Int) -> Bool {
+  let after_alnum = oci_alnum_run_end(text: text, index: index, consumed: 0)
+  if after_alnum < 0 {
+    false
+  } else if after_alnum >= text.length() {
+    true
+  } else {
+    let separator_end = oci_separator_run_end(text: text, index: after_alnum)
+    if separator_end == after_alnum {
+      false
+    } else if !(oci_separator_run_valid(run: substring(s: text, start: after_alnum, end: separator_end))) {
+      false
+    } else {
+      oci_path_component_from(text: text, index: separator_end)
+    }
+  }
+}
+
+fn oci_path_component_syntax(value: String) -> Bool {
+  value.length() > 0 && oci_path_component_from(text: value, index: 0)
+}
+
+type OciPathComponent = String where oci_path_component_syntax
+
+// tag := [a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}
+fn oci_tag_leading_code_point(cp: Int) -> Bool {
+  oci_lower_alnum_code_point(cp: cp) || (cp >= 65 && cp <= 90) || cp == 95
+}
+
+fn oci_tag_trailing_code_point(cp: Int) -> Bool {
+  oci_tag_leading_code_point(cp: cp) || cp == 46 || cp == 45
+}
+
+fn oci_tag_tail_valid(text: String, index: Int) -> Bool {
+  if index >= text.length() {
+    true
+  } else if oci_tag_trailing_code_point(cp: oci_code_point_at(text: text, index: index)) {
+    oci_tag_tail_valid(text: text, index: index + 1)
+  } else {
+    false
+  }
+}
+
+fn oci_tag_syntax(value: String) -> Bool {
+  value.length() > 0
+    && value.length() <= 128
+    && oci_tag_leading_code_point(cp: oci_code_point_at(text: value, index: 0))
+    && oci_tag_tail_valid(text: value, index: 1)
+}
+
+type OciTag = String where oci_tag_syntax
+
+type OciRegistry {
+  host: HostName
+  port: Port?
+}
+
+type OciRepositoryName {
+  components: List<OciPathComponent>
+}
+
+// THE ONE AXIS THAT DECIDES WHETHER A REFERENCE NAMES FIXED BYTES.
+//
+// A digest reference resolves to exactly one set of bytes forever; a tag resolves to whatever the
+// registry currently points it at, so two pulls of one tag are two different programs. That is a
+// difference in KIND, not a nullable field, which is why this is a coproduct: a record with both
+// slots optional admits "neither" and "both", neither of which a reference can be.
+type OciReferenceIdentifier
+  = ReferenceByDigest(OciContentDigest)
+  | ReferenceByTag(OciTag)
+
+// registry is optional because the spec's grammar makes the host optional; what a bare name
+// resolves to is a CLIENT default (Docker Hub for one client, a mirror for another), so filling it
+// in here would author a policy fact as an upstream one.
+type OciImageReference {
+  registry: OciRegistry?
+  repository: OciRepositoryName
+  identifier: OciReferenceIdentifier
+}
+
+type OciReferenceRejectReason
+  = EmptyRepositoryName
+  | BadPathComponent { raw: String }
+  | BadTag { raw: String }
+
+fn oci_path_component(raw: String) -> Result<OciPathComponent, OciReferenceRejectReason> {
+  if oci_path_component_syntax(value: raw) {
+    Ok { value: raw as OciPathComponent }
+  } else {
+    Err { value: BadPathComponent { raw: raw } }
+  }
+}
+
+fn oci_tag(raw: String) -> Result<OciTag, OciReferenceRejectReason> {
+  if oci_tag_syntax(value: raw) {
+    Ok { value: raw as OciTag }
+  } else {
+    Err { value: BadTag { raw: raw } }
+  }
+}
+
+fn oci_repository_path_components(
+  segments: List<String>,
+  index: Int,
+  acc: List<OciPathComponent>,
+) -> Result<List<OciPathComponent>, OciReferenceRejectReason> {
+  if index >= count(segments) {
+    Ok { value: acc }
+  } else {
+    match segments |> get(index) {
+      Absent => Err { value: EmptyRepositoryName }
+      Present { value: segment } =>
+        match oci_path_component(raw: segment) {
+          Err { value: e } => Err { value: e }
+          Ok { value: component } =>
+            oci_repository_path_components(
+              segments: segments,
+              index: index + 1,
+              acc: append(acc, items: [component]),
+            )
+        }
+    }
+  }
+}
+
+fn oci_repository_name(raw: String) -> Result<OciRepositoryName, OciReferenceRejectReason> {
+  let segments = split(s: raw, delimiter: "/")
+  if count(segments) == 0 {
+    Err { value: EmptyRepositoryName }
+  } else {
+    match oci_repository_path_components(segments: segments, index: 0, acc: []) {
+      Err { value: e } => Err { value: e }
+      Ok { value: components } => Ok { value: OciRepositoryName { components: components } }
+    }
+  }
+}
+
+fn oci_repository_name_wire(name: OciRepositoryName) -> String {
+  join(map(name.components, c => c as String), "/")
+}
+
+fn oci_registry_wire(registry: OciRegistry) -> String {
+  match registry.port {
+    Absent => domain_name_wire(name: registry.host.name)
+    Present { value: port } =>
+      concat(domain_name_wire(name: registry.host.name), ":", to_string(port))
+  }
+}
+
+// Emission is the structural inverse of the grammar above, not a second spelling of it: the
+// separator between repository and identifier is "@" for a digest and ":" for a tag, which is
+// exactly the distinction OciReferenceIdentifier carries.
+fn render_oci_image_reference(reference: OciImageReference) -> String {
+  let named = match reference.registry {
+    Absent => oci_repository_name_wire(name: reference.repository)
+    Present { value: registry } =>
+      concat(oci_registry_wire(registry: registry), "/", oci_repository_name_wire(name: reference.repository))
+  }
+  match reference.identifier {
+    ReferenceByDigest(digest) => concat(named, "@", render_oci_content_digest_wire(d: digest))
+    ReferenceByTag(tag) => concat(named, ":", tag as String)
+  }
+}
+
+fn oci_reference_is_digest_pinned(reference: OciImageReference) -> Bool {
+  match reference.identifier {
+    ReferenceByDigest(_) => true
+    ReferenceByTag(_) => false
+  }
+}

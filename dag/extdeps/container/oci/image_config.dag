@@ -68,6 +68,28 @@ fn image_config_entrypoint(c: ImageConfiguration) -> List<String> {
   }
 }
 
+fn image_config_cmd(c: ImageConfiguration) -> List<String> {
+  match c.config {
+    null => []
+    cfg =>
+      match cfg.Cmd {
+        null => []
+        cmd => cmd
+      }
+  }
+}
+
+// THE COMMAND A RUNTIME WOULD ACTUALLY EXECUTE, WHICH NEITHER FIELD ANSWERS ALONE.
+//
+// config.md defines the executed command as Entrypoint with Cmd appended as its arguments, so an
+// image with only Cmd starts and an image with only Entrypoint starts, while an image with neither
+// has nothing to run. A consumer reading either field on its own would refuse a startable image or
+// admit an unstartable one; the concatenation is the fact, and it is modelled once here rather
+// than re-derived by every consumer.
+fn image_config_start_command(c: ImageConfiguration) -> List<String> {
+  append(image_config_entrypoint(c: c), items: image_config_cmd(c: c))
+}
+
 fn image_config_first_exposed_port(c: ImageConfiguration) -> ContainerExposedPort? {
   match c.config {
     null => null

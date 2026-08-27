@@ -11,6 +11,14 @@ import extdeps.storage.types {
   StorageMedium,
 }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
+import extdeps.container.engine {
+  ContainerEngineDeployed,
+  ContainerEngineDeployment,
+  ContainerEngineDeploymentRefused,
+  RootlessDaemon,
+  container_engine_deployment,
+}
+import extdeps.container.docker_engine { docker_engine }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.cpu { cpu_facts_threads, cpu_facts_sustained_per_thread_hz }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
@@ -38,7 +46,23 @@ import std.nat { Nat }
 import std.float { Float }
 
 type IsolationBoundary = SharedHostHome | PerJobFilesystem | ContainerHermetic | Vm
-type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
+
+// ContainerRuntime IS GONE. It read
+//     type ContainerRuntime = Docker | Podman | Gvisor | Ubicloud | GcloudRun
+// and it was three concepts in one enum. Docker and Podman are container ENGINES -- independently
+// versioned upstream products. gVisor is a SANDBOX whose whole value is the isolation guarantee it
+// adds, and what a tenant is promised about isolation is product.fabric.isolation's IsolationProfile,
+// which deliberately names no mechanism. Ubicloud and Google Cloud Run are SUPPLIERS: companies that
+// rent a machine, whose homes are extdeps.cloud.ubicloud and product.supplier. So adding an engine
+// and adding a supplier both widened one enum -- the case DESIGN's external-decomposition section
+// rules out -- and no member of it could be added without an edit here.
+//
+// The engine half is replaced by extdeps.container.engine's ContainerEngineDeployment: a cited
+// product row plus the privilege mode this host actually runs it in. FOUR MEMBERS GET NO REPLACEMENT
+// ROW AND THAT IS DELETE-FIRST WORKING, NOT A LOSS: Podman, gVisor, Ubicloud and GcloudRun had zero
+// constructors anywhere in the corpus, so nothing refused when they went. Podman becomes one new
+// file in extdeps whenever a host runs it; gVisor is a guarantee question, not an engine name; the
+// two suppliers already have their own authorities and never belonged in a runtime enum.
 
 type WorkUnitId = NonEmptyStr where brand("WorkUnitId")
 
@@ -64,7 +88,7 @@ type ProcessorKind
 type ExecutionSurface {
   os: OperatingSystemSurface
   isolation: IsolationBoundary
-  container_runtime: ContainerRuntime?
+  container_engine: ContainerEngineDeployment?
   toolchains: List<ToolchainCapability>
   mounted_storage: List<StorageMount>
   network: List<NetworkInterface>
@@ -141,7 +165,7 @@ data host_v1_interpreter_execution_surface: ExecutionSurface = ExecutionSurface 
     process_semantics: PosixProcess,
   },
   isolation: SharedHostHome,
-  container_runtime: none,
+  container_engine: none,
   toolchains: [],
   mounted_storage: [],
   network: [],
@@ -309,11 +333,28 @@ data srv4_host: ComputeHost = ComputeHost {
 
 data fleet_intent_known_hosts: List<ComputeHost> = [srv1_host, srv2_host, srv3_host, srv4_host]
 
+// WHAT THE FLEET ACTUALLY RUNS, WHICH CARRIES ONE FACT MORE THAN "Docker" DID.
+//
+// The old surface said `Docker` and stopped. Whether that daemon runs as root is the property that
+// decides whether a job that escapes its container owns the machine, and the enum could not say it,
+// so the surface was silent on the only security-relevant thing about the engine. srv1 runs the
+// rootless daemon.
+//
+// A mode the product does not support yields no deployment at all rather than a surface asserting
+// one, and a target with no engine refuses every image (product.fabric.customer_image's
+// TargetHasNoContainerEngine) instead of admitting one it cannot run.
+fn fleet_container_engine_deployment() -> ContainerEngineDeployment? {
+  match container_engine_deployment(engine: docker_engine, privilege_mode: RootlessDaemon) {
+    ContainerEngineDeployed { deployment: deployment } => Present { value: deployment }
+    ContainerEngineDeploymentRefused { refusal: _ } => none
+  }
+}
+
 fn fleet_intent_execution_surface() -> ExecutionSurface {
   ExecutionSurface {
     os: fleet_intent_os_surface,
     isolation: PerJobFilesystem,
-    container_runtime: Present { value: Docker },
+    container_engine: fleet_container_engine_deployment(),
     toolchains: [sccache_toolchain_capability],
     mounted_storage: [],
     network: [],

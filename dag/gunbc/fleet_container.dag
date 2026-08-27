@@ -1,18 +1,15 @@
 module gunbc.fleet_container
 
 import gunbc.fleet_intent {
-  IsolationBoundary,
-  SharedHostHome,
-  PerJobFilesystem,
-  ContainerHermetic,
-  Vm,
-  ContainerRuntime,
-  Docker,
-  Podman,
-  Gvisor,
-  Ubicloud,
-  GcloudRun,
+  ComputeHost,
+  ExecutionSurface,
+  compute_host_primary_cpu,
+  fleet_intent_execution_surface,
+  srv1_host,
 }
+import product.fabric.customer_image { ExecutionTarget }
+import extdeps.toolchain.types { Os }
+import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
 import product.fabric.envelope {
   CpuRequirement, GpuRequirement, MemoryRequirement, StorageRequirement, NetworkRequirement,
   ResourceEnvelope,
@@ -197,4 +194,44 @@ fn witness_unreadable_budget_uses_conservative_demand() -> Bool {
     conservative_fallback_width: 4
   )
   demand_envelope_thread_count(envelope: envelope) == 4
+}
+
+
+// WHAT AN IMAGE HAS TO MATCH TO RUN HERE, PROJECTED FROM THE FLEET RATHER THAN RESTATED.
+//
+// product.fabric.customer_image asks its questions against an ExecutionTarget and never imports
+// this fleet, so the agnostic core stays usable by a supplier who is not us. This is the projection
+// in the other direction: our hardware and our surface, read, not asserted.
+//
+// THE ARCHITECTURE IS DERIVED FROM THE HOST'S CPU AND THE FUNCTION REFUSES WITHOUT ONE. Writing
+// `Aarch64` here would be a second place the fleet's architecture is stated, and the two would
+// diverge the first time a machine with a different CPU joined -- at which point every customer
+// image would be checked against an architecture no host has. A host declaring no processor cannot
+// answer the question, so it returns no target and every image is refused, rather than being
+// checked against a guess.
+fn execution_target_os(kernel: KernelFamily) -> Os {
+  match kernel {
+    Linux => extdeps.toolchain.types.Linux
+    LinuxGuestOnWindows => extdeps.toolchain.types.Linux
+    Darwin => extdeps.toolchain.types.Macos
+    WindowsNt => extdeps.toolchain.types.Windows
+  }
+}
+
+fn fleet_execution_target(host: ComputeHost, surface: ExecutionSurface) -> ExecutionTarget? {
+  match compute_host_primary_cpu(host: host) {
+    Absent => none
+    Present { value: cpu } =>
+      Present {
+        value: ExecutionTarget {
+          architecture: cpu.catalog.architecture,
+          os: execution_target_os(kernel: surface.os.kernel),
+          engine: surface.container_engine,
+        }
+      }
+  }
+}
+
+fn fleet_container_execution_target() -> ExecutionTarget? {
+  fleet_execution_target(host: srv1_host, surface: fleet_intent_execution_surface())
 }
