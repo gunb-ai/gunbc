@@ -330,6 +330,64 @@ data git_for_each_ref_external_authority_anchor: ExternalAuthority = ExternalAut
 // path content. Each entry carries the absolute worktree path, its HEAD, its branch or a bare detached
 // marker, and the locked and prunable standings -- exactly the tuple a preservation comparison needs,
 // and none of it recoverable from the filesystem without re-deciding git's own layout.
+// COMPARE-AND-SWAP, AND THE THIRD ARGUMENT IS THE ENTIRE POINT OF THIS OPERATION EXISTING.
+//
+// git-update-ref documents the form `git update-ref <ref> <newvalue> [<oldvalue>]` and states that
+// with <oldvalue> it verifies the ref's current value matches before updating, failing otherwise.
+// That is a real compare-and-swap performed by git under its own ref lock, not a check this layer
+// could do by reading and then writing -- a read-then-write here would carry a window in which
+// another actor moves the ref between the two, and would report success for a transition that
+// overwrote someone else's.
+//
+// THE UNCONDITIONAL FORM ALREADY EXISTED AND IS WHY THIS IS SEPARATE RATHER THAN A PARAMETER.
+// shape_git_bare_update_ref_argv writes `update-ref <ref> FETCH_HEAD` with no expected value, so
+// it cannot fail on a concurrent move; it clobbers. Adding an optional oldvalue to that shaper
+// would make the safe and unsafe forms one call distinguished by whether a caller remembered to
+// pass an argument, which is the state-space conflation this repository keeps finding. Two names,
+// and a caller cannot reach one meaning the other.
+//
+// EXPECTING ABSENCE IS SPELLED BY THE EMPTY STRING, which is git's own convention for "verify the
+// ref does not exist" rather than an invention here.
+data git_update_ref_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-update-ref"
+  }
+}
+
+// THE REFLOG IS READ BECAUSE IT IS THE ONLY EVIDENCE THAT A TRANSITION HAPPENED THROUGH GIT.
+// A converged HEAD proves the destination; it does not distinguish "git moved this ref" from "a
+// file was copied over it", and the whole defect this operation exists to detect is the second.
+// A file-level copy of `refs/**` leaves no reflog entry, so a non-noop transition with an
+// unchanged reflog is exactly the corruption signature.
+//
+// `--format` IS PINNED rather than left to git's default, because the default is affected by the
+// user's configuration and this output is decoded. `%H %gd %gs` is old-to-new-independent: the
+// object, the selector and the subject.
+data git_reflog_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-reflog"
+  }
+}
+
+// ONE OPERATION MOVES HEAD, THE INDEX AND THE TRACKED BYTES TOGETHER, which is the property the
+// deployed tree lost. The sync it replaces moved tracked bytes by rsync and HEAD by file copy and
+// left the index untouched entirely, so the three could and did disagree -- measured on srv1 as
+// 5650 divergent paths with index-vs-HEAD and worktree-vs-index both wrong. `reset --hard` is a
+// single git transaction over all three, so partial application is not a state it can produce.
+//
+// IT IS NOT READONLY AND IT DISCARDS LOCAL MODIFICATIONS, stated plainly because the name does not
+// say so: any uncommitted change in the target worktree is destroyed. That is correct for a
+// deployed tree, whose contents are supposed to be a function of the release and nothing else, and
+// it would be wrong for a working checkout. The caller owns that distinction.
+data git_reset_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-reset"
+  }
+}
+
 data git_worktree_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -1087,24 +1145,6 @@ service git.Core {
     }
   }
 
-  // COMPARE-AND-SWAP, AND THE THIRD ARGUMENT IS THE ENTIRE POINT OF THIS OPERATION EXISTING.
-  //
-  // git-update-ref documents the form `git update-ref <ref> <newvalue> [<oldvalue>]` and states that
-  // with <oldvalue> it verifies the ref's current value matches before updating, failing otherwise.
-  // That is a real compare-and-swap performed by git under its own ref lock, not a check this layer
-  // could do by reading and then writing -- a read-then-write here would carry a window in which
-  // another actor moves the ref between the two, and would report success for a transition that
-  // overwrote someone else's.
-  //
-  // THE UNCONDITIONAL FORM ALREADY EXISTED AND IS WHY THIS IS SEPARATE RATHER THAN A PARAMETER.
-  // shape_git_bare_update_ref_argv writes `update-ref <ref> FETCH_HEAD` with no expected value, so
-  // it cannot fail on a concurrent move; it clobbers. Adding an optional oldvalue to that shaper
-  // would make the safe and unsafe forms one call distinguished by whether a caller remembered to
-  // pass an argument, which is the state-space conflation this repository keeps finding. Two names,
-  // and a caller cannot reach one meaning the other.
-  //
-  // EXPECTING ABSENCE IS SPELLED BY THE EMPTY STRING, which is git's own convention for "verify the
-  // ref does not exist" rather than an invention here.
   operation UpdateRefCompareAndSwapInRepo {
     input { repo: FilePath, ref: String, new_value: String, expected_old: String }
     output {
@@ -1117,15 +1157,6 @@ service git.Core {
     }
   }
 
-  // THE REFLOG IS READ BECAUSE IT IS THE ONLY EVIDENCE THAT A TRANSITION HAPPENED THROUGH GIT.
-  // A converged HEAD proves the destination; it does not distinguish "git moved this ref" from "a
-  // file was copied over it", and the whole defect this operation exists to detect is the second.
-  // A file-level copy of `refs/**` leaves no reflog entry, so a non-noop transition with an
-  // unchanged reflog is exactly the corruption signature.
-  //
-  // `--format` IS PINNED rather than left to git's default, because the default is affected by the
-  // user's configuration and this output is decoded. `%H %gd %gs` is old-to-new-independent: the
-  // object, the selector and the subject.
   operation ReflogInRepo {
     input { repo: FilePath, ref: String }
     output {
@@ -1139,16 +1170,6 @@ service git.Core {
     }
   }
 
-  // ONE OPERATION MOVES HEAD, THE INDEX AND THE TRACKED BYTES TOGETHER, which is the property the
-  // deployed tree lost. The sync it replaces moved tracked bytes by rsync and HEAD by file copy and
-  // left the index untouched entirely, so the three could and did disagree -- measured on srv1 as
-  // 5650 divergent paths with index-vs-HEAD and worktree-vs-index both wrong. `reset --hard` is a
-  // single git transaction over all three, so partial application is not a state it can produce.
-  //
-  // IT IS NOT READONLY AND IT DISCARDS LOCAL MODIFICATIONS, stated plainly because the name does not
-  // say so: any uncommitted change in the target worktree is destroyed. That is correct for a
-  // deployed tree, whose contents are supposed to be a function of the release and nothing else, and
-  // it would be wrong for a working checkout. The caller owns that distinction.
   operation ResetHardInRepo {
     input { repo: FilePath, target: String }
     output {

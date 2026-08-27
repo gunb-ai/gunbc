@@ -1,6 +1,7 @@
 module gunbc.live_deploy.repository_convergence
 
 import std.types { String, Bool, Int, List, FilePath }
+import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_wire_hex }
 import extdeps.git.enumeration {
@@ -404,7 +405,7 @@ fn observe_repository_state(repo: String) -> RepositoryState {
       exit_code: worktrees.exit_code,
       stderr: worktrees.stderr,
     ),
-    head: trim(head.revision),
+    head: trim(s: head.revision),
     reflog: reflog.stdout,
   }
 }
