@@ -1,0 +1,423 @@
+module test.claim.legacy_repair_observation_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { Fnv1a64Structural, structural_content_hash }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
+import std.observation_completeness {
+  ObservationCompleteness,
+  ObservationComplete,
+  ObservationMissingExpected,
+  ObservationForeignObserved,
+  ObservationRepeatedObserved
+}
+import v2.workflow.legacy_repair_observation {
+  RepairSite,
+  RepairSiteRoster,
+  LegacyRepairObservation,
+  LegacyRepairObservationRow,
+  LegacyRepairObservationSubject,
+  LegacyRepairAdmission,
+  RepairObservationAdmitted,
+  RepairObservationSubjectDiverged,
+  RepairObservationRefused,
+  SubjectRoster,
+  SubjectRosterProof,
+  SubjectRosterProven,
+  SubjectRosterMismatch,
+  prove_subject_roster,
+  LegacyRepairSubjectApplicability,
+  LegacyRepairSubjectApplicable,
+  LegacyRepairSubjectDiverged,
+  repair_site_eq,
+  repair_site_identity,
+  repair_site_roster_identity,
+  legacy_repair_subject_applicability,
+  legacy_repair_completeness,
+  admit_complete_repair_observation
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHY THESE ARE SUBSTRATE INPUTS ONLY, and it is the honest declaration rather than a convenience.
+// Every subject, roster and row here is hand-constructed and every function under test is a pure
+// fold over one. Nothing calls a producer, because the tap that observes the emitter's repair
+// decisions is a separate authority under a separate owner; standing a stub in for it here would be
+// a second, lying authority for the one fact this envelope deliberately does not own.
+
+fn lro_digest(label: String) -> Fnv1a64Structural {
+  structural_content_hash(digest: label)
+}
+
+fn lro_site(module_name: String, name: String) -> RepairSite {
+  RepairSite { module_name: module_name as NonEmptyStr, name: name as NonEmptyStr }
+}
+
+fn lro_roster() -> RepairSiteRoster {
+  RepairSiteRoster {
+    sites: [
+      lro_site(module_name: "std.logic", name: "Bool"),
+      lro_site(module_name: "std.logic", name: "logic_and"),
+      lro_site(module_name: "std.types", name: "NonEmptyStr")
+    ]
+  }
+}
+
+// THE REPAIRER IDENTITY NAMES THE DECISION SURFACE THIS ENVELOPE IS ABOUT. The arms below need a
+// reference whose module, name and field can each move independently, and they need each move to be
+// SINGLE-AXIS: a two-axis perturbation cannot discriminate WHICH axis the comparison reads, so its
+// green is the same green whether the second axis is compared or not.
+fn lro_repairer() -> DeclarationRef {
+  decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId")
+}
+
+fn lro_base_subject() -> LegacyRepairObservationSubject {
+  LegacyRepairObservationSubject {
+    semantic_source_digest: lro_digest(label: "1111111111111111"),
+    source_set_digest: lro_digest(label: "2222222222222222"),
+    compiler_artifact_digest: lro_digest(label: "3333333333333333"),
+    repairer_identity: lro_repairer(),
+    repair_site_roster_digest: repair_site_roster_identity(roster: lro_roster()),
+    resolution_registry_digest: lro_digest(label: "5555555555555555")
+  }
+}
+
+type LroTestOutcome
+  = LroTestRepaired
+  | LroTestDeclined
+
+fn lro_row(site: RepairSite) -> LegacyRepairObservationRow<LroTestOutcome> {
+  LegacyRepairObservationRow { site: site, outcome: LroTestDeclined }
+}
+
+fn lro_observation_over(
+  subject: LegacyRepairObservationSubject,
+  sites: List<RepairSite>
+) -> LegacyRepairObservation<LroTestOutcome> {
+  LegacyRepairObservation { subject: subject, rows: sites |> map(s => lro_row(site: s)) }
+}
+
+fn lro_observation(sites: List<RepairSite>) -> LegacyRepairObservation<LroTestOutcome> {
+  lro_observation_over(subject: lro_base_subject(), sites: sites)
+}
+
+fn lro_answered_exactly() -> List<RepairSite> {
+  [
+    lro_site(module_name: "std.logic", name: "Bool"),
+    lro_site(module_name: "std.logic", name: "logic_and"),
+    lro_site(module_name: "std.types", name: "NonEmptyStr")
+  ]
+}
+
+// THE POSITIVE CONTROL, AND IT IS NOT DECORATION. Without it every refusal arm below is satisfied by
+// an admission that refuses unconditionally -- a wall that admits nothing, useless in the opposite
+// direction and just as wrong.
+test fn an_observation_answering_exactly_the_roster_is_admitted() -> Bool {
+  match prove_subject_roster(subject: lro_base_subject(), roster: lro_roster()) {
+    SubjectRosterProven { proven: p } =>
+      match admit_complete_repair_observation(
+        observation: lro_observation(sites: lro_answered_exactly()),
+        proven: p
+      ) {
+        RepairObservationAdmitted { admitted: _ } => true
+        RepairObservationSubjectDiverged { field: _ } => false
+        RepairObservationRefused { completeness: _ } => false
+      }
+    SubjectRosterMismatch { subject_digest: _, roster_digest: _ } => false
+  }
+}
+
+// THE ROW COUNT IS THREE ON BOTH SIDES AND THE JOIN STILL REFUSES. That is the whole difference
+// between an identity join and a count equality, stated as a fixture rather than as a claim: a
+// producer that dropped one site and answered a fourth of its own choosing has exactly the right
+// number of rows.
+test fn an_observation_missing_one_roster_site_refuses() -> Bool {
+  match legacy_repair_completeness(
+    observation: lro_observation(sites: [
+      lro_site(module_name: "std.logic", name: "Bool"),
+      lro_site(module_name: "std.logic", name: "logic_and"),
+      lro_site(module_name: "std.types", name: "Int")
+    ]),
+    expected: lro_roster().sites
+  ) {
+    ObservationMissingExpected { keys: missing } => (missing |> count) == 1
+    ObservationComplete => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+  }
+}
+
+// THE FOREIGN ARM IS WHAT REFUSES A COMPLETE-BY-CONSTRUCTION PRODUCER. A pass that answers for
+// whatever it happened to reach adds sites the roster never asked about, and without this direction
+// every such answer set reads as success.
+test fn an_observation_answering_for_a_site_outside_the_roster_refuses() -> Bool {
+  match legacy_repair_completeness(
+    observation: lro_observation(sites: concat(lro_answered_exactly(), [lro_site(module_name: "std.logic", name: "logic_or")])),
+    expected: lro_roster().sites
+  ) {
+    ObservationForeignObserved { keys: foreign } => (foreign |> count) == 1
+    ObservationComplete => false
+    ObservationMissingExpected { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+  }
+}
+
+// ONE SITE, ONE OUTCOME -- AND MEMBERSHIP ALONE DOES NOT SAY SO. Every roster site is present and
+// none is foreign, so a two-direction membership check calls this complete while the artifact
+// carries two, possibly conflicting, outcomes for one site.
+test fn an_observation_answering_twice_for_one_site_refuses() -> Bool {
+  match legacy_repair_completeness(
+    observation: lro_observation(sites: concat([lro_site(module_name: "std.logic", name: "Bool")], lro_answered_exactly())),
+    expected: lro_roster().sites
+  ) {
+    ObservationRepeatedObserved { keys: repeated } => (repeated |> count) == 1
+    ObservationComplete => false
+    ObservationMissingExpected { keys: _ } => false
+    ObservationForeignObserved { keys: _ } => false
+  }
+}
+
+// A WHOLLY-DECLINED OBSERVATION IS COMPLETE, AND THIS ARM IS WHY THAT IS NOT A CRISIS. Both sides of
+// the law come from the roster and the row keys; neither comes from the outcome. So an observation
+// whose every row says the repairer declined is complete, applicable and true. The next reader of an
+// all-declined artifact will assume it is broken; this arm is the standing answer that it is not.
+test fn an_observation_whose_every_row_is_declined_is_still_complete() -> Bool {
+  match legacy_repair_completeness(observation: lro_observation(sites: lro_answered_exactly()), expected: lro_roster().sites) {
+    ObservationComplete => true
+    ObservationMissingExpected { keys: _ } => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+  }
+}
+
+// THE PROVENANCE WALL, AND THE ARM THAT PROVES IT IS DECIDED FIRST.
+//
+// The rows here answer the HANDED roster exactly, so completeness alone would admit. The subject
+// names a DIFFERENT roster, and the admission refuses anyway. That ordering is the whole content of
+// the wall: a completeness verdict computed against a population nobody proved belongs to this
+// subject is a category error, not a weaker verdict -- and it is exactly the half the binding
+// envelope cannot close, because it cannot digest its own transport.
+//
+// THE RED IS REACHABLE AND IT IS THE INTERESTING ONE: delete the digest comparison and this arm goes
+// green-to-ADMITTED, which is the wrong answer rather than a missing one.
+fn lro_foreign_roster_subject() -> LegacyRepairObservationSubject {
+  let base = lro_base_subject()
+  LegacyRepairObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    repairer_identity: base.repairer_identity,
+    repair_site_roster_digest: repair_site_roster_identity(roster: RepairSiteRoster {
+      sites: [lro_site(module_name: "std.logic", name: "Bool")]
+    }),
+    resolution_registry_digest: base.resolution_registry_digest
+  }
+}
+
+test fn a_roster_that_is_not_the_subjects_cannot_be_proven() -> Bool {
+  match prove_subject_roster(subject: lro_foreign_roster_subject(), roster: lro_roster()) {
+    SubjectRosterMismatch { subject_digest: _, roster_digest: _ } => true
+    SubjectRosterProven { proven: _ } => false
+  }
+}
+
+// AND THE MINT IS THE ONLY ROUTE, WHICH IS WHAT MAKES THE ARM ABOVE A WALL RATHER THAN A HABIT.
+// admit_complete_repair_observation takes a SubjectRoster and SubjectRoster is sole_constructor, so
+// there is no spelling in which a caller joins against an unproven roster -- this fixture cannot
+// author the negative case, and that inability IS the guarantee. Recorded here rather than left to a
+// reader who would otherwise look for the missing arm.
+
+// AN OBSERVATION TAKEN ON A DIFFERENT BASE IS REFUSED EVEN AGAINST A PROVEN ROSTER. A proof that
+// roster R belongs to subject S says nothing about an observation of some other subject, and without
+// this arm the pair-binding in SubjectRoster would be decoration: the roster would be proven and the
+// rows would be joined against it regardless of what they were observed on.
+test fn an_observation_taken_on_another_base_refuses_against_a_proven_roster() -> Bool {
+  match prove_subject_roster(subject: lro_base_subject(), roster: lro_roster()) {
+    SubjectRosterProven { proven: p } =>
+      match admit_complete_repair_observation(
+        observation: lro_observation_over(
+          subject: LegacyRepairObservationSubject {
+            semantic_source_digest: lro_digest(label: "aaaaaaaaaaaaaaaa"),
+            source_set_digest: lro_base_subject().source_set_digest,
+            compiler_artifact_digest: lro_base_subject().compiler_artifact_digest,
+            repairer_identity: lro_base_subject().repairer_identity,
+            repair_site_roster_digest: lro_base_subject().repair_site_roster_digest,
+            resolution_registry_digest: lro_base_subject().resolution_registry_digest
+          },
+          sites: lro_answered_exactly()
+        ),
+        proven: p
+      ) {
+        RepairObservationSubjectDiverged { field: f } => f == "semantic_source_digest"
+        RepairObservationAdmitted { admitted: _ } => false
+        RepairObservationRefused { completeness: _ } => false
+      }
+    SubjectRosterMismatch { subject_digest: _, roster_digest: _ } => false
+  }
+}
+
+// THE ROSTER ADDRESS IS ORDER-SENSITIVE, DECLARED AND EXERCISED. The join is a set law and does not
+// care about order; the address does. Two producers stating the same sites in different sequence get
+// a refusal rather than an admission, which is the fail-closed direction -- an order-insensitive
+// address would need a total order over names this module does not own.
+test fn a_reordered_roster_is_a_different_roster() -> Bool {
+  repair_site_roster_identity(roster: lro_roster()).digest
+    != repair_site_roster_identity(roster: RepairSiteRoster {
+         sites: [
+           lro_site(module_name: "std.logic", name: "logic_and"),
+           lro_site(module_name: "std.logic", name: "Bool"),
+           lro_site(module_name: "std.types", name: "NonEmptyStr")
+         ]
+       }).digest
+}
+
+// THE SITE ADDRESS IS INJECTIVE ACROSS THE SPLIT BETWEEN ITS TWO NAMES. A joined spelling would make
+// these two sites one value while repair_site_eq correctly reports them different -- the comparison
+// and the address disagreeing about what a site is, which is the defect the neighbouring envelope
+// already recorded once in its DeclField label.
+test fn two_sites_differing_only_in_where_the_split_falls_have_different_addresses() -> Bool {
+  repair_site_identity(site: lro_site(module_name: "a", name: "bc")).digest
+    != repair_site_identity(site: lro_site(module_name: "ab", name: "c")).digest
+}
+
+// THE EQUALITY READS BOTH FIELDS, EXERCISED SEPARATELY IN EACH DIRECTION. An equality reading only
+// the name would call the first pair equal; one reading only the module would call the second pair
+// equal; the positive control refuses an equality that is constantly false.
+test fn one_name_in_two_modules_is_two_sites() -> Bool {
+  !repair_site_eq(
+    left: lro_site(module_name: "std.logic", name: "Bool"),
+    right: lro_site(module_name: "std.types", name: "Bool")
+  )
+}
+
+test fn two_names_in_one_module_are_two_sites() -> Bool {
+  !repair_site_eq(
+    left: lro_site(module_name: "std.logic", name: "Bool"),
+    right: lro_site(module_name: "std.logic", name: "logic_and")
+  )
+}
+
+test fn a_site_equals_itself() -> Bool {
+  repair_site_eq(
+    left: lro_site(module_name: "std.logic", name: "Bool"),
+    right: lro_site(module_name: "std.logic", name: "Bool")
+  )
+}
+
+// THE APPLICABILITY WALL, EXERCISED FIELD BY FIELD.
+//
+// An observation is evidence about the base it was taken on. The wall that says so is only a wall if
+// EVERY identity axis can move it -- a comparison reading five of the six fields answers "applicable"
+// across a base that differs in the sixth, and the whole point of a content-addressed subject is that
+// no such gap exists. So the arms are PER AXIS, not one representative: a single "some field differs"
+// arm is satisfiable by a comparison that reads only that field, which is the failure being guarded
+// against.
+fn lro_diverged_field(other: LegacyRepairObservationSubject) -> String {
+  match legacy_repair_subject_applicability(left: lro_base_subject(), right: other) {
+    LegacyRepairSubjectDiverged { field: f } => f
+    LegacyRepairSubjectApplicable => ""
+  }
+}
+
+test fn an_identical_subject_is_applicable_to_itself() -> Bool {
+  match legacy_repair_subject_applicability(left: lro_base_subject(), right: lro_base_subject()) {
+    LegacyRepairSubjectApplicable => true
+    LegacyRepairSubjectDiverged { field: _ } => false
+  }
+}
+
+test fn a_moved_semantic_source_refuses() -> Bool {
+  let base = lro_base_subject()
+  lro_diverged_field(other: LegacyRepairObservationSubject {
+    semantic_source_digest: lro_digest(label: "aaaaaaaaaaaaaaaa"),
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    repairer_identity: base.repairer_identity,
+    repair_site_roster_digest: base.repair_site_roster_digest,
+    resolution_registry_digest: base.resolution_registry_digest
+  }) == "semantic_source_digest"
+}
+
+test fn a_moved_source_set_refuses() -> Bool {
+  let base = lro_base_subject()
+  lro_diverged_field(other: LegacyRepairObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: lro_digest(label: "bbbbbbbbbbbbbbbb"),
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    repairer_identity: base.repairer_identity,
+    repair_site_roster_digest: base.repair_site_roster_digest,
+    resolution_registry_digest: base.resolution_registry_digest
+  }) == "source_set_digest"
+}
+
+test fn a_moved_compiler_artifact_refuses() -> Bool {
+  let base = lro_base_subject()
+  lro_diverged_field(other: LegacyRepairObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: lro_digest(label: "cccccccccccccccc"),
+    repairer_identity: base.repairer_identity,
+    repair_site_roster_digest: base.repair_site_roster_digest,
+    resolution_registry_digest: base.resolution_registry_digest
+  }) == "compiler_artifact_digest"
+}
+
+test fn a_moved_repairer_module_refuses() -> Bool {
+  let base = lro_base_subject()
+  lro_diverged_field(other: LegacyRepairObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    repairer_identity: decl_ref(module_path: "std.observation", decl_name: "OccurrenceId"),
+    repair_site_roster_digest: base.repair_site_roster_digest,
+    resolution_registry_digest: base.resolution_registry_digest
+  }) == "repairer_identity.module_path"
+}
+
+test fn a_moved_repairer_decl_refuses() -> Bool {
+  let base = lro_base_subject()
+  lro_diverged_field(other: LegacyRepairObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    repairer_identity: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceIndex"),
+    repair_site_roster_digest: base.repair_site_roster_digest,
+    resolution_registry_digest: base.resolution_registry_digest
+  }) == "repairer_identity.decl_name"
+}
+
+test fn a_moved_repairer_field_refuses() -> Bool {
+  let base = lro_base_subject()
+  lro_diverged_field(other: LegacyRepairObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    repairer_identity: decl_field_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId", field_name: "value"),
+    repair_site_roster_digest: base.repair_site_roster_digest,
+    resolution_registry_digest: base.resolution_registry_digest
+  }) == "repairer_identity.field"
+}
+
+test fn a_moved_roster_refuses() -> Bool {
+  let base = lro_base_subject()
+  lro_diverged_field(other: LegacyRepairObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    repairer_identity: base.repairer_identity,
+    repair_site_roster_digest: lro_digest(label: "dddddddddddddddd"),
+    resolution_registry_digest: base.resolution_registry_digest
+  }) == "repair_site_roster_digest"
+}
+
+test fn a_moved_resolution_registry_refuses() -> Bool {
+  let base = lro_base_subject()
+  lro_diverged_field(other: LegacyRepairObservationSubject {
+    semantic_source_digest: base.semantic_source_digest,
+    source_set_digest: base.source_set_digest,
+    compiler_artifact_digest: base.compiler_artifact_digest,
+    repairer_identity: base.repairer_identity,
+    repair_site_roster_digest: base.repair_site_roster_digest,
+    resolution_registry_digest: lro_digest(label: "eeeeeeeeeeeeeeee")
+  }) == "resolution_registry_digest"
+}

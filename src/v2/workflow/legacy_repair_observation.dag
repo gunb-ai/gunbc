@@ -1,0 +1,412 @@
+module v2.workflow.legacy_repair_observation
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged_structural
+}
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_field_eq, decl_field_label }
+import std.observation_completeness {
+  ObservationCompleteness,
+  ObservationComplete,
+  ObservationMissingExpected,
+  ObservationForeignObserved,
+  ObservationRepeatedObserved,
+  observation_completeness
+}
+
+// R_X(B) -- WHAT A LEGACY REPAIRER DID, OVER ONE EXACT BASE, WITH A DENOMINATOR IT DID NOT CHOOSE.
+//
+// The legacy resolver X decides what a bare name binds to; v2.workflow.legacy_binding_observation
+// is the envelope for THAT record. A separate legacy mechanism REPAIRS what X declined to refuse:
+// on the Rust emission path the emitter synthesizes the `use` line an author never wrote, silently,
+// once per name it decides needs one. A migration that changes how names are spelled has to know
+// what the REPAIRER did, not only what the resolver chose, and it has to know it about one exact
+// base. This is that record.
+//
+// THE ENVELOPE IS NOT THE PRODUCER. Nothing here decides whether a name needs a use-line; that
+// judgment arrives through the outcome type parameter, from the tap inside the repairer's own
+// decision function. Reconstructing the repairer from the outside would be authority substitution
+// wearing a completeness claim -- and this module is deliberately buildable and testable BEFORE
+// that tap lands, without a stub standing in as a second, lying authority for the one fact it does
+// not own.
+
+// WHY THIS IS A PEER OF O_X(B) AND NOT AN INSTANCE OF IT. THE QUESTION WAS ASKED DIRECTLY AND THE
+// ANSWER IS NO: EMIT-TIME REPAIR CANDIDATES DO NOT CORRESPOND TO REFERENCE OCCURRENCES.
+//
+// The obvious move is to key repair rows on OccurrenceId and hand them to
+// legacy_binding_observation's existing join, which already derives its denominator from a
+// ValidatedOccurrenceTransport. That would have been one envelope instead of two, so it was checked
+// against the producer rather than assumed. It fails, and it fails in three independent directions
+// at once -- read off v1.compiler.emit_rust `reference_derived_use_line_plan`:
+//
+//   GRAIN. The candidate roster is deduplicated by SPELLING (`unique_strings`) before any decision
+//   is made. Ten authored references to one name in one module produce ONE candidate. Against an
+//   occurrence denominator, nine of the ten are MissingExpected -- a refusal that reports a defect
+//   in the producer when the truth is that the producer's unit is not an occurrence.
+//
+//   SUPERSET. The roster admits names that are not authored reference occurrences at all: heads the
+//   emitter attests for anonymous record literals, variant payload structs it expands, realized
+//   surface names, and any identifier that merely appears as a TOKEN IN THE EMITTED RUST. Those have
+//   no occurrence id because nothing authored them. Against an occurrence denominator they are
+//   ForeignObserved -- again reporting a producer defect where there is none.
+//
+//   SUBSET. The roster removes names an occurrence transport carries and must carry: those already
+//   provided by an authored import, the prelude, a carrier line or the module's own declarations,
+//   kernel types, and host-realized builtins. Those are real reference occurrences that this
+//   mechanism correctly never repairs.
+//
+// So the correspondence fails in BOTH directions and at the grain, which means an occurrence-keyed
+// join would not be a stricter version of this one -- it would be a join whose every arm fires for
+// reasons unrelated to what it claims to detect. THE UNIT OF THIS OBSERVATION IS A REPAIR SITE, and
+// a repair site is what it is because of what the repairer is asked, not because of what an author
+// wrote.
+//
+// WHAT IS SHARED IS SHARED, WHICH IS THE PART THAT WOULD OTHERWISE FORK. The completeness law --
+// nothing expected missing, nothing observed foreign, nothing expected answered twice -- is one law
+// for any key, and it now lives once in std.observation_completeness with both envelopes supplying
+// their own key and equality. Two envelopes with two denominators and ONE join is the DESIGN
+// section 2 shape; two envelopes each with its own copy of the fold would have been the section 3
+// failure.
+
+// A REPAIR SITE: THE REFERENCING MODULE AND THE NAME THE REPAIRER WAS ASKED ABOUT.
+//
+// The module is the REFERENCING one, never the provider. Where a provider is known it is a fact the
+// OUTCOME carries, because for some outcomes there is no provider to name -- and an identity that
+// stored one would be unconstructible for exactly the case that matters most.
+//
+// BOTH FIELDS ARE NonEmptyStr, WHICH IS A CONSTRUCTION RATHER THAN A CHECK. A repair site with an
+// empty module name or an empty name is not a site the repairer could have been asked about; the
+// refined carrier makes it unwritable instead of making it detectable, so no arm below has to
+// consider it. It also keeps the identity fold below total: content_hash_atom takes NonEmptyStr, so
+// a site is hashable by construction rather than after a cast that could refuse.
+type RepairSite {
+  module_name: NonEmptyStr
+  name: NonEmptyStr
+}
+
+// THE EQUALITY LIVES BESIDE THE KEY, which is why the join takes it as a parameter rather than
+// spelling `==` over a record it does not own. A site is the pair, so both fields decide -- and the
+// identity fold below reads exactly the fields this comparison reads, for the same reason the
+// binding envelope's does: a pair the comparison calls different and the address cannot tell apart
+// is one authority saying "two sites" and another saying "one", with nothing to adjudicate.
+fn repair_site_eq(left: RepairSite, right: RepairSite) -> Bool {
+  left.module_name == right.module_name && left.name == right.name
+}
+
+// THE ADDRESS COMBINES THE TWO NAMES STRUCTURALLY RATHER THAN CONCATENATING THEM, and the reason is
+// injectivity rather than taste. A joined spelling makes module "a" name "bc" and module "ab" name
+// "c" fold to one address while repair_site_eq correctly reports them different -- the comparison
+// and the address disagreeing about what a site is. content_hash_combine_structural keeps the two
+// atoms in distinct positions, so no re-spelling of one field can impersonate the other.
+fn repair_site_identity(site: RepairSite) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_atom(value: site.module_name),
+    right: content_hash_atom(value: site.name)
+  )
+}
+
+// ONE OUTCOME PER REPAIR SITE, AND THE SEAM HAS TO AGREE ON IT.
+//
+// The repairer is asked about a name once per emitted module, so the producer's natural unit and
+// this envelope's unit already agree -- which is exactly the property the binding envelope does NOT
+// have, and the reason its row type carries a long warning about attempt grain. Stating the
+// agreement is not decoration: it is the fact that makes the RepeatedObserved arm below a genuine
+// producer defect here rather than an expected consequence of an unreconciled tap.
+type LegacyRepairObservationRow<O> {
+  site: RepairSite
+  outcome: O
+}
+
+// THE ROSTER IS THE DENOMINATOR, AND IT IS A TRANSPORT RATHER THAN A BYPRODUCT.
+//
+// This is the whole point of the module. The census this envelope exists to admit was refused an
+// envelope precisely because its population was "the candidates that reached the decision", produced
+// by the same pass that decides them -- complete by construction, and therefore saying nothing. The
+// repair is to make the roster a THING THE PRODUCER STATES BEFORE IT ANSWERS, handed separately to
+// the envelope, so that a producer which dropped a site, invented one, or answered one twice is
+// REFUSED instead of being definitionally right.
+//
+// WHAT "INDEPENDENT" DOES AND DOES NOT MEAN HERE, because the word is load-bearing and easy to
+// inflate. It does NOT mean derived without the compiler -- the binding envelope's occurrence
+// denominator comes from the compiler too. It means independent OF THE ANSWERING: the roster is
+// derived by its own function from its own inputs, and the disposition pass consumes it rather than
+// producing it. That is the difference between a denominator and a tautology, and it is the only
+// claim this module makes.
+//
+// AND HERE IS EXACTLY WHAT IT STILL DOES NOT ESTABLISH, stated because a completeness envelope that
+// overstated its own reach would be the failure it exists to prevent, one level up. This module
+// proves that the answers were joined against a STATED, CONTENT-ADDRESSED roster, and that the two
+// cannot drift apart afterwards. It does NOT prove the producer derived that roster independently of
+// its own answering: a producer that assembles the roster FROM the candidates it decided, and then
+// states it, is admitted here. What changes is that the tautology becomes VISIBLE AND NAMEABLE --
+// one function, whose inputs a reader can check -- instead of being dissolved into a pass with no
+// roster at all. That is a real improvement and it is not a proof, and the two must not be confused.
+//
+// NEXT-RUNG TRIGGER, therefore: the roster's derivation and the disposition pass related IN THE
+// PRODUCER so that the pass consumes a roster it cannot have produced -- the roster computed from
+// the module's own reference surface before any disposition is asked for, and the decision function
+// taking it as a parameter rather than building its own candidate list. At that point independence
+// is structural at the producer and this paragraph retires. Until then it is an authored discipline
+// that this envelope makes CHECKABLE, not one it enforces.
+//
+// THE ROSTER IS ORDERED AND ITS ADDRESS IS ORDER-SENSITIVE, DELIBERATELY. The join below is a set
+// law and does not care about order; the address does, so two producers stating the same sites in
+// different sequence get a roster-mismatch refusal rather than an admission. That is the fail-closed
+// direction (DESIGN section 5: a failure arm refuses, it does not widen) -- an order-insensitive
+// address would need a total order over names this module does not own, and inventing one to make a
+// refusal go away is how a wall becomes a decoration.
+type RepairSiteRoster {
+  sites: List<RepairSite>
+}
+
+fn expected_repair_sites(roster: RepairSiteRoster) -> List<RepairSite> {
+  roster.sites
+}
+
+// THE ROSTER'S OWN CONTENT ADDRESS, DERIVED HERE BECAUSE THIS MODULE IS THE ROSTER'S AUTHORITY.
+//
+// The binding envelope has to leave the matching half open: it cannot check that the transport it
+// was handed is its subject's, because std.occurrence_identity declares no digest over
+// ValidatedOccurrenceTransport and minting one outside that type's own module would be the DESIGN
+// section 3 violation. RepairSiteRoster is declared HERE, so no such boundary is crossed and the
+// half closes: the subject carries the roster's address, prove_subject_roster recomputes it, and a
+// roster that is not this subject's has no spelling at the join boundary.
+//
+// The tag prevents a one-site roster's address from colliding with that bare site's own address --
+// a roster is not its only member, and a fold with no tag would make those two facts one value.
+fn repair_site_roster_identity(roster: RepairSiteRoster) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "repair-site-roster",
+    payload: fold(
+      roster.sites,
+      init: content_hash_atom(value: "repair-site-roster-empty"),
+      f: (acc, site) => content_hash_combine_structural(
+        left: acc,
+        right: repair_site_identity(site: site)
+      )
+    )
+  )
+}
+
+// THE SUBJECT IS THE WHOLE OF WHAT MAKES TWO REPAIR OBSERVATIONS COMPARABLE.
+//
+// Semantic source and source set are two facts for the same reason they are in the binding envelope:
+// identical bytes reached through a different source-root set expose different declarations. The
+// compiler artifact fixes the binary; the repairer identity fixes WHICH decision surface inside it
+// was tapped. The roster address fixes the questions asked, and the resolution-registry address
+// fixes the answers available -- move either and the same repairer answers differently over the same
+// source.
+//
+// THERE IS NO EMISSION-TARGET FIELD, AND ITS ABSENCE IS DERIVED RATHER THAN OVERLOOKED. Use-line
+// synthesis exists only on the Rust emission path, so a reader expects a target here. But the
+// repairer identity ALREADY names the exact decision surface, and a decision surface belongs to one
+// target -- an observation of the Rust repairer and an observation of some other target's repairer
+// have different repairer_identity values and are already inapplicable to each other. A target field
+// would be a second representation of a fact this field already carries, free to disagree with it.
+//
+// THERE IS NO POLICY FIELD EITHER. The binding envelope carries one because a host thread-local gate
+// changes what its resolver answers and a substrate program cannot read it. No such gate governs
+// use-line synthesis; adding a field to mirror the neighbouring envelope would be inventing a fact
+// to make two modules look alike.
+type LegacyRepairObservationSubject {
+  semantic_source_digest: Fnv1a64Structural
+  source_set_digest: Fnv1a64Structural
+  compiler_artifact_digest: Fnv1a64Structural
+  repairer_identity: DeclarationRef
+  repair_site_roster_digest: Fnv1a64Structural
+  resolution_registry_digest: Fnv1a64Structural
+}
+
+type LegacyRepairObservation<O> {
+  subject: LegacyRepairObservationSubject
+  rows: List<LegacyRepairObservationRow<O>>
+}
+
+fn observed_repair_sites<O>(observation: LegacyRepairObservation<O>) -> List<RepairSite> {
+  observation.rows |> map(row => row.site)
+}
+
+fn legacy_repair_completeness<O>(
+  observation: LegacyRepairObservation<O>,
+  expected: List<RepairSite>
+) -> ObservationCompleteness<RepairSite> {
+  observation_completeness(
+    expected: expected,
+    observed: observed_repair_sites(observation: observation),
+    key_eq: repair_site_eq
+  )
+}
+
+// THE ROSTER'S PROVENANCE IS ESTABLISHED BY A CARRIER, NOT BY AN ORDERING INSIDE ONE FUNCTION.
+//
+// A completeness verdict computed against a roster nobody proved belongs to this subject is not a
+// weaker verdict, it is a category error. The first cut of this module got the ORDER right -- check
+// provenance, then join -- and that is validation: correct while nobody edits it, and satisfiable by
+// a later "simplification" that hoists the join out of the else-arm. So the fact is carried instead.
+//
+// SubjectRoster is `sole_constructor`, prove_subject_roster is its only mint, and the join below
+// takes one. A caller therefore cannot reach completeness over an unproven roster -- there is no
+// spelling for it, rather than a rule about which check runs first. That is the DESIGN section 5
+// move: the bad state is unwritable, not detected.
+//
+// THE MINT NAMES BOTH ADDRESSES ON REFUSAL. "These do not match" sends a reader looking; the two
+// digests tell them which side moved.
+type SubjectRoster sole_constructor {
+  subject: LegacyRepairObservationSubject
+  roster: RepairSiteRoster
+}
+
+type SubjectRosterProof
+  = SubjectRosterProven { proven: SubjectRoster }
+  | SubjectRosterMismatch {
+      subject_digest: Fnv1a64Structural,
+      roster_digest: Fnv1a64Structural
+    }
+
+fn prove_subject_roster(
+  subject: LegacyRepairObservationSubject,
+  roster: RepairSiteRoster
+) -> SubjectRosterProof {
+  let roster_digest = repair_site_roster_identity(roster: roster)
+  if subject.repair_site_roster_digest.digest == roster_digest.digest {
+    SubjectRosterProven { proven: SubjectRoster { subject: subject, roster: roster } }
+  } else {
+    SubjectRosterMismatch {
+      subject_digest: subject.repair_site_roster_digest,
+      roster_digest: roster_digest
+    }
+  }
+}
+
+// THE ADMITTED CARRIER. `sole_constructor` makes admit_complete_repair_observation the only route to
+// one, so a downstream law's PARAMETER TYPE is the evidence that the population was proven, rather
+// than a comment asking a caller to check first. A prose obligation is validation in its weakest
+// form: no `Accepted` program can read one.
+//
+// THE REFUSAL KEEPS ITS CAUSE. This is a typed admission answering WHY, never an Option that would
+// collapse every arm into one absent.
+//
+// RUNG, HONESTLY. `mechanically preventable`, not structural impossibility, and the same two facts
+// bound it here as bound the binding envelope's carrier. `sole_constructor`'s record-literal refusal
+// executes on the v1 seed infer path only, so the wall is a property of the compiling PATH rather
+// than of the type; and confinement establishes WHO may construct, never WHAT was proven -- though
+// here, as there, the mint's predicate is fixed and module-owned rather than caller-supplied, which
+// is the stronger of the two shapes. That bound applies to SubjectRoster above equally: the ordering
+// is structural WITHIN the paths where sole_constructor executes, and mitigatable elsewhere.
+// NEXT-RUNG TRIGGER, for both carriers: v2's own infer path carrying the construction wall.
+type CompleteLegacyRepairObservation<O> sole_constructor {
+  observation: LegacyRepairObservation<O>
+}
+
+type LegacyRepairAdmission<O>
+  = RepairObservationAdmitted { admitted: CompleteLegacyRepairObservation<O> }
+  | RepairObservationSubjectDiverged { field: String }
+  | RepairObservationRefused { completeness: ObservationCompleteness<RepairSite> }
+
+// THE OBSERVATION'S OWN SUBJECT MUST BE THE PROVEN ONE, AND THAT IS WHY THE CARRIER HOLDS BOTH.
+//
+// A proof that roster R belongs to subject S says nothing about an observation taken on some other
+// subject. So the mint binds the pair, and the admission compares the observation's subject to the
+// proven one before it joins -- a divergence there is the applicability refusal below, reached from
+// the admission side.
+fn admit_complete_repair_observation<O>(
+  observation: LegacyRepairObservation<O>,
+  proven: SubjectRoster
+) -> LegacyRepairAdmission<O> {
+  match legacy_repair_subject_applicability(left: observation.subject, right: proven.subject) {
+    LegacyRepairSubjectDiverged { field: f } => RepairObservationSubjectDiverged { field: f }
+    LegacyRepairSubjectApplicable => admit_over_proven_subject(observation: observation, proven: proven)
+  }
+}
+
+fn admit_over_proven_subject<O>(
+  observation: LegacyRepairObservation<O>,
+  proven: SubjectRoster
+) -> LegacyRepairAdmission<O> {
+  match legacy_repair_completeness(
+    observation: observation,
+    expected: expected_repair_sites(roster: proven.roster)
+  ) {
+    ObservationComplete => RepairObservationAdmitted {
+      admitted: CompleteLegacyRepairObservation { observation: observation }
+    }
+    ObservationMissingExpected { keys: k } => RepairObservationRefused { completeness: ObservationMissingExpected { keys: k } }
+    ObservationForeignObserved { keys: k } => RepairObservationRefused { completeness: ObservationForeignObserved { keys: k } }
+    ObservationRepeatedObserved { keys: k } => RepairObservationRefused { completeness: ObservationRepeatedObserved { keys: k } }
+  }
+}
+
+// APPLICABILITY IS A REFUSAL, NOT A COMPARISON RESULT.
+//
+// An observation is evidence about the base it was taken on and about no other. Comparing two whose
+// subjects differ in ANY field is a category error, so it answers with the field that diverged rather
+// than with a verdict -- "these are different bases" sends a reader looking, "the source-set digest
+// differs" tells them what moved.
+//
+// THE DeclarationRef FIELD CONSUMES std.decl_ref's OWN EQUALITY rather than a bare `!=`: that type's
+// authority module ships decl_field_eq, and two answers to one question would exist if this arm
+// spelled its own.
+type LegacyRepairSubjectApplicability
+  = LegacyRepairSubjectApplicable
+  | LegacyRepairSubjectDiverged { field: String }
+
+fn legacy_repair_subject_applicability(
+  left: LegacyRepairObservationSubject,
+  right: LegacyRepairObservationSubject
+) -> LegacyRepairSubjectApplicability {
+  if left.semantic_source_digest.digest != right.semantic_source_digest.digest {
+    LegacyRepairSubjectDiverged { field: "semantic_source_digest" }
+  } else if left.source_set_digest.digest != right.source_set_digest.digest {
+    LegacyRepairSubjectDiverged { field: "source_set_digest" }
+  } else if left.compiler_artifact_digest.digest != right.compiler_artifact_digest.digest {
+    LegacyRepairSubjectDiverged { field: "compiler_artifact_digest" }
+  } else if left.repairer_identity.module_path != right.repairer_identity.module_path {
+    LegacyRepairSubjectDiverged { field: "repairer_identity.module_path" }
+  } else if left.repairer_identity.decl_name != right.repairer_identity.decl_name {
+    LegacyRepairSubjectDiverged { field: "repairer_identity.decl_name" }
+  } else if !decl_field_eq(a: left.repairer_identity.field, b: right.repairer_identity.field) {
+    LegacyRepairSubjectDiverged { field: "repairer_identity.field" }
+  } else if left.repair_site_roster_digest.digest != right.repair_site_roster_digest.digest {
+    LegacyRepairSubjectDiverged { field: "repair_site_roster_digest" }
+  } else if left.resolution_registry_digest.digest != right.resolution_registry_digest.digest {
+    LegacyRepairSubjectDiverged { field: "resolution_registry_digest" }
+  } else {
+    LegacyRepairSubjectApplicable
+  }
+}
+
+// THE SUBJECT'S CONTENT ADDRESS, DERIVED RATHER THAN STORED. A stored digest beside the fields would
+// be a second representation free to disagree with them, and the disagreement would be undetectable
+// because nothing would recompute it.
+//
+// EVERY FIELD THE COMPARISON READS, THE ADDRESS FOLDS. A pair of subjects that applicability refuses
+// and the address cannot tell apart would be the stored-versus-derived split this function exists to
+// avoid. The rule is mechanical, and it is written down because the neighbouring envelope's first cut
+// folded six of the eight fields its comparison read.
+//
+// AND THE LABELLING MUST BE INJECTIVE, WHICH TOTALITY DOES NOT GIVE. A total match guarantees every
+// arm is considered; a hash fold needs the arms to map to DISTINCT values. decl_field_label carries
+// the arm tag for exactly that reason and is consumed from the binding envelope rather than
+// respelled here -- one label, one authority.
+fn legacy_repair_subject_identity(subject: LegacyRepairObservationSubject) -> Fnv1a64Structural {
+  let repairer = content_hash_combine_structural(
+    left: content_hash_combine_structural(
+      left: content_hash_atom(value: subject.repairer_identity.module_path),
+      right: content_hash_atom(value: subject.repairer_identity.decl_name)
+    ),
+    right: content_hash_atom(value: decl_field_label(field: subject.repairer_identity.field) as NonEmptyStr)
+  )
+  let sources = content_hash_combine_structural(
+    left: subject.semantic_source_digest,
+    right: subject.source_set_digest
+  )
+  let build = content_hash_combine_structural(left: subject.compiler_artifact_digest, right: repairer)
+  let populations = content_hash_combine_structural(
+    left: subject.repair_site_roster_digest,
+    right: subject.resolution_registry_digest
+  )
+  content_hash_combine_structural(left: sources, right: content_hash_combine_structural(left: build, right: populations))
+}
