@@ -53,7 +53,8 @@ import extdeps.bmc.pid_control_program {
   decimal_celsius,
   decimal_celsius_delta,
   decimal_percent,
-  decimal_ratio,
+  zone_demand_value,
+  decimal_milliseconds,
   decimal_seconds,
 }
 
@@ -369,7 +370,7 @@ fn curve_join(path: DocumentPath, readings: List<IndexedDecimal>, outputs: List<
           DemandCurvePoint {
             index: r.index,
             reading: decimal_celsius(value: r.magnitude),
-            output: decimal_percent(value: indexed_decimal_value_at(entries: outputs, index: r.index)),
+            output: zone_demand_value(value: indexed_decimal_value_at(entries: outputs, index: r.index)),
           }
         ),
         point => point.index,
@@ -764,7 +765,7 @@ fn decode_thermal_controller(
                                       name: name,
                                       inputs: inputs,
                                       setpoint: decimal_celsius(value: setpoint),
-                                      failsafe_output: decimal_percent(value: failsafe),
+                                      failsafe_output: zone_demand_value(value: failsafe),
                                       sample_period: decimal_seconds(value: sample_period),
                                       positive_hysteresis: decimal_celsius_delta(value: positive),
                                       negative_hysteresis: decimal_celsius_delta(value: negative),
@@ -922,28 +923,28 @@ fn decode_actuator_controller(
                                     controller: ActuatorController {
                                       name: name,
                                       inputs: inputs,
-                                      setpoint: decimal_percent(value: setpoint),
+                                      configured_setpoint_unused_by_runtime: setpoint,
                                       sample_period: decimal_seconds(value: sample_period),
                                       gains: PidGains {
-                                        proportional: decimal_ratio(value: p),
-                                        integral: decimal_ratio(value: i),
-                                        derivative: decimal_ratio(value: d),
+                                        proportional: p,
+                                        integral: i,
+                                        derivative: d,
                                       },
                                       feed_forward: FeedForward {
-                                        gain: decimal_ratio(value: ff_gain),
-                                        offset: decimal_percent(value: ff_offset),
+                                        gain: ff_gain,
+                                        offset: zone_demand_value(value: ff_offset),
                                       },
                                       integral_limits: IntegralBounds {
-                                        minimum: decimal_ratio(value: i_min),
-                                        maximum: decimal_ratio(value: i_max),
+                                        minimum: i_min,
+                                        maximum: i_max,
                                       },
                                       output_limits: OutputBounds {
-                                        minimum: decimal_percent(value: out_min),
-                                        maximum: decimal_percent(value: out_max),
+                                        minimum: zone_demand_value(value: out_min),
+                                        maximum: zone_demand_value(value: out_max),
                                       },
                                       slew: SlewLimits {
-                                        negative_per_sample: decimal_percent(value: slew_neg),
-                                        positive_per_sample: decimal_percent(value: slew_pos),
+                                        negative_coefficient: slew_neg,
+                                        positive_coefficient: slew_pos,
                                       },
                                     },
                                     entry_partition: object_partition(
@@ -1119,10 +1120,10 @@ fn decode_zone(container: JsonValue, path: DocumentPath) -> ZoneDecode {
                               ZoneDecoded {
                                 zone: ProgramZone {
                                   id: id,
-                                  minimum_thermal_output: decimal_percent(value: minimum),
-                                  failsafe_output: decimal_percent(value: failsafe),
-                                  cycle_interval_ms: cycle_ms,
-                                  update_thermals_ms: update_ms,
+                                  minimum_thermal_output: zone_demand_value(value: minimum),
+                                  failsafe_output: zone_demand_value(value: failsafe),
+                                  cycle_interval: decimal_milliseconds(value: cycle_ms),
+                                  update_thermals_interval: decimal_milliseconds(value: update_ms),
                                   thermal_demand_controllers: thermal,
                                   actuator_controllers: actuators,
                                 },

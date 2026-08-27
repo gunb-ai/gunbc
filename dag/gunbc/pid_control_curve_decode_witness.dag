@@ -54,7 +54,7 @@ fn the_deployed_curve_decodes_paired() -> Bool {
   points.length() == 9
     && third.length() == 1
     && exact_decimal_wire(d: measure_count(m: third.first().reading)) == "66"
-    && exact_decimal_wire(d: measure_count(m: third.first().output)) == "44"
+    && exact_decimal_wire(d: third.first().output.magnitude) == "44"
 }
 
 // PAIRING IS BY KEY IDENTITY, NOT BY POSITION, and this is the discriminator that proves it: the
@@ -69,9 +69,9 @@ fn pairing_survives_a_reordered_output_object() -> Bool {
   let zeroth = point_at(points: points, index: 0)
   points.length() == 4
     && third.length() == 1
-    && exact_decimal_wire(d: measure_count(m: third.first().output)) == "44"
+    && exact_decimal_wire(d: third.first().output.magnitude) == "44"
     && zeroth.length() == 1
-    && exact_decimal_wire(d: measure_count(m: zeroth.first().output)) == "22"
+    && exact_decimal_wire(d: zeroth.first().output.magnitude) == "22"
 }
 
 // A NON-CANONICAL KEY IS NOT AN INDEX THE DAEMON ASKS FOR. phosphor-pid-control requests the exact

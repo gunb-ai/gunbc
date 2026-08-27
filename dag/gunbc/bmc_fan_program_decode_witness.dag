@@ -92,11 +92,11 @@ fn the_actuators_carry_the_offsets_that_made_it_quiet() -> Bool {
   let chassis = actuator_named(program: program, name: "CHASSIS")
   fan1.length() == 1
     && chassis.length() == 1
-    && exact_decimal_wire(d: measure_count(m: fan1.first().feed_forward.offset)) == "-8"
-    && exact_decimal_wire(d: measure_count(m: fan1.first().output_limits.minimum)) == "3"
-    && exact_decimal_wire(d: measure_count(m: chassis.first().feed_forward.offset)) == "35"
-    && exact_decimal_wire(d: measure_count(m: chassis.first().output_limits.minimum)) == "40"
-    && exact_decimal_wire(d: measure_count(m: chassis.first().slew.negative_per_sample)) == "-3"
+    && exact_decimal_wire(d: fan1.first().feed_forward.offset.magnitude) == "-8"
+    && exact_decimal_wire(d: fan1.first().output_limits.minimum.magnitude) == "3"
+    && exact_decimal_wire(d: chassis.first().feed_forward.offset.magnitude) == "35"
+    && exact_decimal_wire(d: chassis.first().output_limits.minimum.magnitude) == "40"
+    && exact_decimal_wire(d: chassis.first().slew.negative_coefficient) == "-3"
 }
 
 // THE CHASSIS ACTUATOR DRIVES THREE FANS AND FAN1 DRIVES ONE, which is the wiring fact the
@@ -112,7 +112,7 @@ fn the_deployed_curve_survives_the_whole_program_decode() -> Bool {
   let demand = thermal_controllers(program: program).first()
   demand.curve.length() == 9
     && demand.name == "TEMP_SOC"
-    && exact_decimal_wire(d: measure_count(m: demand.failsafe_output)) == "75"
+    && exact_decimal_wire(d: demand.failsafe_output.magnitude) == "75"
 }
 
 // THE TWO HOSTS AGREE ON THE COEFFICIENT THEY SPELL DIFFERENTLY. srv3 writes minThermalOutput as
@@ -120,8 +120,8 @@ fn the_deployed_curve_survives_the_whole_program_decode() -> Bool {
 fn the_two_hosts_agree_on_the_coefficient_they_spell_differently() -> Bool {
   let srv3_zone = srv3_programs().first().zones.first()
   let srv4_zone = srv4_programs().first().zones.first()
-  exact_decimal_wire(d: measure_count(m: srv3_zone.minimum_thermal_output))
-    == exact_decimal_wire(d: measure_count(m: srv4_zone.minimum_thermal_output))
+  exact_decimal_wire(d: srv3_zone.minimum_thermal_output.magnitude)
+    == exact_decimal_wire(d: srv4_zone.minimum_thermal_output.magnitude)
 }
 
 // THE THREE-STATE D-BUS BOUNDS FIELD IS EXERCISED BY THE REAL DOCUMENT, not only by a fixture: at

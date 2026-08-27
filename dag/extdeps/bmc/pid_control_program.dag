@@ -2,7 +2,7 @@ module extdeps.bmc.pid_control_program
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decimal { ExactDecimal, exact_decimal_equal }
-import std.measure { Dimensionless, Measure, One, Temperature, TemperatureDifference, Time }
+import std.measure { Dimensionless, Measure, Milli, One, Temperature, TemperatureDifference, Time }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Https, Uri }
@@ -37,7 +37,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // obtained, the intent side has to either borrow that vocabulary or fork the model, and a forked
 // model is two answers to "what program is running".
 //
-// WHAT THE HARDWARE ACTUALLY DOES, WHICH THE FIELD LAYOUT ENCODES RATHER THAN ANNOTATES. A zone
+// WHAT THIS DEPLOYMENT ACTUALLY DOES, WHICH THE FIELD LAYOUT ENCODES RATHER THAN ANNOTATES, AND
+// WHICH IS NOT A LAW OF THE SCHEMA. Upstream zones may combine several thermal-controller outputs
+// and select among them, so the model carries LISTS on both sides and the captured artifacts
+// simply inhabit one-demand-two-actuators. An earlier revision of this paragraph stated the
+// one-demand shape as what the hardware does, which read as a schema constraint. The deployment
 // runs ONE thermal demand controller -- a stepwise curve turning a temperature into a demand --
 // whose single output feeds MULTIPLE actuator controllers, each with its own transfer function
 // from that one demand to its own fans. The deployed program is exactly this: TEMP_SOC produces a
@@ -55,9 +59,20 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // §3 nicknaming violation; changing M is what the type parameter is for.
 type DecimalCelsius = Measure<Temperature, One, ExactDecimal>
 type DecimalCelsiusDelta = Measure<TemperatureDifference, One, ExactDecimal>
+// THE ZONE'S OUTPUT UNITS ARE NOT UNIVERSALLY PERCENT, so they are carried as their own named
+// value rather than as a dimensionless percentage. Upstream describes the zone's thermal output as
+// commonly fan RPM and does not require the setpoint to be RPM either; this deployment's demand
+// happens to run on a PWM-like scale, but a model that hard-coded percent would be asserting a
+// unit the schema does not fix. Everything measured in those units -- the curve's output, the
+// zone's minimum and failsafe, an actuator's output limits and feed-forward offset -- shares this
+// one carrier, so a value from one cannot be silently compared against a temperature or a gain.
+type ZoneDemandValue {
+  magnitude: ExactDecimal
+}
+
 type DecimalPercent = Measure<Dimensionless, One, ExactDecimal>
 type DecimalSeconds = Measure<Time, One, ExactDecimal>
-type DecimalRatio = Measure<Dimensionless, One, ExactDecimal>
+type DecimalMilliseconds = Measure<Time, Milli, ExactDecimal>
 
 fn decimal_celsius(value: ExactDecimal) -> DecimalCelsius {
   Measure { count: value }
@@ -71,11 +86,18 @@ fn decimal_percent(value: ExactDecimal) -> DecimalPercent {
   Measure { count: value }
 }
 
+fn zone_demand_value(value: ExactDecimal) -> ZoneDemandValue {
+  ZoneDemandValue { magnitude: value }
+}
+
 fn decimal_seconds(value: ExactDecimal) -> DecimalSeconds {
   Measure { count: value }
 }
 
-fn decimal_ratio(value: ExactDecimal) -> DecimalRatio {
+// THE ZONE'S TWO INTERVALS CARRY THEIR SCALE IN THE TYPE RATHER THAN IN THE FIELD NAME. The
+// document's keys end in MS and an earlier revision let that suffix be the only record of the
+// unit, which puts a magnitude's scale in a string.
+fn decimal_milliseconds(value: ExactDecimal) -> DecimalMilliseconds {
   Measure { count: value }
 }
 
@@ -135,7 +157,7 @@ type ProgramSensor {
 type DemandCurvePoint {
   index: Int
   reading: DecimalCelsius
-  output: DecimalPercent
+  output: ZoneDemandValue
 }
 
 // HYSTERESIS IS A TEMPERATURE DIFFERENCE AND THE SETPOINT IS A TEMPERATURE, which are different
@@ -144,7 +166,7 @@ type ThermalDemandController {
   name: NonEmptyStr
   inputs: List<NonEmptyStr>
   setpoint: DecimalCelsius
-  failsafe_output: DecimalPercent
+  failsafe_output: ZoneDemandValue
   sample_period: DecimalSeconds
   positive_hysteresis: DecimalCelsiusDelta
   negative_hysteresis: DecimalCelsiusDelta
@@ -152,51 +174,76 @@ type ThermalDemandController {
   curve: List<DemandCurvePoint>
 }
 
+// THE COEFFICIENTS ARE EXACT SCALARS AND ARE NOT TYPED AS RATIOS, because their dimensions depend
+// on the controller's input and output and this model spans more than one such controller. For a
+// fan controller producing PWM from a tachometer reading, a proportional gain is percent per RPM
+// and an integral gain is percent per RPM-second -- neither is dimensionless, and calling them
+// ratios asserted an algebra that would be wrong for the very controllers here. Lane S's
+// obligation is exact observation and comparison, which needs no dimension at all; a later
+// behaviour model can parameterise them by the controller's actual input and output quantities.
 type PidGains {
-  proportional: DecimalRatio
-  integral: DecimalRatio
-  derivative: DecimalRatio
+  proportional: ExactDecimal
+  integral: ExactDecimal
+  derivative: ExactDecimal
 }
 
 // THE FEED-FORWARD PAIR IS WHAT MAKES THIS PROGRAM QUIET, so it is named as its own concept rather
 // than left as two more coefficients in a flat list. With all three gains at zero the actuator's
-// entire behaviour is `output = demand * gain + offset`, clamped and slew-limited -- so the offset
-// is not a trim on a feedback loop, it IS the transfer function, and it is where the difference
-// between the two actuators lives.
+// behaviour is feed-forward alone, clamped and slew-limited -- the offset is not a trim on a
+// feedback loop, it IS the transfer function, and it is where the difference between the two
+// deployed actuators lives.
+//
+// NO FORMULA IS STATED HERE, AND THE OMISSION IS DELIBERATE. An earlier revision wrote
+// `output = demand * gain + offset`; review reported the runtime computes `(setpoint + offset) *
+// gain`. At the deployed gain of 1.0 the two agree exactly, so neither the captured documents nor
+// anything in this lane can distinguish them -- which is how the wrong one survived being written
+// down. Nobody who wrote this file has read that runtime, so rather than replace one unverified
+// formula with another, this model states the fields and not the arithmetic. NEXT-RUNG TRIGGER:
+// read the cited runtime, then record the equation with its citation. Nothing in Lane S depends on
+// it: exact observation and comparison need the coefficients, not their composition.
 type FeedForward {
-  gain: DecimalRatio
-  offset: DecimalPercent
+  gain: ExactDecimal
+  offset: ZoneDemandValue
 }
 
 type OutputBounds {
-  minimum: DecimalPercent
-  maximum: DecimalPercent
+  minimum: ZoneDemandValue
+  maximum: ZoneDemandValue
 }
 
 type IntegralBounds {
-  minimum: DecimalRatio
-  maximum: DecimalRatio
+  minimum: ExactDecimal
+  maximum: ExactDecimal
 }
 
-// SLEW IS PER SAMPLE PERIOD AND THE FIELD NAMES SAY SO, because a percent and a percent-per-second
-// are not the same magnitude and this schema writes them identically. The negative limit is
-// authored as a negative number in the document and is kept with its sign rather than being
-// normalised to a magnitude: a positive slewNeg is a different program, not the same one written
-// differently, and normalising here would make the two compare equal.
+// SLEW IS A RATE AND THIS MODEL DOES NOT CLAIM ITS DENOMINATOR. An earlier revision named these
+// fields per-sample and typed them as a percentage; review reported that the runtime multiplies
+// the coefficient by the elapsed sample TIME, which makes the denominator a duration rather than a
+// sample. The deployed samplePeriod is 1.0, so percent-per-second and percent-per-sample are
+// numerically identical here and neither the documents nor this lane can tell them apart -- which
+// is exactly why the wrong name survived. Nobody who wrote this file has read that runtime, so the
+// fields are named for what they are in the document and carry no denominator. NEXT-RUNG TRIGGER:
+// read the cited runtime, then give these a rate carrier naming its denominator.
+//
+// The negative limit keeps its sign rather than being normalised to a magnitude: a positive
+// slewNeg is a different program, not the same one written differently, and normalising here would
+// make the two compare equal.
 type SlewLimits {
-  negative_per_sample: DecimalPercent
-  positive_per_sample: DecimalPercent
+  negative_coefficient: ExactDecimal
+  positive_coefficient: ExactDecimal
 }
 
-// THE ACTUATOR'S SETPOINT IS IN THE ZONE'S DEMAND UNITS, NOT DEGREES, even though the document
-// spells it with the same key as the thermal controller's setpoint. That ambiguity is resolved by
-// the split between these two types rather than by a comment: a reader holding an
-// ActuatorController cannot mistake its setpoint for a temperature, because the field's type is
-// not a temperature.
+// THE ACTUATOR'S CONFIGURED SETPOINT IS PRESERVED WITHOUT BEING GIVEN OPERATIVE MEANING. It is in
+// the bytes, so an observation that dropped it would not conserve; but review reports that the
+// upstream builder does not pass this field to the fan controller it constructs, while thermal and
+// stepwise controllers do receive theirs. An earlier revision typed it as a demand value and
+// annotated it as the zone's demand units, which asserted an operative role for a field that may
+// have none. It is carried as the configured scalar it is, named so that no reader mistakes it for
+// a live setpoint, and no unit is claimed for it.
 type ActuatorController {
   name: NonEmptyStr
   inputs: List<NonEmptyStr>
-  setpoint: DecimalPercent
+  configured_setpoint_unused_by_runtime: ExactDecimal
   sample_period: DecimalSeconds
   gains: PidGains
   feed_forward: FeedForward
@@ -212,10 +259,10 @@ type ActuatorController {
 // answers it -- an actuator cannot appear where a demand controller is expected.
 type ProgramZone {
   id: Int
-  minimum_thermal_output: DecimalPercent
-  failsafe_output: DecimalPercent
-  cycle_interval_ms: ExactDecimal
-  update_thermals_ms: ExactDecimal
+  minimum_thermal_output: ZoneDemandValue
+  failsafe_output: ZoneDemandValue
+  cycle_interval: DecimalMilliseconds
+  update_thermals_interval: DecimalMilliseconds
   thermal_demand_controllers: List<ThermalDemandController>
   actuator_controllers: List<ActuatorController>
 }
