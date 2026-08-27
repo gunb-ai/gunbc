@@ -64,6 +64,8 @@ mod required_regen_host;
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
 // the emitted crate's exported surface is unchanged; the obligation is enrolled in
 // `gunbc.target_invocation_seed_growth`.
+#[path = "behavioral_receipt_host.rs"]
+pub mod behavioral_receipt_host;
 #[path = "target_invocation_host.rs"]
 pub mod target_invocation_host;
 
