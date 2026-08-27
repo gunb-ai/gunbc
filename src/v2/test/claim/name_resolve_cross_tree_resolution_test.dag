@@ -1,5 +1,6 @@
 module v2.test.claim.name_resolve_cross_tree_resolution
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots }
 import v2.compiler.name_resolve {
   Admission,
@@ -39,8 +40,7 @@ import v2.std.node {
   Named,
   Node,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.resolution_policy { ImportScoped }
@@ -61,7 +61,7 @@ fn ct_qn_node(seg: Symbol) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   )
@@ -74,7 +74,7 @@ fn ct_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   )
@@ -97,11 +97,11 @@ fn ct_module_root(qn_spine: Node, export_sym: Symbol, export_atom: Symbol) -> No
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -126,11 +126,11 @@ fn ct_subject_with_import_use(
         target: Node {
           kind: TypeNode { connective: Atom { identity: imported_decl } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

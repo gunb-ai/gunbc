@@ -5,10 +5,10 @@ data python_extended_fn_source: String = "def choose(x):\n    y = x + 1\n    if 
 fn python_parse_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^python_parse_bool_true } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^python_parse_bool_false } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
   }
 }

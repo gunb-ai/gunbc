@@ -1,5 +1,6 @@
 module v2.std.compilers.target_model
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution {
   DissolutionCondition,
   unbound_dissolution
@@ -122,7 +123,6 @@ import v2.std.node {
   match_arm_children_conform_skip_first,
   name_occurrences,
   node_rebuild,
-  SyntheticOccurrence
 }
 import v2.std.witness {
   StructuralPropertyWitness
@@ -266,7 +266,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
             target: Node {
               kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_fixed } },
               children: [],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: OccurrenceSynthetic
 }
           },
           Edge {
@@ -274,11 +274,11 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
             target: Node {
               kind: TypeNode { connective: Atom { identity: c } },
               children: [],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: OccurrenceSynthetic
 }
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     BoundToken { token_class: c, binding: b } =>
       Node {
@@ -289,7 +289,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
             target: Node {
               kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_bound } },
               children: [],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: OccurrenceSynthetic
 }
           },
           Edge {
@@ -297,7 +297,7 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
             target: Node {
               kind: TypeNode { connective: Atom { identity: c } },
               children: [],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: OccurrenceSynthetic
 }
           },
           Edge {
@@ -305,11 +305,11 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
             target: Node {
               kind: TypeNode { connective: Atom { identity: b } },
               children: [],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: OccurrenceSynthetic
 }
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -337,7 +337,7 @@ fn target_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnost
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: token_class } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -349,7 +349,7 @@ fn target_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnostic {
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: binding } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1026,7 +1026,7 @@ fn target_model_type_atom_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1034,7 +1034,7 @@ fn target_model_type_conj_node(children: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: children,
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1145,7 +1145,7 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
             target: target_model_type_atom_node(identity: f)
           )
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     AlgebraInverseCompose { binary_field: b, inverse_field: i } =>
       Node {
@@ -1160,7 +1160,7 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
             target: target_model_type_atom_node(identity: i)
           )
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     OrderingComparison { compare_field: c, predicate: p } =>
       Node {
@@ -1175,7 +1175,7 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
             target: target_model_type_atom_node(identity: ordering_predicate_wire_symbol(predicate: p))
           )
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     EqualityComparison { eq_field: e, predicate: p } =>
       Node {
@@ -1190,7 +1190,7 @@ fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> 
             target: target_model_type_atom_node(identity: equality_predicate_wire_symbol(predicate: p))
           )
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
   }
 }
@@ -1384,7 +1384,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
             target: target_model_type_atom_node(identity: t)
           )
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     PrefixToken { token: t } =>
       Node {
@@ -1395,7 +1395,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
             target: target_model_type_atom_node(identity: t)
           )
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     CallIdent { ident: i } =>
       Node {
@@ -1406,7 +1406,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
             target: target_model_type_atom_node(identity: i)
           )
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     MethodIdent { ident: i } =>
       Node {
@@ -1417,7 +1417,7 @@ fn target_model_operator_shape_wire_node(shape: TargetOperatorShape) -> Node {
             target: target_model_type_atom_node(identity: i)
           )
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
   }
 }
@@ -3326,7 +3326,7 @@ fn symbol_kernel_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^symbol_kernel_type_atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3334,7 +3334,7 @@ fn char_kernel_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^char_kernel_type_atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3527,7 +3527,7 @@ fn target_value_template_tag_node(kind: TargetValueTemplateKind) -> Node {
       connective: Atom { identity: discriminant(v: kind) }
     },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3544,11 +3544,11 @@ fn target_value_expression_symbol_identity(identity: Symbol) -> TargetValueExpre
           target: Node {
             kind: TypeNode { connective: Atom { identity: identity } },
             children: [],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: OccurrenceSynthetic
 }
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -3566,11 +3566,11 @@ fn target_value_expression_symbol_to_owned_string(identity: Symbol) -> TargetVal
           target: Node {
             kind: TypeNode { connective: Atom { identity: identity } },
             children: [],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: OccurrenceSynthetic
 }
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -3588,7 +3588,7 @@ fn target_value_expression_bool_literal(value: Bool) -> TargetValueExpression {
           target: target_value_expression_bool_atom(value: value)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -3606,11 +3606,11 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
           target: Node {
             kind: TypeNode { connective: Atom { identity: codepoint } },
             children: [],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: OccurrenceSynthetic
 }
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -3628,7 +3628,7 @@ fn target_value_expression_string_literal(value: Node) -> TargetValueExpression 
           target: value
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -3646,7 +3646,7 @@ fn target_value_expression_binding_ref(binding: Symbol) -> TargetValueExpression
           target: target_model_type_atom_node(identity: binding)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   }
 }
@@ -3872,7 +3872,7 @@ fn target_value_expression_primitive_apply(
         ],
         right: target_value_expr_primitive_apply_operand_edges(operands: operands)
       ),
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   }
 }
@@ -3896,7 +3896,7 @@ fn target_value_expression_effect_apply(
         ],
         right: target_value_expr_primitive_apply_operand_edges(operands: operands)
       ),
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   }
 }
@@ -4121,7 +4121,7 @@ fn target_value_expression_conditional(
           target: else_arm.node
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   }
 }
@@ -4151,7 +4151,7 @@ fn target_value_expression_bind_let(
           target: bind_body.node
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   }
 }
@@ -4169,7 +4169,7 @@ fn target_value_expression_loop(body: TargetValueExpression) -> TargetValueExpre
           target: body.node
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   }
 }
@@ -4205,13 +4205,13 @@ fn target_value_expression_record_construct(
             target: Node {
               kind: TypeNode { connective: Atom { identity: type_name } },
               children: [],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: OccurrenceSynthetic
             }
           )
         ],
         right: target_value_expr_field_init_slot_edges(slots: fields)
       ),
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   }
 }
@@ -4236,11 +4236,11 @@ fn target_value_expression_field_access(
           target: Node {
             kind: TypeNode { connective: Atom { identity: field_name } },
             children: [],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: OccurrenceSynthetic
           }
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   }
 }
@@ -4291,7 +4291,7 @@ fn target_value_expr_match_arm_wire(arm: TargetValueExprMatchArmSlot) -> Node {
       target_model_named_edge(name: match_arm_pattern, target: arm.pattern.node),
       target_model_named_edge(name: match_arm_body, target: arm.body.node)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4320,7 +4320,7 @@ fn target_value_expression_match(
         ],
         right: target_value_expr_match_arm_edges(arms: arms)
       ),
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   }
 }
@@ -4362,7 +4362,7 @@ fn target_value_expression_callable_apply(
         ],
         right: target_value_expr_callable_arg_edges(args: args)
       ),
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   }
 }
@@ -4402,7 +4402,7 @@ fn target_value_expression_closure(
           )
         ]
       ),
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   }
 }
@@ -7994,7 +7994,7 @@ fn target_value_expression_bool_atom(value: Bool) -> Node {
           connective: Atom { identity: ^target_value_expression_bool_true }
         },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     false =>
       Node {
@@ -8002,7 +8002,7 @@ fn target_value_expression_bool_atom(value: Bool) -> Node {
           connective: Atom { identity: ^target_value_expression_bool_false }
         },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -8023,7 +8023,7 @@ fn target_constructor_template_node(form: Optional<TargetConstructorTemplate>) -
           connective: Atom { identity: ^target_constructor_template_optional_absent }
         },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     Present { value: template } =>
       match template {
@@ -8033,7 +8033,7 @@ fn target_constructor_template_node(form: Optional<TargetConstructorTemplate>) -
               connective: Atom { identity: ^target_constructor_template_constructor_absent }
             },
             children: [],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: OccurrenceSynthetic
 }
       }
   }
@@ -8094,7 +8094,7 @@ fn target_model_bundle_core(host: TargetModel) -> Node {
             target_model_bundle_core_keep_edge(acc: acc, edge: edge)
           }
         ),
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     _ => host.bundle
   }
@@ -8134,11 +8134,11 @@ fn target_atom_realization_to_node(row: TargetAtomRealization, host_bundle: Node
         target: Node {
           kind: TypeNode { connective: Atom { identity: row.display_name } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -8180,7 +8180,7 @@ fn target_atom_realization_catalog_node(
         )
       }
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -8484,7 +8484,7 @@ fn target_function_boundary_site_to_node(site: FunctionBoundarySite) -> Node {
       connective: Atom { identity: discriminant(v: site) }
     },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -8583,7 +8583,7 @@ fn target_function_signature_realization_to_node(
         target: row.signature_type_form.node
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -8621,7 +8621,7 @@ fn target_function_signature_realization_catalog_node(
         )
       }
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -8853,7 +8853,7 @@ fn target_type_expr_surface_edge(surface: Symbol) -> Edge {
     target: Node {
       kind: TypeNode { connective: Atom { identity: surface } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -8958,7 +8958,7 @@ fn target_type_expr_kind_edge(kind: TargetTypeExprKind) -> Edge {
         connective: Atom { identity: discriminant(v: kind) }
       },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -8990,7 +8990,7 @@ fn target_type_expr_wrapped_emitted(
       ),
       item: target_type_expr_kind_edge(kind: kind)
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -9002,7 +9002,7 @@ fn target_type_expr_atom_emitted(form: TargetAtomTypeShape, identity: Symbol) ->
       Node {
         kind: TypeNode { connective: Atom { identity: identity } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     ]
   )
@@ -9032,7 +9032,7 @@ fn target_type_expr_wrapped_emitted_labeled(
       ),
       right: Cons { head: target_type_expr_kind_edge(kind: kind), tail: Empty }
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -10410,7 +10410,7 @@ fn target_collection_set_carrier_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^target_collection_set_carrier } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -11021,7 +11021,7 @@ fn target_carrier_type_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -11487,7 +11487,7 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
             }
           },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       ),
       target_model_named_edge(
@@ -11497,7 +11497,7 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
             connective: Atom { identity: discriminant(v: row.use_site) }
           },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       ),
       target_model_named_edge(
@@ -11507,11 +11507,11 @@ fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipReal
             connective: Atom { identity: discriminant(v: row.reference_layer) }
           },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -11539,7 +11539,7 @@ fn target_use_site_ownership_catalog_node(
       empty: Empty,
       cons: fn(acc, row) { target_use_site_ownership_catalog_snoc_edge(acc: acc, row: row) }
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -11570,7 +11570,7 @@ fn target_use_site_ownership_catalog_append_derived_rows(
             )
           }
         ),
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     _ => catalog
   }
@@ -11603,7 +11603,7 @@ fn target_model_bundle_replace_edge_target(
             }
           }
         ),
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     _ => bundle
   }
@@ -11782,7 +11782,7 @@ fn target_model_augment_value_semantics_carriers(
 
 fn target_value_semantics_carrier_atom_node(id: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: id } }, children: Empty,
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -11799,7 +11799,7 @@ fn target_value_semantics_carriers_node(atoms: List<Symbol>) -> Node {
         )
       }
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -11901,7 +11901,7 @@ fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Nod
         target: Node {
           kind: TypeNode { connective: Atom { identity: tokens.rc_type_head } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       ),
       target_model_named_edge(
@@ -11909,7 +11909,7 @@ fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Nod
         target: Node {
           kind: TypeNode { connective: Atom { identity: tokens.box_type_head } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       ),
       target_model_named_edge(
@@ -11917,7 +11917,7 @@ fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Nod
         target: Node {
           kind: TypeNode { connective: Atom { identity: tokens.rc_new_ctor } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       ),
       target_model_named_edge(
@@ -11925,11 +11925,11 @@ fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Nod
         target: Node {
           kind: TypeNode { connective: Atom { identity: tokens.box_new_ctor } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -11976,7 +11976,7 @@ fn target_value_expression_reference_rc_new(
           target: target_value_expression_node(expr: inner)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -11997,7 +11997,7 @@ fn target_value_expression_reference_box_new(
           target: target_value_expression_node(expr: inner)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -12064,7 +12064,7 @@ fn target_type_expr_symbol_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -12081,7 +12081,7 @@ fn target_type_expr_atom_shape_node(form: TargetAtomTypeShape) -> Node {
         target: target_type_expr_symbol_atom(id: form.ident_token)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -12134,7 +12134,7 @@ fn target_type_expr_generic_apply_shape_node(form: TargetGenericApply) -> Node {
           )
         ]
     },
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -12151,7 +12151,7 @@ fn target_type_expr_sum_shape_node(form: TargetSumTypeShape) -> Node {
         target: target_type_expr_symbol_atom(id: form.variant_separator)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -12188,7 +12188,7 @@ fn target_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
         target: target_type_expr_symbol_atom(id: form.param_list_separator)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -12268,7 +12268,7 @@ fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection)
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

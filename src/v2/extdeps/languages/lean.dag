@@ -1,4 +1,5 @@
 module v2.extdeps.languages.lean
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.grammar {
@@ -72,7 +73,6 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
-  SyntheticOccurrence
 }
 
 type LeanDeclarationKind
@@ -439,7 +439,7 @@ fn lean_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -519,7 +519,7 @@ fn lean_overflow_semantics_node(
           target: lean_overflow_return_value_rule_node(rule: rule)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
     OverflowRaises { effect: effect } => Node {
       kind: TypeNode { connective: Conj },
@@ -533,7 +533,7 @@ fn lean_overflow_semantics_node(
           target: lean_overflow_raise_effect_node(effect: effect)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
     OverflowUndefined =>
       lean_inhabitant_atom(id: ^lean_tag_overflow_undefined)
@@ -562,7 +562,7 @@ fn lean_scalar_node(scalar: LeanScalar) -> Node {
           target: lean_overflow_semantics_node(semantics: overflow.semantics)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
     LeanWidthAdmissionRefused { width: _ } =>
       lean_inhabitant_atom(id: ^lean_tag_width_inadmissible)
@@ -589,7 +589,7 @@ fn lean_primitive_facts_node(facts: LeanPrimitiveFacts) -> Node {
         target: lean_inhabitant_atom(id: facts.representation)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -603,7 +603,7 @@ fn lean_primitive_inhabitant_node(id: Symbol, facts: LeanPrimitiveFacts) -> Node
         target: lean_primitive_facts_node(facts: facts)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -906,7 +906,7 @@ fn lean_integer_algebra_witness_node(
         target: lean_integer_width_node(width: width)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -923,7 +923,7 @@ fn lean_bool_algebra_witness_node() -> Node {
         target: lean_inhabitant_atom(id: ^lean_repr_bool_inductive)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

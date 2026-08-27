@@ -20,9 +20,10 @@ import std.measure { ByteSize, byte_size }
 // refuses the seventeenth. So an authored-but-unenforced limit is a DESCRIPTION OF INTENT, and a
 // consumer that divides a host aggregate by it would be dividing by an aspiration.
 //
-// gunbc.session_container_projection reads this distinction directly: only ConcurrencyEnforcedBy
-// can ground a per-container cap, because only an enforced limit bounds the containers that do not
-// exist yet.
+// The distinction is why only ConcurrencyEnforcedBy could ever ground a per-container cap: only an
+// enforced limit bounds the containers that do not exist yet. gunbc.session_container_projection
+// was the consumer that read it, and it is DELETED -- so nothing derives a per-container cap today
+// and the enforcement axis exists here to make the unenforced case refuse rather than divide.
 type ConcurrencyEnforcement
   = ConcurrencyEnforcedBy { actuator: NonEmptyStr }
   | ConcurrencyAuthoredUnenforced { cause: String }

@@ -1,5 +1,6 @@
 module v2.test.name_resolve.admission_fail_closed
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.name_resolve {
   Admission,
   AdmissionAccepted,
@@ -37,7 +38,7 @@ import v2.std.diagnostic {
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v2.std.resolution_policy { ImportScoped }
 
 test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
@@ -61,7 +62,7 @@ fn fc_qn_node(seg: Symbol) -> Node {
     xs: Cons { head: seg, tail: Empty },
     item_node: fn(sym) {
       Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
     }
   )
@@ -86,11 +87,11 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
             connective: Atom { identity: ^dag_c3_surface_sugar_service }
           },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -149,11 +150,11 @@ fn fc_malformed_subject_root() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^fc_malformed_child_sym } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -286,11 +287,11 @@ fn fc_dual_import_subject_root(seg: Symbol, use_sym: Symbol, imported_decl: Symb
         target: Node {
           kind: TypeNode { connective: Atom { identity: imported_decl } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

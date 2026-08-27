@@ -17,7 +17,7 @@ fn w_nominal_record_at_call_arg_red() -> Bool {
 
 fn w_container_element_record_at_call_arg_red() -> Bool {
   compile_dag_rust_emit_check(
-    "module warmfox_bl1_prediction\nimport std.algebra { Cons, Empty, FreeMonoid }\nimport v2.std.node { Node, TypeNode, Atom, SyntheticOccurrence }\n\ntype NormalizedTree sole_constructor {\n  root: Node,\n}\n\nfn fc_module_root() -> Node {\n  Node {\n    kind: TypeNode { connective: Atom { identity: ^fc_seg } },\n    children: [],\n    occurrence_id: SyntheticOccurrence,\n  }\n}\n\nfn fc_single_found_root() -> FreeMonoid<Node> {\n  Cons { head: fc_module_root(), tail: Empty }\n}\n\nfn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Bool {\n  true\n}\n\nfn bad_call() -> Bool {\n  validate_module_roots(roots: fc_single_found_root())\n}\n",
+    "module warmfox_bl1_prediction\nimport std.algebra { Cons, Empty, FreeMonoid }\nimport v2.std.node { Node, TypeNode, Atom }\nimport std.occurrence_identity { OccurrenceSynthetic }\n\ntype NormalizedTree sole_constructor {\n  root: Node,\n}\n\nfn fc_module_root() -> Node {\n  Node {\n    kind: TypeNode { connective: Atom { identity: ^fc_seg } },\n    children: [],\n    occurrence_id: OccurrenceSynthetic,\n  }\n}\n\nfn fc_single_found_root() -> FreeMonoid<Node> {\n  Cons { head: fc_module_root(), tail: Empty }\n}\n\nfn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Bool {\n  true\n}\n\nfn bad_call() -> Bool {\n  validate_module_roots(roots: fc_single_found_root())\n}\n",
     "src/warmfox_bl1_prediction.rs",
     [],
     []

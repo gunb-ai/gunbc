@@ -1,5 +1,6 @@
 module v2.std.model_core
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.collection { Absent, List, Map, Present, empty_map, map_insert }
 import v2.std.diagnostic {
   Diagnostic,
@@ -23,7 +24,7 @@ import v2.std.logic {
   bool_primitive_facts_node,
   bool_width_fact_node
 }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
 
 type ModelCorePrimitiveFactAxis
@@ -131,7 +132,7 @@ fn model_core_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -200,7 +201,7 @@ fn model_core_law_node(key: ModelCoreBoolLawKey) -> Node {
         target: model_core_atom(id: discriminant(v: key))
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -239,7 +240,7 @@ fn model_core_empty_conj_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

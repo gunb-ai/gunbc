@@ -7,8 +7,8 @@ pub type Symbol = String;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum NodeOccurrenceId {
-    SyntheticOccurrence,
+pub enum NodeOccurrenceIdentity {
+    OccurrenceSynthetic,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -57,7 +57,7 @@ pub struct Edge {
 pub struct Node {
     pub kind: Rc<NodeKind>,
     pub children: Rc<Vec<Rc<Edge>>>,
-    pub occurrence_id: Rc<NodeOccurrenceId>,
+    pub occurrence_id: Rc<NodeOccurrenceIdentity>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -72,7 +72,7 @@ pub fn node_synthetic(kind: Rc<NodeKind>, children: Rc<Vec<Rc<Edge>>>) -> Rc<Nod
     Rc::new(Node {
         kind,
         children,
-        occurrence_id: Rc::new(NodeOccurrenceId::SyntheticOccurrence),
+        occurrence_id: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
     })
 }
 

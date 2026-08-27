@@ -1,10 +1,11 @@
 module v2.test.emit.semantic_decl_target_refusal
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.cpp { cpp_target_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Conj, Disj, Edge, Named, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.node { Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 import std.algebra { Empty }
@@ -14,7 +15,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data semantic_decl_target_refusal_enrollment_note: String = "Enrolled via witness_discovery_scan_dirs (src/v2/test/claim/emit/) at F7 Inc1 ready — CI-gated fail-closed refusal receipt for unwired targets."
 
 fn sdtr_empty_conj() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
 fn sdtr_variant_edge(name: Symbol) -> Edge {
@@ -25,7 +26,7 @@ fn sdtr_bool_coproduct() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [ sdtr_variant_edge(name: ^True), sdtr_variant_edge(name: ^False) ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

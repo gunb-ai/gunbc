@@ -1,5 +1,6 @@
 module v2.test.emit.bool_literal_projection
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
 import v2.extdeps.languages.c {
   CStage0EmitStandardC17,
@@ -47,7 +48,7 @@ import v2.std.compilers.target_model {
 import v2.std.algebra { list_append }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Node, SyntheticOccurrence, TypeNode, Atom }
+import v2.std.node { Node, TypeNode, Atom }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
@@ -67,7 +68,7 @@ fn blp_probe_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^blp_emit_probe } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
