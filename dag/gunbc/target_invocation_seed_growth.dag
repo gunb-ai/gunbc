@@ -103,10 +103,35 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
       module_path: "v1_compiler.target_invocation_host",
       decl_name: "test_verb",
       field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.behavioral_receipt_host",
+      decl_name: "BehavioralHostTermination",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.behavioral_receipt_host",
+      decl_name: "BehavioralHostOutcome",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.behavioral_receipt_host",
+      decl_name: "run_census",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.behavioral_receipt_host",
+      decl_name: "run_selftest",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.behavioral_receipt_host",
+      decl_name: "run_plan",
+      field: WholeDeclaration
     }
   ],
   reason: "The verb's leaf producer is host Rust because its subject is a filesystem walk the hermetic floor refuses; the route around that leaf is hand-mirrored because none of the three modeled modules is in the v1 seed's emitted closure, and the two alternatives are worse -- routing through the interpreter makes it load-bearing for a NEW capability while two lanes delete it, and growing the emitter's closure to reach extdeps.bazel.label is a larger seed change than the verb it serves. What the growth buys is that the repository's instruments become addressable by label at all: before it, no target in this repository could be run by name.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
-  trigger: "Delete all 19 when the seam is EMITTED rather than authored -- when gunbc.target_invocation and gunbc.instrument_targets are in the emitted closure of whatever renders gunbc's CLI, the route, the registry and the termination vocabulary come from the model and only the producer leaf stays behind. A PARTIAL migration is admissible and is the expected shape: the label admission dissolves the moment extdeps.bazel.label is emitted, independently of the producer, because it is a pure function of a string. What does NOT dissolve them is moving them to another host file, and what does NOT dissolve them is a witness asserting the mirror agrees with the model -- that would raise the rung without removing the duplicate.",
+  trigger: "Discharge each declaration when its modeled realization is emitted rather than authored. The target_invocation_host subset deletes when gunbc.target_invocation and gunbc.instrument_targets enter the emitted closure of whatever renders gunbc's CLI; the behavioral_receipt_host subset deletes when the three already-modeled behavioral producers gain emitted native realization. A PARTIAL migration is admissible and expected: label admission dissolves when extdeps.bazel.label is emitted, independently of either producer family. Moving a declaration to another host file or adding a parity witness does not discharge it -- both leave the hand-authored declaration standing.",
   current_boundary: "src/v1/stage0/src/target_invocation_host.rs; src/v1/stage0/src/behavioral_receipt_host.rs (native realization of the already-modeled behavioral producers, relocated from claim_executor); src/v1/stage0/src/cli_run.rs (two #[path] mod lines); src/v1/stage0/src/main.rs (one Commands variant and its arm); dag/gunbc/target_invocation_seed_growth.dag"
 }
