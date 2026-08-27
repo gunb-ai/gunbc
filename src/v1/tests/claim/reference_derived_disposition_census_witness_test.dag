@@ -160,12 +160,12 @@ test fn only_export_proof_failed_produces_a_diagnostic() -> Bool {
   reference_derived_row_diagnostics(rows: rows, module_span: no_span()) |> count == 1
 }
 
-test fn the_export_unproven_diagnostic_is_advisory_today() -> Bool {
+test fn the_export_unproven_diagnostic_is_blocking() -> Bool {
   let rows = [
     ReferenceDerivedCandidateRow { module_name: "m", name: "d", disposition: CandidateExportProofFailed { provider_module: "p" } }
   ]
   reference_derived_row_diagnostics(rows: rows, module_span: no_span())
-    |> all(e => !is_error_diagnostic(d: e.diagnostic))
+    |> all(e => is_error_diagnostic(d: e.diagnostic))
 }
 
 data registry_absent_not_surfaced_note: String = "The RED that keeps registry-absent OUT of the diagnostic stream. Measured over the regen seed closure, that arm returns 473 rows over 63 names dominated by Rust target-language tokens -- Vec, bool, Option, i64, empty_map -- which the candidate walk proposes by tokenizing the module's own emitted Rust and for which no .dag provider can ever exist. Wiring it would print a false report on every build. This test fails the moment someone adds that arm to reference_derived_row_diagnostics, which is the intended wall until the candidate walk stops proposing target-language vocabulary."
