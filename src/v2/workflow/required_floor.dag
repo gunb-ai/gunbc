@@ -434,30 +434,76 @@ fn required_floor_site_disposition(
 // (test.claim.transport_script_wall_compile_red.wall_red_string_join_into_retained_record_refuses)
 // under whole-corpus pressure while the per-witness median remains ~1ms — 1552ms is
 // measured-max plus one scheduler-quantum, retained as calibration evidence only.
+// RE-POINTED TO 100ms WITH THE CEILING RESTORATION (2026-08-27), because at 1552 it became
+// UNFIREABLE and therefore a decoration. Under a 500ms CPU ceiling no claim can complete above
+// 1552ms -- the safety limit stops it first -- so the comparison would have been permanently
+// green BY CONSTRUCTION while still being reported and counted, which DESIGN section 4b calls
+// worse than absent because it is cited as coverage. The figure keeps the value the operator
+// paired with 500 in the 2026-08-17 ruling.
+//
+// IT STILL DECIDES NOTHING, and that is unchanged by the re-point: it has no admission-path
+// consumer, and the only reader remains the diagnostic `exceeds_completed_cost_line`. What it
+// now does again is name the population between an ordinary row (~1ms median) and the ceiling --
+// the rows heading for the cliff that have not reached it, which is the population worth fixing
+// before it blocks anyone.
 fn required_floor_claim_cost_line_ms() -> Int {
-  1552
+  100
 }
 
-// TEMPORARY (operator ruling 2026-08-19, superseding correction): the CPU safety deadline.
-// 5000ms is the restoration envelope, stated as an explicitly temporary value rather than a
-// re-founded permanent ceiling. This is the TIGHTER of the two limits -- it protects against a
-// pure in-process claim running away on the CPU clock, and the wall limit below is deliberately
-// looser so that ordinary host scheduling delay cannot itself trip an interrupt on a
-// computation that is still within its CPU envelope.
+// THE CPU SAFETY DEADLINE: 500ms (operator ruling 2026-08-17, RESTORED 2026-08-27).
+//
+// THIS IS NOT A NEW NUMBER. It is the ruling that has stood since gunbc#8283 and was never
+// repealed. It is written here with its own provenance because the two raises that displaced it
+// each cited an authority that did not cover the value, and a reader who finds only the raises
+// will re-derive them as legitimate:
+//
+//   500  -> 1552  (gunbc#8514, 2026-08-19 01:26). NO OPERATOR RULING. The whole justification
+//                  was "the 2026-08-18 witnesses fold measured a 1527ms ceiling ... 1552ms is
+//                  measured-max plus one scheduler-quantum". That is a merge-blocking literal
+//                  grounded in a measurement of the same current tree -- the oracle DESIGN
+//                  section 5 forbids by name. The ceiling was set to whatever the slowest row
+//                  happened to cost, which is a change detector, not a budget. Its own comment
+//                  said "not an open slack ratchet"; it ratcheted 3.2x eleven hours later.
+//   1552 -> 5000  (gunbc#8533, 2026-08-19 12:24). Cited "operator ruling 2026-08-19, superseding
+//                  correction" on both clocks. That ruling was about the SPLIT -- that CPU and
+//                  wall are two independent deadlines rather than one scalar copied into both.
+//                  The operator's own quoted words in that diff, "DO NOT set CPU and wall to the
+//                  same 5000ms", PRESUPPOSE 5000 was already on the table: it is a ruling about
+//                  the mechanical copy, not about the magnitude. The value rode in as a
+//                  passenger on a ruling about something else, which is the AUTHORITY
+//                  SUBSTITUTION failure mode in DESIGN's recurring list -- both halves true,
+//                  only the arrow invented.
+//
+// Neither raise named a restoration trigger or a date, so "TEMPORARY" and "restoration
+// envelope" described nothing that could end. The population that had accumulated under the
+// 10x drift is frozen in `v2.workflow.floor_cost_debt` as a monotone debt contract and withheld
+// from execution; it is not granted a higher ceiling, because a row that broke the budget does
+// not get an exemption to keep spending it.
+//
+// This is the TIGHTER of the two limits. It protects a pure in-process claim against runaway
+// evaluation on the CPU clock; the wall limit below is independently derived and looser.
 fn required_floor_claim_cpu_safety_limit_ms() -> Int {
-  5000
+  500
 }
 
-// TEMPORARY (operator ruling 2026-08-19, superseding correction): the WALL safety deadline,
-// independently derived from the CPU deadline and deliberately LOOSER -- retired is the prior
-// "both clocks armed identically" figure, which the operator's message named directly as the
-// mechanical copy to stop making ("DO NOT set CPU and wall to the same 5000ms"). A Hermetic
-// pure in-process claim can be legitimately descheduled by a co-tenant CI host for stretches
-// that would wrongly read as a runaway if judged on the CPU-tight figure; 10000ms gives that
-// headroom while still catching a claim that is genuinely blocked or stuck. Also a restoration
-// envelope, not a re-founded permanent ceiling.
+// THE WALL SAFETY DEADLINE: 2000ms. Independently derived and deliberately LOOSER, and the
+// operator ruling that stands over it is still the 2026-08-19 one -- CPU and wall are never one
+// scalar copied into both clocks ("DO NOT set CPU and wall to the same 5000ms").
+//
+// DERIVED FROM THE POPULATION IT MUST NOT TRIP, not as a multiple of the CPU figure -- picking a
+// ratio would be the mechanical copy wearing a different costume. The job of this limit is to
+// catch a claim that is blocked or stuck while never firing on a pure in-process claim that is
+// still inside its CPU envelope. So the binding measurement is the WORST WALL TIME OBSERVED
+// AMONG ROWS WITHIN THE CPU BUDGET: on main run 33109071348, over the 11,572 rows at or under
+// 500ms CPU, the maximum wall was 1037ms (next highest 768ms), against a per-row median of ~1ms.
+// 2000ms clears that worst observed innocent row by roughly 2x, which is headroom for co-tenant
+// descheduling on a shared runner rather than slack for a slow witness.
+//
+// A row that exceeds this while inside its CPU budget is, by construction, spending its time
+// somewhere other than computation -- which is the case this clock exists to catch and the CPU
+// clock structurally cannot see.
 fn required_floor_claim_wall_safety_limit_ms() -> Int {
-  10000
+  2000
 }
 
 // THE WARN TIER IS DELETED (2026-08-20). It is not lowered, not re-derived from the envelope,

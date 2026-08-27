@@ -45082,6 +45082,18 @@ pub struct RequiredFloorOutcome {
     /// remedy is reducing what it costs, not investigating why it never returned. Still
     /// blocking, per the same ruling.
     pub completed_over_cost_requirement: Vec<String>,
+    /// WITHHELD FROM EXECUTION BY THE COST-DEBT ROSTER. Reported and counted every run, and
+    /// NOT blocking: these rows are the frozen population the 2026-08-27 ceiling restoration
+    /// declared, and blocking on them would red main for exactly the debt the contract exists
+    /// to carry down. It is counted rather than silent because the whole difference between
+    /// this and the relocation the 2026-08-04 ruling forbids is that this one is declared and
+    /// visible — an unreported withhold is the gunbc#7762 specimen with extra steps.
+    pub withheld_cost_debt: Vec<String>,
+    /// A COST-DEBT ROW NAMING AN IDENTITY THE TREE NO LONGER CARRIES. BLOCKING. Without this
+    /// the roster rots into a permission slip: a withheld identity that is renamed or deleted
+    /// leaves a line behind that withholds nothing, and the roster's length then overstates the
+    /// debt in the direction that flatters. Same shape as `stale_quarantine`, same reason.
+    pub stale_cost_debt: Vec<String>,
     /// ENROLLED AS EXPECTED-RED AND THREW, or answered with a non-verdict. Its own collections
     /// for the same reason `route_gap` is not folded into `host_tool_unresolved`: the remedy
     /// differs. A throw is a defect in the witness or its subject; an unreadable observation is
@@ -46509,6 +46521,59 @@ pub fn run_required_floor(
         expected_red_roster.len()
     );
 
+    // THE COST-DEBT ROSTER, decoded here for the same frame-lifetime reason as the two rosters
+    // around it, and answering a FOURTH question: not which claims exist, not which are known
+    // to fail, and not which have no route — but which PASS and cost more than the per-claim
+    // ceiling allows, and are therefore WITHHELD FROM EXECUTION until made cheap.
+    //
+    // Withheld is not deferred and is not covered. See `v2.workflow.floor_cost_debt` for the
+    // monotone debt contract and the DESIGN §4b(3) rung drop; the short form is that a rostered
+    // row does not run anywhere, its coverage is gone while it sits there, and it leaves only by
+    // being deleted from the roster and then passing under the ordinary ceiling.
+    let cost_debt_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_cost_debt.floor_cost_debt_roster",
+            false,
+        )
+        .map_err(|e| format!("floor_cost_debt_roster: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_cost_debt_roster: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    // A DUPLICATE REFUSES, for the reason the expected-red roster gives above
+                    // and one more that is specific to a debt this size: the roster's length is
+                    // the debt, a repeated identity makes that length overstate what is
+                    // withheld, and the second copy survives every removal of the first.
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_cost_debt_roster: duplicate withheld identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_cost_debt_roster: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        // NO EMPTY-ROSTER REFUSAL, and the asymmetry with the expected-red roster is deliberate
+        // rather than an oversight. An empty expected-red roster makes its downstream partition
+        // and did-not-execute joins VACUOUS, so nothing can fire. An empty cost-debt roster
+        // makes nothing vacuous: it means every witness runs under the ceiling, which is the
+        // terminal state this contract is shrinking toward, and the guard that matters — the
+        // stale-row join below — gets STRICTER as the roster empties, never weaker.
+        out
+    };
+    eprintln!(
+        "[floor-cost-debt] roster withholds {} identity(ies) from execution",
+        cost_debt_roster.len()
+    );
+
     // THE ROUTE-GAP ROSTER, read the same way and for the same reason: it must be decoded while
     // the policy frame is alive. It answers a THIRD question, distinct from both of the two
     // above — not which claims exist, and not which of them are known to fail, but which of
@@ -46815,6 +46880,8 @@ pub fn run_required_floor(
         stale_quarantine: Vec::new(),
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
+        withheld_cost_debt: Vec::new(),
+        stale_cost_debt: Vec::new(),
         known_red_runtime_errored: Vec::new(),
         non_verdict_unenrolled: Vec::new(),
         stale_non_verdict: Vec::new(),
@@ -46924,9 +46991,24 @@ pub fn run_required_floor(
     let mut scopes_with_ambiguity: usize = 0;
     let mut ambiguous_total: usize = 0;
     let mut ambiguous_max: usize = 0;
+    let mut cost_debt_seen: HashSet<String> = HashSet::new();
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
             eprintln!("floor: evaluating {index} / {claims_planned}");
+        }
+        // WITHHOLD BEFORE ANY SCOPE IS BUILT. The whole point of this roster is that these rows
+        // do not spend the budget they broke, so the skip has to precede scope construction and
+        // frame allocation rather than sitting at the verdict. A withheld row costs the fold
+        // nothing but the roster lookup.
+        //
+        // NOT `continue`-WITH-SILENCE: the identity is recorded on both channels — the reported
+        // population and the reverse-join set — because a withhold nobody counts is the
+        // relocation the 2026-08-04 admission ruling forbids, and the only thing that makes this
+        // mechanism different is that it is declared and visible every run.
+        if cost_debt_roster.contains(&claim.qualified) {
+            cost_debt_seen.insert(claim.qualified.clone());
+            outcome.withheld_cost_debt.push(claim.qualified.clone());
+            continue;
         }
         if current_scope.as_ref().map(|(module, _)| module.as_str())
             != Some(claim.module_path.as_str())
@@ -47805,6 +47887,30 @@ pub fn run_required_floor(
                      enrollment nothing observes is a row that can never ask to be removed."
                 )
             });
+        }
+    }
+
+    // THE COST-DEBT ROSTER IS A TWO-WAY JOIN FOR THE SAME REASON, and the reverse direction is
+    // the whole thing that stops this contract becoming a permission slip. Forward, the roster
+    // only ever answers "is this planned claim withheld". Reverse, it must answer "does every
+    // withheld identity still exist as a planned claim" — because a rostered row whose witness
+    // was renamed, deleted, or declined by home policy withholds NOTHING while still counting
+    // toward the debt, which overstates what is frozen in the direction that flatters and
+    // survives every repair of the rows around it.
+    //
+    // BLOCKING, unlike the withhold itself. A withheld row is declared debt; a stale row is a
+    // roster that has stopped describing the tree, and the contract's monotone claim is only
+    // worth anything while its universe is the discovered one.
+    {
+        let mut stale: Vec<&String> = cost_debt_roster
+            .iter()
+            .filter(|q| reverse_joins_answerable && !cost_debt_seen.contains(*q))
+            .collect();
+        stale.sort();
+        for identity in stale {
+            outcome.stale_cost_debt.push(format!(
+                "{identity} is enrolled in v2.workflow.floor_cost_debt but was not planned, so                  nothing was withheld for it. It was renamed, deleted, or declined by home                  policy. Delete the row — a withhold over an identity the tree does not carry                  counts as debt while costing nothing and can never ask to be removed."
+            ));
         }
     }
     // THE ROSTER IS A TWO-WAY JOIN, NOT A ONE-WAY LOOKUP. Enrollment as written above only ever
