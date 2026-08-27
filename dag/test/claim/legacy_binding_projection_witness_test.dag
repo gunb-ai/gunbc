@@ -198,7 +198,13 @@ test fn a_decision_about_a_non_base_occurrence_refuses() -> Bool {
 // insertion belongs to the change that does that wiring, not to the change that opened the carrier
 // -- and this comment is corrected here rather than left standing, because a refusal justified by a
 // reason that has stopped being true is the stale-prose failure inside the honesty argument itself.
-test fn a_declared_insertion_refuses_because_no_carrier_can_express_its_cause() -> Bool {
+//
+// THE FUNCTION NAME CARRIES THE SAME CLAIM AND WAS CORRECTED WITH IT. It read
+// `..._because_no_carrier_can_express_its_cause`, which asserts the proposition this block just
+// retired. Correcting the annotation and leaving the name would have been the worse half-measure of
+// the two: a reader trusts a name without reading the body, so a false name outranks a true comment
+// sitting directly above it.
+test fn a_declared_insertion_refuses_because_this_projector_is_not_wired_to_the_cause_arm() -> Bool {
   match lbp_emit(
     expected_base: [10],
     decisions: [lbp_carry(base: 10, projected: 11)],
