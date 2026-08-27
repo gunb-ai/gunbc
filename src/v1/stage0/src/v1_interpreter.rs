@@ -16264,7 +16264,7 @@ mod map_shell_outputs_optional_stream_tests {
             str_type,
             Cardinality::CardOptional,
             None,
-            Rc::new(vec![]),
+            Rc::new(vec![].into()),
             span.clone(),
             span.clone(),
         );
