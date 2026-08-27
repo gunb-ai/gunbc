@@ -69,6 +69,7 @@
 //! consequence too would be a second representation of one fact (DESIGN §2/§3).
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::sync::LazyLock;
 
 use crate::cli_run::declaration_index::{
     import_surface_has, index_get, index_records, DeclarationIndex, ModuleDeclarationRecord,
@@ -267,10 +268,526 @@ pub struct TransitionAdmission {
     pub disposition: NamespaceDeltaDisposition,
 }
 
-/// EMPTY, and empty is the correct landing state: no wave has run, so no transition has been
-/// authorised. A row here that no longer matches a delta is itself a finding
-/// (`stale_admissions`), so the roster can only shrink toward its subject.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// Exact admissions for #9400's owner-qualified call-target cut. Each row was measured by the
+/// required floor against the merge base after the namespace wall landed; no disposition-wide
+/// predicate is admitted. A row that no longer matches is itself a finding
+/// (`stale_admissions`), so this temporary transition roster must shrink with its subject.
+pub static NAMESPACE_TRANSITION_ADMISSIONS: LazyLock<Vec<TransitionAdmission>> =
+    LazyLock::new(|| {
+        vec![
+    TransitionAdmission {
+        label: "owner-qualified-call-target-01",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.host_effect_realize".to_string(),
+            in_declaration: "srv3_realize_os_install_actuator_toolchain_ensure_body".to_string(),
+            spelling: "list_map".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-02",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.host_effect_realize".to_string(),
+            in_declaration: "srv3_toolchain_receipt".to_string(),
+            spelling: "list_map".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-03",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.host_effect_realize".to_string(),
+            in_declaration: "websocat_trace_labels".to_string(),
+            spelling: "list_map".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-04",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.roadmap_sandbox".to_string(),
+            in_declaration: "sandbox_page".to_string(),
+            spelling: "workspace_band_paints".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-05",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.roadmap_style".to_string(),
+            in_declaration: "audition_sets".to_string(),
+            spelling: "List".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-06",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.roadmap_style".to_string(),
+            in_declaration: "band_var_decls".to_string(),
+            spelling: "List".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-07",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.spark.bootstrap_provision".to_string(),
+            in_declaration: "admit_spark_readback_version".to_string(),
+            spelling: "NonEmptyStr".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-08",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.spark.bootstrap_provision".to_string(),
+            in_declaration: "compare_spark_readback".to_string(),
+            spelling: "NonEmptyStr".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-09",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.spark.bootstrap_provision".to_string(),
+            in_declaration: "derive_install_scope".to_string(),
+            spelling: "NonEmptyStr".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-10",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.spark.bootstrap_provision".to_string(),
+            in_declaration: "no_access_demand".to_string(),
+            spelling: "List".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-11",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.spark.bootstrap_provision".to_string(),
+            in_declaration: "spark_cell_in".to_string(),
+            spelling: "List".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-12",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.spark.bootstrap_provision".to_string(),
+            in_declaration: "spark_demand_for_selected".to_string(),
+            spelling: "NonEmptyStr".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-13",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.spark.bootstrap_provision".to_string(),
+            in_declaration: "spark_iam_delta".to_string(),
+            spelling: "List".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-14",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.spark.bootstrap_provision".to_string(),
+            in_declaration: "spark_legacy_containers".to_string(),
+            spelling: "List".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-15",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.spark.bootstrap_provision".to_string(),
+            in_declaration: "spark_plan_demand".to_string(),
+            spelling: "List".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-16",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.spark.bootstrap_provision".to_string(),
+            in_declaration: "spark_scope_admits".to_string(),
+            spelling: "NonEmptyStr".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-17",
+        subject: DeltaSubject::Binding {
+            module: "gunbc.spark.bootstrap_provision".to_string(),
+            in_declaration: "srv5_privilege_observation".to_string(),
+            spelling: "NonEmptyStr".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-18",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.citation_cit1_consumer_witness".to_string(),
+            in_declaration: "x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118".to_string(),
+            spelling: "extdeps_external_authority_anchor".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-19",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.citation_cit1_consumer_witness".to_string(),
+            in_declaration: "x86_64_abi_syscall_selector_conforms_not_abi_pdf_locator".to_string(),
+            spelling: "extdeps_external_authority_anchor".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-20",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.serving_privilege_derivation_witness_test".to_string(),
+            in_declaration: "red_control_non_escalating_effects_contribute_no_grant_line"
+                .to_string(),
+            spelling: "Empty".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-21",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.serving_privilege_derivation_witness_test".to_string(),
+            in_declaration: "red_control_non_escalating_effects_contribute_no_grant_line"
+                .to_string(),
+            spelling: "length".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-22",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.serving_privilege_derivation_witness_test".to_string(),
+            in_declaration: "w_a_realization_with_fewer_escalating_effects_gets_a_smaller_grant"
+                .to_string(),
+            spelling: "length".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-23",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.serving_privilege_derivation_witness_test".to_string(),
+            in_declaration:
+                "w_the_same_realization_needs_no_grant_when_the_actor_owns_what_it_mutates"
+                    .to_string(),
+            spelling: "length".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-24",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.spark_bootstrap_provision_witness".to_string(),
+            in_declaration: "spark_absent_creates_and_empty_container_converges".to_string(),
+            spelling: "classify_spark_container".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-25",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.spark_bootstrap_provision_witness".to_string(),
+            in_declaration: "spark_bad_readback_refuses".to_string(),
+            spelling: "decide_spark_materialization".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-26",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.spark_bootstrap_provision_witness".to_string(),
+            in_declaration: "spark_confirmed_receipt_is_noop_at_exact_version".to_string(),
+            spelling: "decide_spark_materialization".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-27",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.spark_bootstrap_provision_witness".to_string(),
+            in_declaration: "spark_container_with_existing_version_conflicts".to_string(),
+            spelling: "classify_spark_container".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-28",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.spark_bootstrap_provision_witness".to_string(),
+            in_declaration: "spark_effective_access_is_only_partially_observed".to_string(),
+            spelling: "spark_effective_access_standing".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-29",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.spark_bootstrap_provision_witness".to_string(),
+            in_declaration: "spark_factory_hotspot_cannot_be_generated".to_string(),
+            spelling: "admit_spark_material_source".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-30",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.spark_bootstrap_provision_witness".to_string(),
+            in_declaration: "spark_first_write_requires_a_journaled_attempt".to_string(),
+            spelling: "decide_spark_materialization".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-31",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.spark_bootstrap_provision_witness".to_string(),
+            in_declaration: "spark_issued_unconfirmed_observes_never_rewrites".to_string(),
+            spelling: "decide_spark_materialization".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-32",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.spark_bootstrap_provision_witness".to_string(),
+            in_declaration: "spark_receipt_version_must_match_its_readback".to_string(),
+            spelling: "decide_spark_materialization".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-33",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.spark_bootstrap_provision_witness".to_string(),
+            in_declaration: "spark_unallocated_occurrence_refuses_observation".to_string(),
+            spelling: "classify_spark_container".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-34",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.spark_bootstrap_provision_witness".to_string(),
+            in_declaration: "spark_unreadable_container_refuses".to_string(),
+            spelling: "classify_spark_container".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-35",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.spark_bootstrap_provision_witness".to_string(),
+            in_declaration: "spark_version_address_is_not_a_payload_match".to_string(),
+            spelling: "admit_spark_readback_version".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-36",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.spark_bootstrap_provision_witness".to_string(),
+            in_declaration: "spark_version_address_is_not_a_payload_match".to_string(),
+            spelling: "compare_spark_readback".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-37",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration:
+                "witness_srv3_nbd_proxy_apply_emit_artifact_transport_observe_refuses_fail_closed"
+                    .to_string(),
+            spelling: "host_effect_nbd_proxy_serve_session_binding".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-38",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration:
+                "witness_srv3_nbd_proxy_apply_emit_artifact_transport_observe_refuses_fail_closed"
+                    .to_string(),
+            spelling: "srv3_nbd_proxy_serve_host_effect".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-39",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time"
+                .to_string(),
+            spelling: "PortObserved".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-40",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time"
+                .to_string(),
+            spelling: "host_effect_nbd_proxy_serve_apply_with_observation".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-41",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time"
+                .to_string(),
+            spelling: "host_effect_nbd_proxy_serve_session_binding".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-42",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time"
+                .to_string(),
+            spelling: "srv3_nbd_proxy_serve_host_effect".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-43",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill"
+                .to_string(),
+            spelling: "PortObserved".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-44",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill"
+                .to_string(),
+            spelling: "PortObservedStaleExpected".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-45",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill"
+                .to_string(),
+            spelling: "host_effect_nbd_proxy_serve_apply_drains_stale_matching".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-46",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill"
+                .to_string(),
+            spelling: "host_effect_nbd_proxy_serve_apply_refuses_foreign_port".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-47",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill"
+                .to_string(),
+            spelling: "host_effect_nbd_proxy_serve_session_binding".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-48",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill"
+                .to_string(),
+            spelling: "srv3_nbd_proxy_serve_host_effect".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-49",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_on_bmc_refuses_typed".to_string(),
+            spelling: "srv3_nbd_proxy_serve_host_effect".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-50",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_serve_session_binding_carries_lease"
+                .to_string(),
+            spelling: "host_effect_nbd_proxy_serve_session_binding".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-51",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_serve_session_binding_carries_lease"
+                .to_string(),
+            spelling: "host_effect_nbd_proxy_serve_session_policy_is_held_lease".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-52",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_serve_session_binding_carries_lease"
+                .to_string(),
+            spelling: "srv3_nbd_proxy_lease_key".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-53",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration: "witness_srv3_nbd_proxy_serve_session_binding_carries_lease"
+                .to_string(),
+            spelling: "srv3_nbd_proxy_serve_host_effect".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+    TransitionAdmission {
+        label: "owner-qualified-call-target-54",
+        subject: DeltaSubject::Binding {
+            module: "test.claim.srv3_host_effect_apply_witness".to_string(),
+            in_declaration:
+                "witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_ref"
+                    .to_string(),
+            spelling: "srv3_nbd_proxy_serve_host_effect".to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
+    },
+        ]
+    });
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
 /// an instrument failure wearing coverage's clothes.
@@ -1122,6 +1639,10 @@ pub fn run_required_wave_admission(
         }
     }
 
-    let report = adjudicate(&base_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS);
+    let report = adjudicate(
+        &base_index,
+        head_index,
+        NAMESPACE_TRANSITION_ADMISSIONS.as_slice(),
+    );
     Ok(WaveAdmissionOutcome::Adjudicated { base, head, report })
 }
