@@ -121,6 +121,45 @@ data required_v2_emission_entries: List<String> = ["src/v2/compiler/00_compile.d
 // stopping before cargo — the standalone gate dissolves into it and this row, its host
 // reader and its phase delete together. Without that trigger, emission preflight,
 // self-host probe, product receipt and cargo census become four answers to one question.
+// THE SEED LINKAGE-SURFACE CENSUS FRAME. TWO ENTRIES, CHOSEN FROM THE MECHANISM.
+//
+// The census asks whether one module carries ONE export surface across the entries that emit it, so
+// its sample must be at least two entries and they must be two entries where variation CAN appear.
+// A pair that merely shares modules is not enough: if nothing in the shared population can vary, the
+// census is permanently green FOR A NEW REASON and is still cited as coverage -- the decoration
+// DESIGN 4b forbids, reached by sampling rather than by an unauthorable RED.
+//
+// So the pair is picked from the FIRING CONDITION rather than from convenience or from whatever the
+// run already emitted. The fabrication that produces today's specimen needs a second claimant of a
+// bare name to be present in one closure and absent in the other:
+//
+//   gunbc.native_scm_interaction_contract   CARRIES std.constructors, which claims `Cardinality`
+//   src/v2/std/node.dag                     does NOT, and declares Cardinality as a Connective arm
+//
+// MEASURED ON THIS PAIR, from the two emitted manifests rather than from import text: 37 and 8
+// emitted modules, 8 shared -- std.algebra, std.content_hash, std.decl_ref, std.dissolution,
+// std.error_primitives, std.occurrence_identity, std.types, v2.std.node -- and the shared population
+// CONTAINS the module that varies. The two v2.std.node reexport rows differ by exactly `Cardinality`
+// while the decl rows are byte-identical, so the frame exhibits the finding today rather than
+// promising to exhibit it if one ever appears.
+//
+// A first candidate pair was rejected on measurement: v2.std.collection against v2.std.diagnostic
+// share 9 modules, but one closure is a strict SUBSET of the other -- a containment chain, which
+// cannot exhibit an incomparable pair and is the non-discriminating shape the census module's own
+// header already warns about. Shared count alone would have accepted it.
+//
+// THE INSTRUMENT, not its output: both closures and the shared population are re-derived by
+// `gunbc compile --output-dir <dir> --source-root dag --source-root src/v2 --entry <entry>` over the
+// two entries, reading the emitted src/emitted_export_surface.rs -- the same producer the phase
+// calls. The counts above are stated because the frame's ADEQUACY is the claim, and a frame is
+// unreadable without the population it covers; they are re-derived from that command, not
+// transcribed from a run.
+//
+// STILL A ROW. Widening or narrowing this pair is a cost decision, not a Rust edit. Emit is
+// quadratic in closure size, so a wider pair is bought in emission time; a narrower one is paid for
+// in shared population, and below some width the census stops being able to go red at all.
+data required_surface_census_entries: List<String> = ["dag/gunbc/native_scm_interaction_contract.dag", "src/v2/std/node.dag"]
+
 data required_v2_emission_dissolution: DissolutionCondition = unbound_dissolution(description: "the authentic self-host product receipt is required on every admitted candidate and carries this emission boundary (same producer, stopping before cargo); then the standalone --required-v2-emission phase, required_v2_emission_entries and their host reader delete together")
 
 data frontier_probe_witness_measure_receipt_note: String = "Measured durations cited on commit_gate SpanEnrolled cost_basis rows are WallClock: claim_batch performance receipts use wall_nanos (performance_receipt_from_witness), not the thread-CPU nanos that budget_completion_outcome gates on (operator msg_e24f4cab). Do not compare these figures to the per-witness eval CPU budget without stating the clock. The arm is named in std.measure ClockBasis, which is the single clock-basis authority; this sentence said WitnessCostWallEval until 2026-08-05, naming a second carrier that std.realization_schedule declared for one day and that witness_cost_clock_note records the dissolution of. The advice the sentence gives is exactly what the surviving carrier now enforces rather than advises: witness_row_cost_verdict answers BasisClockMismatch instead of comparing across clocks."
