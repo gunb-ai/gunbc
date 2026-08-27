@@ -491,45 +491,89 @@ fn wired_headers(wiring: HostFanWiring) -> List<NonEmptyStr> {
 // that misses an expected header means rotation is expected somewhere nothing was wired. Both
 // are real conditions and neither is representable if one layer is derived from the other, which
 // is the reason this is a JOIN and not a projection.
+// THE COVERAGE ANSWER CARRIES THE WHOLE RELATION, NOT THE FIRST THING THAT WENT WRONG. An earlier
+// form had three arms - clean, first missing header, first unexpected header - and lost three
+// distinctions at once, each of which changes what an operator does next.
+//
+// It reported only the FIRST missing header, so a wiring short by two bays looked short by one.
+// It computed the unexpected side ONLY when nothing was missing, so a swap - FAN4 missing and FAN2
+// unexpected, the signature of a fan moved between bays - reported the missing half and stayed
+// silent about where the fan actually went. And it compared an expectation against a wiring without
+// ever looking at their hosts, in a module whose own FanHeaderIdentity annotation says a bare
+// header string is not an identity because srv3's FAN1 and srv4's FAN1 are different headers on
+// different machines. The join ignored exactly the fact the type beside it was introduced to carry.
+//
+// THE HOST AND DUPLICATE ARMS COME FIRST BECAUSE THEY MAKE THE SET COMPARISON MEANINGLESS RATHER
+// THAN MERELY WRONG. Two different hosts' rosters can be compared and will produce a confident
+// missing/unexpected answer that describes nothing; a header appearing twice in one wiring makes
+// "is this header covered" ill-posed, since membership is answered while multiplicity is not. So
+// both refuse ahead of the join instead of being folded into it as another kind of disagreement.
 type FanWiringCoverage
   = WiringCoversExpectation
-  | WiringMissesExpectedHeader { header: NonEmptyStr }
-  | WiringCoversUnexpectedHeader { header: NonEmptyStr }
+  | WiringCoverageHostMismatch { expectation_host: HostIdentity, wiring_host: HostIdentity }
+  | WiringHeaderDuplicated { header: NonEmptyStr, row_count: Int }
+  | WiringCoverageDisagrees {
+      missing: List<NonEmptyStr>,
+      unexpected: List<NonEmptyStr>,
+    }
 
 fn list_contains_header(headers: List<NonEmptyStr>, header: NonEmptyStr) -> Bool {
   fold(headers, init: false, f: (acc, candidate) => if acc { true } else { candidate == header })
+}
+
+fn header_occurrences(headers: List<NonEmptyStr>, header: NonEmptyStr) -> Int {
+  fold(headers, init: 0, f: (acc, candidate) => if candidate == header { acc + 1 } else { acc })
+}
+
+fn first_duplicated_wiring_header(headers: List<NonEmptyStr>) -> NonEmptyStr? {
+  fold(
+    headers,
+    init: none,
+    f: (acc, header) =>
+      match acc {
+        Present { value } => Present { value: value }
+        none =>
+          if header_occurrences(headers: headers, header: header) > 1 {
+            Present { value: header }
+          } else {
+            none
+          }
+      },
+  )
+}
+
+fn headers_absent_from(candidates: List<NonEmptyStr>, reference: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  filter(candidates, header => !list_contains_header(headers: reference, header: header))
 }
 
 fn fan_wiring_coverage(
   expectation: HostFanTachExpectation,
   wiring: HostFanWiring,
 ) -> FanWiringCoverage {
-  let populated = expected_tach_headers(expectation: expectation)
-  let wired = wired_headers(wiring: wiring)
-  let missing = fold(
-    populated,
-    init: none,
-    f: (acc, header) =>
-      match acc {
-        Present { value } => Present { value: value }
-        none => if list_contains_header(headers: wired, header: header) { none } else { Present { value: header } }
-      },
-  )
-  match missing {
-    Present { value: header } => WiringMissesExpectedHeader { header: header }
-    none =>
-      match fold(
-        wired,
-        init: none,
-        f: (acc, header) =>
-          match acc {
-            Present { value } => Present { value: value }
-            none => if list_contains_header(headers: populated, header: header) { none } else { Present { value: header } }
-          },
-      ) {
-        Present { value: header } => WiringCoversUnexpectedHeader { header: header }
-        none => WiringCoversExpectation
+  if expectation.host != wiring.host {
+    WiringCoverageHostMismatch {
+      expectation_host: expectation.host,
+      wiring_host: wiring.host,
+    }
+  } else {
+    let populated = expected_tach_headers(expectation: expectation)
+    let wired = wired_headers(wiring: wiring)
+    match first_duplicated_wiring_header(headers: wired) {
+      Present { value: header } =>
+        WiringHeaderDuplicated {
+          header: header,
+          row_count: header_occurrences(headers: wired, header: header),
+        }
+      none => {
+        let missing = headers_absent_from(candidates: populated, reference: wired)
+        let unexpected = headers_absent_from(candidates: wired, reference: populated)
+        if missing.length() == 0 && unexpected.length() == 0 {
+          WiringCoversExpectation
+        } else {
+          WiringCoverageDisagrees { missing: missing, unexpected: unexpected }
+        }
       }
+    }
   }
 }
 

@@ -70,8 +70,9 @@ import gunbc.fleet_fan_wiring {
   TachNotCarried,
   TachSourceUnobserved,
   WiringCoversExpectation,
-  WiringCoversUnexpectedHeader,
-  WiringMissesExpectedHeader,
+  WiringCoverageDisagrees,
+  WiringCoverageHostMismatch,
+  WiringHeaderDuplicated,
   control_endpoints,
   fan_wiring_coverage,
   srv1_fan_wiring,
@@ -408,6 +409,49 @@ fn unknown_model_still_derives_control() -> Bool {
     && control_endpoints(wiring: srv1_fan_wiring).length() == 5
 }
 
+// A FAN MOVED BETWEEN BAYS: FAN4 vanishes and FAN2 appears in one edit, which is what a physical
+// swap looks like from the BMC's side.
+data srv3_wiring_with_a_swapped_header: HostFanWiring = HostFanWiring {
+  host: srv3_fan_wiring.host,
+  headers: map(
+    srv3_fan_wiring.headers,
+    binding =>
+      if binding.header == "FAN4" {
+        FanHeaderWiring {
+          header: "FAN2",
+          driven_fan_count: binding.driven_fan_count,
+          model: binding.model,
+          tach_source: binding.tach_source,
+        }
+      } else {
+        binding
+      },
+  ),
+}
+
+// TWO HEADERS MISSING AT ONCE, AND THIS FIXTURE EXISTS BECAUSE A MUTATION SURVIVED WITHOUT IT.
+// Truncating the missing list to its first element left every other coverage conjunct green: the
+// swap fixture and the missing fixture each have exactly ONE missing header, so "report the first"
+// and "report all" agree on both. The old shape's narrow was invisible to the very population
+// authored to replace it. A wiring short by two bays is what distinguishes them.
+data srv3_wiring_missing_two_expected_headers: HostFanWiring = HostFanWiring {
+  host: srv3_fan_wiring.host,
+  headers: filter(
+    srv3_fan_wiring.headers,
+    binding => binding.header != "FAN4" && binding.header != "FAN5",
+  ),
+}
+
+// ONE HEADER WIRED TWICE. Membership is still answerable for FAN3 while multiplicity is not, which
+// is why this refuses ahead of the set join rather than appearing inside it as a disagreement.
+data srv3_wiring_with_a_duplicated_header: HostFanWiring = HostFanWiring {
+  host: srv3_fan_wiring.host,
+  headers: flat_map(
+    [srv3_fan_wiring.headers, filter(srv3_fan_wiring.headers, b => b.header == "FAN3")],
+    group => group,
+  ),
+}
+
 data srv3_wiring_missing_an_expected_header: HostFanWiring = HostFanWiring {
   host: srv3_fan_wiring.host,
   headers: filter(srv3_fan_wiring.headers, binding => binding.header != "FAN4"),
@@ -431,9 +475,15 @@ data srv3_wiring_over_an_unexpected_header: HostFanWiring = HostFanWiring {
   ),
 }
 
-// THE JOIN REFUSES IN BOTH DIRECTIONS. Expectation and wiring are separate authorities, so both
-// disagreements are constructible and both must be caught - a header the chassis declares and
-// nothing wires, and a header wired into a bay the chassis says does not exist.
+// THE JOIN REFUSES IN BOTH DIRECTIONS AND REPORTS BOTH AT ONCE. Expectation and wiring are separate
+// authorities, so both disagreements are constructible and both must be caught - a header the
+// chassis declares and nothing wires, and a header wired into a bay the chassis says does not exist.
+//
+// THE SWAP IS THE CASE THAT MATTERS AND THE OLD SHAPE COULD NOT REPORT IT. A fan moved from FAN4 to
+// FAN2 makes FAN4 missing AND FAN2 unexpected simultaneously; the previous coverage answered the
+// missing side and computed the unexpected side only when nothing was missing, so it named the hole
+// and stayed silent about where the fan went. Those are one event and an operator needs both halves
+// to recognise it as a move rather than as a loss plus an unrelated stray.
 fn coverage_refuses_both_directions() -> Bool {
   let clean = match fan_wiring_coverage(expectation: srv3_fan_tach_expectation, wiring: srv3_fan_wiring) {
     WiringCoversExpectation => true
@@ -443,17 +493,60 @@ fn coverage_refuses_both_directions() -> Bool {
     expectation: srv3_fan_tach_expectation,
     wiring: srv3_wiring_missing_an_expected_header,
   ) {
-    WiringMissesExpectedHeader { header } => header == "FAN4"
+    WiringCoverageDisagrees { missing, unexpected } =>
+      missing.length() == 1
+        && missing.contains("FAN4")
+        && unexpected.length() == 0
     other => false
   }
   let extra = match fan_wiring_coverage(
     expectation: srv3_fan_tach_expectation,
     wiring: srv3_wiring_over_an_unexpected_header,
   ) {
-    WiringCoversUnexpectedHeader { header } => header == "FAN2"
+    WiringCoverageDisagrees { missing, unexpected } =>
+      unexpected.length() == 1
+        && unexpected.contains("FAN2")
+        && missing.length() == 0
     other => false
   }
-  clean && missing && extra
+  let swap = match fan_wiring_coverage(
+    expectation: srv3_fan_tach_expectation,
+    wiring: srv3_wiring_with_a_swapped_header,
+  ) {
+    WiringCoverageDisagrees { missing, unexpected } =>
+      missing.length() == 1
+        && missing.contains("FAN4")
+        && unexpected.length() == 1
+        && unexpected.contains("FAN2")
+    other => false
+  }
+  let host_mismatch = match fan_wiring_coverage(
+    expectation: srv3_fan_tach_expectation,
+    wiring: srv4_fan_wiring,
+  ) {
+    WiringCoverageHostMismatch { expectation_host, wiring_host } =>
+      expectation_host == "srv3" && wiring_host == "srv4"
+    other => false
+  }
+  let duplicated = match fan_wiring_coverage(
+    expectation: srv3_fan_tach_expectation,
+    wiring: srv3_wiring_with_a_duplicated_header,
+  ) {
+    WiringHeaderDuplicated { header, row_count } => header == "FAN3" && row_count == 2
+    other => false
+  }
+  let both_missing = match fan_wiring_coverage(
+    expectation: srv3_fan_tach_expectation,
+    wiring: srv3_wiring_missing_two_expected_headers,
+  ) {
+    WiringCoverageDisagrees { missing, unexpected } =>
+      missing.length() == 2
+        && missing.contains("FAN4")
+        && missing.contains("FAN5")
+        && unexpected.length() == 0
+    other => false
+  }
+  clean && missing && extra && swap && host_mismatch && duplicated && both_missing
 }
 
 fn all_hosts_cover() -> Bool {
