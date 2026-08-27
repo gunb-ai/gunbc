@@ -9,18 +9,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // observable when MORE THAN ONE finding exists at once, and the live tree cannot be relied on to
 // carry a specific multiplicity. So the multiplicities are planted.
 
-fn observed(a: GeneratedArtifact, path: String, gen: String, com: String, valid: Bool) -> GeneratedArtifactObservation {
+fn artifact_observation_fixture(a: GeneratedArtifact, path: String, gen: String, com: String, valid: Bool) -> GeneratedArtifactObservation {
   GeneratedArtifactObserved {
     artifact: a, path: path, generated_content: gen, committed_content: com, extra_validation: valid
   }
 }
 
 fn clean_observation(a: GeneratedArtifact, path: String) -> GeneratedArtifactObservation {
-  observed(a: a, path: path, gen: "same", com: "same", valid: true)
+  artifact_observation_fixture(a: a, path: path, gen: "same", com: "same", valid: true)
 }
 
 fn drifted_observation(a: GeneratedArtifact, path: String) -> GeneratedArtifactObservation {
-  observed(a: a, path: path, gen: "generated", com: "committed", valid: true)
+  artifact_observation_fixture(a: a, path: path, gen: "generated", com: "committed", valid: true)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -84,7 +84,7 @@ fn mixed_observations() -> List<GeneratedArtifactObservation> {
   [
     drifted_observation(a: DesignArtifact, path: "DESIGN.md"),
     GeneratedArtifactObservationRefused { artifact: RoadmapArtifact, path: "ROADMAP.md", cause: "committed read failed" },
-    observed(a: GitignoreArtifact, path: ".gitignore", gen: "same", com: "same", valid: false),
+    artifact_observation_fixture(a: GitignoreArtifact, path: ".gitignore", gen: "same", com: "same", valid: false),
     clean_observation(a: GitattributesArtifact, path: ".gitattributes")
   ]
 }
@@ -121,7 +121,7 @@ test fn duplicate_and_missing_are_distinct_findings() -> Bool {
 test fn one_observation_yields_both_content_and_validation_findings() -> Bool {
   let f = generated_artifact_population_findings(
     expected: [DesignArtifact],
-    observations: [observed(a: DesignArtifact, path: "DESIGN.md", gen: "generated", com: "committed", valid: false)]
+    observations: [artifact_observation_fixture(a: DesignArtifact, path: "DESIGN.md", gen: "generated", com: "committed", valid: false)]
   )
   (f.observation_failures |> count) == 2
 }
