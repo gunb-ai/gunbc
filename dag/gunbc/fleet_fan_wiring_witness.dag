@@ -444,6 +444,12 @@ data srv3_wiring_missing_two_expected_headers: HostFanWiring = HostFanWiring {
 
 // ONE HEADER WIRED TWICE. Membership is still answerable for FAN3 while multiplicity is not, which
 // is why this refuses ahead of the set join rather than appearing inside it as a disagreement.
+//
+// FAN3 RATHER THAN FAN2, AND THE CHOICE IS LOAD-BEARING: srv3 has no FAN2 row at all, so prepending
+// one there would make an UNEXPECTED header rather than a duplicated one -- a distinction the
+// coverage query reports correctly and which a first draft of this control got wrong. Carried here
+// from a second, byte-identical declaration of this same name that stood at the foot of the file
+// until the duplicate was cut; the value was the same, so only this reasoning was worth keeping.
 data srv3_wiring_with_a_duplicated_header: HostFanWiring = HostFanWiring {
   host: srv3_fan_wiring.host,
   headers: flat_map(
@@ -746,17 +752,6 @@ fn unmodelled_host_has_no_tach_expectation() -> Bool {
     HostFanTachExpectationEstablished { expectation } => true
     other => false
   }
-}
-
-// A ROSTER WITH ONE HEADER AUTHORED TWICE. srv3 has no FAN2 row at all, so prepending one there
-// makes an UNEXPECTED header rather than a duplicated one -- a distinction the coverage query
-// reports correctly and which a first draft of this control got wrong.
-data srv3_wiring_with_a_duplicated_header: HostFanWiring = HostFanWiring {
-  host: srv3_fan_wiring.host,
-  headers: flat_map(
-    [srv3_fan_wiring.headers, filter(srv3_fan_wiring.headers, b => b.header == "FAN3")],
-    group => group,
-  ),
 }
 
 // A HEADER WHOSE DRIVEN COUNT NOBODY OBSERVED, for the partial-total control.
