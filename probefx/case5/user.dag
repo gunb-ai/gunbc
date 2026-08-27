@@ -1,0 +1,19 @@
+module zqxbeta.user
+
+type ZqxAnswer = ZqxYes | ZqxNo
+
+fn zqx_probe_pick() -> ZqxAnswer {
+    let probe = ZqxProbeRed
+    match probe {
+        ZqxProbeRed => ZqxYes
+        ZqxProbeBlue => ZqxNo
+    }
+}
+
+fn zqx_rival_pick() -> ZqxAnswer {
+    let rival = ZqxRivalGreen
+    match rival {
+        ZqxRivalGreen => ZqxYes
+        ZqxProbeRed => ZqxNo
+    }
+}
