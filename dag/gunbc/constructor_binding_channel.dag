@@ -20,6 +20,13 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // no import and no containment test, and the result is folded into the module's ordinary `locals`
 // (`build_module_context`). So the ruling describes two of the three sources the map ends up with.
 //
+// WHAT THE CONSTRUCTOR HALF OF THIS CARRIER DOES AND DOES NOT SAY ABOUT EMISSION. The channel
+// finding below is about BINDING and is independent of what the emitter later harvests. Where this
+// carrier does reach emission -- the second next rung -- the claim is deliberately narrow: the
+// invisible form is the BARE NULLARY variant value reference, not constructors generally. The broad
+// form is refutable by one grep at collect_value_ref_names, which harvests the call and record-literal
+// forms, and a reviewer who lands on that arm would dismiss this finding along with the false half.
+//
 // WHY IT IS A CHANNEL AND NOT THE POOL WEARING A HAT. The pool channel and this one were run
 // against ONE fixture shape differing only in what the unimported name is used AS. A type
 // reference is admitted with a located `unlisted import use` ADVISORY -- the observation that feeds
@@ -85,7 +92,7 @@ data constructor_binding_channel_probes: List<ChannelProbe> = [
     owner_modules_in_source_root: 2,
     owner_modules_in_compiled_closure: 1,
     outcome: BoundSilently { emitted: "1 file emitted, 0 diagnostics, exit 0" },
-    what_it_establishes: "the ambiguity domain is the compiled closure, not the source root. A second module claiming the same arm name is present and indexed in the name census, and the binding is made anyway",
+    what_it_establishes: "the ambiguity domain is the compiled CLOSURE, not the source root. A second module claiming the same arm name is present and indexed in the name census, and the binding is made anyway. THE CONSEQUENCE IS THE PART LEAST LIKELY TO BE RE-DERIVED: adding an unrelated module to a closure can change which declaration an existing reference denotes, with nothing reported -- the same class as the interpreter's walk-order bare-name map, reached from a different stage",
   },
   {
     case_name: "case4 -- TYPE reference in the identical no-import position (the control)",
@@ -211,8 +218,8 @@ data constructor_binding_channel_next_rungs: List<NextRung> = [
     why_not_here: "it is a diagnostic-vocabulary change in v1.compiler.infer, and the refusal it replaces is the wall this carrier just established; changing it under a brief to MEASURE it would leave the measurement describing a tree that no longer exists",
   },
   {
-    what: "an unlisted-use observation for constructor references, parallel to the type channel's 'unlisted import use' -- without it the reference-derived use-line producer the namespace cut plan restores has no constructor input",
-    evidence_row: "case4 against case1",
-    why_not_here: "it adds an occurrence-grain observation to a stage the namespace program is mid-cut on, and the population it would report is unmeasured",
+    what: "an unlisted-use observation for BARE NULLARY variant value references, parallel to the type channel's 'unlisted import use'. THE SCOPE IS NARROW ON PURPOSE AND THE BROAD FORM IS FALSE: v1.compiler.emit_rust collect_value_ref_names has four arms, and only ExprVar carrying a VariantValueBinding falls to its `_ => []`. ExprCall harvests unconditionally by authored name and ExprRecordLit harvests through record_lit_ref_names, so a payload-carrying constructor written Foo { .. } or Foo(x) IS already visible to the reference-derived use-line producer, and pattern positions are handled upstream with their own ambiguity refusal. What is invisible is the bare nullary arm -- Absent, Empty, NoConnective, the unit arm of nearly every coproduct in this corpus. Read at 9917d4a9b3 in this tree, after a manager relay claiming the broader scope was corrected",
+    evidence_row: "case4 against case1, plus the four arms of collect_value_ref_names read directly",
+    why_not_here: "a repair belongs in its own change rather than smuggled into the measurement that motivates it. The narrowing does not soften the consequence: an incomplete census is incomplete whatever the size of the hole, so while one constructor form contributes no observation, a complete content-addressed census of the use-line repair population cannot be built on current instrumentation",
   },
 ]
