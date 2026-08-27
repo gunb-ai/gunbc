@@ -6,14 +6,30 @@ use sha2::Digest;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const BOOTSTRAP_INLINE_MODS: &[&str] = &["NonEmptyVec", "NonEmptyBTreeSet"];
+use v1_compiler::gunbc_stage0_emitted_population_manifest::{
+    emitted_population_manifest_basename, emitted_population_manifest_line_prefix,
+    emitted_population_manifest_line_separator,
+};
 
 #[derive(Debug)]
 pub enum AssemblyError {
-    MissingEntryFile { path: PathBuf },
-    EntryMutated { before: String, after: String },
-    MissingEmittedLibRs { path: PathBuf },
-    RefusedDep { module: String, reason: String },
+    MissingEntryFile {
+        path: PathBuf,
+    },
+    EntryMutated {
+        before: String,
+        after: String,
+    },
+    MissingPopulationManifest {
+        path: PathBuf,
+    },
+    EmptyPopulationManifest {
+        path: PathBuf,
+    },
+    RefusedDeclaredMember {
+        declared_path: String,
+        reason: String,
+    },
     Io(std::io::Error),
 }
 
@@ -27,9 +43,21 @@ impl std::fmt::Display for AssemblyError {
                     "entry module mutated during assembly ({before} != {after})"
                 )
             }
-            Self::MissingEmittedLibRs { path } => write!(f, "missing emitted lib.rs {path:?}"),
-            Self::RefusedDep { module, reason } => {
-                write!(f, "refused dep assembly for {module}: {reason}")
+            Self::MissingPopulationManifest { path } => {
+                write!(f, "missing emitted-population manifest {path:?}")
+            }
+            Self::EmptyPopulationManifest { path } => write!(
+                f,
+                "{path:?} carried no declared paths -- it is not the emitted-population manifest"
+            ),
+            Self::RefusedDeclaredMember {
+                declared_path,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "refused declared emitted member {declared_path}: {reason}"
+                )
             }
             Self::Io(e) => write!(f, "io error: {e}"),
         }
@@ -49,8 +77,8 @@ pub fn dag_entry_rust_module(dag_path: &Path) -> Result<String, AssemblyError> {
     let line = content
         .lines()
         .find(|l| l.starts_with("module "))
-        .ok_or_else(|| AssemblyError::RefusedDep {
-            module: dag_path.display().to_string(),
+        .ok_or_else(|| AssemblyError::RefusedDeclaredMember {
+            declared_path: dag_path.display().to_string(),
             reason: "no module line".to_string(),
         })?;
     let qualified = line.trim_start_matches("module ").trim();
@@ -72,16 +100,30 @@ fn sha256_hex(path: &Path) -> Result<String, AssemblyError> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-fn parse_closure_mods(lib_rs: &Path) -> Result<Vec<String>, AssemblyError> {
-    let content = fs::read_to_string(lib_rs)?;
+/// Recover the emitted population from the emitter's own declaration of it.
+///
+/// THIS REPLACES A RUST TEXT-PARSE, AND THAT IS THE POINT RATHER THAN A REFACTOR. Assembly
+/// used to recover closure membership by scraping `pub mod <name>;` lines out of the emitted
+/// `lib.rs` -- a hand-rolled reader of Rust surface syntax standing in for a fact the emitter
+/// already knows and already writes down. `v1.compiler.emit_rust` `emit_emitted_population_manifest`
+/// renders one line per produced path into `src/emitted_population.rs`, in the same `out_dir`,
+/// under a grammar both ends resolve from one authority
+/// (`gunbc.stage0_emitted_population_manifest`): `line_prefix ++ path`, joined by the separator.
+/// Reading it is a split and a strip. No Rust grammar is involved on either side, which is
+/// exactly the property that made the artifact a file of `//` lines in the first place.
+///
+/// A line that does not carry the prefix is DROPPED rather than guessed at, matching the modeled
+/// reader in `gunbc.stage0_rust_host_observation` `emitted_population_paths_from_manifest`: one
+/// grammar read in both directions (DESIGN section 4), never a second parser with its own idea
+/// of the shape.
+fn declared_emitted_paths(manifest: &Path) -> Result<Vec<String>, AssemblyError> {
+    let content = fs::read_to_string(manifest)?;
+    let prefix = emitted_population_manifest_line_prefix();
+    let separator = emitted_population_manifest_line_separator();
     Ok(content
-        .lines()
-        .filter_map(|l| {
-            let t = l.trim();
-            t.strip_prefix("pub mod ")
-                .and_then(|rest| rest.strip_suffix(';'))
-                .map(|m| m.trim().to_string())
-        })
+        .split(separator.as_str())
+        .filter_map(|line| line.strip_prefix(prefix.as_str()))
+        .map(|path| path.to_string())
         .collect())
 }
 
@@ -92,92 +134,77 @@ fn parse_closure_mods(lib_rs: &Path) -> Result<Vec<String>, AssemblyError> {
 /// raw_dup_pub_use column, measured on the RAW emit before assembly) shows zero
 /// firings. Emit-retained artifacts are now byte-untouched by assembly.
 ///
-/// Assembly arms: entry untouched · bootstrap_inline · whole-closure emit-retain
-/// default (typed Refused only when closure mod lacks emitted .rs).
+/// Assembly arms: entry untouched · whole-closure emit-retain default (typed refusal only
+/// when a member the emitter DECLARED it produced is not on disk).
 ///
-/// THE COMPILER-SEED-RE-EXPORT ARM IS DELETED, AND WITH IT THE ONLY READ OF THE
-/// COMMITTED SEED `lib.rs`. That arm replaced a closure member's emitted bytes with
-/// `pub use v1_compiler::{mod}::*` when the seed's `lib.rs` text carried a matching
-/// `pub mod` line — a second authority over seed mod-tree membership, decided by
-/// text-parsing a file whose modeled authority is
-/// `v2.compiler.self_host.stage0_crate_layout`. It was ALREADY UNREACHABLE: its guard
-/// required `!is_emitted_closure_member(emitted_lib_rs, module, dest)`, which expanded
-/// to `!(dest.is_file() && parse_closure_mods(emitted_lib_rs).contains(module))` — and
-/// at that point in the loop `module` comes from that same parse of that same file and
-/// `dest.is_file()` has just been asserted, so the negation was false by construction.
-/// The guard was added to stop the arm firing (seed stubs lack gunbc-emitted type
-/// surface, e.g. `ResolvedTree` in `v2_compiler_resolve`); the arm itself was left
-/// standing behind it. Deleting it removes the text-parse rather than regrounding it,
-/// so no second reader of seed mod-tree membership survives here at all.
+/// THE LAST RUST TEXT-PARSE ON THIS PATH IS GONE, AND WITH IT THE SECOND AUTHORITY OVER
+/// EMITTED-POPULATION MEMBERSHIP. The prior revision derived the population from `lib.rs`'s
+/// `pub mod` lines and then asserted a sibling `.rs` existed for each. That check compared one
+/// emit artifact against another emit artifact -- `lib.rs`'s mod list is rendered FROM the same
+/// module file list the writer then writes out, so on the real path it could only ever agree
+/// with itself, and its only reachable red came from a hand-authored `lib.rs`. The manifest
+/// makes the question answerable at the grain that matters: the emitter DECLARES the paths it
+/// produced, and assembly refuses if any declared path is not materialized in `out_dir`. That is
+/// strictly wider coverage (`Cargo.toml`, `lib.rs`, `main.rs`, every module, every test file and
+/// the manifest itself are all declared members) obtained by deleting a parser rather than by
+/// adding a check.
 ///
-/// Verified by execution before deletion: substituting `panic!` for the arm's body left
-/// the module's nine tests byte-identical in outcome (8 passed, 1 pre-existing
-/// environment failure needing release bins, before and after). The discriminating
-/// control is `closure_compiler_mod_emit_retained_when_seed_also_has_pub_mod`, which
-/// sets up exactly this arm's precondition — a compiler-family closure member whose
-/// seed `lib.rs` DOES carry the `pub mod` line — and asserts the emitted bytes survive.
-/// The `repo_root` PARAMETER GOES WITH IT, and that is the point rather than tidying. It
-/// existed solely to derive `repo_root.join("src/v1/stage0/src/lib.rs")`. With it gone,
-/// assembly has no input from which the seed `lib.rs` location is derivable at all: its
-/// remaining paths are the candidate `out_dir`, the entry `.dag`, and the (already unused)
-/// std-bridge dir. So consulting the seed mod tree is not merely refused here — it has no
-/// representation, which is DESIGN 4b's top rung rather than the one below it.
+/// `BOOTSTRAP_INLINE_MODS` GOES WITH IT. It named `NonEmptyVec` and `NonEmptyBTreeSet`, whose
+/// only reason to exist was that a hand-authored shim `lib.rs` can carry `pub mod` lines for
+/// wrappers the emitter inlines as bare `struct`s rather than emitting as files. The manifest
+/// never declares them -- they are not files -- so the skip has no subject: the state it
+/// existed to tolerate is not representable in the population assembly now reads, which is
+/// DESIGN 4b's top rung rather than the one below it.
 ///
-/// KEEPING THE PARAMETER TO PRESERVE THE CONTROL WAS CONSIDERED AND REJECTED. DESIGN 4b(4)
-/// keeps a class's discriminating control enrolled across a climb, and on that reading the
-/// parameter had to stay so the test could still hand assembly a repo whose seed carries
-/// the line. But 4b(4) protects evidence for a state that remains DESCRIBABLE; at
-/// structural impossibility the invalid state has no constructor, and a control with no
-/// constructible subject is not evidence being preserved — it is a writable path preserved
-/// for the benefit of a check, which is the concession DESIGN 5 names outright. The
-/// evidence is not lost, it is RETARGETED: `closure_compiler_mod_stays_emit_retained` still
-/// asserts, on a constructible subject, that a compiler-family closure member keeps its
-/// emitted bytes and never becomes a `pub use v1_compiler::` re-export. That is the
-/// regression this file must not suffer again, and it is now checked without holding the
-/// door open for it.
+/// THE COMPILER-SEED-RE-EXPORT ARM WAS DELETED EARLIER (gunbc#8690), AND WITH IT THE ONLY READ
+/// OF THE COMMITTED SEED `lib.rs`. That arm replaced a closure member's emitted bytes with
+/// `pub use v1_compiler::{mod}::*` when the seed's `lib.rs` text carried a matching `pub mod`
+/// line -- a second authority over seed mod-tree membership, decided by text-parsing a file
+/// whose modeled authority is `v2.compiler.self_host.stage0_crate_layout`. The `repo_root`
+/// PARAMETER went with it, so assembly has no input from which the seed `lib.rs` location is
+/// derivable at all. `closure_compiler_mod_stays_emit_retained` remains enrolled as the
+/// regression control for that climb (DESIGN 4b(4)): a compiler-family closure member keeps its
+/// emitted bytes and never becomes a `pub use v1_compiler::` re-export.
 pub fn assemble_seed_linked_closure(
     out_dir: &Path,
     entry_dag: &Path,
     _std_bridge_dir: &Path,
 ) -> Result<(), AssemblyError> {
     let src_dir = out_dir.join("src");
-    let emitted_lib_rs = src_dir.join("lib.rs");
+    let manifest_path = src_dir.join(emitted_population_manifest_basename());
     let entry_mod = dag_entry_rust_module(entry_dag)?;
     let entry_file = src_dir.join(format!("{entry_mod}.rs"));
 
     if !entry_file.is_file() {
         return Err(AssemblyError::MissingEntryFile { path: entry_file });
     }
-    if !emitted_lib_rs.is_file() {
-        return Err(AssemblyError::MissingEmittedLibRs {
-            path: emitted_lib_rs,
+    if !manifest_path.is_file() {
+        return Err(AssemblyError::MissingPopulationManifest {
+            path: manifest_path,
         });
     }
 
     let entry_hash_before = sha256_hex(&entry_file)?;
-    let closure_mods = parse_closure_mods(&emitted_lib_rs)?;
+    let declared = declared_emitted_paths(&manifest_path)?;
+    if declared.is_empty() {
+        return Err(AssemblyError::EmptyPopulationManifest {
+            path: manifest_path,
+        });
+    }
 
-    for module in closure_mods {
-        if module == entry_mod {
-            continue;
-        }
-        if BOOTSTRAP_INLINE_MODS.contains(&module.as_str()) {
-            continue;
-        }
-
-        let dest = src_dir.join(format!("{module}.rs"));
-        if !dest.is_file() {
-            return Err(AssemblyError::RefusedDep {
-                module: module.clone(),
-                reason: "closure mod missing emitted .rs file".to_string(),
+    for declared_path in declared {
+        // Whole-closure default (cssl_closure_assembly_note): every member the emitter
+        // declared it produced is emit-retained, byte-untouched -- v2_std_*, std_*, v1_rt,
+        // v2_extdeps_*, v2_lens_*, gunbc_* product modules, test_* witnesses, tools_*, etc.
+        // Assembly's only obligation is that the declaration and the tree agree; refusal for
+        // anything the bytes then say relocates to the cargo verdict, not to assemble-time
+        // prefix whitelisting.
+        if !out_dir.join(&declared_path).is_file() {
+            return Err(AssemblyError::RefusedDeclaredMember {
+                declared_path,
+                reason: "declared emitted path missing from out_dir".to_string(),
             });
         }
-
-        // Whole-closure default (cssl_closure_assembly_note): any module in the
-        // gunbc-emitted closure manifest with a sibling .rs is emit-retained,
-        // byte-untouched — v2_std_*, std_*, v1_rt, v2_extdeps_*, v2_lens_*,
-        // gunbc_* product modules, test_* witnesses, tools_*, etc. Refusal
-        // relocates to the cargo verdict, not assemble-time prefix whitelisting.
     }
 
     let entry_hash_after = sha256_hex(&entry_file)?;
@@ -195,6 +222,30 @@ pub fn assemble_seed_linked_closure(
 mod tests {
     use super::*;
 
+    /// Write the emitter's own declaration of what it produced, under the shared grammar.
+    ///
+    /// Fixtures build this the way `emit_emitted_population_manifest` does -- one prefixed line
+    /// per produced path, the manifest naming itself, sorted -- rather than hand-spelling `// `
+    /// and `\n`, so a change to the grammar authority moves both ends at once instead of
+    /// leaving the fixtures agreeing with a spelling nothing else uses.
+    fn write_population_manifest(out: &Path, paths: &[String]) -> Result<(), AssemblyError> {
+        let prefix = emitted_population_manifest_line_prefix();
+        let separator = emitted_population_manifest_line_separator();
+        let mut declared: std::vec::Vec<String> = paths.to_vec();
+        declared.push(format!("src/{}", emitted_population_manifest_basename()));
+        declared.sort();
+        let body = declared
+            .iter()
+            .map(|path| format!("{prefix}{path}"))
+            .collect::<std::vec::Vec<_>>()
+            .join(separator.as_str());
+        fs::write(
+            out.join("src").join(emitted_population_manifest_basename()),
+            format!("{body}{separator}"),
+        )?;
+        Ok(())
+    }
+
     fn write_minimal_emit_tree(
         root: &Path,
         entry_mod: &str,
@@ -203,10 +254,11 @@ mod tests {
         let out = root.join("out");
         let src = out.join("src");
         fs::create_dir_all(&src)?;
+        let mut declared = std::vec![format!("src/lib.rs"), format!("src/{entry_mod}.rs")];
         let lib = closure_mods
             .iter()
             .map(|m| format!("pub mod {m};"))
-            .collect::<Vec<_>>()
+            .collect::<std::vec::Vec<_>>()
             .join("\n");
         fs::write(
             out.join("src/lib.rs"),
@@ -218,28 +270,38 @@ mod tests {
                 continue;
             }
             fs::write(src.join(format!("{m}.rs")), format!("// emitted {m}\n"))?;
+            declared.push(format!("src/{m}.rs"));
         }
-        let seed_src = root.join("seed/src");
-        fs::create_dir_all(&seed_src)?;
-        fs::write(
-            seed_src.join("lib.rs"),
-            "pub mod v2_compiler_tokenize;\npub mod std_algebra;\n",
-        )?;
-        fs::write(seed_src.join("v2_compiler_tokenize.rs"), "pub fn f() {}\n")?;
-        fs::write(seed_src.join("std_algebra.rs"), "pub fn g() {}\n")?;
+        write_population_manifest(&out, &declared)?;
         Ok(out)
     }
 
-    fn temp_fixture_root() -> PathBuf {
-        let base = std::env::temp_dir().join(format!("cssl_assembly_test_{}", std::process::id()));
+    /// Per-CASE root, not per-process. Every case builds its tree at `<root>/out`, and the
+    /// prior helper keyed the root on the pid alone, so the whole module shared one directory
+    /// while cargo ran the cases CONCURRENTLY -- each `remove_dir_all` racing every sibling's
+    /// fixture writes. It passed by timing rather than by construction; keying on the case name
+    /// makes the collision unrepresentable instead of unlikely.
+    fn temp_fixture_root(case: &str) -> PathBuf {
+        let base =
+            std::env::temp_dir().join(format!("cssl_assembly_test_{}_{case}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         fs::create_dir_all(&base).expect("temp root");
         base
     }
 
+    fn entry_dag_and_bridge(root: &Path, stem: &str, module: &str) -> (PathBuf, PathBuf) {
+        let repo = root.join("repo");
+        let dag = repo.join(format!("src/v2/compiler/{stem}.dag"));
+        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
+        fs::write(&dag, format!("module {module}\n")).expect("dag");
+        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        fs::create_dir_all(&bridge).expect("bridge");
+        (dag, bridge)
+    }
+
     #[test]
     fn std_prefix_deps_are_emit_retained_not_refused() {
-        let root = temp_fixture_root();
+        let root = temp_fixture_root("std_prefix_deps_are_emit_retained_not_refused");
         let out = write_minimal_emit_tree(
             &root,
             "v2_compiler_tokenize",
@@ -269,7 +331,7 @@ mod tests {
     // and never becomes a `pub use v1_compiler::` re-export. `ResolvedTree` is the discriminating
     // payload: it is the type surface a seed stub would have lacked.
     fn closure_compiler_mod_stays_emit_retained() {
-        let root = temp_fixture_root();
+        let root = temp_fixture_root("closure_compiler_mod_stays_emit_retained");
         let out = root.join("out");
         let src = out.join("src");
         fs::create_dir_all(&src).expect("src");
@@ -284,6 +346,15 @@ mod tests {
         )
         .expect("resolve");
         fs::write(src.join("v2_compiler_infer.rs"), "// entry\n").expect("infer");
+        write_population_manifest(
+            &out,
+            &[
+                "src/lib.rs".to_string(),
+                "src/v2_compiler_resolve.rs".to_string(),
+                "src/v2_compiler_infer.rs".to_string(),
+            ],
+        )
+        .expect("manifest");
         let repo = root.join("repo");
         let dag = repo.join("src/v2/compiler/04_infer.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
@@ -301,7 +372,7 @@ mod tests {
 
     #[test]
     fn deliberate_red_control_broken_closure_dep_surfaces_at_cargo() {
-        let root = temp_fixture_root();
+        let root = temp_fixture_root("deliberate_red_control_broken_closure_dep_surfaces_at_cargo");
         let out = root.join("out");
         let src = out.join("src");
         fs::create_dir_all(&src).expect("src");
@@ -316,13 +387,15 @@ mod tests {
             "pub fn broken_syntax(] {}\n",
         )
         .expect("broken dep");
-        let seed_src = root.join("seed/src");
-        fs::create_dir_all(&seed_src).expect("seed dir");
-        fs::write(
-            seed_src.join("lib.rs"),
-            "pub mod v2_compiler_resolve;\npub mod v2_compiler_tokenize;\n",
+        write_population_manifest(
+            &out,
+            &[
+                "src/lib.rs".to_string(),
+                "src/v2_compiler_tokenize.rs".to_string(),
+                "src/v2_compiler_resolve.rs".to_string(),
+            ],
         )
-        .expect("seed lib");
+        .expect("manifest");
         let repo = root.join("repo");
         let dag = repo.join("src/v2/compiler/01_tokenize.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
@@ -354,15 +427,13 @@ mod tests {
 
     #[test]
     fn extdeps_without_seed_stays_emitted() {
-        let root = temp_fixture_root();
+        let root = temp_fixture_root("extdeps_without_seed_stays_emitted");
         let out = write_minimal_emit_tree(
             &root,
             "v2_compiler_self_host",
             &["extdeps_communication_medium", "v2_compiler_self_host"],
         )
         .expect("tree");
-        let seed_src = root.join("seed/src");
-        fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
         let repo = root.join("repo");
         let dag = repo.join("src/v2/compiler/self_host.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
@@ -377,15 +448,13 @@ mod tests {
 
     #[test]
     fn dry_run_peripheral_emit_retain_holds() {
-        let root = temp_fixture_root();
+        let root = temp_fixture_root("dry_run_peripheral_emit_retain_holds");
         let out = write_minimal_emit_tree(
             &root,
             "v2_compiler_self_host",
             &["dry_run", "v2_compiler_self_host"],
         )
         .expect("tree");
-        let seed_src = root.join("seed/src");
-        fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
         let repo = root.join("repo");
         let dag = repo.join("src/v2/compiler/self_host.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
@@ -399,15 +468,13 @@ mod tests {
 
     #[test]
     fn gunbc_product_closure_dep_emit_retained() {
-        let root = temp_fixture_root();
+        let root = temp_fixture_root("gunbc_product_closure_dep_emit_retained");
         let out = write_minimal_emit_tree(
             &root,
             "v2_compiler_name_resolve",
             &["gunbc_plans_md_helpers", "v2_compiler_name_resolve"],
         )
         .expect("tree");
-        let seed_src = root.join("seed/src");
-        fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
         let repo = root.join("repo");
         let dag = repo.join("src/v2/compiler/03_name_resolve.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
@@ -421,7 +488,7 @@ mod tests {
 
     #[test]
     fn test_witness_closure_dep_emit_retained() {
-        let root = temp_fixture_root();
+        let root = temp_fixture_root("test_witness_closure_dep_emit_retained");
         let out = write_minimal_emit_tree(
             &root,
             "v2_compiler_emit",
@@ -431,8 +498,6 @@ mod tests {
             ],
         )
         .expect("tree");
-        let seed_src = root.join("seed/src");
-        fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
         let repo = root.join("repo");
         let dag = repo.join("src/v2/compiler/05_emit.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
@@ -445,34 +510,84 @@ mod tests {
         assert!(kept.contains("emitted test_claim_materialization_ladder_witness"));
     }
 
+    /// RED, AND DISCRIMINATING FOR THE SWAP ITSELF. The manifest declares
+    /// `src/not_a_routable_mod.rs` and no such file exists, so assembly refuses -- while
+    /// `lib.rs` NEVER NAMES IT. The retired `pub mod` scrape read its population out of
+    /// `lib.rs`, so it saw nothing to check here and this fixture went green under it. The
+    /// refusal is therefore evidence that the manifest is the authority now, not merely that
+    /// some refusal survived the change.
     #[test]
-    fn closure_mod_missing_emitted_rs_is_typed_refused() {
-        let root = temp_fixture_root();
+    fn declared_member_missing_from_out_dir_is_typed_refused() {
+        let root = temp_fixture_root("declared_member_missing_from_out_dir_is_typed_refused");
         let out = root.join("out");
         let src = out.join("src");
         fs::create_dir_all(&src).expect("src");
-        fs::write(
-            out.join("src/lib.rs"),
-            "pub mod not_a_routable_mod;\npub mod v2_compiler_tokenize;\n",
-        )
-        .expect("lib");
+        fs::write(out.join("src/lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("lib");
         fs::write(src.join("v2_compiler_tokenize.rs"), "// entry\n").expect("entry");
-        let seed_src = root.join("seed/src");
-        fs::create_dir_all(&seed_src).expect("seed dir");
-        fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
-        let repo = root.join("repo");
-        let dag = repo.join("src/v2/compiler/01_tokenize.dag");
-        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
-        fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
-        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
-        fs::create_dir_all(&bridge).expect("bridge");
+        write_population_manifest(
+            &out,
+            &[
+                "src/lib.rs".to_string(),
+                "src/v2_compiler_tokenize.rs".to_string(),
+                "src/not_a_routable_mod.rs".to_string(),
+            ],
+        )
+        .expect("manifest");
+        let (dag, bridge) = entry_dag_and_bridge(&root, "01_tokenize", "v2.compiler.tokenize");
         let err = assemble_seed_linked_closure(&out, &dag, &bridge).unwrap_err();
         match err {
-            AssemblyError::RefusedDep { module, reason } => {
-                assert_eq!(module, "not_a_routable_mod");
-                assert!(reason.contains("missing emitted .rs"));
+            AssemblyError::RefusedDeclaredMember {
+                declared_path,
+                reason,
+            } => {
+                assert_eq!(declared_path, "src/not_a_routable_mod.rs");
+                assert!(reason.contains("missing from out_dir"));
             }
-            other => panic!("expected RefusedDep, got {other:?}"),
+            other => panic!("expected RefusedDeclaredMember, got {other:?}"),
+        }
+    }
+
+    /// The population has one authority, so its ABSENCE is a refusal and never a fall back to
+    /// reading `lib.rs`. An `out_dir` with a perfectly good `lib.rs` and no manifest is exactly
+    /// the state the retired parse would have accepted.
+    #[test]
+    fn missing_population_manifest_is_typed_refused() {
+        let root = temp_fixture_root("missing_population_manifest_is_typed_refused");
+        let out = root.join("out");
+        let src = out.join("src");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(out.join("src/lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("lib");
+        fs::write(src.join("v2_compiler_tokenize.rs"), "// entry\n").expect("entry");
+        let (dag, bridge) = entry_dag_and_bridge(&root, "01_tokenize", "v2.compiler.tokenize");
+        match assemble_seed_linked_closure(&out, &dag, &bridge).unwrap_err() {
+            AssemblyError::MissingPopulationManifest { path } => {
+                assert!(path.ends_with(emitted_population_manifest_basename()));
+            }
+            other => panic!("expected MissingPopulationManifest, got {other:?}"),
+        }
+    }
+
+    /// A file at the manifest's path carrying no line under the manifest grammar is IGNORANCE,
+    /// not an empty population: answering "nothing was declared, so nothing is missing" would be
+    /// the absorbing fallback read in the narrowing direction (DESIGN section 5).
+    #[test]
+    fn population_manifest_without_declared_lines_is_typed_refused() {
+        let root = temp_fixture_root("population_manifest_without_declared_lines_is_typed_refused");
+        let out = root.join("out");
+        let src = out.join("src");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(src.join("v2_compiler_tokenize.rs"), "// entry\n").expect("entry");
+        fs::write(
+            src.join(emitted_population_manifest_basename()),
+            "not a declared line\n",
+        )
+        .expect("manifest");
+        let (dag, bridge) = entry_dag_and_bridge(&root, "01_tokenize", "v2.compiler.tokenize");
+        match assemble_seed_linked_closure(&out, &dag, &bridge).unwrap_err() {
+            AssemblyError::EmptyPopulationManifest { path } => {
+                assert!(path.ends_with(emitted_population_manifest_basename()));
+            }
+            other => panic!("expected EmptyPopulationManifest, got {other:?}"),
         }
     }
 
