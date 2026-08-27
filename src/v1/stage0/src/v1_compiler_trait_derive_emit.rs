@@ -3329,64 +3329,44 @@ pub fn v1_type_expr_wf_needs_clone_param(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name =
             qualified_last_segment(authored_name_at(source_indices.clone(), type_expr.clone()));
-        let callable_components = v1_callable_type_expr_component_type_exprs(type_expr.clone());
-        if ((callable_components.clone().len() as i64) > 0) {
-            {
-                let mut __found = false;
-                for c in callable_components.iter().cloned() {
-                    if v1_type_expr_wf_needs_clone_param(
-                        param_name.clone(),
-                        c.clone(),
-                        bounds.clone(),
-                        type_decl_items.clone(),
-                        source_indices.clone(),
-                    ) {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            }
+        if ((type_expr.children.clone().len() as i64) == 0) {
+            false
         } else {
-            if ((type_expr.children.clone().len() as i64) == 0) {
-                false
-            } else {
-                {
-                    let nested = {
-                        let mut __found = false;
-                        for c in type_expr.children.clone().iter().cloned() {
-                            if v1_type_expr_wf_needs_clone_param(
+            {
+                let nested = {
+                    let mut __found = false;
+                    for c in type_expr.children.clone().iter().cloned() {
+                        if v1_type_expr_wf_needs_clone_param(
+                            param_name.clone(),
+                            v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                            bounds.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                };
+                match v1_rt::map_get(&type_decl_items, name.clone()) {
+                    Some(decl) => {
+                        let bound_params = match v1_rt::map_get(&bounds, name.clone()) {
+                            Some(s) => s.clone(),
+                            None => v1_rt::rc_empty_set::<String>(),
+                        };
+                        (nested.clone()
+                            || v1_declared_arg_positions_need_clone_param(
                                 param_name.clone(),
-                                v1_wf_child_type_node(c.clone(), source_indices.clone()),
+                                decl.params.clone(),
+                                type_expr.children.clone(),
+                                bound_params.clone(),
                                 bounds.clone(),
                                 type_decl_items.clone(),
                                 source_indices.clone(),
-                            ) {
-                                __found = true;
-                                break;
-                            }
-                        }
-                        __found
-                    };
-                    match v1_rt::map_get(&type_decl_items, name.clone()) {
-                        Some(decl) => {
-                            let bound_params = match v1_rt::map_get(&bounds, name.clone()) {
-                                Some(s) => s.clone(),
-                                None => v1_rt::rc_empty_set::<String>(),
-                            };
-                            (nested.clone()
-                                || v1_declared_arg_positions_need_clone_param(
-                                    param_name.clone(),
-                                    decl.params.clone(),
-                                    type_expr.children.clone(),
-                                    bound_params.clone(),
-                                    bounds.clone(),
-                                    type_decl_items.clone(),
-                                    source_indices.clone(),
-                                ))
-                        }
-                        None => nested.clone(),
+                            ))
                     }
+                    None => nested.clone(),
                 }
             }
         }
@@ -3457,6 +3437,44 @@ pub fn v1_item_field_type_exprs(
     }
 }
 
+pub fn v1_item_field_type_expr_wf_needs_clone_param(
+    param_name: String,
+    type_expr: Rc<Node>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let callable_components = v1_callable_type_expr_component_type_exprs(type_expr.clone());
+        if ((callable_components.clone().len() as i64) > 0) {
+            {
+                let mut __found = false;
+                for c in callable_components.iter().cloned() {
+                    if v1_item_field_type_expr_wf_needs_clone_param(
+                        param_name.clone(),
+                        c.clone(),
+                        bounds.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+        } else {
+            v1_type_expr_wf_needs_clone_param(
+                param_name.clone(),
+                type_expr.clone(),
+                bounds.clone(),
+                type_decl_items.clone(),
+                source_indices.clone(),
+            )
+        }
+    })
+}
+
 pub fn v1_item_param_wf_needs_clone(
     param_name: String,
     item: Rc<Node>,
@@ -3470,7 +3488,7 @@ pub fn v1_item_param_wf_needs_clone(
             .iter()
             .cloned()
         {
-            if v1_type_expr_wf_needs_clone_param(
+            if v1_item_field_type_expr_wf_needs_clone_param(
                 param_name.clone(),
                 te.clone(),
                 bounds.clone(),

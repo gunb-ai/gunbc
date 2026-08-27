@@ -1742,18 +1742,7 @@ fn v1_type_expr_wf_needs_clone_param(
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   let name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))
-  let callable_components = v1_callable_type_expr_component_type_exprs(type_expr: type_expr)
-  if (callable_components |> count) > 0 {
-    callable_components |> any(c =>
-      v1_type_expr_wf_needs_clone_param(
-        param_name: param_name,
-        type_expr: c,
-        bounds: bounds,
-        type_decl_items: type_decl_items,
-        source_indices: source_indices
-      )
-    )
-  } else if (type_expr.children |> count) == 0 {
+  if (type_expr.children |> count) == 0 {
     false
   } else {
     let nested = type_expr.children |> any(c =>
@@ -1810,6 +1799,53 @@ fn v1_item_field_type_exprs(item: Node, source_indices: Map<String, NewlineIndex
   }
 }
 
+// THE DESCENT IS SCOPED TO ITEM FIELDS, AND THAT SCOPE IS MEASURED RATHER THAN ASSUMED.
+//
+// An earlier revision of this change put the callable descent inside
+// v1_type_expr_wf_needs_clone_param itself, which is shared with the FN-level trigger
+// (v1_fn_param_wf_needs_clone). That over-bounded: measured on the fixture
+// `fn sig_only<A, B>(lookup: fn(A) -> CacheProbe<B>, ...)`, the emitted signature became
+// `<A, B: Clone>` from the SIGNATURE ALONE (the body is irrelevant -- confirmed by a variant whose
+// body never calls anything), while `CacheProbe<B>` itself emits BARE. Naming a type whose own
+// declaration prints no bound is well-formed for every B, so that bound was spurious -- and a
+// spurious bound is not free: it refuses every caller instantiating B with a non-Clone type.
+//
+// The asymmetry is the one clone_impl_required_type_params_note already records: an ENUM may carry
+// a parameter in the well-formedness record while its DECLARATION correctly prints bare, because
+// derive supplies the bound per-impl. At a struct FIELD that distinction does not arise the same
+// way -- the field's own declaration is what must be well-formed -- so the descent belongs here and
+// not in the shared predicate. It was caught by test.claim.trait_bound_witness
+// `call_forwarding_scope_excludes_match_wrapped_body`, the FN-level trigger's own declared-boundary
+// negative control, doing exactly the job a converse control exists to do.
+fn v1_item_field_type_expr_wf_needs_clone_param(
+  param_name: String,
+  type_expr: Node,
+  bounds: Map<String, Set<String>>,
+  type_decl_items: Map<String, Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let callable_components = v1_callable_type_expr_component_type_exprs(type_expr: type_expr)
+  if (callable_components |> count) > 0 {
+    callable_components |> any(c =>
+      v1_item_field_type_expr_wf_needs_clone_param(
+        param_name: param_name,
+        type_expr: c,
+        bounds: bounds,
+        type_decl_items: type_decl_items,
+        source_indices: source_indices
+      )
+    )
+  } else {
+    v1_type_expr_wf_needs_clone_param(
+      param_name: param_name,
+      type_expr: type_expr,
+      bounds: bounds,
+      type_decl_items: type_decl_items,
+      source_indices: source_indices
+    )
+  }
+}
+
 fn v1_item_param_wf_needs_clone(
   param_name: String,
   item: Node,
@@ -1818,7 +1854,7 @@ fn v1_item_param_wf_needs_clone(
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   v1_item_field_type_exprs(item: item, source_indices: source_indices) |> any(te =>
-    v1_type_expr_wf_needs_clone_param(
+    v1_item_field_type_expr_wf_needs_clone_param(
       param_name: param_name,
       type_expr: te,
       bounds: bounds,
