@@ -260,7 +260,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
   Job {
     id: "dashboard-deploy",
     name: none,
-    runs_on: fleet_converge_host_pinned_runner_spec(),
+    runner: fleet_converge_host_pinned_runner_spec(),
     steps: concat(
       fleet_converge_consumer_prelude_steps(),
       [
