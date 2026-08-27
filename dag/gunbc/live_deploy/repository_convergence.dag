@@ -103,6 +103,13 @@ type RepositoryConvergenceOutcome
   | ConvergenceUntrackedResidue { first_path: String }
   | ConvergenceResidueUnreadable { exit_code: Int, stderr: String }
   | ConvergencePrimaryBranchNotAtCandidate { branch: String, observed: String }
+  | ConvergencePartialTransitionLeft {
+      candidate: String,
+      exit_code: Int,
+      stderr: String,
+      base_ref: String,
+      observed_head: String,
+    }
   | ConvergenceBaseRefUpdateRefused { base_ref: String, exit_code: Int, stderr: String }
   | ConvergenceObjectImportRefused { candidate: String, exit_code: Int, stderr: String }
   | ConvergenceWorktreeTransitionRefused { candidate: String, exit_code: Int, stderr: String }
@@ -374,6 +381,35 @@ fn convergence_residue_fault(after_untracked: GitUntrackedObservation) -> Reposi
   }
 }
 
+// THE NON-NOOP LAW IS ABOUT THE NEWEST ENTRY, NOT ABOUT THE TEXT CHANGING. An earlier cut proved
+// only `before_reflog != after_reflog`, which any unrelated append, truncation or rewrite satisfies
+// -- including one made by a concurrent actor while this transition did nothing. What the arm is
+// actually claiming is that GIT moved HEAD to the candidate, and the evidence for that is the newest
+// reflog record naming the candidate as the object it arrived at.
+//
+// `--format=%H %gd %gs` puts the object first on each line and git emits newest-first, so the first
+// field of the first line is the object HEAD most recently reached. A file-level write over refs/
+// appends nothing, so it leaves the previous newest entry in place and fails this.
+fn convergence_newest_reflog_object(reflog: String) -> String {
+  match split(s: reflog, sep: "\n") |> filter(l => trim(s: l) != "") |> first() {
+    Absent => ""
+    Present { value: line } =>
+      match split(s: trim(s: line), sep: " ") |> first() {
+        Absent => ""
+        Present { value: obj } => obj
+      }
+  }
+}
+
+fn convergence_reflog_records_arrival(
+  before_reflog: String,
+  after_reflog: String,
+  candidate: String,
+) -> Bool {
+  before_reflog != after_reflog
+    && convergence_newest_reflog_object(reflog: after_reflog) == candidate
+}
+
 fn repository_convergence_compare(
   refs_before: List<GitRefIdentity>,
   refs_after: List<GitRefIdentity>,
@@ -427,7 +463,11 @@ fn repository_convergence_compare(
                     if before_head == candidate {
                       ConvergenceAlreadyAtCandidate { candidate: candidate }
                     } else {
-                      if before_reflog == after_reflog {
+                      if !convergence_reflog_records_arrival(
+                        before_reflog: before_reflog,
+                        after_reflog: after_reflog,
+                        candidate: candidate,
+                      ) {
                         ConvergenceHeadMovedWithoutReflog { candidate: candidate }
                       } else {
                         ConvergenceCompleted {
@@ -459,6 +499,9 @@ fn repository_convergence_converged(outcome: RepositoryConvergenceOutcome) -> Bo
     ConvergenceUntrackedResidue { first_path: _ } => false
     ConvergenceResidueUnreadable { exit_code: _, stderr: _ } => false
     ConvergencePrimaryBranchNotAtCandidate { branch: _, observed: _ } => false
+    ConvergencePartialTransitionLeft {
+      candidate: _, exit_code: _, stderr: _, base_ref: _, observed_head: _,
+    } => false
     ConvergenceBaseRefUpdateRefused { base_ref: _, exit_code: _, stderr: _ } => false
     ConvergenceObjectImportRefused { candidate: _, exit_code: _, stderr: _ } => false
     ConvergenceWorktreeTransitionRefused { candidate: _, exit_code: _, stderr: _ } => false
@@ -529,6 +572,15 @@ fn repository_convergence_detail(outcome: RepositoryConvergenceOutcome) -> Strin
       join([
         "the primary worktree's branch ", b, " is at ", o,
         " after a transition whose candidate it should carry",
+      ], "")
+    ConvergencePartialTransitionLeft {
+      candidate: c, exit_code: x, stderr: e, base_ref: r, observed_head: h,
+    } =>
+      join([
+        "PARTIAL TRANSITION: ", r, " was advanced to ", c,
+        " and the worktree transition then refused (exit ", to_string(x), "): ", e,
+        " -- HEAD reads ", h,
+        ". The repository is left with an advanced base ref over an untransitioned tree, which is a state another actuator can consume: `git worktree add` resolves through that ref. This is not a diagnostic about a no-op, it names a repository that needs repair before the next convergence.",
       ], "")
   }
 }
@@ -699,10 +751,12 @@ func repository_converge_wet(
         } else {
           let reset = git.Core.ResetHardInRepo(repo: repo as FilePath, target: candidate)
           if reset.exit_code != 0 {
-            convergence_exit(outcome: ConvergenceWorktreeTransitionRefused {
+            convergence_exit(outcome: ConvergencePartialTransitionLeft {
               candidate: candidate,
               exit_code: reset.exit_code,
               stderr: reset.stderr,
+              base_ref: base_ref,
+              observed_head: observe_repository_state(repo: repo).head,
             })
           } else {
             convergence_exit(outcome: repository_convergence_verdict(

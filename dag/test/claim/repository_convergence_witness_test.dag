@@ -132,6 +132,18 @@ fn state_of(
   }
 }
 
+// THE REFLOG FIXTURE IS NEWEST-FIRST AND CARRIES THE OBJECT FIRST ON THE LINE, because that is what
+// `git reflog show --format=%H %gd %gs` emits and what the non-noop law now reads. The earlier
+// fixture was the bare text "old-reflog\nnew-entry", which satisfied a before != after check while
+// naming no object at all -- it could not have distinguished this transition from an unrelated
+// append, which is precisely the weakness that check had.
+fn reflog_after(oid: String) -> String {
+  concat(
+    join([oid, "HEAD@{0}", concat("reset: moving to ", oid)], " "),
+    "\nold-reflog",
+  )
+}
+
 fn clean_tree() -> GitUntrackedObservation {
   GitUntrackedObserved { paths: "" }
 }
@@ -171,7 +183,7 @@ test fn a_clean_transition_converges() -> Bool {
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
     head: new_sha,
-    reflog: "old-reflog\nnew-entry",
+    reflog: reflog_after(oid: new_sha),
     untracked: clean_tree(),
   )
   is_completed(o: verdict_for(after: after)) && repository_convergence_converged(outcome: verdict_for(after: after))
@@ -185,7 +197,7 @@ test fn a_dispatch_ref_that_vanished_refuses() -> Bool {
     refs: refs_wire(records: [heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
     head: new_sha,
-    reflog: "old-reflog\nnew-entry",
+    reflog: reflog_after(oid: new_sha),
     untracked: clean_tree(),
   )
   match verdict_for(after: after) {
@@ -201,7 +213,7 @@ test fn a_linked_worktree_that_vanished_refuses() -> Bool {
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha)]),
     head: new_sha,
-    reflog: "old-reflog\nnew-entry",
+    reflog: reflog_after(oid: new_sha),
     untracked: clean_tree(),
   )
   match verdict_for(after: after) {
@@ -217,7 +229,7 @@ test fn a_linked_worktree_rebound_to_detached_refuses() -> Bool {
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry_detached()]),
     head: new_sha,
-    reflog: "old-reflog\nnew-entry",
+    reflog: reflog_after(oid: new_sha),
     untracked: clean_tree(),
   )
   match verdict_for(after: after) {
@@ -281,7 +293,7 @@ test fn the_primary_moving_is_not_a_rebinding() -> Bool {
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
     head: new_sha,
-    reflog: "old-reflog\nnew-entry",
+    reflog: reflog_after(oid: new_sha),
     untracked: clean_tree(),
   )))
 }
@@ -295,7 +307,7 @@ test fn an_unreadable_post_state_refuses_rather_than_reporting_preservation() ->
     refs: GitRefSetReadRefused { exit_code: 128, stderr: "not a git repository" },
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
     head: new_sha,
-    reflog: "old-reflog\nnew-entry",
+    reflog: reflog_after(oid: new_sha),
     untracked: clean_tree(),
   }
   match verdict_for(after: after) {
@@ -311,7 +323,7 @@ test fn a_head_short_of_the_candidate_refuses() -> Bool {
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: old_sha), linked_entry()]),
     head: old_sha,
-    reflog: "old-reflog\nnew-entry",
+    reflog: reflog_after(oid: new_sha),
     untracked: clean_tree(),
   )
   match verdict_for(after: after) {
@@ -380,7 +392,7 @@ test fn a_tree_carrying_untracked_residue_refuses() -> Bool {
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
     head: new_sha,
-    reflog: "old-reflog\nnew-entry",
+    reflog: reflog_after(oid: new_sha),
     untracked: GitUntrackedObserved { paths: concat("stray/left-behind.txt", "\0") },
   )
   match verdict_for(after: after) {
@@ -399,7 +411,7 @@ test fn an_unreadable_untracked_listing_refuses_rather_than_reading_clean() -> B
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
     head: new_sha,
-    reflog: "old-reflog\nnew-entry",
+    reflog: reflog_after(oid: new_sha),
     untracked: GitUntrackedUnreadable { exit_code: 128, stderr: "not a git repository" },
   )
   match verdict_for(after: after) {
@@ -420,12 +432,32 @@ test fn a_primary_branch_left_behind_refuses() -> Bool {
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: old_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
     head: new_sha,
-    reflog: "old-reflog\nnew-entry",
+    reflog: reflog_after(oid: new_sha),
     untracked: clean_tree(),
   )
   match verdict_for(after: after) {
     ConvergencePrimaryBranchNotAtCandidate { branch: b, observed: o } =>
       b == "refs/heads/main" && o == old_sha
+    _ => false
+  }
+}
+
+// THE REFLOG GREW, AND NOT BECAUSE OF THIS TRANSITION. HEAD is at the candidate and the reflog text
+// differs from the pre-state, so the old `before != after` law was satisfied -- by an append whose
+// newest entry names an unrelated object. A concurrent actor touching HEAD while a file-level write
+// moved the ref produces exactly this, which is why the law reads the newest entry rather than the
+// text. THIS WITNESS IS THE ONE THE OLD CHECK COULD NOT HAVE PASSED OR FAILED MEANINGFULLY: under
+// the previous implementation it went green while the tree had no git-performed arrival at all.
+test fn a_reflog_that_grew_toward_some_other_object_refuses() -> Bool {
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: reflog_after(oid: dispatch_sha),
+    untracked: clean_tree(),
+  )
+  match verdict_for(after: after) {
+    ConvergenceHeadMovedWithoutReflog { candidate: c } => c == new_sha
     _ => false
   }
 }

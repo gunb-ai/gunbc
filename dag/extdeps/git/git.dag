@@ -396,8 +396,17 @@ data git_ls_files_external_authority_anchor: ExternalAuthority = ExternalAuthori
 // ONE OPERATION MOVES HEAD, THE INDEX AND THE TRACKED BYTES TOGETHER, which is the property the
 // deployed tree lost. The sync it replaces moved tracked bytes by rsync and HEAD by file copy and
 // left the index untouched entirely, so the three could and did disagree -- measured on srv1 as
-// 5650 divergent paths with index-vs-HEAD and worktree-vs-index both wrong. `reset --hard` is a
-// single git transaction over all three, so partial application is not a state it can produce.
+// 5650 divergent paths with index-vs-HEAD and worktree-vs-index both wrong. `reset --hard` is ONE
+// GIT-OWNED COMMAND over all three, which is materially better than three uncoordinated transports.
+//
+// THAT IS NOT A CLAIM OF CRASH-ATOMICITY, and an earlier revision of this annotation made one: it
+// said partial application "is not a state it can produce". Git documents this command as updating
+// HEAD, the index and the working tree; it does not document the sequence as a transaction that
+// rolls back, and a kill between the ref write and the file writes leaves exactly the partial state
+// the sentence denied. Nor does the surrounding composition inherit atomicity from it -- `update-ref`
+// gives a compare-and-swap over the ref IT owns, and nothing extends that guarantee across a later
+// worktree reset. The consumer therefore carries an explicit partial-transition outcome rather than
+// relying on this command to make one unreachable.
 //
 // IT IS NOT READONLY AND IT DISCARDS LOCAL MODIFICATIONS, stated plainly because the name does not
 // say so: any uncommitted change in the target worktree is destroyed. That is correct for a
