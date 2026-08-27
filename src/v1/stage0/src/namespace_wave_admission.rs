@@ -92,6 +92,7 @@ pub enum NamespaceDeltaDisposition {
     NewAmbiguity,
     NewUnresolvedness,
     NewPoolCoincidenceResolution,
+    AuthoredReferenceResolution,
     UnexplainedSubjectMotion,
     NotEvaluated,
 }
@@ -112,6 +113,7 @@ pub fn disposition_label(d: NamespaceDeltaDisposition) -> &'static str {
         NamespaceDeltaDisposition::NewAmbiguity => "NewAmbiguity",
         NamespaceDeltaDisposition::NewUnresolvedness => "NewUnresolvedness",
         NamespaceDeltaDisposition::NewPoolCoincidenceResolution => "NewPoolCoincidenceResolution",
+        NamespaceDeltaDisposition::AuthoredReferenceResolution => "AuthoredReferenceResolution",
         NamespaceDeltaDisposition::UnexplainedSubjectMotion => "UnexplainedSubjectMotion",
         NamespaceDeltaDisposition::NotEvaluated => "NotEvaluated",
     }
@@ -129,7 +131,8 @@ pub fn disposition_auto_admitted(d: NamespaceDeltaDisposition) -> bool {
     match d {
         NamespaceDeltaDisposition::SameDeclarationIdentityRebind
         | NamespaceDeltaDisposition::UnusedSubjectMembershipRemoved
-        | NamespaceDeltaDisposition::ExplicitlyEvaluatedZeroDelta => true,
+        | NamespaceDeltaDisposition::ExplicitlyEvaluatedZeroDelta
+        | NamespaceDeltaDisposition::AuthoredReferenceResolution => true,
         NamespaceDeltaDisposition::TargetChanged
         | NamespaceDeltaDisposition::NewAmbiguity
         | NamespaceDeltaDisposition::NewUnresolvedness
@@ -144,7 +147,7 @@ pub const DISPOSITION_AUTHORITY_MODULE: &str = "gunbc.compiler_frontend_program_
 pub const DISPOSITION_AUTHORITY_DECL: &str = "NamespaceDeltaDisposition";
 
 /// Every label this host enum carries, in the authority's own spelling.
-pub const DISPOSITION_LABELS: [&str; 9] = [
+pub const DISPOSITION_LABELS: [&str; 10] = [
     "SameDeclarationIdentityRebind",
     "UnusedSubjectMembershipRemoved",
     "ExplicitlyEvaluatedZeroDelta",
@@ -152,6 +155,7 @@ pub const DISPOSITION_LABELS: [&str; 9] = [
     "NewAmbiguity",
     "NewUnresolvedness",
     "NewPoolCoincidenceResolution",
+    "AuthoredReferenceResolution",
     "UnexplainedSubjectMotion",
     "NotEvaluated",
 ];
@@ -587,7 +591,11 @@ pub fn adjudicate(
             if base_set == head_set {
                 continue;
             }
-            let disposition = binding_disposition(base_set, head_set);
+            let disposition = binding_disposition(
+                base_set,
+                head_set,
+                locally_authored_claim_added(head, base_record, head_record, &key.1),
+            );
             deltas.push(NamespaceDelta {
                 subject: DeltaSubject::Binding {
                     module: module.clone(),
@@ -706,19 +714,36 @@ pub fn adjudicate(
 ///
 /// EVERY ARM IS OVER SETS, NOT WINNERS. `1 -> 0` is a name that stopped denoting anything;
 /// `1 -> 2` is a name that now admits two declarations, which the namespace authority refuses
-/// at the reference rather than resolving by nearness; `0 -> 1` is a name that began denoting
-/// something without anyone authoring a reference — resolution arriving from a pool, which is
-/// the coincidence the containment rule exists to remove. Anything else with a non-empty pair
-/// is a changed target.
+/// at the reference rather than resolving by nearness. Anything else with a non-empty pair is
+/// a changed target.
+///
+/// `0 -> 1` IS TWO STATES, NOT ONE, AND THE SET PAIR CANNOT TELL THEM APART. An earlier
+/// revision read every `0 -> 1` as resolution arriving from a pool — a name that began
+/// denoting something WITHOUT ANYONE AUTHORING A REFERENCE, which is the coincidence the
+/// containment rule exists to remove. That is one of the two, and it is the one whose cause
+/// lives in ANOTHER module: the target grew a name this module was already reaching for. The
+/// other is this module's own author writing the import that resolves a name the module was
+/// already spelling — the exact repair the wall was built to want, and the state the wall
+/// refused. Opposite owners, opposite repairs, one symbol: DESIGN's state-space conflation.
+///
+/// THE DISCRIMINATOR IS THE MODULE'S OWN SOURCE, and it is available for free — the
+/// membership arm one function over already consults authorship (`membership_supported`),
+/// which is what admitted the membership edge of the very change this arm was refusing. So
+/// `authored_here` is passed in rather than re-derived: see `locally_authored_claim_added`.
 fn binding_disposition(
     base: &BTreeSet<String>,
     head: &BTreeSet<String>,
+    authored_here: bool,
 ) -> NamespaceDeltaDisposition {
     if head.is_empty() {
         return NamespaceDeltaDisposition::NewUnresolvedness;
     }
     if base.is_empty() {
-        return NamespaceDeltaDisposition::NewPoolCoincidenceResolution;
+        return if authored_here {
+            NamespaceDeltaDisposition::AuthoredReferenceResolution
+        } else {
+            NamespaceDeltaDisposition::NewPoolCoincidenceResolution
+        };
     }
     if head.len() > base.len() && head.len() > 1 {
         return NamespaceDeltaDisposition::NewAmbiguity;
@@ -755,6 +780,62 @@ fn membership_declared(
 ) -> bool {
     record.imports.iter().any(|claim| claim.target == target)
         || membership_bound_through(index, record, target)
+}
+
+/// Did THIS module's own source gain a claim on `leaf` between the two sides?
+///
+/// EVERY ARM IS SCOPED TO `leaf`, AND THE BLANKET ARM IS WHERE THAT IS EASY TO GET WRONG. A
+/// member-list import and a self-declaration name the leaf in the source, so they answer from
+/// the two `ModuleDeclarationRecord`s alone. A blanket `import m` names no leaf at all, so a
+/// first revision of this function admitted authorship whenever ANY blanket target was new —
+/// which meant an unrelated new blanket import elsewhere in the same module auto-admitted a
+/// genuine pool coincidence, a fail-open widening in the one direction this function must
+/// never move (review 56882, on gunbc#9495, before it merged).
+///
+/// SO THE BLANKET ARM IS A CONJUNCTION, AND THE ORDER OF ITS TWO HALVES IS THE WHOLE POINT.
+/// The claim must be NEW IN THIS MODULE'S SOURCE **and** the head target must actually supply
+/// the leaf. Asking the second question alone is exactly the conflation this function exists
+/// to discriminate — an unchanged blanket import whose target grew `leaf` would read as
+/// authorship, which is the pool coincidence. Gating it behind the first question makes the
+/// index consultation safe rather than forbidden: a claim the author did not write cannot
+/// reach the surface check at all, whatever the target did.
+///
+/// FALSE IS THE FAIL-CLOSED ANSWER: it leaves the delta on the refusing arm, where a human
+/// adjudicates. A target absent from the index answers false for the same reason.
+fn locally_authored_claim_added(
+    head_index: &DeclarationIndex,
+    base_record: &ModuleDeclarationRecord,
+    head_record: &ModuleDeclarationRecord,
+    leaf: &str,
+) -> bool {
+    let declares =
+        |r: &ModuleDeclarationRecord| r.declared.contains(leaf) || r.variants.contains(leaf);
+    if declares(head_record) && !declares(base_record) {
+        return true;
+    }
+    let names_leaf = |r: &ModuleDeclarationRecord| {
+        r.imports
+            .iter()
+            .any(|c| c.members.iter().any(|(m, _)| m == leaf))
+    };
+    if names_leaf(head_record) && !names_leaf(base_record) {
+        return true;
+    }
+    let blanket_targets = |r: &ModuleDeclarationRecord| {
+        r.imports
+            .iter()
+            .filter(|c| c.members.is_empty())
+            .map(|c| c.target.clone())
+            .collect::<BTreeSet<String>>()
+    };
+    let base_blanket = blanket_targets(base_record);
+    blanket_targets(head_record)
+        .difference(&base_blanket)
+        .any(|target| {
+            index_get(head_index, target)
+                .map(|t| import_surface_has(t, leaf))
+                .unwrap_or(false)
+        })
 }
 
 /// Whether any name this module authors reaches into `target`'s surface.
