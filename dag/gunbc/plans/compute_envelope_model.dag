@@ -1,7 +1,7 @@
 module gunbc.plans.compute_envelope_model
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol, quote, cell, row }
 
@@ -93,6 +93,7 @@ fn compute_envelope_model_body() -> List<MarkdownBlock> {
 }
 
 data compute_envelope_model_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "compute-envelope-model",
   title: "Compute envelope — one authority for the CI fleet's resource dimensions",
   body: compute_envelope_model_body(),

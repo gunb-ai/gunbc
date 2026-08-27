@@ -4,8 +4,8 @@ module test.claim.coproduct_payload_soundness_witness_test
 //
 // This is the general form of the defect repaired in #8853 at one site. There,
 // `dag_int_literal_node_from_magnitude` declared its parameter as
-// `std.occurrence_identity.OccurrenceId` -- the PAYLOAD carried inside `MintedOccurrence` -- and
-// assigned it straight into `Node.occurrence_id`, whose type is the `NodeOccurrenceId` coproduct.
+// `std.occurrence_identity.OccurrenceId` -- the PAYLOAD carried inside `OccurrenceMinted` -- and
+// assigned it straight into `Node.occurrence_id`, whose type is the `NodeOccurrenceIdentity` coproduct.
 // Nothing refused the assignment. The consequence surfaced 2,000 lines and one pipeline stage away
 // as `non-exhaustive pattern match on: OccurrenceId { value: 79 }` in sixteen floor claims, because
 // the total match over that field had no arm for a value that is not in its type.

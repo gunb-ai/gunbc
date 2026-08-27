@@ -110,14 +110,31 @@ type ParentSigScan {
 // the collision this vocabulary exists to describe (gap-analysis row 30 -- `map_get` is both
 // `v2.std.collection.map_get` returning Outcome<Optional<V>> and a builtin returning
 // Optional<V>). So the candidate is the identity, and the label is a projection of it.
+// THE DECLARED HALF OF AN IDENTITY, HOISTED SO THE RESOLVED ARM CAN CARRY IT WITHOUT
+// CARRYING THE BUILTIN ARM.
+//
+// `decide_callable_candidates` proves a builtin never answers -- it can make a population
+// ambiguous and on its own hands the call back to the known-builtin bridge -- so the owner a
+// resolution binds is ALWAYS a declared one. Spelling FuncSigResolved's owner as
+// CallableIdentity would therefore admit a state the decision already ruled out, and spelling
+// it as a loose owner/decl String pair beside DeclaredCallable would be a second representation
+// of the pair this file already owns (DESIGN section 3). One record, two consumers.
+type DeclaredCallableIdentity {
+  owner_module_path: String
+  decl_name: String
+}
+
 type CallableIdentity
-  = DeclaredCallable { owner_module_path: String, decl_name: String }
+  = DeclaredCallable { identity: DeclaredCallableIdentity }
   | BuiltinCallable { primitive_name: String }
 
+// `is_builtin` used to sit beside `identity` here. It was a second representation of the fact
+// the identity variant already carries, and the decision below now reads the variant, so the
+// two could no longer disagree only because nothing consulted the Bool. Deleted rather than
+// kept in sync (DESIGN section 2/3).
 type CallableCandidate {
   identity: CallableIdentity
   sig: ResolvedFuncSig
-  is_builtin: Bool
 }
 
 // The one rendering of a candidate for human-facing diagnostics. `<builtin:map_get>` is spelled
@@ -125,7 +142,7 @@ type CallableCandidate {
 // the repair for it is not "qualify it" -- there is nothing to qualify.
 fn callable_identity_label(identity: CallableIdentity) -> String {
   match identity {
-    DeclaredCallable { owner_module_path: owner, decl_name: decl } => concat(owner, ".", decl)
+    DeclaredCallable { identity: identity } => concat(identity.owner_module_path, ".", identity.decl_name)
     BuiltinCallable { primitive_name: prim } => concat("<builtin:", prim, ">")
   }
 }
@@ -134,8 +151,16 @@ fn callable_candidate_labels(candidates: List<CallableCandidate>) -> List<String
   candidates |> map(c => callable_identity_label(identity: c.identity))
 }
 
+// THE OWNER IS PART OF THE RESOLUTION, NOT RECONSTRUCTIBLE AFTER IT.
+//
+// FuncSigResolved binds a signature AND the exact declaration it came from. A consumer that
+// needs the target's identity -- emission target selection is the first -- must take it from
+// here rather than re-running a lookup at a grain where the lexical scope that decided it has
+// already been discarded. That re-lookup is the authority-substitution class: the leaf spelling
+// survives into emission and a same-named unrelated declaration answers for the one inference
+// actually chose.
 type FuncSigLookup
-  = FuncSigResolved { sig: ResolvedFuncSig }
+  = FuncSigResolved { sig: ResolvedFuncSig, declared: DeclaredCallableIdentity }
   | FuncSigUnresolved
   | FuncSigAmbiguous { candidates: List<CallableCandidate> }
 
@@ -169,7 +194,7 @@ type DerivedCalleeSig
 
 fn func_sig_for_derivation(lookup: FuncSigLookup) -> DerivedCalleeSig {
   match lookup {
-    FuncSigResolved { sig: sig } => DerivedFromSig { sig: sig }
+    FuncSigResolved { sig: sig, declared: _ } => DerivedFromSig { sig: sig }
     FuncSigUnresolved => NoDerivableSig { reason: DerivationSigUnresolved }
     FuncSigAmbiguous { candidates: cands } =>
       NoDerivableSig { reason: DerivationSigAmbiguous { candidates: cands } }
@@ -192,9 +217,8 @@ fn parent_closure_callable_candidates(env: ResolvedFuncEnv, name: String) -> Lis
     match map_get(p.local, name) {
       Present { value: sig } =>
         concat(acc, [CallableCandidate {
-          identity: DeclaredCallable { owner_module_path: p.name, decl_name: name },
-          sig: sig,
-          is_builtin: false
+          identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: p.name, decl_name: name } },
+          sig: sig
         }])
       Absent => acc
     }
@@ -224,7 +248,10 @@ fn decide_callable_candidates(candidates: List<CallableCandidate>) -> FuncSigLoo
     ModulePathBindingHit { owner: _ } =>
       match candidates |> first {
         Present { value: only } =>
-          if only.is_builtin { FuncSigUnresolved } else { FuncSigResolved { sig: only.sig } }
+          match only.identity {
+            DeclaredCallable { identity: identity } => FuncSigResolved { sig: only.sig, declared: identity }
+            BuiltinCallable { primitive_name: _ } => FuncSigUnresolved
+          }
         Absent => FuncSigUnresolved
       }
     ModulePathBindingAmbiguous { owners: _ } =>
@@ -232,7 +259,15 @@ fn decide_callable_candidates(candidates: List<CallableCandidate>) -> FuncSigLoo
   }
 }
 
-fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? {
+// The legacy first-hit arms answered with a bare sig, so the parent that supplied it was known
+// at the scan and discarded on return. FuncSigResolved now binds the declaration, so the scan
+// keeps the owner it already computed instead of the caller re-deriving one it cannot see.
+type ResolvedSigWithOwner {
+  sig: ResolvedFuncSig
+  owner_module_path: String
+}
+
+fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> ResolvedSigWithOwner? {
   let scan = fold(env.parents, init: ParentSigScan { sig: none, match_count: 0, first_parent: none }, f: (acc, p) =>
     match map_get(p.local, name) {
       Present { value: sig } =>
@@ -256,12 +291,20 @@ fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> Res
       Absent => {}
     }
   }
-  scan.sig
+  match scan.sig {
+    Present { value: sig } =>
+      match scan.first_parent {
+        Present { value: owner } => Present { value: ResolvedSigWithOwner { sig: sig, owner_module_path: owner } }
+        Absent => none
+      }
+    Absent => none
+  }
 }
 
 fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
   match map_get(env.local, name) {
-    Present { value: sig } => FuncSigResolved { sig: sig }
+    Present { value: sig } =>
+      FuncSigResolved { sig: sig, declared: DeclaredCallableIdentity { owner_module_path: env.name, decl_name: name } }
     Absent =>
       if name_resolution_policy_is_namespace_only() {
         lookup_resolved_sig_unique_across_parents(env: env, name: name)
@@ -269,22 +312,30 @@ fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
         let first_hit = if resolution_silent_pick_is_enabled() {
           lookup_resolved_sig_with_telemetry(env: env, name: name)
         } else {
-          fold(env.parents, init: none_resolved_sig(), f: (acc, p) =>
+          fold(env.parents, init: none_resolved_sig_with_owner(), f: (acc, p) =>
             match acc {
-              Present { value: sig } => Present { value: sig }
-              Absent => map_get(p.local, name)
+              Present { value: found } => Present { value: found }
+              Absent =>
+                match map_get(p.local, name) {
+                  Present { value: sig } => Present { value: ResolvedSigWithOwner { sig: sig, owner_module_path: p.name } }
+                  Absent => none
+                }
             }
           )
         }
         match first_hit {
-          Present { value: sig } => FuncSigResolved { sig: sig }
+          Present { value: found } =>
+            FuncSigResolved {
+              sig: found.sig,
+              declared: DeclaredCallableIdentity { owner_module_path: found.owner_module_path, decl_name: name }
+            }
           Absent => FuncSigUnresolved
         }
       }
   }
 }
 
-fn none_resolved_sig() -> ResolvedFuncSig? {
+fn none_resolved_sig_with_owner() -> ResolvedSigWithOwner? {
   Absent
 }
 

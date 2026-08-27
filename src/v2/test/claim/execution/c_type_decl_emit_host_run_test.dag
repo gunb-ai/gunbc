@@ -1,5 +1,6 @@
 module v2.test.execution.c_type_decl_emit_host_run
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.compiler.emit_host {
@@ -23,7 +24,7 @@ import v2.std.host_transport {
   HostRuntimeRowPresent
 }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, SyntheticOccurrence, TypeNode }
+import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, TypeNode }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -33,7 +34,7 @@ fn ctd_run_probe_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^c_type_decl_emit_host_run_probe } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -42,11 +43,11 @@ fn ctd_run_inputs() -> Inputs {
 }
 
 fn ctd_empty_conj() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
 fn ctd_atom_type(name: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
 fn ctd_field_edge(name: Symbol, type_name: Symbol) -> Edge {
@@ -64,7 +65,7 @@ fn ctd_point_record() -> Node {
       ctd_field_edge(name: ^x, type_name: ^Int),
       ctd_field_edge(name: ^y, type_name: ^Int)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -72,7 +73,7 @@ fn ctd_bool_coproduct() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [ ctd_variant_edge(name: ^True), ctd_variant_edge(name: ^False) ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

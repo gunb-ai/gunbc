@@ -41,7 +41,7 @@ import extdeps.version { VersionIdentity }
 import std.types { Bool, NonEmptyStr, List, String }
 import gunbc.citation.pdf_safe_profile { PdfOpenParameterPercentEncodeRefusedFromSafe }
 import extdeps.uri { UriPercentEncodeUnicodeScalarOutOfRangeRefused }
-import extdeps.standards.rfc_8118 { OpenNamedDest, extdeps_external_authority_anchor }
+import extdeps.standards.rfc_8118 { OpenNamedDest, rfc_8118_external_authority_anchor }
 
 data witness_unencodable_scalar_code_points: List<Int> = [1114112]
 
@@ -147,7 +147,7 @@ test fn x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118() -> Bool {
   match x86_64_abi_pdf_syscall_fragment_selector() {
     X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
       s.value == ("page=125" as NonEmptyStr)
-        && s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
+        && s.conforms_to.uri.locator == rfc_8118_external_authority_anchor.uri.locator
         && s.conforms_to.uri.locator != extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri.locator
     _ => false
   }
@@ -164,7 +164,7 @@ test fn x86_64_abi_syscall_selector_value_is_page_125() -> Bool {
 test fn x86_64_abi_syscall_selector_conforms_to_rfc_anchor() -> Bool {
   match x86_64_abi_pdf_syscall_fragment_selector() {
     X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
-      s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
+      s.conforms_to.uri.locator == rfc_8118_external_authority_anchor.uri.locator
     _ => false
   }
 }

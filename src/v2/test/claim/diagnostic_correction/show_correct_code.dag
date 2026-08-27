@@ -2,7 +2,7 @@ module v2.test.diagnostic_correction.show_correct_code
 
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -13,7 +13,7 @@ fn pair_node(left: Symbol, right: Symbol) -> Node {
       Edge { label: Named { name: ^correction_left }, target: atom_node(s: left) },
       Edge { label: Named { name: ^correction_right }, target: atom_node(s: right) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

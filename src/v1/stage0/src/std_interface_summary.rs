@@ -109,22 +109,24 @@ pub fn export_kind_tag(kind: ExportKind) -> String {
 
 pub fn export_entry_fingerprint(entry: Rc<ExportEntry>) -> Rc<Fnv1a64Structural> {
     match (*entry.contract.clone()).clone() {
-        InterfaceContract::ContractAbsent => content_hash_tagged_structural(
-            "export".to_string(),
-            content_hash_combine_structural(
-                content_hash_atom(entry.name.clone()),
-                content_hash_atom(export_kind_tag(entry.kind.clone())),
-            ),
-        ),
+        InterfaceContract::ContractAbsent => {
+            crate::std_content_hash::content_hash_tagged_structural(
+                "export".to_string(),
+                crate::std_content_hash::content_hash_combine_structural(
+                    crate::std_content_hash::content_hash_atom(entry.name.clone()),
+                    crate::std_content_hash::content_hash_atom(export_kind_tag(entry.kind.clone())),
+                ),
+            )
+        }
         InterfaceContract::SignatureContract {
             signature: signature,
             ..
-        } => content_hash_tagged_structural(
+        } => crate::std_content_hash::content_hash_tagged_structural(
             "export".to_string(),
-            content_hash_combine_structural(
-                content_hash_combine_structural(
-                    content_hash_atom(entry.name.clone()),
-                    content_hash_atom(export_kind_tag(entry.kind.clone())),
+            crate::std_content_hash::content_hash_combine_structural(
+                crate::std_content_hash::content_hash_combine_structural(
+                    crate::std_content_hash::content_hash_atom(entry.name.clone()),
+                    crate::std_content_hash::content_hash_atom(export_kind_tag(entry.kind.clone())),
                 ),
                 signature.clone(),
             ),
@@ -134,9 +136,12 @@ pub fn export_entry_fingerprint(entry: Rc<ExportEntry>) -> Rc<Fnv1a64Structural>
 
 pub fn interface_summary_rollup(exports: Rc<Vec<Rc<ExportEntry>>>) -> Rc<Fnv1a64Structural> {
     exports.iter().cloned().fold(
-        content_hash_atom("interface-summary-v0".to_string()),
+        crate::std_content_hash::content_hash_atom("interface-summary-v0".to_string()),
         |acc: Rc<Fnv1a64Structural>, entry: Rc<ExportEntry>| {
-            content_hash_combine_structural(acc, export_entry_fingerprint(entry.clone()))
+            crate::std_content_hash::content_hash_combine_structural(
+                acc,
+                export_entry_fingerprint(entry.clone()),
+            )
         },
     )
 }
@@ -146,11 +151,14 @@ pub fn module_key(
     direct_import_interface_hashes: Rc<Vec<Rc<Fnv1a64Structural>>>,
 ) -> Rc<Fnv1a64Structural> {
     direct_import_interface_hashes.iter().cloned().fold(
-        content_hash_tagged_structural("module-key-source".to_string(), source_hash.clone()),
+        crate::std_content_hash::content_hash_tagged_structural(
+            "module-key-source".to_string(),
+            source_hash.clone(),
+        ),
         |acc: Rc<Fnv1a64Structural>, import_hash: Rc<Fnv1a64Structural>| {
-            content_hash_tagged_structural(
+            crate::std_content_hash::content_hash_tagged_structural(
                 "module-key-import".to_string(),
-                content_hash_combine_structural(acc, import_hash.clone()),
+                crate::std_content_hash::content_hash_combine_structural(acc, import_hash.clone()),
             )
         },
     )
@@ -179,9 +187,12 @@ pub fn typed_module_key(
     interface_key: Rc<Fnv1a64Structural>,
     compiler_identity: Rc<Fnv1a64Structural>,
 ) -> Rc<Fnv1a64Structural> {
-    content_hash_tagged_structural(
+    crate::std_content_hash::content_hash_tagged_structural(
         "typed-module-compiler".to_string(),
-        content_hash_combine_structural(interface_key.clone(), compiler_identity.clone()),
+        crate::std_content_hash::content_hash_combine_structural(
+            interface_key.clone(),
+            compiler_identity.clone(),
+        ),
     )
 }
 

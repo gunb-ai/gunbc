@@ -1,5 +1,6 @@
 module v2.compiler.self_host.v2_emitter_direct_rust_door_contract
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.self_host.candidate_generation {
   ArtifactProduced,
   AssemblyRejected,
@@ -47,7 +48,6 @@ import v2.std.node {
   Conj,
   Node,
   Symbol,
-  SyntheticOccurrence,
   TypeNode,
 }
 import v2.std.optional { Absent, Present }
@@ -64,7 +64,7 @@ data direct_rust_door_emitted_root: Node = rust_fixture_emitted_add_fn
 data direct_rust_door_missing_rules_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence,
+  occurrence_id: OccurrenceSynthetic,
 }
 
 data direct_rust_door_missing_rules_target: TargetModel = TargetModel {

@@ -1,0 +1,169 @@
+module gunbc.json_exact_number_witness
+
+import std.types { Bool, Int, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.decimal { ExactDecimal, canonical_exact_decimal, exact_decimal_equal, exact_decimal_wire }
+import extdeps.languages.json.emit { json_string }
+import extdeps.languages.json.number {
+  JsonNumberMagnitudeOutsideCarrierRange,
+  JsonNumberExact,
+  JsonNumberOutsideExactFragment,
+  JsonNumberUsesExponent,
+  JsonNumberValueRead,
+  JsonValueIsNotANumber,
+  read_json_number_lexeme,
+  read_json_number_value,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn reads(lexeme: String, units: Int, fraction_digits: Int) -> Bool {
+  match read_json_number_lexeme(lexeme: lexeme) {
+    JsonNumberExact { value } =>
+      value.units == units && value.fraction_digits == fraction_digits
+    other => false
+  }
+}
+
+// THE CASE THAT MOTIVATED THE MODULE, AND IT IS NOT AN ABSTRACT ONE. srv3's captured fan program
+// writes minThermalOutput as `30.0`; srv4 writes it as `30`. If those two do not compare equal,
+// every downstream question about whether the two hosts run the same program answers no for a
+// reason that has nothing to do with the hosts.
+fn the_two_spellings_of_thirty_agree() -> Bool {
+  match read_json_number_lexeme(lexeme: "30.0") {
+    JsonNumberExact { value: a } =>
+      match read_json_number_lexeme(lexeme: "30") {
+        JsonNumberExact { value: b } => exact_decimal_equal(a: a, b: b)
+        other => false
+      }
+    other => false
+  }
+}
+
+// AND THE DISCRIMINATOR IN THE OTHER DIRECTION, without which the conjunct above is satisfied by
+// an equality that answers true for everything.
+fn two_different_numbers_still_differ() -> Bool {
+  match read_json_number_lexeme(lexeme: "30.0") {
+    JsonNumberExact { value: a } =>
+      match read_json_number_lexeme(lexeme: "30.5") {
+        JsonNumberExact { value: b } => !exact_decimal_equal(a: a, b: b)
+        other => false
+      }
+    other => false
+  }
+}
+
+// THE COEFFICIENTS THE DEPLOYED PROGRAM ACTUALLY CARRIES: a negative offset, a negative slew, and a
+// whole number. The negative cases are the ordinary ones here, not an edge.
+fn the_deployed_coefficients_read_exactly() -> Bool {
+  reads(lexeme: "-8.0", units: -8, fraction_digits: 0)
+    && reads(lexeme: "35.0", units: 35, fraction_digits: 0)
+    && reads(lexeme: "-0.5", units: -5, fraction_digits: 1)
+    && reads(lexeme: "0.005", units: 5, fraction_digits: 3)
+    && reads(lexeme: "75", units: 75, fraction_digits: 0)
+}
+
+// CANONICALISATION STRIPS THE FRACTION'S TRAILING ZEROS AND NOTHING ELSE. 300 must stay 300: the
+// loop that removes a zero after the point would change the number if it ran past it.
+fn canonicalisation_does_not_reach_the_whole_part() -> Bool {
+  let three_hundred = canonical_exact_decimal(d: ExactDecimal { units: 300, fraction_digits: 0 })
+  three_hundred.units == 300 && three_hundred.fraction_digits == 0
+}
+
+// THE EXPONENT FORM REFUSES INSTEAD OF BEING APPROXIMATED, and the refusal names which limit was
+// hit rather than reporting the lexeme as unreadable digits -- those have different owners.
+fn the_exponent_form_refuses_by_name() -> Bool {
+  match read_json_number_lexeme(lexeme: "1e3") {
+    JsonNumberOutsideExactFragment { lexeme, refusal } =>
+      lexeme == "1e3" && match refusal {
+        JsonNumberUsesExponent => true
+        other => false
+      }
+    other => false
+  }
+}
+
+fn the_capital_exponent_refuses_too() -> Bool {
+  match read_json_number_lexeme(lexeme: "1E3") {
+    JsonNumberOutsideExactFragment { lexeme, refusal } => true
+    other => false
+  }
+}
+
+// A NUMBER-SHAPED STRING IS A DEFECTIVE DOCUMENT, NOT AN UNREADABLE NUMBER. A coefficient spelled
+// "30" with quotes is the wrong kind of value in that position, and reporting it as a numeral this
+// fragment cannot read would send the repair to the wrong place.
+fn a_quoted_number_is_not_a_number() -> Bool {
+  match read_json_number_value(v: json_string(s: "30")) {
+    JsonValueIsNotANumber => true
+    other => false
+  }
+}
+
+// THE PROJECTION BACK OUT RENDERS THE VALUE, NOT THE AUTHORED BYTES, and says so by example:
+// `30.0` reads in and `30` renders out.
+fn the_wire_renders_the_canonical_value() -> Bool {
+  match read_json_number_lexeme(lexeme: "30.0") {
+    JsonNumberExact { value } => exact_decimal_wire(d: value) == "30"
+    other => false
+  }
+}
+
+fn the_negative_wire_carries_its_sign_outside_the_whole_part() -> Bool {
+  match read_json_number_lexeme(lexeme: "-0.5") {
+    JsonNumberExact { value } => exact_decimal_wire(d: value) == "-0.5"
+    other => false
+  }
+}
+
+// EQUALITY CANONICALISES ITS OWN ARGUMENTS, WHICH THE READING PATH ALONE CANNOT DISCRIMINATE.
+// read_json_number_lexeme returns a canonical value, so two numerals compared through it are
+// already reduced before the comparison sees them -- deleting the reduction inside
+// exact_decimal_equal leaves every conjunct above green. These two values are built by hand at the
+// same number in two representations, which is the only way to reach that reduction.
+fn equality_reduces_values_it_was_handed_unreduced() -> Bool {
+  exact_decimal_equal(
+    a: ExactDecimal { units: 300, fraction_digits: 1 },
+    b: ExactDecimal { units: 30, fraction_digits: 0 },
+  )
+}
+
+fn unreduced_equality_still_separates_different_numbers() -> Bool {
+  !exact_decimal_equal(
+    a: ExactDecimal { units: 305, fraction_digits: 1 },
+    b: ExactDecimal { units: 30, fraction_digits: 0 },
+  )
+}
+
+// AN EXPONENT-FREE NUMERAL TOO LARGE FOR THE CARRIER IS NAMED AS A MAGNITUDE LIMIT, NOT AS
+// UNREADABLE DIGITS. The lexeme is perfectly well-formed JSON and its digits are perfectly
+// readable; what it exceeds is this fragment's carrier, and the two facts have different owners.
+fn an_oversized_coefficient_names_the_carrier_limit() -> Bool {
+  match read_json_number_lexeme(lexeme: "123456789012345678901234567890") {
+    JsonNumberOutsideExactFragment { lexeme, refusal } =>
+      match refusal {
+        JsonNumberMagnitudeOutsideCarrierRange => true
+        other => false
+      }
+    other => false
+  }
+}
+
+fn json_exact_number_witness() -> ProcessExit {
+  if the_two_spellings_of_thirty_agree()
+    && two_different_numbers_still_differ()
+    && the_deployed_coefficients_read_exactly()
+    && canonicalisation_does_not_reach_the_whole_part()
+    && the_exponent_form_refuses_by_name()
+    && the_capital_exponent_refuses_too()
+    && a_quoted_number_is_not_a_number()
+    && the_wire_renders_the_canonical_value()
+    && the_negative_wire_carries_its_sign_outside_the_whole_part()
+    && equality_reduces_values_it_was_handed_unreduced()
+    && unreduced_equality_still_separates_different_numbers()
+    && an_oversized_coefficient_names_the_carrier_limit() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "JSON exact number reading: canonical equality across spellings, the deployed coefficients, or the exponent refusal changed")
+  }
+}

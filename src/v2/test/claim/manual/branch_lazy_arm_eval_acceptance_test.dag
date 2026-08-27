@@ -1,5 +1,6 @@
 module v2.test.manual.branch_lazy_arm_eval_acceptance
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
@@ -64,7 +65,6 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
-  SyntheticOccurrence,
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -102,7 +102,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn lazy_arm_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: []
   }
 }
@@ -164,12 +164,12 @@ fn lazy_arm_kw_false() -> Node {
 }
 
 fn lazy_arm_int_literal_from_lexeme(lexeme: String) -> Node {
-  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
+  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: OccurrenceSynthetic) {
     Accepted { value: n, diagnostics: _ } => n
     Rejected { diagnostics: _ } =>
       Node {
         kind: TypeNode { connective: Atom { identity: ^lazy_arm_lit_lexeme_invalid } },
-        occurrence_id: SyntheticOccurrence,
+        occurrence_id: OccurrenceSynthetic,
         children: []
       }
   }
@@ -181,13 +181,13 @@ fn lazy_arm_lit_one() -> Node {
 
 data lazy_arm_divergent_value_node: Node = Node {
   kind: ComputationNode { behavior: Value },
-  occurrence_id: SyntheticOccurrence,
+  occurrence_id: OccurrenceSynthetic,
   children: []
 }
 
 data lazy_arm_counted_value_node: Node = Node {
   kind: ComputationNode { behavior: Value },
-  occurrence_id: SyntheticOccurrence,
+  occurrence_id: OccurrenceSynthetic,
   children: []
 }
 
@@ -423,7 +423,7 @@ fn lazy_arm_bind_node(
 ) -> Node {
   Node {
     kind: ComputationNode { behavior: Bind },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: key_decl },
       Edge { label: Positional, target: value },
@@ -447,7 +447,7 @@ fn lazy_arm_branch_body(
 ) -> Node {
   Node {
     kind: ComputationNode { behavior: Branch },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: condition },
       Edge { label: Positional, target: then_arm },
@@ -459,7 +459,7 @@ fn lazy_arm_branch_body(
 fn lazy_arm_pick_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [Edge { label: Positional, target: callee }]
   }
 }
@@ -467,13 +467,13 @@ fn lazy_arm_pick_call(callee: Node) -> Node {
 fn lazy_arm_arrow_with_body(body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Conj },
-          occurrence_id: SyntheticOccurrence,
+          occurrence_id: OccurrenceSynthetic,
           children: []
         }
       },
@@ -487,7 +487,7 @@ fn lazy_arm_arrow_with_body(body: Node) -> Node {
 fn lazy_arm_tree_root(call: Node, expected: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Named { name: ^lazy_arm_actual }, target: call },
       Edge { label: Named { name: ^lazy_arm_expected }, target: expected }

@@ -1,5 +1,6 @@
 module v2.test.manual.test_claim_cache_digest_sensitivity
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
@@ -61,7 +62,6 @@ import v2.std.node {
   byte_offset_cache_key,
   byte_offset_cache_key_fingerprint,
   byte_offset_cache_digest_max_limbs,
-  SyntheticOccurrence
 }
 import v2.std.verification {
   CompilesClaim,
@@ -79,7 +79,7 @@ fn tcc_cache_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^tcc_cache_pass_sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -87,7 +87,7 @@ fn tcc_cache_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^tcc_cache_fail_sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

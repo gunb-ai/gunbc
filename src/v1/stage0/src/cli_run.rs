@@ -69,6 +69,8 @@ pub mod behavioral_receipt_host;
 #[path = "target_invocation_host.rs"]
 pub mod target_invocation_host;
 
+#[path = "generated_artifact_boundary_host.rs"]
+mod generated_artifact_boundary_host;
 #[path = "partition_crate_boundary_host.rs"]
 mod partition_crate_boundary_host;
 
@@ -1930,6 +1932,73 @@ pub enum CompileDiagnosticCensus {
     NotRunnable(String),
 }
 
+thread_local! {
+    static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO: std::cell::RefCell<
+        std::collections::HashMap<String, CompileDiagnosticCensus>,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+/// `(hits, misses)` for the `compile_dag_diagnostic_census` memo across the whole process.
+/// Report-only; no consumer branches on it. Same accounting shape, and the same reason for it,
+/// as [`compile_dag_rust_emit_check_memo_counts`]: a hit count with no denominator is not a
+/// measurement.
+pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
+    (
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.load(std::sync::atomic::Ordering::Relaxed),
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.load(std::sync::atomic::Ordering::Relaxed),
+    )
+}
+
+/// Memoized entry point for the census, mirroring [`compile_dag_rust_emit_check`]'s memo rather
+/// than inventing a second caching discipline beside it (DESIGN §3 — the two builtins compile the
+/// same program through the same pipeline and differ only in what they report, so they must not
+/// disagree about when a compile may be reused).
+///
+/// WHY THIS EXISTS, stated as the measurement that produced it rather than as a general
+/// preference: `compile_dag_rust_emit_check` was memoized and this sibling was not, so a witness
+/// asking two QUESTIONS about one source paid for two full compiles of it. `neither_green_source_
+/// refuses_and_neither_mis_resolves` (`test.claim.callable_candidate_ambiguity_witness`) is the
+/// specimen — four census calls over two distinct sources, so half of its compiles recomputed a
+/// pure function of an input already compiled in the same run. That is the DESIGN §6
+/// bare-minimum-cost class ("a proven cost-shape defect is ALWAYS fixed, regardless of the
+/// realized n"), and its n stopped being small: the row reached 5437ms CPU against the 5000ms
+/// `required_floor_claim_cpu_safety_limit_ms`, which is a FAIL-STOP protecting the executor and
+/// explicitly "never a budget, tolerance, or target" — so the admissible repair is to stop
+/// recomputing, never to raise the line.
+///
+/// PURITY, and it is the whole reason for the guard: the memo is armed ONLY under the floor's
+/// prepared-inventory snapshot and keyed on the source TOGETHER WITH that inventory's content
+/// digest, because `build_module_path_index_from_witness_roots` reads those bytes and the census
+/// is therefore a function of the corpus as well as of the source. Outside the guard there is no
+/// snapshot, so a hit would be a claim about disk that nothing established — DESIGN's
+/// cache-impurity rule (key on declared-input content), and the reason this is not simply a
+/// `HashMap` on the source string.
+pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
+    let Some(inventory_digest) = floor_prepared_inventory_digest() else {
+        return compile_dag_diagnostic_census_uncached(source);
+    };
+    let memo_key = {
+        use crate::v1_rt::{atom_identity_hash, hash_combine};
+        let h = atom_identity_hash(source.to_string());
+        hash_combine(h, atom_identity_hash(inventory_digest))
+    };
+    if let Some(hit) =
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
+    {
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        return hit;
+    }
+    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let census = compile_dag_diagnostic_census_uncached(source);
+    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow_mut().insert(memo_key, census.clone()));
+    census
+}
+
 /// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
 /// `.dag` program through the v1 pipeline to the Rust render target (the same pipeline
 /// [`compile_dag_rust_emit_check`] uses), and report the full per-class diagnostic census the
@@ -1951,7 +2020,7 @@ pub enum CompileDiagnosticCensus {
 /// fail-open / `UnlistedImportUse` advisory path. Census receipts therefore must not be read as
 /// production compile-clean behavior for those type positions. It observes nothing about the
 /// interpreter's disposition of the same program and nothing about other emission targets.
-pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
+fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDiagnosticCensus {
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
             let module_index = build_module_path_index_from_witness_roots();
@@ -2405,6 +2474,42 @@ thread_local! {
 // not reported" — DESIGN's empty-observation narrow, ⊥-as-answer conflated with ⊥-as-ignorance.
 // One end-of-run receipt carrying BOTH numbers is the same information at 1/N the volume, and
 // it is the first form in which the ratio is readable at all.
+thread_local! {
+    /// CPU spent, on this thread, FILLING shared memoized artifacts during the current claim.
+    ///
+    /// WHY THIS QUANTITY EXISTS AT ALL, and it is an attribution fact rather than a performance
+    /// one: a memoized compile is consumed by every claim that names the same source, but its
+    /// cost lands entirely on whichever claim happened to reach it FIRST. That makes a
+    /// merge-blocking per-claim ceiling a function of EXECUTION ORDER rather than of the tree —
+    /// the same claim is over or under the line depending on who got there first. The floor
+    /// already refuses that accounting for its larger shared artifacts: the three
+    /// `[floor-phase]` warm builds report `provenance=built-by-preparation` and are billed to
+    /// preparation, never to a claim. This is that same rule at a smaller grain (DESIGN §2 — one
+    /// concept, every scale), which is why it reuses `SharedBuildProvenance` rather than minting
+    /// an exemption beside it.
+    ///
+    /// IT EXEMPTS NOTHING. The cost is measured, accumulated, reported per claim and attributed
+    /// to the shared artifact; it stops being CHARGED to the first payer and does not stop being
+    /// COUNTED. A cost that vanished here would be the absorbing fallback (§5) wearing an
+    /// accounting label — the deficit's frequency zeroed by construction — so the receipt carries
+    /// marginal and fill as two columns whose sum is the claim's whole measured cost.
+    static SHARED_ARTIFACT_FILL_CPU_NANOS: std::cell::Cell<u128> =
+        const { std::cell::Cell::new(0) };
+}
+
+/// Accumulate CPU spent filling a shared memoized artifact. Called ONLY from a memo MISS path,
+/// and only under the floor guard — outside it there is no memo, so there is no shared artifact
+/// and nothing to attribute.
+fn record_shared_artifact_fill_cpu(nanos: u128) {
+    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
+}
+
+/// Read the running total for this thread. The claim loop samples it either side of one claim;
+/// the difference is that claim's fill.
+pub fn shared_artifact_fill_cpu_nanos() -> u128 {
+    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
+}
+
 static COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 static COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES: std::sync::atomic::AtomicU64 =
@@ -2486,7 +2591,14 @@ pub fn compile_dag_rust_emit_check(
         return hit;
     }
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    // A MISS FILLS A SHARED ARTIFACT. Measured on the same thread clock the claim loop enforces
+    // against, so the two quantities cannot drift apart, and recorded rather than subtracted here
+    // — the claim loop does the split, this only says how much of the cost was a fill.
+    let fill_started = v1_interpreter::thread_cpu_nanos();
     let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    record_shared_artifact_fill_cpu(
+        v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
+    );
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict));
     verdict
 }
@@ -5411,6 +5523,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => {
             "AmbiguousAnonymousRecordLiteral"
         }
+        CompilerDiagnostic::ModuleFilenameCollision { .. } => "ModuleFilenameCollision",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
         CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
@@ -5474,6 +5587,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates, .. } => {
             candidates.iter().cloned().collect::<Vec<_>>().join("|")
         }
+        CompilerDiagnostic::ModuleFilenameCollision { filename, .. } => filename.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
         CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
@@ -18412,6 +18526,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                             module,
                             &source_indices,
                             &rel,
+                            &fill.occurrence_transport,
                         ));
                     }
                     records.lock().expect("record lock").extend(built);
@@ -19900,11 +20015,39 @@ pub fn run_claim_measured(
     }
     let started = std::time::Instant::now();
     let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();
+    let fill_before_nanos = shared_artifact_fill_cpu_nanos();
     let outcome = run_claim(ctx, function);
     // CPU consumed by THIS (witness-eval) thread — the budget metric, so the completion-side
     // check matches the cooperative stride-poll and neither fires on cold-I/O or contention
     // wall time. wall_nanos stays the measurement/receipt basis (unchanged).
-    let cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
+    let measured_cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
+    // SHARED-ARTIFACT FILL IS NOT THIS CLAIM'S MARGINAL COST (operator-line ruling, 2026-08-27).
+    // Whatever this claim spent filling a memo is consumed by every later claim naming the same
+    // source — one of them measured at literally 0ms in the same run because this one paid — so
+    // charging it here makes a merge-blocking ceiling a function of EXECUTION ORDER rather than of
+    // the tree. The floor already bills its three `[floor-phase]` warm builds to preparation with
+    // `provenance=built-by-preparation` for exactly this reason; this is that rule at memo grain.
+    //
+    // THE COST IS SPLIT, NEVER DROPPED: `fill_cpu_nanos` is reported per claim and the two halves
+    // sum to `measured_cpu_nanos`. A runaway compile cannot hide behind "it was a miss", because
+    // the fill is still counted, still attributed and still visible in the receipt.
+    let fill_cpu_nanos = shared_artifact_fill_cpu_nanos().saturating_sub(fill_before_nanos);
+    let cpu_nanos = measured_cpu_nanos.saturating_sub(fill_cpu_nanos);
+    if fill_cpu_nanos > 0 {
+        // REPORTED, NOT ABSORBED. Printed on its own line, per claim, whenever a fill happened,
+        // so the quantity the ceiling stops charging is visible at the same grain it was measured
+        // — the difference between attributing a cost and losing one. `triggered_by` is this
+        // claim, which is precisely what `SharedBuildProvenance::AlreadyWarmOnEntry` records for
+        // the larger shared builds: every later claim reading this artifact reads it warm, and
+        // this line names who paid.
+        eprintln!(
+            "[floor-shared-fill] claim={function} marginal_cpu_ms={} fill_cpu_ms={} \
+             measured_cpu_ms={} provenance=filled-shared-artifact triggered_by={function}",
+            cpu_nanos / 1_000_000,
+            fill_cpu_nanos / 1_000_000,
+            measured_cpu_nanos / 1_000_000,
+        );
+    }
     let wall_nanos = started.elapsed().as_nanos();
     ctx.clear_eval_deadline();
     ctx.clear_wall_deadline();
@@ -32633,7 +32776,6 @@ pub fn emit_module_storage_binding_manifest(
     out.push_str("import std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.diagnostic { ByteRange, Textual }\n");
     out.push_str("import v2.std.integer { Int }\n");
-    out.push_str("import v2.std.node { MintedOccurrence }\n");
     out.push_str("import v2.std.provenance { FromSource, span_index_empty, span_index_record }\n");
     out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
@@ -32691,30 +32833,25 @@ fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, Strin
     ))
 }
 
-/// The `OccurrenceId` construction is FULLY QUALIFIED deliberately, and the name is
-/// correspondingly absent from this manifest's `v2.std.node` import list.
+/// THE FIELD THIS EMITS IS AN `OccurrenceId`, NOT A `NodeOccurrenceIdentity` ARM.
 ///
-/// `v2.std.node.OccurrenceId` is a compatibility alias of `std.occurrence_identity.OccurrenceId`
-/// (#7352). Both modules sit in this overlay's compiled pool, so a BARE `OccurrenceId` in a
-/// record-literal position resolves to two candidates and the indexer refuses:
-/// "ambiguous reference 'OccurrenceId' ... qualify by containment path, alias, or rename".
-/// A bare reference in a TYPE position still resolves (v2/std/provenance.dag, v2/std/dependents.dag) —
-/// only construction sites need the qualification, which is why this reads as an inconsistency.
+/// `span_index_record` declares `id: OccurrenceId`, and this generator previously wrapped the
+/// value in `MintedOccurrence { id: ... }` and imported that constructor from `v2.std.node` --
+/// a payload-for-carrier confusion of exactly the class
+/// `dag/test/claim/coproduct_payload_soundness_witness_test.dag` records, pointing the other way.
+/// It stayed invisible because this file is generated: whole-tree compile-clean never sees it,
+/// and the committed manifest stub carries no rows, so the wrapped form was never parsed.
+/// Repaired with the v2 `NodeOccurrenceId` facade cut, which deleted the constructor it named.
 ///
-/// #7352 applied exactly this qualification to the one COMMITTED construction site
-/// (src/v2/test/claim/manual/bind_demand_driven_eval_test.dag) and missed this generator.
-/// The gap stayed invisible because this file is generated: whole-tree compile-clean never
-/// sees it, and its only executing consumer is the module-binding supply gate, which moved
-/// off per-PR CI onto the falsifier cadence — where it then failed for four days.
-///
-/// Dissolve-on: the `node_occurrence_id_v2_facade_dissolve_on` migration deletes the
-/// `v2.std.node` alias; the second candidate disappears and the qualification is free to drop.
+/// The construction stays FULLY QUALIFIED, and the name is correspondingly absent from this
+/// manifest's import list: a bare `OccurrenceId` in a record-literal position has resolved
+/// ambiguously in this overlay's compiled pool before (#7352), and qualifying costs nothing.
 fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> String {
     let start = span.start.max(0);
     let end = span.end.max(start);
     let occurrence_id = start.max(1);
     format!(
-        "span_index_record(\n  index: span_index_empty(),\n  id: MintedOccurrence {{ id: v2.std.node.OccurrenceId {{ value: {occurrence_id} }} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
+        "span_index_record(\n  index: span_index_empty(),\n  id: std.occurrence_identity.OccurrenceId {{ value: {occurrence_id} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
     )
 }
 
@@ -44373,6 +44510,18 @@ pub struct PreparedClaimScope {
     /// counted here so the population is a measured quantity rather than an assumption, which is
     /// what decides whether the honest arm — refusing the ambiguous lookup — is affordable or
     /// whether the terminal per-module-environment correction has to land first.
+    ///
+    /// THE COUNT IS UNCHANGED AND ITS SUBJECT HAS NARROWED, which is worth saying because a
+    /// reader who takes it as the silent-pick population will now overcount.
+    /// [`v1_interpreter::InterpContext::lookup_fn_from`] resolves a reference through the
+    /// referring file's own declarations and then its explicit imports before this shared slot,
+    /// so for every name in this count the two directions that used to be decided by nothing the
+    /// author wrote — a module losing its
+    /// OWN declaration to an unrelated homonym, and an explicit `import a.b.c { x }` being inert
+    /// against one — are decided by what the author wrote now. What remains counted here is the
+    /// genuinely undecided residue: a bare reference to a name the referring module neither
+    /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
+    /// modules it reached.
     pub ambiguous_bare_names: usize,
 }
 
@@ -48761,6 +48910,18 @@ pub use partition_crate_boundary_host::{
     RenderedBoundaryFile, PARTITION_CRATE_PRODUCING_COMMAND,
 };
 
+/// The committed generated-artifact population, produced from `gunbc.generated_artifact_emit`
+/// and adjudicated against the tree.
+///
+/// Re-exported here rather than reached directly so every required phase addresses the producer
+/// through one surface, the way the regen and partition-crate paths do.
+pub use generated_artifact_boundary_host::{
+    artifact_disposition, artifact_disposition_name, boundary_divergent, boundary_is_clean,
+    generated_artifact_body_for_path, generated_artifact_ctx, run_generated_artifact_boundary,
+    AdjudicatedArtifact, ArtifactDisposition, GeneratedArtifactBoundaryOutcome,
+    GeneratedArtifactPathBody, UnadjudicatedArtifact, GENERATED_ARTIFACT_PRODUCING_COMMAND,
+};
+
 /// The emitted-closure compile phase: one entry's closure emitted, written as a crate, and
 /// compiled — with the discriminating red the phase establishes on itself every run.
 ///
@@ -48770,7 +48931,8 @@ pub use emitted_closure_compile_host::{
     cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
     emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
     emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
-    emit_compile_selection_universe_digest, required_emit_compile_entries,
+    emit_compile_selection_universe_digest, local_emit_compile_probe_root,
+    required_ci_emit_compile_probe_root, required_emit_compile_entries,
     retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
     EmitCompileSelection, MutationVerdict,
 };

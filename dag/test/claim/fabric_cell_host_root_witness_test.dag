@@ -1,0 +1,161 @@
+module test.claim.fabric_cell_host_root_witness
+
+import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
+import gunbc.ownership { Ownership, Owned, Ensured }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.fabric_cell_converge {
+  fabric_cell_base_dir,
+  FabricCellMember,
+  FabricCellRootAddress,
+  fabric_cell_member_ownership,
+  fabric_cell_desired_state_digest,
+}
+import v2.std.optional { Present, Absent }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_slot_allocation { fabric_execution_slot_identities }
+import gunbc.membership_reconcile { membership_removal_count, membership_refusal_count, membership_write_count }
+import gunbc.fabric_cell_subject {
+  FabricCellResourceSubject,
+  FabricCellHostScope,
+  FabricCellSlotScope,
+  fabric_cell_subject_ownership,
+  fabric_cell_subject_is_teardown_eligible,
+}
+import gunbc.fabric_cell_host_root {
+  FabricCellHostMember,
+  fabric_cell_host_desired_members,
+  fabric_cell_host_reconcile,
+  fabric_cell_host_removal_count,
+  fabric_cell_host_refusal_count,
+  fabric_cell_host_write_count,
+  fabric_cell_host_member_key,
+  fabric_cell_host_desired_state_digest,
+}
+
+// THE LAW THIS MODULE EXISTS FOR. A host that has stopped serving fabric execution produces an
+// EMPTY desired set for the slot-scoped family, and if the base directory were an ordinary owned
+// member of that family the reconcile would select removal of the directory containing every cell
+// on the host. Here the same shape -- desired empty, observed present -- must produce a REFUSAL and
+// zero removals. The two assertions are separate on purpose: a plan with no actions at all would
+// satisfy "no removals" while proving nothing, so the refusal count is what makes this a wall.
+test fn witness_an_undesired_host_root_refuses_teardown_rather_than_removing_it() -> Bool {
+  let observed = [
+    FabricCellHostMember {
+      host: operator_host_srv3,
+      state_digest: fabric_cell_host_desired_state_digest(),
+    },
+  ]
+  fabric_cell_host_removal_count(desired: [], observed: observed) == 0
+    && fabric_cell_host_refusal_count(desired: [], observed: observed) == 1
+}
+
+// AND THE POSITIVE CONTROL, WITHOUT WHICH THE ROW ABOVE IS A BLANKET REFUSAL. An absent base
+// directory on a host that wants one must still produce exactly one write, so the family converges
+// forward even though it never converges backward.
+test fn witness_an_absent_host_root_is_still_established() -> Bool {
+  let desired = fabric_cell_host_desired_members(host: operator_host_srv3)
+  list_length(items: desired) == 1
+    && fabric_cell_host_write_count(desired: desired, observed: []) == 1
+    && fabric_cell_host_refusal_count(desired: desired, observed: []) == 0
+    && fabric_cell_host_removal_count(desired: desired, observed: []) == 0
+}
+
+// OWNERSHIP IS DECIDED BY THE SUBJECT AND BY NOTHING THE RECORD CARRIES. Both directions are
+// asserted over the real slot population rather than one sampled slot: a host-scoped subject is
+// never teardown-eligible, and EVERY fabric execution slot subject is. An edit that made the
+// projection constant in either direction goes red here rather than silently making every cell
+// resource permanent or every host root removable.
+test fn witness_teardown_eligibility_is_projected_from_the_subject_both_ways() -> Bool {
+  let host_subject = FabricCellHostScope { host: operator_host_srv3 }
+  let slots = fabric_execution_slot_identities()
+  let every_slot_is_owned = fold(
+    slots,
+    init: true,
+    f: (acc, s) => acc && fabric_cell_subject_is_teardown_eligible(subject: FabricCellSlotScope { slot: s })
+  )
+  !fabric_cell_subject_is_teardown_eligible(subject: host_subject)
+    && every_slot_is_owned
+    && list_length(items: slots) > 0
+}
+
+// THE HOST IS PART OF THE MEMBER IDENTITY, so two hosts' base directories are two members rather
+// than one contested one. Without this the fleet-wide population would collapse to a single row and
+// one host's drift would read as every host's.
+test fn witness_two_hosts_have_two_distinct_base_directory_members() -> Bool {
+  let a = fabric_cell_host_desired_members(host: operator_host_srv3)
+  let b = fabric_cell_host_desired_members(host: operator_host_srv4)
+  fabric_cell_host_member_key(member: head_member(l: a))
+    != fabric_cell_host_member_key(member: head_member(l: b))
+}
+
+fn head_member(l: List<FabricCellHostMember>) -> FabricCellHostMember {
+  fold(
+    l,
+    init: FabricCellHostMember {
+      host: operator_host_srv3,
+      state_digest: fabric_cell_host_desired_state_digest(),
+    },
+    f: (acc, m) => m
+  )
+}
+
+// THE DECLARED STATE IS THE DECLARED PATH, READ FROM THE SAME AUTHORITY THE REST OF THE SUBSYSTEM
+// READS. A second spelling of /opt/fabric-cells here would make the observed side compare against a
+// string this module invented rather than against what fabric_cell_converge declares.
+test fn witness_base_directory_state_is_the_declared_path() -> Bool {
+  (fabric_cell_host_desired_state_digest() as String)
+    == fabric_cell_base_dir
+}
+
+// THE SLOT FAMILY'S OWNERSHIP IS NOW DERIVED FROM THE SAME MATCH, WHICH IS WHAT THE PRIOR CONSTANT
+// FUNCTION COULD NOT BE ASKED. fabric_cell_member_ownership used to return Owned without reading
+// its parameter, so this assertion was unfalsifiable by construction: it would have held for any
+// member, including one whose subject should not be teardown-eligible. It now routes through
+// fabric_cell_subject_ownership, so the two families agree because they consult one authority
+// rather than because two constants happen to match.
+//
+// WHAT THIS ROW DOES NOT DO, AND THE CEILING STATED AT THE RIGHT BOUNDARY. This row asserts the two
+// OBSERVABLE halves -- a slot member is Owned through the shared projection, and a host subject is
+// not. It does not assert that the projection's match is EXHAUSTIVE, which is enforced by the
+// compiler at the definition: a fourth subject kind reddens the compile, not this row.
+//
+// THAT IS A SCOPE LIMIT AND NOT A PERMANENT CEILING, and the difference is what DESIGN 4b(2) calls
+// an untracked stall. The question to ask before declaring a ceiling is whether the RED is
+// authorable at the FIXTURE boundary, which is not the accepted-corpus boundary: a regression probe
+// is an invalid program by definition, so a three-arm match over a four-arm coproduct is perfectly
+// authorable as fixture source even though no Accepted module contains one. The shape already
+// exists in tree -- src/v1/stage0/src/bin/infer_semantics_witness.rs authors non-exhaustive matches
+// through check_match_exhaustiveness and asserts the diagnostic contains "non-exhaustive".
+//
+// SO THE NEXT-RUNG TRIGGER IS THE INSTRUMENT'S ENROLMENT, NOT THE PROBE'S AUTHORABILITY, and the
+// enrolment is weaker than the existence of the file suggests. Measured: infer_semantics_witness
+// occurs five times in .github/workflows/fleet-converge.yml -- built, checked to exist by
+// --verify-build-artifacts, and packaged into release-bins.tgz -- and is INVOKED nowhere, in a
+// workflow that is not the required one. Built, artifact-verified, shipped, never run. A binary
+// whose assertions never execute is a capability rather than a guard, and a green build over it
+// proves only that it compiles. This class climbs when an exhaustiveness fixture is authored AND
+// executed by a lane that reports its verdict; until then the rung is honest at mitigatable.
+test fn witness_both_cell_families_read_ownership_from_one_projection() -> Bool {
+  let slots = fabric_execution_slot_identities()
+  let every_slot_member_is_owned = fold(
+    slots,
+    init: true,
+    f: (acc, s) =>
+      acc && (match fabric_cell_member_ownership(member: FabricCellMember {
+        slot: s,
+        address: FabricCellRootAddress,
+        state_digest: fabric_cell_desired_state_digest(slot: s, address: FabricCellRootAddress),
+      }) {
+        Present { value: o } =>
+          match o {
+            Owned => true
+            Ensured => false
+          }
+        Absent => false
+      })
+  )
+  every_slot_member_is_owned
+    && list_length(items: slots) > 0
+    && !fabric_cell_subject_is_teardown_eligible(subject: FabricCellHostScope { host: operator_host_srv3 })
+}

@@ -1,5 +1,6 @@
 module v2.test.lens_cost.valuation
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Empty }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.lens.cost { ConstantCost, SizeVariable, SymbolicCost, UnknownCost, symbolic_product, unit_cost, zero_cost }
@@ -35,8 +36,7 @@ import v2.std.node {
   Atom,
   Node,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.verification {
   EqualsClaim,
@@ -65,7 +65,7 @@ fn synthetic_leaf(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
