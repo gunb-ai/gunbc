@@ -88,6 +88,14 @@ fn standing_is(s: MilestoneStanding, want: MilestoneStandingClass) -> Bool {
   standing_class_label(c: standing_class(s: s)) == standing_class_label(c: want)
 }
 
+// THIS HELPER CONFLATES TWO STATES AND ITS CALLERS MUST SAY SO. Clear and NotDerivable both map
+// to the empty list, which is right for rendering and wrong as a premise: "no outstanding members"
+// then means EITHER nothing is outstanding OR the standing could not be derived at all. Every arm
+// below that reads it therefore also asserts the standing is NOT NotDerivable, so a milestone whose
+// derivation silently broke cannot pass by returning the same empty list a finished one would.
+// That assertion is progress-safe in both directions: Clear is a legitimate future state and stays
+// green, while NotDerivable is not reachable for these two milestones without a defect -- each has
+// a live producer, so failing to derive means the wiring is gone rather than the world changing.
 fn standing_outstanding_members(s: MilestoneStanding) -> List<String> {
   match s {
     Clear { evidence: _ } => []
@@ -127,11 +135,20 @@ test fn a_populated_observation_is_outstanding_not_clear() -> Bool {
 // Stated as containment of BOTH sources' contributions, it reds exactly when the fold stops reading
 // one of them, and stays green as either roster shrinks -- vacuously so when both are empty, which
 // is the state the program is trying to reach.
+//
+// THE EXPECTED COUNT IS DERIVED FROM THE TWO SOURCES, NOT FROM THE FOLD. An earlier cut of this arm
+// compared the population against emitter_retained_artifact_outstanding() -- the SAME function the
+// carrier calls to build it. The plant still redded, because the two containment clauses below read
+// the rosters directly and carry the arm's real content; but the count clause was measure() against
+// measure(), the self-comparison DESIGN's oracle rule names, and a reader would have taken it for
+// an independent check. Summing the two roster sizes is the independent form and catches the case
+// containment cannot: a fold that ADDS a member neither source contains.
 test fn the_emitter_population_unions_both_of_its_rosters() -> Bool {
-  let members = standing_outstanding_members(s: milestone_status(m: SelfHostEmitterProducesEveryRetainedArtifact))
-  let both = emitter_retained_artifact_outstanding()
-  count(members) == count(both)
-    && all(both, b => any(members, m => m == b))
+  let s = milestone_status(m: SelfHostEmitterProducesEveryRetainedArtifact)
+  let members = standing_outstanding_members(s: s)
+  standing_class_label(c: standing_class(s: s)) != "NOT-DERIVABLE"
+    && count(members)
+         == count(emitter_produced_divergent_registrations) + count(gunbc_cli_emitter_gap())
     && all(emitter_produced_divergent_registrations,
          row => any(members, m => m == concat("stage0-divergent:", row.basename)))
     && all(gunbc_cli_emitter_gap(),
@@ -149,10 +166,21 @@ test fn the_emitter_population_unions_both_of_its_rosters() -> Bool {
 // the milestone to a different population leaves the fold arm green and reds this one. Stated as
 // an equality between the milestone's members and the fold's own output, it checks exactly that
 // and moves on both sides at once, so progress cannot red it -- including the day both are empty.
+//
+// THE SELF-COMPARISON HERE IS THE CLAIM, NOT AN ORACLE, which is the opposite of the emitter arm
+// above and worth distinguishing rather than applying one rule to both. Comparing the milestone's
+// members against the fold's own output IS the wiring question -- whether milestone_status routes
+// to THIS fold and carries its list through the mint intact -- so there is nothing independent to
+// compare against and nothing is being smuggled in. The emitter arm's count clause was different:
+// it asked about the POPULATION, a question its two sources can answer independently, and re-derived
+// the answer from the producer instead. Executed proof this one discriminates: rewiring S4a off its
+// cadence fold reds it.
 test fn the_ratchet_observation_milestone_is_wired_to_its_fold() -> Bool {
-  let members = standing_outstanding_members(s: milestone_status(m: SelfHostRatchetObservationEnrolled))
+  let s = milestone_status(m: SelfHostRatchetObservationEnrolled)
+  let members = standing_outstanding_members(s: s)
   let fold = ratchet_observation_outstanding(cadence: emit_ratchet_runner_cadence)
-  count(members) == count(fold)
+  standing_class_label(c: standing_class(s: s)) != "NOT-DERIVABLE"
+    && count(members) == count(fold)
     && all(fold, f => any(members, m => m == f))
 }
 
