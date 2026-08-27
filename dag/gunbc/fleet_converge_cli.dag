@@ -43,6 +43,13 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize { host_effect_apply }
 import std.realization_reconcile { Converged, NotConverged }
 import product.placement_supply { HostIdentity }
+import gunbc.ci_runner_placement {
+  HostRunnerDeploymentRefusal,
+  HostRunnerDeploymentRefused, HostRunnerDeploymentDerived,
+  HostNotEnrolledInFleet,
+  runner_deployment_plan, runner_host_deployment_for,
+  host_deployment_refusal_text,
+}
 import gunbc.fleet_intent_network {
   operator_host_srv1,
   operator_host_srv2,
