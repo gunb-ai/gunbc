@@ -3,6 +3,7 @@
 
 use self::AdmitCallersEntry::*;
 use self::CallSemantics::*;
+use self::CallTargetIdentity::*;
 use self::Cardinality::*;
 use self::CompilerDiagnostic::*;
 use self::Connective::*;
@@ -227,14 +228,34 @@ impl VarBindingKind {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CallTargetIdentity {
+    RuntimePrimitiveCall {
+        primitive_name: String,
+    },
+    SourceDeclarationCall {
+        owner_module_path: String,
+        decl_name: String,
+    },
+    CallableTargetUndetermined,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CallSemantics {
-    PlainCallSemantics,
-    LookupCallSemantics,
+    PlainCallSemantics { target: Rc<CallTargetIdentity> },
+    LookupCallSemantics { target: Rc<CallTargetIdentity> },
     FunctionValueCallSemantics,
+}
+impl CallSemantics {
+    pub fn target(&self) -> Rc<CallTargetIdentity> {
+        match self {
+            CallSemantics::PlainCallSemantics { target: __val, .. } => __val.clone(),
+            CallSemantics::LookupCallSemantics { target: __val, .. } => __val.clone(),
+            CallSemantics::FunctionValueCallSemantics => panic!("no target on unit variant"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -283,7 +304,7 @@ pub enum ExprData {
         summary: Option<Rc<FieldSummary>>,
     },
     ExprCall {
-        call_semantics: Option<CallSemantics>,
+        call_semantics: Option<Rc<CallSemantics>>,
         descent_evidence: Option<Rc<Vec<Rc<SubValueRelation>>>>,
     },
     ExprMethodCall {
@@ -712,7 +733,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::OptionalCastNotEliminated { span: s, .. } => s.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { span: s, .. } => s.clone(),
         CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => {
-            annotation_attachment_refusal_origin(r.clone())
+            crate::std_source_annotation::annotation_attachment_refusal_origin(r.clone())
         }
         CompilerDiagnostic::ConstructorCallAdmissionRefused { span: s, .. } => s.clone(),
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { span: s, .. } => s.clone(),
@@ -769,7 +790,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(v1_rt::concat("sole_constructor type '".to_string(), t.clone()), "' cannot be constructed outside its defining module".to_string()),
     CompilerDiagnostic::OptionalCastNotEliminated { source_type: st, target_type: tt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("cannot cast optional '".to_string(), st.clone()), "' to '".to_string()), tt.clone()), "': a cast does not eliminate the absence, it re-types the wrapper — match on Present/Absent first".to_string()),
     CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field: f, type_name: t, declared_type: dt, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("bare 'None' cannot inhabit field '".to_string(), f.clone()), "' of '".to_string()), t.clone()), "': declared type '".to_string()), dt.clone()), "' carries no absence — it is not optional and declares no 'None' variant".to_string()),
-    CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => annotation_attachment_refusal_message(r.clone()),
+    CompilerDiagnostic::SourceAnnotationRefused { refusal: r, .. } => crate::std_source_annotation::annotation_attachment_refusal_message(r.clone()),
     CompilerDiagnostic::ConstructorCallAdmissionRefused { constructor_module_path: cm, constructor_decl_name: cn, caller_module_path: caller_m, caller_decl_name: caller_n, permitted_callers: permitted, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("constructor call admission refused: '".to_string(), cm.clone()), ".".to_string()), cn.clone()), "' refuses call from '".to_string()), caller_m.clone()), ".".to_string()), caller_n.clone()), "' — permitted callers: [".to_string()), permitted.clone().join(&", ".to_string())), "]".to_string()),
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, .. } => v1_rt::concat(v1_rt::concat("admit_callers entry on '".to_string(), cn.clone()), "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored".to_string()),
     CompilerDiagnostic::DeclaredTypeNotInhabited { position: pos, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("value does not inhabit its declared type at the ".to_string(), pos.clone()), ": declared '".to_string()), e.clone()), "', produced '".to_string()), g.clone()), "'".to_string()),
@@ -4181,7 +4202,8 @@ pub fn empty_intern_table() -> Rc<InternTable> {
         strings: Rc::new(vec!["".to_string()]),
         index: v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, i64>(), "".to_string(), 0),
         next_id: 1,
-        authored_token_ordinals: authored_token_ordinal_space_initial(),
+        authored_token_ordinals:
+            crate::std_occurrence_identity::authored_token_ordinal_space_initial(),
     })
 }
 
@@ -4243,13 +4265,16 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
     tables.iter().cloned().fold(
         empty_intern_table(),
         |merged: Rc<InternTable>, t: Rc<InternTable>| {
-            let merged_allocator = occurrence_id_allocator_advance_to(
-                merged.authored_token_ordinals.clone().allocator.clone(),
-                t.authored_token_ordinals.clone(),
-            );
+            let merged_allocator =
+                crate::std_occurrence_identity::occurrence_id_allocator_advance_to(
+                    merged.authored_token_ordinals.clone().allocator.clone(),
+                    t.authored_token_ordinals.clone(),
+                );
             let merged = intern_table_with_authored_token_ordinals(
                 merged.clone(),
-                authored_token_ordinal_space_from_allocator(merged_allocator.clone()),
+                crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator(
+                    merged_allocator.clone(),
+                ),
             );
             t.strings.clone().iter().cloned().fold(
                 merged.clone(),
@@ -4391,7 +4416,7 @@ pub enum ContainerSpellingVerdict {
 pub fn known_container_leaf(name: String) -> Option<String> {
     {
         let leaf = qualified_last_segment(name.clone());
-        match container_expected_arity(leaf.clone()) {
+        match crate::std_types::container_expected_arity(leaf.clone()) {
             Some(_) => Some(leaf.clone()),
             None => None,
         }
@@ -4399,7 +4424,7 @@ pub fn known_container_leaf(name: String) -> Option<String> {
 }
 
 pub fn container_spelling_verdict(name: String) -> Rc<ContainerSpellingVerdict> {
-    match container_expected_arity(name.clone()) {
+    match crate::std_types::container_expected_arity(name.clone()) {
         Some(arity) => Rc::new(ContainerSpellingVerdict::ContainerSpellingDeclared {
             arity: arity.clone(),
         }),
@@ -4432,7 +4457,10 @@ pub fn authored_container_spelling_verdict(
     if type_node_name_is_authored(node.clone(), source_indices.clone()) {
         container_spelling_verdict(authored_name_at(source_indices.clone(), node.clone()))
     } else {
-        match container_expected_arity(authored_name_at(source_indices.clone(), node.clone())) {
+        match crate::std_types::container_expected_arity(authored_name_at(
+            source_indices.clone(),
+            node.clone(),
+        )) {
             Some(arity) => Rc::new(ContainerSpellingVerdict::ContainerSpellingDeclared {
                 arity: arity.clone(),
             }),
@@ -4567,12 +4595,6 @@ pub struct TupleSecond;
 pub struct PlainValue;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OptionalValue;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct PlainCallSemantics;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct LookupCallSemantics;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct FunctionValueCallSemantics;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ParseRecoveryError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

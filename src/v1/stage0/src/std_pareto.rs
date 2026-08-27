@@ -236,7 +236,7 @@ pub fn reading_matches(e: Rc<ParetoEntry>, wanted: Rc<DeclarationRef>) -> i64 {
         .iter()
         .cloned()
         .fold(0, |acc: i64, r: Rc<AxisReading>| {
-            if declaration_ref_eq(r.axis.clone(), wanted.clone()) {
+            if crate::std_decl_ref::declaration_ref_eq(r.axis.clone(), wanted.clone()) {
                 (acc.clone() + 1)
             } else {
                 acc.clone()
@@ -269,7 +269,10 @@ pub fn reading_for(e: Rc<ParetoEntry>, wanted: Rc<DeclarationRef>) -> Rc<Reading
                         absent_axis: absent_axis,
                         ..
                     } => {
-                        if declaration_ref_eq(r.axis.clone(), absent_axis.clone()) {
+                        if crate::std_decl_ref::declaration_ref_eq(
+                            r.axis.clone(),
+                            absent_axis.clone(),
+                        ) {
                             Rc::new(ReadingLookup::ReadingFound {
                                 value_micro: r.value_micro.clone(),
                             })
@@ -335,7 +338,7 @@ pub fn accum_refusal(acc: Rc<PairAccum>, axis: Rc<SelectionAxis>, defect: String
             one_name(
                 Rc::new(vec![
                     "axis ".to_string(),
-                    declaration_ref_display_key(axis.identity.clone()),
+                    crate::std_decl_ref::declaration_ref_display_key(axis.identity.clone()),
                     " ".to_string(),
                     defect.clone(),
                 ])
@@ -485,7 +488,7 @@ pub fn count_axis_identity(axes: Rc<Vec<Rc<SelectionAxis>>>, id: Rc<DeclarationR
     axes.iter()
         .cloned()
         .fold(0, |acc: i64, ax: Rc<SelectionAxis>| {
-            if declaration_ref_eq(ax.identity.clone(), id.clone()) {
+            if crate::std_decl_ref::declaration_ref_eq(ax.identity.clone(), id.clone()) {
                 (acc.clone() + 1)
             } else {
                 acc.clone()
@@ -507,7 +510,7 @@ pub fn count_entry_identity(field: Rc<Vec<Rc<ParetoEntry>>>, id: Rc<DeclarationR
         .iter()
         .cloned()
         .fold(0, |acc: i64, e: Rc<ParetoEntry>| {
-            if declaration_ref_eq(e.identity.clone(), id.clone()) {
+            if crate::std_decl_ref::declaration_ref_eq(e.identity.clone(), id.clone()) {
                 (acc.clone() + 1)
             } else {
                 acc.clone()
@@ -526,7 +529,7 @@ pub fn field_has_duplicate_identity(field: Rc<Vec<Rc<ParetoEntry>>>) -> bool {
 }
 
 pub fn challenger_applies(subject: Rc<ParetoEntry>, other: Rc<ParetoEntry>) -> bool {
-    (!declaration_ref_eq(other.identity.clone(), subject.identity.clone())
+    (!crate::std_decl_ref::declaration_ref_eq(other.identity.clone(), subject.identity.clone())
         && ((other.missing_inputs.clone().len() as i64) == 0))
 }
 
@@ -557,7 +560,7 @@ pub fn field_step(
 }),
     PairStanding::PairNoDominance => acc.clone(),
     PairStanding::PairRefused { cause: cause, .. } => Rc::new(FieldAccum {
-    refusal_causes: v1_rt::concat(acc.refusal_causes.clone(), one_name(Rc::new(vec!["comparison against ".to_string(), declaration_ref_display_key(other.identity.clone()), " refused - ".to_string(), cause.clone(), " - a field entry lacking a funded-axis reading while declaring complete inputs is a projector contradiction, and no standing in its field is computable until it is fixed".to_string()]).join(&"".to_string()))),
+    refusal_causes: v1_rt::concat(acc.refusal_causes.clone(), one_name(Rc::new(vec!["comparison against ".to_string(), crate::std_decl_ref::declaration_ref_display_key(other.identity.clone()), " refused - ".to_string(), cause.clone(), " - a field entry lacking a funded-axis reading while declaring complete inputs is a projector contradiction, and no standing in its field is computable until it is fixed".to_string()]).join(&"".to_string()))),
     dominators: acc.dominators.clone(),
 }),
 }
@@ -632,7 +635,9 @@ pub fn dominator_names(dominators: Rc<Vec<Rc<Domination>>>) -> Rc<Vec<String>> {
         .fold(no_names(), |acc: Rc<Vec<String>>, d: Rc<Domination>| {
             v1_rt::concat(
                 acc,
-                one_name(declaration_ref_display_key(d.candidate.clone())),
+                one_name(crate::std_decl_ref::declaration_ref_display_key(
+                    d.candidate.clone(),
+                )),
             )
         })
 }
