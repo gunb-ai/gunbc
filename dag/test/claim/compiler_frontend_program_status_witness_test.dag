@@ -5,6 +5,7 @@ import std.decl_ref { decl_ref }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.witness_admission { DiscoverySelection, NoConsumer }
 import gunbc.compiler_frontend_program_interlock {
+  ProgramMilestone,
   milestone_prerequisites,
   SelfHostWholeCorpusPopulationDerived,
   SelfHostRatchetObservationEnrolled,
@@ -457,10 +458,14 @@ test fn every_declared_instrument_is_distinct_and_awaited() -> Bool {
 // authorable here and no program state can move them. What is deliberately NOT claimed: which live
 // instrument occupies which arm today. That is a fact about the world, it belongs in the report the
 // carrier already renders, and pinning it in a witness is what made the previous form a snapshot.
+//
+// The cited authority in the refused fixture is an arbitrary RESOLVING declaration, carried because
+// a DeclarationRef naming nothing is refused at ingestion and because the assertion never reads it.
+// It is not a claim that instrument_obstacle_label refuses anything.
 test fn the_obstacle_axis_renders_its_two_arms_distinguishably() -> Bool {
   let unbuilt = NotBuilt
   let refused = RefusedByAuthority {
-    authority: decl_ref(module_path: "gunbc.fixture", decl_name: "fixture_authority"),
+    authority: decl_ref(module_path: "gunbc.compiler_frontend_program_status", decl_name: "instrument_obstacle_label"),
     why: "fixture" as NonEmptyStr,
   }
   instrument_obstacle_label(o: unbuilt) != instrument_obstacle_label(o: refused)
