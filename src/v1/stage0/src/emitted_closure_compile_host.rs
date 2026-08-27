@@ -80,6 +80,11 @@ fn probe_package_name(entry: &str) -> String {
 /// cargo verdict from a cheaper reader. `E0308` requires rustc to have type-checked the
 /// module, which is exactly the reach being claimed. The name is unique enough that it cannot
 /// collide with emitted output, and the item is `pub` so no dead-code lint can elide it.
+/// The symbol the injected item declares. The faulted arm's diagnostics must NAME it: that is
+/// what makes the red attributable to this phase's own fault rather than to anything else that
+/// happened to be wrong in the emitted tree at the same moment.
+const MUTATION_PROBE_SYMBOL: &str = "EMIT_COMPILE_MUTATION_PROBE";
+
 const MUTATION_ITEM: &str =
     "\npub const EMIT_COMPILE_MUTATION_PROBE: u8 = \"the phase's own discriminating red\";\n";
 
@@ -108,7 +113,18 @@ pub enum CargoVerdict {
     /// Launched, and reached no exit status of its own -- killed, or the spawn failed.
     DidNotComplete { detail: String },
     /// Ran to completion and reported its own exit status.
-    Completed { status: i32, stderr_tail: String },
+    ///
+    /// `probe_line` carries the first diagnostic line naming the injected probe symbol, scanned
+    /// from the WHOLE stderr rather than from `stderr_tail`. The two are different questions and
+    /// conflating them would reintroduce the defect this field exists for: the tail is the last
+    /// 20 lines, kept so a human can read a failure, and a genuine `E0308` for the injected item
+    /// can sit well above it when other diagnostics follow. Deciding attribution from the tail
+    /// would then fail a run whose fault WAS refused, for the reason that the receipt was short.
+    Completed {
+        status: i32,
+        stderr_tail: String,
+        probe_line: Option<String>,
+    },
 }
 
 /// Only a completed, zero-status run compiled. Every other arm -- including the one that never
@@ -129,6 +145,14 @@ pub fn cargo_verdict_summary(verdict: &CargoVerdict) -> String {
         CargoVerdict::NotAttempted { reason } => format!("NotAttempted reason={reason}"),
         CargoVerdict::DidNotComplete { detail } => format!("DidNotComplete detail={detail}"),
         CargoVerdict::Completed { status, .. } => format!("Completed status={status}"),
+    }
+}
+
+/// The diagnostic line naming the injected probe symbol, if the run produced one.
+pub fn cargo_verdict_probe_line(verdict: &CargoVerdict) -> Option<&str> {
+    match verdict {
+        CargoVerdict::Completed { probe_line, .. } => probe_line.as_deref(),
+        _ => None,
     }
 }
 
@@ -408,9 +432,14 @@ fn run_cargo(crate_dir: &Path, workspace: &Path) -> CargoVerdict {
             Some(status) => {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 let tail: Vec<&str> = stderr.lines().rev().take(20).collect();
+                let probe_line = stderr
+                    .lines()
+                    .find(|line| line.contains(MUTATION_PROBE_SYMBOL))
+                    .map(|line| line.trim().to_string());
                 CargoVerdict::Completed {
                     status,
                     stderr_tail: tail.into_iter().rev().collect::<Vec<_>>().join("\n"),
+                    probe_line,
                 }
             }
         },
@@ -495,17 +524,69 @@ fn establish_discriminating_red(
     let restore_write = std::fs::write(&path, &original);
     let restored_bytes = std::fs::read_to_string(&path).unwrap_or_default();
 
-    if cargo_verdict_compiled(&red) {
+    // THE FAULTED ARM MUST HAVE COMPLETED, AND ITS RED MUST BE ATTRIBUTABLE TO THE FAULT.
+    //
+    // A NONZERO EXIT IS NOT EVIDENCE ON ITS OWN, which is the hole this block closes. Cargo can
+    // be killed, fail to spawn, run out of disk, or die for a reason having nothing to do with
+    // the injected item — and `!cargo_verdict_compiled(&red)` is true in every one of those
+    // cases. Accepting them would let the phase report `Discriminated` while establishing
+    // nothing about sensitivity to the mutation, and then green a merge gate on it: a fabricated
+    // red, which is the fabricated-plausible-output failure aimed at the phase's own evidence.
+    //
+    // THIS IS NOT HYPOTHETICAL. Verifying the blunted-mutation arm, a concurrent run produced
+    // exactly this shape — a `Discriminated` verdict whose red line quoted a `#[cfg]` WARNING
+    // over a cargo run that had actually said `Finished`. The probe-root lock closes the cause;
+    // this closes the arm that accepted the result, and the two are different defects.
+    //
+    // So the arm demands three things of the faulted run, in order of what they rule out:
+    //   1. `Completed` — cargo ran to a verdict, so `NotAttempted`/`DidNotComplete` fail rather
+    //      than passing as a red;
+    //   2. a nonzero status — it refused;
+    //   3. a diagnostic naming THE INJECTED SYMBOL — it refused for OUR reason. Requiring the
+    //      symbol rather than merely the code is what distinguishes the injected fault from an
+    //      unrelated `E0308` that was already in the emitted tree; the code alone would accept a
+    //      pre-existing type error as the phase's own evidence.
+    match &red {
+        CargoVerdict::Completed { status: 0, .. } => {
+            return MutationVerdict::NotDiscriminating {
+                detail: format!(
+                    "cargo compiled {} with a deliberate type error appended to src/{}.rs — \
+                     the verdict is not a function of the emitted bytes, so the green baseline \
+                     beside it carries no information",
+                    crate_dir.display(),
+                    mutation_subject_rust_module(&subject)
+                ),
+            };
+        }
+        CargoVerdict::NotAttempted { reason } => {
+            return MutationVerdict::NotDiscriminating {
+                detail: format!(
+                    "the faulted arm never ran cargo ({reason}) — a run that did not happen is \
+                     not a red, and treating its absence as one would fabricate the evidence \
+                     this phase exists to establish"
+                ),
+            };
+        }
+        CargoVerdict::DidNotComplete { detail } => {
+            return MutationVerdict::NotDiscriminating {
+                detail: format!(
+                    "the faulted arm did not reach a cargo verdict ({detail}) — a killed or \
+                     unspawnable cargo is not evidence that the injected fault was refused"
+                ),
+            };
+        }
+        CargoVerdict::Completed { .. } => {}
+    }
+    let Some(attributed) = cargo_verdict_probe_line(&red) else {
         return MutationVerdict::NotDiscriminating {
             detail: format!(
-                "cargo compiled {} with a deliberate type error appended to src/{}.rs — \
-                 the verdict is not a function of the emitted bytes, so the green baseline \
-                 beside it carries no information",
-                crate_dir.display(),
-                mutation_subject_rust_module(&subject)
+                "the faulted arm refused, but no diagnostic names {MUTATION_PROBE_SYMBOL} — the \
+                 red is not attributable to the injected fault, so it establishes nothing about \
+                 sensitivity to the emitted bytes"
             ),
         };
-    }
+    };
+    let attributed = attributed.to_string();
 
     if let Err(e) = restore_write {
         return MutationVerdict::RestoreFailed {
@@ -531,14 +612,13 @@ fn establish_discriminating_red(
         };
     }
 
-    let red_tail = cargo_verdict_stderr_tail(&red);
-    let red_line = red_tail
-        .lines()
-        .find(|line| line.contains("error["))
-        .unwrap_or_else(|| red_tail.lines().next().unwrap_or(""))
-        .trim()
-        .to_string();
-    MutationVerdict::Discriminated { subject, red_line }
+    // The reported line is the diagnostic that NAMES THE FAULT, which is the same line the
+    // attribution check above accepted -- so the receipt a reader sees is the evidence the arm
+    // actually decided on, rather than a separately-chosen line that could disagree with it.
+    MutationVerdict::Discriminated {
+        subject,
+        red_line: attributed,
+    }
 }
 
 /// The rust module basename an entry `.dag` file emits under, from its own `module` line.
@@ -1022,6 +1102,7 @@ mod tests {
         let green = CargoVerdict::Completed {
             status: 0,
             stderr_tail: String::new(),
+            probe_line: None,
         };
         for mutation in [
             MutationVerdict::NotAttempted {
