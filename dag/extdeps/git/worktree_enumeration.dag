@@ -111,14 +111,22 @@ fn git_worktree_attribute_step(
     }
   } else {
     if starts_with(s: attribute, prefix: "branch ") {
-      GitWorktreeAttributes {
-        head: attributes.head,
-        branch: Present { value: substring(s: attribute, start: 7, end: length(attribute)) },
-        detached: attributes.detached,
-        bare: attributes.bare,
-        locked: attributes.locked,
-        prunable: attributes.prunable,
-        fault: attributes.fault,
+      match attributes.branch {
+        Present { value: _ } =>
+          git_worktree_first_fault(
+            attributes: attributes,
+            reason: "entry carries more than one branch",
+          )
+        Absent =>
+          GitWorktreeAttributes {
+            head: attributes.head,
+            branch: Present { value: substring(s: attribute, start: 7, end: length(attribute)) },
+            detached: attributes.detached,
+            bare: attributes.bare,
+            locked: attributes.locked,
+            prunable: attributes.prunable,
+            fault: attributes.fault,
+          }
       }
     } else {
       if attribute == "detached" {
@@ -394,6 +402,47 @@ fn git_worktree_scan_step(state: GitWorktreeScanState, record: String) -> GitWor
 // folding the payload first would render "git refused" and "git answered" identically -- the
 // execution-provenance conflation DESIGN records, where an unreached read must not inhabit the same
 // carrier as a read that happened.
+// EXIT ZERO WITH NO ENTRIES IS MALFORMED, NOT AN EMPTY SET, and until this refusal existed the
+// decoder returned it as a SUCCESSFUL observation of zero worktrees. Git's porcelain contract lists
+// the main worktree first and then the linked ones; every repository has a main worktree, a bare one
+// included. So there is no repository for which git answers zero, and a zero-entry success is a
+// truncated or redirected stream wearing the shape of an answer.
+//
+// WHY IT MATTERED MORE THAN A MISSING SET ELEMENT: a consumer comparing worktree rosters before and
+// after an operation finds nothing missing from an empty before-set, so EVERY preservation check
+// over it passes vacuously. The invalid observation does not produce a wrong worktree, it produces
+// an unconditional yes from whatever asks about worktrees -- which is the empty-observation narrow,
+// bottom-as-answer read as bottom-as-ignorance, arriving through the decoder rather than through the
+// consumer.
+//
+// NEXT RUNG, DECLARED RATHER THAN CLAIMED. This is a REFUSAL (mechanically preventable): the invalid
+// state is still representable and a check rejects it. The structural form is to split the observed
+// arm into `primary: GitWorktreeIdentity` beside `linked: List<GitWorktreeIdentity>`, which makes a
+// zero-worktree success unwritable rather than rejected, and additionally lets a consumer derive the
+// primary from git's own roster instead of accepting a caller-supplied path. That change alters the
+// type this module's consumers destructure, so it lands with the rebase that puts the convergence
+// consumer on top of this module rather than in a diff that would break it across two open branches.
+fn git_worktree_reject_empty_success(
+  observation: GitWorktreeSetObservation,
+) -> GitWorktreeSetObservation {
+  match observation {
+    GitWorktreeSetReadRefused { exit_code: c, stderr: e } =>
+      GitWorktreeSetReadRefused { exit_code: c, stderr: e }
+    GitWorktreeSetUndecodable { entry_index: i, raw_entry: r, reason: n } =>
+      GitWorktreeSetUndecodable { entry_index: i, raw_entry: r, reason: n }
+    GitWorktreeSetObserved { worktrees: ws } =>
+      if count(ws) == 0 {
+        GitWorktreeSetUndecodable {
+          entry_index: 0,
+          raw_entry: "",
+          reason: "git exited zero and listed no worktree; every repository has a main worktree, so an empty successful enumeration is a truncated or redirected stream rather than an empty set",
+        }
+      } else {
+        GitWorktreeSetObserved { worktrees: ws }
+      }
+  }
+}
+
 fn git_worktree_set_observation_of(
   raw: String,
   exit_code: Int,
@@ -418,7 +467,9 @@ fn git_worktree_set_observation_of(
         reason: "final entry is not terminated: the stream ends mid-entry",
       }
     } else {
-      git_worktree_set_observation_in_order(observation: scanned.observation)
+      git_worktree_set_observation_in_order(
+        observation: git_worktree_reject_empty_success(observation: scanned.observation),
+      )
     }
   }
 }
