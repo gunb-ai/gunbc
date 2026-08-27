@@ -46,5 +46,12 @@ test fn required_floor_growth_is_budget_bound_without_choosing_a_payment() -> Bo
       instrument: _,
       dissolution: _
     } => false
+    RequiredFloorGrowthBudgetBound {
+      limiter: _,
+      attribution: _,
+      candidate_payments: _,
+      instrument: _,
+      dissolution: _
+    } => false
   }
 }
