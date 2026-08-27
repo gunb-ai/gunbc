@@ -48,7 +48,7 @@ pub use crate::v1_compiler_emit_rust::item_generic_param_names;
 pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Connective::NoConnective;
+use crate::v1_std_core::Connective::{Arrow, NoConnective};
 use crate::v1_std_core::ContainerSpellingVerdict::{
     ContainerSpellingDeclared, ContainerSpellingUnknown, NotAContainerSpelling,
 };
@@ -3299,6 +3299,26 @@ pub fn v1_declared_arg_positions_need_clone_param(
     })
 }
 
+pub fn v1_callable_argument_and_return_type_exprs(type_expr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    v1_rt::concat(
+        Rc::new(vec![resolved_type(type_expr.clone())]),
+        Rc::new({
+            let mut __result = Vec::new();
+            for p in type_expr.params.clone().iter().cloned() {
+                __result.push(param_node_type_expr(p.clone()));
+            }
+            __result
+        }),
+    )
+}
+
+pub fn v1_callable_type_expr_component_type_exprs(type_expr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
+    match type_expr.connective.clone() {
+        Connective::Arrow => v1_callable_argument_and_return_type_exprs(type_expr.clone()),
+        _ => Rc::new(vec![]),
+    }
+}
+
 pub fn v1_type_expr_wf_needs_clone_param(
     param_name: String,
     type_expr: Rc<Node>,
@@ -3309,44 +3329,64 @@ pub fn v1_type_expr_wf_needs_clone_param(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name =
             qualified_last_segment(authored_name_at(source_indices.clone(), type_expr.clone()));
-        if ((type_expr.children.clone().len() as i64) == 0) {
-            false
-        } else {
+        let callable_components = v1_callable_type_expr_component_type_exprs(type_expr.clone());
+        if ((callable_components.clone().len() as i64) > 0) {
             {
-                let nested = {
-                    let mut __found = false;
-                    for c in type_expr.children.clone().iter().cloned() {
-                        if v1_type_expr_wf_needs_clone_param(
-                            param_name.clone(),
-                            v1_wf_child_type_node(c.clone(), source_indices.clone()),
-                            bounds.clone(),
-                            type_decl_items.clone(),
-                            source_indices.clone(),
-                        ) {
-                            __found = true;
-                            break;
-                        }
+                let mut __found = false;
+                for c in callable_components.iter().cloned() {
+                    if v1_type_expr_wf_needs_clone_param(
+                        param_name.clone(),
+                        c.clone(),
+                        bounds.clone(),
+                        type_decl_items.clone(),
+                        source_indices.clone(),
+                    ) {
+                        __found = true;
+                        break;
                     }
-                    __found
-                };
-                match v1_rt::map_get(&type_decl_items, name.clone()) {
-                    Some(decl) => {
-                        let bound_params = match v1_rt::map_get(&bounds, name.clone()) {
-                            Some(s) => s.clone(),
-                            None => v1_rt::rc_empty_set::<String>(),
-                        };
-                        (nested.clone()
-                            || v1_declared_arg_positions_need_clone_param(
+                }
+                __found
+            }
+        } else {
+            if ((type_expr.children.clone().len() as i64) == 0) {
+                false
+            } else {
+                {
+                    let nested = {
+                        let mut __found = false;
+                        for c in type_expr.children.clone().iter().cloned() {
+                            if v1_type_expr_wf_needs_clone_param(
                                 param_name.clone(),
-                                decl.params.clone(),
-                                type_expr.children.clone(),
-                                bound_params.clone(),
+                                v1_wf_child_type_node(c.clone(), source_indices.clone()),
                                 bounds.clone(),
                                 type_decl_items.clone(),
                                 source_indices.clone(),
-                            ))
+                            ) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    };
+                    match v1_rt::map_get(&type_decl_items, name.clone()) {
+                        Some(decl) => {
+                            let bound_params = match v1_rt::map_get(&bounds, name.clone()) {
+                                Some(s) => s.clone(),
+                                None => v1_rt::rc_empty_set::<String>(),
+                            };
+                            (nested.clone()
+                                || v1_declared_arg_positions_need_clone_param(
+                                    param_name.clone(),
+                                    decl.params.clone(),
+                                    type_expr.children.clone(),
+                                    bound_params.clone(),
+                                    bounds.clone(),
+                                    type_decl_items.clone(),
+                                    source_indices.clone(),
+                                ))
+                        }
+                        None => nested.clone(),
                     }
-                    None => nested.clone(),
                 }
             }
         }
