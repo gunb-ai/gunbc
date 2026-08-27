@@ -500,11 +500,6 @@ data gunbc_ci_spark_serving_observe_target: GunbcRunStepTarget = GunbcRunStepTar
   function: "spark_serving_observe_ci_wet",
 }
 
-data gunbc_ci_session_demand_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/session_demand_observe.dag",
-  function: "session_demand_observe_ci_wet",
-}
-
 data gunbc_ci_spark_serving_converge_slice_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/serving_converge_slice_wet.dag",
   function: "spark_serving_converge_slice_ci_wet",
@@ -598,7 +593,6 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_spark_serving_durability_target,
     gunbc_ci_spark_grant_install_target,
     gunbc_ci_spark_serving_observe_target,
-    gunbc_ci_session_demand_observe_target,
     gunbc_ci_spark_serving_converge_slice_target,
     gunbc_ci_collect_fleet_convergence_target,
     gunbc_ci_fleet_host_key_scan_target,
@@ -1031,16 +1025,6 @@ fn gunbc_ci_spark_grant_install_invoke() -> String {
   )
 }
 
-
-fn gunbc_ci_session_demand_observe_invoke() -> String {
-  gunbc_run_step_script(
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_session_demand_observe_target.entry,
-    function: gunbc_ci_session_demand_observe_target.function,
-    claim_run: false,
-    receipt_rel: "target/session-demand-observe-receipt.txt"
-  )
-}
 
 fn gunbc_ci_spark_serving_observe_invoke() -> String {
   gunbc_run_step_script(

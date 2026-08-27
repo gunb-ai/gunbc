@@ -1,5 +1,18 @@
 module test.claim.session_reservation_policy_witness_test
 
+// THESE TWELVE WERE AUTHORED AS PLAIN `fn` AND THEREFORE NEVER EXECUTED IN CI.
+//
+// The floor discovers witnesses by scanning source lines for the `test fn ` / `test data ` prefix
+// (v1_compiler cli_run scan_test_decl_lines); a plain `fn name() -> Bool` in a file named
+// *_witness_test.dag is invisible to it. So this file passed by hand under claim_batch and was
+// never once folded by the required floor -- a file that reads as coverage and carries none, which
+// is worse than an absent file because it is cited as coverage. Measured at the promotion: 990
+// corpus witness files use `test fn` and 9 did not, this being one of them.
+//
+// Promoted 2026-08-27 with the session-container cut. The assertions are unchanged; only their
+// discoverability is. The eight remaining plain-fn files are a pre-existing population, not
+// repaired here, and are named in the cut's PR body rather than silently swept in.
+
 import std.types { Bool, String, Int }
 import std.measure { byte_size, byte_size_count }
 import gunbc.fleet_intent_network {
@@ -200,6 +213,21 @@ test fn the_evidence_names_its_execution() -> Bool {
   srv1_session_aggregate_citation.run_id == "33007869268"
     && srv1_session_aggregate_citation.metric == "memory.peak"
     && srv1_session_aggregate_citation.host == "srv1"
+}
+
+test fn session_reservation_policy_holds() -> Bool {
+  the_two_empty_knob_answers_are_distinguishable()
+    && an_allowance_below_its_evidence_floor_is_refused_not_charged()
+    &&
+  the_sizing_table_answers_only_how_much()
+    && an_allowance_on_a_session_free_host_refuses()
+    && a_session_host_with_no_sizing_row_refuses()
+    && the_two_absences_are_distinguishable()
+    && every_production_projection_agrees_on_every_host()
+    && converge_knobs_are_derived_per_host()
+    && an_allowance_may_not_sit_below_its_evidence()
+    && an_unestablished_denominator_grounds_no_floor()
+    && the_evidence_names_its_execution()
 }
 
 // THE TWO EMPTY ANSWERS ARE NOW DISTINGUISHABLE, AND THIS IS THE ARM THAT PROVES IT. Asserting only

@@ -145,6 +145,14 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
 // with FOUR barren `*_test.dag` entries present in the tree at that sha and zero occurrences of
 // `barren` or `sidecar` anywhere in the 693KB run log. 41 claims sat behind a live wall.
 //
+// THAT POPULATION IS A MEASUREMENT AT THAT SHA AND IS NOT THE POPULATION TODAY, which is the
+// distinction a reader arriving later most needs. gunbc#9483 repaired three of those four
+// entries BY HAND while this repair was in flight -- two deleted with the ctrl/session-container
+// lane, one promoted in place -- so the live barren population when the wall landed was ONE
+// file. That is not evidence the wall was unnecessary; it is the mechanism the wall replaces,
+// observed once more. A class whose only remedy is someone noticing has no bound on how long
+// the next instance stands.
+//
 // THE CAUSE IS NOT THIS PREDICATE AND NOT ITS DENOMINATOR. It is that ONE FACT -- what a test
 // decl IS -- has THREE SCANNERS in one binary, and the wall guards the one production retired:
 //
