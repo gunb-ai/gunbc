@@ -1,6 +1,6 @@
 module gunbc.witness_floor_workflow
 
-import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import gunbc.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
 }
@@ -44,7 +44,7 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command, required_ci_lane_build }
+import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { required_lanes_gate_stmts }
 import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
@@ -105,8 +105,16 @@ import std.types { List, String, Int }
 //
 // WHAT WAS WRONG WITH THE FIRST CUT OF THE SPLIT, measured rather than argued (found in review
 // of gunbc#9203, and confirmed against the live ruleset rather than against the workflow): the
-// repository's `passing CI` ruleset is ACTIVE, has NO bypass actors, and names exactly ONE
-// required status check -- `witnesses`. A GitHub required context is produced by the JOB, not
+// repository's `passing CI` ruleset is ACTIVE and names exactly ONE required status check --
+// `witnesses`. THIS CLAUSE PREVIOUSLY ALSO READ `has NO bypass actors`, AND THAT IS NOT A FACT
+// A SESSION CAN STATE: `bypass_actors` and `current_user_can_bypass` are answered RELATIVE TO
+// THE CREDENTIAL ASKING, and this repository's sessions authenticate as an integration rather
+// than a user. Read through a user credential the same ruleset reports a `RepositoryRole`
+// bypass at `bypass_mode=always`. Both readings are correct about different subjects, and the
+// emptier one was taken twice through the same kind of credential and mistaken for
+// corroboration. Nothing in this paragraph rests on it -- every measurement here was taken
+// against runs and check-runs -- so the clause is removed rather than repaired. A GitHub
+// required context is produced by the JOB, not
 // by the workflow, so a second job publishes its own check under its own name and that check is
 // not required. The first cut therefore moved regen and v2-emission into a `build` job whose
 // failure COULD NOT BLOCK A MERGE: the required `witnesses` check would go green over a regen
@@ -114,30 +122,68 @@ import std.types { List, String, Int }
 // and worse than the serial run it replaced, because the serial run's single job carried every
 // phase into the one context that gates.
 //
-// WHY AN AGGREGATION JOB AND NOT A RULESET EDIT. The ruleset is not a `.dag` fact and no wall
-// inside this repository can constrain what GitHub admits to main (the same boundary the
-// merge_group note below records). Landing a change whose safety depends on someone editing a
-// setting afterwards is a coverage gap with a promise attached, and it has a real window: until
-// the context is added, the lane is unguarded. An aggregation job needs no setting change and
-// no window -- the context that already gates keeps its name and now answers for BOTH lanes.
+// WHY AN AGGREGATION JOB AND NOT A RULESET EDIT. No wall inside this repository can constrain
+// what GitHub admits to main (the same boundary the merge_group note below records). Landing a
+// change whose safety depends on someone editing a setting afterwards is a coverage gap with a
+// promise attached, and it has a real window: until the context is added, the lane is unguarded.
+// An aggregation job needs no setting change and no window -- the context that already gates
+// keeps its name and now answers for BOTH lanes.
+//
+// THAT ARGUMENT SURVIVED A BOUNDARY MOVE AND ITS FIRST CLAUSE DID NOT. This note read `the
+// ruleset is not a .dag fact`, and it is one now: gunbc.repo_ruleset declares the desired ruleset,
+// observes the live one, reconciles, applies and READS BACK, and it imports the required context's
+// name from witness_floor_workflow_job_id below rather than spelling it again -- so renaming this
+// job can no longer leave the ruleset naming a context nothing publishes, which is the failure
+// that shows up as a check stuck pending rather than red. What did NOT change is the reason the
+// aggregation job exists: a converged authority ACTUATES and DETECTS, it does not gate, so it
+// still cannot make a required context exist at the moment a merge is attempted. The window
+// argument therefore stands unchanged on its own terms.
 //
 // WHAT IT COSTS, and it is not the parallelism. The two lane jobs still carry no `needs` edge
 // on each other and still start together; only the aggregator waits, and it does nothing but
-// read two results. The floor job is renamed to `floor` so its log is still findable by lane
-// name, and the aggregator's own output names which lane to open.
+// read two results. Each lane job's log is findable by its lane name, and the aggregator's own
+// output names which lane to open.
 data witness_floor_workflow_job_id: String = "witnesses"
 
-// The witness floor lane's job id. It was `witnesses` until the aggregation job took that name;
-// the check it publishes is not required and is not meant to be -- `witnesses` answers for it.
-data floor_lane_job_id: String = "floor"
+// THE LANE JOB IDS ARE THEIR OWN DECLARATIONS, AND UN-FUSING THEM FROM THE LANE WORDS IS THE
+// WHOLE OF THIS CHANGE.
+//
+// WHY A UNIQUE NAME IS NEEDED AT ALL. A GitHub required status check names a CONTEXT, and a
+// context is the job's name -- which workflow published it is not part of the name. So `build`
+// is not a name this repository owns: `gunbc.fleet_converge_workflow` declares a job whose id
+// is also exactly `build`, and a rule naming `build` names two jobs in two workflows, answered
+// by whichever green arrives. Enforcement cannot be moved onto a lane job until that lane's
+// context is unique across every workflow emitted here.
+//
+// WHY THE NAME IS NOT COMPUTED FROM THE LANE WORD, and this is the modeling content rather
+// than a spelling preference. `build_lane_job_id` was DEFINED AS `required_ci_lane_build`, and
+// that read as single authority because the two strings coincided. They are two facts with
+// different authorities and different consumers: the LANE WORD is a CLI argument this
+// workflow passes to `claim_executor --required-lane`, owned by `gunbc.fabric_witness_run` and
+// consumed by an exhaustive `RequiredCiPhase::lane` match inside the binary; the JOB ID is a
+// GitHub required-context name, owned here and consumed by a repository ruleset that is not a
+// `.dag` fact at all. Their coincidence was the accident, not the authority. Deriving the job
+// id from the lane word -- including by concatenating a prefix onto it -- re-fuses them
+// through a different door and in the dangerous direction: a lane rename, which is an ordinary
+// CLI-vocabulary edit, would silently move a REQUIRED CONTEXT NAME and a check would stop being
+// required with nothing going red. The rows below are therefore spelled, and what protects
+// them is that every reference to a job id in this file is taken FROM these declarations rather
+// than typed, so a rename here moves the `needs` list and the `needs.*.result` expressions with
+// it.
+//
+// WHAT THIS DOES NOT DO: it does not move enforcement. `witnesses` remains the aggregation job
+// and remains the one required context the ruleset names, produced exactly as before, so the
+// gate is unchanged rather than weakened and no window opens. The lane contexts are published
+// and ignored until an operator names them in the ruleset -- a repository setting, and not
+// something any wall in this repository can constrain. Until that edit lands the aggregator is
+// still what gates; after it, the aggregator's role is diagnosis rather than enforcement,
+// because a same-run dependent job is SKIPPED when a lane fails or the run is cancelled at run
+// level, and a SKIPPED required context does not block a merge (measured: `mergeable=MERGEABLE
+// mergeStateStatus=UNSTABLE`), while root jobs carrying no `needs` edge take
+// cancelled/success/failure and are never skipped.
+data floor_lane_job_id: String = "required-witnesses-floor"
 
-// THE BUILD LANE'S JOB ID, and it is the lane word from `gunbc.fabric_witness_run` rather than
-// a second name for the same thing. The job id is what GitHub publishes as the check name and
-// what a required-status-check rule names; spelling it differently from the lane the job passes
-// to the binary would be the §3 fork, and it would fail in the quiet direction -- a check name
-// that no longer matches a branch-protection rule stops being required without anything going
-// red.
-data build_lane_job_id: String = required_ci_lane_build
+data build_lane_job_id: String = "required-witnesses-build"
 
 // The workflow's own name, hoisted to a declaration because a second consumer now joins on
 // it. gunbc.fleet_desired_admission refuses a workflow_run payload whose workflow_name is
@@ -168,6 +214,26 @@ data witness_floor_workflow_name: String = "witnesses"
 // further.
 data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.run_id }}"
 
+// SUPERSESSION IS AVAILABLE ONLY WHERE THIS EXPRESSION IS TRUE, AND THAT FACT NOW HAS ONE HOME.
+//
+// This expression decides, per event, whether GitHub cancels an in-flight run when a newer one
+// joins the group. It was previously an inline literal inside the workflow value below, which made
+// it unreachable by name: any consumer reasoning about whether a cancellation COULD have been a
+// lawful supersession had to restate `pull_request` in its own module, and a second spelling of one
+// fact is the DESIGN section 3 nicknaming violation -- with the specific decay that the two can
+// drift silently, since nothing relates a policy literal in a classifier to a string in an emitted
+// workflow. Hoisting it changes no emitted byte; it only gives the fact a name to be cited by.
+//
+// The consumer is gunbc.run_disposition, which derives supersession AVAILABILITY from this row
+// rather than hardcoding the event name it mentions.
+data witness_floor_cancel_in_progress_expression: String = "${{ github.event_name == 'pull_request' }}"
+
+// The event name the expression above tests. It is declared beside the expression, in the module
+// that owns the expression, so the pair cannot drift apart -- and a witness asserts that this name
+// actually occurs within that expression, which is the only mechanical link available between a
+// GitHub expression string and the event vocabulary it names.
+data witness_floor_cancel_in_progress_event: String = "pull_request"
+
 // The binaries the fold actually needs, and only those. `claim_executor` is the fold's entry;
 // `gunbc` is the CLI the repository's own tooling invokes. The predecessor build job named
 // nineteen binaries, most of which this cut deleted; naming a binary that no step runs buys
@@ -191,8 +257,9 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // WHAT "FULL COMPILE" DOES AND DOES NOT MEAN, named here because the 2026-08-25 split puts a
 // job called `build` beside a phase called `v2-emission` and the pair invites exactly one wrong
 // inference. The v2 emission phase compiles a `.dag` ENTRY TO RUST SOURCE and stops before
-// cargo; this step cargo-builds exactly the two bins named below, because they are the two the
-// jobs run. NEITHER COMPILES THE REST OF THE RUST WORKSPACE. A declared `[[bin]]` outside this
+// cargo; the emit-compile phase beside it takes that source the rest of the way and cargo-builds
+// it, over its own bounded entry roster and never over the corpus; this step cargo-builds
+// exactly the two bins named below, because they are the two the jobs run. NEITHER COMPILES THE REST OF THE RUST WORKSPACE. A declared `[[bin]]` outside this
 // list is not built by any required phase, so a hand-authored Rust bin can fall behind a
 // generated struct and sit on main indefinitely -- which is not hypothetical: measured
 // 2026-08-25, `infer_semantics_witness` fails to compile on main with six `E0063`s against
@@ -371,9 +438,12 @@ fn witness_floor_build_step(build_script: String) -> Step {
 // phase -- and a phase that could not run reports SKIPPED as its own state, never as silence
 // and never as a pass.
 //
-// THE ROSTER IS FOUR PHASES ACROSS TWO LANES. The paragraph below records the 2026-08-21 cut
-// to three; #9035 then added v2-emission, and the 2026-08-25 split partitioned the four into
-// `build` (regen, v2-emission) and `witnesses` (parse, floor). The cut phases that paragraph
+// THE ROSTER IS READ FROM THE RUN, NOT FROM THIS COMMENT. Each lane announces every phase --
+// one `phase <name>` line for the phases it owns and one `ROUTED to lane <other>` line for the
+// phases it does not -- so one job's log names the whole roster. The paragraph below records the
+// 2026-08-21 cut to three; #9035 then added v2-emission, and the 2026-08-25 split partitioned
+// the roster into `build` (regen, v2-emission, partition-crates, emit-compile) and `witnesses`
+// (parse, floor). A count transcribed here has already gone stale twice. The cut phases that paragraph
 // enumerates stay cut -- neither the addition nor the split restored any of them.
 //
 // THE ROSTER WAS THREE PHASES, NOT FOUR (operator ruling, 2026-08-21): the src/v1 .dag parse
@@ -559,9 +629,18 @@ fn witness_toolchain_environment_probe_step() -> Step {
 
 // THE BUILD LANE'S RUN STEP. Same binary, same mode, same source roots, one word different --
 // which is the whole point of the lane being a parameter rather than a second invocation.
+//
+// THE STEP NAME DOES NOT ENUMERATE THE PHASES, AND THAT IS A CORRECTION RATHER THAN VAGUENESS.
+// It read "(regen, v2 emission)" while the lane carried four, because a label listing a roster
+// is a TRANSCRIPTION of something the run itself prints -- and it drifts silently every time the
+// roster grows, which it has done three times in a week. The cost is not cosmetic: a session
+// triaging a red step narrowed to the two phases the label named and could not reach the third,
+// which was the one that failed. DESIGN's standing rule is to name the instrument and never
+// transcribe its output; the instrument here is the required mode itself, which announces one
+// `phase <name>` line per phase the lane owns before any of them runs. Read the roster there.
 fn build_lane_run_step() -> Step {
   RunStep {
-    name: Present { value: "Required CI: build lane (regen, v2 emission)" },
+    name: Present { value: "Required CI: build lane (phases named by the run, not by this label)" },
     id: none,
     run: build_lane_run_script(),
     shell: none,
@@ -641,6 +720,47 @@ data expected_red_roster_join_artifact_name: String = "expected-red-roster-join"
 data long_home_storage_agreement_path: String = "long_home_storage_agreement.tsv"
 
 data long_home_storage_agreement_artifact_name: String = "long-home-storage-agreement"
+
+// THE FOURTH FILE, AND THE ONLY ONE THAT WAS NEVER EVEN WRITTEN.
+//
+// The three rows above record files the floor wrote on every run and nobody collected. This one
+// is a rung below that: `cli_run.rs` reads GUNBC_REQUIRED_FLOOR_CLAIM_COST and calls
+// `write_required_floor_claim_cost_tsv` -- one row per EXECUTED claim, carrying identity, module,
+// outcome, verdict_reached, and BOTH clocks (wall_ms and cpu_ms) -- but this job never set the
+// variable, so the writer was never armed and the population was recomputed and discarded on
+// every required run since the floor cut.
+//
+// WHAT THAT COSTS, and it is a measurement the corpus could not take rather than a file it
+// could not read. The floor carries TWO INDEPENDENT BLOCKING DEADLINES on two different clocks:
+// `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms` (5000) and
+// `required_floor_claim_wall_safety_limit_ms` (10000), deliberately different so a hermetic
+// in-process claim descheduled by a co-tenant host does not read as a runaway. The only
+// per-claim two-clock output any run actually emits is the `[over-cost]` log line -- and that
+// population is selected by `required_floor_cost_basis`, which is the constant `CpuCost`. So a
+// row is printed because its CPU exceeded the diagnostic cost line, and its wall column is
+// carried along.
+//
+// The consequence is that the CPU margin distribution is derivable from run output and the WALL
+// margin distribution IS NOT, at any sample size: a claim with low CPU and high wall -- exactly
+// the blocked-or-descheduled failure the wall limit exists to catch -- is never printed at all.
+// Measured on the five main runs pinned in the PR body (33036922596, 33037011305, 33037689214,
+// 33037870402, 33037904520; 690 pooled rows): wall minus CPU is at most 15 ms on every printed
+// row, mean 6.7 ms. That is not evidence that no wall-bound claim exists; it is the selection
+// effect stating that this sample cannot contain one. Reading a wall distribution off it would
+// be a population selected on one clock reported against the other clock's limit.
+//
+// So this is not a convenience artifact. It is the only route to the wall limit's margin
+// population, and arming it changes no threshold and no verdict -- `write_required_floor_claim_cost_tsv`
+// is a pure write of rows the fold already produced.
+//
+// `if-no-files-found: error` IS SAFE HERE ON THE SAME GROUNDS AS THE THREE ABOVE, and checked
+// the same way rather than inherited: the write is guarded only on its own path being set,
+// which this job now sets, and it is reached on the same fold-completion path as the disposition
+// and long-home writes -- strictly EARLIER in that sequence, so any refusal that returns before
+// those three also returns before this one. It is never absent on a run that reached its writes.
+data required_floor_claim_cost_path: String = "required_floor_claim_cost.tsv"
+
+data required_floor_claim_cost_artifact_name: String = "required-floor-claim-cost"
 
 // THE FLOOR HAS BEEN WRITING THREE FILES ON EVERY RUN AND THROWING ALL THREE AWAY.
 //
@@ -840,6 +960,15 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         step_name: "Upload the long-home storage agreement",
       },
       WitnessFloorBoundStep {
+        step: witness_floor_tsv_upload_step(
+          step_name: "Upload the floor's per-claim cost receipt",
+          artifact_name: required_floor_claim_cost_artifact_name,
+          path: required_floor_claim_cost_path
+        ),
+        role: capability_neutral,
+        step_name: "Upload the floor's per-claim cost receipt",
+      },
+      WitnessFloorBoundStep {
         step: witness_floor_all_binary_targets_step(),
         role: capability_neutral,
         step_name: "Every v1-compiler binary target compiles",
@@ -921,7 +1050,7 @@ fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
       WitnessFloorBoundStep {
         step: build_lane_run_step(),
         role: consumes_only(capabilities: [RustfmtCapability]),
-        step_name: "Required CI: build lane (regen, v2 emission)",
+        step_name: "Required CI: build lane (phases named by the run, not by this label)",
       },
     ],
   )
@@ -1009,10 +1138,13 @@ fn witness_floor_job() -> Job {
 // merge_group event never fires, so this changes nothing about how CI runs today; it is a no-op
 // until a repository setting is changed, which is deliberate -- the prerequisite lands first so the
 // setting can be flipped without a window in which the required check cannot schedule. The other
-// half is not a .dag fact and cannot be one: the ruleset currently carries
-// strict_required_status_checks_policy false, no merge-queue rule, and an always-bypass role, and
-// no wall inside this repository can constrain what GitHub admits to main. That is an operator
-// decision, recorded here so the two halves are legible as one change rather than rediscovered.
+// half is a repository setting, and as of gunbc.repo_ruleset it is a DECLARED and OBSERVED one
+// rather than an invisible one: that module carries strict_required_status_checks_policy false as
+// a stated position and refuses on any divergence it can read. It still cannot flip a setting
+// nobody has declared -- there is no merge-queue rule in desired, because enabling the queue is an
+// operator decision and modelling it as desired would make this module apply a policy nobody
+// chose. And no wall inside this repository can constrain what GitHub admits to main in any case.
+// Recorded here so the two halves are legible as one change rather than rediscovered.
 //
 // THE INVARIANT BOTH HALVES SERVE: the commit admitted to main must be the exact composed commit
 // that passed the required checks. A merge queue establishes it by construction; requiring branches
@@ -1284,17 +1416,11 @@ fn required_lanes_aggregate_script_outcome() -> String? {
   match bash_fold_serialize_program(
     stmts: required_lanes_gate_stmts(
       build_var: required_lanes_gate_build_var,
-      build_result_expression: required_lane_result_expression(job_id: build_lane_job_id),
       floor_var: required_lanes_gate_floor_var,
-      floor_result_expression: required_lane_result_expression(job_id: floor_lane_job_id),
       pull_request_var: required_lanes_gate_pull_request_var,
-      pull_request_expression: required_lanes_pull_request_expression(),
       event_name_var: required_lanes_gate_event_name_var,
-      event_name_expression: required_lanes_event_name_expression(),
       measured_head_var: required_lanes_gate_measured_head_var,
-      measured_head_expression: required_lanes_measured_head_expression(),
       run_id_var: required_lanes_gate_run_id_var,
-      run_id_expression: required_lanes_run_id_expression(),
       standing_var: required_lanes_gate_standing_var,
       verdict_var: required_lanes_gate_verdict_var,
       mechanism_var: required_lanes_gate_mechanism_var,
@@ -1332,13 +1458,33 @@ fn required_lanes_aggregate_script() -> String {
   }
 }
 
+// THE SUBJECT VALUES ARE BOUND AS ENVIRONMENT, WHICH IS THE ONLY PLACE AN EXPRESSION AND A
+// SHELL PROGRAM MAY MEET.
+//
+// A `${{ }}` expression is substituted into the workflow document before any shell exists, so
+// it has to reach the emitted yaml verbatim. A yaml scalar does that -- `emit_inline_scalar_text`
+// renders an expression unquoted and unescaped -- while a bash literal word cannot, because
+// quoting it is exactly what the bash serializer is for. `gunbc.required_lanes_gate` therefore
+// takes variable NAMES only and reads them as shell variables; the expressions live here, one
+// row per variable, joined to the gate by the same declarations the gate is handed.
+fn required_lanes_aggregate_step_env() -> List<YamlKeyValue> {
+  [
+    kv(key: required_lanes_gate_build_var, value: yaml_string(s: required_lane_result_expression(job_id: build_lane_job_id))),
+    kv(key: required_lanes_gate_floor_var, value: yaml_string(s: required_lane_result_expression(job_id: floor_lane_job_id))),
+    kv(key: required_lanes_gate_pull_request_var, value: yaml_string(s: required_lanes_pull_request_expression())),
+    kv(key: required_lanes_gate_event_name_var, value: yaml_string(s: required_lanes_event_name_expression())),
+    kv(key: required_lanes_gate_measured_head_var, value: yaml_string(s: required_lanes_measured_head_expression())),
+    kv(key: required_lanes_gate_run_id_var, value: yaml_string(s: required_lanes_run_id_expression()))
+  ]
+}
+
 fn required_lanes_aggregate_step() -> Step {
   RunStep {
     name: Present { value: "Both required lanes must have succeeded" },
     id: none,
     run: required_lanes_aggregate_script(),
     shell: none,
-    env: none,
+    env: Present { value: required_lanes_aggregate_step_env() },
     working_directory: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,
@@ -1382,7 +1528,7 @@ data witness_floor_workflow: Workflow = {
       group: witness_floor_concurrency_group,
       cancel_in_progress: Present {
         value: CancelInProgressExpression {
-          expression: "${{ github.event_name == 'pull_request' }}"
+          expression: witness_floor_cancel_in_progress_expression
         }
       },
       explicit_single: none
@@ -1393,7 +1539,8 @@ data witness_floor_workflow: Workflow = {
       kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
       kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: yaml_string(s: expected_red_roster_join_path)),
       kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: required_floor_disposition_path)),
-      kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path))
+      kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path)),
+      kv(key: "GUNBC_REQUIRED_FLOOR_CLAIM_COST", value: yaml_string(s: required_floor_claim_cost_path))
     ]
   },
   permissions: Present {

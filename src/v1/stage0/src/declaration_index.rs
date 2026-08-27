@@ -184,6 +184,30 @@ pub struct ModuleDeclarationRecord {
     pub decl_fields: BTreeMap<String, BTreeSet<String>>,
     pub imports: Vec<ImportClaim>,
     pub cited: Vec<CitedSymbol>,
+    /// The authored NAME OCCURRENCES in this module's own tree that name something the module
+    /// reaches, paired with the top-level declaration whose subtree carries it:
+    /// `(in_declaration, spelling)`.
+    ///
+    /// WHY A NAME OCCURRENCE AND NOT A SEMANTIC REFERENCE. This is derived by walking the
+    /// parsed tree — parse-then-derive, the mechanism DESIGN prescribes after the raw-text
+    /// scanner family was ruled a heuristic — but it is deliberately NOT a resolution: a
+    /// parameter name and a `let` binder still land here beside a genuine reference, because
+    /// telling THOSE apart is the resolver's job and this index resolves nothing across files.
+    ///
+    /// THE OVER-COLLECTION IS BOUNDED RATHER THAN UNLIMITED, and the earlier reasoning for
+    /// leaving it unbounded is refuted rather than merely narrowed. That reasoning was: the
+    /// over-collection is SYMMETRIC across the two trees the one consumer
+    /// (`namespace_wave_admission`) compares, so a spelling that denotes nothing on both sides
+    /// contributes no delta. A symmetric COLLECTOR does not give a symmetric VERDICT — the
+    /// supplier set the wall computes is a function of the CORPUS, so deleting an unrelated
+    /// declaration moves it under every site that merely spells the same word. The measured
+    /// specimen and the two kinds now excluded are on `collect_reference_occurrences`, which is
+    /// also where the remaining members of that class are named.
+    ///
+    /// Dotted spellings are recorded WHOLE as well as by segment, so a reference to
+    /// `v2.std.node.Hash` is observable as naming the module `v2.std.node` and not only as
+    /// four unrelated segments.
+    pub referenced: BTreeSet<(String, String)>,
     pub declares_construction_justification: bool,
     /// Whether this module is a witness or fixture carrier. See `module_is_fixture_carrier`.
     pub is_fixture_carrier: bool,
@@ -308,6 +332,41 @@ fn for_each_node(node: &Rc<Node>, visit: &mut impl FnMut(&Rc<Node>)) {
             for_each_node(t, visit);
         }
     })
+}
+
+/// The whole dotted spelling a field-access spine authors, or `None` when the node is not
+/// the head of one.
+///
+/// `a.b.c` parses as a receiver `a` under two `ExprFieldAccess` nodes, so the SEGMENTS are
+/// each visible to an ordinary walk and the SPELLING is not. A module reference is a
+/// spelling — `v2.std.node` names a module and `node` alone names nothing — so a reader that
+/// only ever sees segments cannot observe which modules a body reaches. The spine stops at
+/// the first receiver that is not itself a name or another field access, which is what makes
+/// `foo(x).bar` yield nothing rather than a fabricated `foo.bar`.
+fn dotted_chain(
+    node: &Rc<Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    if !matches!(&*node.expr_data, ExprData::ExprFieldAccess { .. }) {
+        return None;
+    }
+    let field = authored_name_at(source_indices.clone(), node.clone());
+    if field.is_empty() {
+        return None;
+    }
+    let receiver = node.children.first()?;
+    let prefix = match &*receiver.expr_data {
+        ExprData::ExprFieldAccess { .. } => dotted_chain(receiver, source_indices)?,
+        ExprData::ExprVar { .. } => {
+            let name = authored_name_at(source_indices.clone(), receiver.clone());
+            if name.is_empty() {
+                return None;
+            }
+            name
+        }
+        _ => return None,
+    };
+    Some(format!("{prefix}.{field}"))
 }
 
 fn is_record_literal(node: &Rc<Node>) -> bool {
@@ -441,6 +500,94 @@ fn declaration_field_names(
     out
 }
 
+/// One declaration's REFERENCE occurrences, recorded into `out` as `(in_declaration, spelling)`.
+///
+/// WHY THIS IS SELECTIVE BY NODE KIND AND THE FIRST VERSION WAS NOT. The first version walked
+/// every node and took its authored name with no filter, on the argument that over-collection
+/// is harmless because it is SYMMETRIC across the two trees the wave wall compares — a spelling
+/// that denotes nothing on both sides contributes no delta. THAT ARGUMENT IS REFUTED BY A
+/// MEASURED SPECIMEN, and it is refuted in the one direction that matters: symmetry of the
+/// COLLECTOR does not give symmetry of the VERDICT, because the supplier set the wall asks for
+/// is a function of the corpus, not of the site. On gunbc#9106 a witness module deleted a
+/// helper `fn live_tree_declined_entries` and kept twelve RECORD FIELD LABELS spelling the same
+/// word. The labels never bound to the helper and need no supplier at all, yet each one was
+/// collected as a reference, so each one reported base `{that module}` -> head `{}` and the wall
+/// raised twelve `NewUnresolvedness` rows against a correct cut. A delta true about the
+/// declaration and false about every site it names.
+///
+/// THE FIX IS THE SHAPE THE `cited` COLLECTOR ON THE SAME TREE ALREADY USES — decide by node
+/// kind, not by name — and exactly two kinds are excluded here:
+///
+///   * A RECORD LITERAL'S FIELD LABELS. `ExprRecordLit`'s children are its field initializers
+///     and nothing else, so the label is decidable from the parent's kind with no guessing. The
+///     initializer's VALUE is still walked, because that is where a reference lives.
+///   * A FIELD PROJECTION'S MEMBER NAME. `f.widget` names a field of the value `f`; it does not
+///     name a declaration `widget`. The SPELLING is not lost — `dotted_chain` still records
+///     `f.widget` whole, which is what `module_prefix_of` needs to tell a module-qualified
+///     reference (`probe.home.widget`) from an ordinary projection, and the wall keys on the
+///     last segment either way, so a qualified reference keeps its leaf.
+///
+/// WHAT THIS DELIBERATELY DOES NOT EXCLUDE, named rather than left to be discovered, because
+/// each is the SAME CLASS reached from a different position and none of them is repaired here:
+/// a record TYPE declaration's field labels, a named call argument's label, a parameter binder,
+/// and a coproduct's variant names are all still collected as references. Measured on a fixture,
+/// not predicted: `type Row { tag: String }` contributes `tag`, and `call_it(tag: "z")`
+/// contributes `tag`. Each can fabricate the same refusal the record-literal case did, and each
+/// needs its own structural discriminator — the parent kinds that carry them (`Connective::Conj`,
+/// `ExprCall`) also carry children that ARE real references (a refinement's base type expression
+/// is a `Conj` child with a real type name), so a parent-kind rule that covers them cannot be
+/// lifted from this one and must be derived against its own fixture. Excluding them by guessing
+/// would risk the opposite defect, which is worse: a wall that stops seeing genuine
+/// unresolvedness is a decoration.
+fn collect_reference_occurrences(
+    node: &Rc<Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<NewlineIndex>>>,
+    in_declaration: &str,
+    ident_is_a_field_label: bool,
+    out: &mut BTreeSet<(String, String)>,
+) {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let is_projection_member = matches!(&*node.expr_data, ExprData::ExprFieldAccess { .. });
+        if !ident_is_a_field_label && !is_projection_member {
+            let name = authored_name_at(source_indices.clone(), node.clone());
+            if !name.is_empty() {
+                out.insert((in_declaration.to_string(), name));
+            }
+        }
+        if let Some(chain) = dotted_chain(node, source_indices) {
+            out.insert((in_declaration.to_string(), chain));
+        }
+        let children_are_field_labels = is_record_literal(node);
+        for c in node.children.iter() {
+            collect_reference_occurrences(
+                c,
+                source_indices,
+                in_declaration,
+                children_are_field_labels,
+                out,
+            );
+        }
+        for c in node.params.iter() {
+            collect_reference_occurrences(c, source_indices, in_declaration, false, out);
+        }
+        for c in node.properties.iter() {
+            collect_reference_occurrences(c, source_indices, in_declaration, false, out);
+        }
+        for c in node.uses.iter() {
+            collect_reference_occurrences(c, source_indices, in_declaration, false, out);
+        }
+        if let Some(b) = node.body.as_ref() {
+            collect_reference_occurrences(b, source_indices, in_declaration, false, out);
+        }
+        if let Some(t) = node.transport.as_ref() {
+            collect_reference_occurrences(t, source_indices, in_declaration, false, out);
+        }
+        if let Some(t) = node.type_annotation.as_ref() {
+            collect_reference_occurrences(t, source_indices, in_declaration, false, out);
+        }
+    })
+}
+
 /// One module's record, from that one module's parse tree. No corpus, no resolution.
 pub fn record_from_module(
     module: &Rc<Node>,
@@ -518,7 +665,20 @@ pub fn record_from_module(
         });
     }
 
+    let mut referenced = BTreeSet::new();
+    for item in module_items(module.clone()).iter() {
+        let in_declaration = authored_name_at(source_indices.clone(), item.clone());
+        collect_reference_occurrences(
+            item,
+            source_indices,
+            &in_declaration,
+            false,
+            &mut referenced,
+        );
+    }
+
     ModuleDeclarationRecord {
+        referenced,
         declares_construction_justification: declared.contains(CONSTRUCTION_JUSTIFICATION_DECL),
         is_fixture_carrier: module_is_fixture_carrier(&module_path, rel_path),
         module_path,

@@ -54,10 +54,10 @@ fn systemctl_list_units_active_services(instance_glob: NonEmptyStr) -> List<NonE
 // accepts a comma-joined --state list in one argv (no --all flag needed, and no second
 // ListUnits operation to keep parallel with this one): this is the SAME declared
 // operation, called with a different `state` binding, not a new op.
-data systemctl_list_units_all_states: String = "active,inactive,failed"
+data systemctl_all_unit_states_selector: String = "active,inactive,failed"
 
 fn systemctl_list_units_all_states_local(instance_glob: NonEmptyStr) -> String? {
-  let result = systemd.Systemctl.ListUnits(pattern: instance_glob, state: systemctl_list_units_all_states)
+  let result = systemd.Systemctl.ListUnits(pattern: instance_glob, state: systemctl_all_unit_states_selector)
   if result.success {
     Present { value: result.stdout }
   } else {

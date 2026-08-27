@@ -23,8 +23,8 @@ module gunbc.scm.status
 
 import std.types { Bool, Int, List, String }
 import v2.std.node { Symbol }
-import gunbc.scm.object_store { ObjectId, ObjectStore, store_contains, object_id_eq }
-import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
+import gunbc.scm.object_store { ObjectId }
+import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
 import gunbc.scm.merge {
   Requirement,
   RequireBinding,
@@ -46,7 +46,7 @@ import gunbc.scm.merge {
 type StatusCheckout
   = NothingCheckedOut
   | CheckedOutCommit { root: ObjectId, message: String }
-  | CheckedOutCommitMissing { root: ObjectId }
+  | CheckedOutCommitMissing { reference: RepositoryCommitRef }
 
 // THREE STATES, NOT TWO, AND THE THIRD IS THE ONE A SURFACE LOSES BY ACCIDENT. It is not enough that
 // a stated absence be distinguishable from a present binding: the load-bearing distinction is from
@@ -82,23 +82,21 @@ type RepositoryStatus {
   staged: List<StagedRole>
 }
 
-fn commit_with_root(commits: List<RepositoryCommit>, root: ObjectId) -> RepositoryCommit? {
-  fold(commits, init: none, f: fn(found, c) {
-    match found {
-      Present { value: _ } => found
-      Absent =>
-        if object_id_eq(left: c.root, right: root) { Present { value: c } } else { none }
-    }
-  })
-}
-
+// THE SELECTION RESOLVES BY REFERENCE, NOT BY ROOT (review 56230). Resolving by root returned the
+// FIRST row carrying it, and `commits` may legitimately hold two rows with one root -- so checking
+// out the second reported the first one's message. A root is not a unique key into this list;
+// the reference is, which is why gunbc.scm.repository_envelope now carries one.
+//
+// CheckedOutCommitMissing names the REFERENCE rather than a root, because when a selection does not
+// resolve there is no commit and therefore no root to name. Reporting one would have meant either
+// inventing it or echoing back a value that denotes nothing here.
 fn status_checkout_of(envelope: RepositoryEnvelope) -> StatusCheckout {
   match envelope.checked_out {
     Absent => NothingCheckedOut
-    Present { value: root } =>
-      match commit_with_root(commits: envelope.commits, root: root) {
-        Present { value: c } => CheckedOutCommit { root: root, message: c.message }
-        Absent => CheckedOutCommitMissing { root: root }
+    Present { value: reference } =>
+      match commit_at_reference(commits: envelope.commits, reference: reference) {
+        Present { value: c } => CheckedOutCommit { root: c.root, message: c.message }
+        Absent => CheckedOutCommitMissing { reference: reference }
       }
   }
 }
@@ -128,7 +126,7 @@ fn status_checkout_is_resolvable(status: RepositoryStatus) -> Bool {
   match status.checkout {
     CheckedOutCommit { root: _, message: _ } => true
     NothingCheckedOut => true
-    CheckedOutCommitMissing { root: _ } => false
+    CheckedOutCommitMissing { reference: _ } => false
   }
 }
 
@@ -143,7 +141,7 @@ fn render_status_checkout(checkout: StatusCheckout) -> String {
   match checkout {
     NothingCheckedOut => "nothing checked out"
     CheckedOutCommit { root: _, message: message } => concat("on commit: ", message)
-    CheckedOutCommitMissing { root: _ } =>
+    CheckedOutCommitMissing { reference: _ } =>
       "the checked-out selection names a commit this repository does not contain"
   }
 }
