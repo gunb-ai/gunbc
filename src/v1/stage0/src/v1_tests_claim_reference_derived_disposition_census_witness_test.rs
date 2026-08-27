@@ -6,7 +6,7 @@ pub use crate::v1_compiler_compile::compile_to_resolved;
 pub use crate::v1_compiler_compile::SourceFile;
 use crate::v1_compiler_emit_rust::ReferenceDerivedCandidateDisposition::{
     CandidateExportProofFailed, CandidateOwnModule, CandidateRegistryAbsent, CandidateSurvived,
-    CandidateVariantDelegatedToParent,
+    CandidateVariantDelegatedToParent, CandidateVariantParentUnresolved,
 };
 pub use crate::v1_compiler_emit_rust::{
     build_module_index, emit_rust_reference_derived_census, emit_rust_reference_derived_rows,
@@ -164,11 +164,19 @@ pub fn census_counts_each_arm_separately() -> bool {
                     },
                 ),
             }),
+            Rc::new(ReferenceDerivedCandidateRow {
+                module_name: "m".to_string(),
+                name: "f".to_string(),
+                disposition: Rc::new(
+                    ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved,
+                ),
+            }),
         ]);
         let census = reference_derived_census(rows.clone());
-        ((((((census.candidates.clone() == 5) && (census.survived.clone() == 1))
+        (((((((census.candidates.clone() == 6) && (census.survived.clone() == 1))
             && (census.own_module.clone() == 1))
             && (census.variant_delegated_to_parent.clone() == 1))
+            && (census.variant_parent_unresolved.clone() == 1))
             && (census.registry_absent.clone() == 1))
             && (census.export_proof_failed.clone() == 1))
     }
@@ -224,6 +232,60 @@ pub fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> bool {
             parent_enum: "E".to_string(),
         },
     ))
+}
+
+pub fn ambiguous_parent_red_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE REACHABLE HALF of the unresolved-parent arm, and the reason it is not merely a tidier name. derive_variant_to_enum inserts the EMPTY STRING as the parent when one variant name appears in two enums, so the lookup answers Present with a parent naming nothing. Without this arm that produced CandidateVariantDelegatedToParent { parent_enum: \"\" } -- a delegation to no one, wearing the payload that was supposed to make delegation honest. This fixture authors the collision directly and is RED against the arm-less form.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn fixture_colliding_variant_type_summaries() -> Rc<HashMap<String, Rc<TypeSummary>>> {
+    v1_rt::rc_map_insert(
+        fixture_variant_type_summaries(),
+        "F".to_string(),
+        Rc::new(TypeSummary {
+            name: "F".to_string(),
+            repr: Rc::new(TypeRepr::EnumRepr { unit_only: true }),
+            field_summaries: v1_rt::rc_empty_map::<String, Rc<FieldSummary>>(),
+            field_type_map: v1_rt::rc_empty_map::<String, String>(),
+            field_import_surface_names: Rc::new(vec![]),
+            variant_name_set: v1_rt::rc_map_insert(
+                v1_rt::rc_empty_map::<String, bool>(),
+                "V".to_string(),
+                true,
+            ),
+            generic_param_names: Rc::new(vec![]),
+            has_fn_fields: false,
+        }),
+    )
+}
+
+pub fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> bool {
+    (reference_derived_candidate_disposition(
+        "V".to_string(),
+        "fixture.consumer".to_string(),
+        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        Rc::new(vec![]),
+        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        build_module_index(Rc::new(vec![])),
+        fixture_colliding_variant_type_summaries(),
+        v1_rt::rc_map_insert(
+            v1_rt::rc_empty_map::<String, String>(),
+            "V".to_string(),
+            "".to_string(),
+        ),
+    ) == Rc::new(ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved))
+}
+
+pub fn an_unresolved_parent_is_not_reported_as_registry_absent() -> bool {
+    (reference_derived_disposition_name(Rc::new(
+        ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved,
+    )) != "registry-absent".to_string())
 }
 
 pub fn non_variant_name_still_answers_registry_absent() -> bool {

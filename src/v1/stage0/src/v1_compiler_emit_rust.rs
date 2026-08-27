@@ -7758,6 +7758,7 @@ pub enum ReferenceDerivedCandidateDisposition {
     CandidateSurvived { provider_module: String },
     CandidateOwnModule,
     CandidateVariantDelegatedToParent { parent_enum: String },
+    CandidateVariantParentUnresolved,
     CandidateRegistryAbsent,
     CandidateExportProofFailed { provider_module: String },
 }
@@ -7782,12 +7783,18 @@ pub fn reference_derived_candidate_disposition(
 ) -> Rc<ReferenceDerivedCandidateDisposition> {
     if is_known_variant(type_summaries.clone(), name.clone()) {
         match v1_rt::map_get(&variant_to_enum, name.clone()) {
-            Some(parent) => Rc::new(
-                ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
-                    parent_enum: parent.clone(),
-                },
-            ),
-            None => Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
+            Some(parent) => {
+                if (parent.clone() == "".to_string()) {
+                    Rc::new(ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved)
+                } else {
+                    Rc::new(
+                        ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
+                            parent_enum: parent.clone(),
+                        },
+                    )
+                }
+            }
+            None => Rc::new(ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved),
         }
     } else {
         match v1_rt::map_get(&registry, name.clone()) {
@@ -7850,6 +7857,9 @@ pub fn reference_derived_row_diagnostics(
                         parent_enum: _,
                         ..
                     } => Rc::new(vec![]),
+                    ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved => {
+                        Rc::new(vec![])
+                    }
                     ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
                         Rc::new(vec![])
                     }
@@ -7885,6 +7895,9 @@ pub fn reference_derived_disposition_name(
             parent_enum: _,
             ..
         } => "variant-delegated-to-parent".to_string(),
+        ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved => {
+            "variant-parent-unresolved".to_string()
+        }
         ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
             "registry-absent".to_string()
         }
@@ -7901,6 +7914,7 @@ pub struct ReferenceDerivedCensus {
     pub survived: i64,
     pub own_module: i64,
     pub variant_delegated_to_parent: i64,
+    pub variant_parent_unresolved: i64,
     pub registry_absent: i64,
     pub export_proof_failed: i64,
 }
@@ -7939,6 +7953,18 @@ pub fn reference_derived_census(
             for r in rows.iter().cloned() {
                 if (reference_derived_disposition_name(r.disposition.clone())
                     == "variant-delegated-to-parent".to_string())
+                {
+                    __result.push(r);
+                }
+            }
+            __result
+        })
+        .len() as i64),
+        variant_parent_unresolved: (Rc::new({
+            let mut __result = Vec::new();
+            for r in rows.iter().cloned() {
+                if (reference_derived_disposition_name(r.disposition.clone())
+                    == "variant-parent-unresolved".to_string())
                 {
                     __result.push(r);
                 }
