@@ -131,7 +131,7 @@ fn token_stream_peek(stream: TokenStream, offset: Int) -> Token? {
 type ParseContext {
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
-  occurrence_allocator: OccurrenceIdAllocator?
+  occurrence_allocator: OccurrenceIdAllocator
   occurrence_index: OccurrenceIndex?
   declaration_occurrences: List<DeclarationOccurrence>?
   reference_occurrences: List<ReferenceOccurrence>?
@@ -189,24 +189,17 @@ type ParsedNodeIdentityMint {
 
 fn mint_parsed_node_identity(ctx: ParseContext) -> ParsedNodeIdentityMint {
   let allocated = alloc_occurrence_id(
-    alloc: parse_context_occurrence_allocator(ctx: ctx)
+    alloc: ctx.occurrence_allocator
   )
   ParsedNodeIdentityMint {
     identity: node_occurrence_identity_minted(id: allocated.id),
     ctx: parse_context_with_occurrence_state(
       ctx: ctx,
-      occurrence_allocator: Present { value: allocated.alloc },
+      occurrence_allocator: allocated.alloc,
       occurrence_index: ctx.occurrence_index,
       declaration_occurrences: ctx.declaration_occurrences,
       reference_occurrences: ctx.reference_occurrences
     ),
-  }
-}
-
-fn parse_context_occurrence_allocator(ctx: ParseContext) -> OccurrenceIdAllocator {
-  match ctx.occurrence_allocator {
-    Present { value: allocator } => allocator
-    Absent => occurrence_id_allocator_initial()
   }
 }
 
@@ -237,7 +230,7 @@ fn parse_context_reference_occurrences(
 
 fn parse_context_with_occurrence_state(
   ctx: ParseContext,
-  occurrence_allocator: OccurrenceIdAllocator?,
+  occurrence_allocator: OccurrenceIdAllocator,
   occurrence_index: OccurrenceIndex?,
   declaration_occurrences: List<DeclarationOccurrence>?,
   reference_occurrences: List<ReferenceOccurrence>?
@@ -1260,12 +1253,10 @@ fn occurrence_allocator_after_node(
 fn parse_context_after_node(ctx: ParseContext, node: Node) -> ParseContext {
   parse_context_with_occurrence_state(
     ctx: ctx,
-    occurrence_allocator: Present {
-      value: occurrence_allocator_after_node(
-        alloc: parse_context_occurrence_allocator(ctx: ctx),
-        node: node
-      ),
-    },
+    occurrence_allocator: occurrence_allocator_after_node(
+      alloc: ctx.occurrence_allocator,
+      node: node
+    ),
     occurrence_index: ctx.occurrence_index,
     declaration_occurrences: ctx.declaration_occurrences,
     reference_occurrences: ctx.reference_occurrences
@@ -1275,12 +1266,10 @@ fn parse_context_after_node(ctx: ParseContext, node: Node) -> ParseContext {
 fn parse_context_after_node_list(ctx: ParseContext, nodes: List<Node>) -> ParseContext {
   parse_context_with_occurrence_state(
     ctx: ctx,
-    occurrence_allocator: Present {
-      value: occurrence_allocator_after_node_list(
-        alloc: parse_context_occurrence_allocator(ctx: ctx),
-        nodes: nodes
-      ),
-    },
+    occurrence_allocator: occurrence_allocator_after_node_list(
+      alloc: ctx.occurrence_allocator,
+      nodes: nodes
+    ),
     occurrence_index: ctx.occurrence_index,
     declaration_occurrences: ctx.declaration_occurrences,
     reference_occurrences: ctx.reference_occurrences
@@ -1290,12 +1279,10 @@ fn parse_context_after_node_list(ctx: ParseContext, nodes: List<Node>) -> ParseC
 fn parse_context_after_optional_node(ctx: ParseContext, node: Node?) -> ParseContext {
   parse_context_with_occurrence_state(
     ctx: ctx,
-    occurrence_allocator: Present {
-      value: occurrence_allocator_after_optional_node(
-        alloc: parse_context_occurrence_allocator(ctx: ctx),
-        node: node
-      ),
-    },
+    occurrence_allocator: occurrence_allocator_after_optional_node(
+      alloc: ctx.occurrence_allocator,
+      node: node
+    ),
     occurrence_index: ctx.occurrence_index,
     declaration_occurrences: ctx.declaration_occurrences,
     reference_occurrences: ctx.reference_occurrences
@@ -1305,12 +1292,10 @@ fn parse_context_after_optional_node(ctx: ParseContext, node: Node?) -> ParseCon
 fn parse_context_after_inferred_node(ctx: ParseContext, inferred: InferredNode?) -> ParseContext {
   parse_context_with_occurrence_state(
     ctx: ctx,
-    occurrence_allocator: Present {
-      value: occurrence_allocator_after_inferred_node(
-        alloc: parse_context_occurrence_allocator(ctx: ctx),
-        inferred: inferred
-      ),
-    },
+    occurrence_allocator: occurrence_allocator_after_inferred_node(
+      alloc: ctx.occurrence_allocator,
+      inferred: inferred
+    ),
     occurrence_index: ctx.occurrence_index,
     declaration_occurrences: ctx.declaration_occurrences,
     reference_occurrences: ctx.reference_occurrences
@@ -1753,9 +1738,7 @@ fn parse_with_table_at(
   let ctx = ParseContext {
     source_indices: source_indices,
     intern_table: pre_interned,
-    occurrence_allocator: Present {
-      value: occurrence_allocator,
-    },
+    occurrence_allocator: occurrence_allocator,
     occurrence_index: Present {
       value: OccurrenceIndex { entries: [] },
     },
@@ -1767,7 +1750,7 @@ fn parse_with_table_at(
   if has_err(err: r.err) {
     let occurrence_transport = occurrence_transport_from_parse_context(ctx: r.ctx)
     let occurrence_allocator = occurrence_allocator_after_index(
-      alloc: parse_context_occurrence_allocator(ctx: r.ctx),
+      alloc: r.ctx.occurrence_allocator,
       entries: occurrence_transport.index.entries
     )
     ParseWithTableResult {
@@ -1790,7 +1773,7 @@ fn parse_with_table_at(
     )
     let occurrence_transport = occurrence_transport_from_parse_context(ctx: stamped.ctx)
     let occurrence_allocator = occurrence_allocator_after_index(
-      alloc: parse_context_occurrence_allocator(ctx: stamped.ctx),
+      alloc: stamped.ctx.occurrence_allocator,
       entries: occurrence_transport.index.entries
     )
     ParseWithTableResult {
@@ -4392,6 +4375,7 @@ fn parse_block(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r = parse_stmts(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let stmts = r.stmts
+  let ctx = parse_context_after_node_list(ctx: r.ctx, nodes: stmts)
   let tokens = skip_newlines(tokens: r.tokens)
 
   let r = expect(tokens: tokens, expected: ExpectRBrace)
@@ -4578,6 +4562,7 @@ fn parse_expr_bp(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -> ExprRes
 }
 
 fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -> ExprResult {
+  let ctx = parse_context_after_node(ctx: ctx, node: lhs)
   if tok_is_eof(tok: token_stream_first(stream: tokens)) {
     ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }
   } else {
@@ -5177,6 +5162,7 @@ fn parse_match(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r = parse_expr_no_brace(tokens: r.tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
   let scrutinee = r.expr
+  let ctx = parse_context_after_node(ctx: r.ctx, node: scrutinee)
 
   let r = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectLBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -5184,6 +5170,7 @@ fn parse_match(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let r = parse_match_arms(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let arms = r.arms
+  let ctx = parse_context_after_node_list(ctx: r.ctx, nodes: arms)
 
   let r = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -5223,6 +5210,7 @@ fn parse_expr_bp_no_brace(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -
 }
 
 fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -> ExprResult {
+  let ctx = parse_context_after_node(ctx: ctx, node: lhs)
   let tok = token_stream_first(stream: tokens)
   if tok_is_eof(tok: tok) || tok_is_lbrace(tok: tok) {
     ExprResult { expr: lhs, tokens: tokens, ctx: ctx, err: none }

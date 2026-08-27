@@ -144,7 +144,7 @@ pub fn token_stream_peek(stream: Rc<TokenStream>, offset: i64) -> Option<Rc<Toke
 pub struct ParseContext {
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
-    pub occurrence_allocator: Option<OccurrenceIdAllocator>,
+    pub occurrence_allocator: OccurrenceIdAllocator,
     pub occurrence_index: Option<Rc<OccurrenceIndex>>,
     pub declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
     pub reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
@@ -224,24 +224,17 @@ pub struct ParsedNodeIdentityMint {
 
 pub fn mint_parsed_node_identity(ctx: Rc<ParseContext>) -> Rc<ParsedNodeIdentityMint> {
     {
-        let allocated = alloc_occurrence_id(parse_context_occurrence_allocator(ctx.clone()));
+        let allocated = alloc_occurrence_id(ctx.occurrence_allocator.clone());
         Rc::new(ParsedNodeIdentityMint {
             identity: node_occurrence_identity_minted(allocated.id.clone()),
             ctx: parse_context_with_occurrence_state(
                 ctx.clone(),
-                Some(allocated.alloc.clone()),
+                allocated.alloc.clone(),
                 ctx.occurrence_index.clone(),
                 ctx.declaration_occurrences.clone(),
                 ctx.reference_occurrences.clone(),
             ),
         })
-    }
-}
-
-pub fn parse_context_occurrence_allocator(ctx: Rc<ParseContext>) -> OccurrenceIdAllocator {
-    match ctx.occurrence_allocator.clone() {
-        Some(allocator) => allocator.clone(),
-        None => occurrence_id_allocator_initial(),
     }
 }
 
@@ -274,7 +267,7 @@ pub fn parse_context_reference_occurrences(
 
 pub fn parse_context_with_occurrence_state(
     ctx: Rc<ParseContext>,
-    occurrence_allocator: Option<OccurrenceIdAllocator>,
+    occurrence_allocator: OccurrenceIdAllocator,
     occurrence_index: Option<Rc<OccurrenceIndex>>,
     declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
     reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
@@ -2730,10 +2723,7 @@ pub fn occurrence_allocator_after_node(
 pub fn parse_context_after_node(ctx: Rc<ParseContext>, node: Rc<Node>) -> Rc<ParseContext> {
     parse_context_with_occurrence_state(
         ctx.clone(),
-        Some(occurrence_allocator_after_node(
-            parse_context_occurrence_allocator(ctx.clone()),
-            node.clone(),
-        )),
+        occurrence_allocator_after_node(ctx.occurrence_allocator.clone(), node.clone()),
         ctx.occurrence_index.clone(),
         ctx.declaration_occurrences.clone(),
         ctx.reference_occurrences.clone(),
@@ -2746,10 +2736,7 @@ pub fn parse_context_after_node_list(
 ) -> Rc<ParseContext> {
     parse_context_with_occurrence_state(
         ctx.clone(),
-        Some(occurrence_allocator_after_node_list(
-            parse_context_occurrence_allocator(ctx.clone()),
-            nodes.clone(),
-        )),
+        occurrence_allocator_after_node_list(ctx.occurrence_allocator.clone(), nodes.clone()),
         ctx.occurrence_index.clone(),
         ctx.declaration_occurrences.clone(),
         ctx.reference_occurrences.clone(),
@@ -2762,10 +2749,7 @@ pub fn parse_context_after_optional_node(
 ) -> Rc<ParseContext> {
     parse_context_with_occurrence_state(
         ctx.clone(),
-        Some(occurrence_allocator_after_optional_node(
-            parse_context_occurrence_allocator(ctx.clone()),
-            node.clone(),
-        )),
+        occurrence_allocator_after_optional_node(ctx.occurrence_allocator.clone(), node.clone()),
         ctx.occurrence_index.clone(),
         ctx.declaration_occurrences.clone(),
         ctx.reference_occurrences.clone(),
@@ -2778,10 +2762,10 @@ pub fn parse_context_after_inferred_node(
 ) -> Rc<ParseContext> {
     parse_context_with_occurrence_state(
         ctx.clone(),
-        Some(occurrence_allocator_after_inferred_node(
-            parse_context_occurrence_allocator(ctx.clone()),
+        occurrence_allocator_after_inferred_node(
+            ctx.occurrence_allocator.clone(),
             inferred.clone(),
-        )),
+        ),
         ctx.occurrence_index.clone(),
         ctx.declaration_occurrences.clone(),
         ctx.reference_occurrences.clone(),
@@ -3327,7 +3311,7 @@ pub fn parse_with_table_at(
         let ctx = Rc::new(ParseContext {
             source_indices: source_indices.clone(),
             intern_table: pre_interned.clone(),
-            occurrence_allocator: Some(occurrence_allocator.clone()),
+            occurrence_allocator: occurrence_allocator.clone(),
             occurrence_index: Some(Rc::new(OccurrenceIndex {
                 entries: Rc::new(vec![]),
             })),
@@ -3340,7 +3324,7 @@ pub fn parse_with_table_at(
             {
                 let occurrence_transport = occurrence_transport_from_parse_context(r.ctx.clone());
                 let occurrence_allocator = occurrence_allocator_after_index(
-                    parse_context_occurrence_allocator(r.ctx.clone()),
+                    r.ctx.clone().occurrence_allocator.clone(),
                     occurrence_transport.index.clone().entries.clone(),
                 );
                 Rc::new(ParseWithTableResult {
@@ -3369,7 +3353,7 @@ pub fn parse_with_table_at(
                 let occurrence_transport =
                     occurrence_transport_from_parse_context(stamped.ctx.clone());
                 let occurrence_allocator = occurrence_allocator_after_index(
-                    parse_context_occurrence_allocator(stamped.ctx.clone()),
+                    stamped.ctx.clone().occurrence_allocator.clone(),
                     occurrence_transport.index.clone().entries.clone(),
                 );
                 Rc::new(ParseWithTableResult {
@@ -11823,6 +11807,7 @@ pub fn parse_block(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRes
             });
         }
         let stmts = r.stmts.clone();
+        let ctx = parse_context_after_node_list(r.ctx.clone(), stmts.clone());
         let tokens = skip_newlines(r.tokens.clone());
         let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
         if has_err(r.err.clone()) {
@@ -12225,6 +12210,7 @@ pub fn parse_expr_loop(
     mut min_bp: i64,
 ) -> Rc<ExprResult> {
     loop {
+        ctx = parse_context_after_node(ctx.clone(), lhs.clone());
         if tok_is_eof(token_stream_first(tokens.clone())) {
             break Rc::new(ExprResult {
                 expr: lhs.clone(),
@@ -13919,6 +13905,7 @@ pub fn parse_match(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRes
             return r;
         }
         let scrutinee = r.expr.clone();
+        let ctx = parse_context_after_node(r.ctx.clone(), scrutinee.clone());
         let r = expect(
             skip_newlines(r.tokens.clone()),
             Rc::new(ExpectedToken::ExpectLBrace),
@@ -13941,6 +13928,7 @@ pub fn parse_match(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRes
             });
         }
         let arms = r.arms.clone();
+        let ctx = parse_context_after_node_list(r.ctx.clone(), arms.clone());
         let r = expect(
             skip_newlines(r.tokens.clone()),
             Rc::new(ExpectedToken::ExpectRBrace),
@@ -14031,6 +14019,7 @@ pub fn parse_expr_loop_no_brace(
     mut min_bp: i64,
 ) -> Rc<ExprResult> {
     loop {
+        ctx = parse_context_after_node(ctx.clone(), lhs.clone());
         let tok = token_stream_first(tokens.clone());
         if (tok_is_eof(tok.clone()) || tok_is_lbrace(tok.clone())) {
             break Rc::new(ExprResult {
