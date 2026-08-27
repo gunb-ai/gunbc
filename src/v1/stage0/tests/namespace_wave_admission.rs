@@ -15,8 +15,9 @@
 use std::path::{Path, PathBuf};
 
 use v1_compiler::cli_run::namespace_wave_admission::{
-    adjudicate, base_records, diff_sides, disposition_label, report_unadjudicated, DeltaSubject,
-    NamespaceDeltaDisposition, TransitionAdmission, WaveAdmissionReport,
+    adjudicate, base_records, diff_sides, disposition_label, report_unadjudicated,
+    AdmissionSubject, DeltaSubject, NamespaceDeltaDisposition, TransitionAdmission,
+    WaveAdmissionReport,
 };
 use v1_compiler::cli_run::run_dag_parse_sweep;
 
@@ -122,6 +123,17 @@ const CONSUMER_IMPORTS_OTHER: &str =
 const CONSUMER_IMPORTS_BOTH: &str = "module probe.consumer\n\nimport probe.home { widget }\nimport probe.other { widget }\n\nfn use_it() -> String { widget }\n";
 const CONSUMER_IMPORTS_NOTHING: &str =
     "module probe.consumer\n\nfn use_it() -> String { widget }\n";
+// THE POOL-COINCIDENCE PAIR. The consumer's own source is BYTE-IDENTICAL on both sides and
+// reaches `probe.home` through a blanket import; the target is what grows `widget`. That is
+// the only way to author a `0 -> 1` whose cause is in another module, and it is what
+// separates the coincidence from the authored repair below.
+const HOME_WITHOUT_WIDGET: &str = "module probe.home\n\ndata unrelated: String = \"u\"\n";
+const CONSUMER_BLANKET_HOME: &str =
+    "module probe.consumer\n\nimport probe.home\n\nfn use_it() -> String { widget }\n";
+// THE SAME CONSUMER PLUS ONE UNRELATED NEW BLANKET IMPORT. `probe.other` here does NOT supply
+// `widget`, so nothing about this addition can explain `widget` beginning to resolve.
+const OTHER_WITHOUT_WIDGET: &str = "module probe.other\n\ndata gadget: String = \"g\"\n";
+const CONSUMER_BLANKET_HOME_AND_OTHER: &str = "module probe.consumer\n\nimport probe.home\nimport probe.other\n\nfn use_it() -> String { widget }\n";
 
 // ── THE POSITIVE CONTROL: an admitted run over a real, non-empty comparison ──
 
@@ -274,10 +286,109 @@ fn a_spelling_that_stops_denoting_anything_refuses_as_new_unresolvedness() {
     assert!(!report_unadjudicated(&report).is_empty());
 }
 
+// ── `0 -> 1` IS TWO STATES, AND THESE TWO ARMS ARE THE DISCRIMINATING PAIR ──
+//
+// The two fixtures differ in ONE fact: which side's author wrote something. In the first the
+// consumer's own source is unchanged and the target grew the name; in the second the target is
+// unchanged and the consumer authored the import. Both are `0 -> 1` at the set grain, and
+// reading them as one symbol is what made the wall refuse the repair it exists to want.
+//
+// THE SECOND ARM WAS THE FIRST ARM'S FIXTURE UNTIL 2026-08-27. This file asserted
+// NewPoolCoincidenceResolution over a head that authored `import probe.home { widget }` — it
+// planted the repair and named it the coincidence, which is why the conflation survived
+// review. Re-deriving it required authoring a coincidence that is actually one.
+
 #[test]
-fn a_spelling_that_begins_denoting_something_refuses_as_pool_coincidence() {
+fn a_spelling_the_target_began_supplying_refuses_as_pool_coincidence() {
     let report = compare(
         "coincidence",
+        &[
+            ("home.dag", HOME_WITHOUT_WIDGET),
+            ("consumer.dag", CONSUMER_BLANKET_HOME),
+        ],
+        &[("home.dag", HOME), ("consumer.dag", CONSUMER_BLANKET_HOME)],
+    );
+    assert!(
+        dispositions_for(&report, "widget")
+            .contains(&NamespaceDeltaDisposition::NewPoolCoincidenceResolution),
+        "a name the TARGET began supplying, with the consumer's source unchanged, must be \
+         NewPoolCoincidenceResolution, got: {:?}",
+        report.deltas
+    );
+    // AND IT MUST STILL REFUSE. The split adds an auto-admitted arm; if it had widened this
+    // one the wall would have lost the class it was built for.
+    assert!(
+        !report_unadjudicated(&report).is_empty(),
+        "a pool coincidence must remain unadjudicated, got: {:?}",
+        report.deltas
+    );
+}
+
+#[test]
+fn an_unrelated_new_blanket_import_does_not_launder_a_pool_coincidence() {
+    // THE FAIL-OPEN THIS ARM EXISTS TO REFUSE (review 56882, on gunbc#9495). A blanket import
+    // names no leaf, so a leaf-blind "any new blanket target" test would read this unrelated
+    // addition as authorship of `widget` and auto-admit the coincidence beside it. The target
+    // that grew `widget` is `probe.home`, whose blanket import is UNCHANGED; the target the
+    // author added is `probe.other`, which does not supply `widget` at all.
+    let report = compare(
+        "unrelated_blanket",
+        &[
+            ("home.dag", HOME_WITHOUT_WIDGET),
+            ("other.dag", OTHER_WITHOUT_WIDGET),
+            ("consumer.dag", CONSUMER_BLANKET_HOME),
+        ],
+        &[
+            ("home.dag", HOME),
+            ("other.dag", OTHER_WITHOUT_WIDGET),
+            ("consumer.dag", CONSUMER_BLANKET_HOME_AND_OTHER),
+        ],
+    );
+    assert!(
+        dispositions_for(&report, "widget")
+            .contains(&NamespaceDeltaDisposition::NewPoolCoincidenceResolution),
+        "a pool coincidence beside an unrelated new blanket import must stay \
+         NewPoolCoincidenceResolution, got: {:?}",
+        report.deltas
+    );
+    assert!(
+        !report_unadjudicated(&report).is_empty(),
+        "it must still refuse, got: {:?}",
+        report.deltas
+    );
+}
+
+#[test]
+fn a_new_blanket_import_that_does_supply_the_leaf_is_an_authored_reference_resolution() {
+    // THE ARM'S OTHER HALF, so the scoping above is not just a narrowing to nothing: when the
+    // NEW blanket target is the one supplying the leaf, the author did write the claim that
+    // resolves it, and it auto-admits like any other authored reference.
+    let report = compare(
+        "supplying_blanket",
+        &[
+            ("home.dag", HOME),
+            ("consumer.dag", CONSUMER_IMPORTS_NOTHING),
+        ],
+        &[("home.dag", HOME), ("consumer.dag", CONSUMER_BLANKET_HOME)],
+    );
+    assert!(
+        dispositions_for(&report, "widget")
+            .contains(&NamespaceDeltaDisposition::AuthoredReferenceResolution),
+        "a new blanket import that supplies the leaf must be AuthoredReferenceResolution, \
+         got: {:?}",
+        report.deltas
+    );
+    assert!(
+        report_unadjudicated(&report).is_empty(),
+        "it must auto-admit, got: {:?}",
+        report_unadjudicated(&report)
+    );
+}
+
+#[test]
+fn a_spelling_this_module_authored_the_import_for_is_an_authored_reference_resolution() {
+    let report = compare(
+        "authored_resolution",
         &[
             ("home.dag", HOME),
             ("consumer.dag", CONSUMER_IMPORTS_NOTHING),
@@ -286,9 +397,17 @@ fn a_spelling_that_begins_denoting_something_refuses_as_pool_coincidence() {
     );
     assert!(
         dispositions_for(&report, "widget")
-            .contains(&NamespaceDeltaDisposition::NewPoolCoincidenceResolution),
-        "a name that began denoting something must be NewPoolCoincidenceResolution, got: {:?}",
+            .contains(&NamespaceDeltaDisposition::AuthoredReferenceResolution),
+        "a dangling name resolved by an import this module's own author wrote must be \
+         AuthoredReferenceResolution, got: {:?}",
         report.deltas
+    );
+    // THE WHOLE POINT OF THE SPLIT: this is the shape of gunbc#9485, and it must merge without
+    // an admission row. Asserting the disposition alone would leave the wall refusing it.
+    assert!(
+        report_unadjudicated(&report).is_empty(),
+        "an authored-reference resolution must be auto-admitted, got: {:?}",
+        report_unadjudicated(&report)
     );
 }
 
@@ -314,10 +433,10 @@ fn an_exact_transition_admission_admits_that_delta_and_only_that_delta() {
 
     let admissions = [TransitionAdmission {
         label: "fixture-transition",
-        subject: DeltaSubject::Binding {
-            module: "probe.consumer".to_string(),
-            in_declaration: "use_it".to_string(),
-            spelling: "widget".to_string(),
+        subject: AdmissionSubject::Binding {
+            module: "probe.consumer",
+            in_declaration: "use_it",
+            spelling: "widget",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     }];
@@ -333,6 +452,129 @@ fn an_exact_transition_admission_admits_that_delta_and_only_that_delta() {
     assert!(
         admitted.stale_admissions.is_empty(),
         "an admission that matched must not also be reported stale"
+    );
+}
+
+// THE ROSTER IS INHABITABLE, AND THIS TEST IS THE ONLY THING THAT SAYS SO.
+//
+// The two arms above prove the MATCHING mechanism works, and they proved it while the production
+// roster could not hold a single row. They build their admissions in a `let` with `.to_string()`,
+// so nothing in them ever touched the constraint that actually bound
+// `NAMESPACE_TRANSITION_ADMISSIONS`: it is a `const`, and `String::from` is not callable there.
+// Every authorable production row had to name the empty module, which matches no delta.
+//
+// SO THE COVERAGE MADE THE DEFECT MORE HIDDEN RATHER THAN LESS. A reader auditing the admission
+// path found two thorough tests, green, exercising exact-match and wrong-subject-refuses — and
+// none of it was evidence about the roster a human would actually author. That is the shape where
+// a fixture cannot see the carrier it is a fixture for.
+//
+// THE DISCRIMINATING PROPERTY IS COMPILATION, NOT THE ASSERTION, and the boundary is exact rather
+// than "a const row would not compile". Measured against main's own types, both arms:
+//
+//   module: String::from("probe.consumer")  ->  error[E0015]: cannot call non-const associated
+//                                               function `<String as From<&str>>::from` in
+//                                               constants — three times, one per field
+//   module: String::new()                   ->  compiles clean, emits metadata
+//
+// So a const row was always AUTHORABLE; what no const row could do was NAME A REAL MODULE. Stating
+// it as "the roster could not hold a row" would have been the overclaim — it held exactly one
+// shape, the shape that matches nothing, and the arm below pins what that shape does.
+//
+// This test stays enrolled after the climb rather than dissolving with the defect, because what it
+// now guards is that the roster REMAINS authorable AT A REAL MODULE NAME (DESIGN §4b — a climb
+// deletes the redundant production machinery, never the evidence).
+const AUTHORED_LIKE_PRODUCTION: &[TransitionAdmission] = &[TransitionAdmission {
+    label: "authored-in-a-const",
+    subject: AdmissionSubject::Binding {
+        module: "probe.consumer",
+        in_declaration: "use_it",
+        spelling: "widget",
+    },
+    disposition: NamespaceDeltaDisposition::TargetChanged,
+}];
+
+#[test]
+fn a_row_authored_in_a_const_admits_its_delta_exactly_as_a_runtime_row_would() {
+    let base = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_HOME),
+    ];
+    let head = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+    ];
+
+    // THE POSITIVE CONTROL FIRST: without it, an admitted result is equally consistent with this
+    // pair producing no delta at all, and the test would pass while proving nothing.
+    let refused = compare("const_admission_before", &base, &head);
+    assert!(
+        !report_unadjudicated(&refused).is_empty(),
+        "PLANT NEVER REACHED: the un-admitted arm must refuse, or admitting below proves nothing"
+    );
+
+    let admitted = compare_with(
+        "const_admission_after",
+        &base,
+        &head,
+        AUTHORED_LIKE_PRODUCTION,
+    );
+    assert!(
+        admitted
+            .deltas
+            .iter()
+            .any(|d| d.admitted_by.as_deref() == Some("authored-in-a-const")),
+        "a row authored in a const must admit its exact subject, got: {:?}",
+        admitted.deltas
+    );
+    assert!(
+        admitted.stale_admissions.is_empty(),
+        "a const-authored admission that matched must not also be reported stale"
+    );
+}
+
+// AN EMPTY-MODULE ROW REFUSES, LOUDLY, AND THIS ARM RECORDS THAT THE OLD DEFECT WAS NEVER SILENT.
+//
+// Before `AdmissionSubject`, the only authorable row named the empty module. It was reported as an
+// escape hatch that accepts a row and silently matches nothing; that reading was withdrawn, and
+// this is the executing evidence for why. Such a row matches no delta, lands in
+// `stale_admissions`, and the ADMITTED arm is conjoined on that list being empty — so it REFUSES,
+// with its own named cause. The defect was a hatch with no working position, never one that lied.
+#[test]
+fn a_row_naming_the_empty_module_refuses_rather_than_admitting_silently() {
+    let base = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_HOME),
+    ];
+    let head = [
+        ("home.dag", HOME),
+        ("other.dag", OTHER),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+    ];
+    let admissions = [TransitionAdmission {
+        label: "names-the-empty-module",
+        subject: AdmissionSubject::Binding {
+            module: "",
+            in_declaration: "",
+            spelling: "",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    }];
+    let report = compare_with("empty_module_row", &base, &head, &admissions);
+    assert!(
+        report.deltas.iter().all(|d| d.admitted_by.is_none()),
+        "a row naming the empty module must admit nothing, got: {:?}",
+        report.deltas
+    );
+    assert!(
+        report
+            .stale_admissions
+            .iter()
+            .any(|s| s.contains("names-the-empty-module")),
+        "an unmatched row must be reported stale BY LABEL, or its refusal is unattributable: {:?}",
+        report.stale_admissions
     );
 }
 
@@ -353,10 +595,10 @@ fn an_admission_naming_a_different_subject_does_not_admit_and_reports_stale() {
     // failure the ruling's "exact operator-authored transition admission" forbids.
     let admissions = [TransitionAdmission {
         label: "wrong-subject",
-        subject: DeltaSubject::Binding {
-            module: "probe.consumer".to_string(),
-            in_declaration: "use_it".to_string(),
-            spelling: "gadget".to_string(),
+        subject: AdmissionSubject::Binding {
+            module: "probe.consumer",
+            in_declaration: "use_it",
+            spelling: "gadget",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     }];

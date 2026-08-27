@@ -1,7 +1,7 @@
 module gunbc.plans.wave2_prep_design
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote, cell, row }
 
@@ -196,6 +196,7 @@ fn wave2_prep_design_body() -> List<MarkdownBlock> {
 }
 
 data wave2_prep_design_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "wave2-prep-design",
   title: "Wave 2 prep — module-flip census, FLAG E row-fold, SymbolIndex dependency map",
   body: wave2_prep_design_body(),

@@ -673,8 +673,11 @@ fn run() -> Result<ExitCode, ExitCode> {
                 "required-ci: phase emit-compile (one entry's emitted closure, compiled, \
                  with its own mutation-established red)"
             );
-            match v1_compiler::cli_run::run_required_emit_compile(&source_roots) {
-                Ok(outcomes) => {
+            match v1_compiler::cli_run::required_ci_emit_compile_probe_root().and_then(|root| {
+                v1_compiler::cli_run::run_required_emit_compile(&source_roots, &root)
+                    .map(|outcomes| (outcomes, root))
+            }) {
+                Ok((outcomes, probe_root)) => {
                     let mut not_passed = 0usize;
                     for outcome in &outcomes {
                         eprintln!(
@@ -712,6 +715,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     let (report, retention_error) = v1_compiler::cli_run::emit_compile_report(
                         &outcomes,
                         &source_roots,
+                        &probe_root,
                         "required-ci: emit-compile",
                     );
                     for line in report {
@@ -843,6 +847,120 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("partition-crates");
         }
 
+        // PHASE — the committed generated-artifact population, adjudicated against its
+        // authority. Independent of everything above it; runs whatever they answered.
+        //
+        // WHY THIS PHASE EXISTS. The generated-artifact drift gates went out with the
+        // 2026-08-15 floor cut and sit on the re-add queue that cut declared. In the interval,
+        // `DESIGN.md` and `ROADMAP.md` -- projections of `gunbc.design_document` and
+        // `gunbc.roadmap_authority` -- were maintained BY HAND in lockstep with their
+        // authorities, and gunbc#9392 found the accumulated result the only way an unguarded
+        // artifact is ever found: by accident, 2198 characters into the drift. The producer was
+        // never missing; the caller was.
+        //
+        // ONE POPULATION, NOT A SAMPLE. The roster is asked of the authority
+        // (`committed_generated_artifact_paths`), so an artifact added to the registry is
+        // enrolled here with no edit to this file, and the two counts below -- verdicts reached
+        // and members left unanswered -- are printed side by side so a run that asked nothing
+        // cannot render as a run that found nothing.
+        if required_ci_phase_selected(RequiredCiPhase::GeneratedArtifact, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase generated-artifact (every committed projection vs its authority)"
+            );
+            let outcome = v1_compiler::cli_run::run_generated_artifact_boundary(&source_roots);
+            // THE PHASE'S VERDICT IS THE CARRIER'S, NOT A SECOND DEFINITION OF CLEAN. The two
+            // reporting branches below name WHAT went wrong; whether anything did is decided by
+            // `boundary_is_clean` alone, so a state neither branch happens to describe -- an
+            // empty population being the one review found -- cannot pass by falling between
+            // them. A second predicate here is exactly the fork that lets a ledger and a gate
+            // disagree about one run.
+            let failures_before = phase_failures.len();
+            match &outcome {
+                v1_compiler::cli_run::GeneratedArtifactBoundaryOutcome::CarrierRefused {
+                    cause,
+                } => {
+                    eprintln!(
+                        "required-ci: generated-artifact CarrierRefused cause={cause} \
+                         (the authority declined to answer; nothing was compared)"
+                    );
+                    phase_failures.push(format!("generated-artifact carrier refused: {cause}"));
+                }
+                v1_compiler::cli_run::GeneratedArtifactBoundaryOutcome::Adjudicated {
+                    artifacts,
+                    unadjudicated,
+                } => {
+                    let divergent = v1_compiler::cli_run::boundary_divergent(&outcome);
+                    eprintln!(
+                        "required-ci: generated-artifact rostered={} adjudicated={} matches={} \
+                         drifted={} absent={} unadjudicated={}",
+                        artifacts.len() + unadjudicated.len(),
+                        artifacts.len(),
+                        artifacts.len() - divergent.len(),
+                        divergent
+                            .iter()
+                            .filter(|a| v1_compiler::cli_run::artifact_disposition(a)
+                                == v1_compiler::cli_run::ArtifactDisposition::Drifted)
+                            .count(),
+                        divergent
+                            .iter()
+                            .filter(|a| v1_compiler::cli_run::artifact_disposition(a)
+                                == v1_compiler::cli_run::ArtifactDisposition::Absent)
+                            .count(),
+                        unadjudicated.len(),
+                    );
+                    for a in &divergent {
+                        eprintln!(
+                            "required-ci: generated-artifact {} {}",
+                            v1_compiler::cli_run::artifact_disposition_name(
+                                v1_compiler::cli_run::artifact_disposition(a)
+                            ),
+                            a.path
+                        );
+                    }
+                    for u in unadjudicated {
+                        eprintln!(
+                            "required-ci: generated-artifact UNADJUDICATED {} — {}",
+                            u.path, u.cause
+                        );
+                    }
+                    if !divergent.is_empty() {
+                        // THE REFUSAL NAMES A ROUTE THAT EXISTS -- the same discipline the
+                        // partition-crate header had to learn after it named a producer that had
+                        // been deleted. A stop whose only sanctioned move is unavailable does not
+                        // stop the line, it launders a hand edit.
+                        eprintln!(
+                            "required-ci: generated-artifact these are GENERATED projections of \
+                             their .dag authorities — do not hand-edit; regenerate with: {}",
+                            v1_compiler::cli_run::GENERATED_ARTIFACT_PRODUCING_COMMAND
+                        );
+                        phase_failures.push(format!(
+                            "generated-artifact ({} projection(s) not derived)",
+                            divergent.len()
+                        ));
+                    }
+                    if !unadjudicated.is_empty() {
+                        // KEPT SEPARATE FROM DRIFT. An unanswered member is not a clean member,
+                        // and it is not a drifted one either: it is a defect in the authority or
+                        // in this bridge, and it ranks differently from work an author does now.
+                        phase_failures.push(format!(
+                            "generated-artifact ({} rostered artifact(s) reached no verdict)",
+                            unadjudicated.len()
+                        ));
+                    }
+                }
+            }
+            if !v1_compiler::cli_run::boundary_is_clean(&outcome)
+                && phase_failures.len() == failures_before
+            {
+                eprintln!(
+                    "required-ci: generated-artifact REFUSED — the outcome is not clean and no \
+                     branch above named why. Reporting the refusal rather than the silence"
+                );
+                phase_failures.push("generated-artifact (not clean, unnamed cause)".to_string());
+            }
+            ran.push("generated-artifact");
+        }
+
         // PHASE 4 — the witness floor. Independent; runs whatever happened above.
         if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
             eprintln!("required-ci: phase floor (one prepared subject, one fold)");
@@ -890,7 +1008,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         } else {
             source_roots.clone()
         };
-        match v1_compiler::cli_run::run_required_emit_compile(&roots) {
+        let probe_root = v1_compiler::cli_run::local_emit_compile_probe_root();
+        match v1_compiler::cli_run::run_required_emit_compile(&roots, &probe_root) {
             Ok(outcomes) => {
                 let mut not_passed = 0usize;
                 for outcome in &outcomes {
@@ -915,6 +1034,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 let (report, retention_error) = v1_compiler::cli_run::emit_compile_report(
                     &outcomes,
                     &roots,
+                    &probe_root,
                     "required-emit-compile:",
                 );
                 for line in report {
@@ -1273,6 +1393,7 @@ enum RequiredCiPhase {
     V2Emission,
     EmitCompile,
     PartitionCrates,
+    GeneratedArtifact,
     Floor,
 }
 
@@ -1285,6 +1406,7 @@ impl RequiredCiPhase {
             RequiredCiPhase::V2Emission => "v2-emission",
             RequiredCiPhase::EmitCompile => "emit-compile",
             RequiredCiPhase::PartitionCrates => "partition-crates",
+            RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::Floor => "floor",
         }
     }
@@ -1317,18 +1439,24 @@ impl RequiredCiPhase {
             // `needs` edge, so this costs nothing until the build lane exceeds the floor's
             // wall clock; beside the floor it would be pure addition to the critical path.
             RequiredCiPhase::PartitionCrates => RequiredCiLane::Build,
+            // THE SAME QUESTION AS PARTITION-CRATES OVER A DIFFERENT POPULATION -- does a
+            // committed projection still equal what its authority generates -- so it sits in
+            // the same lane for the same reason. It resolves one .dag closure and evaluates a
+            // pure projection per rostered artifact; no build, no subprocess.
+            RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
             RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
         }
     }
 }
 
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 7] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 8] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::NamespaceWaveAdmission,
     RequiredCiPhase::Regen,
     RequiredCiPhase::V2Emission,
     RequiredCiPhase::EmitCompile,
     RequiredCiPhase::PartitionCrates,
+    RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::Floor,
 ];
 

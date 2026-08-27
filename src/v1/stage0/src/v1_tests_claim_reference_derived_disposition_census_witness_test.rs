@@ -76,17 +76,19 @@ pub fn fixture_disposition(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
 ) -> String {
-    reference_derived_disposition_name(reference_derived_candidate_disposition(
-        "PeerName".to_string(),
-        "fixture.consumer".to_string(),
-        registry.clone(),
-        export_sets.clone(),
-        Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        build_module_index(Rc::new(vec![])),
-        v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
-        v1_rt::rc_empty_map::<String, String>(),
-    ))
+    crate::v1_compiler_emit_rust::reference_derived_disposition_name(
+        crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
+            "PeerName".to_string(),
+            "fixture.consumer".to_string(),
+            registry.clone(),
+            export_sets.clone(),
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
+            v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
+            v1_rt::rc_empty_map::<String, String>(),
+        ),
+    )
 }
 
 pub fn candidate_the_registry_does_not_know_is_registry_absent() -> bool {
@@ -111,14 +113,14 @@ pub fn cross_module_candidate_without_export_proof_is_export_proof_failed() -> b
 }
 
 pub fn cross_module_candidate_with_export_proof_survives() -> bool {
-    (reference_derived_candidate_disposition(
+    (crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
         "PeerName".to_string(),
         "fixture.consumer".to_string(),
         fixture_registry("PeerName".to_string(), "fixture.provider".to_string()),
         fixture_export_sets("fixture.provider".to_string(), "PeerName".to_string()),
         Rc::new(vec![]),
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        build_module_index(Rc::new(vec![])),
+        crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
         v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
         v1_rt::rc_empty_map::<String, String>(),
     ) == Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
@@ -172,7 +174,7 @@ pub fn census_counts_each_arm_separately() -> bool {
                 ),
             }),
         ]);
-        let census = reference_derived_census(rows.clone());
+        let census = crate::v1_compiler_emit_rust::reference_derived_census(rows.clone());
         (((((((census.candidates.clone() == 6) && (census.survived.clone() == 1))
             && (census.own_module.clone() == 1))
             && (census.variant_delegated_to_parent.clone() == 1))
@@ -213,14 +215,14 @@ pub fn fixture_variant_type_summaries() -> Rc<HashMap<String, Rc<TypeSummary>>> 
 }
 
 pub fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> bool {
-    (reference_derived_candidate_disposition(
+    (crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
         "V".to_string(),
         "fixture.consumer".to_string(),
         v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
         v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
         Rc::new(vec![]),
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        build_module_index(Rc::new(vec![])),
+        crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
         fixture_variant_type_summaries(),
         v1_rt::rc_map_insert(
             v1_rt::rc_empty_map::<String, String>(),
@@ -265,14 +267,14 @@ pub fn fixture_colliding_variant_type_summaries() -> Rc<HashMap<String, Rc<TypeS
 }
 
 pub fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> bool {
-    (reference_derived_candidate_disposition(
+    (crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
         "V".to_string(),
         "fixture.consumer".to_string(),
         v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
         v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
         Rc::new(vec![]),
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        build_module_index(Rc::new(vec![])),
+        crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
         fixture_colliding_variant_type_summaries(),
         v1_rt::rc_map_insert(
             v1_rt::rc_empty_map::<String, String>(),
@@ -283,27 +285,29 @@ pub fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> bool
 }
 
 pub fn an_unresolved_parent_is_not_reported_as_registry_absent() -> bool {
-    (reference_derived_disposition_name(Rc::new(
+    (crate::v1_compiler_emit_rust::reference_derived_disposition_name(Rc::new(
         ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved,
     )) != "registry-absent".to_string())
 }
 
 pub fn non_variant_name_still_answers_registry_absent() -> bool {
-    (reference_derived_disposition_name(reference_derived_candidate_disposition(
-        "NotAVariant".to_string(),
-        "fixture.consumer".to_string(),
-        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-        Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        build_module_index(Rc::new(vec![])),
-        fixture_variant_type_summaries(),
-        v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<String, String>(),
-            "V".to_string(),
-            "E".to_string(),
+    (crate::v1_compiler_emit_rust::reference_derived_disposition_name(
+        crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
+            "NotAVariant".to_string(),
+            "fixture.consumer".to_string(),
+            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+            v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
+            fixture_variant_type_summaries(),
+            v1_rt::rc_map_insert(
+                v1_rt::rc_empty_map::<String, String>(),
+                "V".to_string(),
+                "E".to_string(),
+            ),
         ),
-    )) == "registry-absent".to_string())
+    ) == "registry-absent".to_string())
 }
 
 pub fn only_export_proof_failed_produces_a_diagnostic() -> bool {
@@ -345,7 +349,12 @@ pub fn only_export_proof_failed_produces_a_diagnostic() -> bool {
                 ),
             }),
         ]);
-        ((reference_derived_row_diagnostics(rows.clone(), no_span()).len() as i64) == 1)
+        ((crate::v1_compiler_emit_rust::reference_derived_row_diagnostics(
+            rows.clone(),
+            crate::v1_std_core::no_span(),
+        )
+        .len() as i64)
+            == 1)
     }
 }
 
@@ -362,11 +371,14 @@ pub fn the_export_unproven_diagnostic_is_advisory() -> bool {
         })]);
         {
             let mut __all = true;
-            for e in reference_derived_row_diagnostics(rows.clone(), no_span())
-                .iter()
-                .cloned()
+            for e in crate::v1_compiler_emit_rust::reference_derived_row_diagnostics(
+                rows.clone(),
+                crate::v1_std_core::no_span(),
+            )
+            .iter()
+            .cloned()
             {
-                if !(!is_error_diagnostic(e.diagnostic.clone())) {
+                if !(!crate::v1_std_core::is_error_diagnostic(e.diagnostic.clone())) {
                     __all = false;
                     break;
                 }
@@ -392,7 +404,12 @@ pub fn registry_absent_produces_no_diagnostic() -> bool {
             name: "bool".to_string(),
             disposition: Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
         })]);
-        ((reference_derived_row_diagnostics(rows.clone(), no_span()).len() as i64) == 0)
+        ((crate::v1_compiler_emit_rust::reference_derived_row_diagnostics(
+            rows.clone(),
+            crate::v1_std_core::no_span(),
+        )
+        .len() as i64)
+            == 0)
     }
 }
 
@@ -409,12 +426,15 @@ pub fn the_export_unproven_message_names_its_own_remedy() -> bool {
         })]);
         {
             let mut __all = true;
-            for e in reference_derived_row_diagnostics(rows.clone(), no_span())
-                .iter()
-                .cloned()
+            for e in crate::v1_compiler_emit_rust::reference_derived_row_diagnostics(
+                rows.clone(),
+                crate::v1_std_core::no_span(),
+            )
+            .iter()
+            .cloned()
             {
                 if !(v1_rt::string_contains(
-                    &diagnostic_to_message(e.diagnostic.clone()),
+                    &crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone()),
                     "NOT an import".to_string(),
                 )) {
                     __all = false;
