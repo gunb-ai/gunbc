@@ -405,7 +405,7 @@ fn git_worktree_set_observation_of(
       }
     } else {
       git_worktree_set_observation_in_order(observation: fold(
-        reverse(grouped.entries_reversed),
+        grouped.entries_reversed,
         init: GitWorktreeDecodeState {
           observation: GitWorktreeSetObserved { worktrees: [] },
           entry_index: 0,
