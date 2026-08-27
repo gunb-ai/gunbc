@@ -4,11 +4,29 @@ import std.types { Bool, Int, NonEmptyStr, String }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { JsonValue, serialize_json }
 import extdeps.languages.json.parse { JsonDocumentParsed, parse_json_document }
+import gunbc.bmc_fan_program_capture {
+  CapturedFanProgram,
+  srv3_captured_program,
+  srv4_captured_program,
+}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // THE FIRST HALF OF THE OBSERVER: THE CAPTURED ARTIFACT, READ AND PARSED, WITH NOTHING YET SAID
-// ABOUT FANS. It answers one question - can this repository turn its own committed bytes into a
+// ABOUT FANS.
+//
+// IT IS A JSON-VALUE OBSERVATION AND NOT A LOSSLESS SYNTAX ONE, AND AN EARLIER REVISION NAMED IT
+// THE STRONGER THING. What survives is member order, duplicate member names, number lexemes and
+// value structure. What does not survive is whitespace, the original spelling of string escapes,
+// and therefore the exact source bytes. Calling that "syntax" claims a fidelity the carrier does
+// not have, and the claim would have been inherited by everything built on top - so the type is
+// named for what it holds. The exact-byte half is the capture's sha256, not this.
+//
+// AND parse-serialize-parse IDEMPOTENCE PROVES LESS THAN IT LOOKS. It establishes that the
+// canonicalised value is a fixed point. It does NOT by itself establish that no source member was
+// lost, because a decoder that dropped a member consistently would still be idempotent. That
+// stronger property comes from the generic parser's construction and, above this layer, from the
+// semantic conservation check over occurrence identities. It answers one question - can this repository turn its own committed bytes into a
 // JsonValue without losing what the bytes mean - and stops there. Deciding that a member named
 // "zones" is a fan controller is the semantic layer and lives above this.
 //
@@ -40,8 +58,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // worse than absent. Its required cadence arrives with the live-tree decline's deletion, in
 // flight as gunbc#9106, and needs nothing from this module when it does.
 
-type ArtifactSyntaxObservation
-  = ArtifactSyntaxObserved {
+type ArtifactJsonValueObservation
+  = ArtifactJsonValueObserved {
       artifact_path: NonEmptyStr,
       byte_count: Int,
       document: JsonValue,
@@ -65,12 +83,17 @@ type ArtifactSyntaxObservation
 // succeeded. Measured, not assumed. The byte-count comparison below is therefore the read's
 // success test as well as its integrity test, which is why a zero-length result cannot pass as an
 // empty document.
-fn observe_artifact_syntax(
+// THE KERNEL IS PURE AND TAKES ITS CONTENT, so the not-parseable arm is reachable from an inline
+// string. An earlier revision fused the read into this function, and the only control that could
+// have exercised ArtifactNotParseable was a committed non-JSON file - which fails the byte-count
+// comparison FIRST and returns before parsing ever happens. That arm was therefore unreachable
+// from the witness while looking covered.
+fn observe_artifact_content(
   artifact_path: NonEmptyStr,
+  content: String,
   expected_byte_count: Int,
-) -> ArtifactSyntaxObservation {
-  let read = Filesystem.Read(path: artifact_path as String)
-  let observed = read.content.length()
+) -> ArtifactJsonValueObservation {
+  let observed = content.length()
   if observed != expected_byte_count {
     ArtifactByteCountDisagrees {
       artifact_path: artifact_path,
@@ -78,9 +101,9 @@ fn observe_artifact_syntax(
       observed: observed,
     }
   } else {
-    match parse_json_document(s: read.content) {
+    match parse_json_document(s: content) {
       JsonDocumentParsed { value: document } =>
-        ArtifactSyntaxObserved {
+        ArtifactJsonValueObserved {
           artifact_path: artifact_path,
           byte_count: observed,
           document: document,
@@ -99,9 +122,9 @@ fn observe_artifact_syntax(
 // What IS provable, and what the observer needs, is that the document is a fixed point of
 // parse-then-serialize: serializing it and reparsing yields the same serialization. That says the
 // parse lost nothing the serializer would have re-expressed differently.
-fn syntax_observation_is_idempotent(observation: ArtifactSyntaxObservation) -> Bool {
+fn json_value_observation_is_idempotent(observation: ArtifactJsonValueObservation) -> Bool {
   match observation {
-    ArtifactSyntaxObserved { artifact_path, byte_count, document } => {
+    ArtifactJsonValueObserved { artifact_path, byte_count, document } => {
       let once = serialize_json(v: document)
       match parse_json_document(s: once) {
         JsonDocumentParsed { value: reparsed } => serialize_json(v: reparsed) == once
@@ -112,12 +135,24 @@ fn syntax_observation_is_idempotent(observation: ArtifactSyntaxObservation) -> B
   }
 }
 
-data srv3_program_syntax: ArtifactSyntaxObservation = observe_artifact_syntax(
-  artifact_path: "artifacts/bmc/srv3-config-asrr.json",
-  expected_byte_count: 5212,
-)
+// THE PATH AND THE COUNT COME FROM THE CAPTURE, AND AN EARLIER REVISION RE-AUTHORED BOTH. It read
+// artifact_path: "artifacts/bmc/srv3-config-asrr.json" and expected_byte_count: 5212 as literals
+// beside a carrier that already holds exactly those two facts. Everything passed, and the passing
+// meant nothing: "the observation matches the capture" was an agreement between two strings one
+// author typed on one afternoon, not a join any machine performed. Editing the capture's path or
+// count would have left the observer reading the old file against the old number, silently.
+//
+// Deriving both from CapturedFanProgram makes the mutation land: change the capture and the
+// observation moves or refuses with it, because there is only one place the fact lives.
+fn observe_captured_program(capture: CapturedFanProgram) -> ArtifactJsonValueObservation {
+  let read = Filesystem.Read(path: capture.artifact_path as String)
+  observe_artifact_content(
+    artifact_path: capture.artifact_path,
+    content: read.content,
+    expected_byte_count: capture.artifact_byte_count,
+  )
+}
 
-data srv4_program_syntax: ArtifactSyntaxObservation = observe_artifact_syntax(
-  artifact_path: "artifacts/bmc/srv4-config-asrr.json",
-  expected_byte_count: 5206,
-)
+data srv3_program_json: ArtifactJsonValueObservation = observe_captured_program(capture: srv3_captured_program.program)
+
+data srv4_program_json: ArtifactJsonValueObservation = observe_captured_program(capture: srv4_captured_program.program)
