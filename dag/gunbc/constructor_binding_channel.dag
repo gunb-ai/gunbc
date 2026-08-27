@@ -1,0 +1,218 @@
+module gunbc.constructor_binding_channel
+
+import std.types { List, String, Bool, Int }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// THE FOURTH BINDING CHANNEL, ESTABLISHED BY EXECUTION RATHER THAN BY READING THE FOLD.
+//
+// SUBJECT. Three name-binding channels were already on the record: import resolution, the
+// flattened corpus pool (`v1.compiler.infer_env` `global_bare_fallback_invariant`), and the v1
+// interpreter's flat bare-name map. This carrier asks whether CONSTRUCTOR (coproduct arm)
+// references are a FOURTH -- a channel that binds a name by a mechanism none of those three
+// describes -- and answers ESTABLISHED, on a discriminating pair measured at 9917d4a9b3.
+//
+// WHY THE QUESTION IS NOT ANSWERED BY THE RULING. `v1.compiler.infer` `constructor_binding_authority`
+// rules a module's constructor namespace FLAT: its own coproduct declarations plus its DIRECT
+// imports, never transitive ancestry. `build_local_variants` and `build_imported_variants` implement
+// exactly that, with a checked insert that refuses a same-name/different-owner collision as
+// VariantCollision. But `merge_global_bare_variant_locals` then merges a WHOLE-CLOSURE base --
+// `build_global_bare_variant_locals`, computed from the corpus census -- underneath that fold, with
+// no import and no containment test, and the result is folded into the module's ordinary `locals`
+// (`build_module_context`). So the ruling describes two of the three sources the map ends up with.
+//
+// WHY IT IS A CHANNEL AND NOT THE POOL WEARING A HAT. The pool channel and this one were run
+// against ONE fixture shape differing only in what the unimported name is used AS. A type
+// reference is admitted with a located `unlisted import use` ADVISORY -- the observation that feeds
+// reference-derived Rust use-line emission. The constructor reference in the same position is
+// admitted with NO diagnostic of any kind. Same absent import, same absent containment relation,
+// two different observabilities: the advisory channel does not cover constructors.
+//
+// WHAT IS NOT CLAIMED. This is not a silent-arbitrary-pick finding. With two owners of one arm
+// name inside the compiled closure the compile REFUSES (case5). The defects found are narrower and
+// are named as next rungs below, not repaired here: the refusal names the wrong situation, and the
+// ambiguity domain is the CLOSURE rather than the source root.
+
+// WHAT THE REFERRING MODULE USES THE UNIMPORTED NAME AS. The two arms are the discriminator: they
+// are the only difference between case1 and case4.
+type ReferenceKind
+  = ConstructorReference { position: String }
+  | TypeReference { position: String }
+
+// WHAT THE COMPILER DID WITH IT, at the grain that distinguishes the channels. BoundSilently is not
+// a synonym for BoundWithAdvisory: an advisory is a located observation a downstream pass reads,
+// and its absence is the finding.
+type ProbeOutcome
+  = BoundSilently { emitted: String }
+  | BoundWithAdvisory { advisory: String }
+  | RefusedWithDiagnostic { diagnostic: String, situation: String }
+
+type ChannelProbe {
+  case_name: String
+  reference_kind: ReferenceKind
+  owner_modules_in_source_root: Int
+  owner_modules_in_compiled_closure: Int
+  outcome: ProbeOutcome
+  what_it_establishes: String
+}
+
+// THE MEASUREMENT. Five compiles of hand-authored two- and three-module fixtures, run at
+// 9917d4a9b3 through `gunbc compile --source-root <case> --entry <case>/user.dag --target dag`
+// on a BuildBuddy runner. Every fixture's referring module is `zqxbeta.user` and every owner is
+// `zqxalpha.owner` or `zqxgamma.rival`: no import statement anywhere, and no module path is a
+// leading-segment prefix of another, so neither the import channel nor a containment-chain walk
+// can account for a binding. The fixture sources are recorded verbatim below so the run is
+// re-derivable without archaeology.
+data constructor_binding_channel_probes: List<ChannelProbe> = [
+  {
+    case_name: "case1 -- constructor reference, one owner, no import",
+    reference_kind: ConstructorReference { position: "let initializer and two match patterns" },
+    owner_modules_in_source_root: 1,
+    owner_modules_in_compiled_closure: 1,
+    outcome: BoundSilently { emitted: "1 file emitted, 0 diagnostics, exit 0" },
+    what_it_establishes: "a coproduct arm binds across modules with no import and no containment relation, and reports nothing at all. GUNBC_BARE_PULL_TRACE names the route: [bare-pull] user.dag -> ZqxProbeRed -> zqxalpha.owner [scoped unique]",
+  },
+  {
+    case_name: "case2 -- constructor reference naming nothing",
+    reference_kind: ConstructorReference { position: "let initializer" },
+    owner_modules_in_source_root: 0,
+    owner_modules_in_compiled_closure: 0,
+    outcome: RefusedWithDiagnostic { diagnostic: "undefined variable 'ZqxProbeMauve'", situation: "accurate -- no declaration of that name exists" },
+    what_it_establishes: "the harness has the power to reject. Without this row case1's green is not evidence of anything",
+  },
+  {
+    case_name: "case3 -- two owners in the SOURCE ROOT, one in the closure",
+    reference_kind: ConstructorReference { position: "let initializer and two match patterns" },
+    owner_modules_in_source_root: 2,
+    owner_modules_in_compiled_closure: 1,
+    outcome: BoundSilently { emitted: "1 file emitted, 0 diagnostics, exit 0" },
+    what_it_establishes: "the ambiguity domain is the compiled closure, not the source root. A second module claiming the same arm name is present and indexed in the name census, and the binding is made anyway",
+  },
+  {
+    case_name: "case4 -- TYPE reference in the identical no-import position (the control)",
+    reference_kind: TypeReference { position: "parameter type annotation" },
+    owner_modules_in_source_root: 1,
+    owner_modules_in_compiled_closure: 1,
+    outcome: BoundWithAdvisory { advisory: "advisory[user.dag:5:26]: unlisted import use 'ZqxProbeColor' (referenced but not in any import's name list)" },
+    what_it_establishes: "THE DISCRIMINATOR. Identical fixture shape, identical absent import; the type channel is observable and the constructor channel is not",
+  },
+  {
+    case_name: "case5 -- two owners INSIDE the compiled closure",
+    reference_kind: ConstructorReference { position: "let initializer, both owners reached by separate references" },
+    owner_modules_in_source_root: 2,
+    owner_modules_in_compiled_closure: 2,
+    outcome: RefusedWithDiagnostic { diagnostic: "undefined variable 'ZqxProbeRed'", situation: "MISLEADING -- the name is declared twice, not zero times. The channel fails closed, and then describes the closure as if the declaration were absent" },
+    what_it_establishes: "the channel does not silently pick a winner under in-closure ambiguity. It refuses -- under a diagnostic that names the wrong situation",
+  },
+]
+
+// THE CODE THIS CHANNEL IS MADE OF, cited by symbol so a reader verifies the mechanism rather than
+// the narrative. Ordered along the path a constructor name takes.
+type ChannelStage {
+  site: DeclarationRef
+  what_it_contributes: String
+  is_governed_by_the_flat_ruling: Bool
+}
+
+data constructor_binding_channel_stages: List<ChannelStage> = [
+  {
+    site: decl_ref(module_path: "v1.compiler.infer", decl_name: "build_local_variants"),
+    what_it_contributes: "the module's own coproduct arms, inserted through insert_variant_owner_checked, which refuses a same-name different-owner pair as VariantCollision",
+    is_governed_by_the_flat_ruling: true,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer", decl_name: "build_imported_variants"),
+    what_it_contributes: "the DIRECT imports' contributions, through the same checked insert",
+    is_governed_by_the_flat_ruling: true,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer", decl_name: "merge_global_bare_variant_locals"),
+    what_it_contributes: "a whole-closure base merged UNDER the fold above by map_merge, so no collision arm runs over it at all -- the module's own and imported entries simply overlay it",
+    is_governed_by_the_flat_ruling: false,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer", decl_name: "build_global_bare_variant_locals"),
+    what_it_contributes: "that base: every corpus-census name whose GlobalBareUniqueBinding resolves to a Disj node owning a child of the same name. Uniqueness across the closure is the only admission test; import and containment are not consulted",
+    is_governed_by_the_flat_ruling: false,
+  },
+  {
+    site: decl_ref(module_path: "v1.compiler.infer", decl_name: "build_module_context"),
+    what_it_contributes: "folds the result into the module's ordinary locals, so a corpus-derived arm is an ordinary top-priority local binding rather than a fallback consulted last",
+    is_governed_by_the_flat_ruling: false,
+  },
+]
+
+// THE FIXTURE SOURCES, recorded rather than left in an untracked directory. Every case's referring
+// module is the same shape; only the reference kind and the owner population change. Re-deriving
+// the measurement is: write these files under one directory per case, then run the compile named in
+// the probe roster's header.
+type FixtureModule {
+  case_name: String
+  file_name: String
+  module_source: String
+}
+
+data constructor_binding_channel_fixtures: List<FixtureModule> = [
+  {
+    case_name: "case1, case3, case4, case5",
+    file_name: "owner.dag",
+    module_source: "module zqxalpha.owner\n\ntype ZqxProbeColor = ZqxProbeRed | ZqxProbeBlue\n",
+  },
+  {
+    case_name: "case3, case5",
+    file_name: "rival.dag",
+    module_source: "module zqxgamma.rival\n\ntype ZqxRivalColor = ZqxProbeRed | ZqxRivalGreen\n",
+  },
+  {
+    case_name: "case1, case3",
+    file_name: "user.dag",
+    module_source: "module zqxbeta.user\n\ntype ZqxAnswer = ZqxYes | ZqxNo\n\nfn zqx_probe_pick() -> ZqxAnswer {\n    let probe = ZqxProbeRed\n    match probe {\n        ZqxProbeRed => ZqxYes\n        ZqxProbeBlue => ZqxNo\n    }\n}\n",
+  },
+  {
+    case_name: "case2",
+    file_name: "user.dag",
+    module_source: "module zqxbeta.user\n\ntype ZqxAnswer = ZqxYes | ZqxNo\n\nfn zqx_probe_pick() -> ZqxAnswer {\n    let probe = ZqxProbeMauve\n    match probe {\n        ZqxProbeMauve => ZqxYes\n    }\n}\n",
+  },
+  {
+    case_name: "case4",
+    file_name: "user.dag",
+    module_source: "module zqxbeta.user\n\ntype ZqxAnswer = ZqxYes | ZqxNo\n\nfn zqx_probe_type_ref(c: ZqxProbeColor) -> ZqxAnswer {\n    ZqxYes\n}\n",
+  },
+  {
+    case_name: "case5",
+    file_name: "user.dag",
+    module_source: "module zqxbeta.user\n\ntype ZqxAnswer = ZqxYes | ZqxNo\n\nfn zqx_probe_pick() -> ZqxAnswer {\n    let probe = ZqxProbeRed\n    match probe {\n        ZqxProbeRed => ZqxYes\n        ZqxProbeBlue => ZqxNo\n    }\n}\n\nfn zqx_rival_pick() -> ZqxAnswer {\n    let rival = ZqxRivalGreen\n    match rival {\n        ZqxRivalGreen => ZqxYes\n        ZqxProbeRed => ZqxNo\n    }\n}\n",
+  },
+]
+
+// WHAT THIS CARRIER DOES NOT DO, stated so a reader does not take it for coverage. Nothing here
+// executes on any run: the subject is a MULTI-MODULE closure, and the one in-repo compile surface a
+// witness can reach (compile_dag_rust_emit_check) takes a single source string, which is the same
+// ceiling gunbc.ci_layer_roots records for the emitter's ambiguous-variant-owner witness. So the
+// rung this class sits at is MITIGATABLE -- the measurement above was taken once and is re-measured
+// by nothing -- and its next-rung trigger is a compile surface that admits a closure of several
+// named .dag sources as one subject, at which point case1 and case4 become an enrollable
+// discriminating pair and case5 a permanent regression control.
+data constructor_binding_channel_evidence_standing: String = "Measured once at 9917d4a9b3 on a BuildBuddy runner; not enrolled, not re-measured. Rung: mitigatable. Next-rung trigger: a multi-source compile fixture surface."
+
+// THE TWO REPAIRS THIS ESTABLISHES AND DELIBERATELY DOES NOT MAKE. Both sit in v1's infer stage,
+// which DESIGN names as load-bearing, and both are the namespace lane's to sequence: they change
+// what an occurrence denotes or what refuses, which is precisely the class the wave-admission wall
+// governs.
+type NextRung {
+  what: String
+  evidence_row: String
+  why_not_here: String
+}
+
+data constructor_binding_channel_next_rungs: List<NextRung> = [
+  {
+    what: "the in-closure ambiguity refusal must name ambiguity, not absence -- two declarations rendered as 'undefined variable' is the state-space conflation DESIGN's failure-mode roster names, with opposite remedies on either side of it",
+    evidence_row: "case5",
+    why_not_here: "it is a diagnostic-vocabulary change in v1.compiler.infer, and the refusal it replaces is the wall this carrier just established; changing it under a brief to MEASURE it would leave the measurement describing a tree that no longer exists",
+  },
+  {
+    what: "an unlisted-use observation for constructor references, parallel to the type channel's 'unlisted import use' -- without it the reference-derived use-line producer the namespace cut plan restores has no constructor input",
+    evidence_row: "case4 against case1",
+    why_not_here: "it adds an occurrence-grain observation to a stage the namespace program is mid-cut on, and the population it would report is unmeasured",
+  },
+]

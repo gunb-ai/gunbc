@@ -1,3 +1,0 @@
-module zqxgamma.rival
-
-type ZqxRivalColor = ZqxProbeRed | ZqxRivalGreen
