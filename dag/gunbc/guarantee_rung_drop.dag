@@ -288,3 +288,29 @@ data next_rung_trigger_enforcement_stall: GuaranteeStall = GuaranteeStall {
   },
   next_rung_trigger: "every class this repository declares below its ceiling declares it through gunbc.guarantee_rung_drop GuaranteeStall rather than in prose, at which point the population becomes a fold over rows and a stall missing its trigger has no spelling. Not satisfied by this carrier existing: one row is a carrier with a consumer, not a migrated population, and the 4b(2) obligation stays review diligence for every class still stalling in an annotation"
 }
+
+// THE REMOVAL SIDE OF NAMESPACE WAVE ADMISSION REPORTS A LOAD-BEARING IMPORT AS UNUSED, AND IT
+// IS A GREEN RATHER THAN A REFUSAL. This row exists because the class was about to lose its only
+// forcing function: the lane that felt it was unblocked by a repair that routed the ADD direction
+// around the same blind position, and a defect whose one complainant gets routed around stops
+// ranking -- the deficit frequency driven to zero by construction, which is precisely the shape
+// DESIGN section 5 names. It is replaced here by a measurement, which does not get unblocked.
+data field_type_removal_false_unused_stall: GuaranteeStall = GuaranteeStall {
+  subject: "namespace wave admission reports UnusedSubjectMembershipRemoved for an import whose only use is a DECLARED FIELD TYPE, because 02_parse field_to_child_node parks the declared type in the inferred slot with a fabricated Resolved stamp and declaration_index for_each_node deliberately skips inferred -- so the reference exists in the tree and no authored-name reader can reach it",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: AwaitsOneGrounding {
+    grounding: "an undecided DIRECTION, stated rather than cited because no authority answers it: does the declared field type move OUT of inferred into type_annotation, which changes a parse-level contract every downstream consumer reads, or does an authored-name channel read inferred SELECTIVELY, or does a third shape respect a constraint not visible from the consumer side. The class cannot climb until that is decided, because each answer lands a different contract in the v1 seed and picking wrong is more expensive than the defect. It is AwaitsOneGrounding rather than ClimbableButUnbuilt for the reason the import-eligibility row above states: the work is not merely unstarted but UNSPECIFIABLE, and filing it as unbuilt would send someone to build at a moment when the shape is not decided"
+  },
+  population: BoundedPopulation {
+    members: [
+      "v1.02_parse field_to_child_node -- the single producer that fabricates the Resolved stamp",
+      "v1.02_parse variant_to_child_node -- caller, variant payload fields",
+      "v1.02_parse outputs_to_inferred -- caller, declared outputs",
+      "v1.02_parse parse_type_after_kw -- caller, type declaration bodies",
+      "v1.02_parse parse_type_body_from_prefix -- caller, type bodies from a prefix",
+      "v1.02_parse parse_type_expr -- caller, type expressions"
+    ]
+  },
+  next_rung_trigger: "THE TRIGGER IS THE CAPABILITY, NOT AN ARTIFACT THAT WOULD CONTRIBUTE TO ONE: a declared field type is reachable from an authored-name reader over the Node tree, so that membership_bound_through in namespace_wave_admission answers correctly WITHOUT being told about field types specifically. Not satisfied by a reader that special-cases the inferred slot for this one consumer -- that leaves every other authored-name walker blind and converts one blind position into a per-consumer exemption roster. The RED is authorable at the fixture boundary and has been AUTHORED AND EXECUTED: a module importing a coproduct used in exactly one position, a declared field type in a variant payload, has that import dropped while the reference remains, and the gate answers dispositions=[UnusedSubjectMembershipRemoved] -- a verdict that the still-referenced import is dead. That measurement is this class's forcing function and it does not expire when a blocked lane is unblocked"
+}
