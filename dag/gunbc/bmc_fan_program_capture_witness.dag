@@ -1,0 +1,154 @@
+module gunbc.bmc_fan_program_capture_witness
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.bmc_fan_program_capture {
+  AcousticLevelMeasured,
+  AcousticLevelNoInstrument,
+  CapturedProgramReceipt,
+  ConvergedFromModelledIntent,
+  HandAppliedNotReproducibleFromSource,
+  ProgramProvenanceUnobserved,
+  fleet_captured_fan_programs,
+  srv3_captured_program,
+  srv4_captured_program,
+}
+
+// WHAT THIS WITNESS CAN AND CANNOT ESTABLISH, STATED FIRST BECAUSE THE GAP IS THE POINT.
+//
+// IT DOES NOT CHECK THE DIGEST AGAINST THE BYTES, AND AN EARLIER REVISION OF THIS NOTE GAVE THE
+// WRONG REASON FOR THAT. It said the check needs a filesystem read and the required floor
+// "evaluates witnesses inside a hermetic envelope that refuses host effects by construction". The
+// outcome was right and the mechanism was wrong, which matters because the mechanism decides the
+// remedy: that account implies no such witness can ever execute, and the truth is that one is
+// blocked on a deletion already in flight.
+//
+// WHAT ACTUALLY BLOCKS IT: hermetic mode carries a checkout-input carve-out
+// (`v1_interpreter` `hermetic_checkout_input_disposition_under`), under which a readonly
+// Filesystem.Read of a path proven under the checkout root is INPUT ACCESS -- the commit is the
+// run's deterministic input -- and NOT a host effect. So reading artifacts/bmc/srv3-config-asrr.json
+// is something the interpreter would admit. What declines it is the floor PLANNER's
+// `DeclinedLiveTree` arm, which vetoes any file declaring ReadsLiveTree BEFORE the interpreter is
+// ever asked to classify the effect. `v2.workflow.required_floor` already records that arm's
+// premise as stale and stages it for deletion at the root.
+//
+// This module therefore does not declare ReadsLiveTree, and does not enrol a digest check that
+// would be discovered and never run.
+//
+// WHAT ESTABLISHES THE DIGEST TODAY: the capture computed sha256 locally over the received bytes
+// and each BMC independently computed sha256sum over its own file, and the two agreed for both
+// hosts. That is two independent computations rather than one, which is why the digest is
+// trustworthy -- but it happened once, at capture time, and nothing re-derives it.
+//
+// NEXT-RUNG TRIGGER, corrected: the live-tree decline's deletion at the root, in flight as
+// gunbc#9106. When that lands, a witness reading the committed artifact and comparing its sha256
+// and byte count against this carrier routes and executes like any other, with no new admission
+// mechanism and no compiler change. Building a separate artifact-input bridge for this observer
+// instead would be a second admission path beside the checkout read the interpreter already
+// supports, and -- while the wider declined population stays declined -- an escape hatch around an
+// operator-owned population-and-cost decision.
+//
+// WHAT IT DOES ESTABLISH is that the carrier cannot quietly collapse two hosts into one. Every
+// field that distinguishes srv3's capture from srv4's is asserted distinct, so a copy-paste that
+// duplicated one host's digest, machine id or byte count onto the other goes red here. That is the
+// realistic authoring failure for a two-row table of near-identical records, and it is the one a
+// digest check would NOT catch if both rows pointed at the same artifact.
+
+fn digests(rows: List<CapturedProgramReceipt>) -> List<NonEmptyStr> {
+  map(rows, row => row.program.digest.hex)
+}
+
+fn distinct_count(values: List<NonEmptyStr>) -> Int {
+  fold(
+    values,
+    init: 0,
+    f: (acc, value) =>
+      acc
+        + if fold(values, init: 0, f: (n, other) => if other == value { n + 1 } else { n }) == 1 {
+            1
+          } else {
+            0
+          },
+  )
+}
+
+fn the_two_captures_are_not_the_same_machine() -> Bool {
+  let a = srv3_captured_program.program
+  let b = srv4_captured_program.program
+  a.digest.hex != b.digest.hex
+    && a.origin.bmc_machine_id != b.origin.bmc_machine_id
+    && a.origin.host != b.origin.host
+    && a.artifact_path != b.artifact_path
+    && a.artifact_byte_count != b.artifact_byte_count
+}
+
+fn every_digest_is_distinct() -> Bool {
+  distinct_count(values: digests(rows: fleet_captured_fan_programs)) == 2
+}
+
+// THE PROVENANCE ARM DECIDES WHETHER THE BYTES ARE DISPOSABLE, so it is asserted rather than
+// assumed. Both programs were arrived at by hand against live DIMM temperatures and nothing in this
+// repository regenerates them; marking either as converged would say the artifact could be
+// discarded and rebuilt from intent, which is false and would license deleting the only copy.
+fn both_programs_are_hand_applied() -> Bool {
+  fold(
+    fleet_captured_fan_programs,
+    init: true,
+    f: (acc, row) =>
+      acc
+        && match row.program.provenance {
+          HandAppliedNotReproducibleFromSource => true
+          ConvergedFromModelledIntent => false
+          ProgramProvenanceUnobserved => false
+        },
+  )
+}
+
+// THE OUTCOME IS WHAT THE INTENT WILL HAVE TO REPRODUCE, AND IT IS THE THERMAL HALF ONLY. An
+// earlier revision asserted `tenths_dba < 360` on both hosts. That conjunct was green against two
+// literals nothing produced: there is no sound-pressure sensor on these machines, so no instrument
+// could have measured a dBA level, and this PR's own fleet_fan_acoustic_evidence proves the fleet's
+// fans cannot ground an acoustic law at all. The check therefore certified a number against itself.
+//
+// The guard count is asserted against its population rather than as a bare ratio, because "0 of 9"
+// and "0 of 0" are different claims and only one of them is cooling anything.
+fn the_recorded_thermal_outcome_holds() -> Bool {
+  fold(
+    fleet_captured_fan_programs,
+    init: true,
+    f: (acc, row) =>
+      acc
+        && row.outcome.dimms_over_guard == 0
+        && row.outcome.dimm_population == 9,
+  )
+}
+
+// AND NO HOST CLAIMS AN ACOUSTIC LEVEL, asserted rather than left as an absence. If someone later
+// authors AcousticLevelMeasured they must supply an instrument and a timestamp, and this conjunct
+// goes red until they do - which is the point. It is cheaper to refuse a level with no instrument
+// than to discover, three carriers downstream, that a policy was adopted against a number that was
+// derived from fan speeds by a rule nobody wrote down.
+fn no_host_claims_an_unmeasured_acoustic_level() -> Bool {
+  fold(
+    fleet_captured_fan_programs,
+    init: true,
+    f: (acc, row) =>
+      acc
+        && match row.outcome.acoustic {
+          AcousticLevelNoInstrument => true
+          AcousticLevelMeasured { tenths_dba, instrument, measured_at } => false
+        },
+  )
+}
+
+fn bmc_fan_program_capture_witness() -> ProcessExit {
+  if the_two_captures_are_not_the_same_machine()
+    && every_digest_is_distinct()
+    && both_programs_are_hand_applied()
+    && the_recorded_thermal_outcome_holds()
+    && no_host_claims_an_unmeasured_acoustic_level() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "captured BMC fan program receipts: host distinctness, provenance, the thermal outcome, or the no-instrument acoustic standing changed")
+  }
+}

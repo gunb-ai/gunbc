@@ -88,8 +88,55 @@ type BuyTerms {
   maximum_buy_order: MoneyAmountMicro
 }
 
+// priority_class IS DELETED RATHER THAN BRANDED, AND THE DELETION IS THE WHOLE
+// REPAIR.
+//
+// It was `priority_class: NonEmptyStr`, and it was anemic in the exact way
+// DESIGN section 2 names: a String leaf that DECLARED an ordering and carried
+// none. The only comparisons a String supports are equality and a collation
+// that means nothing about desert -- "batch" precedes "interactive" for reasons
+// of spelling. So the fabric could state a demand's class and could not state
+// which class wins, which is the entire question a priority class exists to
+// answer.
+//
+// THE OBVIOUS REPAIRS ARE BOTH RE-INVENTIONS, and rejecting them is what makes
+// this a deletion. Branding it (`PriorityClass = NonEmptyStr where brand(..)`)
+// leaves a magic value agreed between producer and consumer -- convention
+// standing where necessity was available, which gunbc.fabric_capacity_class_gap
+// already rules out for exactly this shape and calls WORSE than an absence
+// because a convention reads as coverage. Replacing it with an ordinal
+// coproduct (High | Medium | Low) is a nickname for a number: it says one
+// demand outranks another and never says why, so nothing downstream can derive
+// anything from it and the anemia returns one layer up.
+//
+// WHAT ANSWERS THE QUESTION INSTEAD is derived from facts this record already
+// states. A demand states the most it will pay (reservation_price) and the
+// ceiling on one grant (maximum_buy_order); an offer states what it charges and
+// how it bills. The margin between them -- what the fabric actually captures by
+// serving THIS demand from THIS offer -- is a derivation over both, and it
+// orders demands without anyone typing a label. product.fabric.contention owns
+// that derivation, and it is a peer of supply.dag's SupplySelectionPolicy
+// rather than a member of it: supply-side selection ranks OFFERS for one
+// demand, demand-side selection ranks DEMANDS for one offer, and they take
+// different inputs and return different carriers.
+//
+// THE FIELD IS NOT REPLACED BY A DIFFERENT NON-PRICE FIELD, and the absences
+// are deliberate for the same reason BuyTerms carries no delay-valuation rate.
+// A deadline valuation needs a money-per-second carrier this model cannot state
+// honestly yet, and `deadline` below is a Timestamp, which std.types aliases to
+// String and which therefore carries no ordering at all -- an urgency axis
+// derived from it would be string collation wearing a schedule's name. A
+// preemptibility statement is a real fact and a real future axis, but it is a
+// claim about what may be INTERRUPTED, which needs an execution-side carrier
+// that does not exist. Neither ships as a mistyped field with a note attached.
+//
+// AND NO CLASS HERE IMPLIES A LATENCY GUARANTEE. A class that promised one
+// would be fabricating plausible output (DESIGN section 5): nothing in this
+// model derives a start time from committed capacity, so the promise would be
+// unbacked at the moment it was made. The fabric refuses rather than promises,
+// which is why the honest carrier for "I want this sooner" is a higher bid --
+// a fact the market can actually act on -- and not a tier.
 type AdmissionTerms {
-  priority_class: NonEmptyStr
   deadline: Timestamp?
   buy: BuyTerms
 }
