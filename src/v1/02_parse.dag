@@ -293,6 +293,16 @@ type EatResult
 
 type TokenResult { token: Token, tokens: TokenStream, err: ErrorNode? }
 type NameResult { name: String, span: SourceSpan, tokens: TokenStream, err: ErrorNode? }
+// GUARANTEE RUNG (DESIGN section 4b): parser result publication is MITIGATABLE.
+// Invariant: a combinator must publish the context its accepted child returned, never the
+// context it received. The bounded population repaired here is function parent publication
+// after params/type params/inferred/body/properties (5314593493), if condition/branch/parent
+// publication (249c7d0a7c), and recursive accepted-child lists (3cb0158226); this is not a
+// claim over every parse shape. The attainable ceiling is STRUCTURALLY IMPOSSIBLE.
+// NEXT-RUNG TRIGGER (DESIGN section 4b(2)): introduce a distinct published-context carrier:
+// parse functions consume an input context, successful child results carry an advanced
+// context, and legitimate unchanged-context paths require an explicit named conversion, so
+// returning the input context where an advanced context is required becomes a type error.
 type ExprResult { expr: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type ItemResult { item: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type TypeResult { type_expr: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
