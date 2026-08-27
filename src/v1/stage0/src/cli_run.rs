@@ -47987,7 +47987,10 @@ pub fn run_required_floor(
         stale.sort();
         for identity in stale {
             outcome.stale_cost_debt.push(format!(
-                "{identity} is enrolled in v2.workflow.floor_cost_debt but was not planned, so                  nothing was withheld for it. It was renamed, deleted, or declined by home                  policy. Delete the row — a withhold over an identity the tree does not carry                  counts as debt while costing nothing and can never ask to be removed."
+                "{identity} is enrolled in v2.workflow.floor_cost_debt but was not planned, so \
+                 nothing was withheld for it. It was renamed, deleted, or declined by home \
+                 policy. Delete the row — a withhold over an identity the tree does not carry \
+                 counts as debt while costing nothing and can never ask to be removed."
             ));
         }
     }
