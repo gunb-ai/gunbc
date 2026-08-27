@@ -4,7 +4,7 @@ module test.claim.fabric_witness_run
 // `gunbc run` does. This file carried no import list at all and resolved anyway under the
 // looser path, so adding a Nat-typed parameter passed locally and refused in CI.
 import std.nat { Nat }
-import std.measure { Second, second }
+import std.measure { Second, second, money_amount_micro_count }
 
 // The subject is FUNGIBILITY AND AFFORDABILITY, two separate questions with two
 // separate coproducts, so every witness here is a refusal on ONE of them or one
@@ -139,12 +139,19 @@ fn fungible(e: OfferFungibility) -> Bool {
 // helper that only accepted the exact arm would make the floor's own duration
 // (EstimatedGrantDuration, see fabric_witness_run.dag) permanently ineligible
 // by construction, which is exactly the fusion this suite exists to keep out.
+// QuoteNotPriceableWithoutDuration answers false here, and it is worth saying why rather than
+// letting the arm read as a fourth refusal. It is not "this demand cannot pay"; it is "the
+// screen could not be run", which is a different fact with a different remedy -- a measurement
+// rather than a bigger budget. A Bool cannot carry that distinction, so what this helper
+// promises is narrower than its name: NOT known-affordable. Callers that need the distinction
+// match the coproduct, which is why the two witnesses below do.
 fn affordable(a: DemandOfferAffordability) -> Bool {
   match a {
     Affordable => true
     AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => true
     QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
     QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
+    QuoteNotPriceableWithoutDuration { obligation: _ } => false
   }
 }
 
@@ -232,6 +239,7 @@ test fn quote_above_the_maximum_buy_order_refuses() -> Bool {
     Affordable => false
     AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => false
     QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
+    QuoteNotPriceableWithoutDuration { obligation: _ } => false
   }
 }
 
@@ -251,6 +259,7 @@ test fn foreign_currency_quote_refuses_distinctly() -> Bool {
     Affordable => false
     AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => false
     QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
+    QuoteNotPriceableWithoutDuration { obligation: _ } => false
   }
 }
 
@@ -431,20 +440,34 @@ test fn floor_buy_terms_ceiling_is_the_one_eligibility_reads() -> Bool {
   ))
 }
 
-// priority_class must not become a privilege escape. This asserts the floor
-// carries an ordinary class string and nothing structural distinguishes it from
-// any other demand's -- there is no field here that could admit an unaffordable
-// demand.
-test fn floor_admission_carries_no_privilege_field() -> Bool {
-  let terms = floor_admission_terms(
-    buy: floor_buy_terms(
-      account: "gunbc.budget.ci",
-      reservation_price: money_amount_micro(count: 0),
-      maximum_buy_order: money_amount_micro(count: 5),
-    ),
-    deadline: none,
+// THE FLOOR'S TERMS CARRY NO RANK, AND THIS ASSERTS THE ABSENCE STRUCTURALLY
+// RATHER THAN ASSERTING A STRING.
+//
+// The predecessor of this witness read `terms.priority_class == "gunbc.ci.floor"`
+// and was green from the day it was written, because it tested the spelling of a
+// field nothing ordered by. It could not have gone red for the defect it was
+// named after: a privilege escape would have been a CONSUMER preferring that
+// spelling, and no consumer existed to check.
+//
+// The field is gone, so the escape has no carrier. What remains checkable is
+// that the floor's own terms state nothing but a deadline and its buy terms --
+// the same two facts any other buyer states -- and that the ceiling it posts is
+// the ordinary one it was handed. The RED is authorable: adding any rank-shaped
+// field back to AdmissionTerms fails to compile at this construction, which is
+// the wall a string comparison could never be.
+test fn floor_admission_states_only_ordinary_buy_terms() -> Bool {
+  let buy = floor_buy_terms(
+    account: "gunbc.budget.ci",
+    reservation_price: money_amount_micro(count: 4),
+    maximum_buy_order: money_amount_micro(count: 5),
   )
-  terms.priority_class == "gunbc.ci.floor"
+  let terms = floor_admission_terms(buy: buy, deadline: none)
+  match terms.deadline {
+    Absent =>
+      money_amount_micro_count(m: terms.buy.maximum_buy_order) == 5
+        && money_amount_micro_count(m: terms.buy.reservation_price) == 4
+    Present { value: _ } => false
+  }
 }
 
 // THE DISCRIMINATING PAIR FOR THE DIMENSIONAL DEFECT. maximum_buy_order is the

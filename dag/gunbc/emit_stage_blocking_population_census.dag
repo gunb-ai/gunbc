@@ -1,0 +1,610 @@
+module gunbc.emit_stage_blocking_population_census
+
+import std.types { Bool, Int, String, NonEmptyStr, CommitSha, List }
+import std.nat { Nat }
+import std.measure { ByteSize, Second, second, byte_size_count, measure_count }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.disposition { Disposition, Terminal, SingleAuthority }
+import extdeps.posix.rusage {
+  RusageMaxrssObservation,
+  RusageWho,
+  RusageChildren,
+  rusage_maxrss_bytes
+}
+import extdeps.linux.rusage { linux_rusage_maxrss_unit }
+import gunbc.emit_diagnostic_observation {
+  EmitPopulationExtent,
+  EmitPopulationComplete,
+  EmitPopulationCompletenessUnestablished
+}
+
+data emit_stage_blocking_population_census_disposition: Disposition = Terminal {
+  reason: "THE RECEIPT OF ONE WHOLE-CORPUS EMIT-STAGE CENSUS, taken to satisfy the bounded-population requirement DESIGN section 4b(3) places on the declared drop titled A BLOCKING EMIT-STAGE DIAGNOSTIC CAN SIT ON MAIN INDEFINITELY WITH NO REQUIRED PHASE THAT FAILS. That row states its own defect plainly -- POPULATION: UNCOUNTED AND UNBOUNDED -- and names two specimens found by tripping over them rather than by searching. This module carries the measurement that replaces the word UNCOUNTED with a figure, and it carries nothing else: it is a receipt, not a gate, not an instrument, and not a repair."
+}
+
+data census_bounds_it_does_not_close_it_note: String = "WHAT A CENSUS BUYS AND WHAT IT DOES NOT, stated first because the neighbouring claim would be the rung inflation DESIGN section 4b(1) calls worse than sitting low. A census BOUNDS the population, which is exactly what that row lacks. It DOES NOT CLOSE THE CLASS: the row's restoration trigger is A REQUIRED PHASE THAT EMITS OVER CLOSURES, and one measurement taken by hand on one revision is not that phase. Nothing here executes on any push, nothing refuses, and the population this receipt bounds is free to grow the moment it is written -- which is the difference between knowing a number and having a wall.\n\nSO THE ROW'S RUNG DOES NOT MOVE. It stays outside the ladder, for the reason it already gives: an operation that lost its only route has nothing to mitigate. What changes is one clause of it -- the population is now measured, at a named revision, by a named command, with the run's termination and peak residency recorded beside the count."
+
+// ---------------------------------------------------------------------------------------------
+// THE CONSTRUCTION MOVE, AND IT IS THE WHOLE REASON THIS CARRIER HAS A SHAPE AT ALL.
+//
+// The hazard is not that a census is hard to take; it is that a KILLED census and a clean one
+// render identically to anything reading stdout. A SIGKILL at eleven gibibytes prints no
+// diagnostic, and a harness grepping the output for a count reads ZERO -- a fabricated zero
+// indistinguishable from a real one, which is the exact failure
+// gunbc.whole_corpus_compile_admission was landed over.
+//
+// A validation would ask the reader to check the exit status beside the count. This carrier makes
+// the count UNREPRESENTABLE without it: CensusRun holds the termination and the peak, and every
+// arm of CensusReading that carries a population carries a CensusRun. There is no spelling of
+// "the population is N" that does not also say how the process ended and how much memory it held.
+// ---------------------------------------------------------------------------------------------
+
+// A process ends in exactly one of two ways, and a signal death is not an exit code. Collapsing
+// the two onto a single Int is how 137 comes to be read as an ordinary refusal.
+// A RUN ENDS IN ONE OF THREE STATES, AND THE THIRD IS NOT AN ENDING. A signal death is not an
+// exit code -- collapsing the two onto a single Int is how 137 comes to be read as an ordinary
+// refusal. And a run the OBSERVER stopped did not terminate at all: it has no exit status to
+// record, and a receipt that had to invent one would be fabricating the very field the rest of
+// this carrier exists to make load-bearing. The third arm carries the budget it outlived instead.
+type CompileTermination
+  = CompileExited { code: Int }
+  | CompileKilledBySignal { signal: Int }
+  | CompileUnterminatedWithinBudget { budget: Second }
+
+fn compile_termination_text(t: CompileTermination) -> String {
+  match t {
+    CompileExited { code: c } => concat("exited with code ", to_string(c))
+    CompileKilledBySignal { signal: s } =>
+      concat("KILLED BY SIGNAL ", concat(to_string(s), " -- no population may be read from this run"))
+    CompileUnterminatedWithinBudget { budget: b } =>
+      concat(
+        "STILL RUNNING when the observer's budget of ",
+        concat(to_string(measure_count(m: b)), " second(s) expired -- it did not end, so it has no exit status and no population")
+      )
+  }
+}
+
+// WHETHER THE TREE MEASURED IS THE REVISION'S TREE. The peel below deliberately perturbs the
+// corpus, so a receipt that could not say so would report a measurement of a tree nobody has.
+type SubjectTreeStanding
+  = PristineAtRevision
+  | LocallyPerturbed { perturbation: NonEmptyStr }
+
+fn subject_tree_standing_text(s: SubjectTreeStanding) -> String {
+  match s {
+    PristineAtRevision => "pristine (the measured bytes are the revision's bytes)"
+    LocallyPerturbed { perturbation: p } => concat("locally perturbed: ", p as String)
+  }
+}
+
+type CensusRun {
+  source_revision: CommitSha
+  subject_tree: SubjectTreeStanding
+  primary_root: NonEmptyStr
+  dependency_pool_root: NonEmptyStr
+  render_target: NonEmptyStr
+  termination: CompileTermination
+  peak_resident: RusageMaxrssObservation
+  wall: Second
+  resolved_sources: Int
+}
+
+fn census_run_peak_bytes(r: CensusRun) -> ByteSize {
+  rusage_maxrss_bytes(obs: r.peak_resident)
+}
+
+// THE INVOCATION IS DERIVED FROM THE RUN, NOT WRITTEN BESIDE IT. The command that produced a
+// reading is a function of the reading's own fields -- which root was primary, which was pooled,
+// which target was rendered -- so a reader re-derives it from the row rather than trusting a
+// sentence in a comment. A `//` annotation cannot be read by any Accepted program (DESIGN section
+// 4c), so an invocation carried only in prose is unreachable from the fact it produced; this is the
+// same reason the citation rule names a symbol rather than a position.
+//
+// WHAT IT IS NOT: an actuator. Nothing here executes it, and the argv is deliberately not minted as
+// an extdeps.exec.command ArgvCommand -- that carrier's mint gates who may CONSTRUCT a runnable
+// command, and a receipt that never runs anything has no business holding one. This renders the
+// invocation for a person to re-run; that is the whole of its job.
+fn census_run_invocation(r: CensusRun) -> List<String> {
+  [
+    "gunbc", "compile",
+    "--source-root", r.primary_root as String,
+    "--source-root", r.dependency_pool_root as String,
+    "--target", r.render_target as String,
+    "--output-dir", "<a fresh directory>"
+  ]
+}
+
+// ONE BLOCKING SITE, CITED BY SYMBOL. DESIGN section 3 rules that a citation names the module and
+// the declaration, never a file offset: a diagnostic outlives the line it was reported on, and a
+// position rots without anyone touching either end. The compiler's own located span is what a
+// reader re-derives by running the command above; it is not transcribed here.
+//
+// NOT EVERY SITE SITS IN A DECLARATION. An unresolved import is refused at the module's import
+// list, which no DeclarationRef names, and inventing a nearby symbol for it would be the
+// fabricated citation this repository has already caught itself writing twice. The subject is
+// therefore a closed pair, and the module-level arm is a real state rather than a gap.
+type BlockingSubject
+  = SiteInDeclaration { declaration: DeclarationRef }
+  | SiteAtModuleImport { module_path: NonEmptyStr }
+
+// WHERE THE DIAGNOSTIC WAS PRODUCED, WHICH IS NOT THE SAME QUESTION AS WHERE THE COMPILE REFUSED,
+// and conflating them would have made this census over-count the class it exists to bound.
+//
+// DESIGN's row is about diagnostics the EMIT STAGE produces -- the Rust-target file-binding
+// refusals and emit_rust's own gates. What `gunbc compile` reports is every hard diagnostic
+// standing when it refuses, and it refuses AT emit, so an upstream cause is rendered under the
+// same heading. Measured: on the dag root the two coincide, and on the src/v2 root nineteen of
+// twenty are name-resolution and inference causes carried into the emit refusal.
+//
+// HOW THE ATTRIBUTION IS ESTABLISHED, since the compiler does not label it: by reading which seed
+// module authors the message. `unresolved type` and `undefined variable` are authored in
+// v1.compiler.infer; the parameter-default and anonymous-record causes are authored in
+// v1.compiler.emit_rust. That is a code read rather than an execution, and it is declared as one.
+type DiagnosticOrigin
+  = ProducedByEmit
+  | ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: NonEmptyStr }
+
+type BlockingSite {
+  subject: BlockingSubject
+  origin: DiagnosticOrigin
+  cause: NonEmptyStr
+}
+
+// THE FIGURE THE CLASS ACTUALLY WANTS. A reader asking "how big is the emit-stage blocking
+// population" is asking about ProducedByEmit members, and the whole-refusal count answers a wider
+// question. Both are derivable; neither is stored, so they cannot disagree.
+fn emit_produced_sites(sites: List<BlockingSite>) -> List<BlockingSite> {
+  filter(sites, s => match s.origin {
+    ProducedByEmit => true
+    ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: _ } => false
+  })
+}
+
+// THE EMIT BODY IS A SEQUENCE OF GATES, and that is a fact about the population rather than about
+// the compiler's style. v1.compiler.emit_rust emit_rust returns EmitResult with no files as soon
+// as a gate finds anything, so every later check NEVER RUNS. A count taken over emit is therefore
+// a PREFIX of the truth, stopping at whichever gate fired first, and the tell is wall time rather
+// than the counts -- emit runs LONGER once a gate is cleared, because it gets further.
+type EmitGate
+  = WorkflowParameterDefaultGate
+  | AnonymousRecordLiteralGate
+  | EmitStoppedOnUpstreamCauses
+  | NoGateFired
+
+fn emit_gate_text(g: EmitGate) -> String {
+  match g {
+    WorkflowParameterDefaultGate =>
+      "workflow parameter-default gate (v1.compiler.emit_rust validate_workflow_param_defaults) -- the FIRST gate, so every later check is masked"
+    AnonymousRecordLiteralGate =>
+      "anonymous-record-literal gate (v1.compiler.emit_rust ambiguous_anonymous_record_literal_diagnostics) -- the SECOND gate, reached only once the first is clear"
+    EmitStoppedOnUpstreamCauses =>
+      "the compile refused at emit over causes produced upstream of it -- how far emit_rust's own gates ran is unestablished"
+    NoGateFired =>
+      "no gate fired -- emit ran to the end of its body and wrote a tree, so its population is complete"
+  }
+}
+
+type CensusReading
+  = PopulationRead {
+      run: CensusRun
+      stopping_gate: EmitGate
+      blocking: List<BlockingSite>
+      advisory_total: Int
+    }
+  | NoPopulation {
+      run: CensusRun
+      cause: NonEmptyStr
+    }
+
+// THE EXTENT IS DERIVED FROM THE GATE, never stored beside it, so the two cannot disagree. A gate
+// that fired means emit returned early; only NoGateFired establishes a complete population.
+fn census_reading_extent(r: CensusReading) -> EmitPopulationExtent {
+  match r {
+    NoPopulation { run: _, cause: _ } => EmitPopulationCompletenessUnestablished
+    PopulationRead { run: _, stopping_gate: g, blocking: _, advisory_total: _ } =>
+      match g {
+        NoGateFired => EmitPopulationComplete
+        WorkflowParameterDefaultGate => EmitPopulationCompletenessUnestablished
+        AnonymousRecordLiteralGate => EmitPopulationCompletenessUnestablished
+        EmitStoppedOnUpstreamCauses => EmitPopulationCompletenessUnestablished
+      }
+  }
+}
+
+// WHAT KIND OF BOUND A READING SUPPORTS, and the distinction is the deliverable. A masked reading
+// bounds the population only FROM BELOW: there are at least this many, and the gate hides an
+// unknown number more. Only a reading whose emit ran to the end bounds it from above.
+type PopulationBound
+  = BoundedAbove { count: Int }
+  | LowerBoundOnly { count: Int, masking_gate: EmitGate }
+  | NoBound { cause: NonEmptyStr }
+
+fn census_population_bound(r: CensusReading) -> PopulationBound {
+  match r {
+    NoPopulation { run: _, cause: c } => NoBound { cause: c }
+    PopulationRead { run: run, stopping_gate: g, blocking: bs, advisory_total: _ } =>
+      match run.termination {
+        CompileKilledBySignal { signal: s } =>
+          NoBound {
+            cause: concat("the run was killed by signal ", concat(to_string(s), " -- its output is a prefix of unknown length and no count may be taken from it")) as NonEmptyStr
+          }
+        CompileUnterminatedWithinBudget { budget: b } =>
+          NoBound {
+            cause: concat("the run had not terminated after ", concat(to_string(measure_count(m: b)), " second(s); an unfinished emit has produced no population, only whatever it has printed so far")) as NonEmptyStr
+          }
+        CompileExited { code: _ } =>
+          match g {
+            NoGateFired => BoundedAbove { count: count(emit_produced_sites(sites: bs)) }
+            WorkflowParameterDefaultGate => LowerBoundOnly { count: count(emit_produced_sites(sites: bs)), masking_gate: g }
+            AnonymousRecordLiteralGate => LowerBoundOnly { count: count(emit_produced_sites(sites: bs)), masking_gate: g }
+            EmitStoppedOnUpstreamCauses => LowerBoundOnly { count: count(emit_produced_sites(sites: bs)), masking_gate: g }
+          }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE MEASUREMENT.
+//
+// THE COMMAND, which is the instrument and is named rather than paraphrased:
+//
+//   cargo build --release -p v1-compiler --bin gunbc
+//   gunbc compile --source-root dag --source-root src/v2 --target rust --output-dir <D>
+//
+// --target rust IS LOAD-BEARING AND IS NOT A DEFAULT. v1.05_emit file_emission_target_is_modeled
+// answers Rust => true with Python, Go and Dag ALL FALSE, so the Rust path is the only one on
+// which a file-binding refusal can be produced at all. A --target dag census counts the declared
+// target boundary refusing as specified and misses this class entirely; a peer session ran exactly
+// that earlier the same night, reported five blockers as defects, and retracted them.
+//
+// IT MUST RUN ON A HOST THAT CAN HOLD IT. The peak below is over eleven gibibytes, and the default
+// build route in a session container answers with under five: the run is SIGKILLed there, prints
+// nothing, and a harness reading its output counts zero. That is not a hazard this receipt guards
+// against by warning -- it is the reason CompileTermination sits inside CensusRun.
+// ---------------------------------------------------------------------------------------------
+
+data census_revision: CommitSha = "d198ff6eae007bfae4bb1d1796ec9162f6a03402"
+
+data census_subject_scope_note: String = "WHAT `--source-root dag --source-root src/v2` MEASURES, stated because it is narrower than the phrase WHOLE CORPUS suggests and a reader who assumes otherwise will over-read every figure below. The FIRST source root is the primary root and the rest are a dependency POOL: the compiler emits the primary root's whole population plus whatever the pool supplies to it. Measured on this run, that is 3006 resolved sources against 2785 `.dag` files under dag/ and 1278 under src/v2 -- so the census covers dag/ entire, plus the 221 src/v2 modules dag/ actually reaches, and leaves the rest of src/v2 unmeasured by THIS invocation.\n\nThe unmeasured remainder is named rather than elided: a census with src/v2 as the primary root is a second run of the same command with the roots exchanged, and it has not been taken here. Any claim about src/v2's own emit-stage population is therefore outside this receipt."
+
+// ── LAYER 1: THE PRISTINE TREE ────────────────────────────────────────────────────────────────
+//
+// The count a reader would get by running the command on the revision as it stands. It is THREE,
+// and it is a LOWER bound: the first gate fired, so everything after it in the emit body was never
+// reached. Reporting three as the population would have been the fabricated-plausible-output
+// failure with an honest-looking number attached.
+
+data pristine_census_run: CensusRun = CensusRun {
+  source_revision: census_revision,
+  subject_tree: PristineAtRevision,
+  primary_root: "dag" as NonEmptyStr,
+  dependency_pool_root: "src/v2" as NonEmptyStr,
+  render_target: "rust" as NonEmptyStr,
+  termination: CompileExited { code: 1 },
+  peak_resident: RusageMaxrssObservation {
+    who: RusageChildren,
+    raw_value: 11960416,
+    unit: linux_rusage_maxrss_unit
+  },
+  wall: second(1154),
+  resolved_sources: 3006
+}
+
+data pristine_census: CensusReading = PopulationRead {
+  run: pristine_census_run,
+  stopping_gate: WorkflowParameterDefaultGate,
+  blocking: [
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "gunbc.tools.ebay_listing", decl_name: "show_inventory") },
+      origin: ProducedByEmit,
+      cause: "default value for parameter 'limit' is not an admitted form" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "gunbc.tools.review", decl_name: "review_cycle") },
+      origin: ProducedByEmit,
+      cause: "default value for parameter 'owner' is not an admitted form" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "gunbc.tools.review", decl_name: "review_cycle") },
+      origin: ProducedByEmit,
+      cause: "default value for parameter 'repo' is not an admitted form" as NonEmptyStr
+    }
+  ],
+  advisory_total: 14321
+}
+
+// ── THE PEEL, AND WHY A SECOND LAYER EXISTS AT ALL ────────────────────────────────────────────
+//
+// Layer 1 bounds the population from below and nothing bounds it from above, which does not
+// satisfy DESIGN section 4b(3): a lower bound on an unbounded set is still an unbounded set. The
+// only way past a gate is to clear what it is refusing, so each further layer is measured on a
+// LOCALLY PERTURBED tree -- the previous layer's sites rewritten to an admitted form IN THE
+// WORKING TREE ONLY, never committed, never proposed as a repair.
+//
+// WHAT THE PERTURBATION IS ALLOWED TO BE, and this is the constraint that keeps the peel a
+// measurement rather than a rewrite: it may only remove the masking sites, and it may not be able
+// to CREATE a diagnostic of the class being counted. Layer 2's perturbation replaces three
+// parameter defaults with literals of the same value; layer 3's adds the nominal type name the
+// compiler asked for at eight anonymous record literals. Neither can manufacture a
+// parameter-default refusal or a shape ambiguity, so every site a later layer reports is a site
+// that was standing on the pristine tree all along and was hidden behind the gate.
+//
+// THE PEELED NUMBERS ARE NOT A MEASUREMENT OF main, AND THIS IS THE DISTINCTION A LATER READER
+// WILL COLLAPSE IF IT IS NOT WRITTEN HERE. Layer 1 is what the revision ANSWERS: run the command
+// on the tree as it stands and three blocking diagnostics come back. Every later layer answers a
+// different question -- what the NEXT gate would report if the ones above it were cleared -- and
+// that is a statement about the corpus's latent content, not about what main does today.
+//
+// Both are true and they are different subjects. Quoting a peeled figure as "main has N blocking
+// emit diagnostics" would be false, and quoting layer 1 as "the population is three" would be the
+// masked reading this whole receipt exists to refuse. The peel edits are UNCOMMITTED and are
+// declared on every row that used them, which is what keeps layer 1 honest: the pristine row is
+// the only one whose subject_tree is PristineAtRevision, and nothing else in this module claims
+// to describe the revision's own behaviour.
+//
+// THE TELL THAT A LAYER GOT FURTHER IS WALL TIME, NOT THE COUNT -- emit ran 43 seconds at layer 1
+// and 72 at layer 2, because it reached checks it had been returning ahead of. DESIGN records the
+// same signature from the receipt this peel reproduces: two workflow-parameter diagnostics masking
+// eight anonymous-record ones, which is exactly the 3-then-8 shape measured here.
+
+data layer_two_census_run: CensusRun = CensusRun {
+  source_revision: census_revision,
+  subject_tree: LocallyPerturbed {
+    perturbation: "the three layer-1 parameter defaults rewritten as literals of the same value (uncommitted)" as NonEmptyStr
+  },
+  primary_root: "dag" as NonEmptyStr,
+  dependency_pool_root: "src/v2" as NonEmptyStr,
+  render_target: "rust" as NonEmptyStr,
+  termination: CompileExited { code: 1 },
+  peak_resident: RusageMaxrssObservation {
+    who: RusageChildren,
+    raw_value: 11917808,
+    unit: linux_rusage_maxrss_unit
+  },
+  wall: second(1174),
+  resolved_sources: 3006
+}
+
+data layer_two_census: CensusReading = PopulationRead {
+  run: layer_two_census_run,
+  stopping_gate: AnonymousRecordLiteralGate,
+  blocking: [
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation", decl_name: "sample_file") },
+      origin: ProducedByEmit,
+      cause: "ambiguous anonymous record literal shape matches 2 structs: FileOwnership, PosixSubject" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation", decl_name: "posix_owner_can_read") },
+      origin: ProducedByEmit,
+      cause: "ambiguous anonymous record literal shape matches 2 structs: FileOwnership, PosixSubject" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation", decl_name: "posix_owner_cannot_execute") },
+      origin: ProducedByEmit,
+      cause: "ambiguous anonymous record literal shape matches 2 structs: FileOwnership, PosixSubject" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation", decl_name: "posix_group_can_read") },
+      origin: ProducedByEmit,
+      cause: "ambiguous anonymous record literal shape matches 2 structs: FileOwnership, PosixSubject" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.access_validation", decl_name: "posix_other_cannot_read") },
+      origin: ProducedByEmit,
+      cause: "ambiguous anonymous record literal shape matches 2 structs: FileOwnership, PosixSubject" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "extdeps.git.versioning", decl_name: "git_2_0_release") },
+      origin: ProducedByEmit,
+      cause: "ambiguous anonymous record literal shape matches 4 structs: FirmwareSemanticVersion, GitReleaseVersion, MercurialUpstreamVersion, OllamaSemanticVersion" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "test.claim.cache_retention_axes_witness_test", decl_name: "scope_exit_runtime_derived_replace_existing") },
+      origin: ProducedByEmit,
+      cause: "ambiguous anonymous record literal shape matches 2 structs: DeclarationRef, RustItemDeclarationRef" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "extdeps.realization.reconcile_in_process", decl_name: "typed_module_cache_facts") },
+      origin: ProducedByEmit,
+      cause: "ambiguous anonymous record literal shape matches 2 structs: DeclarationRef, RustItemDeclarationRef" as NonEmptyStr
+    }
+  ],
+  advisory_total: 14321
+}
+
+// ── LAYER 3: THE UPPER BOUND IS NOT REACHABLE BY THIS ROUTE ───────────────────────────────────
+//
+// With both gates clear, emit runs its actual code generation over the whole root population --
+// and it does not finish. Stopped at a declared five-hour observer budget with the process still
+// in R, resident set flat, no output tree written. It has NO exit status, because it did not
+// exit, which is why CompileTermination carries an arm for a run the observer halted rather than
+// letting one borrow a code it never produced.
+//
+// SO THE UPPER BOUND IS UNMEASURED FOR A REASON THAT HAS NOTHING TO DO WITH HOW MANY DIAGNOSTICS
+// EXIST. The population above the second gate is not large, or small; it is unobserved, and the
+// obstacle is the emitter's wall time at whole-root scale rather than the census's method.
+//
+// WHAT THIS ROW DOES NOT SAY, AND THE TEMPTATION IS REAL BECAUSE THE NUMBERS INVITE IT. 43 s,
+// then 72 s, then over four and a half hours looks like a cost curve exploding, and it is not one:
+// all three runs resolve the SAME 3006 sources, so the step is not more work of one kind. Layers 1
+// and 2 ran gate checks and returned having emitted NOTHING; layer 3 is the first run that
+// generated any code at all. Three runs that did different work are not three points on one curve,
+// and reading them as one would be a cost-shape claim with no measurement under it. What emit's
+// cost curve actually looks like is answered by tools.emission_entry_instrument
+// measure_entry_emission across entries of increasing closure size, which is a controlled
+// measurement this receipt has not taken.
+
+data layer_three_census: CensusReading = NoPopulation {
+  run: CensusRun {
+    source_revision: census_revision,
+    subject_tree: LocallyPerturbed {
+      perturbation: "layer 2's perturbation plus the eight anonymous record literals given the nominal type the compiler asked for (uncommitted)" as NonEmptyStr
+    },
+    primary_root: "dag" as NonEmptyStr,
+    dependency_pool_root: "src/v2" as NonEmptyStr,
+    render_target: "rust" as NonEmptyStr,
+    termination: CompileUnterminatedWithinBudget { budget: second(18000) },
+    peak_resident: RusageMaxrssObservation {
+      who: RusageChildren,
+      raw_value: 11961596,
+      unit: linux_rusage_maxrss_unit
+    },
+    wall: second(18036),
+    resolved_sources: 3006
+  },
+  cause: "emit reached its code-generation body with both gates clear and had not returned after four hours and thirty-eight minutes inside that stage; no tree was written and no population was produced" as NonEmptyStr
+}
+
+
+// ── THE OTHER ROOT: src/v2 AS PRIMARY ─────────────────────────────────────────────────────────
+//
+// The first census covers dag/ entire and only the src/v2 modules dag/ reaches. This is the same
+// command with the roots exchanged, taken on the PRISTINE tree -- the peel above was reverted
+// before it ran. It is a SEPARATE SUBJECT with a separate population and is unioned with nothing:
+// two roots, two numbers, and neither of them is "the corpus".
+//
+// AND ITS POPULATION IS ALMOST ENTIRELY NOT THE CLASS. Twenty hard diagnostics stand at the emit
+// refusal and NINETEEN of them are name-resolution and inference causes carried into it; not one
+// member is emit-produced. Nineteen of the twenty are one module's cascade behind a single
+// unresolved import -- v2.test.manual.ownership_movable imports v1.compiler.ownership, which is
+// outside both source roots, and that module's own note says so in as many words. The twentieth
+// is a DELIBERATE NEGATIVE FIXTURE: a planted sole_constructor leak whose whole purpose is to be
+// refused. Counting either as an emit-stage defect would have been a finding manufactured by the
+// census's own denominator.
+//
+// SO THE EMIT-PRODUCED POPULATION ON THIS ROOT IS ZERO OBSERVED, AND THAT IS NOT A CLEAN BILL.
+// The refusal happened at emit with upstream causes already standing, so whether emit_rust's own
+// gates ran to any depth is unestablished -- the same masking question one stage up, and the
+// reason this reading's extent is completeness-unestablished like the others.
+
+data src_v2_root_census: CensusReading = PopulationRead {
+  run: CensusRun {
+    source_revision: census_revision,
+    subject_tree: PristineAtRevision,
+    primary_root: "src/v2" as NonEmptyStr,
+    dependency_pool_root: "dag" as NonEmptyStr,
+    render_target: "rust" as NonEmptyStr,
+    termination: CompileExited { code: 1 },
+    peak_resident: RusageMaxrssObservation {
+      who: RusageChildren,
+      raw_value: 8972064,
+      unit: linux_rusage_maxrss_unit
+    },
+    wall: second(256),
+    resolved_sources: 1937
+  },
+  stopping_gate: EmitStoppedOnUpstreamCauses,
+  blocking: [
+    BlockingSite {
+      subject: SiteAtModuleImport { module_path: "v2.test.manual.ownership_movable" as NonEmptyStr },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "unresolved import: module 'v1.compiler.ownership' not found" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "proof_one") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "unresolved type 'EdgeClassification'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "proof_one") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "unresolved type 'OwnershipProof'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "proof_one") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "unresolved type 'BindingUsage'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "proof_one") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "unresolved type 'OwnershipProof'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "edge") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "unresolved type 'EdgeKind'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "edge") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "unresolved type 'EdgeClassification'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "edge") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "unresolved type 'EdgeClassification'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "movable_of") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "unresolved type 'OwnershipProof'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "movable_of") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "function 'build_movable_set' not found in scope" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "movable_of") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "set_contains receiver must be a Set" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_read_then_consume_param_is_movable") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "undefined variable 'Projected'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_read_then_consume_param_is_movable") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "undefined variable 'Consumed'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_double_consume_is_not_movable") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "undefined variable 'Consumed'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_double_consume_is_not_movable") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "undefined variable 'Consumed'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_zero_consume_is_not_movable") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "undefined variable 'Projected'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_whole_read_then_consume_is_not_movable") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "undefined variable 'Consumed'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_threaded_then_consume_is_not_movable") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "undefined variable 'Threaded'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.manual.ownership_movable", decl_name: "witness_threaded_then_consume_is_not_movable") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "undefined variable 'Consumed'" as NonEmptyStr
+    },
+    BlockingSite {
+      subject: SiteInDeclaration { declaration: decl_ref(module_path: "v2.test.fixture.meta_exec_confinement_scan.leak_plant", decl_name: "planted_meta_exec_import_leak") },
+      origin: ProducedUpstreamSurfacedAtEmitRefusal { producing_stage: "v1.compiler.infer" as NonEmptyStr },
+      cause: "sole_constructor type 'TransportScript' cannot be constructed outside its defining module" as NonEmptyStr
+    }
+  ],
+  advisory_total: 10574
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE STANDING THIS RECEIPT LEAVES THE CLASS IN.
+//
+// It is deliberately three statements and not one number, because the one number does not exist
+// and writing one would close a row that is still open.
+// ---------------------------------------------------------------------------------------------
+
+data emit_stage_population_standing_note: String = "TWO ROOTS, TWO POPULATIONS, NEITHER OF THEM THE CORPUS. The command takes ONE primary root and treats the rest as a dependency pool, so a census of both roots is two runs and two subjects; a reader who unions them has invented a third population nobody measured.\n\nROOT dag/ -- OBSERVABLE: three, all emit-produced. That is what the command answers on the revision as it stands, and it is a lower bound rather than the population, because emit's first gate returned ahead of every later check. LATENT: at least eleven. The eight the second gate reports were standing on the pristine tree the whole time; clearing the first gate is what let anyone see them. UPPER BOUND: NONE, with the cause named -- emit does not finish at whole-root scale within five hours, so the route that would have bounded the population from above does not return.\n\nROOT src/v2 -- twenty hard diagnostics at the emit refusal, of which ZERO are emit-produced: nineteen are one module's cascade behind an import of v1.compiler.ownership, which lies outside both source roots, and the twentieth is a planted negative fixture doing exactly what it was planted to do. Whether emit's own gates ran at all here is unestablished, so zero-observed is not a clean bill.\n\nWHAT MOVED, precisely: the word UNCOUNTED. What did not move: UNBOUNDED, the rung, and the trigger. The class keeps its DESIGN standing -- outside the ladder, and its restoration trigger remains a REQUIRED PHASE THAT EMITS OVER CLOSURES. This receipt is not that phase and does not claim to be one: it executes on no push, refuses nothing, and describes one revision on one host."

@@ -1,5 +1,6 @@
 module v2.test.lens_fact_density.fact_bundle_named
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.fact_density {
   KernelAmbientAtom,
   NamedFieldFacts,
@@ -17,13 +18,12 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
-  SyntheticOccurrence
 }
 
 data fact_bundle_alias: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^fact_bundle_alias_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data fact_bundle_input: Node = Node {
@@ -38,7 +38,7 @@ data fact_bundle_input: Node = Node {
       target: fact_bundle_alias
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 test fn fact_bundle_named_claim_holds() -> Bool {

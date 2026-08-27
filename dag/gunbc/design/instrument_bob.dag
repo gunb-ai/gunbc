@@ -128,7 +128,7 @@ fn bob_amplitude_milli(s: BobState) -> Int {
   }
 }
 
-fn advance(s: BobState, dt_ms: Milliseconds) -> BobState {
+fn bob_advance(s: BobState, dt_ms: Milliseconds) -> BobState {
   let next_elapsed = s.elapsed_ms + dt_ms
   let next_amp = amplitude_at(initial_milli: s.initial_milli_px, elapsed_ms: next_elapsed)
   if next_amp < bob_visibility_floor_milli_px {
@@ -148,7 +148,7 @@ fn advance_descent_evidence(s: BobState, dt_ms: Milliseconds) -> DescentEvidence
     BobSettled => Strict
     BobRinging => {
       let before = bob_amplitude_milli(s: s)
-      let after = bob_amplitude_milli(s: advance(s: s, dt_ms: dt_ms))
+      let after = bob_amplitude_milli(s: bob_advance(s: s, dt_ms: dt_ms))
       if after < before {
         Strict
       } else if after == before {
@@ -305,7 +305,7 @@ fn bob_frames_from(s: BobState, interval_ms: Milliseconds, budget: Int, budget_a
       budget_allowed: budget_allowed,
     }
   } else {
-    let next = advance(s: s, dt_ms: interval_ms)
+    let next = bob_advance(s: s, dt_ms: interval_ms)
     let frame = bob_frame_of(s: next)
     match next.phase {
       BobSettled => BobSequenceSettled { frames: [frame] }
@@ -394,4 +394,3 @@ fn frames_max_abs_between(fs: List<BobFrame>, from_ms: Int, to_ms: Int) -> Int {
 fn frames_last_displacement(fs: List<BobFrame>) -> Int {
   fold(fs, init: 0, f: (acc, x) => x.displacement_px)
 }
-

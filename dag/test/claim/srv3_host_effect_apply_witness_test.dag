@@ -9,6 +9,18 @@ import gunbc.host_effect_realize {
   BmcwebTokenExtracted,
   BmcwebTokenExtractRefused,
 }
+import gunbc.srv3_nbd_proxy_serve_intent {
+  srv3_nbd_proxy_serve_host_effect, srv3_nbd_proxy_lease_key,
+}
+import gunbc.host_effect_nbd_proxy_serve {
+  host_effect_nbd_proxy_serve_session_binding,
+  host_effect_nbd_proxy_serve_session_policy_is_held_lease,
+  host_effect_nbd_proxy_serve_apply_with_observation,
+  host_effect_nbd_proxy_serve_apply_refuses_foreign_port,
+  host_effect_nbd_proxy_serve_apply_drains_stale_matching,
+  NbdProxyServeApplyRefused,
+}
+import gunbc.session_lease { PortObserved, PortObservedStaleExpected }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

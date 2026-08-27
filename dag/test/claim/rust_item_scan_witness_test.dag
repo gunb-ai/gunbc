@@ -1,0 +1,259 @@
+module test.claim.rust_item_scan_witness_test
+
+import gunbc.rust_item_identity {
+  RustFunction,
+  RustImplMethod,
+  RustItemIdentity,
+  rust_item_identity_key
+}
+import gunbc.rust_item_scan {
+  AttributedToFileLevel,
+  AttributedToItem,
+  AttributedToUnnamedMacroBlock,
+  AttributionOutOfRange,
+  RustFileScanned,
+  RustFileScanRefused,
+  attribute_scanned_line,
+  rust_item_kind_keyword_mapping_is_total,
+  scan_item_keys,
+  scan_rust_source
+}
+import std.types { Bool, Int, List, String }
+import v2.std.algebra { any, length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EVERY FIXTURE PLANTS WHAT IT ASSERTS, and the reds are authored rather than argued for. The scan
+// is a recognizer over source text, so the discriminating inputs are source text: a file whose
+// items are known by name, and files carrying exactly the shapes that would make a recognizer
+// silently wrong -- a macro invocation at a scope boundary, and Rust-looking source inside a raw
+// string literal, which is the defect the deleted Python census actually committed (nine phantom
+// items in one diff, recorded in gunbc.bare_reference_scanner_admission).
+data fixture_ordinary_source: String = "use std::fmt;\nuse std::io::Write;\n\npub struct Thing {\n    field: u32,\n}\n\n/// doc line\n#[derive(Debug)]\npub enum Mood {\n    Calm,\n    Loud,\n}\n\npub fn free_function(x: u32) -> u32 {\n    x + 1\n}\n\nimpl std::fmt::Display for Mood {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        write!(f, \"mood\")\n    }\n}\n\nmod inner_tests {\n    use super::*;\n\n    fn helper() -> bool {\n        true\n    }\n}\n"
+
+data fixture_raw_string_reaching_column_zero: String = "pub fn fixture_text() -> &'static str {\n    r#\"\nfn phantom_item() -> u32 {\n    1\n}\n\"#\n}\n"
+
+data fixture_header_opened_raw_string: String = "pub const FIXTURE_SRC: &str = r#\"\nfn phantom_item() -> u32 {\n    1\n}\n\"#;\n\npub fn after_the_literal() -> u32 {\n    1\n}\n"
+
+data fixture_const_and_const_fn: String = "pub const LIMIT: u32 = 4;\n\npub const fn doubled() -> u32 {\n    LIMIT * 2\n}\n"
+
+// THE WRAPPED FORMS ARE THE POPULATION, NOT THE EXCEPTION. Measured over the seed's hand-maintained
+// Rust before these three scopes existed, wrapped `use` lists alone put 58 files out of reach and
+// multi-line `#[derive(...)]` a further dozen -- a reader that refused them would have been safe and
+// useless, which is the other way a fail-closed recognizer fails. Each fixture carries the wrapped
+// form AND a following item, because finding the following item is what separates a reader that
+// consumed the continuation from one that swallowed the rest of the file.
+data fixture_wrapped_use_and_derive: String = "use std::collections::{\n    HashMap, HashSet,\n};\n\n#[derive(\n    Debug, Clone, PartialEq,\n)]\npub struct Wrapped {\n    field: u32,\n}\n\npub fn after_the_wrapping() -> u32 {\n    1\n}\n"
+
+data fixture_macro_block: String = "use std::cell::RefCell;\n\nthread_local! {\n    static COUNTER: RefCell<u32> = RefCell::new(0);\n}\n\npub fn after_the_macro() -> u32 {\n    1\n}\n"
+
+fn ordinary_scan_keys() -> List<String> {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_ordinary_source) {
+    RustFileScanned { repo_path: _, items: items, macro_regions: _, line_count: _ } => scan_item_keys(items: items)
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => []
+  }
+}
+
+fn key_present(keys: List<String>, key: String) -> Bool {
+  any(xs: keys, predicate: fn(k) { k == key })
+}
+
+// THE ITEMS ARE REQUIRED BY NAME AND NOT BY COUNT. A count assertion is satisfied by a recognizer
+// that finds the right NUMBER of wrong things -- which is exactly how the deleted census reported
+// eighteen items for a nine-item diff -- so every arm here names the identity it expects.
+test fn scan_recovers_every_item_by_name() -> Bool {
+  let keys = ordinary_scan_keys()
+  key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::struct::Thing")
+    && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::enum::Mood")
+    && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::free_function")
+    && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::impl_block::std::fmt::Display for Mood")
+    && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::impl_method::std::fmt::Display for Mood::fmt")
+    && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::mod::inner_tests")
+    && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::inner_tests.helper")
+}
+
+// THE INLINE MODULE'S MEMBER CARRIES ITS MODULE PATH, which is the fact that makes the citation
+// vocabulary joinable: gunbc.declaration_index_seed_growth cites seven declarations under
+// v1_compiler.cli_run.bare_reference_scanner_tests. A reader that recorded `helper` bare would
+// collide it with any file-level `helper` in the same file, and the join would silently treat an
+// addition as already justified.
+test fn inline_module_members_are_qualified_not_bare() -> Bool {
+  let keys = ordinary_scan_keys()
+  key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::inner_tests.helper")
+    && !key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::helper")
+}
+
+test fn a_wrapped_use_list_and_derive_attribute_do_not_hide_the_following_item() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_wrapped_use_and_derive) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } => {
+      let keys = scan_item_keys(items: items)
+      key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::struct::Wrapped")
+        && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::after_the_wrapping")
+        && match attribute_scanned_line(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 5
+        ) {
+          AttributedToItem { item_key: key } => key == "src/v1/stage0/src/probe.rs::struct::Wrapped"
+          AttributedToFileLevel => false
+          AttributedToUnnamedMacroBlock { macro_name: _, line: _ } => false
+          AttributionOutOfRange { line: _, line_count: _ } => false
+        }
+    }
+  }
+}
+
+// A MACRO BLOCK IS AN EXTENT WITH NO ITEM AND A CHANGE INSIDE IT IS NOT FILE-LEVEL. Three facts are
+// required together and each is a different way to get this wrong: the file must scan (refusing it
+// would put cli_run.rs, which carries a thread_local! block, permanently out of the census); the
+// macro must mint no item (the grammar authority has no macro item form, and inventing one here
+// would be the second roster this reader exists not to author); and a line inside it must NOT come
+// back file-level, because a static added inside thread_local! is hand-Rust growth and file-level is
+// the answer that would admit it silently.
+test fn a_macro_block_is_an_extent_with_no_item_and_its_lines_are_unattributed() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_macro_block) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } => {
+      let keys = scan_item_keys(items: items)
+      key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::after_the_macro")
+        && !key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::static::COUNTER")
+        && length(xs: macro_regions) == 1
+        && match attribute_scanned_line(
+          items: items,
+          macro_regions: macro_regions,
+          line_count: line_count,
+          line: 4
+        ) {
+          AttributedToUnnamedMacroBlock { macro_name: name, line: _ } => name == "thread_local"
+          AttributedToFileLevel => false
+          AttributedToItem { item_key: _ } => false
+          AttributionOutOfRange { line: _, line_count: _ } => false
+        }
+    }
+  }
+}
+
+// AN UNRECOGNIZED STRUCTURAL LINE STILL REFUSES, and this arm is what keeps the three continuation
+// scopes above from having quietly become a catch-all. `lazy_static!` opens a macro block, so the
+// fixture that used to make this point no longer does; a bare brace at a scope boundary is not a
+// macro, not an item header, not a use and not an attribute, and there is no arm that admits it.
+test fn an_unrecognized_structural_line_refuses() -> Bool {
+  match scan_rust_source(
+    repo_path: "src/v1/stage0/src/probe.rs",
+    content: "use std::fmt;\n\n{\n    1\n}\n"
+  ) {
+    RustFileScanRefused { repo_path: _, line: line, line_text: _, detail: _ } => line == 3
+    RustFileScanned { repo_path: _, items: _, macro_regions: _, line_count: _ } => false
+  }
+}
+
+// THE PHANTOM-ITEM DEFECT, AUTHORED AS ITS OWN RED, IN BOTH OF ITS SHAPES. The deleted census read
+// source as text and counted `fn phantom_item` inside a raw string literal as a Rust item, nine
+// times in one diff.
+//
+// This fixture opens its literal inside a function BODY, which is the shape the reader tracks
+// least: the opening delimiter never appears on an item header, so the literal's text arrives at a
+// scope boundary unannounced. The reader has no arm that admits it -- what the text is not, is a
+// recognized structural line -- so the file refuses rather than reporting an item nobody wrote.
+// Refusing is the honest answer here and is what the change observation turns into a line-stop.
+test fn source_inside_a_raw_string_literal_mints_no_item() -> Bool {
+  match scan_rust_source(
+    repo_path: "src/v1/stage0/src/probe.rs",
+    content: fixture_raw_string_reaching_column_zero
+  ) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => true
+    RustFileScanned { repo_path: _, items: items, macro_regions: _, line_count: _ } =>
+      !key_present(keys: scan_item_keys(items: items), key: "src/v1/stage0/src/probe.rs::fn::phantom_item")
+        && false
+  }
+}
+
+// THE SECOND SHAPE IS THE COMMON ONE IN THIS TREE AND IT MUST NOT MERELY REFUSE. A `const … = r#"`
+// fixture table is how most Rust source in this seed carries planted .dag and Rust text, and a
+// reader that refused every such file would refuse most of the population it exists to census --
+// safe, and useless. The literal's terminator is recovered from its own opening delimiter, so the
+// constant closes where it really closes, the item after it is found, and the declaration planted
+// inside the literal is not. All three are required together: finding the following item is what
+// separates a reader that skipped the literal from one that swallowed the rest of the file.
+test fn a_header_opened_raw_string_is_skipped_whole_and_mints_no_item() -> Bool {
+  match scan_rust_source(
+    repo_path: "src/v1/stage0/src/probe.rs",
+    content: fixture_header_opened_raw_string
+  ) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: _, line_count: _ } => {
+      let keys = scan_item_keys(items: items)
+      key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::const::FIXTURE_SRC")
+        && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::after_the_literal")
+        && !key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::phantom_item")
+    }
+  }
+}
+
+// `const` IS BOTH A MODIFIER AND AN ITEM KEYWORD, and the two spellings must not collapse. A reader
+// that peeled `const` unconditionally records the constant as a function named nothing; one that
+// never peeled it records `const fn doubled` as a constant named `fn`. Both fixtures are in one
+// file so a repair in either direction reds here.
+test fn const_item_and_const_fn_are_distinguished() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_const_and_const_fn) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: _, line_count: _ } => {
+      let keys = scan_item_keys(items: items)
+      key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::const::LIMIT")
+        && key_present(keys: keys, key: "src/v1/stage0/src/probe.rs::fn::doubled")
+    }
+  }
+}
+
+// THE INNERMOST CONTAINING ITEM WINS. A method's lines lie inside both the method and its impl
+// block; reporting the impl block would attribute a method edit to the enclosing scope, which is
+// how a new capability lands with nothing to report.
+test fn attribution_reports_the_innermost_item() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_ordinary_source) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } =>
+      match attribute_scanned_line(items: items, macro_regions: macro_regions, line_count: line_count, line: 20) {
+        AttributedToItem { item_key: key } =>
+          key == "src/v1/stage0/src/probe.rs::impl_method::std::fmt::Display for Mood::fmt"
+        AttributedToFileLevel => false
+        AttributedToUnnamedMacroBlock { macro_name: _, line: _ } => false
+        AttributionOutOfRange { line: _, line_count: _ } => false
+      }
+  }
+}
+
+test fn a_use_line_attributes_to_file_level_and_not_to_an_item() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_ordinary_source) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } =>
+      match attribute_scanned_line(items: items, macro_regions: macro_regions, line_count: line_count, line: 1) {
+        AttributedToFileLevel => true
+        AttributedToItem { item_key: _ } => false
+        AttributedToUnnamedMacroBlock { macro_name: _, line: _ } => false
+        AttributionOutOfRange { line: _, line_count: _ } => false
+      }
+  }
+}
+
+test fn a_line_beyond_the_file_is_out_of_range_and_not_file_level() -> Bool {
+  match scan_rust_source(repo_path: "src/v1/stage0/src/probe.rs", content: fixture_const_and_const_fn) {
+    RustFileScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustFileScanned { repo_path: _, items: items, macro_regions: macro_regions, line_count: line_count } =>
+      match attribute_scanned_line(items: items, macro_regions: macro_regions, line_count: line_count, line: line_count + 50) {
+        AttributionOutOfRange { line: _, line_count: _ } => true
+        AttributedToFileLevel => false
+        AttributedToUnnamedMacroBlock { macro_name: _, line: _ } => false
+        AttributedToItem { item_key: _ } => false
+      }
+  }
+}
+
+// THE KEYWORD MAPPING IS CHECKED AGAINST THE GRAMMAR AUTHORITY RATHER THAN AGAINST ITSELF. A
+// keyword added to extdeps.languages.rust.syntax rust_item_forms and not named in the kind mapping
+// would otherwise acquire a plausible kind in silence.
+test fn every_grammar_authority_item_keyword_has_a_named_kind() -> Bool {
+  rust_item_kind_keyword_mapping_is_total()
+}

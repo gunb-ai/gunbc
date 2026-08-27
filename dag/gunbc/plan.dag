@@ -13,11 +13,32 @@ type PlanRetirement
   = PlanRetiresWhen { condition: DissolutionCondition }
   | PlanHasNoRetirement
 
+// WHETHER THIS PLAN'S MARKDOWN IS A COMMITTED ARTIFACT AT ALL, declared by the plan and by
+// nothing else.
+//
+// A plan carrier declares a slug, and the generated-artifact registry turned that slug into a
+// committed path unconditionally -- so deleting a plan's markdown left the authority still
+// producing it, and the registry kept offering a path for a file the repository had decided
+// not to commit. That went unnoticed for exactly as long as nothing adjudicated the population.
+// The moment a drift phase does, the absence stops the line and the cheapest way to clear it is
+// to REGENERATE, which recreates content a commit deliberately removed: a dormant registry
+// mistake converted into a standing obligation to resurrect deleted files, green either way.
+//
+// So the disposition is a declared fact on the plan rather than an inference from the tree.
+// `PlanIsAuthorityOnly` carries the ruling that removed the projection, symbolically, so the
+// row cannot drift from its reason; it is not an exemption list and not a shrink of the
+// registry -- the plan is still rostered, still generated, still refused if generation fails.
+// What changes is only whether its bytes are expected on disk.
+type PlanProjection
+  = PlanProjectsCommittedMarkdown
+  | PlanIsAuthorityOnly { ruling: String }
+
 type Plan {
   slug: String,
   title: String,
   body: List<MarkdownBlock>,
   retirement: PlanRetirement,
+  projection: PlanProjection,
 }
 
 fn plan_h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
