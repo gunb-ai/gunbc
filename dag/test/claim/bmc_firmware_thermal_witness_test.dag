@@ -111,6 +111,10 @@ import extdeps.filesystem.linux {
   ReplacementAtomicityUnspecified,
   linux_synchronized_rename_replace_publication,
 }
+import gunbc.bmc_fan_alignment_standing {
+  HostBmcFanAlignmentStanding,
+  IntentMatchesObservedProgram,
+}
 import gunbc.bmc_converge {
   ApprovedBmcFirmwareArtifact,
   BmcFanPolicyDurabilityQualified,
@@ -186,6 +190,19 @@ fn host_uses_global_bmc_valid_state(host: ComputeHost) -> Bool {
     Absent => false
   }
 }
+
+// THESE FIXTURES TEST DISTINCTIONS DOWNSTREAM OF THE ALIGNMENT GATE -- durability linkage,
+// topology drift, live-digest mismatch -- so they supply a roster that admits srv4 in order to
+// REACH those arms. This is not asserting that srv4 is aligned; the fleet's own roster says it is
+// not, and gunbc.bmc_fan_alignment_standing_witness is what tests that. Passing the fleet roster
+// here would answer every one of these with the alignment refusal and the subjects below would go
+// untested while the file still looked green.
+data fixture_alignment_admits_srv4: List<HostBmcFanAlignmentStanding> = [
+  HostBmcFanAlignmentStanding {
+    host: srv4_host.identity,
+    alignment: IntentMatchesObservedProgram,
+  },
+]
 
 test fn every_metal_host_uses_the_single_global_bmc_valid_state() -> Bool {
   host_uses_global_bmc_valid_state(host: srv1_host)
@@ -758,6 +775,7 @@ test fn non_fleet_quiet_curve_projected_config_digest_is_unavailable() -> Bool {
 test fn srv4_bmc_reboot_persistence_receipt_proves_same_config_and_noop() -> Bool {
   let receipt = srv4_bmc_fan_reboot_persistence_receipt
   let classified = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
@@ -803,6 +821,7 @@ test fn srv4_bmc_reboot_persistence_receipt_proves_same_config_and_noop() -> Boo
 
 test fn srv4_receipt_cannot_qualify_a_later_perturbation_generation() -> Bool {
   let classified = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
@@ -825,6 +844,7 @@ test fn srv4_receipt_cannot_qualify_a_later_perturbation_generation() -> Bool {
 
 test fn duplicate_srv4_durability_receipts_refuse_instead_of_first_wins() -> Bool {
   let classified = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
@@ -849,6 +869,7 @@ test fn duplicate_srv4_durability_receipts_refuse_instead_of_first_wins() -> Boo
 
 test fn converged_srv4_curve_without_topology_projection_refuses_noop() -> Bool {
   let classified = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
@@ -871,6 +892,7 @@ test fn converged_srv4_curve_without_topology_projection_refuses_noop() -> Bool 
 
 test fn converged_curve_and_installed_tach_topology_are_noop() -> Bool {
   let classified = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
@@ -907,6 +929,7 @@ test fn desired_curve_with_stale_uninstalled_fan_input_still_builds_apply_plan()
     observed_at: 0,
   }
   let classified = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
@@ -928,6 +951,7 @@ test fn desired_curve_with_stale_uninstalled_fan_input_still_builds_apply_plan()
 test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_and_persistence() -> Bool {
   let drifted = srv4_fan_policy_with_curve(curve: lazy_onboarding_drift_curve)
   let with_storage = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
@@ -939,6 +963,7 @@ test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_
     durability_evidence: [],
   )
   let without_storage = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
@@ -950,6 +975,7 @@ test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_
     durability_evidence: [],
   )
   let without_projection = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
@@ -999,6 +1025,7 @@ test fn projection_firmware_mismatch_refuses_a_322_projection_on_a_306_host() ->
     observed_at: 0,
   }
   let classified = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
@@ -1019,6 +1046,7 @@ test fn projection_firmware_mismatch_refuses_a_322_projection_on_a_306_host() ->
 
 test fn srv3_fan_realization_refuses_without_a_modeled_projection() -> Bool {
   let classified = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
@@ -1139,6 +1167,7 @@ test fn relabeled_reboot_construction_refusal_propagates_through_classification(
   }
   let construction = bmc_fan_reboot_durability_evidence(receipt: relabeled_receipt)
   let classified = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
@@ -1176,6 +1205,7 @@ test fn semantically_converged_live_digest_mismatch_refuses_noop() -> Bool {
     observed_at: 0,
   }
   let classified = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
@@ -1197,6 +1227,7 @@ test fn semantically_converged_live_digest_mismatch_refuses_noop() -> Bool {
 test fn drifted_policy_applies_without_prior_durability_evidence() -> Bool {
   let drifted = srv4_fan_policy_with_curve(curve: lazy_onboarding_drift_curve)
   let classified = bmc_fan_policy_classification(
+    standings: fixture_alignment_admits_srv4,
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,

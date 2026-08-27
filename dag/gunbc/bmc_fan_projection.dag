@@ -22,6 +22,19 @@ import extdeps.filesystem.linux {
   LinuxSynchronizedRenameReplacePublication,
 }
 import product.placement_supply { HostIdentity }
+import gunbc.bmc_fan_alignment_standing {
+  AlignmentAdmitsApplyEvaluation,
+  AlignmentRefused,
+  RefusedObservedProgramNotAdopted,
+  RefusedObservedProgramNotRepresentableByIntent,
+  AlignmentStandingAbsent,
+  AlignmentStandingDuplicate,
+  HostBmcFanAlignmentStanding,
+  IntentMatchesObservedProgram,
+  ObservedProgramNotAdopted,
+  ObservedProgramNotRepresentableByIntent,
+  host_alignment_admission,
+}
 import std.state_durability {
   NoDurabilityCommitBarrier,
   StateDurabilityAdmission,
@@ -36,7 +49,11 @@ import std.state_durability {
 import std.types { Bool, List, NonEmptyStr }
 
 type BmcFanProjectionApplyRefusalCause
-  = BmcFanProjectionBoardMismatch
+  = BmcFanProjectionAlignmentStandingAbsent
+  | BmcFanProjectionAlignmentStandingDuplicate
+  | BmcFanProjectionObservedProgramNotAdopted
+  | BmcFanProjectionObservedProgramNotRepresentable
+  | BmcFanProjectionBoardMismatch
   | BmcFanProjectionFirmwareMismatch
   | BmcFanProjectionCurveMismatch
   | BmcFanProjectionConfigPathMismatch
@@ -255,24 +272,60 @@ fn bmc_fan_policy_projection_capability(
   }
 }
 
+// THE GATE RESOLVES THE STANDING ITSELF RATHER THAN BEING TOLD, and that is a correctness
+// property rather than an interface preference. An earlier revision took `actuation_admitted:
+// Bool` from its caller, which confined nothing: a caller passing `true` was believed, and
+// nothing tied the answer to the HOST this projection targets, so a standing looked up for one
+// host could authorise a write to another. Taking the roster and the host instead means a caller
+// cannot supply a lie without fabricating a whole roster, and the host mismatch is unwritable
+// because the lookup keys on the host it was handed. DESIGN's caller-supplied-validator finding
+// in the other direction: a mint whose predicate comes from its caller proves nothing about what
+// the caller checked.
+//
+// THE ADOPTION GATE RUNS FIRST, and the ordering is the point rather than tidiness. Every check
+// below compares the projection against the OBSERVATION - board, firmware, curve, path, service.
+// All of them can agree while the host runs an actuator topology the projection has no
+// representation for, because the observation carrier cannot see a second fan controller entry
+// either. So a green result from the comparisons below is not evidence that applying is safe;
+// it is evidence that the things we can compare match. Asking "may we write to this host at
+// all" before asking "does what we can see line up" is what keeps an unrepresentable live
+// program from passing as suitable.
 fn bmc_fan_policy_projection_apply_suitability(
   capability: BmcFanPolicyProjectionCapability,
   board: BaseboardModel,
   desired_curve: BmcFanCurve,
   observation: BmcFanPolicyObservation,
+  host: HostIdentity,
+  standings: List<HostBmcFanAlignmentStanding>,
 ) -> BmcFanProjectionApplySuitability {
-  if capability.board != board {
-    BmcFanProjectionApplyRefused { cause: BmcFanProjectionBoardMismatch }
-  } else if capability.firmware != observation.firmware {
-    BmcFanProjectionApplyRefused { cause: BmcFanProjectionFirmwareMismatch }
-  } else if capability.projected_curve != desired_curve {
-    BmcFanProjectionApplyRefused { cause: BmcFanProjectionCurveMismatch }
-  } else if capability.config_path != observation.board_config_path {
-    BmcFanProjectionApplyRefused { cause: BmcFanProjectionConfigPathMismatch }
-  } else if capability.controller_service != observation.controller_service {
-    BmcFanProjectionApplyRefused { cause: BmcFanProjectionControllerServiceMismatch }
-  } else {
-    BmcFanProjectionApplySuitable
+  match host_alignment_admission(standings: standings, host: host) {
+    AlignmentStandingAbsent =>
+      BmcFanProjectionApplyRefused { cause: BmcFanProjectionAlignmentStandingAbsent }
+    AlignmentStandingDuplicate =>
+      BmcFanProjectionApplyRefused { cause: BmcFanProjectionAlignmentStandingDuplicate }
+    AlignmentRefused { cause: refusal } =>
+      match refusal {
+        RefusedObservedProgramNotAdopted =>
+          BmcFanProjectionApplyRefused { cause: BmcFanProjectionObservedProgramNotAdopted }
+        RefusedObservedProgramNotRepresentableByIntent { missing } =>
+          BmcFanProjectionApplyRefused {
+            cause: BmcFanProjectionObservedProgramNotRepresentable,
+          }
+      }
+    AlignmentAdmitsApplyEvaluation =>
+      if capability.board != board {
+        BmcFanProjectionApplyRefused { cause: BmcFanProjectionBoardMismatch }
+      } else if capability.firmware != observation.firmware {
+        BmcFanProjectionApplyRefused { cause: BmcFanProjectionFirmwareMismatch }
+      } else if capability.projected_curve != desired_curve {
+        BmcFanProjectionApplyRefused { cause: BmcFanProjectionCurveMismatch }
+      } else if capability.config_path != observation.board_config_path {
+        BmcFanProjectionApplyRefused { cause: BmcFanProjectionConfigPathMismatch }
+      } else if capability.controller_service != observation.controller_service {
+        BmcFanProjectionApplyRefused { cause: BmcFanProjectionControllerServiceMismatch }
+      } else {
+        BmcFanProjectionApplySuitable
+      }
   }
 }
 

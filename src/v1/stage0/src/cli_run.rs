@@ -69,6 +69,9 @@ pub mod target_invocation_host;
 
 #[path = "partition_crate_boundary_host.rs"]
 mod partition_crate_boundary_host;
+
+#[path = "emitted_closure_compile_host.rs"]
+mod emitted_closure_compile_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
@@ -3746,6 +3749,7 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
         && matches!(
             d.diagnostic.as_ref(),
             crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
+                | crate::v1_std_core::CompilerDiagnostic::UnlistedVariantValueUse { .. }
                 | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
                 | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
                 // A non-blocking variant that is absent from this list is counted by
@@ -5416,6 +5420,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
             "ServiceConfigReferenceJudgmentDeferred"
         }
+        CompilerDiagnostic::UnlistedVariantValueUse { .. } => "UnlistedVariantValueUse",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -5458,6 +5463,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeNotInhabited { position, .. } => position.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
+        CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name, .. } => name.clone(),
         CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter, .. } => parameter.clone(),
@@ -32381,6 +32387,20 @@ fn emit_source_root_entry_admission_data(admission: &SourceRootEntryAdmission) -
     )
 }
 
+/// The fnv1a64 digest of one NUL-delimited material string, rendered as `fnv1a64:<hex>`.
+///
+/// Extracted from `source_root_ingest_content_hash_fnv1a64` rather than copied beside it: a second
+/// site spelling out the same two constants would be one concept with two authorities, and the
+/// two would then be free to disagree about a digest two carriers are expected to compare.
+pub fn fnv1a64_digest_of_material(material: &str) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in material.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("fnv1a64:{hash:016x}")
+}
+
 pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord]) -> String {
     let mut material = String::new();
     for rec in records {
@@ -32389,12 +32409,7 @@ pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord])
         material.push_str(&rec.source);
         material.push('\0');
     }
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in material.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    format!("fnv1a64:{hash:016x}")
+    fnv1a64_digest_of_material(&material)
 }
 
 fn path_matches_any_subpath(path: &str, subpaths: &[String]) -> bool {
@@ -48564,6 +48579,20 @@ pub use partition_crate_boundary_host::{
     compile_partition_crates, partition_package_names, run_partition_crate_boundary,
     BoundaryFileDisposition, PartitionCompileOutcome, PartitionCrateBoundaryOutcome,
     RenderedBoundaryFile, PARTITION_CRATE_PRODUCING_COMMAND,
+};
+
+/// The emitted-closure compile phase: one entry's closure emitted, written as a crate, and
+/// compiled — with the discriminating red the phase establishes on itself every run.
+///
+/// Re-exported here for the same reason the two above are: every required phase addresses its
+/// producer through one surface.
+pub use emitted_closure_compile_host::{
+    cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
+    emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
+    emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
+    emit_compile_selection_universe_digest, required_emit_compile_entries,
+    retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
+    EmitCompileSelection, MutationVerdict,
 };
 
 /// The authority's own declared module path, for consumers outside this module.
