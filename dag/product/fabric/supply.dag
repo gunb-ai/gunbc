@@ -80,6 +80,28 @@ fn offer_quote_amount(q: OfferQuote) -> MoneyAmountMicro {
   }
 }
 
+// WHETHER A QUOTE BILLS ELAPSED TIME IS A FACT ABOUT THE QUOTE, so it is projected here,
+// beside the coproduct it reads, rather than re-derived by each consumer that needs it. It
+// decides two different things downstream -- whether a paid-through interval can reduce the
+// bill, and whether a duration multiplies the rate at all -- and a consumer open-coding the
+// match would answer them from its own copy of the partition.
+//
+// It is a NAMED PROJECTION rather than a Bool for the reason this file gives everywhere else:
+// a Bool puts the meaning in the caller's variable name, and the two answers here have
+// different consequences rather than being true and not-true of one property.
+type QuoteBillingBasis
+  = BillsElapsedTime
+  | BillsPerGrant
+
+fn quote_billing_basis(q: OfferQuote) -> QuoteBillingBasis {
+  match q {
+    QuotedFlatPerGrant(_) => BillsPerGrant
+    QuotedPerSecond(_) => BillsElapsedTime
+    QuotedPerMinute(_) => BillsElapsedTime
+    QuotedPerHour(_) => BillsElapsedTime
+  }
+}
+
 fn offer_quote_currency(q: OfferQuote) -> CurrencyCode {
   match q {
     QuotedPerSecond(r) => r.currency

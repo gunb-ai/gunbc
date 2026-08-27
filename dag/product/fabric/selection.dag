@@ -18,6 +18,7 @@ import product.fabric.supply {
   DemandOfferAffordability, Affordable, AffordableUnderEstimate,
   QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch,
   QuoteNotPriceableWithoutDuration,
+  QuoteBillingBasis, BillsElapsedTime, BillsPerGrant, quote_billing_basis,
   offer_affordability_for, offer_quote_currency, offer_quoted_total_for_grant,
   QuotedTotal, QuotedTotalDerived, QuotedTotalNeedsDuration,
   GrantDuration, ExactGrantDuration, EstimatedGrantDuration, UnobservedGrantDuration,
@@ -98,8 +99,16 @@ fn selection_input_axis_wire(axis: SelectionInputAxis) -> String {
 // consumer that reads these at one moment and selects at another has compared facts from two
 // worlds; that is a property of the caller and is named here rather than checked, because
 // nothing in this module can observe the caller's clock.
+// AvailableIndefinitely IS NOT A LARGE INTERVAL, AND THAT DISTINCTION IS LOAD-BEARING RATHER
+// THAN TIDY. An offer with no stated end -- capacity we own, a vendor we can keep buying hours
+// from -- can hold work of ANY length, including work whose length nobody knows. An offer with
+// a finite window cannot make that promise, and the difference decides whether an unbounded
+// job may be admitted at all. Spelling "no stated end" as a big number would make the two
+// indistinguishable and would let a comparison against an invented ceiling stand in for a
+// guarantee nobody gave.
 type AvailabilityObservation
   = AvailableForInterval { delay: Second, interval: Second, receipt: ObservationReceiptRef }
+  | AvailableIndefinitely { delay: Second, receipt: ObservationReceiptRef }
   | AvailabilityUnobserved { obligation: NonEmptyStr }
 
 // AXIS 2 -- THE PAID-THROUGH COMMITMENT STATE.
@@ -385,7 +394,7 @@ fn priced_opportunity(o: OpportunityCostObservation, budgeted: CurrencyCode) -> 
 // supplier bills. A quantum rounds a bill up; it does not make the fans spin longer.
 fn priced_operating(
   o: OperatingCostObservation,
-  run_seconds: Nat,
+  run: Second,
   budgeted: CurrencyCode,
 ) -> PricedAxis {
   match o {
@@ -402,7 +411,9 @@ fn priced_operating(
           },
         }
       } else {
-        AxisPriced { amount: money_amount_micro(count: money_rate_micros(q: r) * run_seconds) }
+        AxisPriced {
+          amount: money_amount_micro(count: money_rate_micros(q: r) * second_count(s: run)),
+        }
       }
   }
 }
@@ -411,7 +422,7 @@ fn priced_operating(
 // alone prefers a supplier that saves a cent and starts in twenty minutes, which is the
 // failure demand.dag names when it defines SelectionCost as distinct from MaximumLiability.
 fn priced_delay(
-  delay_seconds: Nat,
+  delay: Second,
   valuation: MoneyPerSecond,
   budgeted: CurrencyCode,
 ) -> PricedAxis {
@@ -424,7 +435,9 @@ fn priced_delay(
       },
     }
   } else {
-    AxisPriced { amount: money_amount_micro(count: money_rate_micros(q: valuation) * delay_seconds) }
+    AxisPriced {
+      amount: money_amount_micro(count: money_rate_micros(q: valuation) * second_count(s: delay)),
+    }
   }
 }
 
@@ -435,15 +448,6 @@ fn priced_delay(
 // supply.dag already refuses to multiply it by a duration -- so a paid-through interval does
 // not reduce it. Treating the two the same would either double-count a prepaid rate or
 // discount a fee nobody prepaid, and the arm that decides which is the quote's own shape.
-fn quote_bills_time(q: OfferQuote) -> Bool {
-  match q {
-    QuotedFlatPerGrant(_) => false
-    QuotedPerSecond(_) => true
-    QuotedPerMinute(_) => true
-    QuotedPerHour(_) => true
-  }
-}
-
 // The interval a commitment already covers, which is zero unless the quote bills TIME and an
 // interval is actually paid through. Every arm answers in Second rather than in a count, so the
 // two zeros are durations rather than bare numbers standing in for one.
@@ -452,7 +456,10 @@ fn covered_interval(commitment: CommitmentState, quote: OfferQuote) -> Second {
     PayAsYouGo => second(count: 0)
     CommitmentUnread { obligation: _ } => second(count: 0)
     PaidThrough { remaining: r, receipt: _ } =>
-      if quote_bills_time(q: quote) { r } else { second(count: 0) }
+      match quote_billing_basis(q: quote) {
+        BillsElapsedTime => r
+        BillsPerGrant => second(count: 0)
+      }
   }
 }
 
@@ -577,6 +584,10 @@ type OfferCandidacy<P>
       needed: Second,
       available: Second,
     }
+  | OfferCannotHoldAnUnboundedGrant {
+      offer: FabricIdentity<P, OfferKey>,
+      available: Second,
+    }
   | OfferNotPriceable { offer: FabricIdentity<P, OfferKey>, unpriced: UnpricedInput }
   | OfferWrongCurrency { offer: FabricIdentity<P, OfferKey>, mismatch: SelectionCurrencyMismatch }
   | OfferUnaffordable {
@@ -594,6 +605,7 @@ fn candidacy_offer<P>(c: OfferCandidacy<P>) -> FabricIdentity<P, OfferKey> {
     OfferPriced { offer: o, cost: _, basis: _, horizon: _ } => o
     OfferNotFungible { offer: o, fungibility: _ } => o
     OfferUnavailableForGrant { offer: o, needed: _, available: _ } => o
+    OfferCannotHoldAnUnboundedGrant { offer: o, available: _ } => o
     OfferNotPriceable { offer: o, unpriced: _ } => o
     OfferWrongCurrency { offer: o, mismatch: _ } => o
     OfferUnaffordable { offer: o, affordability: _ } => o
@@ -680,10 +692,26 @@ fn price_available_candidate<P>(
   }
 }
 
-// AVAILABILITY IS CHECKED AGAINST THE HORIZON'S WALL INTERVAL, not against a caller-named
-// duration. Under an unobserved duration the wall is what the decision commits -- the
-// remainder plus one billing unit -- so an offer that cannot hold even that much is refused
-// on capability grounds before any money is compared.
+// AVAILABILITY IS CHECKED AGAINST THE DURATION'S OWN BOUND, AND AN UNBOUNDED JOB CANNOT BE
+// SHOWN TO FIT ANY FINITE WINDOW.
+//
+// An earlier revision compared the window against the HORIZON's wall interval -- the
+// remainder plus one billing unit -- and that was fail-open in the direction that is hardest
+// to see. The horizon's wall is the interval the decision COMMITS, which is a real quantity;
+// it is not, and cannot be, an upper bound on how long the work runs. Comparing a window
+// against it admitted an offer available for eight minutes to a job of unknown length, on the
+// strength of a number that was never a duration. That is a fabricated bound standing where a
+// guarantee was required, which DESIGN section 5 forbids outright.
+//
+// So the finite-window arm refuses an unbounded duration BY NAME rather than comparing.
+// OfferCannotHoldAnUnboundedGrant is a separate arm from OfferUnavailableForGrant for the
+// usual reason: the second says this window is too small for a job we measured, whose remedy
+// is a bigger window, and the first says we cannot know, whose remedy is to measure the job.
+//
+// AvailableIndefinitely admits it, and that is not a loophole -- it is the whole content of
+// the arm. An offer with no stated end really can hold work of any length, which is why
+// continuous owned capacity and a vendor we can keep buying hours from remain selectable for
+// untimed work while a time-boxed offer does not.
 fn price_over_horizon<P>(
   offer: SupplierOffer<P>,
   inputs: DispatchInputs<P>,
@@ -698,31 +726,46 @@ fn price_over_horizon<P>(
     quote: offer.quote,
     quantum: offer.billing_quantum,
   )
-  let wall = second_count(s: horizon_wall(h: horizon))
   match inputs.availability {
     AvailabilityUnobserved { obligation: why } =>
       OfferNotPriceable {
         offer: offer.id,
         unpriced: UnpricedInput { axis: AvailabilityAxis, obligation: why },
       }
+    AvailableIndefinitely { delay: d, receipt: _ } =>
+      price_screened_candidate(
+        offer: offer,
+        inputs: inputs,
+        duration: duration,
+        horizon: horizon,
+        delay: d,
+        maximum_buy_order: maximum_buy_order,
+        budget_currency: budget_currency,
+        delay_valuation: delay_valuation,
+      )
     AvailableForInterval { delay: d, interval: window, receipt: _ } =>
-      if second_count(s: window) < wall {
-        OfferUnavailableForGrant {
-          offer: offer.id,
-          needed: second(count: wall),
-          available: window,
-        }
-      } else {
-        price_screened_candidate(
-          offer: offer,
-          inputs: inputs,
-          duration: duration,
-          horizon: horizon,
-          delay_seconds: second_count(s: d),
-          maximum_buy_order: maximum_buy_order,
-          budget_currency: budget_currency,
-          delay_valuation: delay_valuation,
-        )
+      match grant_duration_bound_seconds(d: duration) {
+        Absent =>
+          OfferCannotHoldAnUnboundedGrant { offer: offer.id, available: window }
+        Present { value: bound } =>
+          if second_count(s: window) < second_count(s: bound) {
+            OfferUnavailableForGrant {
+              offer: offer.id,
+              needed: bound,
+              available: window,
+            }
+          } else {
+            price_screened_candidate(
+              offer: offer,
+              inputs: inputs,
+              duration: duration,
+              horizon: horizon,
+              delay: d,
+              maximum_buy_order: maximum_buy_order,
+              budget_currency: budget_currency,
+              delay_valuation: delay_valuation,
+            )
+          }
       }
   }
 }
@@ -741,7 +784,7 @@ fn price_screened_candidate<P>(
   inputs: DispatchInputs<P>,
   duration: GrantDuration,
   horizon: CommitmentHorizon,
-  delay_seconds: Nat,
+  delay: Second,
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
   delay_valuation: MoneyPerSecond,
@@ -767,7 +810,7 @@ fn price_screened_candidate<P>(
       inputs: inputs,
       duration: duration,
       horizon: horizon,
-      delay_seconds: delay_seconds,
+      delay: delay,
       maximum_buy_order: maximum_buy_order,
       budget_currency: budget_currency,
       delay_valuation: delay_valuation,
@@ -777,7 +820,7 @@ fn price_screened_candidate<P>(
       inputs: inputs,
       duration: duration,
       horizon: horizon,
-      delay_seconds: delay_seconds,
+      delay: delay,
       maximum_buy_order: maximum_buy_order,
       budget_currency: budget_currency,
       delay_valuation: delay_valuation,
@@ -794,22 +837,21 @@ fn assemble_cost<P>(
   inputs: DispatchInputs<P>,
   duration: GrantDuration,
   horizon: CommitmentHorizon,
-  delay_seconds: Nat,
+  delay: Second,
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
   delay_valuation: MoneyPerSecond,
 ) -> OfferCandidacy<P> {
-  let run_seconds = second_count(s: horizon_wall(h: horizon))
   let start = priced_start(o: inputs.start, budgeted: budget_currency)
   let transition = priced_transition(o: inputs.transition, budgeted: budget_currency)
   let operating = priced_operating(
     o: inputs.operating,
-    run_seconds: run_seconds,
+    run: horizon_wall(h: horizon),
     budgeted: budget_currency,
   )
   let opportunity = priced_opportunity(o: inputs.opportunity, budgeted: budget_currency)
   let delay = priced_delay(
-    delay_seconds: delay_seconds,
+    delay: delay,
     valuation: delay_valuation,
     budgeted: budget_currency,
   )
@@ -943,6 +985,29 @@ type SelectionRanking<P> {
   considered: List<OfferCandidacy<P>>
 }
 
+// THE COMPARATOR RANKS ON selection_total, AND UNDER CommitmentFloorCost THAT AMOUNT IS A
+// LOWER BOUND. THE RESULTING BIAS IS DECLARED HERE RATHER THAN HIDDEN.
+//
+// One billing quantum is the MINIMUM additional commitment that starting incurs. It is a real,
+// derivable, honest quantity and it is not a prediction of the bill: a job of wholly unbounded
+// duration can cross two boundaries, or ten, and nothing here claims otherwise. Pricing a
+// second quantum "to be safer" would be strictly worse -- it would invent the prior this fold
+// refuses to invent when it declines to separate a seven-minute remainder from a fifty-five
+// minute one, and it would always answer, which is the absorbing fallback.
+//
+// WHAT THE FLOOR COSTS US IS DIRECTIONAL, AND THE DIRECTION IS UNFLATTERING. A floor
+// understates by up to one quantum less a second per additional crossing, so an hourly
+// supplier's floor can understate by nearly 3600 seconds' worth while a continuous offer's
+// floor is EXACT. Ranking on floors therefore favours the coarse-quantum offer -- which is the
+// mode we have the least measured experience of. The basis travels out of the fold on the
+// selected arm so a consumer can see which quantity it is holding, but the comparator itself
+// has one number to sort by and this is it.
+//
+// NEXT-RUNG TRIGGER: a bounded-duration carrier on the demand side. The bias exists only under
+// CommitmentFloorCost, which is reachable only from UnobservedGrantDuration, so any duration
+// bound at all -- however loose -- retires it for that demand. When every demand carries one,
+// this note and the CommitmentFloorCost arm are deleted together rather than amended.
+
 // TIE-BREAK, STATED HONESTLY. The comparison is strictly less-than, so the EARLIEST candidate
 // at the minimum wins and a re-run over the same roster in the same order returns the same
 // offer. That is stability with respect to the roster, which is all this fold can offer:
@@ -967,6 +1032,7 @@ fn rank_candidate<P>(
       }
     OfferNotFungible { offer: _, fungibility: _ } => carry_ranking(acc: acc, considered: considered)
     OfferUnavailableForGrant { offer: _, needed: _, available: _ } => carry_ranking(acc: acc, considered: considered)
+    OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => carry_ranking(acc: acc, considered: considered)
     OfferNotPriceable { offer: _, unpriced: _ } => carry_ranking(acc: acc, considered: considered)
     OfferWrongCurrency { offer: _, mismatch: _ } => carry_ranking(acc: acc, considered: considered)
     OfferUnaffordable { offer: _, affordability: _ } => carry_ranking(acc: acc, considered: considered)

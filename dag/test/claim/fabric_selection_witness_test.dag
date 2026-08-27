@@ -22,13 +22,14 @@ import product.fabric.supply {
 }
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
-  AvailabilityObservation, AvailableForInterval, AvailabilityUnobserved,
+  AvailabilityObservation, AvailableForInterval, AvailableIndefinitely, AvailabilityUnobserved,
   CommitmentState, PayAsYouGo, PaidThrough,
   StartCostObservation, StartCostMeasured,
   TransitionCostObservation, NoTransitionRequired,
   OperatingCostObservation, OperatingCostMeasured, OperatingCostBorneBySupplier,
   OpportunityCostObservation, NoFeasibleAlternativeUse, AlternativeUseDisplaced, AlternativeUseUnread,
   OfferCandidacy, OfferPriced, OfferNotPriceable, OfferUnavailableForGrant,
+  OfferCannotHoldAnUnboundedGrant,
   SupplySelection, OfferSelected, NoAdmissibleOffer,
   SelectionCost, selection_total, selection_liability,
   CostBasis, ExactCost, ProjectedCost, CommitmentFloorCost,
@@ -139,10 +140,12 @@ fn t_inputs(
   }
 }
 
+// The two standing fixtures have NO STATED END -- capacity we own, and a vendor we can keep
+// buying hours from -- so they carry the indefinite arm rather than a large number standing in
+// for it. A finite interval appears only in the two witnesses whose subject IS the window.
 fn t_ready_now() -> AvailabilityObservation {
-  AvailableForInterval {
+  AvailableIndefinitely {
     delay: second(count: 0),
-    interval: second(count: 86400),
     receipt: "gunbc.observation.availability-1",
   }
 }
@@ -257,6 +260,7 @@ fn unpriced_axes(cs: List<OfferCandidacy<NonEmptyStr>>) -> List<SelectionInputAx
       OfferPriced { offer: _, cost: _, basis: _, horizon: _ } => acc
       OfferNotFungible { offer: _, fungibility: _ } => acc
       OfferUnavailableForGrant { offer: _, needed: _, available: _ } => acc
+      OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => acc
       OfferWrongCurrency { offer: _, mismatch: _ } => acc
       OfferUnaffordable { offer: _, affordability: _ } => acc
       OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => acc
@@ -267,6 +271,7 @@ fn unavailable_count(cs: List<OfferCandidacy<NonEmptyStr>>) -> Nat {
   fold(cs, init: 0, f: (n, c) =>
     match c {
       OfferUnavailableForGrant { offer: _, needed: _, available: _ } => n + 1
+      OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => n
       OfferPriced { offer: _, cost: _, basis: _, horizon: _ } => n
       OfferNotFungible { offer: _, fungibility: _ } => n
       OfferNotPriceable { offer: _, unpriced: _ } => n
@@ -471,9 +476,8 @@ test fn valued_delay_enters_the_ranking_and_not_the_reservation() -> Bool {
         offer: t_owned_offer(),
         inputs: t_inputs(
           key: "offer-owned-srv1",
-          availability: AvailableForInterval {
+          availability: AvailableIndefinitely {
             delay: second(count: 60),
-            interval: second(count: 86400),
             receipt: "gunbc.observation.availability-3",
           },
           commitment: PayAsYouGo,
@@ -514,9 +518,8 @@ fn t_fifty_minute_job() -> GrantDuration {
 
 fn t_rented_with_remainder(remaining: Second) -> List<CandidateOffer<NonEmptyStr>> {
   t_rented_candidate(
-    availability: AvailableForInterval {
+    availability: AvailableIndefinitely {
       delay: second(count: 0),
-      interval: second(count: 86400),
       receipt: "gunbc.observation.availability-family",
     },
     commitment: PaidThrough { remaining: remaining, receipt: "gunbc.observation.remainder" },
@@ -671,4 +674,74 @@ test fn untimed_work_does_not_belong_on_a_seven_minute_remainder() -> Bool {
     duration: t_unknown_duration(),
   )
   selected_key(s: selection) == "offer-owned-srv1"
+}
+
+// A FINITE WINDOW CANNOT HOLD AN UNBOUNDED JOB, AND SAYING SO IS A DIFFERENT REFUSAL FROM
+// SAYING THE WINDOW IS TOO SMALL.
+//
+// An earlier revision of the fold compared the window against the COMMITMENT HORIZON's wall --
+// the remainder plus one billing unit -- and admitted this offer, because that number is
+// finite and small. It was never a duration: the horizon says what the decision commits, not
+// how long the work runs, so the comparison was a fabricated bound standing where a guarantee
+// was required. This witness is that hole nailed shut.
+//
+// The arm is its own, not folded into OfferUnavailableForGrant, because the remedies differ:
+// too small says find a bigger window, and cannot-know says measure the job.
+test fn a_finite_window_refuses_an_unbounded_job_rather_than_comparing() -> Bool {
+  let selection = t_select_for(
+    candidates: t_rented_candidate(
+      availability: AvailableForInterval {
+        delay: second(count: 0),
+        interval: second(count: 480),
+        receipt: "gunbc.observation.availability-boxed",
+      },
+      commitment: PaidThrough {
+        remaining: second(count: 420),
+        receipt: "gunbc.observation.remainder-boxed",
+      },
+      opportunity: t_idle(),
+    ),
+    duration: t_unknown_duration(),
+  )
+  match selection {
+    NoAdmissibleOffer { considered: cs } => unbounded_refusals(cs: cs) == 1
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _ } => false
+  }
+}
+
+fn unbounded_refusals(cs: List<OfferCandidacy<NonEmptyStr>>) -> Nat {
+  fold(cs, init: 0, f: (n, c) =>
+    match c {
+      OfferCannotHoldAnUnboundedGrant { offer: _, available: _ } => n + 1
+      OfferUnavailableForGrant { offer: _, needed: _, available: _ } => n
+      OfferPriced { offer: _, cost: _, basis: _, horizon: _ } => n
+      OfferNotFungible { offer: _, fungibility: _ } => n
+      OfferNotPriceable { offer: _, unpriced: _ } => n
+      OfferWrongCurrency { offer: _, mismatch: _ } => n
+      OfferUnaffordable { offer: _, affordability: _ } => n
+      OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => n
+    })
+}
+
+// AND THE OTHER SIDE OF THAT WALL: the same time-boxed offer with a MEASURED job that fits is
+// admitted normally. Without this control the witness above would be satisfied by a fold that
+// refused every finite window, which would be a wall in the wrong place.
+test fn a_finite_window_still_admits_a_bounded_job_that_fits_it() -> Bool {
+  let selection = t_select_for(
+    candidates: t_rented_candidate(
+      availability: AvailableForInterval {
+        delay: second(count: 0),
+        interval: second(count: 480),
+        receipt: "gunbc.observation.availability-boxed-2",
+      },
+      commitment: PaidThrough {
+        remaining: second(count: 420),
+        receipt: "gunbc.observation.remainder-boxed-2",
+      },
+      opportunity: t_idle(),
+    ),
+    duration: t_ninety_seconds(),
+  )
+  selected_key(s: selection) == "offer-rented-hourly"
+    && selected_total(s: selection) == 0
 }
