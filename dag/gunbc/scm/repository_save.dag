@@ -45,6 +45,8 @@ module gunbc.scm.repository_save
 import std.types { String, Int }
 import extdeps.filesystem.filesystem_io
 import extdeps.languages.json.emit { serialize_json }
+import std.measure { ByteSize, byte_size }
+import std.checked_arithmetic { nat_magnitude }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   RepositoryEncodeOutcome,
@@ -54,10 +56,34 @@ import gunbc.scm.repository_envelope {
   encode_repository_checked,
 }
 
+// THE BYTE COUNT IS A MAGNITUDE, NOT A NUMBER, and it is carried as one. `ByteSize` is
+// `std.measure`'s `Measure<Memory, One, Nat>`, the single authority for a quantity of bytes, so this
+// row reuses the magnitude the repository already models rather than restating it as a bare `Int`
+// whose unit lives only in a field name. The raw scalar is legitimate at the `extdeps.filesystem`
+// boundary under cited-spec fidelity -- the host really does report an `Int` -- and what the rule
+// forbids is propagating it inward, which is exactly the step this type used to take (review 56828).
+//
+// AND THE CROSSING REFUSES RATHER THAN CLAMPS, which is why there is a fourth arm. `ByteSize` counts
+// a `Nat`, the host reports an `Int`, and the only available crossing (`std.checked_arithmetic`
+// `nat_magnitude`) takes an ABSOLUTE VALUE -- so applying it to a negative would turn a nonsense
+// report into a plausible byte count, the fabricated-plausible-output failure in one line. The
+// negative is therefore refused as its own arm carrying what the host actually said, and
+// `nat_magnitude` is applied only on the non-negative domain where it is the identity. This is a
+// boundary obligation (DESIGN section 4b): external reality observed, typed, and admitted or
+// refused -- not a class on the ladder, so it carries no next-rung trigger.
+//
+// NO WITNESS COVERS THAT FOURTH ARM AND THAT IS A LIMIT, NOT AN OVERSIGHT. Reaching it requires a
+// host write that SUCCEEDS and then reports a negative count, which no substrate-only fixture can
+// author -- this module's witness is `SubstrateInputsOnly`, and a real write refuses at the hermetic
+// boundary before any count is produced. So the arm is reachable by the mechanism and unreachable by
+// any input this repository can currently express. It is kept rather than dropped because the
+// alternative is not "no arm", it is `nat_magnitude` silently turning the negative into a byte
+// count; deleting the arm would delete the refusal, not the case.
 type RepositorySave
-  = RepositorySaved { path: String, bytes_written: Int }
+  = RepositorySaved { path: String, written: ByteSize }
   | RepositorySaveRefusedByCodec { path: String, cause: RepositoryEncodeRefusal }
   | RepositoryFileUnwritable { path: String, error: String }
+  | RepositoryWriteByteCountUnrepresentable { path: String, reported: Int }
 
 fn save_repository(path: String, repo: RepositoryEnvelope) -> RepositorySave {
   match encode_repository_checked(repo: repo) {
@@ -67,8 +93,10 @@ fn save_repository(path: String, repo: RepositoryEnvelope) -> RepositorySave {
       let write = Filesystem.Write(path: path, content: serialize_json(v: v))
       if !write.success {
         RepositoryFileUnwritable { path: path, error: write.error }
+      } else if write.bytes_written < 0 {
+        RepositoryWriteByteCountUnrepresentable { path: path, reported: write.bytes_written }
       } else {
-        RepositorySaved { path: path, bytes_written: write.bytes_written }
+        RepositorySaved { path: path, written: byte_size(count: nat_magnitude(a: write.bytes_written)) }
       }
     }
   }
