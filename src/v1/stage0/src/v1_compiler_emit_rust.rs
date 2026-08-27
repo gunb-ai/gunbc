@@ -20180,38 +20180,20 @@ pub fn emit_rust_empty_set_expr(
     }
 }
 
-pub fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> bool {
-    (v1_rt::map_contains_key(&rt_wraps_result(), function_name.clone())
-        || v1_rt::map_contains_key(&rust_method_wraps_result(), function_name.clone()))
+pub fn rust_runtime_bridge_result_wraps_in_rc(function_name: String) -> bool {
+    v1_rt::map_contains_key(&rt_wraps_result(), function_name.clone())
 }
 
-pub fn rust_runtime_bridge_collection_result_needs_rc_elements(
-    function_name: String,
-    result_type: Option<Rc<InferredNode>>,
+pub fn rust_method_template_result_wraps_in_rc(method_name: String) -> bool {
+    v1_rt::map_contains_key(&rust_method_wraps_result(), method_name.clone())
+}
+
+pub fn rust_plain_call_emits_as_runtime_bridge(
+    func: String,
+    callee_is_function_value: bool,
 ) -> bool {
-    false
-}
-
-pub fn rust_wrap_runtime_collection_result(
-    call_str: String,
-    function_name: String,
-    result_type: Option<Rc<InferredNode>>,
-) -> String {
-    if rust_runtime_bridge_wraps_collection_result_in_rc(function_name.clone()) {
-        if rust_runtime_bridge_collection_result_needs_rc_elements(
-            function_name.clone(),
-            result_type.clone(),
-        ) {
-            v1_rt::concat(
-                v1_rt::concat("Rc::new((".to_string(), call_str.clone()),
-                ").into_iter().map(Rc::new).collect::<Vec<_>>())".to_string(),
-            )
-        } else {
-            rust_shared_wrap_ctor(call_str.clone())
-        }
-    } else {
-        call_str.clone()
-    }
+    ((callee_is_function_value.clone() == false)
+        && v1_rt::map_contains_key(&rt_functions(), func.clone()))
 }
 
 pub fn emit_rust_expr_var(
@@ -21348,8 +21330,8 @@ pub fn emit_typed_call_expr(
                 )
             }
         };
-        if ((callee_is_function_value.clone() == false)
-            && rust_runtime_bridge_wraps_collection_result_in_rc(func.clone()))
+        if (rust_plain_call_emits_as_runtime_bridge(func.clone(), callee_is_function_value.clone())
+            && rust_runtime_bridge_result_wraps_in_rc(func.clone()))
         {
             rust_shared_wrap_ctor(call_str.clone())
         } else {
@@ -21759,8 +21741,8 @@ pub fn emit_typed_call(
             shared_types.clone(),
             emit_info.clone(),
         );
-        let is_rt = ((callee_is_function_value.clone() == false)
-            && v1_rt::map_contains_key(&rt_functions(), func.clone()));
+        let is_rt =
+            rust_plain_call_emits_as_runtime_bridge(func.clone(), callee_is_function_value.clone());
         let is_rt_ref_map = ((callee_is_function_value.clone() == false)
             && v1_rt::map_contains_key(&rt_ref_map_functions(), func.clone()));
         let arg_strs = Rc::new({
@@ -24033,7 +24015,7 @@ pub fn emit_rust_generic_method_call(
                         ),
                         ")".to_string(),
                     );
-                    if rust_runtime_bridge_wraps_collection_result_in_rc(function_name.clone()) {
+                    if rust_runtime_bridge_result_wraps_in_rc(function_name.clone()) {
                         rust_shared_wrap_ctor(lowered.clone())
                     } else {
                         lowered.clone()
@@ -24403,7 +24385,7 @@ pub fn emit_typed_method_call(
                                                                         tmpl.clone(),
                                                                         bindings.clone(),
                                                                     );
-                                                                    if rust_runtime_bridge_wraps_collection_result_in_rc(method_name.clone()) {
+                                                                    if rust_method_template_result_wraps_in_rc(method_name.clone()) {
                                                         rust_shared_wrap_ctor(raw.clone())
                                                     } else {
                                                         raw.clone()
@@ -24478,8 +24460,7 @@ pub fn emit_typed_method_call(
                                     first_arg_str.clone(),
                                 );
                                 let raw = apply_named_template(tmpl.clone(), bindings.clone());
-                                if rust_runtime_bridge_wraps_collection_result_in_rc(method.clone())
-                                {
+                                if rust_method_template_result_wraps_in_rc(method.clone()) {
                                     rust_shared_wrap_ctor(raw.clone())
                                 } else {
                                     raw.clone()

@@ -329,6 +329,67 @@ test fn the_report_carries_the_discovery_policy_and_the_roster_digest() -> Bool 
     && count(filter(rows, row => string_contains(s: row, pattern: "roster_subjects\t2"))) == 1
 }
 
+// THE ROUTE ROW SPECIFICALLY, never any row that happens to share a phrase with it. The denominator
+// row and the route row both say "file inventory", so a bare corpus-wide count over the receipt
+// would be answering a different question than the one asked — and would have gone red for the
+// right shape and the wrong reason.
+fn route_row_mentions(row: String, pattern: String) -> Bool {
+  string_contains(s: row, pattern: "roster_route\t") && string_contains(s: row, pattern: pattern)
+}
+
+// THE RECEIPT RENDERS THE ROUTE, and the route is the join a reader would otherwise have to make by
+// hand between the policy row and the denominator row. The red that matters is not that the row is
+// present — a constant string would satisfy that — but that it CHANGES with the denominators, since
+// a route rendered identically for one denominator and two says nothing about which was walked.
+test fn the_receipt_renders_the_route_and_the_route_distinguishes_the_denominators() -> Bool {
+  let index_only = roster_identity_rows(
+    identity: universe_roster_identity(
+      u: IndexOnlyUniverse { policy: fixture_policy(), entries: fixture_roster }
+    )
+  )
+  let dual = roster_identity_rows(
+    identity: universe_roster_identity(
+      u: DualUniverse {
+        policy: fixture_policy(),
+        entries: fixture_roster,
+        inventory: fixture_roster
+      }
+    )
+  )
+  count(filter(index_only, row => string_contains(s: row, pattern: "roster_route\tscanned dag, src/v2"))) == 1
+    && count(filter(dual, row => string_contains(s: row, pattern: "roster_route\tscanned dag, src/v2"))) == 1
+    && count(filter(index_only, row => route_row_mentions(row: row, pattern: "no second denominator"))) == 1
+    && count(filter(dual, row => route_row_mentions(row: row, pattern: "no second denominator"))) == 0
+    && count(filter(index_only, row => route_row_mentions(row: row, pattern: "file inventory"))) == 0
+    && count(filter(dual, row => route_row_mentions(row: row, pattern: "file inventory"))) == 1
+}
+
+// AND AN EMPTY ROSTER STILL RENDERS ITS ROUTE. A discovery that returned nothing is precisely the
+// case where a reader needs to know where it looked; dropping the route from the refusing arm would
+// withhold it exactly when it is load-bearing.
+test fn a_refusing_empty_roster_still_names_the_route_it_walked() -> Bool {
+  count(
+    filter(
+      roster_identity_rows(
+        identity: universe_roster_identity(
+          u: DualUniverse { policy: fixture_policy(), entries: [], inventory: [] }
+        )
+      ),
+      row => string_contains(s: row, pattern: "roster_route\tscanned dag, src/v2")
+    )
+  ) == 1
+}
+
+// THE ROOTS THE RUNNER LISTS ITS INVENTORY OVER ARE THE ROOTS IN THE UNIVERSE. This accessor is the
+// only route by which the runner obtains them, so this row is what says the second denominator
+// cannot be built over a different place than the first.
+test fn the_policy_hands_back_the_roots_it_carries() -> Bool {
+  roster_discovery_policy_roots(policy: fixture_policy()) == fixture_roots
+    && roster_discovery_policy_roots(
+      policy: DeclarationIndexUnderRoots { roots: ["dag"] }
+    ) == ["dag"]
+}
+
 // TWO DIFFERENT ROSTERS ARE TWO DIFFERENT UNIVERSES, and the digest is what says so. A standing
 // read without it cannot tell a run over the whole roster from a run over a roster that lost
 // subjects — and a lost subject is exactly how a count-shaped contract reports progress it did not

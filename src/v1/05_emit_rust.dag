@@ -8159,27 +8159,45 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
   }
 }
 
-fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> Bool {
-
+// ONE ROSTER ANSWERS FOR THE POSITION IT LOWERS, AND FOR NO OTHER. The predicate replaced here was
+// the union of two rosters -- rt_wraps_result (v1_rt bridge functions) and rust_method_wraps_result
+// (the simple-method templates) -- consulted at four positions, only two of which lower through the
+// roster they were asking. The wrap is not a fact about a NAME: it is a fact about the TEXT the
+// emitter just produced, because a template that ends in `.collect::<Vec<_>>()` yields a bare Vec
+// that the shared reference layer then has to lift. Asking by name lets a roster answer for a
+// position it never lowered, and then the Rc level DISAGREES ACROSS THE CALL BOUNDARY: the callee's
+// own declaration already returns the wrapped level, the caller wraps it a second time, and the
+// emitted program carries a type error no stage located. MEASURED specimen, on the 01_tokenize
+// closure: v2.std.compilers.lexing token_stream_remaining is `skip(xs: stream.all, n: stream.pos)`,
+// a PLAIN CALL to the declared v2.std.algebra skip, which emits as an ordinary declared call and
+// returns Rc<Vec<Rc<Token>>>; `skip` is also a simple-method template name, so the plain-call site
+// wrapped it again and rustc reported `expected Vector<Rc<Token>>, found Rc<Vector<Rc<Token>>>`.
+// The method roster had no template on that path -- nothing was lowered by it -- so its wrap was
+// unpaired by construction. The repair is to pair each wrap with the roster that produced the text
+// beside it, and at the plain-call position to derive the gate from the SAME predicate that chose
+// the emission form (rust_plain_call_emits_as_runtime_bridge, read by emit_typed_call for is_rt and
+// by emit_typed_call_expr for the wrap), so no second opinion about the form exists to drift.
+// RUNG (DESIGN 4b): this moves the plain-call half of the class from silent wrongness -- emitted,
+// compiled by us, refused only by rustc downstream -- to STRUCTURALLY IMPOSSIBLE for the
+// cross-roster direction specifically: after this change no method-roster row can reach a plain
+// call, because the fused predicate that carried it there does not exist. It does NOT make every
+// wrapping-level disagreement unwritable; a row misdeclaring wraps_result against its own template
+// is still writable, and that residue's next rung is the modeled layer transition
+// v2.compiler.wrap_decision wrap_decision_flow_gate names.
+fn rust_runtime_bridge_result_wraps_in_rc(function_name: String) -> Bool {
   map_contains_key(rt_wraps_result(), function_name)
-    || map_contains_key(rust_method_wraps_result(), function_name)
 }
 
-fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: InferredNode?) -> Bool {
-
-  false
+fn rust_method_template_result_wraps_in_rc(method_name: String) -> Bool {
+  map_contains_key(rust_method_wraps_result(), method_name)
 }
 
-fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, result_type: InferredNode?) -> String {
-  if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: function_name) {
-    if rust_runtime_bridge_collection_result_needs_rc_elements(function_name: function_name, result_type: result_type) {
-      concat("Rc::new((", call_str, ").into_iter().map(Rc::new).collect::<Vec<_>>())")
-    } else {
-      rust_shared_wrap_ctor(inner_expr: call_str)
-    }
-  } else {
-    call_str
-  }
+// The emission-form predicate, read at both ends of the plain-call seam: emit_typed_call routes the
+// call through v1_rt exactly when this holds, and emit_typed_call_expr wraps its result only when
+// it holds. A function value is excluded at both ends because a value call names a binding, never a
+// bridge.
+fn rust_plain_call_emits_as_runtime_bridge(func: String, callee_is_function_value: Bool) -> Bool {
+  callee_is_function_value == false && map_contains_key(rt_functions(), func)
 }
 
 fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, module_name: String) -> String {
@@ -8549,7 +8567,8 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
     emit_typed_call(func: func, args: args, callee_is_function_value: callee_is_function_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
 
-  if callee_is_function_value == false && rust_runtime_bridge_wraps_collection_result_in_rc(function_name: func) {
+  if rust_plain_call_emits_as_runtime_bridge(func: func, callee_is_function_value: callee_is_function_value)
+    && rust_runtime_bridge_result_wraps_in_rc(function_name: func) {
     rust_shared_wrap_ctor(inner_expr: call_str)
   } else { call_str }
 }
@@ -8762,7 +8781,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
   let callee = lookup_item(registry: registry, name: qualified_last_segment(name: func))
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let is_rt = callee_is_function_value == false && map_contains_key(rt_functions(), func)
+  let is_rt = rust_plain_call_emits_as_runtime_bridge(func: func, callee_is_function_value: callee_is_function_value)
   let is_rt_ref_map = callee_is_function_value == false && map_contains_key(rt_ref_map_functions(), func)
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
@@ -9442,7 +9461,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
   let all_strs = concat([recv_str], arg_strs)
   let bridge_name = rust_runtime_bridge_name(function_name: function_name)
   let lowered = concat("v1_rt::", emit_ident(name: bridge_name, target: Rust), "(", all_strs |> join(separator: ", "), ")")
-  if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: function_name) {
+  if rust_runtime_bridge_result_wraps_in_rc(function_name: function_name) {
     rust_shared_wrap_ctor(inner_expr: lowered)
   } else { lowered }
   }
@@ -9521,7 +9540,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
           Present { value: tmpl } =>
             let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
             let raw = apply_named_template(template: tmpl, bindings: bindings)
-            if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method_name) {
+            if rust_method_template_result_wraps_in_rc(method_name: method_name) {
               rust_shared_wrap_ctor(inner_expr: raw)
             } else { raw }
           Absent =>
@@ -9541,7 +9560,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
           let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
           let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
           let raw = apply_named_template(template: tmpl, bindings: bindings)
-          if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method) {
+          if rust_method_template_result_wraps_in_rc(method_name: method) {
             rust_shared_wrap_ctor(inner_expr: raw)
           } else { raw }
         Absent =>
