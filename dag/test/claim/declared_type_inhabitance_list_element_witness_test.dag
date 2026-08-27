@@ -115,13 +115,21 @@ data undefined_name_source: String = "module probe_inhabit_reach\nimport std.typ
 data defined_name_source: String = "module probe_inhabit_reach_ok\nimport std.types { Int }\ntype Inner { v: Int }\ntype Rel = | Wrapped(Inner) | SameRev\nfn mk() -> Rel { SameRev }\nfn probe() -> List<Rel> { [mk()] }\n"
 
 test fn w_undefined_name_at_the_list_element_position_still_refuses() -> Bool {
-  violation_count(source: undefined_name_source, wanted: "InternalError") > 0
-    && violation_count(source: undefined_name_source, wanted: "DeclaredTypeNotInhabited") == 0
+  match compile_dag_diagnostic_census(undefined_name_source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "InternalError")) > 0
+        && census_total_count(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
 }
 
 test fn w_reachability_control_discriminates_on_the_name() -> Bool {
-  violation_count(source: defined_name_source, wanted: "InternalError") == 0
-    && violation_count(source: defined_name_source, wanted: "DeclaredTypeNotInhabited") == 0
+  match compile_dag_diagnostic_census(defined_name_source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "InternalError")) == 0
+        && census_total_count(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
 }
 
 // UNDECIDABLE IS A PROPERTY OF THE FACTS, NEVER OF THE WIRING. An optional carrier at the
