@@ -800,6 +800,13 @@ fn run() -> Result<ExitCode, ExitCode> {
                 "required-ci: phase generated-artifact (every committed projection vs its authority)"
             );
             let outcome = v1_compiler::cli_run::run_generated_artifact_boundary(&source_roots);
+            // THE PHASE'S VERDICT IS THE CARRIER'S, NOT A SECOND DEFINITION OF CLEAN. The two
+            // reporting branches below name WHAT went wrong; whether anything did is decided by
+            // `boundary_is_clean` alone, so a state neither branch happens to describe -- an
+            // empty population being the one review found -- cannot pass by falling between
+            // them. A second predicate here is exactly the fork that lets a ledger and a gate
+            // disagree about one run.
+            let failures_before = phase_failures.len();
             match &outcome {
                 v1_compiler::cli_run::GeneratedArtifactBoundaryOutcome::CarrierRefused {
                     cause,
@@ -873,6 +880,15 @@ fn run() -> Result<ExitCode, ExitCode> {
                         ));
                     }
                 }
+            }
+            if !v1_compiler::cli_run::boundary_is_clean(&outcome)
+                && phase_failures.len() == failures_before
+            {
+                eprintln!(
+                    "required-ci: generated-artifact REFUSED — the outcome is not clean and no \
+                     branch above named why. Reporting the refusal rather than the silence"
+                );
+                phase_failures.push("generated-artifact (not clean, unnamed cause)".to_string());
             }
             ran.push("generated-artifact");
         }

@@ -266,9 +266,23 @@ pub fn boundary_divergent(o: &GeneratedArtifactBoundaryOutcome) -> Vec<&Adjudica
     }
 }
 
-/// Clean means: the carrier answered, every rostered member reached a verdict, and every verdict
-/// was `Matches`. A refusal anywhere in that chain is not clean, which is what keeps "nothing
-/// drifted" from covering for "nothing was asked".
+/// Clean means: the carrier answered, THE POPULATION WAS NON-EMPTY, every rostered member
+/// reached a verdict, and every verdict was `Matches`. A refusal anywhere in that chain is not
+/// clean, which is what keeps "nothing drifted" from covering for "nothing was asked".
+///
+/// THE EMPTINESS CONJUNCT IS NOT DEFENSIVE PADDING, and leaving it out was a real defect in the
+/// first cut of this file (caught in review of gunbc#9415). An outcome carrying zero adjudicated
+/// artifacts and zero unadjudicated ones satisfies "every verdict matched" VACUOUSLY, so a run
+/// that asked about nothing rendered exactly like a run that asked about seventy paths and found
+/// them all correct. That is the empty-observation narrow DESIGN names -- bottom-as-answer
+/// conflated with bottom-as-ignorance -- and it is strictly worse than the widen §5 already
+/// forbids, because a widen is merely expensive and a narrow is silently uncovered.
+///
+/// It is checked HERE as well as at the producer below, deliberately, and the two are not
+/// redundant: the producer refuses an empty roster where the roster is READ, which covers every
+/// live run; this conjunct covers any outcome VALUE, including one a caller or a fixture built
+/// by hand. The discriminating red is authored against the value, which is the only boundary at
+/// which an empty population is expressible at all now that the producer refuses it.
 pub fn boundary_is_clean(o: &GeneratedArtifactBoundaryOutcome) -> bool {
     match o {
         GeneratedArtifactBoundaryOutcome::CarrierRefused { .. } => false,
@@ -276,7 +290,8 @@ pub fn boundary_is_clean(o: &GeneratedArtifactBoundaryOutcome) -> bool {
             artifacts,
             unadjudicated,
         } => {
-            unadjudicated.is_empty()
+            !(artifacts.is_empty() && unadjudicated.is_empty())
+                && unadjudicated.is_empty()
                 && artifacts
                     .iter()
                     .all(|a| artifact_disposition(a) == ArtifactDisposition::Matches)
@@ -302,6 +317,18 @@ pub fn run_generated_artifact_boundary(
         Ok(paths) => paths,
         Err(cause) => return GeneratedArtifactBoundaryOutcome::CarrierRefused { cause },
     };
+    // AN EMPTY ROSTER IS IGNORANCE, NOT A FACT ABOUT THE TREE. `committed_generated_artifacts`
+    // filters a registry that is a module-scope literal, so the only ways it answers empty are
+    // that the projection stopped seeing the registry or that this bridge asked the wrong
+    // question -- and both are defects in the asking, not evidence that the repository commits
+    // no generated artifacts. Admitting it would let the phase report a clean adjudication over
+    // a population it never had.
+    if paths.is_empty() {
+        return GeneratedArtifactBoundaryOutcome::CarrierRefused {
+            cause: "committed_generated_artifact_paths returned an EMPTY roster. The registry it                     filters is a module-scope literal, so empty is not a fact about the tree --                     it means the projection or this bridge lost sight of the population.                     Adjudicating nothing and reporting it clean is the empty-observation narrow"
+                .to_string(),
+        };
+    }
 
     let workspace = workspace_root();
     let mut artifacts = Vec::new();
@@ -421,6 +448,29 @@ mod tests {
         // And it is NOT reported as drift: the two counts stay separable, so the ledger says
         // which of the two happened.
         assert!(boundary_divergent(&one_unanswered).is_empty());
+    }
+
+    /// THE SECOND DISCRIMINATING RED, and it is the one review found missing. An outcome with
+    /// zero adjudicated and zero unadjudicated members satisfies "every verdict matched"
+    /// vacuously; before the emptiness conjunct this returned TRUE, so a gate that asked about
+    /// nothing reported exactly like a gate that asked about everything and found it correct.
+    #[test]
+    fn an_empty_population_is_not_clean_even_though_no_verdict_disagreed() {
+        let asked_nothing = GeneratedArtifactBoundaryOutcome::Adjudicated {
+            artifacts: Vec::new(),
+            unadjudicated: Vec::new(),
+        };
+        assert!(!boundary_is_clean(&asked_nothing));
+        // And it is not drift either: the ledger must not name a path, because there is none.
+        assert!(boundary_divergent(&asked_nothing).is_empty());
+
+        // The positive control that keeps the conjunct honest: one matching member IS clean, so
+        // the check above is emptiness and not a blanket refusal.
+        let asked_one = GeneratedArtifactBoundaryOutcome::Adjudicated {
+            artifacts: vec![matched("DESIGN.md", "a")],
+            unadjudicated: Vec::new(),
+        };
+        assert!(boundary_is_clean(&asked_one));
     }
 
     #[test]
