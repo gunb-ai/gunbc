@@ -7,6 +7,7 @@ import extdeps.github.actions {
   WorkflowPermissions, PermRead, PermWrite,
   upload_artifact_action, download_artifact_action,
   RunnerSpec, RunsOnExpression,
+  ConcurrencySpec, ConcurrencyMappingQueueMax, QueueMaxCancelInProgressFalse,
 }
 import gunbc.roadmap_execution_contract { CargoCapability }
 import gunbc.toolchain_home_standing {
@@ -41,6 +42,9 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_fleet_job_backstop_timeout_minutes,
   gunbc_ci_release_build_step_timeout_minutes,
   gunbc_ci_prelude_allowance_minutes,
+  gunbc_ci_live_deploy_step_timeout_minutes,
+  gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes,
+  srv1_dashboard_deploy_concurrency_group,
   checked_job_timeout_minutes,
   JobTimeoutWithinCeiling,
   JobTimeoutExceedsCeiling,
@@ -217,20 +221,27 @@ fn fleet_converge_apply_step() -> Step {
   }
 }
 
-// THE DASHBOARD DEPLOY, AS A MODE OF THIS WORKFLOW RATHER THAN A WORKFLOW OF ITS OWN, and the
-// placement is what makes it safe rather than merely convenient. gunbc.live_deploy.deployed_tree_report
-// BLOCKS tree-only publication: moving the deployed HEAD alone flips roadmap_belt_actuate
-// belt_revision_admission from refusing to admitting WHILE THE INSTALLED BINARY IS STILL OLD, so the
-// next belt tick dispatches a mixed realization never admitted as a release. This job already built
-// and shipped that binary in the same run (ci_release_bins_download_step / _unpack_verify_step above),
-// so the tree and the interpreter arrive together -- the pair, which is the subject
-// gunbc.live_deploy.release_binding names, rather than either half alone.
+// THE DASHBOARD DEPLOY IS ITS OWN JOB, AND THE REASON IS A REQUIREMENT ITS OWN CARRIER STATES.
+// gunbc.fleet_workflow_steps srv1_dashboard_deploy_serialization_note: blue/green selection is
+// observe-then-mutate, so two deploys may not overlap -- both could observe blue active, then the
+// first flips green while the second restarts what has become the active green slot, recreating the
+// outage. The note specifies JOB-GRAIN concurrency, and a mode-gated STEP inside the shared converge
+// job structurally cannot carry it: `concurrency` is a job key, so a step would have inherited that
+// job's `concurrency: none`. Landing the deploy as a step would therefore have restored the
+// operation without the serialization the operation requires. That group had no consumer at all
+// after gunbc#8676 deleted deploy.yml -- it is the deleted job's requirement, re-homed rather than
+// re-invented.
 //
-// It carries no `target` input for the same reason the mutating spark converge does carry one: this
-// deploy takes its host from the RUNNER, not from an argument. ci_deploy_srv1_access resolves the job
-// principal from the runner it lands on and refuses when that user is not in srv1's fleet roster, so
-// dispatching with host=srv1 is what aims it, and dispatching with any other host refuses at the
-// preflight instead of deploying somewhere unintended.
+// IT DOES NOT REUSE THE CONVERGE JOB'S PRELUDE, because it does not need it: ci_deploy_srv1_access
+// is `transport: LocalShell`, so the deploy mutates the host it is running on and reaches nothing
+// else. The WIF auth and in-run fleet key the converge job materializes exist to reach OTHER hosts;
+// granting them to a local deploy would widen the job's credential surface for no operation that
+// consumes them.
+//
+// The host comes from the RUNNER, not from an argument, which is why there is no `target` input:
+// ci_deploy_srv1_access resolves the job principal from the runner it lands on and refuses when that
+// user is not in srv1's fleet roster, so host=srv1 is what aims it and any other host refuses at
+// preflight rather than deploying somewhere unintended.
 fn fleet_converge_dashboard_deploy_step() -> Step {
   RunStep {
     name: Present { value: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)" },
@@ -239,9 +250,38 @@ fn fleet_converge_dashboard_deploy_step() -> Step {
     shell: none,
     env: none,
     working_directory: none,
-    if_condition: Present { value: fleet_converge_dashboard_deploy_step_if },
+    if_condition: none,
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_dashboard_deploy_job() -> Job {
+  Job {
+    id: "dashboard-deploy",
+    name: none,
+    runs_on: fleet_converge_host_pinned_runner_spec(),
+    steps: concat(
+      fleet_converge_consumer_prelude_steps(),
+      [
+        ci_release_bins_download_step(),
+        ci_release_bins_unpack_verify_step(),
+        fleet_converge_dashboard_deploy_step(),
+      ]
+    ),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_dashboard_deploy_step_if },
+    timeout_minutes: Present { value: gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueMax {
+        group: srv1_dashboard_deploy_concurrency_group,
+        cancel_in_progress: Present { value: QueueMaxCancelInProgressFalse }
+      }
+    },
+    permissions: none,
   }
 }
 
@@ -393,7 +433,6 @@ fn fleet_converge_job() -> Job {
         fleet_converge_session_demand_observe_step(),
         fleet_converge_spark_reboot_step(),
         fleet_converge_spark_durability_step(),
-        fleet_converge_dashboard_deploy_step(),
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
@@ -462,7 +501,7 @@ data fleet_converge_workflow: Workflow = Workflow {
   concurrency: none,
   env: none,
   permissions: none,
-  jobs: [fleet_converge_build_job(), fleet_converge_job()],
+  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_dashboard_deploy_job()],
 }
 
 type FleetConvergeYamlGenerationOutcome
