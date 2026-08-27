@@ -222,7 +222,7 @@ test fn pdf_open_fragment_selector_conforms_to_rfc_8118() -> Bool {
     SequenceConstructed(sequence) =>
       match pdf_open_fragment_selector(sequence: sequence) {
         PdfOpenFragmentSelectorConstructed(FragmentSelectorVariant(s)) =>
-          s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
+          s.conforms_to.uri.locator == rfc_8118_external_authority_anchor.uri.locator
             && s.value == ("page=1" as NonEmptyStr)
         _ => false
       }
