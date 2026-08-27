@@ -99,6 +99,46 @@ import product.fabric.supply {
 type DemandSelectionPolicy =
   | HighestMarginPerBilledSecondForOneOffer
 
+// A DECLARED CONTINGENCY: WHAT THIS COMPARATOR DOES WHEN THE QUOTE IS ZERO, AND
+// WHY THAT ANSWER IS NOT UNCONDITIONALLY RIGHT.
+//
+// On a paid-through offer -- an hour already bought, whose cash is sunk and
+// whose marginal cost for the remainder is nothing -- the cost term vanishes and
+// the margin becomes the bid itself. The ordering then reduces to bid per billed
+// second, so a short cheap job outranks a long expensive one even though the
+// long one earns strictly more cash on an offer that costs nothing to run.
+// witnessed executably in test.claim.fabric_contention_witness_test as
+// a_zero_quote_ranks_by_bid_rate_and_the_larger_total_bid_loses.
+//
+// THAT IS RIGHT IF THE FREED REMAINDER CAN BE SOLD AND WRONG IF IT EXPIRES
+// UNSOLD. Preferring the rate takes the short job and keeps the rest of the
+// paid-through interval available; that is the better trade exactly when
+// another demand can use it. If nothing can -- the hour lapses idle -- then no
+// alternative use is displaced, the only question is which single demand earns
+// most before it expires, and the answer is TOTAL margin.
+//
+// So the correct comparator here is a function of whether a feasible
+// alternative use exists, which is an OPPORTUNITY COST and which nothing in
+// this model can currently state. supply.dag's own note already enumerates it
+// among the inputs selection would need, including the arm where there is no
+// feasible alternative use and the arm where the alternative is simply UNREAD
+// -- so unknown does not silently become zero. This module cannot decide it
+// from what it has.
+//
+// WHY IT IS DECLARED RATHER THAN GUARDED. An arm switching on "is the remainder
+// sellable" would have to read a fact with no carrier, so it could only be fed
+// by a caller-supplied flag -- a requester-stated input on the exact axis this
+// module deleted priority_class to remove, and one no witness could exercise
+// honestly. Rate-preferring is also the conservative default of the two: it
+// keeps capacity available rather than committing it, so being wrong costs an
+// unsold remainder rather than a displaced buyer.
+//
+// NEXT-RUNG TRIGGER, owned by the supply lane: an opportunity-cost carrier that
+// can state whether a feasible alternative use exists for a freed remainder.
+// When it lands, the zero-quote arm is decided from it rather than defaulted,
+// and the witness above becomes the discriminating pair for that decision
+// rather than the record of an open question.
+
 // WHAT THIS POLICY IS NOT, DECLARED SO NOBODY LATER READS IT AS ONE. It selects
 // among the demands contending for ONE offer, greedily. That is not a fleet-wide
 // allocation: a demand that wins offer A here might have been better served by

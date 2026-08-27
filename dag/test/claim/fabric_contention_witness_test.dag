@@ -330,6 +330,51 @@ test fn a_free_offer_is_still_ranked_by_bid_per_second_not_by_bid() -> Bool {
   }
 }
 
+// WHAT THE ZERO-QUOTE ORDERING ASSERTS, AND THE CONTINGENCY IT RECORDS.
+//
+// The paid-through witness above shows the rate comparator survives a free
+// offer. This one pins the sharper fact: on that offer the two candidate
+// comparators GENUINELY DISAGREE, and the one this policy uses takes the
+// smaller total. The slow bidder's margin is 500 against the quick bidder's 200
+// -- strictly more cash on an offer that costs nothing to run -- and it still
+// loses, because 200/90 beats 500/300 (cross-multiplied, 60000 against 45000).
+//
+// Both halves are asserted deliberately. Winner alone would be satisfied by a
+// comparator that happened to agree; the margins alone would not say which won.
+// Together they record that this is a CHOICE the policy is making rather than
+// an arithmetic accident.
+//
+// AND THE CHOICE IS CONTINGENT ON A FACT THIS MODEL CANNOT STATE. Preferring
+// the rate is right when the freed remainder can be sold to another demand, and
+// wrong when the paid-through hour would otherwise lapse idle -- if nothing else
+// can use it, no alternative use is displaced and the only question is which
+// single demand earns most before it expires, which is total margin. That is an
+// opportunity cost, it needs the feasible-alternative-use carrier supply.dag's
+// own header enumerates among the inputs selection lacks, and until it exists
+// this witness records the open question rather than settling it. When the
+// carrier lands, this becomes the discriminating pair for deciding the
+// zero-quote arm from evidence instead of defaulting it.
+test fn a_zero_quote_ranks_by_bid_rate_and_the_larger_total_bid_loses() -> Bool {
+  let quick = admitted_or_none(a: admit_demand_for_offer(
+    demand: short_demand(), offer: paid_through_offer(), duration: short_duration()))
+  let slow = admitted_or_none(a: admit_demand_for_offer(
+    demand: rich_slow_demand(), offer: paid_through_offer(), duration: long_duration()))
+  match concat(quick, slow) {
+    Cons { head: q, tail: rest } =>
+      match rest {
+        Cons { head: r, tail: _ } =>
+          money_amount_micro_count(m: admitted_surplus(a: r))
+            > money_amount_micro_count(m: admitted_surplus(a: q))
+            && second_count(s: admitted_billed_occupancy(a: q)) == 90
+            && second_count(s: admitted_billed_occupancy(a: r)) == 300
+            && winner_key(o: contend(
+                 offer: paid_through_offer(), candidates: concat(quick, slow))) == "demand-short"
+        Empty {} => false
+      }
+    Empty {} => false
+  }
+}
+
 // A GRANT THAT BILLS NO TIME REFUSES RATHER THAN JOINING THE FIELD. Every
 // zero-occupancy candidate cross-multiplies to zero against every other, so
 // admitting one would report a field of perfectly distinguishable buyers as an
