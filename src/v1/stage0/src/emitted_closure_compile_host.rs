@@ -350,8 +350,9 @@ fn probe_manifest(workspace: &Path, entry: &str) -> String {
     // compiled clean on a workstation and failed `status=101` on every entry in CI, with the
     // baseline arm reporting a red that had nothing to do with the emitted closure.
     //
-    // Rendered from the same modeled authority the partition crates use
-    // (`stage0_partition_row_features` / `render_stage0_crate_features_section`) rather than
+    // Rendered from the same modeled authority the partition crates use --
+    // `stage0_features_for_crate_kind`, which is what the call below reaches and which the
+    // partition rows themselves reach through `stage0_partition_row_features` -- rather than
     // authored here: the corpus already carries two hand-concatenated `[features]` blocks for
     // exactly this reason, each with a note explaining the failure, and adding a third string
     // would be the second representation those notes are evidence against.

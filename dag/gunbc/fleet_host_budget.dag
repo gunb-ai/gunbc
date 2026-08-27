@@ -59,17 +59,16 @@ import gunbc.ci_floor_measurement {
   RunnerSliceCapEffectiveness,
   CapEffective,
   CapUnbounded,
-  SessionReservationMode,
-  Regime1WorstCase,
-  Regime2AggregateOomd,
-  SessionReservationModeUnset,
-  gunbc_ci_session_reservation_mode,
   gunbc_ci_runner_cgroup_memory_cap,
 }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
   gunbc_runner_slice_cap_declared
 }
+import gunbc.session_admission_policy {
+  gunbc_session_admission_policy, session_admission_oomd_ceiling,
+}
+import gunbc.session_reservation_policy { session_reservation_bytes }
 import gunbc.oomd_install {
   OomdGroundingThresholds,
   gunbc_oomd_fleet_evidence,
@@ -123,20 +122,28 @@ fn resolve_headroom(policy: HeadroomPolicy, floor: ByteSize) -> HeadroomResoluti
 }
 
 
-fn gunbc_fleet_oomd_evidence_for(mode: SessionReservationMode) -> OomdEnforcementEvidence {
-  match mode {
-    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg } =>
+// OOMD GROUNDING IS A PER-HOST QUESTION AND WAS ASKED FLEET-WIDE. The thresholds it checks the
+// installed configuration against are a per-session ceiling and a PARENT SLICE CAP, and the slice
+// cap is exactly the host aggregate that gunbc.session_reservation_policy now answers per host --
+// srv1 at 52 GiB, srv2 unestablished. One fleet-wide row could only have been right by accident.
+//
+// WHAT THIS DOES NOT CLAIM: gunbc_oomd_show_effective_read is ReadAbsent, so no live systemctl
+// show-effective or oomctl read has ever run against these hosts and gunbc_oomd_fleet_evidence
+// returns OomdUnverified for ANY thresholds. Threading the host through does not make the answer
+// per-host in any observable way today; it makes the INPUT honest so that the first live read is
+// grounded against the reservation that host actually owes, rather than against a literal every
+// host shared. The evidence stays OomdUnverified either way, which is the fail-closed direction.
+fn gunbc_fleet_oomd_evidence_for(host: HostIdentity) -> OomdEnforcementEvidence {
+  match session_admission_oomd_ceiling(p: gunbc_session_admission_policy) {
+    Absent => OomdUnverified
+    Present { value: ceiling } =>
       gunbc_oomd_fleet_evidence(req: OomdGroundingThresholds {
         per_session_cap: ceiling,
-        parent_slice_cap: agg,
+        parent_slice_cap: session_reservation_bytes(host: host),
         pressure_limit: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit,
       })
-    Regime1WorstCase { point: _ } => OomdUnverified
-    SessionReservationModeUnset => OomdUnverified
   }
 }
-
-data gunbc_fleet_oomd_evidence: OomdEnforcementEvidence = gunbc_fleet_oomd_evidence_for(mode: gunbc_ci_session_reservation_mode)
 
 data gunbc_compile_pool_doc: String = "THE COMPILE POOL IS A CLAIM ON HOST RAM THAT THE PER-SLOT MODEL DID NOT SEE. extdeps.cache.sccache.sccache_server_process_facts cites that cache-miss compiles execute as CHILDREN OF THE SCCACHE SERVER. So compile RSS is charged to the SERVER's cgroup, not to the runner slot that issued the compile, and a per-slot memory cap therefore does NOT bound compile memory. Measured consequence on srv1, 2026-08-01: the CI server was lazily auto-spawned inside slot srv1-10's cgroup -- that slot's unit was inactive and disabled at the time -- and kept alive by SCCACHE_IDLE_TIMEOUT=0, so the five slots srv1 then served ran their compiles under one disabled slot's 15G high / 16G max caps and accumulated 229780 memory.max breach events and 12 oom_kills. THAT SENTENCE IS DATED BECAUSE NEITHER HALF OF IT DESCRIBES THE HOST NOW: measured 2026-08-25T18:43Z, srv1 serves 21 contiguous slots srv1-01..21 with srv1-10 ACTIVE and ENABLED among them, and no sccache process runs on the host at all -- the CI socket is present with zero listeners behind it. The MECHANISM this paragraph exists for is untouched by that, which is why the sentence is corrected rather than dropped: cache-miss compiles are children of whichever server holds the endpoint, so that server's cgroup bounds them wherever it lands. Sizing is jobserver_build_pool_bytes (tokens * mib_per_job) — the same cited authority that bounds build concurrency, NOT a fresh literal: the pool must hold exactly the compiles the jobserver admits."
 
@@ -421,7 +428,7 @@ fn fleet_host_plan() -> FleetHostPlan {
     session_slice: byte_size(0),
     citation: jobserver_config,
     policy: gunbc_fleet_headroom_policy,
-    oomd: gunbc_fleet_oomd_evidence
+    oomd: OomdUnverified
   )
 }
 
