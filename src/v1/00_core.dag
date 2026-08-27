@@ -211,6 +211,8 @@ type CompilerDiagnostic
   | DeclaredTypeNotInhabited { position: String, expected: String, got: String, span: SourceSpan }
   | DeclaredTypeInhabitanceUndecided { position: String, reason: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
+  | ReferenceDerivedImportProviderUnknown { name: String, referencing_module: String, span: SourceSpan }
+  | ReferenceDerivedImportExportUnproven { name: String, referencing_module: String, provider_module: String, span: SourceSpan }
   | UnlistedVariantValueUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
   | DataReferenceVisibilityBudgetExceeded { name: String, span: SourceSpan }
@@ -364,6 +366,8 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: s } => s
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
+    ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: s } => s
+    ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: s } => s
     UnlistedVariantValueUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
     DataReferenceVisibilityBudgetExceeded { name: _, span: s } => s
@@ -448,6 +452,10 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     DeclaredTypeInhabitanceUndecided { position: pos, reason: r, span: _ } =>
       concat("declared-type inhabitance is undecidable at the ", pos, " (", r, "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
+    ReferenceDerivedImportProviderUnknown { name: n, referencing_module: rm, span: _ } =>
+      concat("no provider is present for '", n, "', referenced by module '", rm, "': the compile closure carries no module that declares the name, so no use-line can be synthesized and the emitted Rust references a name it never imported. The remedy is to AUTHOR AN IMPORT -- closure membership is driven by imports, so a name the module never imported is a name the closure was never asked to supply")
+    ReferenceDerivedImportExportUnproven { name: n, referencing_module: rm, provider_module: p, span: _ } =>
+      concat("the provider of '", n, "' is present but its export could not be established: module '", rm, "' references the name, the registry maps it to '", p, "', and that module's transitive export surface does not establish it. The remedy is NOT an import -- the provider is already in the closure -- it is that the emitter cannot prove an export the provider may well hold")
     UnlistedVariantValueUse { name: n, span: _ } => concat("unlisted variant value use '", n, "' (a coproduct arm referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
     DataReferenceVisibilityBudgetExceeded { name: n, span: _ } =>
@@ -507,6 +515,8 @@ data diagnostic_frontier_occurrence_key_note: String = "The canonical accessor f
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => false
+    ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: _ } => false
+    ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: _ } => false
     UnlistedVariantValueUse { name: _, span: _ } => false
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
     ReceiverTypeUnestablished { method: _, span: _ } => false
@@ -515,6 +525,8 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
     _ => true
   }
 }
+
+data reference_derived_import_refusal_severity_note: String = "owner: v1.compiler.emit_rust (reference_derived_use_line_plan's per-candidate disposition). These two diagnostics are the SURFACING half of the disposition #9439 landed: that change factored the emitter's per-candidate import decision into a typed disposition and COUNTED it, and its own note records that the census is not surfaced during an ordinary build. A census nothing surfaces is a count, not a refusal -- the failure arms still vanished from the emission, which is the empty-observation narrow DESIGN names (the emitter answering 'this name is not part of the interface' where the truth is 'I could not prove that it was'), and DESIGN rates a narrow strictly worse than the widen section 5 forbids because a widen is merely expensive and a narrow is silently uncovered. TWO DIAGNOSTICS, NOT ONE CARRYING A CAUSE (ruling: warm-hawk-909, compiler direction, relayed through smart-ram-730, 2026-08-27). The question is upstream of severity: are these one error class? They are not. ReferenceDerivedImportProviderUnknown is CandidateRegistryAbsent -- the closure carries no provider for the name -- and its remedy is to AUTHOR AN IMPORT, since closure membership is driven by imports and a name the module never imported is one the closure was never asked to supply. ReferenceDerivedImportExportUnproven is CandidateExportProofFailed -- the provider is present and its export could not be established -- and its remedy is the opposite: not an import at all, but making the emitter able to prove an export the provider may already hold. Different mechanism, different remedy, different owner, different population, potentially different reachability; one symbol over two opposite remedies would be the state-space conflation DESIGN names, and DESIGN 4b files one row per class, so two classes carry two diagnostics and two independent is_error_diagnostic booleans. BOTH ARE ADVISORY TODAY and blocking nowhere. FLIP CONDITION, and it is strictly stronger than a count: an arm flips to blocking when its population over a NAMED CLOSURE is zero AND A DISCRIMINATING RED IS AUTHORABLE. A zero alone is never sufficient -- an observation of zero on an arm that has never produced anything is indistinguishable in a count from an arm that CANNOT fire, and flipping the latter yields a permanently-green check that is then cited as coverage, which DESIGN 4b rates worse than absent. Reachability is judged against what a FIXTURE may author, never against what the accepted corpus contains. ProviderUnknown's reachability is established: std.algebra under the src/v2/std/node.dag closure references Optional and empty_map it never imports (deep-ant-102, measured). ExportUnproven's is established by nothing yet, so if its population returns zero the MISSING FIXTURE is that class's next-rung trigger rather than a clearance to block. ProviderUnknown's roster is NOT new work: it is UnlistedImportUse clause (b) seen from the emitter side, so its trigger points at the EXISTING family-closure-SVN burndown recorded in v1.compiler.resolve resolve_node_bounded_masked_boundary and must not become a second burndown with its own schedule. Whether either flips is warm-hawk-909's call, not this module's."
 
 data where_refinement_deferral_reason_scaffold_note: String = "owner: v1.compiler.infer (00_core diagnostic partition). lane: where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any unlisted reason fails closed blocking. bound: only the five deferral strings emitted by 04_infer today; classifier/eval/equivalence arms must change together until coproduct lands. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementDeferralReason coproduct on the diagnostic carrier)."
 
@@ -529,6 +541,8 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
     ReceiverTypeUnestablished { method: _, span: _ } => false
     ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => false
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => false
+    ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: _ } => false
+    ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: _ } => false
     _ => true
   }
 }
@@ -541,6 +555,8 @@ fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> B
     ReceiverTypeUnestablished { method: _, span: _ } => true
     ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => true
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: _ } => true
+    ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: _ } => true
+    ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: _ } => true
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       is_where_refinement_unenforced_advisory_reason(reason: r)
     _ => false

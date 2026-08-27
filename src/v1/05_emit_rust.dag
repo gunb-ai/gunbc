@@ -19,7 +19,7 @@ import v1.std.core {
   MatchBoundBinding, CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
-  UnlistedImportUse, AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded, ParameterDefaultFormNotAdmitted, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
+  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded, ParameterDefaultFormNotAdmitted, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
@@ -2705,7 +2705,9 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     return EmitResult { files: [], diagnostics: anonymous_record_diags }
   }
   let test_projections = ctx.test_projections
-  let module_files = typed.modules |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules).file)
+  let module_emissions = typed.modules |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules))
+  let module_files = module_emissions |> map(e => e.file)
+  let import_refusals = module_emissions |> flat_map(e => e.import_refusals)
   let test_files = typed.modules
     |> map(tm => emit_test_file(
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
@@ -2741,7 +2743,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let emitted_files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
   let population_manifest = emit_emitted_population_manifest(files: emitted_files)
   let files = concat(emitted_files, [population_manifest])
-  EmitResult { files: files, diagnostics: [] }
+  EmitResult { files: files, diagnostics: import_refusals }
 }
 
 // THE EMITTER DECLARES THE POPULATION IT PRODUCED. This is the one place in the repository
@@ -3677,9 +3679,34 @@ fn collect_item_realized_surface_names(item: Node, shared_types: Set<String>, so
 // CandidateSurvived and CandidateExportProofFailed both carry the provider module because both are
 // facts ABOUT a provider -- one proven to export the symbol, one not -- and a census that could not
 // name the provider could not tell anyone where to look.
+// CandidateVariantDelegatedToParent is the fifth arm and it exists BECAUSE IT WAS MEASURED, not
+// because it was reasoned. The first census of the two failing arms over the regen seed closure
+// returned a population dominated by bare VARIANT names -- Absent, Cons, Eq, ExprCall, Bind -- every
+// one of them landing in CandidateRegistryAbsent, because the bare-name registry holds DECLARATIONS
+// and a variant is not one. Classifying them there answers "I could not find a provider for this"
+// where the truth is "this name never had a provider of its own", which is the
+// not-applicable-rendered-as-malformed class, and it made the registry-absent column count mostly
+// names whose binding is already correct.
+//
+// THE ARM CARRIES ITS PARENT, AND THAT IS THE WHOLE DESIGN. The tempting shape -- one arm meaning
+// "variants need no import" -- is FALSE and reproduces the very conflation this arm repairs, one
+// level down: a variant whose parent enum is declared HERE is bound by the module's own
+// `use self::E::*` and owes nothing, while a variant whose parent lives in another module needs that
+// PARENT imported. Opposite remedies. So the arm does not claim "nothing is owed"; it claims the
+// obligation is DELEGATED, and names the delegate. The parent then answers for itself as its own
+// candidate row -- filtered as CandidateOwnModule when local, judged by the registry and the export
+// wall when not -- so the two cases separate where they are decidable instead of being asserted here.
+//
+// WHAT IS NOT ESTABLISHED, stated rather than assumed: this delegation is sound only if every parent
+// named by a routed row is ITSELF a candidate. collect_value_ref_names harvests a record literal's
+// parent_enum and expand_variant_payload_struct_imports expands payload structs, but no invariant
+// says that covers every reference form. The check is mechanical and is the arm's next rung: no
+// parent_enum may appear in a routed row without appearing as a row of its own. Until that is
+// measured, a routed row is a claim about WHERE the obligation went, never that it was discharged.
 type ReferenceDerivedCandidateDisposition
   = CandidateSurvived { provider_module: String }
   | CandidateOwnModule
+  | CandidateVariantDelegatedToParent { parent_enum: String }
   | CandidateRegistryAbsent
   | CandidateExportProofFailed { provider_module: String }
 
@@ -3698,7 +3725,13 @@ type ReferenceDerivedCandidateRow {
 // emitted before; the census takes the same rows and counts them. Byte-identity of the emitted crate
 // is therefore STRUCTURAL rather than asserted: the emitted use-lines cannot move unless this
 // function's answer moves, because there is no second copy of the decision to drift from.
-fn reference_derived_candidate_disposition(name: String, this_module_name: String, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> ReferenceDerivedCandidateDisposition {
+fn reference_derived_candidate_disposition(name: String, this_module_name: String, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>) -> ReferenceDerivedCandidateDisposition {
+  if is_known_variant(type_summaries: type_summaries, name: name) {
+    match map_get(variant_to_enum, name) {
+      Present { value: parent } => CandidateVariantDelegatedToParent { parent_enum: parent }
+      Absent => CandidateRegistryAbsent
+    }
+  } else {
   match map_get(registry, name) {
     Present { value: info } =>
       if info.module_name == this_module_name {
@@ -3710,6 +3743,54 @@ fn reference_derived_candidate_disposition(name: String, this_module_name: Strin
       }
     Absent => CandidateRegistryAbsent
   }
+  }
+}
+
+// THE SURFACING HALF. #9439 factored this decision into a typed disposition and COUNTED it; its own
+// note records that the census "is NOT SURFACED during an ordinary build". So the two FAILING arms
+// still vanished from the emission -- no diagnostic, no location, nothing a build could report --
+// which is the empty-observation narrow DESIGN names: the emitter answers "this name is not part of
+// the interface" where the truth is "I could not prove that it was", and a narrow is strictly worse
+// than the widen section 5 forbids because a widen is merely expensive and a narrow is silently
+// uncovered. Downstream the emitted crate references a name it never imported and rustc says
+// E0422/E0425/E0433 far from the cause; upstream the deficit's frequency is zero by construction,
+// so the wall's own gaps never rank for repair.
+//
+// This is a THIRD projection of rows that already exist -- beside the use-lines and the census -- and
+// not a second decision. Nothing here re-derives the disposition, so the emitted crate cannot move.
+//
+// TWO diagnostics rather than one carrying a cause, because the arms are two error classes and not
+// one: registry-absent is fixed by AUTHORING AN IMPORT, export-proof-failed is fixed by making the
+// emitter able to prove an export the provider already holds. Opposite remedies, different owners,
+// different populations, potentially different reachability. DESIGN 4b files one row per class.
+//
+// LOCATION GRAIN, stated rather than implied: the referencing MODULE's declaration span, because a
+// row carries (module, name, disposition) and the reference SITES are reduced to bare names by the
+// candidate walk before any disposition is assigned. Carrying the originating span on the row is the
+// named next rung.
+fn reference_derived_row_diagnostics(rows: List<ReferenceDerivedCandidateRow>, module_span: SourceSpan) -> List<ErrorNode> {
+  rows |> flat_map(r =>
+    match r.disposition {
+      CandidateRegistryAbsent => [make_error_node(
+        diagnostic: ReferenceDerivedImportProviderUnknown {
+          name: r.name,
+          referencing_module: r.module_name,
+          span: module_span
+        },
+        module_name: r.module_name
+      )]
+      CandidateExportProofFailed { provider_module: p } => [make_error_node(
+        diagnostic: ReferenceDerivedImportExportUnproven {
+          name: r.name,
+          referencing_module: r.module_name,
+          provider_module: p,
+          span: module_span
+        },
+        module_name: r.module_name
+      )]
+      _ => []
+    }
+  )
 }
 
 fn reference_derived_candidate_survived(disposition: ReferenceDerivedCandidateDisposition) -> Bool {
@@ -3726,6 +3807,7 @@ fn reference_derived_disposition_name(disposition: ReferenceDerivedCandidateDisp
   match disposition {
     CandidateSurvived { provider_module: _ } => "survived"
     CandidateOwnModule => "own-module"
+    CandidateVariantDelegatedToParent { parent_enum: _ } => "variant-delegated-to-parent"
     CandidateRegistryAbsent => "registry-absent"
     CandidateExportProofFailed { provider_module: _ } => "export-proof-failed"
   }
@@ -3765,6 +3847,7 @@ type ReferenceDerivedCensus {
   candidates: Int
   survived: Int
   own_module: Int
+  variant_delegated_to_parent: Int
   registry_absent: Int
   export_proof_failed: Int
 }
@@ -3774,6 +3857,7 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
     candidates: rows |> count,
     survived: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "survived") |> count,
     own_module: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "own-module") |> count,
+    variant_delegated_to_parent: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "variant-delegated-to-parent") |> count,
     registry_absent: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "registry-absent") |> count,
     export_proof_failed: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "export-proof-failed") |> count
   }
@@ -3818,7 +3902,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
         [ReferenceDerivedCandidateRow {
           module_name: this_module_name,
           name: name,
-          disposition: reference_derived_candidate_disposition(name: name, this_module_name: this_module_name, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+          disposition: reference_derived_candidate_disposition(name: name, this_module_name: this_module_name, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
         }]
       }
     )
@@ -3868,6 +3952,7 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
 type ModuleEmission {
   file: TextFile
   reference_rows: List<ReferenceDerivedCandidateRow>
+  import_refusals: List<ErrorNode>
 }
 
 fn emit_module_full_with_dispositions(typed_module: TypedModule, ctx: EmitRustContext, typed_modules: List<TypedModule>) -> ModuleEmission {
