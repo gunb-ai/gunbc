@@ -55,50 +55,63 @@ type ConsumerImport {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The four dispositions, in the order the classifier decides them. THREE OF THEM ARE THE MEASURED
-// CLASS AND THE FOURTH IS NOT A CASE OF IT -- ImportPresentNoUseSite is the honest arm for a pair
-// whose consumer never spells either name, which would otherwise be folded into the silent-expansion
-// count and inflate it. Every discovered pair is exactly one of these.
+// THE POPULATION PREDICATE, and it mentions no future (operator ruling relayed via warm-hawk-909,
+// 2026-08-27): a source type occurrence resolves to declaration D; the target backend EMITS A NAMED
+// PROVIDER DECLARATION for D; and the consumer occurrence renders D's REALIZATION SPELLING rather
+// than referring to that provider declaration. That is finite and mechanically enumerable from the
+// emitted artifact alone, which is why this census reads the artifact and not the source.
 //
-// OpaqueNameEmitted -- the consumer spells the DECLARED NAME. The realization stayed in its
-// declaring module, which is the working shape.
+// WHAT IS DELIBERATELY NOT THE PREDICATE: collision, unresolvedness, and any rustc diagnostic code.
+// Those are MANIFESTATION STATES of the bypass, not the thing being counted. Defining the
+// population as "occurrences that would break if some future consumer imported a colliding name"
+// would be hypothetical and unbounded -- the exact objection this repository makes to other
+// populations -- so the manifestation rides on the row and never decides membership. The harm is
+// latent in one arm; the defect is not.
 //
-// RealizationExpandedColliding -- the consumer spells the REALIZATION and binds that same spelling
-// to something else. Two types, one spelling, substitution after resolution: the arm that produces
-// a type error in the emitted artifact.
-//
-// RealizationExpandedNonColliding -- the consumer spells the REALIZATION and does not bind that
-// spelling. The same substitution has happened and nothing refuses it today. It becomes the
-// colliding arm the day any consumer binds the spelling, so it is counted as the same defect and
-// never as a clean result.
-//
-// ImportPresentNoUseSite -- the consumer imports the name and spells NEITHER it nor its
-// realization. There is no use site here, so there is nothing to have been substituted.
+// THIS IS NOT A NAMESPACE FAILURE, and the carrier is named so that nobody re-opens one. Resolution
+// found the declared name and import emission emitted it; the target projection then replaced the
+// resolved interface with its implementation spelling. The emitted-and-unused provider import is an
+// excellent specimen witness of exactly that and is not the classifier -- a consumer that never
+// spells either name is NoConsumerOccurrence below, which is not a member of the population.
+type BypassManifestation
+  // The realization spelling is bound in the consumer to a DIFFERENT target declaration, so one
+  // spelling names two types after resolution. This is the arm that produces a type error.
+  = ReboundToDifferentTargetDeclaration { rebound_to: String }
+  // The realization spelling is not re-bound here. The same substitution has happened and nothing
+  // refuses it today.
+  | CurrentlyCompatible
+
 type UseSiteDisposition
-  = OpaqueNameEmitted {
+  // The consumer refers to the provider declaration by name. The healthy control.
+  = ProviderDeclarationPreserved {
       consumer_file: String
       declaring_file: String
       name: String
     }
-  | RealizationExpandedColliding {
+  // The population.
+  | ProviderInterfaceBypass {
       consumer_file: String
       declaring_file: String
       name: String
-      spelling: String
-      collides_with: String
+      realization: String
+      manifestation: BypassManifestation
     }
-  | RealizationExpandedNonColliding {
+  // The consumer imports the name and spells NEITHER it nor its realization: there is no occurrence
+  // here, so the predicate has no subject. Counted separately so it cannot inflate either arm above.
+  | NoConsumerOccurrence {
       consumer_file: String
       declaring_file: String
       name: String
-      spelling: String
+      realization: String
     }
-  | ImportPresentNoUseSite {
-      consumer_file: String
-      declaring_file: String
-      name: String
-      spelling: String
-    }
+
+// WHETHER A GIVEN BYPASS WAS INTENDED IS NOT DECIDABLE FROM THIS TREE, and this carrier says so
+// rather than inferring intent from whether rustc happens to accept the output. The intended split
+// -- preserve the provider declaration, versus inline the target representation, which is the right
+// answer for a machine primitive -- is not authored on any declaration in the corpus today, so the
+// census reports the standing once for the whole run instead of guessing it per row.
+type ReferenceRealizationPolicyStanding
+  = PolicyUnestablished { reason: String }
 
 // ---------------------------------------------------------------------------------------------
 // THE ONE QUESTION THE EMITTED TREE CANNOT ANSWER. `pub type T = R;` in a declaring module is
@@ -457,7 +470,7 @@ fn claim_index(claims: List<RealizationClaim>) -> Map<String, RealizationClaim> 
 }
 
 fn claim_for(claims: Map<String, RealizationClaim>, declaring_file: String, name: String) -> RealizationClaim? {
-  map_get(claims, claim_key(declaring_file: declaring_file, name: name))
+  lookup(claims, claim_key(declaring_file: declaring_file, name: name))
 }
 
 fn consumer_binds(file: EmittedFile, spelling: String, declaring_file: String) -> String {
@@ -479,17 +492,9 @@ fn classify_import(
   match claim_for(claims: claims, declaring_file: imp.declaring_file, name: imp.name) {
     Absent => none
     Present { value: claim } =>
-      if claim.spelling == "" {
+      if claim.spelling == "" || mentions_token(text: file.body, token: imp.name) {
         Present {
-          value: OpaqueNameEmitted {
-            consumer_file: imp.consumer_file,
-            declaring_file: imp.declaring_file,
-            name: imp.name
-          }
-        }
-      } else if mentions_token(text: file.body, token: imp.name) {
-        Present {
-          value: OpaqueNameEmitted {
+          value: ProviderDeclarationPreserved {
             consumer_file: imp.consumer_file,
             declaring_file: imp.declaring_file,
             name: imp.name
@@ -497,36 +502,29 @@ fn classify_import(
         }
       } else if !mentions_token(text: file.body, token: spelling_head(spelling: claim.spelling)) {
         Present {
-          value: ImportPresentNoUseSite {
+          value: NoConsumerOccurrence {
             consumer_file: imp.consumer_file,
             declaring_file: imp.declaring_file,
             name: imp.name,
-            spelling: claim.spelling
+            realization: claim.spelling
           }
         }
       } else {
-        let collides = if spelling_is_bare_identifier(spelling: claim.spelling) {
+        let rebound = if spelling_is_bare_identifier(spelling: claim.spelling) {
           consumer_binds(file: file, spelling: claim.spelling, declaring_file: imp.declaring_file)
         } else {
           ""
         }
-        if collides == "" {
-          Present {
-            value: RealizationExpandedNonColliding {
-              consumer_file: imp.consumer_file,
-              declaring_file: imp.declaring_file,
-              name: imp.name,
-              spelling: claim.spelling
-            }
-          }
-        } else {
-          Present {
-            value: RealizationExpandedColliding {
-              consumer_file: imp.consumer_file,
-              declaring_file: imp.declaring_file,
-              name: imp.name,
-              spelling: claim.spelling,
-              collides_with: collides
+        Present {
+          value: ProviderInterfaceBypass {
+            consumer_file: imp.consumer_file,
+            declaring_file: imp.declaring_file,
+            name: imp.name,
+            realization: claim.spelling,
+            manifestation: if rebound == "" {
+              CurrentlyCompatible
+            } else {
+              ReboundToDifferentTargetDeclaration { rebound_to: rebound }
             }
           }
         }
@@ -695,10 +693,12 @@ fn opaque_subject_rows(
 
 fn disposition_subject_key(d: UseSiteDisposition) -> String {
   match d {
-    OpaqueNameEmitted { consumer_file: _, declaring_file: df, name: n } => claim_key(declaring_file: df, name: n)
-    RealizationExpandedColliding { consumer_file: _, declaring_file: df, name: n, spelling: _, collides_with: _ } => claim_key(declaring_file: df, name: n)
-    RealizationExpandedNonColliding { consumer_file: _, declaring_file: df, name: n, spelling: _ } => claim_key(declaring_file: df, name: n)
-    ImportPresentNoUseSite { consumer_file: _, declaring_file: df, name: n, spelling: _ } => claim_key(declaring_file: df, name: n)
+    ProviderDeclarationPreserved { consumer_file: _, declaring_file: df, name: n } =>
+      claim_key(declaring_file: df, name: n)
+    ProviderInterfaceBypass { consumer_file: _, declaring_file: df, name: n, realization: _, manifestation: _ } =>
+      claim_key(declaring_file: df, name: n)
+    NoConsumerOccurrence { consumer_file: _, declaring_file: df, name: n, realization: _ } =>
+      claim_key(declaring_file: df, name: n)
   }
 }
 
@@ -761,52 +761,61 @@ fn census_entry_emission(entry: String) -> OpaqueRealizationCensus {
 // ---------------------------------------------------------------------------------------------
 // Reporting. The instrument writes its measurement; it does not decide anything about it.
 
+fn manifestation_text(m: BypassManifestation) -> String {
+  match m {
+    CurrentlyCompatible => "currently-compatible"
+    ReboundToDifferentTargetDeclaration { rebound_to: r } => concat("rebound-to=", r)
+  }
+}
+
 fn disposition_row(d: UseSiteDisposition) -> String {
   match d {
-    OpaqueNameEmitted { consumer_file: cf, declaring_file: df, name: n } =>
-      join(["name-emitted", cf, df, n, ""], "\t")
-    RealizationExpandedColliding { consumer_file: cf, declaring_file: df, name: n, spelling: s, collides_with: cw } =>
-      join(["expanded-colliding", cf, df, n, s, concat("collides-with=", cw)], "\t")
-    RealizationExpandedNonColliding { consumer_file: cf, declaring_file: df, name: n, spelling: s } =>
-      join(["expanded-non-colliding", cf, df, n, s], "\t")
-    ImportPresentNoUseSite { consumer_file: cf, declaring_file: df, name: n, spelling: s } =>
-      join(["no-use-site", cf, df, n, s], "\t")
+    ProviderDeclarationPreserved { consumer_file: cf, declaring_file: df, name: n } =>
+      join(["provider-declaration-preserved", cf, df, n, "", ""], "\t")
+    ProviderInterfaceBypass { consumer_file: cf, declaring_file: df, name: n, realization: r, manifestation: m } =>
+      join(["provider-interface-bypass", cf, df, n, r, manifestation_text(m: m)], "\t")
+    NoConsumerOccurrence { consumer_file: cf, declaring_file: df, name: n, realization: r } =>
+      join(["no-consumer-occurrence", cf, df, n, r, ""], "\t")
   }
 }
 
-fn disposition_is_colliding(d: UseSiteDisposition) -> Bool {
+fn disposition_is_bypass_rebound(d: UseSiteDisposition) -> Bool {
   match d {
-    RealizationExpandedColliding { consumer_file: _, declaring_file: _, name: _, spelling: _, collides_with: _ } => true
-    OpaqueNameEmitted { consumer_file: _, declaring_file: _, name: _ } => false
-    RealizationExpandedNonColliding { consumer_file: _, declaring_file: _, name: _, spelling: _ } => false
-    ImportPresentNoUseSite { consumer_file: _, declaring_file: _, name: _, spelling: _ } => false
+    ProviderInterfaceBypass { consumer_file: _, declaring_file: _, name: _, realization: _, manifestation: m } =>
+      match m {
+        ReboundToDifferentTargetDeclaration { rebound_to: _ } => true
+        CurrentlyCompatible => false
+      }
+    ProviderDeclarationPreserved { consumer_file: _, declaring_file: _, name: _ } => false
+    NoConsumerOccurrence { consumer_file: _, declaring_file: _, name: _, realization: _ } => false
   }
 }
 
-fn disposition_is_non_colliding(d: UseSiteDisposition) -> Bool {
+fn disposition_is_bypass_compatible(d: UseSiteDisposition) -> Bool {
   match d {
-    RealizationExpandedNonColliding { consumer_file: _, declaring_file: _, name: _, spelling: _ } => true
-    OpaqueNameEmitted { consumer_file: _, declaring_file: _, name: _ } => false
-    RealizationExpandedColliding { consumer_file: _, declaring_file: _, name: _, spelling: _, collides_with: _ } => false
-    ImportPresentNoUseSite { consumer_file: _, declaring_file: _, name: _, spelling: _ } => false
+    ProviderInterfaceBypass { consumer_file: _, declaring_file: _, name: _, realization: _, manifestation: m } =>
+      match m {
+        CurrentlyCompatible => true
+        ReboundToDifferentTargetDeclaration { rebound_to: _ } => false
+      }
+    ProviderDeclarationPreserved { consumer_file: _, declaring_file: _, name: _ } => false
+    NoConsumerOccurrence { consumer_file: _, declaring_file: _, name: _, realization: _ } => false
   }
 }
 
-fn disposition_is_name_emitted(d: UseSiteDisposition) -> Bool {
+fn disposition_is_preserved(d: UseSiteDisposition) -> Bool {
   match d {
-    OpaqueNameEmitted { consumer_file: _, declaring_file: _, name: _ } => true
-    RealizationExpandedColliding { consumer_file: _, declaring_file: _, name: _, spelling: _, collides_with: _ } => false
-    RealizationExpandedNonColliding { consumer_file: _, declaring_file: _, name: _, spelling: _ } => false
-    ImportPresentNoUseSite { consumer_file: _, declaring_file: _, name: _, spelling: _ } => false
+    ProviderDeclarationPreserved { consumer_file: _, declaring_file: _, name: _ } => true
+    ProviderInterfaceBypass { consumer_file: _, declaring_file: _, name: _, realization: _, manifestation: _ } => false
+    NoConsumerOccurrence { consumer_file: _, declaring_file: _, name: _, realization: _ } => false
   }
 }
 
-fn disposition_is_no_use_site(d: UseSiteDisposition) -> Bool {
+fn disposition_is_no_occurrence(d: UseSiteDisposition) -> Bool {
   match d {
-    ImportPresentNoUseSite { consumer_file: _, declaring_file: _, name: _, spelling: _ } => true
-    OpaqueNameEmitted { consumer_file: _, declaring_file: _, name: _ } => false
-    RealizationExpandedColliding { consumer_file: _, declaring_file: _, name: _, spelling: _, collides_with: _ } => false
-    RealizationExpandedNonColliding { consumer_file: _, declaring_file: _, name: _, spelling: _ } => false
+    NoConsumerOccurrence { consumer_file: _, declaring_file: _, name: _, realization: _ } => true
+    ProviderDeclarationPreserved { consumer_file: _, declaring_file: _, name: _ } => false
+    ProviderInterfaceBypass { consumer_file: _, declaring_file: _, name: _, realization: _, manifestation: _ } => false
   }
 }
 
@@ -820,6 +829,18 @@ fn standing_text(s: DeclarationBodyStanding) -> String {
 
 fn opaque_subject_row_text(r: OpaqueSubjectRow) -> String {
   join([r.declaring_file, r.name, r.source_module, standing_text(s: r.standing)], "\t")
+}
+
+fn reference_realization_policy_standing() -> ReferenceRealizationPolicyStanding {
+  PolicyUnestablished {
+    reason: "no declaration in the corpus carries a reference-realization mode, so whether a given bypass was intended cannot be read from this tree; the census reports the bypass and never infers intent from whether the emitted artifact happens to compile"
+  }
+}
+
+fn policy_standing_text(p: ReferenceRealizationPolicyStanding) -> String {
+  match p {
+    PolicyUnestablished { reason: r } => concat("unestablished: ", r)
+  }
 }
 
 fn census_report_text(c: OpaqueRealizationCensus) -> String {
@@ -837,12 +858,13 @@ fn census_report_text(c: OpaqueRealizationCensus) -> String {
         "opaque-realization-census TAKEN",
         concat("entry\t", e),
         concat("emitted_files\t", to_string(value: n)),
-        concat("expanded_colliding\t", to_string(value: filter(ds, d => disposition_is_colliding(d: d)) |> count)),
-        concat("expanded_non_colliding\t", to_string(value: filter(ds, d => disposition_is_non_colliding(d: d)) |> count)),
-        concat("name_emitted\t", to_string(value: filter(ds, d => disposition_is_name_emitted(d: d)) |> count)),
-        concat("import_no_use_site\t", to_string(value: filter(ds, d => disposition_is_no_use_site(d: d)) |> count)),
+        concat("bypass_rebound\t", to_string(value: filter(ds, d => disposition_is_bypass_rebound(d: d)) |> count)),
+        concat("bypass_currently_compatible\t", to_string(value: filter(ds, d => disposition_is_bypass_compatible(d: d)) |> count)),
+        concat("provider_declaration_preserved\t", to_string(value: filter(ds, d => disposition_is_preserved(d: d)) |> count)),
+        concat("no_consumer_occurrence\t", to_string(value: filter(ds, d => disposition_is_no_occurrence(d: d)) |> count)),
+        concat("reference_realization_policy\t", policy_standing_text(p: reference_realization_policy_standing())),
         "",
-        "# disposition\tconsumer\tdeclaring\tname\trealization",
+        "# disposition\tconsumer\tdeclaring\tname\trealization\tmanifestation",
         join(map(ds, d => disposition_row(d: d)), "\n"),
         "",
         "# declaring\tname\tsource_module\tdeclaration_standing",
