@@ -7,7 +7,7 @@ fn dummy_site() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^accumulator_copy_dummy } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

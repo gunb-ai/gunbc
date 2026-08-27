@@ -1,11 +1,12 @@
 module v2.std.refinement_widening_predicate
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.integer_value_set {
   integer_value_set_contains,
   integer_value_set_strictly_contains
 }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 import v2.std.node_query { find_named_child }
 fn refinement_widening_predicate_algebra(
   source: Node,
@@ -15,10 +16,10 @@ fn refinement_widening_predicate_algebra(
     source: source,
     candidate: candidate,
     source_value_set: Node { kind: TypeNode { connective: Atom { identity: ^refinement_value_set_unknown } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 },
     candidate_value_set: Node { kind: TypeNode { connective: Atom { identity: ^refinement_value_set_unknown } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
   )
 }
@@ -52,7 +53,7 @@ fn refinement_widening_predicate_algebra_for_value_sets(
         target: candidate_value_set
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

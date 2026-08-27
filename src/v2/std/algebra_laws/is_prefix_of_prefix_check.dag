@@ -1,8 +1,9 @@
 module v2.test.algebra_laws.is_prefix_of_prefix_check
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { is_prefix_of }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -20,12 +21,12 @@ fn sym_ab() -> FreeMonoid<Symbol> { Cons { head: ^prefix_sym_a, tail: Cons { hea
 
 fn prefix_pass_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^prefix_pass_sym } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 fn prefix_fail_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^prefix_fail_sym } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 fn prefix_claim_input(ok: Bool) -> Node {

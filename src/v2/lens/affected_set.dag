@@ -1,4 +1,5 @@
 module v2.lens.affected_set
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
@@ -56,7 +57,6 @@ import v2.std.node {
   TypeNode,
   Value,
   content_hash,
-  SyntheticOccurrence
 }
 import v2.std.witness { Holds, Witness }
 import v2.std.node_query { coproduct_arm_keys }
@@ -240,7 +240,7 @@ fn affected_set_boundary_pure_receipt_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^affected_set_boundary_pure_receipt_payload } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -248,7 +248,7 @@ fn affected_set_dimension_not_read_receipt_node(dimension: AffectedDimension) ->
   Node {
     kind: TypeNode { connective: Atom { identity: dimension } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

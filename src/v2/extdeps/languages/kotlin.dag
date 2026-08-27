@@ -1,4 +1,5 @@
 module v2.extdeps.languages.kotlin
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -88,7 +89,6 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.logic { Bool, bool_boolean_algebra }
 import std.algebra { Cons, Empty }
@@ -335,7 +335,7 @@ fn kotlin_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -404,7 +404,7 @@ fn kotlin_scalar_node(scalar: KotlinScalar) -> Node {
         ),
         kotlin_named_edge(name: ^kotlin_facts_field_width, target: kotlin_int_width_node(width: width))
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
     FloatScalar { width } => Node {
       kind: TypeNode { connective: Conj },
@@ -415,7 +415,7 @@ fn kotlin_scalar_node(scalar: KotlinScalar) -> Node {
         ),
         kotlin_named_edge(name: ^kotlin_facts_field_width, target: kotlin_float_width_node(width: width))
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
     BoolScalar => kotlin_atom(id: ^kotlin_tag_scalar_bool)
     CharScalar => kotlin_atom(id: ^kotlin_tag_scalar_char)
@@ -448,7 +448,7 @@ fn kotlin_integer_facts_node(facts: KotlinIntegerPrimitiveFacts) -> Node {
         target: kotlin_scalar_node(scalar: IntScalar { width: facts.width })
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -474,7 +474,7 @@ fn kotlin_float_facts_node(facts: KotlinFloatPrimitiveFacts) -> Node {
         target: kotlin_scalar_node(scalar: FloatScalar { width: facts.width })
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -495,7 +495,7 @@ fn kotlin_nonnumeric_facts_node(facts: KotlinNonNumericPrimitiveFacts) -> Node {
         target: kotlin_scalar_node(scalar: facts.scalar)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -755,7 +755,7 @@ fn kotlin_ordered_ring_integer_algebra_witness_body(
         target: kotlin_runtime_representation_node(representation: representation)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -791,7 +791,7 @@ fn kotlin_float_algebra_witness_node(facts: KotlinFloatPrimitiveFacts) -> Node {
         target: kotlin_runtime_representation_node(representation: facts.representation)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -810,7 +810,7 @@ fn kotlin_bool_algebra_witness_node() -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -947,7 +947,7 @@ fn kotlin_integer_inhabitant_node(id: Symbol, facts: KotlinIntegerPrimitiveFacts
         target: kotlin_integer_facts_node(facts: facts)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -961,7 +961,7 @@ fn kotlin_declared_inhabitants_root() -> Node {
     children: [
       kotlin_named_edge(name: ^kotlin_inhabitant_field_int, target: kotlin_inhabitant_int_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -982,7 +982,7 @@ fn kotlin_param_binding_node(binding: Symbol) -> Node {
         target: kotlin_inhabitant_int_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -994,7 +994,7 @@ fn kotlin_add_fn_signature_arrow() -> Node {
       Edge { label: Positional, target: kotlin_inhabitant_int_node() },
       Edge { label: Positional, target: kotlin_inhabitant_int_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1012,7 +1012,7 @@ fn kotlin_return_add_expr_node() -> Node {
         target: kotlin_atom(id: ^kotlin_binding_param_y)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1045,7 +1045,7 @@ fn kotlin_emitted_add_fn_node() -> Node {
         target: kotlin_return_add_expr_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1094,7 +1094,7 @@ fn kotlin_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: kotlin_serialize_source_children(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1316,7 +1316,7 @@ fn kotlin_grammar_relation_row_node(row: KotlinGrammarRelationRow) -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1329,7 +1329,7 @@ fn kotlin_translation_rules_node() -> Node {
         target: kotlin_grammar_relation_row_node(row: kotlin_grammar_relation_row())
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1354,7 +1354,7 @@ fn kotlin_target_model_node() -> Node {
         target: kotlin_serialize_source_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

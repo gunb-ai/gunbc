@@ -1,6 +1,7 @@
 module v2.test.claim.infer_self_grounding_wall
 
 import extdeps.filesystem.filesystem_io
+import std.occurrence_identity { OccurrenceSynthetic }
 import gunbc.guarantee_probe_corpus {
   v2_frontier_red_probe,
   v2_frontier_green_probe,
@@ -56,7 +57,6 @@ import v2.std.node {
   Disj,
   Value,
   Symbol,
-  SyntheticOccurrence,
   Named,
 }
 import v2.std.witness { Holds, Violates }
@@ -101,7 +101,7 @@ fn wall_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -109,7 +109,7 @@ fn wall_conj_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -117,7 +117,7 @@ fn wall_disj_node() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -125,7 +125,7 @@ fn wall_value_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Value },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -138,7 +138,7 @@ fn wall_malformed_bool_with_payload() -> Node {
         target: wall_value_node()
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

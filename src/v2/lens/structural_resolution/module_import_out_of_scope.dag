@@ -6,7 +6,7 @@ fn sr_mod_claim_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -17,7 +17,7 @@ data sr_mod_root: Node = Node {
   children: [
     Edge { label: Named { name: ^dependency_module_import_edge }, target: sr_mod_imported }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data sr_mod_dependency: DependencyView = DependencyView {

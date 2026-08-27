@@ -1,5 +1,6 @@
 module v2.test.claim.wrap_decision_predicate
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.translate { translate_apply_use_site_ownership_to_projected_boundary }
 import v2.compiler.wrap_decision { wrap_decision_gate, wrap_decision_flow_gate }
 import v2.extdeps.languages.rust {
@@ -39,8 +40,7 @@ import v2.std.logic { Bool }
 import v2.std.node {
   Conj,
   Node,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.collection { list_at_optional }
 import v2.std.node_query { node_positional_child_targets }
@@ -59,7 +59,7 @@ fn wrap_decision_bundle_absent_target() -> TargetModel {
     bundle: Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     lex: wrap_decision_sg_rc_target().lex,
     binding_spellings: wrap_decision_sg_rc_target().binding_spellings,
@@ -82,7 +82,7 @@ fn wrap_decision_partial_bundle_target() -> TargetModel {
           )
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     lex: wrap_decision_sg_rc_target().lex,
     binding_spellings: wrap_decision_sg_rc_target().binding_spellings,

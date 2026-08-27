@@ -10,7 +10,7 @@ module test.claim.scm_object_store_witness
 // claims. The controls are what make those two impossible.
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
-import std.occurrence_identity { OccurrenceId }
+import std.occurrence_identity { OccurrenceId, node_occurrence_identity_minted }
 
 import v2.std.node {
   Node,
@@ -34,7 +34,6 @@ import v2.std.node {
   Positional,
   node_synthetic,
   node_with_occurrence_id,
-  node_occurrence_minted,
   content_hash,
   symbol_identity_digest,
   canonicalize_node_for_content_hash,
@@ -103,7 +102,7 @@ fn minted_atom_node(identity: Symbol, id: Int) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: node_occurrence_minted(id: OccurrenceId { value: id }),
+    occurrence_id: node_occurrence_identity_minted(id: OccurrenceId { value: id }),
   )
 }
 
@@ -114,7 +113,7 @@ fn minted_program_ab(base: Int) -> Node {
       named_edge(name: ^left, target: minted_atom_node(identity: ^L, id: base + 1)),
       named_edge(name: ^right, target: minted_atom_node(identity: ^R, id: base + 2)),
     ],
-    occurrence_id: node_occurrence_minted(id: OccurrenceId { value: base }),
+    occurrence_id: node_occurrence_identity_minted(id: OccurrenceId { value: base }),
   )
 }
 
@@ -404,7 +403,7 @@ test fn independently_built_equal_programs_share_one_identity() -> Bool {
 }
 
 // CRITERION 3, second half -- and the gap the first half leaves open. If every node carried the same
-// SyntheticOccurrence, equal identities would be consistent with an identity that reads the
+// OccurrenceSynthetic, equal identities would be consistent with an identity that reads the
 // occurrence id and merely finds it equal. These are the same program under three DIFFERENT
 // occurrence allocations, and all three must land on one object identity.
 test fn identity_survives_reminted_occurrences() -> Bool {

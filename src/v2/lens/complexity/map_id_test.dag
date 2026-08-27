@@ -1,5 +1,6 @@
 module v2.test.lens_complexity.map_id
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.complexity { ComplexityBound, complexity_lens, linear_complexity }
 import v2.lens.cost { LinearCost, SizeVariable, SymbolicCost, cost_lens }
 import v2.std.logic { Bool }
@@ -20,7 +21,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -35,7 +35,7 @@ type LensComplexityClaim {
 data map_id_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^map_id_body_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data map_id_body: Node = Node {
@@ -43,7 +43,7 @@ data map_id_body: Node = Node {
   children: [
     Edge { label: Positional, target: map_id_body_leaf }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data map_id_input: Node = Node {
@@ -51,7 +51,7 @@ data map_id_input: Node = Node {
   children: [
     Edge { label: Positional, target: map_id_body }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data map_id_claim: LensComplexityClaim = LensComplexityClaim {
