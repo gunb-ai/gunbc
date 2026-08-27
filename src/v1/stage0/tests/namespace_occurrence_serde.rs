@@ -223,6 +223,37 @@ fn oci_digest_parser_does_not_reuse_authored_identity() {
 }
 
 #[test]
+fn tailscale_credential_parser_does_not_reuse_authored_identity() {
+    let parsed = parse_source(
+        include_str!("../../../../dag/gunbc/tailscale_acl_phase2_credential.dag"),
+        "dag/gunbc/tailscale_acl_phase2_credential.dag",
+        occurrence_id_allocator_initial(),
+    );
+    assert!(parsed.result.error.is_none(), "{:?}", parsed.result.error);
+    let mut seen = HashSet::new();
+    if let Some(duplicate) = parsed
+        .occurrence_transport
+        .index
+        .entries
+        .iter()
+        .map(|entry| entry.projection.occurrence.value)
+        .find(|id| !seen.insert(*id))
+    {
+        let mut descriptions = Vec::new();
+        node_occurrence_descriptions(
+            parsed
+                .result
+                .module
+                .as_ref()
+                .expect("successful parse module"),
+            duplicate,
+            &mut descriptions,
+        );
+        panic!("duplicate authored identity {duplicate}: {descriptions:?}");
+    }
+}
+
+#[test]
 fn parser_lists_publish_accepted_child_identity() {
     let parsed = parse_source(
         include_str!("../../../../dag/examples/cost_estimate/cost_estimate.dag"),

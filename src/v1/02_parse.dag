@@ -4512,7 +4512,6 @@ fn parse_node_decl(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   if has_err(err: r3.err) { return r3 }
   let ret = parse_optional_inferred(tokens: r3.tokens, ctx: r3.ctx)
   if has_err(err: ret.err) { return ExprResult { expr: dummy_expr, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
-  let type_ann = match e_colon { EatConsumed { token: _, tokens: _ } => Present { value: r3.expr }  EatUnchanged { tokens: _ } => none }
   parsed_expr_result(
     tokens: ret.tokens,
     ctx: ret.ctx,
@@ -4520,7 +4519,7 @@ fn parse_node_decl(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
       ident_span: Present { value: name_span }, children: [r3.expr],
       connective: NoConnective, params: [], inferred: ret.inferred,
       return_cardinality: Required, uses: [], body: none, transport: none,
-      properties: cr.constraints, type_annotation: type_ann, is_self_recursive: false,
+      properties: cr.constraints, type_annotation: none, is_self_recursive: false,
       has_non_tail_self_call: false, match_pattern: none, expr_data: ExprLet }
   )
 }

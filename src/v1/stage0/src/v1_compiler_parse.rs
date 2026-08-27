@@ -12091,10 +12091,6 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
                 err: ret.err.clone(),
             });
         }
-        let type_ann = match (*e_colon.clone()).clone() {
-            EatResult::EatConsumed { .. } => Some(r3.expr.clone()),
-            EatResult::EatUnchanged { tokens: _, .. } => None,
-        };
         parsed_expr_result(ret.tokens.clone(), ret.ctx.clone(), |identity| {
             Rc::new(Node {
                 occurrence_identity: identity.clone(),
@@ -12110,7 +12106,7 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
                 body: None,
                 transport: None,
                 properties: cr.constraints.clone(),
-                type_annotation: type_ann.clone(),
+                type_annotation: None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
