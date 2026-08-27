@@ -62,10 +62,6 @@ test fn witness_an_absent_host_root_is_still_established() -> Bool {
 }
 
 // OWNERSHIP IS DECIDED BY THE SUBJECT AND BY NOTHING THE RECORD CARRIES. Both directions are
-// asserted: a host-scoped subject is never teardown-eligible and a slot-scoped one always is, so a
-// future edit that made the projection constant in either direction goes red here rather than
-// silently making every cell resource permanent or every host root removable.
-// OWNERSHIP IS DECIDED BY THE SUBJECT AND BY NOTHING THE RECORD CARRIES. Both directions are
 // asserted over the real slot population rather than one sampled slot: a host-scoped subject is
 // never teardown-eligible, and EVERY fabric execution slot subject is. An edit that made the
 // projection constant in either direction goes red here rather than silently making every cell
