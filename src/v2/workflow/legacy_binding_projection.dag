@@ -169,7 +169,7 @@ type ProjectionEmission
   | ProjectionDecisionMissing { occurrences: List<Int> }
   | ProjectionDecisionForked { occurrences: List<Int> }
   | ProjectionDecisionForeign { occurrences: List<Int> }
-  | ProjectionInsertionCauseLost { scopes: List<Fnv1a64Structural> }
+  | ProjectionInsertionCauseLost { sites: List<CauseLostSite> }
   | ProjectionCandidateNotInsertion { occurrences: List<Int> }
   | ProjectionTargetRepeated { occurrences: List<Int> }
   | ProjectionDroppedOccurrence { occurrences: List<Int> }
@@ -192,7 +192,8 @@ type ProjectionEmission
 // absence IS the defect. So the arm reports what it truthfully has:
 //
 //     countable                    yes  -- the list's length
-//     scope-attributable           yes  -- the scopes the derivations reported
+//     scope-attributable           yes  -- the scope each derivation reported
+//     span-located                 when the caller supplied one on the declaration
 //     locatable by OccurrenceId    no
 //
 // The arm carries the SCOPES rather than a scope and a count. A count beside a list is a second
@@ -220,15 +221,37 @@ fn declared_insertion_derivations(
 // separately, while `InsertionCauseLost` was already carrying `target_scope` and having it thrown
 // away. Two authorities for one fact, created by the predicate's return type.
 //
-// So this yields the scope the derivation itself reports. Counting is then the same `flat_map |>
-// count` the other two projections use, and the refusal is attributed by the arm rather than beside
-// it.
-fn derivation_cause_lost_scopes(derivation: InsertionProvenanceDerivation) -> List<Fnv1a64Structural> {
-  match derivation {
-    InsertionCauseLost { target_scope: sc } => [sc]
+// AND THE SITE CARRIES THE AUTHORED SPAN, which review 56487 caught being dropped. `diagnostic_span`
+// was declared as the only locating evidence available for a node with no id, and then discarded
+// before the refusal that needed it -- a fact introduced for one boundary and dead at exactly that
+// boundary, with an annotation still claiming it provided location. Either carry it or delete the
+// field and the claim; carrying it is right, because the case it serves is the one case this module
+// genuinely cannot locate on its own.
+//
+// This is why the projection ranges over DECLARATIONS rather than derivations: the derivation knows
+// the scope and the declaration knows the span, and pairing them after the fact would be a join over
+// two lists whose correspondence is positional -- the shape that cannot survive either list being
+// filtered.
+type CauseLostSite {
+  scope: Fnv1a64Structural
+  diagnostic_span: SourceSpan?
+}
+
+fn declared_insertion_cause_lost_sites(
+  insertions: List<DeclaredProjectionInsertion>,
+  projected_identity: Fnv1a64Structural
+) -> List<CauseLostSite> {
+  insertions |> flat_map(declared => match insertion_provenance_entry(
+    target_scope: projected_identity,
+    identity: declared.identity
+  ) {
+    InsertionCauseLost { target_scope: sc } => [CauseLostSite {
+      scope: sc,
+      diagnostic_span: declared.diagnostic_span
+    }]
     InsertionEntryDerived { entry: _ } => []
     NotAnInsertion { target: _ } => []
-  }
+  })
 }
 
 fn derivation_not_insertion_occurrence(derivation: InsertionProvenanceDerivation) -> List<Int> {
@@ -316,7 +339,10 @@ fn emit_projection_provenance<O>(
     insertions: insertions,
     projected_identity: projected_identity
   )
-  let cause_lost_scopes = derivations |> flat_map(d => derivation_cause_lost_scopes(derivation: d))
+  let cause_lost_sites = declared_insertion_cause_lost_sites(
+    insertions: insertions,
+    projected_identity: projected_identity
+  )
   let not_insertions = derivations |> flat_map(d => derivation_not_insertion_occurrence(derivation: d))
   let carried_entries = decisions |> flat_map(d => match d {
     CarriedForward { base: b, projected: p } => [ProjectedFromSource {
@@ -332,7 +358,7 @@ fn emit_projection_provenance<O>(
   if (missing |> count) > 0 { ProjectionDecisionMissing { occurrences: missing } }
   else if (forked |> count) > 0 { ProjectionDecisionForked { occurrences: forked } }
   else if (foreign |> count) > 0 { ProjectionDecisionForeign { occurrences: foreign } }
-  else if (cause_lost_scopes |> count) > 0 { ProjectionInsertionCauseLost { scopes: cause_lost_scopes } }
+  else if (cause_lost_sites |> count) > 0 { ProjectionInsertionCauseLost { sites: cause_lost_sites } }
   else if (not_insertions |> count) > 0 { ProjectionCandidateNotInsertion { occurrences: not_insertions } }
   else if (repeated_targets |> count) > 0 { ProjectionTargetRepeated { occurrences: repeated_targets } }
   else if (dropped |> count) > 0 { ProjectionDroppedOccurrence { occurrences: dropped } }
