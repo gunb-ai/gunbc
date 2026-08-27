@@ -766,3 +766,80 @@ fn deleting_a_declaration_a_qualified_spelling_reaches_is_still_unresolvedness()
         report.deltas
     );
 }
+
+// AN AUTHORED IMPORT CLAIM IS THE MEMBERSHIP FACT, NOT EVIDENCE TOWARD IT.
+//
+// `probe.coproduct` declares a coproduct; the consumer imports two of its VARIANTS and mentions
+// them ONLY as match-arm pattern heads. `declaration_index`'s walk cannot reach either name IN
+// PRINCIPLE -- `MatchPattern::VariantPattern.name` is a `String`, never a `Node`, so no node
+// walker reaches it -- so the reference set is empty for that target and the add-side predicate
+// answered "NO name in this module resolves into it" about a module the consumer explicitly
+// imports.
+//
+// THE SCRUTINEE'S TYPE IS DELIBERATELY NOT NAMED IN THE CONSUMER, and that is the whole reason
+// this fixture is trustworthy. An earlier revision wrote `fn decide(v: Verdict)`, which made the
+// test PASS BOTH WAYS: `Verdict` in the signature is an ordinary reachable `Node`, so the
+// reference-set path already answered membership and the import clause was never load-bearing.
+// Measured -- green with the fix AND green with the fix reverted -- which is the decoration
+// DESIGN §4b names as worse than absent, because it would have been cited as coverage. The
+// scrutinee now arrives from a third module, so the ONLY names this import contributes are the
+// two variant heads, which is exactly the population no walker reaches.
+//
+// THE RED IS AUTHORABLE HERE AND WAS AUTHORED. On the corrected fixture, with the add-side
+// predicate reading the reference set alone, this arm reports `UnexplainedSubjectMotion`. It is
+// retained as the regression control per §4b(4): the climb deletes the redundant production
+// handling, never the executing evidence that the higher rung still holds.
+const COPRODUCT_HOME: &str = "module probe.coproduct\n\ntype Verdict\n  = Accepted\n  | Refused\n";
+
+const VERDICT_HOLDER: &str = "module probe.holder\n\nimport probe.coproduct { Verdict, Accepted }\n\nfn fetch() -> Verdict { Accepted }\n";
+
+const PATTERN_ONLY_CONSUMER: &str = "module probe.consumer\n\nimport probe.holder { fetch }\nimport probe.coproduct { Accepted, Refused }\n\nfn decide() -> String {\n  match fetch() {\n    Accepted => \"yes\"\n    Refused => \"no\"\n  }\n}\n";
+
+#[test]
+fn membership_declared_by_an_import_whose_names_appear_only_in_pattern_arms() {
+    let base = "module probe.consumer\n\nfn decide() -> String { \"unset\" }\n";
+    let report = compare(
+        "pattern_only_membership",
+        &[
+            ("coproduct.dag", COPRODUCT_HOME),
+            ("holder.dag", VERDICT_HOLDER),
+            ("consumer.dag", base),
+        ],
+        &[
+            ("coproduct.dag", COPRODUCT_HOME),
+            ("holder.dag", VERDICT_HOLDER),
+            ("consumer.dag", PATTERN_ONLY_CONSUMER),
+        ],
+    );
+
+    // PLANT ASSERTION FIRST, for the reason the sibling test states: a disposition read off a
+    // delta that was never produced is a verdict about nothing.
+    assert!(
+        report.deltas.iter().any(|d| matches!(
+            &d.subject,
+            DeltaSubject::Membership { target, .. } if target == "probe.coproduct"
+        )),
+        "PLANT NEVER REACHED: no membership delta for probe.coproduct, got: {:?}",
+        report.deltas
+    );
+
+    let dispositions = membership_dispositions(&report, "probe.coproduct");
+    assert!(
+        !dispositions.contains(&NamespaceDeltaDisposition::UnexplainedSubjectMotion),
+        "an explicit `import probe.coproduct {{ .. }}` states the dependency; refusing it \
+         because the reference set cannot see a pattern-arm name reads the weaker of two \
+         representations of one fact, got: {:?}",
+        dispositions
+            .iter()
+            .map(|d| disposition_label(*d))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        report_unadjudicated(&report).is_empty(),
+        "nothing here needs adjudicating, got: {:?}",
+        report_unadjudicated(&report)
+            .iter()
+            .map(|d| (disposition_label(d.disposition), d.detail.clone()))
+            .collect::<Vec<_>>()
+    );
+}
