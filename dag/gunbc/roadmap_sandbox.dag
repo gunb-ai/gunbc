@@ -19,7 +19,7 @@ import gunbc.roadmap_workflow_stage {
   GoalAuditWorkflowSegment,
 }
 import gunbc.worker_lifecycle { WorkerProcessExited }
-import gunbc.roadmap_style { roadmap_css }
+import gunbc.roadmap_style { roadmap_css, workspace_band_paints }
 import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl, serialize_rules, Material, paint }
 import gunbc.design.theme {
   ThemeRole, theme_roles, role_key, role_var, role_decl,

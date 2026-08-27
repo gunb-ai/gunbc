@@ -69,6 +69,8 @@ pub mod behavioral_receipt_host;
 #[path = "target_invocation_host.rs"]
 pub mod target_invocation_host;
 
+#[path = "generated_artifact_boundary_host.rs"]
+mod generated_artifact_boundary_host;
 #[path = "partition_crate_boundary_host.rs"]
 mod partition_crate_boundary_host;
 
@@ -5411,6 +5413,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => {
             "AmbiguousAnonymousRecordLiteral"
         }
+        CompilerDiagnostic::ModuleFilenameCollision { .. } => "ModuleFilenameCollision",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
         CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
@@ -5474,6 +5477,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates, .. } => {
             candidates.iter().cloned().collect::<Vec<_>>().join("|")
         }
+        CompilerDiagnostic::ModuleFilenameCollision { filename, .. } => filename.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
         CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
@@ -44330,6 +44334,18 @@ pub struct PreparedClaimScope {
     /// counted here so the population is a measured quantity rather than an assumption, which is
     /// what decides whether the honest arm — refusing the ambiguous lookup — is affordable or
     /// whether the terminal per-module-environment correction has to land first.
+    ///
+    /// THE COUNT IS UNCHANGED AND ITS SUBJECT HAS NARROWED, which is worth saying because a
+    /// reader who takes it as the silent-pick population will now overcount.
+    /// [`v1_interpreter::InterpContext::lookup_fn_from`] resolves a reference through the
+    /// referring file's own declarations and then its explicit imports before this shared slot,
+    /// so for every name in this count the two directions that used to be decided by nothing the
+    /// author wrote — a module losing its
+    /// OWN declaration to an unrelated homonym, and an explicit `import a.b.c { x }` being inert
+    /// against one — are decided by what the author wrote now. What remains counted here is the
+    /// genuinely undecided residue: a bare reference to a name the referring module neither
+    /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
+    /// modules it reached.
     pub ambiguous_bare_names: usize,
 }
 
@@ -48585,6 +48601,18 @@ pub use partition_crate_boundary_host::{
     RenderedBoundaryFile, PARTITION_CRATE_PRODUCING_COMMAND,
 };
 
+/// The committed generated-artifact population, produced from `gunbc.generated_artifact_emit`
+/// and adjudicated against the tree.
+///
+/// Re-exported here rather than reached directly so every required phase addresses the producer
+/// through one surface, the way the regen and partition-crate paths do.
+pub use generated_artifact_boundary_host::{
+    artifact_disposition, artifact_disposition_name, boundary_divergent, boundary_is_clean,
+    generated_artifact_body_for_path, generated_artifact_ctx, run_generated_artifact_boundary,
+    AdjudicatedArtifact, ArtifactDisposition, GeneratedArtifactBoundaryOutcome,
+    GeneratedArtifactPathBody, UnadjudicatedArtifact, GENERATED_ARTIFACT_PRODUCING_COMMAND,
+};
+
 /// The emitted-closure compile phase: one entry's closure emitted, written as a crate, and
 /// compiled — with the discriminating red the phase establishes on itself every run.
 ///
@@ -48594,7 +48622,8 @@ pub use emitted_closure_compile_host::{
     cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
     emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
     emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
-    emit_compile_selection_universe_digest, required_emit_compile_entries,
+    emit_compile_selection_universe_digest, local_emit_compile_probe_root,
+    required_ci_emit_compile_probe_root, required_emit_compile_entries,
     retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
     EmitCompileSelection, MutationVerdict,
 };

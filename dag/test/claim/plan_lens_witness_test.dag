@@ -2,7 +2,7 @@ module test.claim.plan_lens_witness
 
 import std.types { NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import gunbc.plan { Plan, PlanRetiresWhen, PlanHasNoRetirement, plan_has_retirement, plans_all_have_retirement, plan_title_is_present, plans_all_titled }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanHasNoRetirement, PlanProjectsCommittedMarkdown, plan_has_retirement, plans_all_have_retirement, plan_title_is_present, plans_all_titled }
 import gunbc.plan_registry { all_plans }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -11,11 +11,11 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn plan_with_trigger() -> Plan {
-  Plan { slug: "x", title: "x", body: [], retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "delete when X is witnessed") } }
+  Plan { projection: PlanProjectsCommittedMarkdown, slug: "x", title: "x", body: [], retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "delete when X is witnessed") } }
 }
 
 fn plan_without_trigger() -> Plan {
-  Plan { slug: "y", title: "y", body: [], retirement: PlanHasNoRetirement }
+  Plan { projection: PlanProjectsCommittedMarkdown, slug: "y", title: "y", body: [], retirement: PlanHasNoRetirement }
 }
 
 // Reaches the empty condition through the NON-LITERAL path. The literal form is
@@ -32,11 +32,11 @@ fn synthetic_empty_condition(text: String) -> DissolutionCondition {
 }
 
 fn plan_with_empty_retirement() -> Plan {
-  Plan { slug: "w", title: "w", body: [], retirement: PlanRetiresWhen { condition: synthetic_empty_condition(text: "") } }
+  Plan { projection: PlanProjectsCommittedMarkdown, slug: "w", title: "w", body: [], retirement: PlanRetiresWhen { condition: synthetic_empty_condition(text: "") } }
 }
 
 fn plan_untitled() -> Plan {
-  Plan { slug: "z", title: "", body: [], retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "t") } }
+  Plan { projection: PlanProjectsCommittedMarkdown, slug: "z", title: "", body: [], retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "t") } }
 }
 
 test fn every_registered_plan_has_retirement() -> Bool {
