@@ -3474,6 +3474,27 @@ fn collect_item_realized_surface_names(item: Node, shared_types: Set<String>, so
   unique_strings(items: concat(from_ann, concat(from_params, from_inferred)))
 }
 
+// A coproduct's VARIANT names are declared by the module that declares the coproduct -- bound in
+// scope by the `use self::Enum::*;` line emit_module_full writes for every local coproduct, or,
+// for a grounded native alias (Optional/Diagnostics/List), rendered as the host's own constructor.
+// Either way the name is NOT an import candidate. But local_decl_names harvests exactly ONE name
+// per top-level item (the enum's own), so a bare self-reference to a local variant was never
+// in the already-filter. It then fell through to the closure-global bare-name registry, which is
+// last-write-wins across the whole corpus, and a homonym variant in another module would win the
+// row -- synthesizing a `pub use crate::other::Variant;` for a name this module already binds
+// itself (the E0255/E0252 self-collision class local_decl_names exists to close, one level down).
+// The variant set is read from the item's OWN children rather than from emit_info.type_summaries,
+// because that map is keyed by bare type name and is subject to the same homonym last-write-wins:
+// a module-local question must be answered from module-local structure.
+fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  items
+    |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
+    |> flat_map(item => item.children |> flat_map(child =>
+      let vn = authored_name_at(source_indices: source_indices, node: child)
+      if vn == "" { [] } else { [vn] }
+    ))
+}
+
 fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
@@ -3497,7 +3518,8 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
       let nm = authored_name_at(source_indices: source_indices, node: item)
       if nm == "" { [] } else { [nm] }
     )
-    let already = concat(already_imported_names, concat(local_type_names, local_decl_names))
+    let local_variant_names = local_coproduct_variant_names(items: items, source_indices: source_indices)
+    let already = concat(already_imported_names, concat(local_type_names, concat(local_decl_names, local_variant_names)))
       |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
     let unlisted = candidates |> flat_map(name =>
       if emit_map_has(m: already, key: name) || is_kernel_type(name: name) {

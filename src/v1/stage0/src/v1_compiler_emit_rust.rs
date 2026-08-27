@@ -7676,6 +7676,51 @@ pub fn collect_item_realized_surface_names(
     }
 }
 
+pub fn local_coproduct_variant_names(
+    items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for item in Rc::new({
+            let mut __result = Vec::new();
+            for item in items.iter().cloned() {
+                if (is_type_def_item(item.clone()) && is_coproduct_type(item.clone())) {
+                    __result.push(item);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.extend(
+                (*Rc::new({
+                    let mut __result = Vec::new();
+                    for child in item.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*{
+                                let vn = authored_name_at(source_indices.clone(), child.clone());
+                                if (vn.clone() == "".to_string()) {
+                                    Rc::new(vec![])
+                                } else {
+                                    Rc::new(vec![vn.clone()])
+                                }
+                            })
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }))
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
 pub fn reference_derived_use_lines(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
@@ -7858,9 +7903,14 @@ pub fn reference_derived_use_lines(
             }
             __result
         });
+        let local_variant_names =
+            local_coproduct_variant_names(items.clone(), source_indices.clone());
         let already = v1_rt::concat(
             already_imported_names.clone(),
-            v1_rt::concat(local_type_names.clone(), local_decl_names.clone()),
+            v1_rt::concat(
+                local_type_names.clone(),
+                v1_rt::concat(local_decl_names.clone(), local_variant_names.clone()),
+            ),
         )
         .iter()
         .cloned()
