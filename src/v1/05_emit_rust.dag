@@ -2548,13 +2548,27 @@ fn merged_module_source_indices(modules: List<TypedModule>) -> Map<String, Newli
 // That is a latent defect with a bounded, reproducible specimen, and it is RECORDED rather than
 // chased: the suspect is a shared memo or interner upstream of the import-line stream, which nothing
 // here establishes. Its blast radius is every future refactor in this region, each of which will
-// silently move bytes and be diagnosed from scratch by whoever hits it. Keeping the order is a
-// WORKAROUND for that fact, not a fix for it, and naming it as one is the point of this annotation:
-// a reader who "simplifies" these bindings back into a natural grouping will reproduce the defect.
+// silently move bytes and be diagnosed from scratch by whoever hits it. A reader who "simplifies"
+// these bindings back into a natural grouping will reproduce it.
 //
-// NEXT-RUNG TRIGGER: the order-dependence is located and removed -- the emitter made invariant under
-// permutation of these bindings -- at which point this annotation and the ordering constraint it
-// protects both retire. The discriminating control until then is the one that found it: emit a
+// THIS ADMITS NO DEBT AND IS NOT A SCAFFOLD, and the distinction decides who has to approve it. The
+// order-dependence is PRE-EXISTING: it is a property of the emitter as it stood before this change,
+// not something introduced here, and no artifact is added that must later be deleted. The ordering
+// kept below IS the ordering that was already there, so what is preserved is the status quo and what
+// is new is only the knowledge that preserving it was necessary. DESIGN's scaffold-admission ruling
+// governs CREATING temporary work -- "a dissolution condition describes how admitted debt ends, it
+// does not authorize creating the debt" -- and there is no debt here to authorize; an earlier
+// revision of this annotation called the kept ordering a "workaround", which invited exactly that
+// reading and is corrected rather than defended. DESIGN's workaround rule is about routing AROUND an
+// obstacle without diagnosing it, and the opposite happened: the line was stopped, the bytes were
+// measured, the cause was located to the preamble, and the original order was restored.
+//
+// THE TRIGGER BELOW IS AN OBLIGATION, NOT A PERMISSION. Section 4b(2) requires a discovered class
+// below its ceiling to name its next-rung trigger so the stall is tracked rather than silent;
+// omitting it would leave a measured defect recorded with no way to tell "cannot climb" from "nobody
+// has". NEXT-RUNG TRIGGER: the order-dependence is located and removed -- the emitter made invariant
+// under permutation of these bindings -- at which point this annotation and the ordering constraint
+// it protects both retire. The discriminating control until then is the one that found it: emit a
 // scoped entry before and after, and diff.
 //
 // THE STRUCTURAL BYTE-IDENTITY ARGUMENT DID NOT COVER THIS, and that is the reusable lesson. "The
@@ -3569,7 +3583,79 @@ fn collect_item_realized_surface_names(item: Node, shared_types: Set<String>, so
   unique_strings(items: concat(from_ann, concat(from_params, from_inferred)))
 }
 
-data reference_derived_census_rung_note: String = "DECLARED RUNG, AND IT IS MITIGATABLE. The per-candidate decision below is now a four-armed typed disposition and the population is COUNTED, at (module, name, disposition), by reference_derived_census over the rows every Rust emit already produces. It is NOT SURFACED during an ordinary build: emit_module_full carries the rows out beside the file, emit_rust_reference_derived_census projects them, and no compile prints them, no gate reads them and no diagnostic is raised. That is DELIBERATE AND TEMPORARY, and the reason is sequencing rather than comfort. Making the value-position case loud -- withdrawing the emitter's silent synthesis, or promoting the reference to a refusal beside UnlistedImportUse -- is a DESIGN 4b rung change that must declare a BOUNDED POPULATION, and that population is exactly what this census exists to measure. Counting first is the precondition for the promotion, not caution about it.\n\nWHAT IS STILL SILENT, stated so this row is not read as a climb it is not. A value-position cross-module reference with no import produces no diagnostic of any kind: the resolver declines to refuse it, the emitter synthesizes the use-line the author did not write, and the author is never told. NOTHING HERE CHANGES THAT. The emitted bytes are identical by construction -- the use-lines are the survived arm of the same decision the census counts, so there is no second copy of the decision to drift from -- and the deficit's frequency is now observable instead of zero.\n\nEVERY COUNT THIS CENSUS REPORTS IS A LOWER BOUND. The denominator is the candidates that REACH the decision; a name already provided by an authored import, the prelude, a carrier use-line or the module's own declarations is filtered before it, as is a kernel type and any name no attestation admitted as a candidate at all. So registry_absent and export_proof_failed are at-least counts of the references that reach emission with no use-line, never the whole of that population, and the gap between the two is itself unmeasured. A consumer quoting a figure says 'at least N' and names emit_rust_reference_derived_census as its producer; a transcribed number with no named producer is unreachable from the thing that owns it and rots without anyone touching either end.\n\nNO EXECUTING CONSUMER FOR THE EVIDENCE YET, AND NO PRODUCER FOR A CORPUS FIGURE EITHER. THIS IS THE HONEST HALF OF THE ROW AND IT HAS TWO PARTS. FIRST, THE EVIDENCE. The discriminating probes live in v1.tests.claim.reference_derived_disposition_census_witness_test -- five rows, four naming the decision's four arms and one pinning the census to being a projection of retained rows. Their RED is authorable at the fixture boundary and all five pass when run directly on 2026-08-27. They are NOT run by CI: gunbc.ci_layer_roots records that the scoped witness batch was deleted with the 2026-08-15 floor cut and that every entry under src/v1/tests/claim has no executing consumer, since ordinary discovery's roots are dag plus src/v2 and could not resolve an import of v1.compiler.emit_rust in any case. Direct execution is evidence the assertions HOLD, never evidence that CI runs them, and conflating those two is rung inflation.\n\nNEXT-RUNG TRIGGERS, TWO, INDEPENDENT. (1) For the class: the value-position case joins the fail-closed wall -- the resolver refusing an unlisted value use, or emitting the use-line intent directly -- at which point this census, the synthesis pass it counts and this row retire together. (2) For the evidence: one prepared subject spanning dag, src/v1 and src/v2, the restoration gunbc.ci_layer_roots already names for the deleted batch, at which point the witness above executes and that paragraph deletes.\n\nSECOND, AND SEPARATELY: THE CENSUS HAS NO EXECUTABLE ROUTE TO A CORPUS FIGURE, so this row deliberately quotes NO number. emit_rust_reference_derived_census is the projection, but reaching it needs a resolved graph, and the only .dag route to one is a nested compile that the interpreter refuses -- compile_to_resolved over an authored source vector errors with NoSuchField Node.ident during the nested pipeline, measured 2026-08-27 on three subjects. That is why the two nested-compile instruments the corpus already has (gunbc.compile_diagnostic_census, tools.multi_module_compile_fixture) both route through a host builtin. A CLI or builtin surface that hands the census a graph is capability growth in a frozen seed and is not taken here. THIRD NEXT-RUNG TRIGGER, therefore: a nested-compile builtin returning the resolved graph -- the shape tools.multi_module_compile_fixture already has, widened to carry these rows -- at which point a figure becomes producible and this paragraph is replaced by the producer's name. Until then the population is COUNTABLE BY CONSTRUCTION AND UNCOUNTED IN FACT, and saying otherwise would be the rung inflation this row exists to avoid."
+// THE DECLARED RUNG FOR THIS CLASS. It is an ANNOTATION and not a `data ... : String` row, and the
+// difference is load-bearing rather than stylistic: a rung, a trigger, a receipt and a dissolution
+// condition are exactly the facts DESIGN section 4c orders into typed carriers, and a String datum
+// carrying them is the #6262 hoisted-prose shape that section names as the measured failure -- intent
+// mechanically indistinguishable from program data. There is no typed rung carrier to route these to
+// today: DESIGN's own declared rung drops sit as prose in its Building-&-checks section, and the
+// executable claims carrier that would hold them is Stage 1 of the compiler-guarantee recovery plan
+// and is unbuilt. So this sits in the quarantine boundary section 4c provides for exactly that case,
+// where no `Accepted` program can read it -- which is the point, because it means nothing here can
+// ever be cited as machine evidence that the rung holds. It migrates to the claims carrier when that
+// carrier lands, and the migration is the dissolution rather than a rewrite.
+//
+// DECLARED RUNG, AND IT IS MITIGATABLE. The per-candidate decision below is now a four-armed
+// typed disposition and the population is COUNTED, at (module, name, disposition), by
+// reference_derived_census over the rows every Rust emit already produces. It is NOT SURFACED
+// during an ordinary build: emit_module_full carries the rows out beside the file,
+// emit_rust_reference_derived_census projects them, and no compile prints them, no gate reads
+// them and no diagnostic is raised. That is DELIBERATE AND TEMPORARY, and the reason is
+// sequencing rather than comfort. Making the value-position case loud -- withdrawing the
+// emitter's silent synthesis, or promoting the reference to a refusal beside UnlistedImportUse --
+// is a DESIGN 4b rung change that must declare a BOUNDED POPULATION, and that population is
+// exactly what this census exists to measure. Counting first is the precondition for the
+// promotion, not caution about it.
+//
+// WHAT IS STILL SILENT, stated so this row is not read as a climb it is not. A value-position
+// cross-module reference with no import produces no diagnostic of any kind: the resolver declines
+// to refuse it, the emitter synthesizes the use-line the author did not write, and the author is
+// never told. NOTHING HERE CHANGES THAT. The emitted bytes are identical by construction -- the
+// use-lines are the survived arm of the same decision the census counts, so there is no second
+// copy of the decision to drift from -- and the deficit's frequency is now observable instead of
+// zero.
+//
+// EVERY COUNT THIS CENSUS REPORTS IS A LOWER BOUND. The denominator is the candidates that REACH
+// the decision; a name already provided by an authored import, the prelude, a carrier use-line or
+// the module's own declarations is filtered before it, as is a kernel type and any name no
+// attestation admitted as a candidate at all. So registry_absent and export_proof_failed are
+// at-least counts of the references that reach emission with no use-line, never the whole of that
+// population, and the gap between the two is itself unmeasured. A consumer quoting a figure says
+// 'at least N' and names emit_rust_reference_derived_census as its producer; a transcribed number
+// with no named producer is unreachable from the thing that owns it and rots without anyone
+// touching either end.
+//
+// NO EXECUTING CONSUMER FOR THE EVIDENCE YET, AND NO PRODUCER FOR A CORPUS FIGURE EITHER. THIS IS
+// THE HONEST HALF OF THE ROW AND IT HAS TWO PARTS. FIRST, THE EVIDENCE. The discriminating probes
+// live in v1.tests.claim.reference_derived_disposition_census_witness_test -- five rows, four
+// naming the decision's four arms and one pinning the census to being a projection of retained
+// rows. Their RED is authorable at the fixture boundary and all five pass when run directly on
+// 2026-08-27. They are NOT run by CI: gunbc.ci_layer_roots records that the scoped witness batch
+// was deleted with the 2026-08-15 floor cut and that every entry under src/v1/tests/claim has no
+// executing consumer, since ordinary discovery's roots are dag plus src/v2 and could not resolve
+// an import of v1.compiler.emit_rust in any case. Direct execution is evidence the assertions
+// HOLD, never evidence that CI runs them, and conflating those two is rung inflation.
+//
+// NEXT-RUNG TRIGGERS, TWO, INDEPENDENT. (1) For the class: the value-position case joins the
+// fail-closed wall -- the resolver refusing an unlisted value use, or emitting the use-line
+// intent directly -- at which point this census, the synthesis pass it counts and this row retire
+// together. (2) For the evidence: one prepared subject spanning dag, src/v1 and src/v2, the
+// restoration gunbc.ci_layer_roots already names for the deleted batch, at which point the
+// witness above executes and that paragraph deletes.
+//
+// SECOND, AND SEPARATELY: THE CENSUS HAS NO EXECUTABLE ROUTE TO A CORPUS FIGURE, so this row
+// deliberately quotes NO number. emit_rust_reference_derived_census is the projection, but
+// reaching it needs a resolved graph, and the only .dag route to one is a nested compile that the
+// interpreter refuses -- compile_to_resolved over an authored source vector errors with
+// NoSuchField Node.ident during the nested pipeline, measured 2026-08-27 on three subjects. That
+// is why the two nested-compile instruments the corpus already has
+// (gunbc.compile_diagnostic_census, tools.multi_module_compile_fixture) both route through a host
+// builtin. A CLI or builtin surface that hands the census a graph is capability growth in a
+// frozen seed and is not taken here. THIRD NEXT-RUNG TRIGGER, therefore: a nested-compile builtin
+// returning the resolved graph -- the shape tools.multi_module_compile_fixture already has,
+// widened to carry these rows -- at which point a figure becomes producible and this paragraph is
+// replaced by the producer's name. Until then the population is COUNTABLE BY CONSTRUCTION AND
+// UNCOUNTED IN FACT, and saying otherwise would be the rung inflation this row exists to avoid.
 
 // WHY A CANDIDATE GOT A USE-LINE, OR DID NOT. The decision below was inline in
 // reference_derived_use_lines' flat_map, where every non-surviving arm returned the empty list and
