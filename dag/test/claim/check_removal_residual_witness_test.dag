@@ -1,0 +1,83 @@
+module test.claim.check_removal_residual_witness
+
+import gunbc.commit_workflow {
+  CheckRemoval,
+  RemovalResidual,
+  RemovalCoveredBy,
+  RemovalUncovered,
+  CommitSpecGate,
+  CommitCargoFmtCheck,
+  GitPrePushHook,
+  GithubActionsCiJob,
+  check_removal_roster,
+  removal_is_uncovered,
+  uncovered_removals,
+}
+import gunbc.ci_gate { GeneratedArtifactDriftGate }
+import std.decl_ref { decl_ref }
+import std.types { NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS FILE DOES NOT ASSERT, stated first because the obvious witness here would be
+// decoration. Whether a RemovalCoveredBy mechanism RESOLVES is already walled corpus-wide by the
+// declaration index inside the required parse phase, over every authored DeclarationRef in a
+// non-fixture module. Re-asserting it here would be a second representation of one check
+// (DESIGN section 2), and worse, a green one that proves nothing the wall does not already
+// prove. What is left for a witness is the law the wall cannot see: that the classifier reading
+// these rows DESCENDS into the residual instead of matching the row and binding the payload.
+
+fn synthetic_covered() -> CheckRemoval {
+  CheckRemoval {
+    check: CommitSpecGate { gate: GeneratedArtifactDriftGate },
+    removed_from: GitPrePushHook,
+    removed_on: "2026-01-01" as NonEmptyStr,
+    residual: RemovalCoveredBy {
+      mechanism: decl_ref(
+        module_path: "gunbc.generated_artifact_emit",
+        decl_name: "generated_artifact_body_for_path"
+      )
+    }
+  }
+}
+
+fn synthetic_uncovered() -> CheckRemoval {
+  CheckRemoval {
+    check: CommitCargoFmtCheck,
+    removed_from: GithubActionsCiJob,
+    removed_on: "2026-01-02" as NonEmptyStr,
+    residual: RemovalUncovered {
+      since: "2026-01-02" as NonEmptyStr,
+      cause: "synthetic" as NonEmptyStr
+    }
+  }
+}
+
+// THE DISCRIMINATING PAIR. Two rows differing ONLY in their residual arm -- same check kind
+// family, same shape, same roster -- so a classifier that answers from the row rather than from
+// the residual cannot separate them and this test goes red. A single-row assertion would pass
+// under exactly the collapsed match this exists to forbid.
+test fn check_removal_classifier_descends_into_the_residual() -> Bool {
+  removal_is_uncovered(removal: synthetic_uncovered())
+    && !removal_is_uncovered(removal: synthetic_covered())
+}
+
+// Selection is exact rather than merely non-empty: a planted covered row beside a planted
+// uncovered one must not be selected. Counting alone would pass a filter that selected both.
+test fn uncovered_selection_takes_the_uncovered_row_and_leaves_the_covered_one() -> Bool {
+  let selected = uncovered_removals(
+    removals: [synthetic_covered(), synthetic_uncovered(), synthetic_covered()]
+  )
+  selected.count() == 1 && removal_is_uncovered(removal: selected[0])
+}
+
+// BOTH ARMS ARE OCCUPIED IN THE LIVE ROSTER, and this is the one live-roster claim worth
+// making. An arm no production row inhabits is a permanently-green decoration (DESIGN section
+// 4b); the drift gate occupies RemovalCoveredBy and the fmt check occupies RemovalUncovered, so neither arm
+// is theoretical. Asserted as a partition rather than as a count literal: a tree-copied count
+// would be the change detector DESIGN section 5 rejects, and this holds as the roster grows.
+test fn live_removal_roster_occupies_both_residual_arms() -> Bool {
+  let uncovered = uncovered_removals(removals: check_removal_roster).count()
+  uncovered > 0 && uncovered < check_removal_roster.count()
+}
