@@ -168,6 +168,26 @@ data witness_floor_workflow_name: String = "witnesses"
 // further.
 data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.run_id }}"
 
+// SUPERSESSION IS AVAILABLE ONLY WHERE THIS EXPRESSION IS TRUE, AND THAT FACT NOW HAS ONE HOME.
+//
+// This expression decides, per event, whether GitHub cancels an in-flight run when a newer one
+// joins the group. It was previously an inline literal inside the workflow value below, which made
+// it unreachable by name: any consumer reasoning about whether a cancellation COULD have been a
+// lawful supersession had to restate `pull_request` in its own module, and a second spelling of one
+// fact is the DESIGN section 3 nicknaming violation -- with the specific decay that the two can
+// drift silently, since nothing relates a policy literal in a classifier to a string in an emitted
+// workflow. Hoisting it changes no emitted byte; it only gives the fact a name to be cited by.
+//
+// The consumer is gunbc.run_disposition, which derives supersession AVAILABILITY from this row
+// rather than hardcoding the event name it mentions.
+data witness_floor_cancel_in_progress_expression: String = "${{ github.event_name == 'pull_request' }}"
+
+// The event name the expression above tests. It is declared beside the expression, in the module
+// that owns the expression, so the pair cannot drift apart -- and a witness asserts that this name
+// actually occurs within that expression, which is the only mechanical link available between a
+// GitHub expression string and the event vocabulary it names.
+data witness_floor_cancel_in_progress_event: String = "pull_request"
+
 // The binaries the fold actually needs, and only those. `claim_executor` is the fold's entry;
 // `gunbc` is the CLI the repository's own tooling invokes. The predecessor build job named
 // nineteen binaries, most of which this cut deleted; naming a binary that no step runs buys
@@ -1382,7 +1402,7 @@ data witness_floor_workflow: Workflow = {
       group: witness_floor_concurrency_group,
       cancel_in_progress: Present {
         value: CancelInProgressExpression {
-          expression: "${{ github.event_name == 'pull_request' }}"
+          expression: witness_floor_cancel_in_progress_expression
         }
       },
       explicit_single: none
