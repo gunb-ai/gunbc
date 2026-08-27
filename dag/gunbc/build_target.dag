@@ -2,7 +2,7 @@ module gunbc.build_target
 
 import extdeps.bazel.label {
   Label, RootPackage, TargetName, render_label, label_eq,
-  label_is_canonical,
+  LabelCanonicalityCause, LabelCanonical, LabelNonCanonical, label_canonicality,
 }
 import extdeps.bazel.test_status {
   BlazeTestStatus,
@@ -305,7 +305,7 @@ fn target_standing_verdict(s: TargetStanding) -> StandingVerdict {
 type AggregateFinding
   = DependencyUnsatisfied { target: Label, cause: StandingCause }
   | DependencyStandingAbsent { target: Label }
-  | DependencyLabelNotCanonical { target: Label }
+  | DependencyLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
 
 // AN AGGREGATE OVER ZERO DEPENDENCIES REFUSES, IN ITS OWN ARM.
 //
@@ -351,12 +351,19 @@ type AggregateStanding
 // trip, and `Label` is a freely constructible record whose segments are only `NonEmptyStr` — so
 // `PackagePath(["a", "b"]) + "c"` and `PackagePath(["a/b"]) + "c"` render the same String, and
 // `label_eq` calls them equal too because its package comparison renders before it compares.
-// `label_is_canonical` is the one authority for that precondition and is REUSED from
+// `label_canonicality` is the one authority for that precondition and is REUSED from
 // `extdeps.bazel.label` rather than copied: canonicality is a property of the cited label grammar
 // — `render_label`'s own header already documents `parse(render(l)) == l` as what it guarantees —
 // so it is stated once beside that grammar and read here. A second canonicality predicate in a
 // consumer would be a §3 nickname for the first, and the two would drift the moment either was
 // refined.
+//
+// IT ANSWERS WITH A CAUSE RATHER THAN A BOOL, AND BOTH REFUSAL ARMS CARRY IT. A label outside the
+// cited grammar (`RenderedLabelRefused`) and one that renders identically to a canonical label but
+// reparses to a different structure (`RenderedLabelStructureMismatch`) have different owners: the
+// first is a malformed authored label, the second is precisely the rendered-key collision this
+// index exists to refuse. Collapsing them into "not canonical" at the call site would discard the
+// distinction the coproduct was introduced to carry.
 type TargetStandingIndex sole_constructor {
   standings_by_identity: Map<String, TargetStanding>
 }
@@ -367,7 +374,7 @@ type TargetStandingIndex sole_constructor {
 // only the label sends both to the same place. The list is the two rows in collision order: the
 // one already indexed, then the one that could not be admitted beside it.
 type TargetStandingIndexRefusal
-  = StandingLabelNotCanonical { target: Label }
+  = StandingLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
   | DuplicateTargetStanding { target: Label, standings: List<TargetStanding> }
 
 type TargetStandingIndexBuild
@@ -382,13 +389,14 @@ type TargetStandingIndexAcc {
 fn index_standing(acc: TargetStandingIndexAcc, standing: TargetStanding) -> TargetStandingIndexAcc {
   match acc.refusal {
     Present { value: _ } => acc
-    Absent =>
-      if !label_is_canonical(label: standing.target) {
-        TargetStandingIndexAcc {
-          index: acc.index
-          refusal: Present { value: StandingLabelNotCanonical { target: standing.target } }
+    Absent => match label_canonicality(label: standing.target) {
+      LabelNonCanonical { cause: cause } => TargetStandingIndexAcc {
+        index: acc.index
+        refusal: Present {
+          value: StandingLabelNotCanonical { target: standing.target, cause: cause }
         }
-      } else {
+      }
+      LabelCanonical => {
         let key = render_label(l: standing.target)
         match lookup(acc.index.standings_by_identity, key) {
           Present { value: existing } => TargetStandingIndexAcc {
@@ -408,6 +416,7 @@ fn index_standing(acc: TargetStandingIndexAcc, standing: TargetStanding) -> Targ
           }
         }
       }
+    }
   }
 }
 
@@ -461,7 +470,7 @@ fn build_target_standing_index(standings: List<TargetStanding>) -> TargetStandin
 type TargetStandingLookup
   = TargetStandingFound { standing: TargetStanding }
   | StandingNotObserved { target: Label }
-  | StandingLookupLabelNotCanonical { target: Label }
+  | StandingLookupLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
 
 // THE LOOKUP SPELLING IS `lookup`, NOT `map_get`, AND THE REASON IS RESOLUTION RATHER THAN TASTE.
 // Two declarations answer to the bare name `map_get` — the builtin, returning `Optional<V>`, and
@@ -469,19 +478,21 @@ type TargetStandingLookup
 // both visible the reference is ambiguous and refuses outright. `lookup` is the dual-dispatch
 // chokepoint, has one declaration, and already returns the `Optional` these matches read.
 fn target_standing_lookup(index: TargetStandingIndex, target: Label) -> TargetStandingLookup {
-  if !label_is_canonical(label: target) {
-    StandingLookupLabelNotCanonical { target: target }
-  } else {
-    match lookup(index.standings_by_identity, render_label(l: target)) {
-      Present { value: s } => TargetStandingFound { standing: s }
-      Absent => StandingNotObserved { target: target }
-    }
+  match label_canonicality(label: target) {
+    LabelNonCanonical { cause: cause } =>
+      StandingLookupLabelNotCanonical { target: target, cause: cause }
+    LabelCanonical =>
+      match lookup(index.standings_by_identity, render_label(l: target)) {
+        Present { value: s } => TargetStandingFound { standing: s }
+        Absent => StandingNotObserved { target: target }
+      }
   }
 }
 
 fn dependency_finding(index: TargetStandingIndex, dep: Label) -> List<AggregateFinding> {
   match target_standing_lookup(index: index, target: dep) {
-    StandingLookupLabelNotCanonical { target: t } => [DependencyLabelNotCanonical { target: t }]
+    StandingLookupLabelNotCanonical { target: t, cause: c } =>
+      [DependencyLabelNotCanonical { target: t, cause: c }]
     StandingNotObserved { target: t } => [DependencyStandingAbsent { target: t }]
     TargetStandingFound { standing: s } =>
       match target_standing_verdict(s: s) {

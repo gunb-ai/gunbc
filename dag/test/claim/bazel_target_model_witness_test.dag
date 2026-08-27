@@ -7,6 +7,7 @@ import extdeps.bazel.label {
   MultipleColonSeparators, EmptyTargetName, EmptyPackageSegment, DotSegment,
   TargetPattern, TargetNameContainsSlash,
   parse_label, render_label, label_eq,
+  LabelCanonicalityCause, RenderedLabelStructureMismatch,
 }
 import extdeps.bazel.test_status {
   BlazeTestStatus,
@@ -576,7 +577,10 @@ test fn w_rendered_key_collision_refuses_on_both_sides_of_the_join() -> Bool {
       aggregate: required_aggregate_target(dependencies: [bazel_dep_a()]),
       standings: [built_target_standing(l: forged_dep_a(), test: NotATestTarget {})]
     ),
-    cause: StandingLabelNotCanonical { target: forged_dep_a() }
+    cause: StandingLabelNotCanonical {
+      target: forged_dep_a()
+      cause: RenderedLabelStructureMismatch { reparsed: bazel_dep_a() }
+    }
   )
 
   let query_side = match required_aggregate_standing(
@@ -584,7 +588,10 @@ test fn w_rendered_key_collision_refuses_on_both_sides_of_the_join() -> Bool {
     standings: [built_target_standing(l: bazel_dep_a(), test: NotATestTarget {})]
   ) {
     AggregateRefused { finding_count: n, findings: fs } =>
-      (n == 1) && (fs == [DependencyLabelNotCanonical { target: forged_dep_a() }])
+      (n == 1) && (fs == [DependencyLabelNotCanonical {
+        target: forged_dep_a()
+        cause: RenderedLabelStructureMismatch { reparsed: bazel_dep_a() }
+      }])
     AggregateSatisfied { dependency_count: _ } => false
     AggregateNoDependencies => false
     AggregateStandingsUnindexable { cause: _ } => false
@@ -606,15 +613,17 @@ test fn w_standing_lookup_keeps_its_three_outcomes_apart() -> Bool {
       let found = match target_standing_lookup(index: i, target: bazel_dep_a()) {
         TargetStandingFound { standing: s } => label_eq(a: s.target, b: bazel_dep_a())
         StandingNotObserved { target: _ } => false
-        StandingLookupLabelNotCanonical { target: _ } => false
+        StandingLookupLabelNotCanonical { target: _, cause: _ } => false
       }
       let not_observed = match target_standing_lookup(index: i, target: bazel_dep_b()) {
         StandingNotObserved { target: t } => label_eq(a: t, b: bazel_dep_b())
         TargetStandingFound { standing: _ } => false
-        StandingLookupLabelNotCanonical { target: _ } => false
+        StandingLookupLabelNotCanonical { target: _, cause: _ } => false
       }
       let not_canonical = match target_standing_lookup(index: i, target: forged_dep_a()) {
-        StandingLookupLabelNotCanonical { target: t } => t == forged_dep_a()
+        StandingLookupLabelNotCanonical { target: t, cause: c } =>
+          (t == forged_dep_a())
+            && (c == RenderedLabelStructureMismatch { reparsed: bazel_dep_a() })
         TargetStandingFound { standing: _ } => false
         StandingNotObserved { target: _ } => false
       }
