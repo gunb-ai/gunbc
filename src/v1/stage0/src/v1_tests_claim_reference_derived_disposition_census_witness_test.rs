@@ -349,7 +349,7 @@ pub fn only_export_proof_failed_produces_a_diagnostic() -> bool {
     }
 }
 
-pub fn the_export_unproven_diagnostic_is_blocking() -> bool {
+pub fn the_export_unproven_diagnostic_is_advisory() -> bool {
     {
         let rows = Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
             module_name: "m".to_string(),
@@ -366,7 +366,7 @@ pub fn the_export_unproven_diagnostic_is_blocking() -> bool {
                 .iter()
                 .cloned()
             {
-                if !(is_error_diagnostic(e.diagnostic.clone())) {
+                if !(!is_error_diagnostic(e.diagnostic.clone())) {
                     __all = false;
                     break;
                 }
