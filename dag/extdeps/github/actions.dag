@@ -274,3 +274,11 @@ data max_matrix_combinations: Int = 256
 fn action_ref_eq(a: ActionRef, b: ActionRef) -> Bool {
   a.owner == b.owner && a.repo == b.repo && a.ref == b.ref
 }
+
+// THE INTEGRATION (GitHub App) ID GITHUB ACTIONS PUBLISHES ITS CHECK RUNS UNDER. It is an upstream
+// identity rather than a policy choice: a required_status_checks rule may pin a context to the app
+// allowed to satisfy it, and pinning to this id is what stops an arbitrary third party with commit
+// status write from publishing a green check under the same context name. Read from this
+// repository's own live ruleset row (GET /repos/gunb-ai/gunbc/rulesets, integration_id 15368,
+// 2026-08-27) and consistent with the documented app id for GitHub Actions.
+data github_actions_app_integration_id: Int = 15368

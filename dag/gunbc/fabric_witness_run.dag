@@ -377,15 +377,26 @@ fn floor_buy_terms(
   }
 }
 
-// priority_class is NOT a privilege escape. The floor competes on price like any
-// other demand; a priority class orders demands that can all be afforded, it
-// does not admit one that cannot. If this ever becomes the field that lets gunbc
-// jump the queue, the arbitrage has been lost and the opportunity cost of our
-// own work has stopped being computable.
+// THE FLOOR HAS NO PRIVILEGE FIELD BECAUSE THERE IS NO LONGER A FIELD TO HAVE.
+//
+// This note used to read that priority_class is not a privilege escape -- that
+// the floor competes on price like any other demand, and that a class orders
+// demands that can all be afforded rather than admitting one that cannot. The
+// claim was correct and it was prose: the field was a String, so nothing
+// enforced it and a witness beside it could only assert the string's spelling.
+//
+// The field is deleted (product.fabric.demand records why) and the ordering it
+// gestured at is derived by product.fabric.contention from the margin between
+// what a buyer will pay and what serving them costs. So the floor's terms carry
+// no rank at all, and there is no spelling in which gunbc jumps the queue: to
+// win contention the floor must post the better margin, which is the same test
+// every other buyer takes. That is the standing claim made structural rather
+// than asserted -- if this ever became the field that let gunbc jump the queue,
+// the arbitrage would be lost and the opportunity cost of our own work would
+// have stopped being computable.
 
 fn floor_admission_terms(buy: BuyTerms, deadline: Timestamp?) -> AdmissionTerms {
   AdmissionTerms {
-    priority_class: "gunbc.ci.floor",
     deadline: deadline,
     buy: buy,
   }
