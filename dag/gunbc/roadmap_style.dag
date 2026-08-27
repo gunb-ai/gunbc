@@ -1,5 +1,6 @@
 module gunbc.roadmap_style
 
+import std.types { List, String, Int, Bool }
 import gunbc.design.material {
   BuildRule, StaticRule, CssDecl, decl, css_block,
   serialize_rules, reduced_motion_block,
