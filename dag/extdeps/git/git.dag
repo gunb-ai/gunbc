@@ -277,6 +277,24 @@ data git_ls_remote_external_authority_anchor: ExternalAuthority = ExternalAuthor
   }
 }
 
+data git_for_each_ref_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-for-each-ref"
+  }
+}
+
+data git_worktree_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-worktree"
+  }
+}
+
+data for_each_ref_note: String = "WHY THIS EXISTS BESIDE ObserveRef AND RemoteBranches, neither of which can answer the question it answers. ObserveRef resolves ONE ref the caller already names, so it cannot report a ref that appeared or vanished -- a check built on it is a check over an authored list, which by construction cannot see an addition. RemoteBranches runs `git branch -r`, whose output is remote-tracking NAMES only, offline, carrying no object id. Neither is a defect in either operation; they answer `where is this ref` and `which remote branches does this clone know about`, and the missing question is `what is the COMPLETE ref set, and where does each point`.\n\nTHE FORMAT IS NUL-SEPARATED FIELDS ON NEWLINE-SEPARATED RECORDS, and that is safety rather than convenience: git-check-ref-format(1) forbids space, newline and ASCII control characters inside a ref name, so a record cannot be split by its own content. The symref field is empty for an ordinary ref, which is why fields are NUL-separated rather than space-separated -- a trailing empty field must stay observable instead of collapsing into the separator.\n\nIT IS DELIBERATELY NOT A STORAGE READ. The refs a consumer compares are LOGICAL refs; whether a ref currently lives loose under .git/refs or inside packed-refs is git storage policy that changes under ordinary maintenance with no ref having moved. A digest over .git/refs filenames or packed-refs bytes therefore reports a difference where nothing changed, and misses one where a loose ref shadows a stale packed entry -- both measured on srv1. Enumerating through git is the only reading that answers about refs rather than about files."
+
+data worktree_list_note: String = "THE ROSTER READ THIS MODULE WAS MISSING, and the asymmetry is why it is worth stating: worktree ADD is modeled in both its branch and detached forms, so the substrate could CREATE a linked worktree and could not ENUMERATE one. A consumer that must establish a worktree roster is unchanged across an operation cannot build that on an add, and per-member probing of paths the caller already names carries the same blind spot for_each_ref_note describes -- it proves the known members unchanged and cannot see a member that appeared.\n\n--porcelain -z IS THE DOCUMENTED STABLE FORM, and git-worktree(1) directs callers to it rather than to interpreting paths under GIT_DIR themselves; the -z framing makes the record boundary independent of path content. Each entry carries the absolute worktree path, its HEAD, its branch or a bare detached marker, and the locked and prunable standings -- exactly the tuple a preservation comparison needs, and none of it recoverable from the filesystem without re-deciding git own layout."
+
 data advertised_ref_note: String = "WHY THIS EXISTS BESIDE RemoteBranches, which already lists remote branches. RemoteBranches runs `git branch -r`, whose output is ref NAMES and nothing else, and it reads the local remote-tracking refs rather than asking the remote. Neither property is a defect in it - it answers `which remote branches does this clone know about` - but it cannot answer `what commit is the remote branch AT`, and a consumer that needs an exact head therefore cannot be built on it at all. `git ls-remote --heads` is the ref-advertisement protocol reading: it contacts the remote and returns object id plus full ref name per line, which is the pair an exact-head judgment needs.\\n\\nThe two are kept separate rather than one being widened because they answer different questions with different freshness: `branch -r` is local and offline, ls-remote is a network read that can fail on its own. Collapsing them would make every name listing pay a network round trip and inherit its failure modes."
 
 type AdvertisedRef {
@@ -631,6 +649,35 @@ service git.Core {
     }
     readonly
     transport shell { argv: ["git", "-C", "{repository_path}", "remote", "get-url", "{remote}"] }
+  }
+
+  operation ForEachRefIn {
+    input { repository_path: String }
+    output {
+      raw: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "git", "-C", "{repository_path}", "for-each-ref",
+        "--format=%(refname)%00%(objectname)%00%(symref)"
+      ]
+    }
+  }
+
+  operation WorktreeListIn {
+    input { repository_path: String }
+    output {
+      raw: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["git", "-C", "{repository_path}", "worktree", "list", "--porcelain", "-z"]
+    }
   }
 
   operation LsFiles {
