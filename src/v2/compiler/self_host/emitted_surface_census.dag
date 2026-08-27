@@ -170,6 +170,36 @@ type ClosureVarianceCause
 //   v2_std_node.rs        FabricatedReexport         a foreign Cardinality reexport synthesized
 //   v2_std_collection.rs  CollapsedTypeArgument      map_get's return type erased to unit
 //
+// A THIRD INSTANCE, FOUND BY THE PHASE RATHER THAN BY HAND, AND IT IS THE STRONGEST EVIDENCE THIS
+// MODULE HAS.
+//
+// The frame above was assembled by hand and the root below was inferred from it. A designed two-entry
+// frame -- one closure carrying a second claimant of the bare name, one not -- was then executed once,
+// and it refused on a module NOBODY HAD LOOKED AT:
+//
+//   std.algebra (std_algebra)  reexports  [DivError Optional Result empty_map]
+//     under dag/gunbc/native_scm_interaction_contract.dag
+//   but                                   [DivError Result]
+//     under src/v2/std/node.dag
+//
+// The prediction was v2_std_node/Cardinality, because that is the instance that produced the rule. What
+// fired was `Optional` -- a type AND a variant of Cardinality AND of a grammar expression, so a bare
+// name with THREE claimants where the rule was read off a case with two. An independent instance of a
+// rule is worth more than the instance the rule was read off, because the second one could have failed
+// to appear.
+//
+// AND THREE IS NOT A HARDER CASE THAN TWO, WHICH HAD TO BE ESTABLISHED RATHER THAN ASSUMED. A rule
+// stated over two claimants does not automatically extend to three: it either carries a tie-break that
+// was never exercised, or it has no answer and the third claimant is a hole. Here it is neither.
+// `v1.04_emit_info` `derive_variant_to_enum` writes the owning enum's name on FIRST sight of a variant
+// name and the empty-string sentinel on ANY subsequent sight -- and a third claimant re-enters that same
+// arm, whose value is already the sentinel, and rewrites it. The structure SATURATES at two: it records
+// AMBIGUOUS, never a count. So three claimants is the two-claimant state reached one step earlier, and
+// `Optional` is a data point for the rule rather than a case beyond it.
+//
+// IT IS ONE RUN ON ONE FRAME AND IT IS NOT A POPULATION. What it establishes is that the root below is
+// not a description of two files, and that the census finds cases its author did not already know.
+
 // THE ROOT BOTH DEFECTS SHARE: a bare name owned by more than one declaration, resolved through a
 // map folded over the TRANSITIVE closure, where the constructor-binding authority rules ownership a
 // PER-FILE fact. Presence of a second claimant flips the answer. Cardinality is a type and a
