@@ -53,10 +53,6 @@ test fn witness_wif_binding_perturbation_reddens() -> Bool {
 // changing the strategy, so it stays enrolled.
 test fn witness_operator_credential_strategy_is_adc_refresh() -> Bool {
   tailscale_acl_operator_strategy_is_adc_refresh()
-    && match tailscale_acl_operator_adc_strategy {
-      AdcRefresh { adc_path: _ } => true
-      _ => false
-    }
 }
 
 test fn witness_ephemeral_lifetime_matches_optional_impersonation_cap() -> Bool {
