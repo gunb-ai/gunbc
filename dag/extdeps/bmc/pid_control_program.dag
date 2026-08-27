@@ -2,7 +2,7 @@ module extdeps.bmc.pid_control_program
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decimal { ExactDecimal, exact_decimal_equal }
-import std.measure { Dimensionless, Measure, Milli, One, Temperature, TemperatureDifference, Time }
+import std.measure { Measure, Milli, One, Temperature, TemperatureDifference, Time }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Https, Uri }
@@ -50,15 +50,30 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // and would have modelled two demands where there is one, which makes the two actuators look
 // independently adjustable when moving the shared demand moves both.
 
-// EVERY MAGNITUDE IS EXACT AND DECIMAL, WHICH IS A CARRIER DECISION WITH A MEASUREMENT BEHIND IT.
+// EVERY MAGNITUDE IS EXACT AND DECIMAL, AND IS SPELLED AS std.measure's OWN TYPE AT EVERY USE
+// SITE RATHER THAN BEHIND A LOCAL ALIAS. Five aliases stood here (DecimalCelsius, DecimalSeconds
+// and friends); review 56966 ruled them parallel Measure aliases minted outside the canonical
+// authority, which is the re-minted-shared-concept rule, and it is right -- an alias is a second
+// name for a type std.measure already expresses, and a second name is what §3 forbids however
+// convenient it reads.
+//
+// THE RULING OFFERED TWO REMEDIES AND THE OTHER ONE WAS MEASURED BEFORE THIS ONE WAS CHOSEN.
+// Hosting the ExactDecimal-parameterised aliases in std/measure.dag was refused by execution --
+// `circular dependency detected: std.bytes -> std.decimal -> std.integer -> std.measure`, since
+// std.integer already consumes std.measure. That cycle is closable: it exists only because
+// std.decimal imports std.bytes for the divergent seam its negative-scale arm uses, and inlining
+// `1 / 0` there breaks it (also measured). It was not taken, because std.bytes' own note records
+// that seam as ONE seam projected per result type and marks the pair as a deliberate duplication
+// to be dissolved -- adding a third copy to widen an alias family would trade a naming defect for
+// a worse one in a load-bearing file. Writing the type out costs nothing but characters.
+//
+// THE CARRIER DECISION ITSELF IS UNCHANGED AND HAS A MEASUREMENT BEHIND IT.
 // std.measure's Percent and Celsius pin their magnitude to Nat and Int, and the deployed document
 // carries -8.0, -0.5, -3.0 and 0.005 -- values a Nat cannot hold and an Int cannot hold exactly.
 // So the QUANTITY authority is reused unchanged and only the magnitude parameter differs: these
 // are std.measure's own quantities at std.measure's own scale, over a magnitude that can carry
 // what the document carries. Minting a fresh temperature or ratio type here would have been the
 // §3 nicknaming violation; changing M is what the type parameter is for.
-type DecimalCelsius = Measure<Temperature, One, ExactDecimal>
-type DecimalCelsiusDelta = Measure<TemperatureDifference, One, ExactDecimal>
 // THE ZONE'S OUTPUT UNITS ARE NOT UNIVERSALLY PERCENT, so they are carried as their own named
 // value rather than as a dimensionless percentage. Upstream describes the zone's thermal output as
 // commonly fan RPM and does not require the setpoint to be RPM either; this deployment's demand
@@ -70,19 +85,11 @@ type ZoneDemandValue {
   magnitude: ExactDecimal
 }
 
-type DecimalPercent = Measure<Dimensionless, One, ExactDecimal>
-type DecimalSeconds = Measure<Time, One, ExactDecimal>
-type DecimalMilliseconds = Measure<Time, Milli, ExactDecimal>
-
-fn decimal_celsius(value: ExactDecimal) -> DecimalCelsius {
+fn decimal_celsius(value: ExactDecimal) -> Measure<Temperature, One, ExactDecimal> {
   Measure { count: value }
 }
 
-fn decimal_celsius_delta(value: ExactDecimal) -> DecimalCelsiusDelta {
-  Measure { count: value }
-}
-
-fn decimal_percent(value: ExactDecimal) -> DecimalPercent {
+fn decimal_celsius_delta(value: ExactDecimal) -> Measure<TemperatureDifference, One, ExactDecimal> {
   Measure { count: value }
 }
 
@@ -90,14 +97,14 @@ fn zone_demand_value(value: ExactDecimal) -> ZoneDemandValue {
   ZoneDemandValue { magnitude: value }
 }
 
-fn decimal_seconds(value: ExactDecimal) -> DecimalSeconds {
+fn decimal_seconds(value: ExactDecimal) -> Measure<Time, One, ExactDecimal> {
   Measure { count: value }
 }
 
 // THE ZONE'S TWO INTERVALS CARRY THEIR SCALE IN THE TYPE RATHER THAN IN THE FIELD NAME. The
 // document's keys end in MS and an earlier revision let that suffix be the only record of the
 // unit, which puts a magnitude's scale in a string.
-fn decimal_milliseconds(value: ExactDecimal) -> DecimalMilliseconds {
+fn decimal_milliseconds(value: ExactDecimal) -> Measure<Time, Milli, ExactDecimal> {
   Measure { count: value }
 }
 
@@ -131,7 +138,7 @@ type SensorReadingBounds
   | SensorBoundsUnstated
 
 type SensorTimeout
-  = SensorTimeoutDeclared { seconds: DecimalSeconds }
+  = SensorTimeoutDeclared { seconds: Measure<Time, One, ExactDecimal> }
   | SensorTimeoutUnstated
 
 type ProgramSensor {
@@ -156,7 +163,7 @@ type ProgramSensor {
 // back to the source -- but it is not what pairs the halves; the pairing already happened.
 type DemandCurvePoint {
   index: Int
-  reading: DecimalCelsius
+  reading: Measure<Temperature, One, ExactDecimal>
   output: ZoneDemandValue
 }
 
@@ -165,11 +172,11 @@ type DemandCurvePoint {
 type ThermalDemandController {
   name: NonEmptyStr
   inputs: List<NonEmptyStr>
-  setpoint: DecimalCelsius
+  setpoint: Measure<Temperature, One, ExactDecimal>
   failsafe_output: ZoneDemandValue
-  sample_period: DecimalSeconds
-  positive_hysteresis: DecimalCelsiusDelta
-  negative_hysteresis: DecimalCelsiusDelta
+  sample_period: Measure<Time, One, ExactDecimal>
+  positive_hysteresis: Measure<TemperatureDifference, One, ExactDecimal>
+  negative_hysteresis: Measure<TemperatureDifference, One, ExactDecimal>
   is_ceiling: Bool
   curve: List<DemandCurvePoint>
 }
@@ -244,7 +251,7 @@ type ActuatorController {
   name: NonEmptyStr
   inputs: List<NonEmptyStr>
   configured_setpoint_unused_by_runtime: ExactDecimal
-  sample_period: DecimalSeconds
+  sample_period: Measure<Time, One, ExactDecimal>
   gains: PidGains
   feed_forward: FeedForward
   integral_limits: IntegralBounds
@@ -261,8 +268,8 @@ type ProgramZone {
   id: Int
   minimum_thermal_output: ZoneDemandValue
   failsafe_output: ZoneDemandValue
-  cycle_interval: DecimalMilliseconds
-  update_thermals_interval: DecimalMilliseconds
+  cycle_interval: Measure<Time, Milli, ExactDecimal>
+  update_thermals_interval: Measure<Time, Milli, ExactDecimal>
   thermal_demand_controllers: List<ThermalDemandController>
   actuator_controllers: List<ActuatorController>
 }

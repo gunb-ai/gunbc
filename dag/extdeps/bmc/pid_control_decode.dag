@@ -58,7 +58,6 @@ import extdeps.bmc.pid_control_program {
   ThermalDemandController,
   decimal_celsius,
   decimal_celsius_delta,
-  decimal_percent,
   zone_demand_value,
   decimal_milliseconds,
   decimal_seconds,
