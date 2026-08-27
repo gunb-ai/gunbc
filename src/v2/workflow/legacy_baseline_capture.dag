@@ -76,9 +76,19 @@ fn materialization_receipt(
 // Declaring the field with an unconstructable type makes the accepted arm UNREACHABLE rather than
 // reachable-with-a-stub. A placeholder value would admit a capture whose repair half was never taken,
 // which is the fabricated-plausible-output failure at the exact seam the cut is authorised against.
-// When R_X(B)'s envelope lands, its owner replaces this declaration with the real admitted carrier and
-// the accepted arm becomes constructible for the first time.
-type CompleteLegacyRepairObservation
+// WHEN R_X(B) LANDS, THIS DECLARATION IS DELETED AND ITS CARRIER IS IMPORTED -- the two cannot coexist.
+// Declaration names bind closure-globally in this tree, so two modules declaring
+// CompleteLegacyRepairObservation is a collision rather than a shadowing, and whichever change lands
+// second owes the deletion. v2.workflow.legacy_repair_observation is the surviving authority; this
+// declaration exists only so that the capture record can be SHAPED correctly before that authority
+// exists, and it is deliberately the weaker of the two -- it has no constructor and no fields.
+//
+// IT IS GENERIC IN THE REPAIR DECISION VOCABULARY, AND THAT IS A SECOND PARAMETER RATHER THAN A REUSE
+// OF THE BINDING ONE. O is what the legacy RESOLVER selected at each occurrence; R is what the
+// REPAIRER decided at each repair site. Binding them to one parameter would force the emitter's repair
+// vocabulary to equal the resolver's binding vocabulary -- the same conflation the operator ruling
+// exists to prevent, committed in the type parameters instead of the fields.
+type CompleteLegacyRepairObservation<R>
 
 // NO PUBLIC CONSTRUCTOR. Every field is either a proven equality or a carrier that could only be
 // obtained by having done the work: the observation is `sole_constructor` and minted only by the
@@ -92,11 +102,11 @@ type CompleteLegacyRepairObservation
 // that and shipped a witness asserting the mislabelled row was REPORTABLE -- coverage for a state
 // that must be unwritable. A structural guarantee that does not survive persistence is scoped to a
 // process nobody observes.
-type LegacyBaselineCapture<O> sole_constructor {
+type LegacyBaselineCapture<O, R> sole_constructor {
   base_commit: GitObjectId
   base_tree: GitObjectId
   observation: CompleteLegacyObservation<O>
-  repair_observation: CompleteLegacyRepairObservation
+  repair_observation: CompleteLegacyRepairObservation<R>
 }
 
 // WHICH STAGE FAILED IS NOT THE SAME FACT AS WHY, and collapsing them would leave a caller unable to
@@ -130,8 +140,8 @@ fn subject_field_label(f: LegacyObservationSubjectField) -> NonEmptyStr {
   }
 }
 
-type LegacyBaselineCaptureOutcome<O>
-  = LegacyBaselineCaptured { capture: LegacyBaselineCapture<O> }
+type LegacyBaselineCaptureOutcome<O, R>
+  = LegacyBaselineCaptured { capture: LegacyBaselineCapture<O, R> }
   | LegacyBaselineHeadMismatch { requested: GitObjectId, materialized: GitObjectId }
   | LegacyBaselineWorktreeMismatch { commit_tree: GitObjectId, observed_tree: GitObjectId }
   | LegacyBaselineSubjectMismatch { field: LegacyObservationSubjectField }
@@ -187,12 +197,12 @@ fn first_subject_disagreement(
 // the next comparison and before any promotion. Head before worktree, worktree before subject, subject
 // before admission, admission before the repair census -- so a dirty worktree can never be reported as
 // a subject disagreement, and an incomplete observation can never be reported as a repair gap.
-fn capture_legacy_baseline<O>(
+fn capture_legacy_baseline<O, R>(
   materialization: CheckoutMaterialization,
   tree_subject: TreeDerivedSubjectReceipt,
   observation: LegacyBindingObservation<O>,
   transport: ValidatedOccurrenceTransport
-) -> LegacyBaselineCaptureOutcome<O> {
+) -> LegacyBaselineCaptureOutcome<O, R> {
   if !git_object_id_eq(left: materialization.requested, right: materialization.observed_head) {
     LegacyBaselineHeadMismatch {
       requested: materialization.requested,
