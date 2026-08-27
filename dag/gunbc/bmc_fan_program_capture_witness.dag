@@ -3,6 +3,8 @@ module gunbc.bmc_fan_program_capture_witness
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.bmc_fan_program_capture {
+  AcousticLevelMeasured,
+  AcousticLevelNoInstrument,
   CapturedProgramReceipt,
   ConvergedFromModelledIntent,
   HandAppliedNotReproducibleFromSource,
@@ -102,19 +104,40 @@ fn both_programs_are_hand_applied() -> Bool {
   )
 }
 
-// THE OUTCOME IS WHAT THE INTENT WILL HAVE TO REPRODUCE. Both hosts landed under 36 dBA with no
-// DIMM over guard, and the guard count is asserted at zero against a population of nine rather than
-// as a bare ratio - "0 of 9" and "0 of 0" are different claims and only one of them is cooling
-// anything.
-fn the_recorded_outcome_is_the_quiet_one() -> Bool {
+// THE OUTCOME IS WHAT THE INTENT WILL HAVE TO REPRODUCE, AND IT IS THE THERMAL HALF ONLY. An
+// earlier revision asserted `tenths_dba < 360` on both hosts. That conjunct was green against two
+// literals nothing produced: there is no sound-pressure sensor on these machines, so no instrument
+// could have measured a dBA level, and this PR's own fleet_fan_acoustic_evidence proves the fleet's
+// fans cannot ground an acoustic law at all. The check therefore certified a number against itself.
+//
+// The guard count is asserted against its population rather than as a bare ratio, because "0 of 9"
+// and "0 of 0" are different claims and only one of them is cooling anything.
+fn the_recorded_thermal_outcome_holds() -> Bool {
   fold(
     fleet_captured_fan_programs,
     init: true,
     f: (acc, row) =>
       acc
-        && row.outcome.tenths_dba < 360
         && row.outcome.dimms_over_guard == 0
         && row.outcome.dimm_population == 9,
+  )
+}
+
+// AND NO HOST CLAIMS AN ACOUSTIC LEVEL, asserted rather than left as an absence. If someone later
+// authors AcousticLevelMeasured they must supply an instrument and a timestamp, and this conjunct
+// goes red until they do - which is the point. It is cheaper to refuse a level with no instrument
+// than to discover, three carriers downstream, that a policy was adopted against a number that was
+// derived from fan speeds by a rule nobody wrote down.
+fn no_host_claims_an_unmeasured_acoustic_level() -> Bool {
+  fold(
+    fleet_captured_fan_programs,
+    init: true,
+    f: (acc, row) =>
+      acc
+        && match row.outcome.acoustic {
+          AcousticLevelNoInstrument => true
+          AcousticLevelMeasured { tenths_dba, instrument, measured_at } => false
+        },
   )
 }
 
@@ -122,9 +145,10 @@ fn bmc_fan_program_capture_witness() -> ProcessExit {
   if the_two_captures_are_not_the_same_machine()
     && every_digest_is_distinct()
     && both_programs_are_hand_applied()
-    && the_recorded_outcome_is_the_quiet_one() {
+    && the_recorded_thermal_outcome_holds()
+    && no_host_claims_an_unmeasured_acoustic_level() {
     ExitSuccess
   } else {
-    exit_failure(reason: "captured BMC fan program receipts: host distinctness, provenance, or the recorded acoustic outcome changed")
+    exit_failure(reason: "captured BMC fan program receipts: host distinctness, provenance, the thermal outcome, or the no-instrument acoustic standing changed")
   }
 }

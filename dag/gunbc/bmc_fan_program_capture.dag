@@ -113,23 +113,44 @@ type CapturedFanProgram {
   provenance: ProgramProvenance
 }
 
-// THE ACOUSTIC OUTCOME THESE BYTES PRODUCED, RECORDED AS A MEASUREMENT AND NOT AS A TARGET. It is
-// carried here rather than in an intent because it is a property of THIS program on THIS hardware,
-// observed after it was applied - it is what the bytes did, not what anyone asked for. When the
-// intent is finally authored, this is the figure it has to reproduce, and having it beside the
-// bytes is what makes that check possible at all.
+// WHAT THIS PROGRAM WAS OBSERVED TO DO, AND THE dBA FIGURE IS NOT PART OF IT. An earlier revision
+// of this module carried `tenths_dba: 350` for srv3 and `349` for srv4 as bare Ints beside the
+// digest, and a witness asserted them under 36.0 dBA. THOSE NUMBERS HAD NO PRODUCER. Nothing in
+// this repository derives them, no instrument recorded them, and the field carried no provenance
+// while the program beside it carried origin, firmware, timestamp, digest and a provenance arm.
 //
-// tenths_dba is used rather than a decimal because std.acoustic carries A-weighted levels in tenths
-// and this module does not get to invent a second scale for the same quantity.
-type CapturedAcousticOutcome {
-  tenths_dba: Int
+// THE HARDWARE SETTLES IT: the captured programs declare exactly two sensor kinds, `fan` and
+// `temp`. There is no sound-pressure sensor on these machines, so no dBA value could have been
+// measured by anything this lane had access to - the figures were derived from fan speeds by a
+// rule that was never written down, and then reported as observations.
+//
+// AND THIS MODULE'S OWN SIBLING ALREADY REFUTED THEM. gunbc.fleet_fan_acoustic_evidence establishes
+// that the fleet's chassis fans return FanAcousticUnderdetermined at published_level_count 0 - they
+// cannot ground an acoustic law at all - and the ARCTIC catalog explicitly REFUSES to convert a
+// sone figure into a dBA anchor for exactly this reason. So one half of this PR proved the quantity
+// underivable while the other half stated it to one decimal place.
+//
+// WHAT IS ACTUALLY GROUNDED is the thermal half, and it is kept: DIMM temperatures come from real
+// sensors compared against a real guard, and "0 of 9 over guard" is a claim an instrument supports.
+// It is carried with its population because 0-of-9 and 0-of-0 are different claims and only one of
+// them is cooling anything.
+type AcousticOutcomeStanding
+  = AcousticLevelMeasured {
+      tenths_dba: Int,
+      instrument: NonEmptyStr,
+      measured_at: EpochMs,
+    }
+  | AcousticLevelNoInstrument
+
+type CapturedThermalOutcome {
   dimms_over_guard: Int
   dimm_population: Int
+  acoustic: AcousticOutcomeStanding
 }
 
 type CapturedProgramReceipt {
   program: CapturedFanProgram
-  outcome: CapturedAcousticOutcome
+  outcome: CapturedThermalOutcome
 }
 
 data srv3_captured_program: CapturedProgramReceipt = CapturedProgramReceipt {
@@ -149,10 +170,10 @@ data srv3_captured_program: CapturedProgramReceipt = CapturedProgramReceipt {
     },
     provenance: HandAppliedNotReproducibleFromSource,
   },
-  outcome: CapturedAcousticOutcome {
-    tenths_dba: 350,
+  outcome: CapturedThermalOutcome {
     dimms_over_guard: 0,
     dimm_population: 9,
+    acoustic: AcousticLevelNoInstrument,
   },
 }
 
@@ -173,10 +194,10 @@ data srv4_captured_program: CapturedProgramReceipt = CapturedProgramReceipt {
     },
     provenance: HandAppliedNotReproducibleFromSource,
   },
-  outcome: CapturedAcousticOutcome {
-    tenths_dba: 349,
+  outcome: CapturedThermalOutcome {
     dimms_over_guard: 0,
     dimm_population: 9,
+    acoustic: AcousticLevelNoInstrument,
   },
 }
 
