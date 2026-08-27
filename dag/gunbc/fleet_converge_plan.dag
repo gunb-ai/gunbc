@@ -308,25 +308,126 @@ fn fleet_converge_apply_subject_admits(
     ) == ContentHashEqual
 }
 
-// THIS PREDICATE IS NOT THE ONE PRODUCTION CALLS, AND SAYING SO HERE IS THE POINT. The wet apply
-// path calls fleet_converge_apply_subject_host_matches and the two comparison helpers separately;
-// it does not call this composed predicate, whose only callers are witnesses. So the canonical
-// admission decision -- host AND scope AND fingerprint, judged together -- exists beside production
-// rather than being what production runs, which is the SAME two-authorities shape the helpers were
-// just ported out of, one level up.
-//
-// WHY IT CANNOT SIMPLY BE SWITCHED OVER, WHICH IS THE USEFUL PART. This takes a
-// FleetConvergePlanSubject, and the subject carries SCOPE. The apply CLI does not have a subject:
-// it has a host it observed, plus a fingerprint string and a baseline hex READ BACK FROM FILES the
-// plan wrote. Nothing in that artifact records which scope was planned, so a subject cannot be
-// reconstructed at apply time without inventing the one field that decides routing. Persisting the
-// planned scope in the artifact is therefore the precondition, not a follow-up polish -- and until
-// it lands, apply compares a scope it OBSERVED against a fingerprint whose scope it can only infer
-// from whether the comparison happens to succeed.
-//
-// AN EARLIER COMMIT ON THIS BRANCH SAID PRODUCTION APPLY HAD STOPPED CONSUMING THE PREDECESSOR
-// SEAM. That was true of the two helpers and false of this predicate, and the difference is
-// exactly the thing a reader would take on trust from the sentence.
+// THIS PREDICATE IS NOW A PROJECTION OF THE ARTIFACT-LEVEL ONE BELOW, NOT A SECOND AUTHORITY.
+// It takes a FleetConvergePlanSubject, which production does not have at apply time and cannot
+// build: the artifact holds a host, a scope wire and a fingerprint TEXT, and turning that text
+// back into a ContentHash would mean minting a content hash from untrusted file bytes -- the
+// forgeable-mint shape DESIGN.md 4b records for UriValidatedScalar. So the direction is fixed:
+// serialize the subject down to the wire the artifact holds and judge there. Nothing parses back.
+
+fn fleet_converge_apply_subject_admits(
+  planned_subject: FleetConvergePlanSubject,
+  observed: FleetConvergeRequest,
+) -> Bool {
+  match fleet_converge_apply_artifact_admits(
+    planned_host_text: planned_subject.host as String,
+    planned_scope_wire: fleet_converge_scope_wire(scope: planned_subject.scope),
+    planned_fingerprint_text: serialize_content_hash(hash: planned_subject.member_set_fingerprint) as String,
+    observed: observed,
+  ) {
+    ApplyAdmitted => true
+    ApplySubjectHostMismatch { planned: _, observed: _ } => false
+    ApplyScopeUndecodable { cause: _ } => false
+    ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+    ApplyMemberSetMismatch => false
+  }
+}
+
+// WHY THE REFUSAL IS A COPRODUCT AND NOT A Bool. The three admission facts fail for reasons with
+// different operator remedies -- a host mismatch means the artifact belongs to another machine, a
+// scope mismatch means apply is about to actuate a family the plan never selected, and a member-set
+// mismatch means ordinary drift and a replan. Collapsing them to false makes one message answer for
+// three causes, which is the state-space conflation this repository keeps finding, and it is worse
+// here than usual because only one of the three is routine.
+type FleetConvergeApplyAdmission
+  = ApplyAdmitted
+  | ApplySubjectHostMismatch { planned: String, observed: String }
+  | ApplyScopeUndecodable { cause: String }
+  | ApplyScopeMismatch { planned_wire: String, observed_wire: String }
+  | ApplyMemberSetMismatch
+
+// THE CANONICAL APPLY ADMISSION, OVER EXACTLY WHAT THE ARTIFACT CARRIES. Host, scope and member
+// set are judged together in one place, so a caller cannot check two of three and still reach the
+// actuator -- which is what the wet path did while these were three separate helper calls.
+fn fleet_converge_apply_artifact_admits(
+  planned_host_text: String,
+  planned_scope_wire: String,
+  planned_fingerprint_text: String,
+  observed: FleetConvergeRequest,
+) -> FleetConvergeApplyAdmission {
+  let observed_host = fleet_converge_request_host(request: observed) as String
+  let observed_scope_wire = fleet_converge_scope_wire(
+    scope: fleet_converge_request_scope(request: observed),
+  )
+  if trim(s: planned_host_text) != observed_host {
+    ApplySubjectHostMismatch { planned: trim(s: planned_host_text), observed: observed_host }
+  } else {
+    match fleet_converge_scope_of_wire(wire: planned_scope_wire) {
+      ScopeUndecodable { cause: why } => ApplyScopeUndecodable { cause: why }
+      ScopeDecoded { scope: planned_scope } =>
+        if !fleet_converge_scope_matches(
+          planned: planned_scope,
+          observed: fleet_converge_request_scope(request: observed),
+        ) {
+          ApplyScopeMismatch {
+            planned_wire: fleet_converge_scope_wire(scope: planned_scope),
+            observed_wire: observed_scope_wire,
+          }
+        } else if !fleet_converge_member_set_fingerprint_matches(
+          planned_fingerprint_text: planned_fingerprint_text,
+          observed: observed,
+        ) {
+          ApplyMemberSetMismatch
+        } else {
+          ApplyAdmitted
+        }
+    }
+  }
+}
+
+// THE DECODE REFUSES AN UNRECOGNISED WIRE RATHER THAN CHOOSING A SCOPE. Defaulting to FullHost
+// would be the absorbing fallback in its most expensive form: a truncated or hand-edited scope
+// file would widen apply from one resource family to every family on the host, and the widening
+// would be invisible because the wider run is exactly what the old signature always did. An empty
+// file is called out separately from an unrecognised token because they have different causes --
+// a write that did not complete, versus an artifact minted by a vintage that spelled scope
+// differently -- and only the second is a version problem.
+type FleetConvergeScopeDecode
+  = ScopeDecoded { scope: FleetConvergeScope }
+  | ScopeUndecodable { cause: String }
+
+fn fleet_converge_scope_of_wire(wire: String) -> FleetConvergeScopeDecode {
+  let w = trim(s: wire)
+  if w == "" {
+    ScopeUndecodable {
+      cause: "the planned scope artifact is empty, so the plan states no scope and apply must not choose one",
+    }
+  } else if w == fleet_converge_scope_wire(scope: FullHost) {
+    ScopeDecoded { scope: FullHost }
+  } else if w == fleet_converge_scope_wire(scope: FabricExecutionCellsOnly) {
+    ScopeDecoded { scope: FabricExecutionCellsOnly }
+  } else {
+    ScopeUndecodable {
+      cause: concat("the planned scope artifact names no scope this build knows: ", w),
+    }
+  }
+}
+
+fn fleet_converge_apply_admission_refusal_text(admission: FleetConvergeApplyAdmission) -> String {
+  match admission {
+    ApplyAdmitted => "admitted"
+    ApplySubjectHostMismatch { planned: p, observed: o } =>
+      concat("SubjectHostMismatch planned=", concat(p, concat(" observed=", o)))
+    ApplyScopeUndecodable { cause: why } => concat("PlannedScopeUndecodable — ", why)
+    ApplyScopeMismatch { planned_wire: p, observed_wire: o } =>
+      concat(
+        "SubjectScopeMismatch — the plan selected ",
+        concat(p, concat(" and apply re-observed ", concat(o, "; apply would actuate a family the plan never selected"))),
+      )
+    ApplyMemberSetMismatch =>
+      "SubjectIdentityMismatch — member set drifted since plan; rerun plan and review"
+  }
+}
 
 // A SCOPE COMPARISON THAT IS TOTAL IN BOTH ARGUMENTS. Written as a match rather than as equality
 // so that a third scope cannot silently join the admitted set: adding an arm to FleetConvergeScope
@@ -2098,6 +2199,7 @@ data fleet_converge_plan_generation_path: String = "/tmp/fleet-converge-plan/pla
 data fleet_converge_plan_prior_generation_path: String = "/tmp/fleet-converge-plan/prior_generation.txt"
 
 data fleet_converge_plan_member_set_fp_path: String = "/tmp/fleet-converge-plan/subject_member_set.txt"
+data fleet_converge_plan_subject_scope_path: String = "/tmp/fleet-converge-plan/subject_scope.txt"
 
 fn fleet_converge_observed_baseline_matches(
   observed_baseline_hex: Fnv1a64StructuralDigestHex,

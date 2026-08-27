@@ -74,6 +74,19 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_artifact_hash,
   fleet_converge_observed_baseline_matches,
   fleet_converge_apply_subject_admits,
+  fleet_converge_apply_artifact_admits,
+  fleet_converge_apply_admission_refusal_text,
+  fleet_converge_scope_of_wire,
+  fleet_converge_scope_wire,
+  FleetConvergeApplyAdmission,
+  ApplyAdmitted,
+  ApplySubjectHostMismatch,
+  ApplyScopeUndecodable,
+  ApplyScopeMismatch,
+  ApplyMemberSetMismatch,
+  FleetConvergeScopeDecode,
+  ScopeDecoded,
+  ScopeUndecodable,
   fleet_converge_apply_subject_host_matches,
   fleet_converge_apply_generation_admits,
   fleet_converge_apply_generation_stale,
@@ -1801,4 +1814,131 @@ test fn witness_apply_refuses_a_scope_crossing_and_admits_its_own_scope() -> Boo
         planned_subject: fleet_converge_plan_subject(request: full_request),
         observed: fabric_request,
       )
+}
+
+
+// AN UNRECOGNISED SCOPE WIRE REFUSES INSTEAD OF CHOOSING. This is the row with the largest
+// consequence in the file: had the decode defaulted to FullHost, a truncated or vintage-mismatched
+// scope artifact would silently widen apply from one resource family to every family on the host,
+// and the widened run is indistinguishable from what the pre-scope signature always did -- so the
+// widening would never be reported by anything. Both refusal causes are asserted separately
+// because an empty artifact and an unknown token have different remedies.
+test fn witness_an_undecodable_scope_wire_refuses_and_never_defaults_to_full_host() -> Bool {
+  match fleet_converge_scope_of_wire(wire: "") {
+    ScopeUndecodable { cause: _ } =>
+      match fleet_converge_scope_of_wire(wire: "scope:everything") {
+        ScopeUndecodable { cause: _ } =>
+          match fleet_converge_scope_of_wire(wire: fleet_converge_scope_wire(scope: FullHost)) {
+            ScopeDecoded { scope: _ } =>
+              match fleet_converge_scope_of_wire(
+                wire: fleet_converge_scope_wire(scope: FabricExecutionCellsOnly),
+              ) {
+                ScopeDecoded { scope: _ } => true
+                ScopeUndecodable { cause: _ } => false
+              }
+            ScopeUndecodable { cause: _ } => false
+          }
+        ScopeDecoded { scope: _ } => false
+      }
+    ScopeDecoded { scope: _ } => false
+  }
+}
+
+// THE THREE ADMISSION FAILURES KEEP THEIR OWN IDENTITIES. A Bool would make one message answer for
+// a foreign artifact, an unselected resource family and ordinary drift, whose operator remedies are
+// respectively "you are on the wrong machine", "stop, this would actuate something unplanned" and
+// "rerun plan". The positive control is what makes this a discriminator rather than a refusal wall.
+test fn witness_apply_admission_distinguishes_its_three_refusals() -> Bool {
+  let observed = FabricExecutionCellsConverge {
+    host: operator_host_srv3,
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+  }
+  let good_fp = serialize_content_hash(
+    hash: fleet_converge_member_set_fingerprint(request: observed),
+  ) as String
+  let fabric_wire = fleet_converge_scope_wire(scope: FabricExecutionCellsOnly)
+  match fleet_converge_apply_artifact_admits(
+    planned_host_text: operator_host_srv1 as String,
+    planned_scope_wire: fabric_wire,
+    planned_fingerprint_text: good_fp,
+    observed: observed,
+  ) {
+    ApplySubjectHostMismatch { planned: _, observed: _ } =>
+      match fleet_converge_apply_artifact_admits(
+        planned_host_text: operator_host_srv3 as String,
+        planned_scope_wire: "scope:not-a-scope",
+        planned_fingerprint_text: good_fp,
+        observed: observed,
+      ) {
+        ApplyScopeUndecodable { cause: _ } =>
+          match fleet_converge_apply_artifact_admits(
+            planned_host_text: operator_host_srv3 as String,
+            planned_scope_wire: fleet_converge_scope_wire(scope: FullHost),
+            planned_fingerprint_text: good_fp,
+            observed: observed,
+          ) {
+            ApplyScopeMismatch { planned_wire: _, observed_wire: _ } =>
+              match fleet_converge_apply_artifact_admits(
+                planned_host_text: operator_host_srv3 as String,
+                planned_scope_wire: fabric_wire,
+                planned_fingerprint_text: "0000000000000000",
+                observed: observed,
+              ) {
+                ApplyMemberSetMismatch =>
+                  match fleet_converge_apply_artifact_admits(
+                    planned_host_text: operator_host_srv3 as String,
+                    planned_scope_wire: fabric_wire,
+                    planned_fingerprint_text: good_fp,
+                    observed: observed,
+                  ) {
+                    ApplyAdmitted => true
+                    ApplySubjectHostMismatch { planned: _, observed: _ } => false
+                    ApplyScopeUndecodable { cause: _ } => false
+                    ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+                    ApplyMemberSetMismatch => false
+                  }
+                ApplyAdmitted => false
+                ApplySubjectHostMismatch { planned: _, observed: _ } => false
+                ApplyScopeUndecodable { cause: _ } => false
+                ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+              }
+            ApplyAdmitted => false
+            ApplySubjectHostMismatch { planned: _, observed: _ } => false
+            ApplyScopeUndecodable { cause: _ } => false
+            ApplyMemberSetMismatch => false
+          }
+        ApplyAdmitted => false
+        ApplySubjectHostMismatch { planned: _, observed: _ } => false
+        ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+        ApplyMemberSetMismatch => false
+      }
+    ApplyAdmitted => false
+    ApplyScopeUndecodable { cause: _ } => false
+    ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+    ApplyMemberSetMismatch => false
+  }
+}
+
+// THE HOST CHECK IS ORDERED FIRST, AND THAT ORDER IS A CLAIM. An artifact from another machine is
+// judged before its scope is decoded, so a foreign artifact carrying a scope this build cannot
+// spell reports the host problem -- the one the operator can act on -- rather than a decode failure
+// that reads as a version skew.
+test fn witness_a_foreign_artifact_reports_its_host_before_its_scope() -> Bool {
+  let observed = FabricExecutionCellsConverge {
+    host: operator_host_srv3,
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+  }
+  match fleet_converge_apply_artifact_admits(
+    planned_host_text: operator_host_srv4 as String,
+    planned_scope_wire: "scope:from-a-future-build",
+    planned_fingerprint_text: "0000000000000000",
+    observed: observed,
+  ) {
+    ApplySubjectHostMismatch { planned: p, observed: o } =>
+      p == (operator_host_srv4 as String) && o == (operator_host_srv3 as String)
+    ApplyAdmitted => false
+    ApplyScopeUndecodable { cause: _ } => false
+    ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+    ApplyMemberSetMismatch => false
+  }
 }
