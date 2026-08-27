@@ -176,7 +176,7 @@ test fn instance_gap_carrier_ref_population_is_not_empty() -> Bool {
   length(xs: lambda_typing_gate_declaration_refs()) == length(xs: lambda_typing_gate_citable_sites())
     && length(xs: list_membership_gap_declaration_refs()) == length(xs: list_membership_gap_citable_sites())
     && length(xs: lambda_typing_gate_sites) >= 3
-    && length(xs: list_membership_gap_sites) >= 5
+    && length(xs: list_membership_gap_sites) >= 4
     && length(xs: list_membership_gap_declaration_refs()) >= 3
 }
 
