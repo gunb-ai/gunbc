@@ -103,7 +103,7 @@ fn checkout(store: ObjectStore, commit: Commit) -> CheckoutOutcome {
   checkout_object(store: store, identity: commit.root)
 }
 
-// The rebuilt program carries SyntheticOccurrence throughout, because occurrence identity is
+// The rebuilt program carries OccurrenceSynthetic throughout, because occurrence identity is
 // deliberately outside the stored object: v2.std.node content_hash already folds only kind, edge
 // labels and child digests, so two parses of one program that minted different occurrence ids store
 // and reconstruct identically. Round-trip equality is therefore asserted on content identity, never

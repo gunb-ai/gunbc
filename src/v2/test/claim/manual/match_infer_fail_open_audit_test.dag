@@ -1,5 +1,6 @@
 module v2.test.manual.match_infer_fail_open_audit
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer { infer }
 import v2.extdeps.languages.dag {
   dag_arrow_with_body_node,
@@ -30,8 +31,7 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.verification {
   BoolWitness,
@@ -100,7 +100,7 @@ fn match_infer_fail_open_audit_non_exhaustive_body() -> Node {
         )
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -141,7 +141,7 @@ fn match_infer_fail_open_audit_extra_arm_body() -> Node {
         )
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -164,7 +164,7 @@ fn classical_not_int_match_arrow_fixture() -> Node {
           target: dag_type_atom_node(identity: ^dag_binding_type_int)
         }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     return_type_binding: ^dag_binding_type_int,
     body: dag_match_body_from_arms(
@@ -209,7 +209,7 @@ fn classical_not_int_match_non_octet_arm_fixture() -> Node {
           target: dag_type_atom_node(identity: ^dag_binding_type_int)
         }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     return_type_binding: ^dag_binding_type_int,
     body: dag_match_body_from_arms(

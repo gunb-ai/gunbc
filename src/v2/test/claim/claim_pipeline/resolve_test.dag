@@ -1,5 +1,6 @@
 module v2.test.claim_pipeline.resolve
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { admit_normalized_tree }
 import v2.compiler.resolve { resolve }
@@ -9,7 +10,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, TypeNode }
 
 fn spine_resolve_service_parse_tree() -> Node {
   Node {
@@ -22,11 +23,11 @@ fn spine_resolve_service_parse_tree() -> Node {
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -51,11 +52,11 @@ data spine_resolve_reject_module_subject: Node = Node {
           connective: Atom { identity: ^spine_resolve_reject_bogus_ref }
         },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 // Discriminates the class-4 defect (gunbc#8505 probe A): the module root is

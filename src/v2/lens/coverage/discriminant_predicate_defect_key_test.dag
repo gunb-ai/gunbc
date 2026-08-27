@@ -1,5 +1,6 @@
 module v2.test.lens_coverage.discriminant_predicate_defect_key
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.coverage {
   CoverageDefectAcceptance,
   CoverageDefectAcceptanceKey,
@@ -7,12 +8,12 @@ import v2.lens.coverage {
   coverage_defect_discriminant_predicate
 }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 
 data discriminant_predicate_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^discriminant_predicate_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data expected_discriminant_predicate_acceptance: CoverageDefectAcceptance = {

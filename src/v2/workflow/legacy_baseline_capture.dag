@@ -1,7 +1,6 @@
 module v2.workflow.legacy_baseline_capture
 
 import std.types { String, List, Int, Bool, NonEmptyStr }
-import std.content_hash { Fnv1a64Structural }
 import std.occurrence_identity { ValidatedOccurrenceTransport }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_wire_hex }
 import v2.workflow.legacy_binding_observation {
@@ -9,11 +8,9 @@ import v2.workflow.legacy_binding_observation {
   LegacyBindingObservationSubject,
   CompleteLegacyObservation,
   LegacyObservationCompleteness,
-  LegacyObservationAdmission,
   ObservationAdmitted,
   ObservationRefused,
-  admit_complete_observation,
-  legacy_subject_identity
+  admit_complete_observation
 }
 
 // A COMMIT IDENTITY AND THE SEVEN SUBJECT DIGESTS ANSWER DIFFERENT QUESTIONS, AND NEITHER REPLACES

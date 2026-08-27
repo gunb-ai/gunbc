@@ -1,5 +1,6 @@
 module v2.test.lens_cost.expr_refusal
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.lens.cost { LinearCost, LogCost, SizeVariable, UnknownCost }
 import v2.lens.cost.expr {
@@ -15,7 +16,6 @@ import v2.std.node {
   Atom,
   Node,
   TypeNode,
-  SyntheticOccurrence
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -23,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data expr_refusal_log_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^expr_refusal_log_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data expr_refusal_log_variable: SizeVariable = SizeVariable {

@@ -1,5 +1,6 @@
 module v2.compiler.namespace_graft
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_right, list_snoc_item }
 import v2.std.collection { Absent, List, Present }
@@ -23,9 +24,8 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  SyntheticOccurrence,
   TypeNode,
-  node_rebuild
+  node_rebuild,
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.compilers.lexing { symbol_lexeme }
@@ -198,7 +198,7 @@ fn namespace_graft_build_body_conj(edges: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: edges,
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -211,7 +211,7 @@ fn namespace_graft_wrap_segment(segment: Symbol, inner: Node) -> Node {
         target: inner
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -229,7 +229,7 @@ fn namespace_graft_atom_node(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -246,7 +246,7 @@ fn namespace_graft_wrap_module_shell(captured: Node) -> Node {
         target: captured
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
