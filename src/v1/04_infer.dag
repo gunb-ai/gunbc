@@ -2082,7 +2082,53 @@ fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope)
   }
 }
 
+// A DECLARED TYPE WRITTEN AS AN ALIAS BINDS TO A BARE NOMINAL REFERENCE, AND THIS RELATION JUDGED
+// THE REFERENCE INSTEAD OF WHAT IT NAMES. Measured at this seam, `type KAlias = KOuter` binds the
+// name `KAlias` to a node carrying `name = "KOuter"` and NO children -- a reference to the target,
+// not the target's declaration. The judgment asks whether that node is a Conj or a Disj with
+// children; a bare reference is neither, so it fell through to the admitting arm and a plain kernel
+// value inhabited ANY aliased declared type. The wall refused `5` at `KOuter` and admitted it at
+// `KAlias`, one name away, at every position that consults this relation.
+//
+// THIS IS THE "TOTAL AT THE LEVEL EXAMINED, BLIND ONE LEVEL DOWN" CLASS. The match is exhaustive
+// over the node it was handed and silent about the distinction that decides the outcome, which
+// lives one lookup further on. There is no missing arm for a reviewer or an exhaustiveness check to
+// see.
+//
+// THE FOLLOW READS `decl.name`, NOT `authored_name_at(decl)`, AND THAT IS THE ENTIRE REPAIR. These
+// two disagree on exactly this node: `authored_name_at` reads the SOURCE TEXT at `ident_span`, and
+// an alias binding carries the ALIAS declaration's span while its `name` field carries the TARGET.
+// So the authored reading answers `KAlias` and the field answers `KOuter`. An earlier attempt
+// compared authored names and was measured INERT, because it was comparing a name with itself.
+// (An attempt before that followed `decl.inferred` -- the shape `peel_nominal_alias_identity` reads
+// for PARAMETERIZED aliases -- which this binding does not carry at all, and was also inert.
+// Typecheck and regen were green over both.)
+//
+// THE FOLLOW RE-ENTERS THIS RELATION rather than restating any part of it (DESIGN section 3), so
+// every exemption it already owns -- name equality, `dag_can_cast`, the structural-carrier template,
+// the single-child refinement shape -- is applied at the followed name instead of being re-derived
+// beside it. `type NatAlias = Nat` with an Int value therefore stays admitted through the grounded
+// Int->Nat identity exactly as `Nat` itself does.
+//
+// TERMINATION IS ESTABLISHED TWICE, INDEPENDENTLY. A follow is taken only when the reference names
+// something OTHER than the name just looked up, so a self-naming binding cannot recur; and the depth
+// bound stops a multi-type cycle (`type A = B` / `type B = A`) regardless. Both exhaust to the
+// ADMITTING arm -- where an unfollowable reference already landed -- never to a fabricated refusal,
+// because exhausting the walk establishes ignorance, not a mismatch.
 fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  kernel_value_declared_type_mismatch_bounded(
+    formal: formal, actual: actual, type_env: type_env, source_indices: source_indices,
+    formal_name_override: "", depth: 0)
+}
+
+fn kernel_value_declared_type_mismatch_bounded(
+  formal: Node,
+  actual: Node,
+  type_env: TypeEnv,
+  source_indices: Map<String, NewlineIndex>,
+  formal_name_override: String,
+  depth: Int
+) -> Bool {
   if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
     false
   } else {
@@ -2091,7 +2137,9 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
     if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
       false
     } else {
-      let formal_name = authored_name_at(source_indices: source_indices, node: formal_base)
+      let formal_name = if formal_name_override == "" {
+        authored_name_at(source_indices: source_indices, node: formal_base)
+      } else { formal_name_override }
       if formal_name == "" || qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) {
         false
       } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices) {
@@ -2108,7 +2156,19 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
                     Present { value: refinement_child } => authored_name_at(source_indices: source_indices, node: refinement_child) == actual_name
                     Absent => false
                   }))
-              (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0 && decl_is_refinement_over_actual == false
+              if (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0 {
+                decl_is_refinement_over_actual == false
+              } else if depth >= 16 || decl.name == "" || qualified_last_segment(name: decl.name) == qualified_last_segment(name: formal_name) {
+                false
+              } else {
+                kernel_value_declared_type_mismatch_bounded(
+                  formal: decl,
+                  actual: actual,
+                  type_env: type_env,
+                  source_indices: source_indices,
+                  formal_name_override: decl.name,
+                  depth: depth + 1)
+              }
             Absent => false
           }
         }
