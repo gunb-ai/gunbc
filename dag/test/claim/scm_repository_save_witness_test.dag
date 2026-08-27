@@ -73,7 +73,7 @@ fn scm_sv_unrepresentable_repository() -> RepositoryEnvelope {
   }
 }
 
-fn scm_sv_an_unrepresentable_repository_is_refused_by_the_codec() -> Bool {
+test fn scm_sv_an_unrepresentable_repository_is_refused_by_the_codec() -> Bool {
   match save_repository(path: scm_sv_never_written_path, repo: scm_sv_unrepresentable_repository()) {
     RepositorySaveRefusedByCodec { path: p, cause: c } =>
       p == scm_sv_never_written_path &&
@@ -86,7 +86,7 @@ fn scm_sv_an_unrepresentable_repository_is_refused_by_the_codec() -> Bool {
 }
 
 // THE ORDER CLAIM. Having refused, the path must still not exist.
-fn scm_sv_a_refused_save_leaves_no_file() -> Bool {
+test fn scm_sv_a_refused_save_leaves_no_file() -> Bool {
   let refused = match save_repository(
     path: scm_sv_never_written_path,
     repo: scm_sv_unrepresentable_repository(),
@@ -101,7 +101,7 @@ fn scm_sv_a_refused_save_leaves_no_file() -> Bool {
   refused && absent
 }
 
-fn scm_repository_save_keystone_holds() -> Bool {
+test fn scm_repository_save_keystone_holds() -> Bool {
   scm_sv_an_unrepresentable_repository_is_refused_by_the_codec() &&
     scm_sv_a_refused_save_leaves_no_file()
 }
