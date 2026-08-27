@@ -14,8 +14,6 @@ import gunbc.compiler_frontend_program_interlock {
   SelfHostCorpusEmitsCleanly,
   NamespaceFixForwardComplete,
   NamespaceGrammarRetired,
-  SelfHostSuccessorPromotionAdmitted,
-  SelfHostSeedRetirement,
   NamespaceFirstSemanticWave,
   milestone_label,
 }
@@ -92,14 +90,16 @@ fn standing_is(s: MilestoneStanding, want: MilestoneStandingClass) -> Bool {
   standing_class_label(c: standing_class(s: s)) == standing_class_label(c: want)
 }
 
-// THIS HELPER CONFLATES TWO STATES AND ITS CALLERS MUST SAY SO. Clear and NotDerivable both map
-// to the empty list, which is right for rendering and wrong as a premise: "no outstanding members"
-// then means EITHER nothing is outstanding OR the standing could not be derived at all. Every arm
-// below that reads it therefore also asserts the standing is NOT NotDerivable, so a milestone whose
-// derivation silently broke cannot pass by returning the same empty list a finished one would.
-// That assertion is progress-safe in both directions: Clear is a legitimate future state and stays
-// green, while NotDerivable is not reachable for these two milestones without a defect -- each has
-// a live producer, so failing to derive means the wiring is gone rather than the world changing.
+// THIS HELPER CONFLATES TWO STATES, AND ITS ONE REMAINING CALLER IS A CONTROLLED FIXTURE. Clear and
+// NotDerivable both map to the empty list, which is right for rendering and wrong as a premise:
+// "no outstanding members" then means EITHER nothing is outstanding OR the standing could not be
+// derived at all. The live arms no longer read it -- they use standing_agrees_with_population,
+// which is total over MilestoneStanding and answers false on NotDerivable rather than collapsing
+// it -- so the conflation is now confined to a_populated_observation_is_outstanding_not_clear,
+// where this file authors the observation and NotDerivable is unreachable by construction.
+// The earlier wording here described live callers guarding the conflation for two named
+// milestones; those callers are gone, and it is narrowed rather than deleted because the helper
+// still conflates and the next caller needs to know it.
 fn standing_outstanding_members(s: MilestoneStanding) -> List<String> {
   match s {
     Clear { evidence: _ } => []
