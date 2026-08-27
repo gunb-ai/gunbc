@@ -305,6 +305,25 @@ fn target_multiplicity(targets: List<Int>, id: Int) -> Int {
 // This is the same wrong-population defect the laws themselves are about, one level down inside a
 // payload: the predicate was right and the set it ranged over was the wrong one. Naming the
 // denominator beside the filter is what surfaced it.
+// EVERY `occurrences` PAYLOAD IS DEDUPLICATED, AND THE ASYMMETRY THAT MADE THIS NECESSARY IS THE
+// FINDING. The target law was fixed first because its denominator is visibly the duplicated list;
+// `foreign` and `not_insertions` were left filtering populations that can ALSO repeat, and the
+// reachability differs per law rather than being obvious:
+//
+//   - `foreign` ranges over the decisions' base ids. A base id decided twice is caught by the fork
+//     law -- but that law's denominator is `expected_base`, so it cannot see an id the base never
+//     expected. Two decisions for id 99 therefore reach the foreign arm as `[99, 99]`.
+//   - `not_insertions` ranges over the derivations. The same minted node declared as an insertion
+//     twice reaches the arm as `[41, 41]`.
+//
+// So three laws named their payload `occurrences` while two of them could return ROW grain. The
+// field name is a claim about the denominator, and a consumer counting rows to count offenders would
+// have been wrong for two arms and right for one -- the worst distribution, because testing either
+// of the correct cases would have confirmed the wrong reading.
+//
+// `CauseLostSite` is deliberately NOT this shape: no occurrence identity exists for a synthetic
+// node, so site grain is the strongest truthful population available and its field is not named
+// `occurrences`.
 fn unique_ints(ids: List<Int>) -> List<Int> {
   fold(ids, init: [], f: (acc, id) => if (acc |> any(a => a == id)) { acc } else { concat(acc, [id]) })
 }
@@ -330,7 +349,7 @@ fn emit_projection_provenance<O>(
   let decided = decisions |> map(d => carry_decision_base(decision: d))
   let missing = expected_base |> filter(id => !(decided |> any(d => d == id)))
   let forked = expected_base |> filter(id => decision_multiplicity(decisions: decisions, base: id) > 1)
-  let foreign = decided |> filter(id => !(expected_base |> any(e => e == id)))
+  let foreign = unique_ints(ids: decided) |> filter(id => !(expected_base |> any(e => e == id)))
   let dropped = decisions |> flat_map(d => match d {
     CarriedForward { base: _, projected: _ } => []
     DroppedByProjection { base: b } => [b.value]
@@ -343,7 +362,7 @@ fn emit_projection_provenance<O>(
     insertions: insertions,
     projected_identity: projected_identity
   )
-  let not_insertions = derivations |> flat_map(d => derivation_not_insertion_occurrence(derivation: d))
+  let not_insertions = unique_ints(ids: derivations |> flat_map(d => derivation_not_insertion_occurrence(derivation: d)))
   let carried_entries = decisions |> flat_map(d => match d {
     CarriedForward { base: b, projected: p } => [ProjectedFromSource {
       source: ScopedOccurrenceRef { scope: base_identity, occurrence: b },

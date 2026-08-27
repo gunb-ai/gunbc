@@ -600,3 +600,58 @@ test fn three_claims_on_one_target_report_one_offending_occurrence() -> Bool {
     }
   }
 }
+
+// THE TWO SIBLING PAYLOADS GET THE SAME DISCRIMINATOR THE TARGET LAW GOT, because they were the two
+// laws whose `occurrences` field could return ROW grain. Both fixtures repeat the offence three
+// times rather than twice, for the reason the target arm already records: at two the two readings
+// differ by one and the assertion reads as an off-by-one, at three a row-counting payload reports 3
+// against an offender-counting 1 with no arithmetic accident between them.
+//
+// THE FOREIGN CASE IS THE ONE THAT SURPRISED ME. A base id decided more than once is normally caught
+// by the fork law -- but that law's denominator is the base's EXPECTED occurrences, so it is blind to
+// an id the base never expected. A foreign id decided three times therefore reaches this arm and
+// nothing upstream deduplicates it.
+test fn three_decisions_about_one_non_base_occurrence_report_one_offender() -> Bool {
+  match lbp_emit(
+    expected_base: [10],
+    decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 99, projected: 91), lbp_carry(base: 99, projected: 92), lbp_carry(base: 99, projected: 93)],
+    insertions: []
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionDecisionForeign { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 99))
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// AND THE MALFORMED-CANDIDATE CASE: one carried-forward node declared as an insertion three times is
+// one offending occurrence, not three. The caller made three bad declarations about ONE node, and
+// the repair is the same repair once.
+test fn one_node_declared_an_insertion_three_times_reports_one_offender() -> Bool {
+  match lbp_emit(
+    expected_base: [10],
+    decisions: [lbp_carry(base: 10, projected: 11)],
+    insertions: [lbp_minted_insertion(id: 41), lbp_minted_insertion(id: 41), lbp_minted_insertion(id: 41)]
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionCandidateNotInsertion { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 41))
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
