@@ -1,0 +1,63 @@
+name: One-shot DESIGN authority repair
+
+on:
+  push:
+    branches:
+      - repair/design-trigger-capability-authority
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v5
+        with:
+          ref: repair/design-trigger-capability-authority
+          fetch-depth: 0
+
+      - name: Put the capability-trigger rule in the .dag authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('dag/gunbc/design_document.dag')
+          text = path.read_text()
+
+          old = "(3) **no silent regression** — a change may lower a rung only by declaring previous rung, temporary rung, reason, bounded population, and restoration trigger; a compatibility exemption is not bootstrap glue, it is a visible safety regression with a finite runway. (4) **dissolution on climb"
+          clause = "**AND THE TRIGGER MUST NAME THE CAPABILITY, NOT AN ARTIFACT THAT WOULD CONTRIBUTE TO ONE (2026-08-26).** A declared drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the trigger *is* the whole check, and a trigger naming less than the capability it restores is the one direction this machinery structurally cannot see: **it will be satisfied while the capability stays dead.** What makes it invisible is that no step is wrong — the instrument author builds exactly what the trigger asked, the trigger fires honestly, the row retires correctly, and the thing the row existed to protect is still gone. Nobody has to be careless for this to happen, which is why it needs a rule rather than diligence. Receipt, and it is this document's own row: the measurement-bankruptcy entry above records losing *the only executable route to a self-host emission BOARD measurement* and then writes a trigger naming *a `.dag` entry point that emits, assembles and compiles ONE ENTRY* — a board is per-entry across MANY entries, so the two halves sit five lines apart in one row at different grains, and the row then declares the trigger fired. Measured by code read, the instrument that fired it takes a fresh temporary directory per invocation and path-depends on the whole stage0 crate, so every entry rebuilds the bootstrap compiler cold and the cost is entry-INDEPENDENT — one entry is the only thing it can do. **The rule:** a restoration trigger states the CAPABILITY, in the same words the drop used to describe the loss; where a trigger names an artifact instead, the row must state what that artifact must be SUFFICIENT FOR, and the artifact retires the row only when that sufficiency is shown. **The review tell is a grain mismatch between the loss sentence and the trigger sentence** — a plural loss with a singular trigger, a corpus loss with a per-module trigger, a route loss with a single-call trigger. Found by `loyal-lark-254` and verified against this document's text by `smart-ram-730`, and it is downstream of a refusal to report a number they could not stand behind: a pricing run that had returned any plausible figure would have closed the question and left the trigger defect standing."
+          new = old[:-len(" (4) **dissolution on climb")] + " " + clause + " (4) **dissolution on climb"
+
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one authority insertion point, found {text.count(old)}')
+          if text.count('TRIGGER MUST NAME THE CAPABILITY') != 0:
+              raise SystemExit('authority already contains the new clause')
+
+          path.write_text(text.replace(old, new))
+
+          design = Path('DESIGN.md').read_text()
+          exact = 'AND THE TRIGGER MUST NAME THE CAPABILITY, NOT AN ARTIFACT THAT WOULD CONTRIBUTE TO ONE (2026-08-26).'
+          if design.count(exact) != 1:
+              raise SystemExit(f'generated DESIGN.md must already carry exactly one clause, found {design.count(exact)}')
+          if path.read_text().count(exact) != 1:
+              raise SystemExit('authority insertion did not produce exactly one clause')
+          PY
+
+          git diff --check
+          git diff -- dag/gunbc/design_document.dag
+
+      - name: Commit authority-only repair and remove this one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/one-shot-design-authority-repair.yml
+          git config user.name 'Brian Searls'
+          git config user.email '11205878+briansrls@users.noreply.github.com'
+          git add dag/gunbc/design_document.dag .github/workflows/one-shot-design-authority-repair.yml
+          git commit -m "Put #9366's restoration-trigger rule in the DESIGN authority" -m "#9366 hand-edited the generated DESIGN.md projection. The exact capability-not-artifact rule now lives in gunbc.design_document at the same §4b(3) position, so regeneration preserves rather than deletes it. DESIGN.md already carries the generated bytes and therefore needs no second edit."
+          git push origin HEAD:repair/design-trigger-capability-authority
