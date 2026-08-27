@@ -9,6 +9,8 @@ import gunbc.compiler_frontend_program_interlock {
   SelfHostEmitterProducesEveryRetainedArtifact,
   SelfHostRatchetGateEnrolled,
   SelfHostCorpusEmitsCleanly,
+  NamespaceFixForwardComplete,
+  NamespaceGrammarRetired,
   SelfHostSuccessorPromotionAdmitted,
   SelfHostSeedRetirement,
   NamespaceFirstSemanticWave,
@@ -30,6 +32,7 @@ import gunbc.compiler_frontend_program_status {
   missing_instrument_obstacle,
   StandingCensus,
   standing_census,
+  milestone_row,
   program_standing_census,
   milestones_awaiting,
   missing_instrument_label,
@@ -43,6 +46,15 @@ import gunbc.compiler_frontend_program_status {
   MilestoneStandingClass,
   ClassClear,
   ClassOutstanding,
+  ClassNotDerivable,
+  StandingRow,
+  StartabilityClass,
+  ClassStartable,
+  ClassBlockedKnownOnly,
+  ClassNotDerivableOnly,
+  ClassBlockedAndNotFullyDerivable,
+  startability_class,
+  standing_census_from_rows,
   standing_class,
   standing_class_label,
   milestone_status,
@@ -230,6 +242,8 @@ test fn the_two_three_milestone_instruments_do_not_share_a_milestone() -> Bool {
   let roster = milestones_awaiting(i: NamespaceStepSubjectRoster)
   count(roster) == 3
     && any(roster, l => l == milestone_label(m: NamespaceFirstSemanticWave))
+    && any(roster, l => l == milestone_label(m: NamespaceFixForwardComplete))
+    && any(roster, l => l == milestone_label(m: NamespaceGrammarRetired))
     && all(board, l => count(roster |> filter(other => other == l)) == 0)
 }
 
@@ -246,8 +260,7 @@ test fn a_single_milestone_instrument_reports_one() -> Bool {
 // stale row or an arm that stopped citing it, and both should be seen rather than carried.
 test fn every_declared_instrument_is_distinct_and_awaited() -> Bool {
   let labels = all_missing_instruments |> map(i => missing_instrument_label(i: i))
-  count(labels) == 8
-    && all(labels, l => count(labels |> filter(other => other == l)) == 1)
+  all(labels, l => count(labels |> filter(other => other == l)) == 1)
     && all(all_missing_instruments, i => count(milestones_awaiting(i: i)) > 0)
 }
 
@@ -278,33 +291,58 @@ test fn the_refused_instrument_cites_the_authority_that_refuses_it() -> Bool {
   }
 }
 
-// THE CENSUS IS CHECKED AGAINST A CONTROLLED FIXTURE, NOT AGAINST THE LIVE ROSTER. The input is two
-// milestones this file names and the expected counts are authored here independently -- one
-// OUTSTANDING, one NOT-DERIVABLE, no CLEAR, both startable because neither has an unanswerable
-// prerequisite. Folded over the live roster instead, the only available oracle would be a
-// transcription of that same roster, which is the change detector DESIGN's oracle rule rejects.
-test fn the_census_counts_a_controlled_population_exactly() -> Bool {
-  let c = standing_census(ms: [SelfHostEmitterProducesEveryRetainedArtifact, SelfHostCargoPhaseEnrolled])
-  c.milestones == 2
-    && c.clear == 0
+// THE CENSUS FIXTURE AUTHORS ITS ROWS, STATES INCLUDED. The previous pair of arms named real
+// milestones and asserted their live standings -- controlling MEMBERSHIP while reading STATE from
+// the tree. That made them live snapshot pins wearing a fixture's clothes, and their closing move
+// on legitimate emitter or CI-phase progress was to edit the expected figures. Same backward
+// contract as the anti-inflation witness deleted one commit earlier; caught by review on #9388 in
+// the very arm that had been cited as the census's independent oracle.
+//
+// Authored as rows, no tree state can move these numbers, so the counting behaviour is exercised
+// without ratcheting against progress -- which is what a controlled fixture was supposed to mean.
+test fn the_census_counts_authored_rows_exactly() -> Bool {
+  let c = standing_census_from_rows(rows: [
+    StandingRow { standing: ClassOutstanding, startability: ClassStartable },
+    StandingRow { standing: ClassNotDerivable, startability: ClassStartable },
+    StandingRow { standing: ClassClear, startability: ClassBlockedKnownOnly },
+  ])
+  c.milestones == 3
+    && c.clear == 1
     && c.outstanding == 1
     && c.not_derivable == 1
     && c.startable == 2
-    && c.blocked_known_only == 0
+    && c.blocked_known_only == 1
     && c.not_derivable_only == 0
     && c.blocked_and_not_fully_derivable == 0
 }
 
-// THE DISCRIMINATING ARM: a population whose members ARE unanswerable must not report them as
-// startable. Without this, a census that ignored its startability predicate entirely would still
-// pass the fixture above, since both of its members happen to be startable.
-test fn the_census_separates_unanswerable_startability() -> Bool {
-  let c = standing_census(ms: [NamespaceFirstSemanticWave])
-  c.milestones == 1
+// THE DISCRIMINATING ARM: the two startability classes that a collapsing census would merge are
+// counted apart. Authored rows make both authorable -- neither is reachable as a fixture over the
+// live roster, and BLOCKED-KNOWN-ONLY is inhabited by no live milestone at all.
+test fn the_census_separates_the_two_not_derivable_startability_classes() -> Bool {
+  let c = standing_census_from_rows(rows: [
+    StandingRow { standing: ClassNotDerivable, startability: ClassNotDerivableOnly },
+    StandingRow { standing: ClassNotDerivable, startability: ClassBlockedAndNotFullyDerivable },
+    StandingRow { standing: ClassNotDerivable, startability: ClassBlockedAndNotFullyDerivable },
+  ])
+  c.milestones == 3
+    && c.not_derivable == 3
     && c.startable == 0
     && c.blocked_known_only == 0
     && c.not_derivable_only == 1
-    && c.blocked_and_not_fully_derivable == 0
+    && c.blocked_and_not_fully_derivable == 2
+}
+
+// THE LIVE MAPPING IS NOT SKIPPED BY THE SPLIT. milestone_row is what joins the live tree to the
+// authored-row fold, so an arm is kept over it -- but it asserts a RELATION rather than a state:
+// the row a milestone maps to carries the same classes that milestone's own two folds return.
+// It cannot red on progress, because both sides move together.
+test fn a_live_milestone_row_agrees_with_its_own_folds() -> Bool {
+  all(program_milestones, m =>
+    standing_class_label(c: milestone_row(m: m).standing)
+      == standing_class_label(c: standing_class(s: milestone_status(m: m)))
+    && startability_class_label(c: milestone_row(m: m).startability)
+      == startability_class_label(c: startability_class(s: milestone_startability(m: m))))
 }
 
 // THE CENSUS PARTITIONS ITS POPULATION EXACTLY, on both axes, over the LIVE roster. This is the arm
@@ -328,13 +366,13 @@ test fn the_live_census_partitions_on_both_axes() -> Bool {
 // decides (DESIGN 4b). Authoring all four together is also what makes them discriminating as a set,
 // since a classifier collapsing any two would fail exactly one of these lines.
 test fn the_four_direct_prerequisite_states_are_each_exhibited() -> Bool {
-  startability_class_label(s: startability_from_populations(unanswerable: [], blocking: []))
+  startability_class_label(c: startability_class(s: startability_from_populations(unanswerable: [], blocking: [])))
       == "STARTABLE"
-    && startability_class_label(s: startability_from_populations(unanswerable: [], blocking: ["p"]))
+    && startability_class_label(c: startability_class(s: startability_from_populations(unanswerable: [], blocking: ["p"])))
       == "BLOCKED-KNOWN-ONLY"
-    && startability_class_label(s: startability_from_populations(unanswerable: ["u"], blocking: []))
+    && startability_class_label(c: startability_class(s: startability_from_populations(unanswerable: ["u"], blocking: [])))
       == "NOT-DERIVABLE-ONLY"
-    && startability_class_label(s: startability_from_populations(unanswerable: ["u"], blocking: ["p"]))
+    && startability_class_label(c: startability_class(s: startability_from_populations(unanswerable: ["u"], blocking: ["p"])))
       == "BLOCKED-AND-NOT-FULLY-DERIVABLE"
 }
 

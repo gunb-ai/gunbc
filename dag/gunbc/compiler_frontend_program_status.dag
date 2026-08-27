@@ -85,14 +85,23 @@ fn observe_outstanding(subject: NonEmptyStr, outstanding: List<String>) -> Miles
 // the question this carrier could not answer in its first cut. Reporting twelve NotDerivable rows
 // each carrying its own prose tells a reader that twelve things are unanswerable; it cannot tell
 // them whether that is TWELVE problems or THREE. Those are different programs: if one missing
-// measurement is awaited by five milestones it is the highest-leverage item here and nothing named it,
+// measurement is awaited by five milestones, that shared demand is worth seeing and nothing named it,
 // and if the twelve need twelve instruments that is a much worse world someone has to know about.
 // A shared fact gets a shared carrier (DESIGN section 3), and the grouping is then DERIVED rather
 // than counted by hand.
 //
-// THIS IS ALSO WHAT MAKES THE REPORT ACTIONABLE RATHER THAN MERELY HONEST. A program whose
-// milestones are mostly waiting on measurements nobody can take is not labour-constrained, it is
-// OBSERVABILITY-constrained, and the right next dispatch is an instrument rather than a milestone.
+// WHAT THIS GROUPING DOES AND DOES NOT ESTABLISH, stated at exactly its strength because an
+// earlier revision of this block overclaimed in the direction the four-way partition below was
+// added to close. It establishes DIRECT REQUIREMENT MEMBERSHIP: how many milestone standings
+// currently await each instrument, so shared demand is visible instead of scattered across twelve
+// prose rows. It does NOT establish that satisfying one instrument ALONE changes any milestone's
+// standing (singleton sufficiency is not derived -- see the join below), nor comparative leverage,
+// nor the best next dispatch, nor the ABSENCE of simultaneous outstanding work, nor ownership.
+// The honest program-level reading is: OBSERVABILITY DOMINATES CURRENT ADMISSION, WHILE KNOWN
+// PREREQUISITE WORK COEXISTS WITH MISSING OBSERVATIONS. An earlier revision of this paragraph said
+// the program "is not labour-constrained" and that "the right next dispatch is an instrument"; both
+// were read off a fold that had discarded its known blockers, and neither follows from what this
+// module computes even now that it keeps them.
 // That distinction is invisible on a ledger, which renders every such row as "pending" and invites
 // a reader to hear "in progress".
 type MissingInstrument
@@ -121,7 +130,7 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
 // AN INSTRUMENT THAT IS MISSING AND ONE THAT IS REFUSED ARE DIFFERENT STATES WITH DIFFERENT
 // REMEDIES, and collapsing them was this carrier's own state-space conflation (warm-hawk-909,
 // 2026-08-26, joining this carrier against a measurement another lane took the same evening).
-// "Missing instrument" reads as ABSENCE -- go and build it. The highest-leverage row on this list
+// "Missing instrument" reads as ABSENCE -- go and build it. The most-awaited row on this list
 // is not absent: a whole-corpus compile is REFUSED, on budget, by a named authority whose refusal
 // is CORRECT. The remedy for the first is to write the tool; the remedy for the second is to make
 // the thing affordable, and no amount of the first produces the second.
@@ -452,12 +461,27 @@ fn milestone_startability(m: ProgramMilestone) -> Startability {
 // Startability AND descends into the arm that carries the distinction -- the pairing DESIGN names
 // as total-at-the-level-examined-and-blind-one-level-down, which an exhaustive outer match cannot
 // show you is missing.
-fn startability_class_label(s: Startability) -> String {
+type StartabilityClass
+  = ClassStartable
+  | ClassBlockedKnownOnly
+  | ClassNotDerivableOnly
+  | ClassBlockedAndNotFullyDerivable
+
+fn startability_class(s: Startability) -> StartabilityClass {
   match s {
-    StartablePrerequisitesClear => "STARTABLE"
-    BlockedOnPrerequisites { blocking: _ } => "BLOCKED-KNOWN-ONLY"
+    StartablePrerequisitesClear => ClassStartable
+    BlockedOnPrerequisites { blocking: _ } => ClassBlockedKnownOnly
     StartabilityNotDerivable { unanswerable: _, blocking } =>
-      if count(blocking) == 0 { "NOT-DERIVABLE-ONLY" } else { "BLOCKED-AND-NOT-FULLY-DERIVABLE" }
+      if count(blocking) == 0 { ClassNotDerivableOnly } else { ClassBlockedAndNotFullyDerivable }
+  }
+}
+
+fn startability_class_label(c: StartabilityClass) -> String {
+  match c {
+    ClassStartable => "STARTABLE"
+    ClassBlockedKnownOnly => "BLOCKED-KNOWN-ONLY"
+    ClassNotDerivableOnly => "NOT-DERIVABLE-ONLY"
+    ClassBlockedAndNotFullyDerivable => "BLOCKED-AND-NOT-FULLY-DERIVABLE"
   }
 }
 
@@ -507,9 +531,15 @@ fn join_names(names: List<String>) -> String {
 // gate can usefully catch -- that the instrument itself stopped working.
 // ---------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------
-// THE LEVERAGE QUESTION, DERIVED. "Which milestones does this one missing instrument unblock" is
-// the question a planner actually has, and it is a join over the arms above rather than a fact
-// anyone should author. Building it means the answer moves when the arms move.
+// THE SHARED-DEMAND QUESTION, DERIVED. "Which milestone standings directly await this instrument"
+// is a join over the arms above rather than a fact anyone should author, so the answer moves when
+// the arms move. IT IS NOT THE UNBLOCKING QUESTION and must not be read as one: a milestone may
+// require several instruments conjunctively, so appearing in this list never means that delivering
+// this instrument alone would move it. SelfHostRatchetGateEnrolled is the live proof -- it requires
+// the whole-corpus board AND the ratchet's gate-enrolment fact, and the gate-enrolment fact alone
+// moves NOTHING. Deriving singleton sufficiency would mean asking, per instrument, whether the
+// milestone becomes derivable with every OTHER current fact held fixed; that is a stronger carrier
+// and is deliberately not built here rather than approximated by this count.
 // ---------------------------------------------------------------------------------------------
 data all_missing_instruments: List<MissingInstrument> = [
   WholeCorpusEmissionBoard,
@@ -612,6 +642,11 @@ fn milestone_report_line(m: ProgramMilestone) -> String {
 // directly, so its behaviour is checkable against a controlled fixture whose input and expected
 // counts are authored independently. Folded only over the live roster it could be checked only
 // against a transcription of that same roster -- the change detector DESIGN's oracle rule rejects.
+type StandingRow {
+  standing: MilestoneStandingClass
+  startability: StartabilityClass
+}
+
 type StandingCensus {
   milestones: Int
   clear: Int
@@ -623,17 +658,41 @@ type StandingCensus {
   blocked_and_not_fully_derivable: Int
 }
 
-fn standing_census(ms: List<ProgramMilestone>) -> StandingCensus {
+// THE CENSUS FOLDS OVER CLASSIFIED ROWS, NOT OVER MILESTONES, and this second split is the one the
+// first cut got wrong while believing it had a controlled fixture. Parameterizing the SELECTION of
+// live milestones controls MEMBERSHIP; it does not control STATE. Every standing still came from
+// milestone_status over the live tree, so a "fixture" naming two real milestones and asserting one
+// OUTSTANDING and one NOT-DERIVABLE was a live snapshot pin wearing a fixture's clothes -- and its
+// closing move, the day the emitter or the CI phase roster legitimately moved, was to edit the
+// expected figures or swap in different live milestones. That is the same backward-running contract
+// deleted from the anti-inflation witness one commit earlier, surviving in the arm that was cited
+// as proof the census had an independent oracle (review on #9388).
+//
+// Split here, a fixture authors the ROWS directly -- states and all -- so the census's counting
+// behaviour is exercised over inputs no tree state can move, and the live arm asserts only the
+// partition LAW. Progress cannot red either.
+fn standing_census_from_rows(rows: List<StandingRow>) -> StandingCensus {
   StandingCensus {
-    milestones: count(ms),
-    clear: count(ms |> filter(m => standing_class_label(c: standing_class(s: milestone_status(m: m))) == "CLEAR")),
-    outstanding: count(ms |> filter(m => standing_class_label(c: standing_class(s: milestone_status(m: m))) == "OUTSTANDING")),
-    not_derivable: count(ms |> filter(m => standing_class_label(c: standing_class(s: milestone_status(m: m))) == "NOT-DERIVABLE")),
-    startable: count(ms |> filter(m => startability_class_label(s: milestone_startability(m: m)) == "STARTABLE")),
-    blocked_known_only: count(ms |> filter(m => startability_class_label(s: milestone_startability(m: m)) == "BLOCKED-KNOWN-ONLY")),
-    not_derivable_only: count(ms |> filter(m => startability_class_label(s: milestone_startability(m: m)) == "NOT-DERIVABLE-ONLY")),
-    blocked_and_not_fully_derivable: count(ms |> filter(m => startability_class_label(s: milestone_startability(m: m)) == "BLOCKED-AND-NOT-FULLY-DERIVABLE")),
+    milestones: count(rows),
+    clear: count(rows |> filter(r => standing_class_label(c: r.standing) == "CLEAR")),
+    outstanding: count(rows |> filter(r => standing_class_label(c: r.standing) == "OUTSTANDING")),
+    not_derivable: count(rows |> filter(r => standing_class_label(c: r.standing) == "NOT-DERIVABLE")),
+    startable: count(rows |> filter(r => startability_class_label(c: r.startability) == "STARTABLE")),
+    blocked_known_only: count(rows |> filter(r => startability_class_label(c: r.startability) == "BLOCKED-KNOWN-ONLY")),
+    not_derivable_only: count(rows |> filter(r => startability_class_label(c: r.startability) == "NOT-DERIVABLE-ONLY")),
+    blocked_and_not_fully_derivable: count(rows |> filter(r => startability_class_label(c: r.startability) == "BLOCKED-AND-NOT-FULLY-DERIVABLE")),
   }
+}
+
+fn milestone_row(m: ProgramMilestone) -> StandingRow {
+  StandingRow {
+    standing: standing_class(s: milestone_status(m: m)),
+    startability: startability_class(s: milestone_startability(m: m)),
+  }
+}
+
+fn standing_census(ms: List<ProgramMilestone>) -> StandingCensus {
+  standing_census_from_rows(rows: ms |> map(m => milestone_row(m: m)))
 }
 
 fn program_standing_census() -> StandingCensus {
