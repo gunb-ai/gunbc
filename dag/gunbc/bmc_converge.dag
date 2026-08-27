@@ -29,6 +29,15 @@ import extdeps.uri { Uri }
 import gunbc.bmc_intent {
   BmcControlPlaneIntent,
 }
+import gunbc.bmc_fan_alignment_standing { HostBmcFanAlignmentStanding }
+import gunbc.fleet_fan_tach_expectation {
+  expected_tach_headers,
+  HostFanTachExpectationAbsent,
+  HostFanTachExpectationDuplicate,
+  HostFanTachExpectationEstablished,
+  HostFanTachExpectationHeaderDuplicated,
+  host_fan_tach_expectation_admission,
+}
 import gunbc.bmc_fan_projection {
   BmcFanConfigReadbackSubject,
   BmcFanDurabilityEvidence,
@@ -116,6 +125,9 @@ type BmcFanConfigPersistenceApplyRefusalCause
 type FanPolicySuitabilityRefusalCause
   = FanPolicyFirmwareMustConvergeBeforeRealizer
   | FanPolicyInstalledTachTopologyDiffersFromIntent
+  | FanPolicyTachExpectationAbsentForHost
+  | FanPolicyTachExpectationDuplicateForHost
+  | FanPolicyTachExpectationHeaderDuplicated
   | FanPolicyProjectionCapabilityRefused {
       cause: BmcFanProjectionApplyRefusalCause,
     }
@@ -169,9 +181,23 @@ fn bmc_fan_policy_suitability_refusal_reason(
     FanPolicyFirmwareMustConvergeBeforeRealizer =>
       "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer"
     FanPolicyInstalledTachTopologyDiffersFromIntent =>
-      "bmc fan projection installed-tach topology differs from fleet intent"
+      "bmc fan projection installed-tach topology differs from this host's declared tach expectation"
+    FanPolicyTachExpectationAbsentForHost =>
+      "bmc fan apply refused: no fan tach expectation is declared for this host, so which headers must report is unknown"
+    FanPolicyTachExpectationDuplicateForHost =>
+      "bmc fan apply refused: this host carries more than one fan tach expectation, so which headers must report is decided by authoring order"
+    FanPolicyTachExpectationHeaderDuplicated =>
+      "bmc fan apply refused: this host's fan tach expectation authors one header twice, so the required list is a broken row rather than a topology"
     FanPolicyProjectionCapabilityRefused { cause: cause } =>
       match cause {
+        BmcFanProjectionAlignmentStandingAbsent =>
+          "bmc fan apply refused: no alignment standing is declared for this host, so nothing establishes that the intent describes what it runs"
+        BmcFanProjectionAlignmentStandingDuplicate =>
+          "bmc fan apply refused: this host carries more than one alignment standing, so which one governs is decided by authoring order"
+        BmcFanProjectionObservedProgramNotAdopted =>
+          "bmc fan apply refused: nobody has adopted this host's observed fan control program, so agreement with the intent is unestablished rather than confirmed"
+        BmcFanProjectionObservedProgramNotRepresentable =>
+          "bmc fan apply refused: the host runs a fan control program the intent cannot represent, so applying would partially revert it"
         BmcFanProjectionBoardMismatch =>
           "bmc fan projection capability board does not match the observed board"
         BmcFanProjectionFirmwareMismatch =>
@@ -376,6 +402,7 @@ fn bmc_fan_config_persistence_apply_suitability(
 }
 
 fn bmc_fan_policy_apply_suitability(
+  standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
   board: BaseboardModel,
   intent: BmcControlPlaneIntent,
@@ -391,7 +418,21 @@ fn bmc_fan_policy_apply_suitability(
       cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
     }
   } else {
-    if projection.required_tach_inputs != intent.fan_policy.required_tach_inputs {
+    match host_fan_tach_expectation_admission(host: host) {
+      HostFanTachExpectationAbsent =>
+        FanPolicySuitabilityRefused {
+          cause: FanPolicyTachExpectationAbsentForHost,
+        }
+      HostFanTachExpectationDuplicate { count } =>
+        FanPolicySuitabilityRefused {
+          cause: FanPolicyTachExpectationDuplicateForHost,
+        }
+      HostFanTachExpectationHeaderDuplicated { header } =>
+        FanPolicySuitabilityRefused {
+          cause: FanPolicyTachExpectationHeaderDuplicated,
+        }
+      HostFanTachExpectationEstablished { expectation } =>
+    if projection.required_tach_inputs != expected_tach_headers(expectation: expectation) {
       FanPolicySuitabilityRefused {
         cause: FanPolicyInstalledTachTopologyDiffersFromIntent,
       }
@@ -401,6 +442,8 @@ fn bmc_fan_policy_apply_suitability(
         board: board,
         desired_curve: intent.fan_policy.curve,
         observation: observation,
+        host: host,
+        standings: standings,
       ) {
         BmcFanProjectionApplyRefused { cause: cause } =>
           FanPolicySuitabilityRefused {
@@ -435,6 +478,7 @@ fn bmc_fan_policy_apply_suitability(
               }
           }
       }
+    }
     }
   }
 }
@@ -765,6 +809,7 @@ fn bmc_fan_firmware_blocks_realizer(
 }
 
 fn bmc_fan_policy_qualify_with_projection(
+  standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
   board: BaseboardModel,
   intent: BmcControlPlaneIntent,
@@ -786,6 +831,7 @@ fn bmc_fan_policy_qualify_with_projection(
                   }
                 Present { value: projector } =>
                   match bmc_fan_policy_apply_suitability(
+                    standings: standings,
                     host: host,
                     board: board,
                     intent: intent,
@@ -861,7 +907,19 @@ fn bmc_fan_policy_qualify_with_projection(
               }
 }
 
+// THE ROSTER IS A PARAMETER HERE AND CLOSED AT THE WET EDGE, which is a correction to where I
+// first put the closure. Closing it inside the projection seam meant every fixture exercising a
+// DOWNSTREAM distinction -- durability linkage, topology drift, live digest -- was answered by
+// the alignment gate instead, because srv4's real standing refuses. Nine such tests went red, and
+// they were not wrong: the pipeline's order had changed under them and they could no longer reach
+// the subject they were written for.
+//
+// A confinement belongs at the boundary where production actually enters, not mid-pipeline where
+// it also excludes every fixture. bmc_fan_converge_with_credential and
+// bmc_fan_observe_only_with_credential pass the fleet roster and take no roster argument
+// themselves; a fixture supplies its own and reaches the arm it is testing.
 fn bmc_fan_policy_classification(
+  standings: List<HostBmcFanAlignmentStanding>,
   host: HostIdentity,
   board: BaseboardModel,
   intent: BmcControlPlaneIntent,
@@ -895,6 +953,7 @@ fn bmc_fan_policy_classification(
         }
       } else {
         bmc_fan_policy_qualify_with_projection(
+          standings: standings,
           host: host,
           board: board,
           intent: intent,
