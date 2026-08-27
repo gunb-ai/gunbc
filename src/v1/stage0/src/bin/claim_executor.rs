@@ -3,8 +3,6 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
-#[cfg(test)]
-use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::PhaseProfile;
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
