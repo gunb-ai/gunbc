@@ -2616,78 +2616,6 @@ pub fn occurrence_index_contains(
         })
 }
 
-pub fn occurrence_index_unique(
-    entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
-) -> Rc<Vec<Rc<OccurrenceIndexEntry>>> {
-    entries.iter().cloned().fold(
-        Rc::new(vec![]),
-        |unique: Rc<Vec<Rc<OccurrenceIndexEntry>>>, entry: Rc<OccurrenceIndexEntry>| {
-            if occurrence_index_contains(
-                unique.clone(),
-                entry.projection.clone().occurrence.clone(),
-            ) {
-                unique.clone()
-            } else {
-                v1_rt::rc_list_push(unique.clone(), entry.clone())
-            }
-        },
-    )
-}
-
-pub fn declaration_occurrences_contain(
-    declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
-    occurrence: OccurrenceId,
-) -> bool {
-    declarations.iter().cloned().fold(
-        false,
-        |found: bool, declaration: Rc<DeclarationOccurrence>| {
-            (found || (declaration.occurrence.clone().value.clone() == occurrence.value.clone()))
-        },
-    )
-}
-
-pub fn declaration_occurrences_unique(
-    declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
-) -> Rc<Vec<Rc<DeclarationOccurrence>>> {
-    declarations.iter().cloned().fold(
-        Rc::new(vec![]),
-        |unique: Rc<Vec<Rc<DeclarationOccurrence>>>, declaration: Rc<DeclarationOccurrence>| {
-            if declaration_occurrences_contain(unique.clone(), declaration.occurrence.clone()) {
-                unique.clone()
-            } else {
-                v1_rt::rc_list_push(unique.clone(), declaration.clone())
-            }
-        },
-    )
-}
-
-pub fn reference_occurrences_contain(
-    references: Rc<Vec<Rc<ReferenceOccurrence>>>,
-    occurrence: OccurrenceId,
-) -> bool {
-    references
-        .iter()
-        .cloned()
-        .fold(false, |found: bool, reference: Rc<ReferenceOccurrence>| {
-            (found || (reference.occurrence.clone().value.clone() == occurrence.value.clone()))
-        })
-}
-
-pub fn reference_occurrences_unique(
-    references: Rc<Vec<Rc<ReferenceOccurrence>>>,
-) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
-    references.iter().cloned().fold(
-        Rc::new(vec![]),
-        |unique: Rc<Vec<Rc<ReferenceOccurrence>>>, reference: Rc<ReferenceOccurrence>| {
-            if reference_occurrences_contain(unique.clone(), reference.occurrence.clone()) {
-                unique.clone()
-            } else {
-                v1_rt::rc_list_push(unique.clone(), reference.clone())
-            }
-        },
-    )
-}
-
 pub fn stamp_parsed_node_list(
     nodes: Rc<Vec<Rc<Node>>>,
     ancestors: Rc<Vec<OccurrenceId>>,
@@ -3214,15 +3142,9 @@ pub fn stamp_parsed_node(
 
 pub fn occurrence_transport_from_parse_context(ctx: Rc<ParseContext>) -> Rc<OccurrenceTransport> {
     Rc::new(OccurrenceTransport {
-        index: Rc::new(OccurrenceIndex {
-            entries: occurrence_index_unique(
-                parse_context_occurrence_index(ctx.clone()).entries.clone(),
-            ),
-        }),
-        declarations: declaration_occurrences_unique(parse_context_declaration_occurrences(
-            ctx.clone(),
-        )),
-        references: reference_occurrences_unique(parse_context_reference_occurrences(ctx.clone())),
+        index: parse_context_occurrence_index(ctx.clone()),
+        declarations: parse_context_declaration_occurrences(ctx.clone()),
+        references: parse_context_reference_occurrences(ctx.clone()),
     })
 }
 
