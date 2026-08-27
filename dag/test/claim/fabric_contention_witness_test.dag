@@ -244,17 +244,22 @@ test fn an_hourly_quantum_gives_both_bidders_the_same_billed_occupancy() -> Bool
 // this goes red exactly as before. The rate machinery did not become
 // unobservable when it stopped selecting here; it moved into the payload.
 //
-// MEASURED, because an earlier revision of this note asserted the wrong number
-// and the measurement is the only reason anyone knows: forcing the comparator
-// back to total margin and re-running the suite turns TWO witnesses red, not
-// one -- this one and a_free_offer_is_still_ranked_by_bid_per_second_not_by_bid,
-// with the other twelve green and the instrument control still false. That
-// second one discriminates for the same underlying reason and its own note
-// already said so, which is what makes the earlier "leaves every other witness
-// green" claim a prose error rather than a disagreement about behaviour. Two
-// independent witnesses over one comparator is stronger evidence than one; the
-// point of recording it is that the count came from running the mutation, not
-// from reasoning about which witness ought to notice.
+// MEASURED, and RE-MEASURED, because an earlier revision of this note asserted
+// the wrong number twice and the measurement is the only reason anyone knows.
+// Forcing the comparator back to total headroom and re-running the whole suite
+// against the CURRENT tree turns THREE witnesses red -- this one,
+// a_free_offer_is_still_ranked_by_bid_per_second_not_by_bid, and
+// a_contingent_ordering_refuses_and_names_both_candidates -- with the other
+// eighteen green and the instrument control still false. The figure is stated
+// with its subject (21 witnesses) because the previous figure in this slot,
+// "two red, twelve green", was correct on a 14-witness tree and became
+// unreadable the moment the tree grew: a count whose denominator is not written
+// beside it cannot be compared with its own successor. Three independent
+// witnesses over one comparator is stronger evidence than one, and the third
+// only appeared because the contingent case moved its answer into the refusal
+// payload -- the comparator is observable there too, which is exactly what that
+// witness now proves. The point of recording it is that the count came from
+// running the mutation, not from reasoning about which witness ought to notice.
 fn rich_slow_demand() -> Demand<NonEmptyStr> { c_demand(key: "demand-rich-slow", reservation: 500) }
 
 test fn a_larger_total_margin_loses_to_a_larger_margin_per_billed_second() -> Bool {
