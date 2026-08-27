@@ -5170,19 +5170,18 @@ pub fn parse_predicates_acc(
             });
         }
         acc = v1_rt::rc_list_push(acc.clone(), r.predicate.clone());
+        ctx = parse_context_after_node(r.ctx.clone(), r.predicate.clone());
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = skip_newlines(__ec.clone());
-                let __tco_1 = r.ctx.clone();
                 tokens = __tco_0;
-                ctx = __tco_1;
                 continue;
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
                 break Rc::new(PredsResult {
                     predicates: acc.clone(),
                     tokens: r.tokens.clone(),
-                    ctx: r.ctx.clone(),
+                    ctx: ctx.clone(),
                     err: None,
                 });
             }
@@ -5877,7 +5876,7 @@ pub fn parse_more_variants_acc(
                 }
                 {
                     let __tco_0 = r2.tokens.clone();
-                    let __tco_1 = r2.ctx.clone();
+                    let __tco_1 = parse_context_after_node(r2.ctx.clone(), r2.variant.clone());
                     let __tco_2 = v1_rt::rc_list_push(acc, r2.variant.clone());
                     tokens = __tco_0;
                     ctx = __tco_1;
@@ -6388,7 +6387,7 @@ pub fn collect_type_args(
                 }
                 {
                     let __tco_0 = r.tokens.clone();
-                    let __tco_1 = r.ctx.clone();
+                    let __tco_1 = parse_context_after_node(r.ctx.clone(), r.type_expr.clone());
                     let __tco_2 = v1_rt::rc_list_push(args, r.type_expr.clone());
                     tokens = __tco_0;
                     ctx = __tco_1;
@@ -6490,7 +6489,7 @@ pub fn parse_field_list_acc(
                     EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
                 });
                 {
-                    let __tco_0 = r.ctx.clone();
+                    let __tco_0 = parse_context_after_node(r.ctx.clone(), r.field.clone());
                     let __tco_1 = v1_rt::rc_list_push(acc, r.field.clone());
                     ctx = __tco_0;
                     acc = __tco_1;
@@ -7445,19 +7444,18 @@ pub fn parse_uses_list_acc(
             });
         }
         acc = v1_rt::rc_list_push(acc.clone(), r.resource_use.clone());
+        ctx = parse_context_after_node(r.ctx.clone(), r.resource_use.clone());
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = __ec.clone();
-                let __tco_1 = r.ctx.clone();
                 tokens = __tco_0;
-                ctx = __tco_1;
                 continue;
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
                 break Rc::new(UsesResult {
                     uses: acc.clone(),
                     tokens: r.tokens.clone(),
-                    ctx: r.ctx.clone(),
+                    ctx: ctx.clone(),
                     err: None,
                 });
             }
@@ -8045,7 +8043,8 @@ pub fn parse_service_entries(
                         }
                         {
                             let __tco_0 = r.tokens.clone();
-                            let __tco_1 = r.ctx.clone();
+                            let __tco_1 =
+                                parse_context_after_node(r.ctx.clone(), r.operation.clone());
                             let __tco_2 = v1_rt::rc_list_push(operations, r.operation.clone());
                             tokens = __tco_0;
                             ctx = __tco_1;
@@ -10599,7 +10598,8 @@ pub fn parse_resource_entries(
                         }
                         {
                             let __tco_0 = r.tokens.clone();
-                            let __tco_1 = r.ctx.clone();
+                            let __tco_1 =
+                                parse_context_after_node(r.ctx.clone(), r.capability.clone());
                             let __tco_2 = v1_rt::rc_list_push(capabilities, r.capability.clone());
                             tokens = __tco_0;
                             ctx = __tco_1;
@@ -11478,6 +11478,7 @@ pub fn parse_param_list_acc(
             });
         }
         acc = v1_rt::rc_list_push(acc.clone(), r.param.clone());
+        ctx = parse_context_after_node(r.ctx.clone(), r.param.clone());
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 tokens = skip_newlines(__ec.clone());
@@ -11485,13 +11486,11 @@ pub fn parse_param_list_acc(
                     break Rc::new(ParamsResult {
                         params: acc.clone(),
                         tokens: tokens.clone(),
-                        ctx: r.ctx.clone(),
+                        ctx: ctx.clone(),
                         err: None,
                     });
                 } else {
                     {
-                        let __tco_0 = r.ctx.clone();
-                        ctx = __tco_0;
                         continue;
                     }
                 }
@@ -11500,7 +11499,7 @@ pub fn parse_param_list_acc(
                 break Rc::new(ParamsResult {
                     params: acc.clone(),
                     tokens: r.tokens.clone(),
-                    ctx: r.ctx.clone(),
+                    ctx: ctx.clone(),
                     err: None,
                 });
             }
@@ -11829,7 +11828,7 @@ pub fn parse_stmts_acc(
             }
             {
                 let __tco_0 = r.tokens.clone();
-                let __tco_1 = r.ctx.clone();
+                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
                 let __tco_2 = v1_rt::rc_list_push(acc, r.expr.clone());
                 tokens = __tco_0;
                 ctx = __tco_1;
@@ -12986,7 +12985,7 @@ pub fn parse_lambda_stmts(
             }
             {
                 let __tco_0 = r.tokens.clone();
-                let __tco_1 = r.ctx.clone();
+                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
                 let __tco_2 = v1_rt::rc_list_push(acc, r.expr.clone());
                 tokens = __tco_0;
                 ctx = __tco_1;
@@ -13680,6 +13679,7 @@ pub fn parse_arg_list_acc(
             });
         }
         acc = v1_rt::rc_list_push(acc.clone(), r.arg.clone());
+        ctx = parse_context_after_node(r.ctx.clone(), r.arg.clone());
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 tokens = skip_newlines(__ec.clone());
@@ -13687,13 +13687,11 @@ pub fn parse_arg_list_acc(
                     break Rc::new(ArgsResult {
                         args: acc.clone(),
                         tokens: tokens.clone(),
-                        ctx: r.ctx.clone(),
+                        ctx: ctx.clone(),
                         err: None,
                     });
                 } else {
                     {
-                        let __tco_0 = r.ctx.clone();
-                        ctx = __tco_0;
                         continue;
                     }
                 }
@@ -13702,7 +13700,7 @@ pub fn parse_arg_list_acc(
                 break Rc::new(ArgsResult {
                     args: acc.clone(),
                     tokens: r.tokens.clone(),
-                    ctx: r.ctx.clone(),
+                    ctx: ctx.clone(),
                     err: None,
                 });
             }
@@ -14243,7 +14241,7 @@ pub fn parse_match_arms_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
             });
             {
-                let __tco_0 = r.ctx.clone();
+                let __tco_0 = parse_context_after_node(r.ctx.clone(), r.arm.clone());
                 let __tco_1 = v1_rt::rc_list_push(acc, r.arm.clone());
                 ctx = __tco_0;
                 acc = __tco_1;
@@ -14405,7 +14403,7 @@ pub fn parse_match_arm_stmts(
                 }
                 {
                     let __tco_0 = r.tokens.clone();
-                    let __tco_1 = r.ctx.clone();
+                    let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
                     let __tco_2 = v1_rt::rc_list_push(acc, r.expr.clone());
                     tokens = __tco_0;
                     ctx = __tco_1;
@@ -15432,7 +15430,7 @@ pub fn parse_field_init_list_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
             });
             {
-                let __tco_0 = r.ctx.clone();
+                let __tco_0 = parse_context_after_node(r.ctx.clone(), r.field.clone());
                 let __tco_1 = v1_rt::rc_list_push(acc, r.field.clone());
                 ctx = __tco_0;
                 acc = __tco_1;
@@ -15682,7 +15680,7 @@ pub fn parse_expr_list_until_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
             });
             {
-                let __tco_0 = r.ctx.clone();
+                let __tco_0 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
                 let __tco_1 = v1_rt::rc_list_push(acc, r.expr.clone());
                 ctx = __tco_0;
                 acc = __tco_1;

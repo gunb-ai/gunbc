@@ -223,6 +223,25 @@ fn oci_digest_parser_does_not_reuse_authored_identity() {
 }
 
 #[test]
+fn parser_lists_publish_accepted_child_identity() {
+    let parsed = parse_source(
+        include_str!("../../../../dag/examples/cost_estimate/cost_estimate.dag"),
+        "dag/examples/cost_estimate/cost_estimate.dag",
+        occurrence_id_allocator_initial(),
+    );
+    assert!(parsed.result.error.is_none(), "{:?}", parsed.result.error);
+    let mut seen = HashSet::new();
+    let duplicate = parsed
+        .occurrence_transport
+        .index
+        .entries
+        .iter()
+        .map(|entry| entry.projection.occurrence.value)
+        .find(|id| !seen.insert(*id));
+    assert_eq!(duplicate, None, "accepted parser siblings must be disjoint");
+}
+
+#[test]
 fn authored_identity_allocator_crosses_real_module_boundary() {
     let materialization = parse_source(
         include_str!("../../../../dag/extdeps/cache/materialization.dag"),

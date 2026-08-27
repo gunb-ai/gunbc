@@ -2386,11 +2386,12 @@ fn parse_predicates_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
   let r = parse_single_predicate(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return PredsResult { predicates: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.predicate)
+  let ctx = parse_context_after_node(ctx: r.ctx, node: r.predicate)
   match eat(tokens: r.tokens, expected: ExpectComma) {
   EatConsumed { token: _, tokens: __ec } =>
-    parse_predicates_acc(tokens: skip_newlines(tokens: __ec), ctx: r.ctx, acc: acc)
+    parse_predicates_acc(tokens: skip_newlines(tokens: __ec), ctx: ctx, acc: acc)
   EatUnchanged { tokens: __eu } =>
-    PredsResult { predicates: acc, tokens: r.tokens, ctx: r.ctx, err: none }
+    PredsResult { predicates: acc, tokens: r.tokens, ctx: ctx, err: none }
   }
 }
 
@@ -2565,7 +2566,7 @@ fn parse_more_variants_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Nod
     if has_err(err: r.err) { return VariantsResult { variants: [], tokens: r.tokens, ctx: ctx, err: r.err } }
     let r2 = parse_variant_fields(tokens: r.tokens, ctx: ctx, vname: r.name, vname_span: r.span)
     if has_err(err: r2.err) { return VariantsResult { variants: [], tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-    parse_more_variants_acc(tokens: r2.tokens, ctx: r2.ctx, acc: list_push(acc, r2.variant))
+    parse_more_variants_acc(tokens: r2.tokens, ctx: parse_context_after_node(ctx: r2.ctx, node: r2.variant), acc: list_push(acc, r2.variant))
   EatUnchanged { tokens: __eu } =>
     VariantsResult { variants: acc, tokens: tokens, ctx: ctx, err: none }
   }
@@ -2730,7 +2731,7 @@ fn collect_type_args(tokens: TokenStream, ctx: ParseContext, args: List<Node>) -
   EatConsumed { token: _, tokens: __ec } =>
     let r = parse_type_angle_arg(tokens: __ec, ctx: ctx)
     if has_err(err: r.err) { return TypeArgsResult { args: args, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    collect_type_args(tokens: r.tokens, ctx: r.ctx, args: list_push(args, r.type_expr))
+    collect_type_args(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.type_expr), args: list_push(args, r.type_expr))
   EatUnchanged { tokens: __eu } =>
     TypeArgsResult { args: args, tokens: tokens, ctx: ctx, err: none }
   }
@@ -2762,7 +2763,7 @@ fn parse_field_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
       let tokens = r.tokens
       let e = eat(tokens: tokens, expected: ExpectComma)
       let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens })
-      parse_field_list_acc(tokens: tokens, ctx: r.ctx, acc: list_push(acc, r.field))
+      parse_field_list_acc(tokens: tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.field), acc: list_push(acc, r.field))
     } else {
       FieldsResult { fields: acc, tokens: tokens, ctx: ctx, err: none }
     }
@@ -3067,12 +3068,13 @@ fn parse_uses_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) 
   let r = parse_uses_entry(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return UsesResult { uses: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.resource_use)
+  let ctx = parse_context_after_node(ctx: r.ctx, node: r.resource_use)
 
   match eat(tokens: r.tokens, expected: ExpectComma) {
   EatConsumed { token: _, tokens: __ec } =>
-    parse_uses_list_acc(tokens: __ec, ctx: r.ctx, acc: acc)
+    parse_uses_list_acc(tokens: __ec, ctx: ctx, acc: acc)
   EatUnchanged { tokens: __eu } =>
-    UsesResult { uses: acc, tokens: r.tokens, ctx: r.ctx, err: none }
+    UsesResult { uses: acc, tokens: r.tokens, ctx: ctx, err: none }
   }
 }
 
@@ -3241,7 +3243,7 @@ fn parse_service_entries(tokens: TokenStream, ctx: ParseContext, config: Service
         if kw_text == "operation" {
           let r = parse_operation_def(tokens: tokens, ctx: ctx)
           if has_err(err: r.err) { return ServiceBodyResult { config: config, transport: transport, operations: operations, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-          parse_service_entries(tokens: r.tokens, ctx: r.ctx, config: config, transport: transport, operations: list_push(operations, r.operation))
+          parse_service_entries(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.operation), config: config, transport: transport, operations: list_push(operations, r.operation))
         } else {
           ServiceBodyResult { config: config, transport: transport, operations: operations, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected config, transport, or operation in service block", span: span) } }
         }
@@ -3957,7 +3959,7 @@ fn parse_resource_entries(tokens: TokenStream, ctx: ParseContext, properties: Li
         if kw_text == "capability" {
           let r = parse_capability(tokens: tokens, ctx: ctx)
           if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-          parse_resource_entries(tokens: r.tokens, ctx: r.ctx, properties: properties, capabilities: list_push(capabilities, r.capability))
+          parse_resource_entries(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.capability), properties: properties, capabilities: list_push(capabilities, r.capability))
         } else if kw_text == "acquire" {
           let r = expect(tokens: token_stream_advance(stream: tokens, n: 1), expected: ExpectLBrace)
           if has_err(err: r.err) { return ResPropResult { properties: properties, capabilities: capabilities, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -4202,17 +4204,18 @@ fn parse_param_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
   let r = parse_param(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ParamsResult { params: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.param)
+  let ctx = parse_context_after_node(ctx: r.ctx, node: r.param)
 
   match eat(tokens: r.tokens, expected: ExpectComma) {
   EatConsumed { token: _, tokens: __ec } =>
     let tokens = skip_newlines(tokens: __ec)
     if tok_is_rparen(tok: token_stream_first(stream: tokens)) {
-      ParamsResult { params: acc, tokens: tokens, ctx: r.ctx, err: none }
+      ParamsResult { params: acc, tokens: tokens, ctx: ctx, err: none }
     } else {
-      parse_param_list_acc(tokens: tokens, ctx: r.ctx, acc: acc)
+      parse_param_list_acc(tokens: tokens, ctx: ctx, acc: acc)
     }
   EatUnchanged { tokens: __eu } =>
-    ParamsResult { params: acc, tokens: r.tokens, ctx: r.ctx, err: none }
+    ParamsResult { params: acc, tokens: r.tokens, ctx: ctx, err: none }
   }
 }
 
@@ -4360,7 +4363,7 @@ fn parse_stmts_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -> S
   } else {
     let r = parse_stmt(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return StmtsResult { stmts: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_stmts_acc(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.expr))
+    parse_stmts_acc(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), acc: list_push(acc, r.expr))
   }
 }
 
@@ -4824,7 +4827,7 @@ fn parse_lambda_stmts(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -
   } else {
     let r = parse_stmt(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return StmtsResult { stmts: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_lambda_stmts(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.expr))
+    parse_lambda_stmts(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), acc: list_push(acc, r.expr))
   }
 }
 
@@ -5063,17 +5066,18 @@ fn parse_arg_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -
   let r = parse_single_arg(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ArgsResult { args: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let acc = list_push(acc, r.arg)
+  let ctx = parse_context_after_node(ctx: r.ctx, node: r.arg)
 
   match eat(tokens: r.tokens, expected: ExpectComma) {
   EatConsumed { token: _, tokens: __ec } =>
     let tokens = skip_newlines(tokens: __ec)
     if tok_is_rparen(tok: token_stream_first(stream: tokens)) {
-      ArgsResult { args: acc, tokens: tokens, ctx: r.ctx, err: none }
+      ArgsResult { args: acc, tokens: tokens, ctx: ctx, err: none }
     } else {
-      parse_arg_list_acc(tokens: tokens, ctx: r.ctx, acc: acc)
+      parse_arg_list_acc(tokens: tokens, ctx: ctx, acc: acc)
     }
   EatUnchanged { tokens: __eu } =>
-    ArgsResult { args: acc, tokens: r.tokens, ctx: r.ctx, err: none }
+    ArgsResult { args: acc, tokens: r.tokens, ctx: ctx, err: none }
   }
 }
 
@@ -5243,7 +5247,7 @@ fn parse_match_arms_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
     if has_err(err: r.err) { return ArmsResult { arms: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let e = eat(tokens: r.tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r.tokens })
-    parse_match_arms_acc(tokens: tokens, ctx: r.ctx, acc: list_push(acc, r.arm))
+    parse_match_arms_acc(tokens: tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.arm), acc: list_push(acc, r.arm))
   }
 }
 
@@ -5304,7 +5308,7 @@ fn parse_match_arm_stmts(tokens: TokenStream, ctx: ParseContext, acc: List<Node>
   } else {
     let r = parse_stmt(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return StmtsResult { stmts: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_match_arm_stmts(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.expr))
+    parse_match_arm_stmts(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), acc: list_push(acc, r.expr))
   }
 }
 
@@ -5680,7 +5684,7 @@ fn parse_field_init_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<N
     if has_err(err: r.err) { return FieldInitsResult { fields: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let e = eat(tokens: r.tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r.tokens })
-    parse_field_init_list_acc(tokens: tokens, ctx: r.ctx, acc: list_push(acc, r.field))
+    parse_field_init_list_acc(tokens: tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.field), acc: list_push(acc, r.field))
   }
 }
 
@@ -5757,7 +5761,7 @@ fn parse_expr_list_until_acc(tokens: TokenStream, ctx: ParseContext, end_expecte
     if has_err(err: r.err) { return ExprsResult { exprs: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let e = eat(tokens: r.tokens, expected: ExpectComma)
     let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r.tokens })
-    parse_expr_list_until_acc(tokens: tokens, ctx: r.ctx, end_expected: end_expected, acc: list_push(acc, r.expr))
+    parse_expr_list_until_acc(tokens: tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), end_expected: end_expected, acc: list_push(acc, r.expr))
   }
 }
 
