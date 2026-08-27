@@ -1471,6 +1471,10 @@ impl ReceiptCrate {
     }
 }
 
+fn mirror_alias(krate: &ReceiptCrate, mirror: &str) -> String {
+    format!("{}::{}", krate.extern_name, mirror.trim_end_matches(".rs"))
+}
+
 fn run_receipt_driver(
     workspace: &std::path::Path,
     krate: &ReceiptCrate,
@@ -2552,6 +2556,7 @@ pub fn run_plan(source_roots: &[String]) -> BehavioralHostOutcome {
 fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome, String> {
     let workspace = crate::cli_run::workspace_root();
     let stage0_src = workspace.join("src/v1/stage0/src");
+    let compiler_krate = ReceiptCrate::v1_compiler();
 
     // BASELINE FIRST, asserted and printed, exactly as the mirror-drift gate does and for the
     // same reason: a selection computed against an unresolvable baseline is ignorance, and the
@@ -2637,7 +2642,10 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                 // The full crate path to the emitted mirror, derived from the artifact's own
                 // basename. Both the enumerated constructor values and the generated calls are
                 // written against THIS string, so there is one spelling of the module under test.
-                let alias = format!("crate::{}", mirror.trim_end_matches(".rs"));
+                // The generated driver is its own rustc crate and links the mirror library via
+                // `--extern`; `crate::` would name the driver itself and make every admitted plan
+                // refuse at compilation rather than reaching the differential.
+                let alias = mirror_alias(&compiler_krate, &mirror);
                 let node = parse_dag_module_node(&format!("{module_path}.dag"), &source)?;
                 let types = visible_type_decls(&module_path, &source, &modules)?;
                 let plan = plan_module_corpus(
@@ -2999,7 +3007,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
         ));
         match behavioral_differential(
             &workspace,
-            &ReceiptCrate::v1_compiler(),
+            &compiler_krate,
             &workspace.join("src/v1/stage0/src").join(mirror),
             candidate_source,
             &admitted,
@@ -3097,6 +3105,18 @@ mod driver_transcript_tests {
 
     fn lines(xs: &[&str]) -> Vec<String> {
         xs.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn production_driver_addresses_the_extern_crate() {
+        assert_eq!(
+            mirror_alias(&ReceiptCrate::v1_compiler(), "v1_std_core.rs"),
+            "v1_compiler::v1_std_core"
+        );
+        assert_ne!(
+            mirror_alias(&ReceiptCrate::v1_compiler(), "v1_std_core.rs"),
+            "crate::v1_std_core"
+        );
     }
 
     /// The property the exclusion rests on: two runs of ONE binary that disagree at an index
