@@ -33956,10 +33956,16 @@ pub fn emit_main_rs(
         } else {
             "".to_string()
         };
+        let cli_version_attr = if has_pipeline.clone() {
+            ", version = env!(\"GUNBC_BUILD_IDENTITY\")".to_string()
+        } else {
+            "".to_string()
+        };
         let cli_struct = emit_cli_struct(
             workflow_funcs.clone(),
             binary_name.clone(),
             cli_about.clone(),
+            cli_version_attr.clone(),
         );
         let subcommand_enum = emit_subcommand_enum(workflow_funcs.clone(), has_pipeline.clone());
         let pipeline_fns = if has_pipeline.clone() {
@@ -34075,6 +34081,7 @@ pub fn emit_cli_struct(
     workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     binary_name: String,
     about: String,
+    version_attr: String,
 ) -> String {
     {
         let about_attr = if (about.clone() != "".to_string()) {
@@ -34097,14 +34104,17 @@ pub fn emit_cli_struct(
                                             v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
-                                                        "#[derive(Parser)]\n".to_string(),
-                                                        "#[command(name = \"".to_string(),
+                                                        v1_rt::concat(
+                                                            "#[derive(Parser)]\n".to_string(),
+                                                            "#[command(name = \"".to_string(),
+                                                        ),
+                                                        binary_name.clone(),
                                                     ),
-                                                    binary_name.clone(),
+                                                    "\"".to_string(),
                                                 ),
-                                                "\"".to_string(),
+                                                about_attr.clone(),
                                             ),
-                                            about_attr.clone(),
+                                            version_attr.clone(),
                                         ),
                                         ")]\n".to_string(),
                                     ),

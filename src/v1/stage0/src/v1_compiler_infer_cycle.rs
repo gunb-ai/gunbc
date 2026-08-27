@@ -181,29 +181,30 @@ pub fn kahn_cycle_drain(
                 }
             },
         );
-        let next_queue = queue
-            .iter()
-            .cloned()
-            .fold(Rc::new(vec![]), |acc: _, node: String| {
-                let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
-                    Some(v) => v.clone(),
-                    None => Rc::new(vec![]),
-                };
-                dependents
-                    .iter()
-                    .cloned()
-                    .fold(acc, |inner_acc: _, dep: String| {
-                        let deg = match v1_rt::map_get(&result.in_degree.clone(), dep.clone()) {
-                            Some(d) => d.clone(),
-                            None => 0,
-                        };
-                        if (deg.clone() == 0) {
-                            v1_rt::rc_list_push(inner_acc.clone(), dep.clone())
-                        } else {
-                            inner_acc.clone()
-                        }
-                    })
-            });
+        let next_queue =
+            queue
+                .iter()
+                .cloned()
+                .fold(Rc::new(vec![]), |acc: Rc<Vec<String>>, node: String| {
+                    let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
+                        Some(v) => v.clone(),
+                        None => Rc::new(vec![]),
+                    };
+                    dependents.iter().cloned().fold(
+                        acc,
+                        |inner_acc: Rc<Vec<String>>, dep: String| {
+                            let deg = match v1_rt::map_get(&result.in_degree.clone(), dep.clone()) {
+                                Some(d) => d.clone(),
+                                None => 0,
+                            };
+                            if (deg.clone() == 0) {
+                                v1_rt::rc_list_push(inner_acc.clone(), dep.clone())
+                            } else {
+                                inner_acc.clone()
+                            }
+                        },
+                    )
+                });
         {
             let __tco_0 = next_queue.clone();
             let __tco_1 = result.in_degree.clone();

@@ -55,6 +55,9 @@ pub(crate) mod materialization_provider_consumer;
 mod phase_profile;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
+
+#[path = "partition_crate_boundary_host.rs"]
+mod partition_crate_boundary_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
@@ -1952,12 +1955,77 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
             );
         }
     };
-    // Aggregate on the full key INCLUDING severity: one class can legitimately occur at both
-    // severities, and folding those together would hide exactly the blocking→advisory demotion
-    // this surface exists to keep visible.
+    CompileDiagnosticCensus::Observed(compile_diagnostic_census_rows(&result.diagnostics))
+}
+
+/// One supplied module of a [`compile_dag_multi_module_fixture`] manifest: the path the compile
+/// sees and the exact bytes at it. Both are AUTHORED BY THE FIXTURE — nothing here is read from
+/// the checkout, which is the whole reason this instrument can answer a question about name
+/// resolution that a corpus-resolved compile cannot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MultiModuleFixtureSource {
+    pub path: String,
+    pub content: String,
+}
+
+/// Outcome of [`compile_dag_multi_module_fixture`]. THE THREE ARMS HAVE THREE DIFFERENT OWNERS
+/// and that is why they are three arms: `InstrumentRefused` is the harness's own fault (a
+/// malformed manifest, an entry naming no supplied module, a panic), `CompileRefused` is the
+/// SUBJECT's fault and carries the compiler's own judgment, and `CompileCompleted` is the subject
+/// passing. Collapsing the first two hands a broken harness the compiler's message — the same
+/// not-applicable-versus-malformed conflation DESIGN records as a recurring failure mode, applied
+/// to the instrument itself.
+///
+/// EXECUTION PROVENANCE IS STRUCTURAL, not a field a caller must remember to read. `Completed`
+/// is constructed at exactly one place — after `emit_resolved_for_target` returned and after the
+/// blocking population was counted — so an unreached or killed compile has no spelling in which
+/// it renders as zero diagnostics. That is the positive-artifact rule moved into the type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MultiModuleCompileFixtureOutcome {
+    InstrumentRefused {
+        cause: String,
+    },
+    CompileRefused {
+        module_count: i64,
+        diagnostics: Vec<CompileDiagnosticCensusRow>,
+        source_digest: String,
+        compiler_digest: String,
+    },
+    CompileCompleted {
+        module_count: i64,
+        emitted_files: Vec<String>,
+        diagnostics: Vec<CompileDiagnosticCensusRow>,
+        source_digest: String,
+        compiler_digest: String,
+    },
+}
+
+/// Structural digest of the supplied manifest — path and content of every module, in the order
+/// the caller supplied them, so a reordering is a different subject and a whitespace edit is a
+/// different subject. Same fnv1a64 authority every other identity key in the seed consumes
+/// (`v1_rt::atom_identity_hash` / `hash_combine`; `std.content_hash` is the modeled surface).
+fn multi_module_fixture_source_digest(sources: &[MultiModuleFixtureSource], entry: &str) -> String {
+    use crate::v1_rt::{atom_identity_hash, hash_combine};
+    let mut h = atom_identity_hash("multi-module-compile-fixture-v1".to_string());
+    h = hash_combine(h, atom_identity_hash(entry.to_string()));
+    for s in sources {
+        h = hash_combine(h, atom_identity_hash(s.path.clone()));
+        h = hash_combine(h, atom_identity_hash(s.content.clone()));
+    }
+    h
+}
+
+/// Aggregate a compile's diagnostics on the full `(class, name, severity)` key. Severity is part
+/// of the key rather than folded away because one class can legitimately occur at both
+/// severities, and folding those together would hide exactly the blocking→advisory demotion these
+/// surfaces exist to keep visible. ONE fold serves both instruments — the census and the
+/// multi-module fixture — so they cannot drift into two diagnostic vocabularies (§3).
+fn compile_diagnostic_census_rows(
+    diagnostics: &im::Vector<Rc<ErrorNode>>,
+) -> Vec<CompileDiagnosticCensusRow> {
     let mut order: Vec<(String, String, bool)> = Vec::new();
     let mut counts: HashMap<(String, String, bool), i64> = HashMap::new();
-    for d in result.diagnostics.iter() {
+    for d in diagnostics.iter() {
         let (class, name) = compile_clean_diagnostic_histogram_key(d);
         let blocking = compile_clean_diagnostic_is_hard(d);
         let key = (class, name, blocking);
@@ -1967,17 +2035,148 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
         }
         *entry += 1;
     }
-    CompileDiagnosticCensus::Observed(
-        order
-            .into_iter()
-            .map(|key| CompileDiagnosticCensusRow {
-                diagnostic_class: key.0.clone(),
-                subject_name: key.1.clone(),
-                blocking: key.2,
-                count: counts.get(&key).copied().unwrap_or(0),
+    order
+        .into_iter()
+        .map(|key| CompileDiagnosticCensusRow {
+            diagnostic_class: key.0.clone(),
+            subject_name: key.1.clone(),
+            blocking: key.2,
+            count: counts.get(&key).copied().unwrap_or(0),
+        })
+        .collect()
+}
+
+/// Host realization backing the `compile_dag_multi_module_fixture` builtin: compile a
+/// CALLER-AUTHORED SET of `.dag` modules through the v1 pipeline to the Rust render target, with
+/// NO corpus roots, NO module index, and no filesystem read of any kind.
+///
+/// WHY THIS EXISTS BESIDE [`compile_dag_diagnostic_census`] RATHER THAN INSIDE IT. The census
+/// takes ONE synthetic module and resolves its imports against
+/// [`build_module_path_index_from_witness_roots`], which walks the live checkout. That makes it
+/// unable to answer any question whose subject is the RELATIONSHIP BETWEEN TWO MODULES — a
+/// cross-module name collision, an import that must not bind, a spelling held by both a local
+/// declaration and a corpus one — because the corpus is always in the pool and the second module
+/// can never be authored. Three lanes hit that wall independently before this instrument existed:
+/// invalid fixtures had to be relocated out of the corpus for want of it, an ambiguity arm was
+/// measured and deleted for want of it, and this repository's own DESIGN names the missing
+/// multi-module compile fixture as the next-rung trigger for the acyclicity class.
+///
+/// CORPUS ISOLATION IS BY CONSTRUCTION, not by a flag. The supplied manifest IS the source vector
+/// handed to `compile_to_resolved_with_options`; there is no code path here that consults a module
+/// index, so a fixture module may reuse a corpus module's spelling and bind its OWN declaration.
+/// That is the property control 5 of the witness pins, and it is what makes the instrument usable
+/// for resolution questions at all.
+///
+/// SCOPE, stated so a receipt cannot claim coverage it does not have (DESIGN §4b): the v1 pipeline
+/// to the Rust render target over an authored multi-module subject. It observes nothing about the
+/// interpreter's disposition of the same program, nothing about other emission targets, and
+/// nothing about corpus-grain prevalence. Unlike the census it does NOT arm
+/// `with_type_ref_hit_ne_bind_measure`: the census arms it to sharpen masked type refs against a
+/// corpus pool this instrument does not have, so arming it here would be a knob with no subject.
+pub fn compile_dag_multi_module_fixture(
+    paths: &[String],
+    contents: &[String],
+    entry: &str,
+) -> MultiModuleCompileFixtureOutcome {
+    if paths.len() != contents.len() {
+        return MultiModuleCompileFixtureOutcome::InstrumentRefused {
+            cause: format!(
+                "compile_dag_multi_module_fixture: manifest is {} paths against {} contents; \
+                 a source is a (path, content) pair and a ragged manifest names no subject",
+                paths.len(),
+                contents.len()
+            ),
+        };
+    }
+    if paths.is_empty() {
+        return MultiModuleCompileFixtureOutcome::InstrumentRefused {
+            cause: "compile_dag_multi_module_fixture: empty manifest — an empty subject compiles \
+                    clean vacuously, which is could-not-measure wearing the subject's verdict"
+                .to_string(),
+        };
+    }
+    let sources: Vec<MultiModuleFixtureSource> = paths
+        .iter()
+        .zip(contents.iter())
+        .map(|(p, c)| MultiModuleFixtureSource {
+            path: p.clone(),
+            content: c.clone(),
+        })
+        .collect();
+    let mut seen: HashSet<&str> = HashSet::new();
+    for s in sources.iter() {
+        if s.path.trim().is_empty() {
+            return MultiModuleCompileFixtureOutcome::InstrumentRefused {
+                cause: "compile_dag_multi_module_fixture: a supplied source has an empty path"
+                    .to_string(),
+            };
+        }
+        if !seen.insert(s.path.as_str()) {
+            return MultiModuleCompileFixtureOutcome::InstrumentRefused {
+                cause: format!(
+                    "compile_dag_multi_module_fixture: path '{}' supplied twice; which bytes are \
+                     at that path is then undecidable and the digest would name neither",
+                    s.path
+                ),
+            };
+        }
+    }
+    if !sources.iter().any(|s| s.path == entry) {
+        return MultiModuleCompileFixtureOutcome::InstrumentRefused {
+            cause: format!(
+                "compile_dag_multi_module_fixture: entry '{entry}' names no supplied source"
+            ),
+        };
+    }
+    let source_digest = multi_module_fixture_source_digest(&sources, entry);
+    let compiler_digest = crate::resolved_graph_cache::transform_content_digest();
+    let files: Vec<Rc<v1_compiler_compile::SourceFile>> = sources
+        .iter()
+        .map(|s| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: s.path.clone(),
+                content: s.content.clone(),
             })
-            .collect(),
-    )
+        })
+        .collect();
+    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(files.into()));
+        let module_count = match resolved.graph.clone() {
+            Some(g) => g.modules.len() as i64,
+            None => 0,
+        };
+        let result = v1_compiler_compile::emit_resolved_for_target(
+            resolved,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        (module_count, result)
+    }));
+    let (module_count, result) = match compiled {
+        Ok(r) => r,
+        Err(_) => {
+            return MultiModuleCompileFixtureOutcome::InstrumentRefused {
+                cause: "compile_dag_multi_module_fixture: the compile panicked before producing \
+                        diagnostics"
+                    .to_string(),
+            };
+        }
+    };
+    let rows = compile_diagnostic_census_rows(&result.diagnostics);
+    if rows.iter().any(|r| r.blocking) {
+        return MultiModuleCompileFixtureOutcome::CompileRefused {
+            module_count,
+            diagnostics: rows,
+            source_digest,
+            compiler_digest,
+        };
+    }
+    MultiModuleCompileFixtureOutcome::CompileCompleted {
+        module_count,
+        emitted_files: result.files.iter().map(|f| f.path.clone()).collect(),
+        diagnostics: rows,
+        source_digest,
+        compiler_digest,
+    }
 }
 
 /// One symbol's binding observation on a declared-import-closure-only compile.
@@ -10129,6 +10328,36 @@ pub enum ClaimOutcome {
         operation: String,
         ground: v1_interpreter::HermeticEffectGround,
     },
+    /// THE HOST UNWOUND. Not a `RuntimeError`: that arm carries an `InterpError` the evaluator
+    /// RAISED and this runner CAUGHT, a value held in hand. A panic is the evaluator failing to
+    /// produce any value at all, and until this arm existed the runner had nowhere to put it.
+    ///
+    /// MEASURED 2026-08-26, by injecting a panic into witness evaluation and running one claim
+    /// through `claim_batch`: the process aborted with exit 101, the identity produced no verdict
+    /// and no terminal row, and the terminal ledger, the expected-red roster join and the
+    /// disposition TSV — all written after the fold — were never written. The line stopped, so
+    /// this was never a fail-open; what it was is a terminal the artifact could not describe.
+    ///
+    /// The control arm of the same measurement is why this is a NEW arm and not a widened one: a
+    /// panic injected INSIDE `compile_dag_diagnostic_census`'s `catch_unwind` was caught there,
+    /// returned `CompileDiagnosticCensus::NotRunnable`, mapped to `-1` by its `.dag` consumer and
+    /// FAILED the witness at exit 1. Could-not-measure already had a home; could-not-run did not.
+    Panicked {
+        payload: String,
+    },
+    /// PLANNED, AND THE FOLD NEVER REACHED IT, because a sibling claim's unwind stopped the line.
+    ///
+    /// A third state beside "ran" and "the floor declined it at admission", and it exists so that
+    /// a stopped fold publishes a ledger over its PLANNED population rather than over the prefix
+    /// that ran. Without it, `stopped at claim 400 of 10439` and `10039 rows quietly missing`
+    /// are the same artifact. `halted_by` is the identity whose panic stopped the line, carried on
+    /// every consequence so the ledger names the cause beside each of them.
+    ///
+    /// This outcome is never produced by evaluation — no claim ever returns it — so it carries no
+    /// receipt and is not counted as an execution. It is a terminal row and nothing else.
+    NotAttempted {
+        halted_by: String,
+    },
 }
 
 /// Which clock a completed claim's cost is judged on. Operator ruling 2026-08-19 (BUDGET
@@ -10232,6 +10461,20 @@ pub enum ClaimTerminality {
         cpu_safety_limit_ms: u64,
         wall_safety_limit_ms: u64,
     },
+    /// THE HOST UNWOUND, so there is no verdict and no interruption — the two arms above are the
+    /// only ones this type had, and a panic is neither. Its own arm rather than a `_` falling
+    /// into `VerdictReached`: that fallthrough would have minted `verdict_reached: true` on the
+    /// cost occurrence for a claim that produced nothing, which is the same wrong-fact defect
+    /// `BudgetRefusedBeforeVerdict` was split to repair one type over.
+    ///
+    /// The clocks are still carried, and they are EXACT rather than a bound — the panic ended the
+    /// evaluation, so the measured cost is the whole of what this claim spent. What they are not
+    /// is a cost judgement: `exceeds_completed_cost_line` answers `false` here, because comparing
+    /// an aborted claim's cost against a completion line answers a question nobody asked.
+    Unwound {
+        observed_cpu_ms: u64,
+        observed_wall_ms: u64,
+    },
 }
 
 /// Two independently derived safety limits, never a scalar copied into both. For a Hermetic
@@ -10296,7 +10539,30 @@ pub fn claim_terminality(
             cpu_safety_limit_ms: policy.cpu_ms,
             wall_safety_limit_ms: policy.wall_ms,
         },
-        _ => ClaimTerminality::VerdictReached {
+        // THE WILDCARD IS DELETED. It stood here as `_ => VerdictReached`, which is correct for
+        // every arm it covered on the day it was written and silently wrong for the first one
+        // added afterwards — `Panicked` would have been reported as having reached a verdict.
+        // Naming the arms makes the next variant a compile error at this seam instead of a
+        // fact the ledger states falsely.
+        ClaimOutcome::Panicked { .. } => ClaimTerminality::Unwound {
+            observed_cpu_ms: (receipt.cpu_nanos / 1_000_000) as u64,
+            observed_wall_ms: (receipt.wall_nanos / 1_000_000) as u64,
+        },
+        // NEVER REACHED IN FACT, and it is an arm rather than an `unreachable!`: nothing
+        // evaluates a not-attempted claim, so no receipt is ever taken for one and this function
+        // is never called with it. An `unreachable!` would be a panic authored inside the very
+        // path that now captures panics.
+        ClaimOutcome::NotAttempted { .. } => ClaimTerminality::Unwound {
+            observed_cpu_ms: 0,
+            observed_wall_ms: 0,
+        },
+        ClaimOutcome::Pass
+        | ClaimOutcome::Fail
+        | ClaimOutcome::NotBool { .. }
+        | ClaimOutcome::RuntimeError { .. }
+        | ClaimOutcome::CompletedOverBudget { .. }
+        | ClaimOutcome::HostToolUnresolved { .. }
+        | ClaimOutcome::HostEffectRefused { .. } => ClaimTerminality::VerdictReached {
             verdict: outcome.clone(),
             observed_cpu_ms: (receipt.cpu_nanos / 1_000_000) as u64,
             observed_wall_ms: (receipt.wall_nanos / 1_000_000) as u64,
@@ -10338,6 +10604,8 @@ pub fn exceeds_completed_cost_line(
             exact > cost_line_ms
         }
         ClaimTerminality::SafetyInterrupted { .. } => false,
+        // An aborted attempt has an exact cost and no completion to judge it against.
+        ClaimTerminality::Unwound { .. } => false,
     }
 }
 
@@ -17576,6 +17844,15 @@ pub enum CiWitnessVerdict {
     /// verdict at all, so rendering it as `FAILED` would assert a verdict that was never
     /// reached, and rendering it as `KNOWN-RED` would assert an agreed failure it never made.
     RouteGap,
+    /// THE HOST UNWOUND UNDER THIS ROW. Its own token because every other arm here describes
+    /// something the claim did, including `RouteGap`'s "produced no verdict" — which is a
+    /// refusal the route DECIDED to return. An unwind decided nothing, and it is the row that
+    /// stops the fold, so the console must not render it as any of the others.
+    Panicked,
+    /// PLANNED, NEVER ATTEMPTED, because a sibling row unwound. Never streamed to the console —
+    /// these rows are minted after the fold — but the vocabulary is total over `ClaimOutcome`,
+    /// so it has a token rather than a hole.
+    NotAttempted,
 }
 
 impl CiWitnessVerdict {
@@ -17591,6 +17868,8 @@ impl CiWitnessVerdict {
             CiWitnessVerdict::HostToolUnresolved => "TOOL-UNRESOLVED",
             CiWitnessVerdict::KnownRed => "KNOWN-RED",
             CiWitnessVerdict::RouteGap => "NO-ROUTE",
+            CiWitnessVerdict::Panicked => "PANICKED",
+            CiWitnessVerdict::NotAttempted => "NOT-ATTEMPTED",
         }
     }
 
@@ -17645,6 +17924,10 @@ impl CiWitnessVerdict {
             // enrolled on is the ROUTE-GAP roster, not the expected-red one, and the row above
             // only short-circuits on `ExpectedRedArm::Held`.
             ClaimOutcome::HostEffectRefused { .. } => CiWitnessVerdict::RouteGap,
+            // ENROLLMENT CANNOT DRESS THESE AS KNOWN-RED EITHER: the short-circuit above fires
+            // only on `ExpectedRedArm::Held`, and neither of these reaches that arm.
+            ClaimOutcome::Panicked { .. } => CiWitnessVerdict::Panicked,
+            ClaimOutcome::NotAttempted { .. } => CiWitnessVerdict::NotAttempted,
         }
     }
 }
@@ -17678,7 +17961,9 @@ pub fn render_witness_claim_result_text_mirror(
         | CiWitnessVerdict::HostToolUnresolved
         | CiWitnessVerdict::KnownRed
         | CiWitnessVerdict::PassedOverBudget
-        | CiWitnessVerdict::RouteGap => String::new(),
+        | CiWitnessVerdict::RouteGap
+        | CiWitnessVerdict::Panicked
+        | CiWitnessVerdict::NotAttempted => String::new(),
     };
     format!(
         "{padded}{token} in {}{cause}",
@@ -19259,13 +19544,58 @@ mod witness_execution_leg_derivation_tests {
     }
 }
 
+/// THE UNWIND BOUNDARY. `catch_unwind` sits here, around the evaluation and nothing else, because
+/// this is the seam that already turns "what the evaluator did" into "which terminal the claim
+/// reached" — every other non-verdict is classified on the lines below, and a panic classified
+/// anywhere else would be a second authority for the same question.
+///
+/// IT DOES NOT LICENSE CONTINUING. Capturing the payload lets the runner name the identity and
+/// publish its ledger; the fold above still stops (operator ruling, 2026-08-26). Every other
+/// non-verdict here is a state the producer DECIDED to return, so the process's invariants held
+/// and the next claim starts from a known state; a panic is an invariant violated at an unknown
+/// place, and a later row measured after it would carry an unstated precondition that no row can
+/// express. Continuing would manufacture exactly the execution-provenance conflation this floor
+/// exists to prevent — a green row after an unwind and a green row before it rendering alike.
+///
+/// The default hook still prints the panic and its location to stderr before this returns, so the
+/// unwind stays as loud as it was; what changes is that it now also becomes a value.
+fn run_claim_evaluation(
+    ctx: &v1_interpreter::InterpContext,
+    function: &str,
+) -> Result<v1_interpreter::InterpResult<v1_interpreter::Value>, String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        v1_interpreter::run_in_context(ctx, function, false)
+    }))
+    .map_err(|payload| panic_payload_text(&payload))
+}
+
+/// The payload a panic carried, as text. `panic!("…")` and `panic!("{x}")` produce `&str` and
+/// `String` respectively and nothing else does in this crate; an unrecognised payload type is
+/// named as such rather than rendered as an empty message, because a blank detail field would
+/// read as "the panic said nothing" when the truth is "this runner could not read what it said".
+fn panic_payload_text(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&'static str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "panic payload is not a string; see the panic hook's stderr line for the message and \
+         location"
+            .to_string()
+    }
+}
+
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {
     // ProcessExit is the wet-gate return convention (ExitSuccess => Pass, ExitFailure => Fail).
     // NotProcessExit stays NotBool — fail-closed preserved for genuine type errors. Reuses
     // pre-existing classify_exit. Required: emitted pre-push drift --wet gate runs through
     // claim_batch -> run_claim; without this mapping ExitSuccess -> exit 1 false-blocks push
     // (receipt: claim_batch rebuilt on reverted seed reproduced the false-block).
-    match v1_interpreter::run_in_context(ctx, function, false) {
+    let evaluated = match run_claim_evaluation(ctx, function) {
+        Ok(result) => result,
+        Err(payload) => return ClaimOutcome::Panicked { payload },
+    };
+    match evaluated {
         Ok(v1_interpreter::Value::Bool(true)) => ClaimOutcome::Pass,
         Ok(v1_interpreter::Value::Bool(false)) => ClaimOutcome::Fail,
         Ok(other) => match classify_exit(&other, ctx) {
@@ -19470,6 +19800,17 @@ enum ExpectedRedArm {
     /// Enrolled and ANSWERED WITH SOMETHING THAT IS NOT A VERDICT. Same reason again — a
     /// non-Bool observation is unreadable as agreement or disagreement.
     ObservationUnreadable,
+    /// Enrolled and the HOST UNWOUND, or enrolled and never attempted because a sibling's
+    /// unwind stopped the fold. Same reason as the three arms above, taken to its limit: there
+    /// is no verdict, so there is nothing for the enrollment to hold.
+    ///
+    /// QUIET, NOT DEAD. The fold breaks on a panic BEFORE reaching the expected-red join, so
+    /// nothing lands here today, and a not-attempted row is minted after the fold and never
+    /// classified at all. It is an arm rather than an `unreachable!` because the mechanism that
+    /// produces the outcome exists and only the ORDER of two blocks keeps it from arriving —
+    /// a guard being quiet is not a guard being dead, and an `unreachable!` here would author a
+    /// panic inside the path that exists to capture panics.
+    Aborted,
     /// Enrolled, PASSED, and then reclassified because its exact cost exceeded the budget.
     ///
     /// This arm exists because the row is true on two axes at once and the other three arms
@@ -19633,6 +19974,13 @@ pub enum ClaimDisposition {
     HostToolUnresolvedBeforeVerdict,
     RouteGapBeforeVerdict,
     RuntimeErroredBeforeVerdict,
+    /// THE HOST UNWOUND UNDER THIS CLAIM. Mirrors `v2.workflow.floor_terminal_ledger`'s arm of
+    /// the same name; the wire comparator requires the two mappings to agree per row.
+    PanickedBeforeVerdict,
+    /// PLANNED, AND THE FOLD STOPPED BEFORE IT. Not a decline — the floor admitted it — and not
+    /// an execution. Its own arm so a stopped fold's ledger states what happened to the
+    /// population behind the unwind instead of omitting it.
+    NotAttemptedAfterAbort,
     ObservationUnreadableBeforeVerdict,
 }
 
@@ -19670,6 +20018,10 @@ pub fn claim_disposition(row: &ClaimTerminalRow) -> ClaimDisposition {
             ClaimDisposition::HostToolUnresolvedBeforeVerdict
         }
         (ClaimOutcome::HostEffectRefused { .. }, _) => ClaimDisposition::RouteGapBeforeVerdict,
+        // EXPECTATION IS NOT CONSULTED, for the reason the two arms above already state: an
+        // enrollment asserts an expected VERDICT, and a claim whose host unwound produced none.
+        (ClaimOutcome::Panicked { .. }, _) => ClaimDisposition::PanickedBeforeVerdict,
+        (ClaimOutcome::NotAttempted { .. }, _) => ClaimDisposition::NotAttemptedAfterAbort,
     }
 }
 
@@ -19696,6 +20048,8 @@ pub fn claim_terminal_tag(outcome: &ClaimOutcome) -> &'static str {
         ClaimOutcome::CompletedOverBudget { .. } => "passed-over-budget",
         ClaimOutcome::HostToolUnresolved { .. } => "host-tool-unresolved",
         ClaimOutcome::HostEffectRefused { .. } => "route-gap",
+        ClaimOutcome::Panicked { .. } => "panicked",
+        ClaimOutcome::NotAttempted { .. } => "not-attempted",
     }
 }
 
@@ -19715,6 +20069,8 @@ pub fn claim_terminal_detail(outcome: &ClaimOutcome) -> String {
         | ClaimOutcome::CompletedOverBudget { kind, .. } => kind.label().to_string(),
         ClaimOutcome::HostToolUnresolved { name, .. } => name.clone(),
         ClaimOutcome::HostEffectRefused { operation, .. } => operation.clone(),
+        ClaimOutcome::Panicked { payload } => payload.clone(),
+        ClaimOutcome::NotAttempted { halted_by } => halted_by.clone(),
     }
 }
 
@@ -19729,6 +20085,8 @@ pub fn claim_disposition_wire(disposition: ClaimDisposition) -> &'static str {
         ClaimDisposition::HostToolUnresolvedBeforeVerdict => "host-tool-unresolved-before-verdict",
         ClaimDisposition::RouteGapBeforeVerdict => "route-gap-before-verdict",
         ClaimDisposition::RuntimeErroredBeforeVerdict => "runtime-errored-before-verdict",
+        ClaimDisposition::PanickedBeforeVerdict => "panicked-before-verdict",
+        ClaimDisposition::NotAttemptedAfterAbort => "not-attempted-after-abort",
         ClaimDisposition::ObservationUnreadableBeforeVerdict => {
             "observation-unreadable-before-verdict"
         }
@@ -19763,6 +20121,9 @@ fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
         ClaimOutcome::NotBool { .. } => ExpectedRedArm::ObservationUnreadable,
         ClaimOutcome::HostToolUnresolved { .. } => ExpectedRedArm::HostToolUnresolved,
         ClaimOutcome::HostEffectRefused { .. } => ExpectedRedArm::HostEffectRefused,
+        ClaimOutcome::Panicked { .. } | ClaimOutcome::NotAttempted { .. } => {
+            ExpectedRedArm::Aborted
+        }
     }
 }
 
@@ -22186,6 +22547,25 @@ pub fn project_witness_cost_receipt(
                         str_value(format!(
                             "hermetic route has no arm for {operation} ({})",
                             hermetic_effect_ground_label(ground)
+                        )),
+                    ));
+                    "witness_cost_seed_refused_event"
+                }
+                // AN UNWIND IS A REFUSAL EVENT, NOT A FAILED ONE. `failed` carries a semantic
+                // verdict the claim reached; neither of these reached one, so they take the
+                // refused constructor with the fact that distinguishes them as the diagnostic.
+                ClaimOutcome::Panicked { payload } => {
+                    args.push((
+                        Some("diagnostic".to_string()),
+                        str_value(format!("panicked during evaluation: {payload}")),
+                    ));
+                    "witness_cost_seed_refused_event"
+                }
+                ClaimOutcome::NotAttempted { halted_by } => {
+                    args.push((
+                        Some("diagnostic".to_string()),
+                        str_value(format!(
+                            "planned and never attempted; {halted_by} panicked and stopped the fold"
                         )),
                     ));
                     "witness_cost_seed_refused_event"
@@ -28069,6 +28449,23 @@ fn run_discovery_rows(
                 kind.label(),
                 elapsed_ms,
                 budget_ms
+            )),
+            // THIS PATH DOES NOT STOP THE LINE ON AN UNWIND THE WAY THE REQUIRED FLOOR DOES, and
+            // the difference is deliberate rather than an oversight: discovery runs rows across
+            // worker threads with no single ordered fold to halt, and a `NotAttempted` population
+            // here would have no ledger to be published into. What it does have is the same
+            // obligation not to render an unwind as a witness answering false, so it goes to
+            // `failures` naming what happened. The floor's stronger treatment is the floor's.
+            ClaimOutcome::Panicked { payload } => summary.failures.push(format!(
+                "{} ({}) PANICKED during evaluation: {}. The host unwound, so this is not a \
+                 verdict and not a runtime error the evaluator raised.",
+                row.function, row.entry, payload
+            )),
+            // Never produced on this path — nothing here mints not-attempted rows — and named
+            // rather than wildcarded so a future producer cannot arrive silently.
+            ClaimOutcome::NotAttempted { halted_by } => summary.failures.push(format!(
+                "{} ({}) was published as not-attempted behind {}, which this path never mints",
+                row.function, row.entry, halted_by
             )),
         }
     }
@@ -44227,6 +44624,8 @@ fn witness_execution_outcome_label(outcome: &ClaimOutcome) -> &'static str {
         ClaimOutcome::CompletedOverBudget { .. } => "completed_over_budget",
         ClaimOutcome::HostToolUnresolved { .. } => "host_tool_unresolved",
         ClaimOutcome::HostEffectRefused { .. } => "host_effect_refused",
+        ClaimOutcome::Panicked { .. } => "panicked",
+        ClaimOutcome::NotAttempted { .. } => "not_attempted",
     }
 }
 
@@ -44345,6 +44744,11 @@ pub struct RequiredFloorOutcome {
     pub claims_planned: usize,
     pub claims_executed: usize,
     pub receipt_identities: usize,
+    /// PLANNED, AND THE FOLD STOPPED BEFORE REACHING THEM, because a claim's evaluation unwound.
+    /// Counted rather than left as the difference between two other numbers: `planned - executed`
+    /// is also what a narrowed roster looks like, and this floor's whole purpose is that the two
+    /// never render alike. Zero on every run that does not panic.
+    pub not_attempted_after_abort: usize,
     pub passed: usize,
     /// Enrolled expected-red identities that failed exactly as enrolled. Deliberately its own
     /// field rather than folded into `passed`: agreement about a failure is not a passing
@@ -44716,6 +45120,19 @@ fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
     //                                     fold, and no amount of retention work here fixes it.
     //   pgmajfault rises, pswpin flat  -> file-backed mapping churn. That IS local to the fold
     //                                     and is a defect this lane owns.
+    //   BOTH FLAT                      -> QUIET. Nothing is happening. This is a THIRD state
+    //                                     and it is NOT the churn arm above.
+    //
+    // The third arm is written down because the two-arm form above was implemented faithfully
+    // by two independent readers and both classified zero-and-zero as mapping churn -- 26
+    // intervals in one reading, 6 in the other -- which inverts the conclusion, since churn is
+    // a defect this lane owns and quiet is the absence of one.
+    //
+    // The structural reason both landed there: `pgmajfault rises` and `pswpin flat` are two
+    // conditions, and only their CONJUNCTION is churn. Zero-and-zero satisfies the second and
+    // not the first, so a reader matching on the cheaper condition alone selects churn for it.
+    // Stated as an observation about THIS rule and these two readings -- not a claim about what
+    // any future reader will do, which two readers cannot establish.
     //
     // Deliberately host-wide rather than cgroup-scoped: /proc/vmstat is not namespaced, and
     // host-level swap is precisely the thing a cgroup-scoped counter cannot see. That is also
@@ -46098,6 +46515,7 @@ pub fn run_required_floor(
         claims_planned,
         claims_executed: 0,
         receipt_identities: 0,
+        not_attempted_after_abort: 0,
         passed: 0,
         known_red_held: 0,
         route_gap_held: 0,
@@ -46179,6 +46597,8 @@ pub fn run_required_floor(
     let mut scope_module_total: usize = 0;
     let mut scope_module_max: usize = 0;
     let mut terminal_rows: Vec<ClaimTerminalRow> = Vec::new();
+    // `Some(identity)` exactly when a claim's evaluation unwound and stopped the fold.
+    let mut halted_by: Option<String> = None;
     let mut known_red_held: usize = 0;
     let mut known_red_now_passing: usize = 0;
     let mut known_red_budget_refused: usize = 0;
@@ -46389,15 +46809,61 @@ pub fn run_required_floor(
         // to be forgotten. And every row is an executing claim with a receipt, so nothing in
         // here reads as covered when it is not.
         let expected_red = expected_red_roster.contains(claim.qualified.as_str());
+        // THE LINE STOPS HERE, ahead of every branch below it.
+        //
+        // BREAKING RATHER THAN CONTINUING IS THE RULING (operator, 2026-08-26), and the argument
+        // is not caution. Every other non-verdict in this fold is a state the producer DECIDED to
+        // return, so the process's invariants held and the next claim starts from a known state;
+        // a panic is an invariant violated at an unknown place, and every row measured after it
+        // would carry an unstated precondition — measured after an unwind of unknown extent —
+        // that no row in this ledger can express. A green row after the unwind and a green row
+        // before it would render identically, which is the execution-provenance conflation this
+        // artifact exists to prevent. DESIGN §5's factory model settles the direction: a deficit
+        // stops the line, and the stopped-line audit reports rather than greens.
+        //
+        // ITS TERMINAL ROW IS MINTED HERE rather than at the shared site below, because breaking
+        // skips that site. The identity is therefore IN the ledger, and where the rows end is not
+        // something a reader has to infer.
+        //
+        // AHEAD OF THE EXPECTED-RED JOIN, deliberately: a panic is not the enrolled failure, so
+        // it must not reach an arm that could hold it — the same rule this fold already applies
+        // to a runtime error, a budget interruption, an unresolved host tool and a route gap.
+        // ONE CONSEQUENCE IS DECLARED RATHER THAN HIDDEN: an ENROLLED identity that panics never
+        // reaches `record_observed`, so the expected-red roster join reports it as
+        // `NotEvaluated { reason: "not_observed" }`. The DISPOSITION is exactly right — no
+        // verdict was observed — and the REASON is generic where "panicked" would be specific.
+        // Naming the cause there needs a `Panicked` arm on `WitnessEvalVerdict`, which is a
+        // GENERATED carrier (`src/v1/expected_red_roster_join.dag` → its committed mirror), so it
+        // lands with that module's next regeneration and not by hand here. The cause is not lost
+        // meanwhile: the terminal ledger carries it as the row's detail, and `failures` names it.
+        if let ClaimOutcome::Panicked { payload } = &result {
+            terminal_rows.push(ClaimTerminalRow {
+                qualified: claim.qualified.clone(),
+                expected_red,
+                outcome: result.clone(),
+            });
+            outcome.failures.push(format!(
+                "{} PANICKED during evaluation: {payload}. This is not a verdict and not a \
+                 runtime error the evaluator raised — the host unwound, so the claim produced \
+                 nothing to judge. The fold STOPS here: every later row would be measured in a \
+                 process that unwound through an unknown place, and no row could say so. Every \
+                 planned identity behind this one is published as a not-attempted row naming \
+                 this identity as what halted the line.",
+                claim.qualified
+            ));
+            halted_by = Some(claim.qualified.clone());
+            break;
+        }
         if expected_red {
             expected_red_seen.insert(claim.qualified.clone());
             if let Some(ref mut join) = roster_join_report {
-                let verdict = witness_eval_verdict_from_claim_outcome(&result);
-                *join = crate::v1_compiler_expected_red_roster_join::record_observed(
-                    join.clone(),
-                    claim.qualified.clone(),
-                    std::rc::Rc::new(verdict),
-                );
+                if let Some(verdict) = witness_eval_verdict_from_claim_outcome(&result) {
+                    *join = crate::v1_compiler_expected_red_roster_join::record_observed(
+                        join.clone(),
+                        claim.qualified.clone(),
+                        std::rc::Rc::new(verdict),
+                    );
+                }
             }
         }
         // ONE ROW PER PLANNED IDENTITY, MINTED HERE BECAUSE THIS IS THE ONLY POINT BEFORE THE
@@ -46623,6 +47089,21 @@ pub fn run_required_floor(
                     known_red_held += 1;
                     continue;
                 }
+                // QUIET, NOT DEAD — see `ExpectedRedArm::Aborted`. The fold breaks on a panic
+                // above this match, so nothing reaches here today; if a future edit reorders
+                // those two blocks this reports the fact rather than holding the enrollment on
+                // a claim that produced no verdict, which is the absorption every arm above
+                // exists to refuse.
+                ExpectedRedArm::Aborted => {
+                    outcome.failures.push(format!(
+                        "{} is enrolled as expected-red and its attempt was ABORTED (the host \
+                         unwound, or the fold had already stopped). Enrollment asserts an \
+                         expected verdict; an aborted attempt produced none, so this is not the \
+                         enrolled failure.",
+                        claim.qualified
+                    ));
+                    continue;
+                }
             }
         }
         match result {
@@ -46721,9 +47202,57 @@ pub fn run_required_floor(
                  FAILURE this row does not exhibit.",
                 claim.qualified
             )),
+            // NEITHER REACHES THIS MATCH, and both are named rather than wildcarded. A panic
+            // breaks the loop above this point, and a not-attempted row is minted after the loop
+            // and never classified here at all. Naming them keeps this match total over the
+            // outcome vocabulary, so a future arm cannot arrive through a `_` that reports it as
+            // one of the classes above.
+            ClaimOutcome::Panicked { payload } => outcome.failures.push(format!(
+                "{} PANICKED and reached the post-loop classification, which is unreachable \
+                 while the fold breaks on a panic: {payload}",
+                claim.qualified
+            )),
+            ClaimOutcome::NotAttempted { halted_by } => outcome.failures.push(format!(
+                "{} was classified as not-attempted inside the fold (halted_by={halted_by}), \
+                 which only mints such rows after it",
+                claim.qualified
+            )),
         }
     }
     outcome.receipt_identities = receipted.len();
+    // THE LEDGER IS PUBLISHED OVER THE PLANNED POPULATION, NEVER OVER THE PREFIX THAT RAN.
+    //
+    // A stopped fold that simply ended would publish a short ledger, and a short ledger is
+    // indistinguishable from a narrowed roster: `stopped at claim 400 of 10439` and `10039 rows
+    // quietly missing` are the same artifact. So every planned identity the fold never reached
+    // gets its own terminal, naming the identity whose unwind halted the line. These rows are NOT
+    // executions — nothing evaluated them, they hold no receipt, and `claims_executed` is
+    // deliberately not incremented for them — which is why the count check below compares
+    // `planned` against `executed + not_attempted` rather than against `executed` alone.
+    if let Some(halted) = halted_by.clone() {
+        let reached: HashSet<String> = terminal_rows
+            .iter()
+            .map(|row| row.qualified.clone())
+            .collect();
+        for claim in claims.iter() {
+            if reached.contains(&claim.qualified) {
+                continue;
+            }
+            terminal_rows.push(ClaimTerminalRow {
+                qualified: claim.qualified.clone(),
+                expected_red: expected_red_roster.contains(claim.qualified.as_str()),
+                outcome: ClaimOutcome::NotAttempted {
+                    halted_by: halted.clone(),
+                },
+            });
+            outcome.not_attempted_after_abort += 1;
+        }
+        eprintln!(
+            "[floor-abort] {} halted the fold; {} planned identity(ies) were never attempted \
+             and are published as not-attempted rows naming it",
+            halted, outcome.not_attempted_after_abort
+        );
+    }
     // THE FOLD IS OVER, so nothing after this point is any witness's cost. Cleared before the
     // report is rendered rather than after, so a gate that fills a cache on its way out cannot
     // be charged to the last row that happened to run.
@@ -46888,12 +47417,48 @@ pub fn run_required_floor(
     // row — and separating them would ask the reader to learn two names for it. An identity
     // that executed and did not gap, and an identity that did not execute at all (renamed,
     // deleted, or declined), are distinguished in the message rather than in the mechanism.
+    // EVERY REVERSE JOIN BELOW IS SUSPENDED WHEN THE FOLD HALTED, AND THIS IS THE ONE PREDICATE
+    // THAT DECIDES IT. A reverse join asks "is every enrolled identity still executing", and it
+    // answers by subtracting what was OBSERVED from the roster. That subtraction is sound only
+    // when the observation ran over the whole routed roster. After a halting panic it ran over a
+    // PREFIX, so an enrolled identity in the unrun suffix is not stale — it is NOT-ATTEMPTED, and
+    // this run has exactly one row for it saying so. Answering "stale, delete the row" over a
+    // truncated denominator is the empty-observation narrow DESIGN names: ⊥-as-ignorance
+    // ("nothing observed it") rendered as ⊥-as-answer ("nothing exercises it"), and its remedy —
+    // delete the roster row — is the opposite of the correct one.
+    //
+    // THIS DOES NOT FAIL OPEN, and the ordering is the reason it does not. The panic itself is
+    // already in `outcome.failures`, and `required_floor_outcome_is_clean` is false whenever that
+    // is non-empty, so the run refuses either way; what changes is WHICH refusal it carries and
+    // whether the ledger is reached. Before this predicate the truncated join returned `Err`
+    // ahead of publication, so a halted run refused with `ExpectedRedIdentityDidNotExecute` —
+    // naming rows that are fine — and published NO ledger, which is precisely the artifact the
+    // halt exists to produce. The line still stops; the stopped-line audit now survives it.
+    let reverse_joins_answerable = halted_by.is_none();
+    if !reverse_joins_answerable {
+        eprintln!(
+            "[floor-halt] reverse roster joins SUSPENDED: the fold halted at {}, so the observed \
+             population is a prefix of the routed roster and staleness is not decidable over it. \
+             expected_red_roster={} route_gap_roster={} non_verdict_roster={} not_attempted={}. \
+             The run refuses on the panic; every unrun enrolled identity carries a not-attempted \
+             terminal row rather than a staleness verdict.",
+            halted_by.as_deref().unwrap_or(""),
+            expected_red_roster.len(),
+            route_gap_roster.len(),
+            non_verdict_roster.len(),
+            outcome.not_attempted_after_abort
+        );
+    }
     // ONE DECISION POINT, TAKEN AFTER THE FOLD, over the two identity sets. The arms above only
     // RECORD what they observed; nothing there decides admission, so there is no second place
     // where the rule could drift from the one written in
     // `v2.workflow.floor_non_verdict_admission`.
     {
         let admission = non_verdict_admission(&non_verdict_seen, &non_verdict_roster);
+        // `added` STAYS ARMED ON A HALT, and the asymmetry with `repaid` below is the whole
+        // content of the predicate. `added` is a FORWARD observation — this identity RAN and
+        // produced no verdict — so it is decidable over the prefix and suppressing it would hide
+        // an observed failure. `repaid` is the reverse question, and it is not.
         for identity in &admission.added {
             let detail = non_verdict_detail
                 .get(identity)
@@ -46911,7 +47476,7 @@ pub fn run_required_floor(
         // REFUSED, NOT MERELY REPORTED. A repaid row left standing is a live exemption: the
         // identity is fixed today, and if it regresses tomorrow it is already rostered and the
         // wall admits it. So repayment and roster deletion are one act.
-        for identity in &admission.repaid {
+        for identity in admission.repaid.iter().filter(|_| reverse_joins_answerable) {
             let ran = receipted.contains(identity.as_str());
             outcome.stale_non_verdict.push(if ran {
                 format!(
@@ -46933,7 +47498,7 @@ pub fn run_required_floor(
     {
         let mut stale: Vec<&String> = route_gap_roster
             .iter()
-            .filter(|q| !route_gap_seen.contains(*q))
+            .filter(|q| reverse_joins_answerable && !route_gap_seen.contains(*q))
             .collect();
         stale.sort();
         for identity in stale {
@@ -46968,7 +47533,7 @@ pub fn run_required_floor(
     let expected_red_missing: Vec<&String> = {
         let mut missing: Vec<&String> = expected_red_roster
             .iter()
-            .filter(|q| !expected_red_seen.contains(*q))
+            .filter(|q| reverse_joins_answerable && !expected_red_seen.contains(*q))
             .collect();
         missing.sort();
         missing
@@ -46996,7 +47561,14 @@ pub fn run_required_floor(
     // not be added quietly, and it is why this invariant is worth more than the six names in it.
     // The three-outcome roster join relaxes this to still_red | now_passes | not_evaluated and
     // is the authority for pruning — not the failure-log subset.
+    // THE PARTITION SUM IS SUSPENDED ON A HALT FOR THE SAME REASON, and it is a stronger case
+    // than the joins above rather than a weaker one: the sum's premise is stated in its own
+    // comment — "with the reverse join above, every enrolled identity was observed exactly once".
+    // A halted fold observes a prefix, so the premise is false by construction and the arms
+    // cannot sum to the roster. Left armed it would refuse with `ExpectedRedPartitionInexact`,
+    // ahead of publication, over an inexactness the halt guarantees.
     if !roster_join_only
+        && reverse_joins_answerable
         && known_red_held
             + known_red_now_passing
             + known_red_budget_refused
@@ -47044,14 +47616,18 @@ pub fn run_required_floor(
     // for a reader to compare. A run that planned more claims than it executed has silently
     // narrowed, which is the failure this whole path exists to make unwritable; reporting the
     // pair and letting a human notice is exactly how the deferred bucket survived.
-    if outcome.claims_planned != outcome.claims_executed
+    if outcome.claims_planned != outcome.claims_executed + outcome.not_attempted_after_abort
         || outcome.claims_executed != outcome.receipt_identities
     {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ClaimIdentityCountsDisagree planned={} executed={} \
-             receipted={} — every planned claim must execute and every execution must land one \
-             receipt identity; a gap here is a narrowed roster reported as a roster",
-            outcome.claims_planned, outcome.claims_executed, outcome.receipt_identities
+             not_attempted={} receipted={} — every planned claim must either execute or be \
+             published as not-attempted behind a halting panic, and every execution must land \
+             one receipt identity; a gap here is a narrowed roster reported as a roster",
+            outcome.claims_planned,
+            outcome.claims_executed,
+            outcome.not_attempted_after_abort,
+            outcome.receipt_identities
         ));
     }
     // THE CONSUMER. Reconciliation is an IDENTITY JOIN, and the counts above cannot replace it.
@@ -47637,10 +48213,20 @@ mod required_floor_disposition_and_storage_agreement_law {
     }
 }
 
+/// `None` for an outcome the roster-join's GENERATED verdict vocabulary cannot yet spell.
+///
+/// The option is not a convenience and it is not a default: `WitnessEvalVerdict` is emitted from
+/// `src/v1/expected_red_roster_join.dag`, so a new arm there is a regeneration rather than an edit
+/// here, and the two outcomes below have no honest existing arm to borrow. Returning `None` says
+/// "this seed cannot state this verdict in that vocabulary", which the caller records by NOT
+/// recording — leaving the roster join's own `NotEvaluated { reason: "not_observed" }`, whose
+/// disposition is exactly right and whose reason is generic. Borrowing `RuntimeError` to carry a
+/// panic instead would have published a specific claim that is false, which is strictly worse
+/// than a true claim that is coarse.
 fn witness_eval_verdict_from_claim_outcome(
     outcome: &ClaimOutcome,
-) -> crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict {
-    match outcome {
+) -> Option<crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict> {
+    Some(match outcome {
         ClaimOutcome::Pass => {
             crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::Passed
         }
@@ -47693,7 +48279,9 @@ fn witness_eval_verdict_from_claim_outcome(
             kind: kind.label().to_string(),
             completion: crate::v1_compiler_expected_red_roster_join::BudgetVerdictCompletion::CompletedOverBudget,
         },
-    }
+        // NO ARM EXISTS FOR THESE IN THE GENERATED VOCABULARY — see this function's own comment.
+        ClaimOutcome::Panicked { .. } | ClaimOutcome::NotAttempted { .. } => return None,
+    })
 }
 
 pub use required_regen_host::{pass1_digest_for_fixed_point, FirstGeneration};
@@ -47716,6 +48304,16 @@ pub fn run_required_regen_fixed_point(
 /// producer the regen path uses -- so the bytes a behavioural receipt compiles are the bytes
 /// regen compared. A second emit here would be a second producer of the candidate itself.
 pub use required_regen_host::emitted_generated_sources;
+
+/// The derived stage0 partition's crate boundary files, produced from the authority.
+///
+/// Re-exported here rather than reached directly so every required phase addresses the
+/// producer through one surface, the way the regen path does.
+pub use partition_crate_boundary_host::{
+    compile_partition_crates, partition_package_names, run_partition_crate_boundary,
+    BoundaryFileDisposition, PartitionCompileOutcome, PartitionCrateBoundaryOutcome,
+    RenderedBoundaryFile, PARTITION_CRATE_PRODUCING_COMMAND,
+};
 
 /// The authority's own declared module path, for consumers outside this module.
 ///
