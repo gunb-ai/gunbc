@@ -9,7 +9,7 @@ fn sg_collection_free_monoid_node_source_type() -> Node {
       Edge { label: Positional, target: target_carrier_free_monoid_node() },
       Edge { label: Positional, target: target_carrier_node_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

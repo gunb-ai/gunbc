@@ -1,5 +1,6 @@
 module v2.test.emit.semantic_decl_routing_generic
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.rust { rust_target_model }
 import extdeps.languages.rust.emit { rust_enum_derives, rust_struct_derives }
@@ -7,7 +8,7 @@ import std.algebra { Empty }
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.node { Atom, Conj, Disj, Edge, Named, Node, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -23,7 +24,7 @@ data semantic_pair_golden: String = concat(rust_struct_derives, "\nstruct Pair<K
 data semantic_pair_wrong_golden: String = concat(rust_struct_derives, "\nstruct Pair<K, V> { value: V, key: K }")
 
 fn sdrg_atom_type(name: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
 fn sdrg_field_edge(name: Symbol, type_name: Symbol) -> Edge {
@@ -31,7 +32,7 @@ fn sdrg_field_edge(name: Symbol, type_name: Symbol) -> Edge {
 }
 
 fn sdrg_record(edges: List<Edge>) -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: edges, occurrence_id: SyntheticOccurrence }
+  Node { kind: TypeNode { connective: Conj }, children: edges, occurrence_id: OccurrenceSynthetic }
 }
 
 fn sdrg_variant_edge(name: Symbol, payload: Node) -> Edge {
@@ -45,7 +46,7 @@ fn semantic_witness_coproduct() -> Node {
       sdrg_variant_edge(name: ^Holds, payload: sdrg_record(edges: [ sdrg_field_edge(name: ^value, type_name: ^C) ])),
       sdrg_variant_edge(name: ^Violates, payload: sdrg_record(edges: [ sdrg_field_edge(name: ^diagnostic, type_name: ^Diagnostic) ]))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

@@ -1,5 +1,6 @@
 module v2.test.lens_determinism.reach_witness
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.determinism { determinism_axis_for_node, determinism_contract_witness, determinism_compile_gate }
 import std.determinism { Determinism, Deterministic, NonDeterministic }
 import std.primitive_identity {
@@ -26,9 +27,8 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  SyntheticOccurrence,
   Transform,
-  TypeNode
+  TypeNode,
 }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.logic { Bool }
@@ -41,7 +41,7 @@ fn det_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -53,7 +53,7 @@ fn det_call(callee: Symbol, arg: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [det_positional(target: det_atom(id: callee)), det_positional(target: arg)],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

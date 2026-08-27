@@ -12,7 +12,7 @@ type LensComplexityClaim {
 data while_loop_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^while_loop_body_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data while_external_condition_input: Node = Node {
@@ -20,7 +20,7 @@ data while_external_condition_input: Node = Node {
   children: [
     Edge { label: Positional, target: while_loop_body_leaf }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data while_external_condition_loop_bound_diagnostic: Diagnostic = Diagnostic {

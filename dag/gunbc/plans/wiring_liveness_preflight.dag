@@ -1,7 +1,7 @@
 module gunbc.plans.wiring_liveness_preflight
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
 
@@ -65,6 +65,7 @@ fn wiring_liveness_preflight_body() -> List<MarkdownBlock> {
 }
 
 data wiring_liveness_preflight_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "wiring-liveness-preflight",
   title: "Plan — wiring-liveness: the input→output dependence oracle + the execution preflight",
   body: wiring_liveness_preflight_body(),

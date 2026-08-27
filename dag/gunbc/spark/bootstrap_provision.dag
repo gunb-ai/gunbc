@@ -14,6 +14,7 @@ import extdeps.cloud.gcp.secret_manager {
   secret_manager_effect_required_permissions
 }
 
+import std.types { List, String, Int, NonEmptyStr }
 import product.placement_supply { HostIdentity }
 import v2.std.operation_argv { OperationRef }
 import std.measure { Second, second }

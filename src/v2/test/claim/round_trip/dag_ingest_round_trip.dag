@@ -27,7 +27,7 @@ fn dag_round_trip_input_node() -> Node {
         target: dag_round_trip_bool_node(pass: dag_round_trip_trivia_fidelity_resolved())
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
