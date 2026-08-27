@@ -5,7 +5,7 @@ import v2.std.algebra { any, count_where, filter, length }
 import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic, Outcome, outcome_accepted, outcome_rejected, textual_whole_file_diagnostic, Correction, Unavailable, NoCorrectionReason, ExternalContractUnknown }
 import v2.std.logic { Bool }
-import v2.std.node { Symbol }
+import std.content_hash { Fnv1a64Structural, content_hash_eq_structural }
 import v2.std.text { String }
 import v2.std.integer { Int }
 
@@ -40,13 +40,13 @@ type ProductKind
 // artifacts, so a pathname match is not an identity match and diagnostics keyed on
 // `code @ basename : line : col` cannot be joined across entries at all.
 type EmittedMemberIdentity {
-  entry: Symbol
+  entry: String
   source_module: String
-  target_filename: Symbol
-  member_digest: Symbol
-  linkage_surface_digest: Symbol
-  instrument_vintage: Symbol
-  members: List<Symbol>
+  target_filename: String
+  member_digest: Fnv1a64Structural
+  linkage_surface_digest: Fnv1a64Structural
+  instrument_vintage: String
+  members: List<String>
 }
 
 // THE JOIN KEY IS THE DOTTED AUTHORED NAME, NEVER THE TARGET FILENAME, AND THE TWO ARE CARRIED
@@ -71,10 +71,23 @@ type EmittedMemberIdentity {
 // file. Reconstructing either from the other would be a derivation standing beside the fact it
 // derives.
 //
-// The identity is a String rather than a Symbol because a dotted authored name has no symbol
-// spelling here: the corpus carries dotted module names as String throughout and contains no dotted
-// symbol literal anywhere. Spelling one would have made this the only such site in the tree, which
-// is the same one-of-one that produced this module's container-arity resolve failure.
+// EVERY FIELD HERE IS A String, AND THE REASON IS A PROPERTY OF Symbol RATHER THAN A PREFERENCE.
+//
+// `v2.std.node` declares `type Symbol` opaque, with no body and no mint. Measured corpus-wide,
+// every function returning one either returns a `^literal` or projects a Symbol out of a value that
+// already held one -- there is no `String -> Symbol` anywhere. So a Symbol-typed field is
+// inhabitable ONLY by an author writing a literal, which means only by a FIXTURE. A producer
+// reading an emitted artifact holds runtime Strings and can never fill one.
+//
+// This carrier was typed with six Symbol fields and every witness over it passed, because
+// witnesses are exactly the party that CAN write literals. The defect was invisible from inside
+// the tests and surfaced on first contact with the real reader -- the specification-without-
+// execution failure with the roles reversed: not a check that never ran, but a carrier whose only
+// possible inhabitant was the check itself.
+//
+// The digests are `Fnv1a64Structural` rather than String for the opposite reason: that type HAS a
+// mint (`std.content_hash` `content_hash_atom`), so the census compares identities a producer can
+// actually derive, and cross-family comparison is refused at the carrier rather than fabricated.
 
 // WHY THE ROW CARRIES BOTH THE DIGEST AND THE MEMBERS, AND WHY THE EMITTER PUBLISHES ONLY THE
 // LATTER.
@@ -117,10 +130,10 @@ type EmittedMemberIdentity {
 // never compiled together. Its own fields carry the sample and vintage so that a reader cannot
 // mistake it for a declaration.
 type ObservedExportEnvelope {
-  sample: List<Symbol>
-  vintage: Symbol
-  module: Symbol
-  members: List<Symbol>
+  sample: List<String>
+  vintage: String
+  module: String
+  members: List<String>
 }
 
 // WHY A VARIANCE VARIES, CARRIED AS A TYPED ARM WITH AN IGNORANCE MEMBER.
@@ -182,7 +195,7 @@ type SurfaceCensusRow {
   product: ProductKind
   cause: ClosureVarianceCause
   source_module: String
-  target_filename: Symbol
+  target_filename: String
   observations: List<EmittedMemberIdentity>
 }
 
@@ -198,16 +211,19 @@ type SurfaceCensusRow {
 // too small to exhibit variation at all, and a module the sample did not observe under every
 // entry it claims to cover.
 type SurfaceCensus {
-  sample_entries: List<Symbol>
+  sample_entries: List<String>
   rows: List<SurfaceCensusRow>
 }
 
-fn surface_digest_of(observation: EmittedMemberIdentity) -> Symbol {
+fn surface_digest_of(observation: EmittedMemberIdentity) -> Fnv1a64Structural {
   observation.linkage_surface_digest
 }
 
 fn observation_has_other_surface(a: EmittedMemberIdentity, b: EmittedMemberIdentity) -> Bool {
-  surface_digest_of(observation: a) != surface_digest_of(observation: b)
+  content_hash_eq_structural(
+    left: surface_digest_of(observation: a),
+    right: surface_digest_of(observation: b)
+  ) == false
 }
 
 // True when the row's observations do not all agree on one linkage surface.
@@ -265,7 +281,7 @@ fn sample_repeats_an_entry(census: SurfaceCensus) -> Bool {
     count_where(xs: census.sample_entries, predicate: other => other == entry) > 1)
 }
 
-fn row_observed_under_entry(row: SurfaceCensusRow, entry: Symbol) -> Bool {
+fn row_observed_under_entry(row: SurfaceCensusRow, entry: String) -> Bool {
   any(xs: row.observations, predicate: observation => observation.entry == entry)
 }
 
@@ -296,7 +312,7 @@ fn census_undiscriminating_diagnostic() -> Diagnostic {
 fn uncovered_row_diagnostic(row: SurfaceCensusRow) -> Diagnostic {
   textual_whole_file_diagnostic(
     reason: ^seed_module_not_observed_under_every_sampled_entry,
-    module_file: row.target_filename,
+    module_file: ^emitted_export_surface_manifest,
     correction: Unavailable { reason: ExternalContractUnknown }
   )
 }
@@ -304,7 +320,7 @@ fn uncovered_row_diagnostic(row: SurfaceCensusRow) -> Diagnostic {
 fn entry_conditioned_surface_diagnostic(row: SurfaceCensusRow) -> Diagnostic {
   textual_whole_file_diagnostic(
     reason: ^seed_module_carries_more_than_one_linkage_surface,
-    module_file: row.target_filename,
+    module_file: ^emitted_export_surface_manifest,
     correction: Unavailable { reason: ExternalContractUnknown }
   )
 }

@@ -15,14 +15,20 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 // These witnesses do not retire when the live population reaches zero. They flip to permanent
 // regression controls.
 
-fn observation(entry: v2.std.node.Symbol, surface: v2.std.node.Symbol) -> v2.compiler.self_host.emitted_surface_census.EmittedMemberIdentity {
+// THE FIXTURE MINTS ITS DIGESTS THE SAME WAY A PRODUCER WOULD.
+//
+// `surface` names the surface in words and is hashed through `std.content_hash` rather than being
+// labelled as a digest, so the fixture exercises the mint the real reader will use. Two fixtures
+// naming the same surface collide to the same digest BY CONSTRUCTION, which is what makes the
+// agreed-surface green a real green rather than an artifact of two hand-written equal literals.
+fn observation(entry: String, surface: String) -> v2.compiler.self_host.emitted_surface_census.EmittedMemberIdentity {
   v2.compiler.self_host.emitted_surface_census.EmittedMemberIdentity {
     entry: entry,
     source_module: "v2.std.node",
-    target_filename: ^v2_std_node,
-    member_digest: surface,
-    linkage_surface_digest: surface,
-    instrument_vintage: ^fixture,
+    target_filename: "v2_std_node",
+    member_digest: std.content_hash.content_hash_atom(value: surface),
+    linkage_surface_digest: std.content_hash.content_hash_atom(value: surface),
+    instrument_vintage: "fixture",
     members: []
   }
 }
@@ -32,10 +38,10 @@ fn provider_row_with_two_surfaces() -> v2.compiler.self_host.emitted_surface_cen
     product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
     cause: v2.compiler.self_host.emitted_surface_census.Unattributed,
     source_module: "v2.std.node",
-    target_filename: ^v2_std_node,
+    target_filename: "v2_std_node",
     observations: [
-      observation(entry: ^entry_integer, surface: ^surface_with_cardinality),
-      observation(entry: ^entry_node_query, surface: ^surface_without_cardinality)
+      observation(entry: "entry_integer", surface: "surface_with_cardinality"),
+      observation(entry: "entry_node_query", surface: "surface_without_cardinality")
     ]
   }
 }
@@ -45,10 +51,10 @@ fn provider_row_with_one_surface() -> v2.compiler.self_host.emitted_surface_cens
     product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
     cause: v2.compiler.self_host.emitted_surface_census.Unattributed,
     source_module: "v2.std.node",
-    target_filename: ^v2_std_node,
+    target_filename: "v2_std_node",
     observations: [
-      observation(entry: ^entry_integer, surface: ^surface_agreed),
-      observation(entry: ^entry_coercion, surface: ^surface_agreed)
+      observation(entry: "entry_integer", surface: "surface_agreed"),
+      observation(entry: "entry_coercion", surface: "surface_agreed")
     ]
   }
 }
@@ -59,10 +65,10 @@ fn crate_root_row_with_two_surfaces() -> v2.compiler.self_host.emitted_surface_c
     product: v2.compiler.self_host.emitted_surface_census.CrateRoot,
     cause: v2.compiler.self_host.emitted_surface_census.Unattributed,
     source_module: "lib",
-    target_filename: ^lib_rs,
+    target_filename: "lib_rs",
     observations: [
-      observation(entry: ^entry_integer, surface: ^root_surface_45_modules),
-      observation(entry: ^entry_node_query, surface: ^root_surface_18_modules)
+      observation(entry: "entry_integer", surface: "root_surface_45_modules"),
+      observation(entry: "entry_node_query", surface: "root_surface_18_modules")
     ]
   }
 }
@@ -91,8 +97,8 @@ fn witness_single_observation_is_admitted() -> Bool {
       product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
       cause: v2.compiler.self_host.emitted_surface_census.Unattributed,
       source_module: "v2.std.node",
-      target_filename: ^v2_std_node,
-      observations: [observation(entry: ^entry_integer, surface: ^surface_agreed)]
+      target_filename: "v2_std_node",
+      observations: [observation(entry: "entry_integer", surface: "surface_agreed")]
     }
   )
 }
@@ -101,7 +107,7 @@ fn witness_single_observation_is_admitted() -> Bool {
 fn witness_assembly_rejects_when_any_provider_varies() -> Bool {
   match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
     census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
-      sample_entries: [^entry_integer, ^entry_node_query],
+      sample_entries: ["entry_integer", "entry_node_query"],
       rows: [crate_root_row_with_two_surfaces(), provider_row_with_two_surfaces()]
     }
   ) {
@@ -118,7 +124,7 @@ fn witness_assembly_rejects_when_any_provider_varies() -> Bool {
 fn witness_assembly_accepts_crate_root_variation_alone() -> Bool {
   match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
     census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
-      sample_entries: [^entry_integer, ^entry_node_query],
+      sample_entries: ["entry_integer", "entry_node_query"],
       rows: [crate_root_row_with_two_surfaces()]
     }
   ) {
@@ -146,7 +152,7 @@ fn witness_empty_census_is_refused() -> Bool {
 fn witness_single_entry_sample_is_refused() -> Bool {
   match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
     census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
-      sample_entries: [^entry_integer],
+      sample_entries: ["entry_integer"],
       rows: [provider_row_with_one_surface()]
     }
   ) {
@@ -161,14 +167,14 @@ fn witness_single_entry_sample_is_refused() -> Bool {
 fn witness_partially_observed_module_is_refused() -> Bool {
   match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
     census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
-      sample_entries: [^entry_integer, ^entry_node_query],
+      sample_entries: ["entry_integer", "entry_node_query"],
       rows: [
         v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
           product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
           cause: v2.compiler.self_host.emitted_surface_census.Unattributed,
           source_module: "v2.std.node",
-          target_filename: ^v2_std_node,
-          observations: [observation(entry: ^entry_integer, surface: ^surface_agreed)]
+          target_filename: "v2_std_node",
+          observations: [observation(entry: "entry_integer", surface: "surface_agreed")]
         }
       ]
     }
@@ -187,14 +193,14 @@ fn witness_partially_observed_module_is_refused() -> Bool {
 fn witness_duplicated_sample_entry_is_refused() -> Bool {
   match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
     census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
-      sample_entries: [^entry_integer, ^entry_integer],
+      sample_entries: ["entry_integer", "entry_integer"],
       rows: [
         v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
           product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
           cause: v2.compiler.self_host.emitted_surface_census.Unattributed,
           source_module: "v2.std.node",
-          target_filename: ^v2_std_node,
-          observations: [observation(entry: ^entry_integer, surface: ^surface_agreed)]
+          target_filename: "v2_std_node",
+          observations: [observation(entry: "entry_integer", surface: "surface_agreed")]
         }
       ]
     }
@@ -210,7 +216,7 @@ fn witness_duplicated_sample_entry_is_refused() -> Bool {
 fn witness_repeat_refused_even_when_distinct_count_suffices() -> Bool {
   match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
     census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
-      sample_entries: [^entry_integer, ^entry_integer, ^entry_node_query],
+      sample_entries: ["entry_integer", "entry_integer", "entry_node_query"],
       rows: []
     }
   ) {
@@ -225,7 +231,7 @@ fn witness_repeat_refused_even_when_distinct_count_suffices() -> Bool {
 fn witness_repeat_is_refused_before_undiscriminating() -> Bool {
   match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
     census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
-      sample_entries: [^entry_integer, ^entry_integer],
+      sample_entries: ["entry_integer", "entry_integer"],
       rows: []
     }
   ) {
@@ -240,7 +246,7 @@ fn witness_repeat_is_refused_before_undiscriminating() -> Bool {
 fn witness_ignorance_is_refused_before_variation() -> Bool {
   match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
     census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
-      sample_entries: [^entry_integer],
+      sample_entries: ["entry_integer"],
       rows: [provider_row_with_two_surfaces()]
     }
   ) {
