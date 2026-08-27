@@ -1,0 +1,164 @@
+module gunbc.bmc_fan_program_representability_witness
+
+import std.types { Bool, Int, List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { ContentHash, serialize_content_hash }
+import extdeps.languages.json.emit { JsonValue, json_object }
+import extdeps.languages.json.parse { JsonDocumentParsed, parse_json_document }
+import extdeps.bmc.pid_control_semantic_identity { semantic_program_rendering }
+import extdeps.bmc.pid_control_representability {
+  FanProgramFullyRepresentable,
+  FanProgramNotConserved,
+  FanProgramNotDecoded,
+  FanProgramNotRepresentable,
+  KnownFieldDefective,
+  ResidueUnmodeled,
+  program_representability,
+}
+import gunbc.bmc_fan_program_observation {
+  ArtifactJsonValueObserved,
+  srv3_program_json,
+  srv4_program_json,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn srv3_digest() -> List<String> {
+  match srv3_program_json {
+    ArtifactJsonValueObserved { artifact_path, byte_count, document } =>
+      match program_representability(document: document) {
+        FanProgramFullyRepresentable { program, semantic_digest } =>
+          [serialize_content_hash(hash: semantic_digest)]
+        other => []
+      }
+    other => []
+  }
+}
+
+fn srv4_digest() -> List<String> {
+  match srv4_program_json {
+    ArtifactJsonValueObserved { artifact_path, byte_count, document } =>
+      match program_representability(document: document) {
+        FanProgramFullyRepresentable { program, semantic_digest } =>
+          [serialize_content_hash(hash: semantic_digest)]
+        other => []
+      }
+    other => []
+  }
+}
+
+// BOTH DEPLOYED PROGRAMS PASS THE GATE. Nothing in either captured document is unmodelled and
+// nothing known is defective, which is what makes them usable as the basis for a policy rather
+// than merely observable.
+fn both_captured_programs_are_fully_representable() -> Bool {
+  srv3_digest().length() == 1 && srv4_digest().length() == 1
+}
+
+// A DOCUMENT CARRYING A FIELD NOBODY MODELS IS OBSERVABLE AND NOT REPRESENTABLE, and the refusal
+// names the member so the model knows what it is behind on. This is the fixture that proves the
+// gate is a gate: the same document without the extra member passes.
+data extended_sensor_text: String = "\{\"sensors\": [\{\"name\": \"FAN1\", \"type\": \"fan\", \"readPath\": \"/r\", \"writePath\": \"/w\", \"vendorTuning\": 7\}], \"zones\": []\}"
+
+data plain_sensor_text: String = "\{\"sensors\": [\{\"name\": \"FAN1\", \"type\": \"fan\", \"readPath\": \"/r\", \"writePath\": \"/w\"\}], \"zones\": []\}"
+
+fn parsed(text: String) -> JsonValue {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value } => value
+    other => json_object(members: [])
+  }
+}
+
+fn an_unmodeled_member_refuses_and_names_itself() -> Bool {
+  match program_representability(document: parsed(text: extended_sensor_text)) {
+    FanProgramNotRepresentable { refusal } =>
+      match refusal {
+        ResidueUnmodeled { identity, key, residue_count } => key == "vendorTuning" && residue_count == 1
+        KnownFieldDefective { identity, key, cause } => false
+      }
+    other => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THAT REFUSAL, without which the conjunct above is satisfied by a gate
+// that refuses everything.
+fn the_same_document_without_the_extra_member_passes() -> Bool {
+  match program_representability(document: parsed(text: plain_sensor_text)) {
+    FanProgramFullyRepresentable { program, semantic_digest } => program.sensors.length() == 1
+    other => false
+  }
+}
+
+// THE SEMANTIC DIGEST IS INVARIANT TO EVERY WAY A FILE CAN DIFFER WITHOUT THE DAEMON NOTICING. The
+// second document writes the same sensor with its members in a different order; the two are the
+// same program and must carry one identity.
+data reordered_sensor_text: String = "\{\"sensors\": [\{\"writePath\": \"/w\", \"readPath\": \"/r\", \"type\": \"fan\", \"name\": \"FAN1\"\}], \"zones\": []\}"
+
+fn rendering_of(text: String) -> List<String> {
+  match program_representability(document: parsed(text: text)) {
+    FanProgramFullyRepresentable { program, semantic_digest } =>
+      [serialize_content_hash(hash: semantic_digest)]
+    other => []
+  }
+}
+
+fn member_order_does_not_move_the_semantic_digest() -> Bool {
+  let a = rendering_of(text: plain_sensor_text)
+  let b = rendering_of(text: reordered_sensor_text)
+  a.length() == 1 && b.length() == 1 && a.first() == b.first()
+}
+
+// AND THE DISCRIMINATOR IN THE OTHER DIRECTION, without which the invariance above is satisfied by
+// a digest that is constant. One character of the read path differs.
+data altered_sensor_text: String = "\{\"sensors\": [\{\"name\": \"FAN1\", \"type\": \"fan\", \"readPath\": \"/R\", \"writePath\": \"/w\"\}], \"zones\": []\}"
+
+fn a_semantic_change_moves_the_digest() -> Bool {
+  let a = rendering_of(text: plain_sensor_text)
+  let b = rendering_of(text: altered_sensor_text)
+  a.length() == 1 && b.length() == 1 && a.first() != b.first()
+}
+
+// THE TWO HOSTS RUN DIFFERENT PROGRAMS, and the digest says so. They differ in their sensor roster
+// and in one actuator's endpoints, so a digest reporting them equal would be reporting that the
+// fleet is uniform when it is not.
+fn the_two_hosts_carry_distinct_semantic_identities() -> Bool {
+  srv3_digest().first() != srv4_digest().first()
+}
+
+// A NUMERIC COEFFICIENT MUST MOVE THE DIGEST, AND THE FIRST VERSION OF THIS WITNESS COULD NOT SEE
+// IT. Rendering every magnitude as one constant string left every conjunct green: the two hosts
+// still differed by their sensor roster, and the fixture pair differed by a path. A digest blind
+// to every number in the program would have passed as a semantic identity.
+data zone_30_text: String = "\{\"sensors\": [], \"zones\": [\{\"id\": 0, \"minThermalOutput\": 30, \"failsafePercent\": 75, \"cycleIntervalTimeMS\": 1000, \"updateThermalsTimeMS\": 1000, \"pids\": []\}]\}"
+
+data zone_30_point_0_text: String = "\{\"sensors\": [], \"zones\": [\{\"id\": 0, \"minThermalOutput\": 30.0, \"failsafePercent\": 75, \"cycleIntervalTimeMS\": 1000, \"updateThermalsTimeMS\": 1000, \"pids\": []\}]\}"
+
+data zone_31_text: String = "\{\"sensors\": [], \"zones\": [\{\"id\": 0, \"minThermalOutput\": 31, \"failsafePercent\": 75, \"cycleIntervalTimeMS\": 1000, \"updateThermalsTimeMS\": 1000, \"pids\": []\}]\}"
+
+fn a_changed_coefficient_moves_the_digest() -> Bool {
+  let a = rendering_of(text: zone_30_text)
+  let b = rendering_of(text: zone_31_text)
+  a.length() == 1 && b.length() == 1 && a.first() != b.first()
+}
+
+// AND THE TWO SPELLINGS OF ONE NUMBER DO NOT, which is the cross-host claim tested at the level
+// that matters. srv3 writes this coefficient as 30.0 and srv4 writes it as 30.
+fn two_spellings_of_one_coefficient_carry_one_digest() -> Bool {
+  let a = rendering_of(text: zone_30_text)
+  let b = rendering_of(text: zone_30_point_0_text)
+  a.length() == 1 && b.length() == 1 && a.first() == b.first()
+}
+
+fn bmc_fan_program_representability_witness() -> ProcessExit {
+  if both_captured_programs_are_fully_representable()
+    && an_unmodeled_member_refuses_and_names_itself()
+    && the_same_document_without_the_extra_member_passes()
+    && member_order_does_not_move_the_semantic_digest()
+    && a_semantic_change_moves_the_digest()
+    && the_two_hosts_carry_distinct_semantic_identities()
+    && a_changed_coefficient_moves_the_digest()
+    && two_spellings_of_one_coefficient_carry_one_digest() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "fan program representability: the residue gate, the semantic digest's invariance to member order, or its sensitivity to a semantic changeced")
+  }
+}
