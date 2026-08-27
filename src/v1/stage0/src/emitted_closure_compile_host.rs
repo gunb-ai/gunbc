@@ -379,8 +379,27 @@ fn probe_manifest(workspace: &Path, entry: &str) -> String {
 /// Where one entry's probe crate is written. Outside the repository deliberately: a crate under
 /// the workspace root is inferred into the workspace by cargo and would have to declare its own
 /// `[workspace]` to escape, which is a manifest fact invented to work around its own location.
+///
+/// RUNNER-SCOPED, NOT HOST-SHARED, AND THIS WAS MEASURED THE HARD WAY. A fixed path in the host's
+/// `/tmp` is shared by every tenant of a SELF-HOSTED runner and persists across runs, slots and
+/// jobs. On the first required run the directory already existed there owned by another uid, so
+/// creating the lock inside it returned `EACCES` and the phase refused — permanently, on every
+/// subsequent PR landing on that runner, with the only closing move being someone deleting a
+/// directory over SSH. A required gate whose sole remedy is manual host intervention outside the
+/// repository has no reachable green, which is the shape DESIGN records for a gate that launders
+/// rather than gates.
+///
+/// `RUNNER_TEMP` is created and torn down per job and owned by the process that needs it, so two
+/// tenants no longer name one path. It changes nothing the shared target directory buys: the
+/// entries of ONE run still share `workspace/target`, and per-entry package names still separate
+/// their fingerprints within it.
 fn probe_root() -> PathBuf {
-    std::env::temp_dir().join("gunbc-emit-compile")
+    let base = std::env::var("RUNNER_TEMP")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    base.join("gunbc-emit-compile")
 }
 
 fn probe_crate_dir(entry: &str) -> PathBuf {
@@ -555,6 +574,35 @@ fn establish_discriminating_red(
     let restore_write = std::fs::write(&path, &original);
     let restored_bytes = std::fs::read_to_string(&path).unwrap_or_default();
 
+    // RESTORATION IS ADJUDICATED BEFORE ANY FAULT VERDICT, AND THE ORDER IS THE WHOLE POINT.
+    //
+    // Every fault-verdict arm below returns `NotDiscriminating`, which fails this entry and lets
+    // SIBLINGS CONTINUE. `RestoreFailed` is the only verdict that ends the run. So if the restore
+    // failed at the same moment the fault arm was green, incomplete, or unattributed, deciding
+    // the fault first would report the non-terminal verdict and swallow the terminal one — and
+    // the next entry's baseline would then run against a target directory whose state nobody
+    // established, which is exactly the unattributable measurement the terminal rule exists to
+    // prevent. The two conditions are independent, so they co-occur; whichever is checked first
+    // wins, and only one of them is safe to lose.
+    //
+    // The BYTE half is adjudicated here because it is a filesystem fact, already in hand and
+    // free. Whether the RESTORED TREE COMPILES stays below the fault verdicts deliberately: it
+    // costs a third cargo invocation, and it is a question about attributing THIS entry's red,
+    // which is moot once the arm has already refused to claim one.
+    if let Err(e) = restore_write {
+        return MutationVerdict::RestoreFailed {
+            detail: format!("restoring {}: {e}", path.display()),
+        };
+    }
+    if restored_bytes != original {
+        return MutationVerdict::RestoreFailed {
+            detail: format!(
+                "{} did not return to its emitted bytes after the fault was removed",
+                path.display()
+            ),
+        };
+    }
+
     // THE FAULTED ARM MUST HAVE COMPLETED, AND ITS RED MUST BE ATTRIBUTABLE TO THE FAULT.
     //
     // A NONZERO EXIT IS NOT EVIDENCE ON ITS OWN, which is the hole this block closes. Cargo can
@@ -619,19 +667,6 @@ fn establish_discriminating_red(
     };
     let attributed = attributed.to_string();
 
-    if let Err(e) = restore_write {
-        return MutationVerdict::RestoreFailed {
-            detail: format!("restoring {}: {e}", path.display()),
-        };
-    }
-    if restored_bytes != original {
-        return MutationVerdict::RestoreFailed {
-            detail: format!(
-                "{} did not return to its emitted bytes after the fault was removed",
-                path.display()
-            ),
-        };
-    }
     let restored = run_cargo(crate_dir, workspace);
     if !cargo_verdict_compiled(&restored) {
         return MutationVerdict::RestoreFailed {
@@ -954,7 +989,15 @@ pub fn emit_compile_report(
     (lines, retention_error)
 }
 
-/// TWO CONCURRENT RUNS IN ONE WORKSPACE CORRUPT EACH OTHER'S EVIDENCE, SO THE SECOND REFUSES.
+/// A ROOT WHOSE LAST WRITER DIED IS NOT A ROOT TO SILENTLY BUILD ON, SO A SECOND HOLDER REFUSES.
+///
+/// WHAT THIS LOCK IS FOR HAS NARROWED, and saying so matters because the argument below was
+/// written for the wider case. Under a per-job `RUNNER_TEMP` root two CONCURRENT runs cannot
+/// collide by construction — there is no path they both name — so the lock is no longer the
+/// mechanism preventing interleaving in CI. What it still catches is a previous attempt in THIS
+/// job that died mid-flight, and a local run started beside another when the root falls back to a
+/// shared temp dir. Both are cases where the tree's state is unestablished, which is the thing
+/// worth refusing on.
 ///
 /// The arms deliberately share one probe root and one cargo target directory — that is what makes
 /// the baseline warm and the restore comparable. It also means two runs interleave: one run's
@@ -974,8 +1017,14 @@ pub fn emit_compile_report(
 /// typed and located, and the operator sees that two runs were attempted rather than receiving a
 /// verdict computed across both.
 fn acquire_probe_root_lock(root: &Path) -> Result<PathBuf, String> {
-    std::fs::create_dir_all(root)
-        .map_err(|e| format!("could not create the probe root {}: {e}", root.display()))?;
+    std::fs::create_dir_all(root).map_err(|e| {
+        format!(
+            "could not create the probe root {} ({e}) — the root is derived from RUNNER_TEMP \
+             when set and the system temp dir otherwise; a host-shared temp dir on a \
+             self-hosted runner can already hold this path owned by another tenant",
+            root.display()
+        )
+    })?;
     let lock = root.join("emit-compile.lock");
     match std::fs::OpenOptions::new()
         .write(true)
@@ -988,6 +1037,19 @@ fn acquire_probe_root_lock(root: &Path) -> Result<PathBuf, String> {
              interleave their faulted and restored trees, so neither verdict is attributable. \
              Remove the lock only after establishing no other run is live.",
             lock.display()
+        )),
+        // A LIVE PEER AND AN UNWRITABLE ROOT ARE OPPOSITE REMEDIES, so they are opposite
+        // refusals. `AlreadyExists` says wait or investigate a concurrent run; `PermissionDenied`
+        // says this process cannot write here at all and the ROOT is wrong — nobody should go
+        // looking for a peer that does not exist. Collapsing the two is the state-space
+        // conflation DESIGN names, and it cost a triage cycle when the catch-all string sent a
+        // reader hunting a concurrent run on a runner that had none.
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => Err(format!(
+            "the probe root {} is not writable by this process ({e}) — this is NOT a concurrent \
+             run; the root itself is wrong. It is derived from RUNNER_TEMP when set and the \
+             system temp dir otherwise, and a host-shared temp dir on a self-hosted runner can \
+             already hold this path owned by another tenant.",
+            root.display()
         )),
         Err(e) => Err(format!("could not take {}: {e}", lock.display())),
     }
@@ -1069,8 +1131,18 @@ mod tests {
     #[test]
     fn manifest_carries_the_modeled_dependency_rows() {
         let manifest = probe_manifest(Path::new("/repo"), "dag/std/logic.dag");
-        assert!(manifest.starts_with("[package]\nname = \"gunbc-emitted-closure\""));
+        // The package name is DERIVED PER ENTRY, so two entries cannot alias each other's cargo
+        // fingerprints in the shared target directory.
+        assert!(
+            manifest.starts_with("[package]\nname = \"gunbc-emitted-closure-dag-std-logic-dag\"")
+        );
         assert!(manifest.contains("edition = \"2021\""));
+        // THE FEATURE SECTION IS A REGRESSION GUARD, not decoration: the emitted `v1_rt.rs` gates
+        // on this feature, and a crate referencing a feature it does not declare compiles clean
+        // locally and fails under the required lane's `RUSTFLAGS=-D warnings`. Its absence is
+        // therefore invisible to every default-flag run, which is how it reached CI once.
+        assert!(manifest.contains("[features]"));
+        assert!(manifest.contains("text_lookup_work_counter = []"));
         for name in ["im", "serde", "serde_json", "stacker"] {
             assert!(manifest.contains(name), "missing dependency row {name}");
         }
@@ -1128,6 +1200,36 @@ mod tests {
     /// EVERY NON-`Discriminated` MUTATION ARM FAILS THE PHASE. Stated as a test because the
     /// tempting weakening -- treating the mutation as advisory beside a green baseline -- is
     /// exactly what would turn this phase into the decoration it exists not to be.
+    /// A FAILED RESTORE MUST WIN OVER EVERY NON-TERMINAL FAULT VERDICT.
+    ///
+    /// The two conditions are independent and therefore co-occur: the fault arm can be green,
+    /// incomplete or unattributed at the same moment the restore fails. Only `RestoreFailed`
+    /// ends the run; every `NotDiscriminating` arm lets siblings continue against a tree whose
+    /// state nobody established. This pins the ORDER rather than the arms, because both orders
+    /// typecheck and only one is safe -- which is how the ordering was wrong to begin with.
+    #[test]
+    fn a_failed_restore_is_not_masked_by_a_non_terminal_fault_verdict() {
+        // The source order of the checks is the guarantee. Both restore adjudications must
+        // appear before the first fault-verdict return, or a masked terminal failure is
+        // reachable again.
+        let src = include_str!("emitted_closure_compile_host.rs");
+        let body = &src[src
+            .find("fn establish_discriminating_red")
+            .expect("the function this test pins must exist")..];
+        let first_restore = body
+            .find("MutationVerdict::RestoreFailed")
+            .expect("the restore adjudication must be present");
+        let first_fault = body
+            .find("MutationVerdict::NotDiscriminating")
+            .expect("the fault verdicts must be present");
+        assert!(
+            first_restore < first_fault,
+            "a RestoreFailed adjudication must precede every NotDiscriminating return: a \
+             terminal failure returned after a non-terminal one is swallowed, and the run \
+             continues against an unrestored tree"
+        );
+    }
+
     #[test]
     fn a_green_baseline_does_not_pass_without_the_discrimination() {
         let green = CargoVerdict::Completed {

@@ -563,9 +563,18 @@ fn witness_toolchain_environment_probe_step() -> Step {
 
 // THE BUILD LANE'S RUN STEP. Same binary, same mode, same source roots, one word different --
 // which is the whole point of the lane being a parameter rather than a second invocation.
+//
+// THE STEP NAME DOES NOT ENUMERATE THE PHASES, AND THAT IS A CORRECTION RATHER THAN VAGUENESS.
+// It read "(regen, v2 emission)" while the lane carried four, because a label listing a roster
+// is a TRANSCRIPTION of something the run itself prints -- and it drifts silently every time the
+// roster grows, which it has done three times in a week. The cost is not cosmetic: a session
+// triaging a red step narrowed to the two phases the label named and could not reach the third,
+// which was the one that failed. DESIGN's standing rule is to name the instrument and never
+// transcribe its output; the instrument here is the required mode itself, which announces one
+// `phase <name>` line per phase the lane owns before any of them runs. Read the roster there.
 fn build_lane_run_step() -> Step {
   RunStep {
-    name: Present { value: "Required CI: build lane (regen, v2 emission)" },
+    name: Present { value: "Required CI: build lane (phases named by the run, not by this label)" },
     id: none,
     run: build_lane_run_script(),
     shell: none,
@@ -925,7 +934,7 @@ fn build_lane_bound_steps() -> List<WitnessFloorBoundStep> {
       WitnessFloorBoundStep {
         step: build_lane_run_step(),
         role: consumes_only(capabilities: [RustfmtCapability]),
-        step_name: "Required CI: build lane (regen, v2 emission)",
+        step_name: "Required CI: build lane (phases named by the run, not by this label)",
       },
     ],
   )
