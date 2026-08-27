@@ -1721,7 +1721,6 @@ struct ModuleBindingManifestRow {
     module_path: String,
     rel_path: String,
     root_variant: String,
-    ident_span: Rc<SourceSpan>,
 }
 
 fn witness_layer_root_spelling(root: &str) -> String {
@@ -1852,7 +1851,6 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
                 module_path: binding.module_path,
                 rel_path: rel,
                 root_variant: root_variants[root_idx].clone(),
-                ident_span: binding.ident_span,
             },
         );
     });
@@ -32209,7 +32207,24 @@ fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
     }
     if body.is_empty() {
         body.push_str("host_sr_empty");
-    } else if body.as_bytes()[0].is_ascii_digit() {
+    } else if body.as_bytes()[0].is_ascii_digit()
+        || v1_compiler_tokenize::is_keyword_text(body.clone())
+    {
+        // THE THIRD ESCAPE ARM, AND THE CORPUS ALREADY CONTAINED ITS CASE.
+        //
+        // This minted `^{stem}` after escaping non-identifier characters and a leading digit,
+        // and stopped there. A stem that IS a keyword still lexes as a keyword, so `dag/std/
+        // import.dag` emitted `^import` and the manifest failed to parse -- measured, at the
+        // caret: "expected identifier or `(` after `^`, found keyword". Two stems in the tree
+        // reach it today, `dag/std/import.dag` and `dag/extdeps/languages/go/module.dag`.
+        //
+        // The mint promised a valid symbol and returned an unparseable one with no refusal,
+        // which is why nothing caught it: the emitter succeeded, the file was written, and the
+        // only executing consumer is a `long/` `ReadsLiveTree` witness the floor declines.
+        //
+        // The keyword test routes through `v1_compiler_tokenize` `is_keyword_text`, whose set is
+        // derived from the grammar. A literal list here would be a second authority for the
+        // keyword vocabulary (DESIGN §3) and would go stale the next time the grammar gains one.
         body = format!("sr_{body}");
     }
     format!("^{body}")
@@ -32631,10 +32646,8 @@ pub fn emit_module_storage_binding_manifest(
     out.push_str("}\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import std.algebra { Cons, Empty }\n");
-    out.push_str("import v2.std.diagnostic { ByteRange, Textual }\n");
     out.push_str("import v2.std.integer { Int }\n");
-    out.push_str("import v2.std.node { MintedOccurrence }\n");
-    out.push_str("import v2.std.provenance { FromSource, span_index_empty, span_index_record }\n");
+    out.push_str("import v2.std.provenance { span_index_empty }\n");
     out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
     out.push('\n');
@@ -32691,37 +32704,40 @@ fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, Strin
     ))
 }
 
-/// The `OccurrenceId` construction is FULLY QUALIFIED deliberately, and the name is
-/// correspondingly absent from this manifest's `v2.std.node` import list.
+/// THE HOST TRANSPORT HAS NO OCCURRENCE IDENTITY TO OFFER, SO IT OFFERS NONE.
 ///
-/// `v2.std.node.OccurrenceId` is a compatibility alias of `std.occurrence_identity.OccurrenceId`
-/// (#7352). Both modules sit in this overlay's compiled pool, so a BARE `OccurrenceId` in a
-/// record-literal position resolves to two candidates and the indexer refuses:
-/// "ambiguous reference 'OccurrenceId' ... qualify by containment path, alias, or rename".
-/// A bare reference in a TYPE position still resolves (v2/std/provenance.dag, v2/std/dependents.dag) —
-/// only construction sites need the qualification, which is why this reads as an inconsistency.
+/// This emitted a one-entry `SpanIndex` keyed on an `OccurrenceId` derived from the ident
+/// span's byte offset (`start.max(1)`). `std.occurrence_identity` `occurrence_identity_scope_law`
+/// names `SourceSpan` a FORBIDDEN identity input, and the derivation additionally collided:
+/// offsets 0 and 1 both produced 1.
 ///
-/// #7352 applied exactly this qualification to the one COMMITTED construction site
-/// (src/v2/test/claim/manual/bind_demand_driven_eval_test.dag) and missed this generator.
-/// The gap stayed invisible because this file is generated: whole-tree compile-clean never
-/// sees it, and its only executing consumer is the module-binding supply gate, which moved
-/// off per-PR CI onto the falsifier cadence — where it then failed for four days.
+/// Traced to its consumers, the fabricated id was WRITE-ONLY, which is why it stood. Each row
+/// built its own `span_index_empty()` and recorded exactly one entry, so the collision could not
+/// manifest within a row; `span_index_merge`'s only production caller is `v2.compiler.02_parse`
+/// over parser-ALLOCATED ids, never over this manifest's; `span_index_lookup` has only test
+/// callers; and the one executing consumer, the module-binding supply gate, compares
+/// `(file_path -> module)` and discards the field by pattern in
+/// `v2.compiler.source_authority` `module_storage_binding_file_path`.
 ///
-/// Dissolve-on: the `node_occurrence_id_v2_facade_dissolve_on` migration deletes the
-/// `v2.std.node` alias; the second candidate disappears and the qualification is free to drop.
-fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> String {
-    let start = span.start.max(0);
-    let end = span.end.max(start);
-    let occurrence_id = start.max(1);
-    format!(
-        "span_index_record(\n  index: span_index_empty(),\n  id: MintedOccurrence {{ id: v2.std.node.OccurrenceId {{ value: {occurrence_id} }} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
-    )
+/// So this was not a defect with a victim. It was a forbidden identity input written into a
+/// COMMITTED artifact whose innocence rested entirely on no consumer ever reading it -- the
+/// inverse of correctness by construction (DESIGN §5), and one consumer away from becoming real.
+///
+/// THE LOCUS GOES WITH IT, AND THAT IS THE HONEST TRADE RATHER THAN A LOSS. `SpanIndex.entries`
+/// is a `Map<OccurrenceId, OriginEvent>`, so the `ByteRange` this used to carry is reachable
+/// ONLY under a key. A producer holding a locus but no allocator identity therefore cannot
+/// record the locus without inventing the key -- the carrier makes the honest state
+/// representable only as EMPTY. Emitting empty is that honest state; inventing a key to keep a
+/// byte range no consumer reads is fabricated plausible output. The carrier gap is named here
+/// rather than papered over, and it is what a future locus-carrying transport must close first.
+fn emit_module_binding_span_index() -> String {
+    String::from("span_index_empty()")
 }
 
 fn emit_module_binding_row(row: &ModuleBindingManifestRow) -> Result<String, String> {
     let qn = emit_module_binding_qualified_name(&row.module_path)?;
     let artifact_id = source_root_ingest_artifact_id_for_path(&row.rel_path);
-    let span_index = emit_module_binding_span_index(&row.ident_span, &artifact_id);
+    let span_index = emit_module_binding_span_index();
     Ok(format!(
         "module_storage_parsed_binding(\n  module: {qn},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  span_index: {span_index},\n  source_root: {}\n)",
         dag_manifest_scalar_escape(&row.rel_path)?,
