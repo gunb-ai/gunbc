@@ -1,6 +1,6 @@
 module std.decl_ref
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr }
 
 type DeclField
   = WholeDeclaration
@@ -53,34 +53,6 @@ fn decl_field_ref(module_path: String, decl_name: String, field_name: String) ->
     module_path: module_path as NonEmptyStr,
     decl_name: decl_name as NonEmptyStr,
     field: NamedField { field_name: field_name as NonEmptyStr },
-  }
-}
-
-// ONE STABLE TOKEN PER DeclField ARM, DECLARED BESIDE THE TYPE IT PROJECTS.
-//
-// A consumer folding a DeclarationRef into a content address needs a String for the field, and two
-// consumers now do. Spelling that projection at each consumer would fork it, and the fork would be
-// invisible: two addresses over one reference, each internally consistent, disagreeing only where
-// nobody compares them.
-//
-// THE ARM TAG IS NOT DECORATION AND ITS ABSENCE WAS A REAL DEFECT. Returning the field name bare
-// makes NamedField { field_name: "whole_declaration" } and WholeDeclaration fold to the same value
-// while decl_field_eq correctly reports them different -- the comparison and the address disagreeing
-// about what a reference is. ":" cannot appear inside a bare field name, so the tag makes a payload
-// unable to impersonate the nullary arm. A total match guarantees every arm is CONSIDERED; only a
-// distinct codomain makes the labelling injective, and a hash fold needs the second.
-//
-// A THIRD PROJECTION EXISTS AND IS NAMED RATHER THAN QUIETLY TOLERATED: std.observation
-// `observation_decl_field_key` spells the same arms "whole" and "field=<n>". It is injective, so it
-// is not defective, but it is a second answer to one question living outside this type's authority.
-// It is NOT dissolved here because its output is a key other carriers build on, so changing its
-// spelling is a behavioural change to those consumers rather than a rename -- that dissolution is
-// its own change under its own owner. Recorded so the next author folding a DeclField picks a
-// projection deliberately instead of discovering the fork by minting a fourth.
-fn decl_field_label(field: DeclField) -> String {
-  match field {
-    WholeDeclaration => "whole_declaration"
-    NamedField { field_name: n } => concat("named_field:", n)
   }
 }
 

@@ -2,7 +2,7 @@ module v2.workflow.legacy_binding_observation
 
 import std.types { String, Bool, Int, List, Map, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_field_eq, decl_field_label }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_field_eq }
 import std.observation_completeness {
   ObservationCompleteness,
   ObservationComplete,
@@ -299,15 +299,48 @@ fn legacy_resolution_policy_label(policy: LegacyResolutionPolicy) -> String {
 // Caught by review on the first cut of this module, where the address folded six of the eight
 // fields the comparison reads.
 //
-// THE DeclField LABEL IS CONSUMED FROM std.decl_ref RATHER THAN SPELLED HERE. It was declared in
-// this module while this was its only consumer; a second envelope now folds the same type, so the
-// projection moved beside the type it projects and the injectivity argument moved with it. A label
-// respelled per consumer is two addresses over one reference, disagreeing only where nobody looks.
+// AND THE LABELLING MUST BE INJECTIVE, WHICH TOTALITY DOES NOT GIVE. A total match guarantees every
+// arm is considered; a hash fold needs the arms to map to DISTINCT values, which is a property of the
+// codomain rather than of the match. The first cut of decl_field_label returned the field name bare,
+// so NamedField { field_name: "whole_declaration" } and WholeDeclaration folded to the same address
+// while decl_field_eq correctly reported them different -- the comparison and the address disagreeing
+// about what a subject is, reproduced INSIDE the repair for that exact defect. The arm tag makes a
+// payload unable to impersonate the nullary arm, because ":" cannot appear before it in a bare field
+// name.
+//
+// THE LABEL STAYS DECLARED HERE AND THE REPAIR ENVELOPE CONSUMES IT, WHICH IS ONE AUTHORITY AND NOT
+// ITS FINAL HOME. Beside the type it projects, in std.decl_ref, is where it belongs -- two consumers
+// now fold DeclField, which is exactly the condition that justifies the move. It is NOT moved in this
+// change, and the reason is REVIEWABILITY rather than any rule forbidding it.
+//
+// The first cut of this annotation said the wave-admission grain note forbade the move, reading its
+// "two change classes in one diff" clause as covering any refactor that also relocates a declaration.
+// That was a MIS-CITATION and it is corrected here rather than quietly dropped: the clause's subject
+// is a wave that BOTH REQUALIFIES AND MOVES a symbol, and this change requalifies nothing. The wall's
+// key is the reference LEAF, which is `decl_field_label` on both sides; what a move changes is the SET
+// OF DECLARING IDENTITIES that leaf admits -- the row's value, not its key. So TargetChanged firing on
+// a pure move is the wall correctly OBSERVING it, not refusing a mis-shaped wave (ruling by the
+// carrier's owner, 2026-08-27). Citing a clause without first checking its exact scope is the
+// too-wide-predicate error, and it is worth a line because it nearly deferred a correct move on an
+// invented prohibition.
+//
+// THE REASON THAT ACTUALLY APPLIES: bundling the move here makes one change carry two independent
+// adjudications, and the move's whole reviewable content is two TargetChanged rows that a reviewer of
+// a repair-census change has no reason to be looking at. It lands as its own change, where those rows
+// ARE the diff. Until then this is the single authority with no fork -- a holding pattern with a
+// named end, not a deferral.
 //
 // legacy_resolution_policy_label needs no such tag and it is worth saying why rather than leaving
 // the asymmetry unexplained: both of its arms are nullary with distinct literals, so nothing can
 // collide. DeclField is the only labelled type here carrying a payload, which is why it is the only
 // one exposed to that class.
+
+fn decl_field_label(field: DeclField) -> String {
+  match field {
+    WholeDeclaration => "whole_declaration"
+    NamedField { field_name: n } => concat("named_field:", n)
+  }
+}
 
 fn legacy_subject_identity(subject: LegacyBindingObservationSubject) -> Fnv1a64Structural {
   let resolver = content_hash_combine_structural(

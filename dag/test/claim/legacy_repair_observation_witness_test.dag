@@ -21,11 +21,11 @@ import v2.workflow.legacy_repair_observation {
   RepairObservationAdmitted,
   RepairObservationSubjectDiverged,
   RepairObservationRefused,
-  SubjectRoster,
-  SubjectRosterProof,
-  SubjectRosterProven,
-  SubjectRosterMismatch,
-  prove_subject_roster,
+  ProvenRepairRoster,
+  RepairRosterProof,
+  RepairRosterProven,
+  RepairRosterMismatch,
+  prove_repair_roster,
   LegacyRepairSubjectApplicability,
   LegacyRepairSubjectApplicable,
   LegacyRepairSubjectDiverged,
@@ -113,8 +113,8 @@ fn lro_answered_exactly() -> List<RepairSite> {
 // an admission that refuses unconditionally -- a wall that admits nothing, useless in the opposite
 // direction and just as wrong.
 test fn an_observation_answering_exactly_the_roster_is_admitted() -> Bool {
-  match prove_subject_roster(subject: lro_base_subject(), roster: lro_roster()) {
-    SubjectRosterProven { proven: p } =>
+  match prove_repair_roster(subject: lro_base_subject(), roster: lro_roster()) {
+    RepairRosterProven { proven: p } =>
       match admit_complete_repair_observation(
         observation: lro_observation(sites: lro_answered_exactly()),
         proven: p
@@ -123,7 +123,7 @@ test fn an_observation_answering_exactly_the_roster_is_admitted() -> Bool {
         RepairObservationSubjectDiverged { field: _ } => false
         RepairObservationRefused { completeness: _ } => false
       }
-    SubjectRosterMismatch { subject_digest: _, roster_digest: _ } => false
+    RepairRosterMismatch { subject_digest: _, roster_digest: _ } => false
   }
 }
 
@@ -198,8 +198,12 @@ test fn an_observation_whose_every_row_is_declined_is_still_complete() -> Bool {
 // subject is a category error, not a weaker verdict -- and it is exactly the half the binding
 // envelope cannot close, because it cannot digest its own transport.
 //
-// THE RED IS REACHABLE AND IT IS THE INTERESTING ONE: delete the digest comparison and this arm goes
-// green-to-ADMITTED, which is the wrong answer rather than a missing one.
+// THE RED IS REACHABLE AND IT IS THE INTERESTING ONE, AND IT WAS EXECUTED RATHER THAN ASSERTED.
+// Replacing prove_repair_roster's digest comparison with a constant `true` -- the shape a
+// "simplification" would produce -- turns this arm from `true` to `false` on the real acceptance path,
+// measured 2026-08-27. The positive control above stays green under the same mutation, so the arm
+// discriminates the wall rather than the harness. Twenty-one arms that cannot be made to fail would
+// be the decoration DESIGN 4b calls worse than absent; this is the receipt that they can.
 fn lro_foreign_roster_subject() -> LegacyRepairObservationSubject {
   let base = lro_base_subject()
   LegacyRepairObservationSubject {
@@ -215,25 +219,25 @@ fn lro_foreign_roster_subject() -> LegacyRepairObservationSubject {
 }
 
 test fn a_roster_that_is_not_the_subjects_cannot_be_proven() -> Bool {
-  match prove_subject_roster(subject: lro_foreign_roster_subject(), roster: lro_roster()) {
-    SubjectRosterMismatch { subject_digest: _, roster_digest: _ } => true
-    SubjectRosterProven { proven: _ } => false
+  match prove_repair_roster(subject: lro_foreign_roster_subject(), roster: lro_roster()) {
+    RepairRosterMismatch { subject_digest: _, roster_digest: _ } => true
+    RepairRosterProven { proven: _ } => false
   }
 }
 
 // AND THE MINT IS THE ONLY ROUTE, WHICH IS WHAT MAKES THE ARM ABOVE A WALL RATHER THAN A HABIT.
-// admit_complete_repair_observation takes a SubjectRoster and SubjectRoster is sole_constructor, so
+// admit_complete_repair_observation takes a ProvenRepairRoster and ProvenRepairRoster is sole_constructor, so
 // there is no spelling in which a caller joins against an unproven roster -- this fixture cannot
 // author the negative case, and that inability IS the guarantee. Recorded here rather than left to a
 // reader who would otherwise look for the missing arm.
 
 // AN OBSERVATION TAKEN ON A DIFFERENT BASE IS REFUSED EVEN AGAINST A PROVEN ROSTER. A proof that
 // roster R belongs to subject S says nothing about an observation of some other subject, and without
-// this arm the pair-binding in SubjectRoster would be decoration: the roster would be proven and the
+// this arm the pair-binding in ProvenRepairRoster would be decoration: the roster would be proven and the
 // rows would be joined against it regardless of what they were observed on.
 test fn an_observation_taken_on_another_base_refuses_against_a_proven_roster() -> Bool {
-  match prove_subject_roster(subject: lro_base_subject(), roster: lro_roster()) {
-    SubjectRosterProven { proven: p } =>
+  match prove_repair_roster(subject: lro_base_subject(), roster: lro_roster()) {
+    RepairRosterProven { proven: p } =>
       match admit_complete_repair_observation(
         observation: lro_observation_over(
           subject: LegacyRepairObservationSubject {
@@ -252,7 +256,7 @@ test fn an_observation_taken_on_another_base_refuses_against_a_proven_roster() -
         RepairObservationAdmitted { admitted: _ } => false
         RepairObservationRefused { completeness: _ } => false
       }
-    SubjectRosterMismatch { subject_digest: _, roster_digest: _ } => false
+    RepairRosterMismatch { subject_digest: _, roster_digest: _ } => false
   }
 }
 

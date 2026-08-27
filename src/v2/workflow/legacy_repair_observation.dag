@@ -7,7 +7,8 @@ import std.content_hash {
   content_hash_combine_structural,
   content_hash_tagged_structural
 }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_field_eq, decl_field_label }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_field_eq }
+import v2.workflow.legacy_binding_observation { decl_field_label }
 import std.observation_completeness {
   ObservationCompleteness,
   ObservationComplete,
@@ -172,7 +173,7 @@ fn expected_repair_sites(roster: RepairSiteRoster) -> List<RepairSite> {
 // was handed is its subject's, because std.occurrence_identity declares no digest over
 // ValidatedOccurrenceTransport and minting one outside that type's own module would be the DESIGN
 // section 3 violation. RepairSiteRoster is declared HERE, so no such boundary is crossed and the
-// half closes: the subject carries the roster's address, prove_subject_roster recomputes it, and a
+// half closes: the subject carries the roster's address, prove_repair_roster recomputes it, and a
 // roster that is not this subject's has no spelling at the join boundary.
 //
 // The tag prevents a one-site roster's address from colliding with that bare site's own address --
@@ -247,34 +248,42 @@ fn legacy_repair_completeness<O>(
 // provenance, then join -- and that is validation: correct while nobody edits it, and satisfiable by
 // a later "simplification" that hoists the join out of the else-arm. So the fact is carried instead.
 //
-// SubjectRoster is `sole_constructor`, prove_subject_roster is its only mint, and the join below
-// takes one. A caller therefore cannot reach completeness over an unproven roster -- there is no
+// ProvenRepairRoster is `sole_constructor`, prove_repair_roster is its only mint, and the join below
+// takes one.
+//
+// THE NAME IS QUALIFIED BECAUSE THE BARE ONE WAS ALREADY TAKEN, and that is worth a line rather than
+// a silent rename. The first cut called this `SubjectRoster`, which is exactly the spelling
+// `v2.lens.enforcement.vocab` already declares for an unrelated concept. Whole-corpus resolution then
+// handed THIS type to the enforcement lens's own consumers, and their `entries` field stopped
+// existing -- the §3 nicknaming failure committed in the direction authors do not watch for, since
+// the duplicate was minted here and the breakage surfaced over there. A name is not free just because
+// it reads naturally at its declaration. A caller therefore cannot reach completeness over an unproven roster -- there is no
 // spelling for it, rather than a rule about which check runs first. That is the DESIGN section 5
 // move: the bad state is unwritable, not detected.
 //
 // THE MINT NAMES BOTH ADDRESSES ON REFUSAL. "These do not match" sends a reader looking; the two
 // digests tell them which side moved.
-type SubjectRoster sole_constructor {
+type ProvenRepairRoster sole_constructor {
   subject: LegacyRepairObservationSubject
   roster: RepairSiteRoster
 }
 
-type SubjectRosterProof
-  = SubjectRosterProven { proven: SubjectRoster }
-  | SubjectRosterMismatch {
+type RepairRosterProof
+  = RepairRosterProven { proven: ProvenRepairRoster }
+  | RepairRosterMismatch {
       subject_digest: Fnv1a64Structural,
       roster_digest: Fnv1a64Structural
     }
 
-fn prove_subject_roster(
+fn prove_repair_roster(
   subject: LegacyRepairObservationSubject,
   roster: RepairSiteRoster
-) -> SubjectRosterProof {
+) -> RepairRosterProof {
   let roster_digest = repair_site_roster_identity(roster: roster)
   if subject.repair_site_roster_digest.digest == roster_digest.digest {
-    SubjectRosterProven { proven: SubjectRoster { subject: subject, roster: roster } }
+    RepairRosterProven { proven: ProvenRepairRoster { subject: subject, roster: roster } }
   } else {
-    SubjectRosterMismatch {
+    RepairRosterMismatch {
       subject_digest: subject.repair_site_roster_digest,
       roster_digest: roster_digest
     }
@@ -294,7 +303,7 @@ fn prove_subject_roster(
 // executes on the v1 seed infer path only, so the wall is a property of the compiling PATH rather
 // than of the type; and confinement establishes WHO may construct, never WHAT was proven -- though
 // here, as there, the mint's predicate is fixed and module-owned rather than caller-supplied, which
-// is the stronger of the two shapes. That bound applies to SubjectRoster above equally: the ordering
+// is the stronger of the two shapes. That bound applies to ProvenRepairRoster above equally: the ordering
 // is structural WITHIN the paths where sole_constructor executes, and mitigatable elsewhere.
 // NEXT-RUNG TRIGGER, for both carriers: v2's own infer path carrying the construction wall.
 type CompleteLegacyRepairObservation<O> sole_constructor {
@@ -314,7 +323,7 @@ type LegacyRepairAdmission<O>
 // the admission side.
 fn admit_complete_repair_observation<O>(
   observation: LegacyRepairObservation<O>,
-  proven: SubjectRoster
+  proven: ProvenRepairRoster
 ) -> LegacyRepairAdmission<O> {
   match legacy_repair_subject_applicability(left: observation.subject, right: proven.subject) {
     LegacyRepairSubjectDiverged { field: f } => RepairObservationSubjectDiverged { field: f }
@@ -324,7 +333,7 @@ fn admit_complete_repair_observation<O>(
 
 fn admit_over_proven_subject<O>(
   observation: LegacyRepairObservation<O>,
-  proven: SubjectRoster
+  proven: ProvenRepairRoster
 ) -> LegacyRepairAdmission<O> {
   match legacy_repair_completeness(
     observation: observation,
@@ -390,7 +399,9 @@ fn legacy_repair_subject_applicability(
 // AND THE LABELLING MUST BE INJECTIVE, WHICH TOTALITY DOES NOT GIVE. A total match guarantees every
 // arm is considered; a hash fold needs the arms to map to DISTINCT values. decl_field_label carries
 // the arm tag for exactly that reason and is consumed from the binding envelope rather than
-// respelled here -- one label, one authority.
+// respelled here -- one label, one authority. Its final home is beside DeclField in std.decl_ref; the
+// move lands as its own change so that its two TargetChanged rows are the whole of a diff a reviewer
+// can check, rather than riding unread inside this one.
 fn legacy_repair_subject_identity(subject: LegacyRepairObservationSubject) -> Fnv1a64Structural {
   let repairer = content_hash_combine_structural(
     left: content_hash_combine_structural(

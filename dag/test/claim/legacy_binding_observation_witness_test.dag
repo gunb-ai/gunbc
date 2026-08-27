@@ -3,10 +3,9 @@ module test.claim.legacy_binding_observation_witness
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, decl_field_ref, decl_field_label }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
 import std.occurrence_identity { OccurrenceId }
 import std.observation_completeness {
-  ObservationCompleteness,
   ObservationComplete,
   ObservationMissingExpected,
   ObservationForeignObserved,
@@ -25,7 +24,8 @@ import v2.workflow.legacy_binding_observation {
   LegacySubjectDiverged,
   legacy_subject_applicability,
   legacy_observation_completeness,
-  legacy_subject_identity
+  legacy_subject_identity,
+  decl_field_label
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
