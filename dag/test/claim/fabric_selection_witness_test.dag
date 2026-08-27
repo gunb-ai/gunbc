@@ -1,0 +1,484 @@
+module test.claim.fabric_selection_witness
+
+import std.logic { Bool }
+import std.nat { Nat }
+import std.types { NonEmptyStr, List }
+import std.measure {
+  MoneyAmountMicro, MoneyRate, MoneyPerSecond, money_amount_micro, money_amount_micro_count,
+  Second, second,
+  HardwareThreadCount, hardware_thread_count,
+}
+import std.currency { Usd }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.work {
+  Shape, HardRequirements, ExecutionRequirements, CapabilityManifestRef, TrustDomainRef,
+}
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply {
+  SupplierOffer, OfferQuote, QuotedPerSecond, QuotedPerHour, ObservedSupply,
+  GrantDuration, ExactGrantDuration,
+}
+import product.fabric.selection {
+  CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
+  AvailabilityObservation, AvailableForInterval, AvailabilityUnobserved,
+  CommitmentState, PayAsYouGo, PaidThrough,
+  StartCostObservation, StartCostMeasured,
+  TransitionCostObservation, NoTransitionRequired,
+  OperatingCostObservation, OperatingCostMeasured, OperatingCostBorneBySupplier,
+  OpportunityCostObservation, NoFeasibleAlternativeUse, AlternativeUseDisplaced, AlternativeUseUnread,
+  OfferCandidacy, OfferPriced, OfferNotPriceable, OfferUnavailableForGrant,
+  SupplySelection, OfferSelected, NoAdmissibleOffer,
+  SelectionCost, selection_total, selection_liability,
+  select_supply, OpportunityCostAxis, AvailabilityAxis, SelectionInputAxis,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS A CROSS-MODE RANKING, AND EVERY WITNESS BELOW IS A PAIR OF OFFERS THAT
+// DIFFER IN ONE OBSERVED FACT.
+//
+// A suite asserting that some offer can be selected would establish nothing that was in
+// doubt. What is in doubt is that the SAME two offers change places when one input moves --
+// that the ranking is arithmetic over the six observations and not a preference for a mode.
+// So the fixtures below are one owned continuous offer and one hourly rented offer, held
+// fixed, with a single field varying per witness.
+//
+// The operator's falsifier is the first witness: a Hetzner hour we have already paid for
+// beats our own metal, because the cash for that hour is spent and unrecoverable while power
+// and cooling for our own machine are incurred by the act of running. If this file could not
+// express that, the model would be wrong.
+
+fn t_caps() -> CapabilityManifestRef {
+  "gunbc.capabilities.linux-rust-toolchain"
+}
+
+fn t_trust() -> TrustDomainRef {
+  "gunbc.trust.internal-fleet"
+}
+
+fn t_open_isolation() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+fn t_shape(threads: HardwareThreadCount) -> Shape {
+  Shape { hard: HardRequirements { threads: threads }, envelope: unstated_envelope() }
+}
+
+fn t_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    shape: t_shape(threads: hardware_thread_count(count: 8)),
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: t_open_isolation(),
+  }
+}
+
+fn t_offer(key: OfferKey, quote: OfferQuote, quantum: Second) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: "gunbc", key: key },
+    executor: "gunbc",
+    shape: t_shape(threads: hardware_thread_count(count: 64)),
+    capabilities: t_caps(),
+    trust_domain: t_trust(),
+    isolation: t_open_isolation(),
+    quantity_bound: 1,
+    ready_at: "2026-08-27T00:00:00Z",
+    quote: quote,
+    billing_quantum: quantum,
+    evidence: ObservedSupply {
+      observed_at: "2026-08-27T00:00:00Z",
+      receipt: "gunbc.observation.fleet-1",
+    },
+  }
+}
+
+// OUR OWN METAL. Continuous, so no quantum rounds its bill up, and an EXPLICIT ZERO asking
+// price because we do not invoice ourselves. Its operating cost is NOT zero: a hundred micros
+// a second of power and cooling, incurred by running.
+fn t_owned_offer() -> SupplierOffer<NonEmptyStr> {
+  t_offer(
+    key: "offer-owned-srv1",
+    quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }),
+    quantum: second(count: 0),
+  )
+}
+
+// A RENTED HOURLY MACHINE. One-hour quantum, ten thousand micros an hour, and its power is
+// the vendor's problem and already inside that rate.
+fn t_rented_offer() -> SupplierOffer<NonEmptyStr> {
+  t_offer(
+    key: "offer-rented-hourly",
+    quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 10000), currency: Usd }),
+    quantum: second(count: 3600),
+  )
+}
+
+fn t_inputs(
+  key: OfferKey,
+  availability: AvailabilityObservation,
+  commitment: CommitmentState,
+  operating: OperatingCostObservation,
+  opportunity: OpportunityCostObservation,
+) -> DispatchInputs<NonEmptyStr> {
+  DispatchInputs {
+    offer: FabricIdentity { principal: "gunbc", key: key },
+    availability: availability,
+    commitment: commitment,
+    start: StartCostMeasured {
+      amount: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+      receipt: "gunbc.observation.start-cost-1",
+    },
+    transition: NoTransitionRequired,
+    operating: operating,
+    opportunity: opportunity,
+  }
+}
+
+fn t_ready_now() -> AvailabilityObservation {
+  AvailableForInterval {
+    delay: second(count: 0),
+    interval: second(count: 86400),
+    receipt: "gunbc.observation.availability-1",
+  }
+}
+
+fn t_idle() -> OpportunityCostObservation {
+  NoFeasibleAlternativeUse { receipt: "gunbc.observation.alternative-uses-1" }
+}
+
+fn t_owned_operating() -> OperatingCostObservation {
+  OperatingCostMeasured {
+    rate: MoneyRate { amount: money_amount_micro(count: 100), currency: Usd },
+    receipt: "gunbc.observation.power-1",
+  }
+}
+
+fn t_owned_candidate(commitment: CommitmentState, opportunity: OpportunityCostObservation) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound(
+    offer: t_owned_offer(),
+    inputs: t_inputs(
+      key: "offer-owned-srv1",
+      availability: t_ready_now(),
+      commitment: commitment,
+      operating: t_owned_operating(),
+      opportunity: opportunity,
+    ),
+  )
+}
+
+fn t_rented_candidate(
+  availability: AvailabilityObservation,
+  commitment: CommitmentState,
+  opportunity: OpportunityCostObservation,
+) -> List<CandidateOffer<NonEmptyStr>> {
+  t_bound(
+    offer: t_rented_offer(),
+    inputs: t_inputs(
+      key: "offer-rented-hourly",
+      availability: availability,
+      commitment: commitment,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: opportunity,
+    ),
+  )
+}
+
+// A FIXTURE HELPER MAY NOT INVENT A CANDIDATE ON THE SEAL'S REFUSAL ARM, and it may not
+// silently swallow it either. There is no CandidateOffer to return when binding refuses --
+// that is the whole point of the seal -- so the helper returns a LIST, empty on refusal. A
+// fixture that accidentally mismatched its keys would then present fewer offers than the
+// witness names, and every witness below would go red rather than quietly ranking a shorter
+// roster. Returning an unconstructable value or re-binding in a loop were the alternatives,
+// and both hide the same mistake.
+fn t_bound(offer: SupplierOffer<NonEmptyStr>, inputs: DispatchInputs<NonEmptyStr>) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(offer: offer, inputs: inputs) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+  }
+}
+
+fn t_ninety_seconds() -> GrantDuration {
+  ExactGrantDuration { seconds: second(count: 90) }
+}
+
+fn t_no_delay_valuation() -> MoneyPerSecond {
+  MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }
+}
+
+fn t_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<NonEmptyStr> {
+  select_supply(
+    requirements: t_requirements(),
+    candidates: candidates,
+    duration: t_ninety_seconds(),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: t_no_delay_valuation(),
+  )
+}
+
+fn selected_key(s: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
+  match s {
+    OfferSelected { offer: o, cost: _, basis: _, considered: _ } => (o.id.key as NonEmptyStr)
+    NoAdmissibleOffer { considered: _ } => "none"
+  }
+}
+
+fn selected_total(s: SupplySelection<NonEmptyStr>) -> Nat {
+  match s {
+    OfferSelected { offer: _, cost: c, basis: _, considered: _ } =>
+      money_amount_micro_count(m: selection_total(c: c))
+    NoAdmissibleOffer { considered: _ } => 0
+  }
+}
+
+fn considered_of(s: SupplySelection<NonEmptyStr>) -> List<OfferCandidacy<NonEmptyStr>> {
+  match s {
+    OfferSelected { offer: _, cost: _, basis: _, considered: cs } => cs
+    NoAdmissibleOffer { considered: cs } => cs
+  }
+}
+
+fn unpriced_axes(cs: List<OfferCandidacy<NonEmptyStr>>) -> List<SelectionInputAxis> {
+  fold(cs, init: [], f: (acc, c) =>
+    match c {
+      OfferNotPriceable { offer: _, unpriced: u } => concat(acc, [u.axis])
+      OfferPriced { offer: _, cost: _, basis: _ } => acc
+      OfferNotFungible { offer: _, fungibility: _ } => acc
+      OfferUnavailableForGrant { offer: _, needed: _, available: _ } => acc
+      OfferWrongCurrency { offer: _, mismatch: _ } => acc
+      OfferUnaffordable { offer: _, affordability: _ } => acc
+      OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => acc
+    })
+}
+
+fn unavailable_count(cs: List<OfferCandidacy<NonEmptyStr>>) -> Nat {
+  fold(cs, init: 0, f: (n, c) =>
+    match c {
+      OfferUnavailableForGrant { offer: _, needed: _, available: _ } => n + 1
+      OfferPriced { offer: _, cost: _, basis: _ } => n
+      OfferNotFungible { offer: _, fungibility: _ } => n
+      OfferNotPriceable { offer: _, unpriced: _ } => n
+      OfferWrongCurrency { offer: _, mismatch: _ } => n
+      OfferUnaffordable { offer: _, affordability: _ } => n
+      OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => n
+    })
+}
+
+// THE OPERATOR'S FALSIFIER, AND IT IS THE FIRST WITNESS FOR A REASON.
+//
+// A Hetzner hour bought forty minutes ago has forty minutes left on it. The cash is spent and
+// nothing we do recovers it, so the marginal cost of running a ninety-second job inside that
+// remainder is ZERO. Our own metal is not zero over the same ninety seconds: power and
+// cooling are incurred by running it. The rented machine therefore WINS, and the fold must
+// reach that by arithmetic rather than by any rule about who owns what.
+//
+// Nothing in the selector knows which of these two offers is ours. There is no mode tag, no
+// owned arm and no sunk-cost flag: the only things that differ are the commitment interval,
+// the quantum and who bears the operating cost, all of them facts either offer could carry.
+test fn a_paid_through_rented_hour_beats_our_own_metal() -> Bool {
+  let selection = t_select(candidates: concat(
+    t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PaidThrough {
+        remaining: second(count: 2400),
+        receipt: "gunbc.observation.hetzner-hour-1",
+      },
+      opportunity: t_idle(),
+    ),
+  ))
+  selected_key(s: selection) == "offer-rented-hourly" && selected_total(s: selection) == 0
+}
+
+// THE SYMMETRIC ERROR, AND THE SAME TWO OFFERS SAY IT.
+//
+// Sunk is not free-forever. The hour expires in forty seconds, and a ninety-second job runs
+// fifty seconds past the boundary -- which on a one-hour quantum buys a WHOLE SECOND HOUR,
+// the exact wasted-remainder case the billing quantum exists to price. So the winner flips
+// back to our own metal, and it flips on ONE field: the remaining commitment. A selector that
+// treated a rented machine as free because it had once been paid for would still pick it
+// here, and would quietly buy an hour to run a ninety-second job.
+test fn an_expiring_commitment_buys_the_next_unit_and_stops_winning() -> Bool {
+  let selection = t_select(candidates: concat(
+    t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PaidThrough {
+        remaining: second(count: 40),
+        receipt: "gunbc.observation.hetzner-hour-2",
+      },
+      opportunity: t_idle(),
+    ),
+  ))
+  selected_key(s: selection) == "offer-owned-srv1" && selected_total(s: selection) == 9000
+}
+
+// OPERATING COST IS NOT THE QUOTE, AND THIS IS THE INPUT THAT PROVES IT.
+//
+// Our own metal quotes an explicit zero. If the fold read that zero as the cost of running
+// the machine, its total would be zero and it would win the witness above rather than losing
+// it, and it would win every comparison it ever entered. The total it actually carries is
+// nine thousand micros -- ninety seconds of power at a hundred micros a second -- which is
+// cash the quote never mentioned.
+test fn an_explicit_zero_quote_is_not_a_zero_running_cost() -> Bool {
+  let selection = t_select(
+    candidates: t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+  )
+  selected_key(s: selection) == "offer-owned-srv1"
+    && selected_total(s: selection) == 9000
+    && money_amount_micro_count(m: money_amount_micro(count: 0)) == 0
+}
+
+// AN IDLE HOUR DISPLACED NOBODY, AND AN HOUR SOMEONE WOULD HAVE PAID FOR DID.
+//
+// Same paid-through rented hour that won the first witness, with one field moved: the
+// alternative use it displaces is now worth twenty thousand micros. Its total stops being
+// zero and our own metal wins. That is the sixth axis doing real work rather than being
+// carried and ignored -- and it is why a paid-through hour is only free when nothing else
+// wanted it.
+test fn an_alternative_use_displaced_prices_a_paid_through_hour_above_zero() -> Bool {
+  let selection = t_select(candidates: concat(
+    t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PaidThrough {
+        remaining: second(count: 2400),
+        receipt: "gunbc.observation.hetzner-hour-3",
+      },
+      opportunity: AlternativeUseDisplaced {
+        forgone: MoneyRate { amount: money_amount_micro(count: 20000), currency: Usd },
+        receipt: "gunbc.observation.alternative-uses-2",
+      },
+    ),
+  ))
+  selected_key(s: selection) == "offer-owned-srv1"
+}
+
+// UNREAD IS NOT ZERO, AND THE DISTINCTION IS THE WHOLE POINT OF THE ARM.
+//
+// The winning offer from the first witness, with its alternative uses UNREAD rather than
+// observed to be none. It does not become free and it does not become expensive: it becomes
+// UNPRICEABLE, refused by name on the opportunity-cost axis, and the selection falls to our
+// own metal. If the unread arm defaulted to zero this witness would return the rented offer
+// and be indistinguishable from the first one.
+test fn an_unread_alternative_use_refuses_rather_than_pricing_at_zero() -> Bool {
+  let selection = t_select(candidates: concat(
+    t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+    t_rented_candidate(
+      availability: t_ready_now(),
+      commitment: PaidThrough {
+        remaining: second(count: 2400),
+        receipt: "gunbc.observation.hetzner-hour-4",
+      },
+      opportunity: AlternativeUseUnread {
+        obligation: "Alternative uses for this rented hour have not been read.",
+      },
+    ),
+  ))
+  selected_key(s: selection) == "offer-owned-srv1"
+    && unpriced_axes(cs: considered_of(s: selection)).length() == 1
+}
+
+// AN UNOBSERVED AVAILABILITY INTERVAL REFUSES ON ITS OWN AXIS, not on the opportunity one.
+// Two unread axes on two offers must not report as one cause, which is what makes the refusal
+// population countable per measurement rather than as a single blocked total.
+test fn an_unobserved_availability_refuses_on_the_availability_axis() -> Bool {
+  let selection = t_select(candidates: concat(
+    t_owned_candidate(commitment: PayAsYouGo, opportunity: t_idle()),
+    t_rented_candidate(
+      availability: AvailabilityUnobserved {
+        obligation: "Provisioning delay for this supplier has not been measured.",
+      },
+      commitment: PayAsYouGo,
+      opportunity: t_idle(),
+    ),
+  ))
+  selected_key(s: selection) == "offer-owned-srv1"
+    && unpriced_axes(cs: considered_of(s: selection)).length() == 1
+}
+
+// AN OFFER THAT EXPIRES BEFORE THE GRANT ENDS IS A CAPABILITY REFUSAL, NOT A PRICE ONE.
+//
+// The rented machine is available for thirty seconds and the job needs ninety. That is not
+// expensive, it is impossible, and it is reported as its own arm above the money screens --
+// so a broker reading the receipt is told to find capacity rather than to raise its ceiling.
+test fn an_interval_shorter_than_the_grant_refuses_before_any_price_is_compared() -> Bool {
+  let selection = t_select(candidates: t_rented_candidate(
+      availability: AvailableForInterval {
+        delay: second(count: 0),
+        interval: second(count: 30),
+        receipt: "gunbc.observation.availability-2",
+      },
+      commitment: PayAsYouGo,
+      opportunity: t_idle(),
+    ))
+  unavailable_count(cs: considered_of(s: selection)) == 1
+    && selected_key(s: selection) == "none"
+}
+
+// A ROSTER WHOSE EVERY MEMBER REFUSES RETURNS A REFUSAL CARRYING ALL OF THEM, never a
+// degraded pick. The considered list is the receipt: nothing was selected AND here is one
+// typed cause per offer.
+test fn nothing_admissible_returns_every_typed_cause_and_selects_nothing() -> Bool {
+  let selection = t_select(candidates: t_rented_candidate(
+      availability: AvailabilityUnobserved { obligation: "delay unmeasured" },
+      commitment: PayAsYouGo,
+      opportunity: t_idle(),
+    ))
+  match selection {
+    NoAdmissibleOffer { considered: cs } => cs.length() == 1
+    OfferSelected { offer: _, cost: _, basis: _, considered: _ } => false
+  }
+}
+
+// THE SEAL. Observations naming a different offer refuse at the only place a pair can be
+// formed, so pricing offer A with offer B's measurements has no spelling downstream.
+test fn dispatch_inputs_naming_another_offer_refuse_to_bind() -> Bool {
+  match bind_candidate(
+    offer: t_owned_offer(),
+    inputs: t_inputs(
+      key: "offer-rented-hourly",
+      availability: t_ready_now(),
+      commitment: PayAsYouGo,
+      operating: OperatingCostBorneBySupplier,
+      opportunity: t_idle(),
+    ),
+  ) {
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: n } => (n.key as NonEmptyStr) == "offer-rented-hourly"
+    CandidateBound { candidate: _ } => false
+  }
+}
+
+// LIABILITY AND COMPARISON COST ARE DIFFERENT NUMBERS, and demand.dag requires that they stay
+// different. The valued delay of a supplier that starts in sixty seconds enters the ranking
+// and must NOT enter the amount reserved: reserving it would reserve money nobody is paid.
+test fn valued_delay_enters_the_ranking_and_not_the_reservation() -> Bool {
+  let selection = select_supply(
+    requirements: t_requirements(),
+    candidates: t_bound(
+        offer: t_owned_offer(),
+        inputs: t_inputs(
+          key: "offer-owned-srv1",
+          availability: AvailableForInterval {
+            delay: second(count: 60),
+            interval: second(count: 86400),
+            receipt: "gunbc.observation.availability-3",
+          },
+          commitment: PayAsYouGo,
+          operating: t_owned_operating(),
+          opportunity: t_idle(),
+        ),
+    ),
+    duration: t_ninety_seconds(),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: MoneyRate { amount: money_amount_micro(count: 5), currency: Usd },
+  )
+  match selection {
+    OfferSelected { offer: _, cost: c, basis: _, considered: _ } =>
+      money_amount_micro_count(m: selection_liability(c: c)) == 9000
+        && money_amount_micro_count(m: selection_total(c: c)) == 9300
+    NoAdmissibleOffer { considered: _ } => false
+  }
+}

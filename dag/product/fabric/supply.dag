@@ -135,17 +135,37 @@ type SupplierOffer<P> {
 // an auction: suppliers publish asks, each demand carries a buyer reservation
 // price, and the fabric takes the cheapest admissible ask. No clearing-price
 // machinery exists because none is needed to make that decision.
-// Rented supply being selected only after owned supply is exhausted is a
-// CONSEQUENCE of cheapest-admissible-ask, never a fallback arm, and the
-// distinction decides whether cost can run away. A fallback is a failure arm
-// that widens when the preferred path is unavailable, and it hides the deficit
-// that triggered it. Here nothing widens: owned capacity at an explicit zero
-// quote is simply the cheapest admissible ask while any remains, and when none
-// remains the same fold evaluates the same predicate over the remaining asks.
+// WHICHEVER MODE IS SELECTED IS A CONSEQUENCE of cheapest-admissible-ask,
+// never a fallback arm, and the distinction decides whether cost can run away.
+// A fallback is a failure arm that widens when the preferred path is
+// unavailable, and it hides the deficit that triggered it. Here nothing widens:
+// one fold evaluates one predicate over every ask, and when the cheapest one
+// stops being cheapest the same fold picks the next without changing shape.
 // If no ask is admissible - budget exhausted, every ask above the reservation
 // price or the maximum buy order, no offer fungible - the outcome is a typed
 // refusal or a demand that stays pending. It is never a degraded execution
 // path, and there is no arm to reach for one.
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH STATED THE CONSEQUENCE AS A FIXED
+// ORDER -- rented supply selected only after owned supply is exhausted, owned
+// capacity at an explicit zero quote being simply the cheapest admissible ask
+// while any remains -- and that is FALSE, ruled so by the operator on
+// 2026-08-27. A rented hour already bought has had its cash spent
+// unrecoverably, so its marginal cost over the remainder of that hour is zero,
+// while owned metal is never zero over the same interval because power and
+// cooling are incurred by the act of running. The already-paid rented hour is
+// therefore strictly cheaper at the margin and must WIN, leaving our own
+// machine idle. The old sentence would have had a reader conclude the opposite
+// from this very file.
+//
+// The error is worth keeping visible because of its shape rather than its
+// content: it took a PREDICTION about how the numbers usually come out -- that
+// owned compute will turn out to be the most profitable arbitrage most of the
+// time -- and wrote it down as a PROPERTY of the fold. A selector shaped to
+// reach a conclusion is not ranking, and the zero quote it leaned on is an
+// asking price rather than a running cost, which is precisely the confusion the
+// explicit-zero rule above exists to prevent. What is actually a consequence is
+// only this: nothing in the ranking knows which offers are ours.
 
 type SupplySelectionPolicy =
   | CheapestFungibleWithDelayValuation
@@ -460,19 +480,41 @@ fn offer_quoted_total_for_grant(
 // HISTORICAL PURCHASE is sunk, and sunk cost is excluded from dispatch while
 // being retained for accounting.
 //
-// WHAT SELECTION WOULD NEED, none of which exists here: the offer's availability
-// interval, the SUPPLIER'S OWN tariff (offer_quoted_total_for_grant's
-// billed_unit_count is a synthetic one-hour quantum for the affordability
-// screen, not a per-supplier tariff row), the paid-through commitment state
-// that makes an already-bought hour's marginal cash zero until it expires,
-// transition and start costs, and the alternative uses that give an
-// opportunity cost its value -- including the arm where there is NO feasible
-// alternative use, so an hour about to expire idle is not priced as though a
-// customer had been displaced, and the arm where the alternative is simply
-// UNREAD, so unknown does not silently become zero.
+// WHAT SELECTION NEEDS BEYOND THIS FOLD, AND WHERE EACH OF IT NOW LIVES.
 //
-// Until those land, this fold is honest as a screen and would be a lie as a
-// selector.
+// This paragraph used to be a list of six things that existed nowhere, ending
+// in the sentence "until those land, this fold is honest as a screen and would
+// be a lie as a selector". Both halves have been overtaken, in two separate
+// ways that are worth keeping apart.
+//
+// ONE OF THE SIX HAD ALREADY LANDED WHEN THE LIST STILL CLAIMED IT HAD NOT.
+// The entry read that offer_quoted_total_for_grant's billed_unit_count is a
+// synthetic one-hour quantum rather than a per-supplier tariff row. That
+// stopped being true when billing_quantum landed as a field on this very
+// carrier: the fold reads offer.billing_quantum, the declaration a few lines
+// up says in terms that the quantum is now the supplier's own, and this
+// sentence sat directly beneath it saying the opposite. A stale claim inside
+// the authority that owns the fact is worse than an absent one, because a
+// reader who checks it here stops looking.
+//
+// THE OTHER FIVE ARE MODELED IN product.fabric.selection, one named
+// observation each -- the availability interval, the paid-through commitment
+// state, the start cost, the transition cost and the alternative uses that
+// give an opportunity cost its value, the last carrying both arms this list
+// asked for: no feasible alternative use, so an hour about to expire idle is
+// not priced as though a customer had been displaced, and the alternative
+// simply UNREAD, so unknown does not silently become zero. A sixth axis joins
+// them there that this list did not name and should have: the marginal
+// operating cost, which is what an owned host's explicit zero quote does NOT
+// state and what a rented offer's published rate already contains.
+//
+// SO THIS FOLD IS STILL A SCREEN, and that is now a division of labour rather
+// than a limitation. It answers whether a demand can pay one offer's asking
+// price; product.fabric.selection composes it with the fungibility screen above
+// and the six observations to rank offers against each other. Selection lives
+// there and not here because a supply row may not import a buyer's delay
+// valuation or a commitment ledger without becoming the place economics live,
+// which is the boundary this header already draws.
 
 // The budget ceiling arrives as SCALARS rather than as demand.BuyTerms, because
 // supply must not import demand -- a backward edge this module already carries

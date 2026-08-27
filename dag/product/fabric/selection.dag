@@ -1,0 +1,874 @@
+module product.fabric.selection
+
+import std.types { NonEmptyStr, List, Bool }
+import std.measure {
+  MoneyAmountMicro, MoneyOnce, MoneyPerSecond, money_amount_micro, money_amount_micro_count,
+  money_once_micros, money_rate_micros,
+  Second, second, second_count,
+}
+import std.currency { CurrencyCode }
+import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { ExecutionRequirements }
+import product.fabric.supply {
+  SupplierOffer, OfferQuote, QuotedFlatPerGrant, QuotedPerSecond, QuotedPerMinute, QuotedPerHour,
+  OfferFungibility, Fungible, TrustDomainMismatch, CapabilitiesNotOffered,
+  IsolationNotProvided, ShapeAxesNotCovered, offer_fungibility_for,
+  DemandOfferAffordability, Affordable, AffordableUnderEstimate,
+  QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch,
+  offer_affordability_for, offer_quote_currency, offer_quoted_total_for_grant,
+  GrantDuration, ExactGrantDuration, EstimatedGrantDuration, grant_duration_seconds,
+}
+
+// SELECTION IS THE FOLD product.fabric.supply DECLINED TO WRITE, AND THIS MODULE IS WHY IT
+// CAN NOW BE WRITTEN.
+//
+// supply.dag carries two SCREENS -- offer_fungibility_for, which takes no money, and
+// offer_affordability_for, which takes no shape -- and it stated plainly that choosing among
+// the survivors would be a lie until six facts existed that no carrier held. Those six are
+// modeled here, each as a named observation with an arm for NOT READ that refuses rather than
+// defaulting to zero, and the fold below consumes all six.
+//
+// IT IS A SEPARATE MODULE RATHER THAN A THIRD FOLD IN supply.dag, and the reason is the
+// direction of the import. supply.dag owns what an offer IS; it may not import a buyer's
+// delay valuation, a commitment ledger, or an alternative-use observation without becoming
+// the place where economics live -- which is exactly the boundary its own header draws
+// between a supply row and an assignment evaluation. This module imports supply and is
+// imported by nobody in supply's direction, so the screens stay usable on their own and the
+// selector is one composition of them rather than a competing answer beside them.
+//
+// WHAT MAKES IT A CROSS-MODE SELECTOR RATHER THAN A RATE COMPARISON. Continuous owned
+// capacity, hourly rented bare metal and per-container cloud are not three kinds of offer --
+// supply.dag already refuses that fork -- they are three settings of facts an offer carries:
+// a billing quantum of zero against one of 3600, a quote of an explicit zero against a
+// published rate, an already-paid-through interval against pay-as-you-go, an operating cost
+// we bear against one the vendor bears. Every one of those moves the number this fold ranks
+// on, so the modes are compared by ARITHMETIC over one carrier and never by a mode tag. There
+// is deliberately no such tag anywhere in this file: an offer that wins because it is ours
+// must win because its number is lower, and if a mode enum existed someone would eventually
+// branch on it.
+
+// THE SIX INPUTS, ENUMERATED AS A CLOSED AXIS RATHER THAN AS SIX PROSE SENTENCES.
+//
+// supply.dag named them in a comment, which meant a seventh could be forgotten and nothing
+// would notice. As a coproduct the enumeration is what exhaustiveness protects: every fold
+// over an axis below must answer for all six, and adding a seventh fails to compile at each
+// site rather than being silently unpriced at one of them.
+//
+// Each axis is a fact about the OFFER at the moment a decision is taken, and each is
+// observed rather than assumed. The unread arms are the whole point: DESIGN section 5 rules
+// that a failure arm must refuse and never widen, and the widening available here is
+// arithmetic -- an unknown cost silently entering a sum as zero, which does not merely lose
+// information, it flatters exactly the supplier nobody measured.
+type SelectionInputAxis
+  = AvailabilityAxis
+  | CommitmentAxis
+  | StartCostAxis
+  | TransitionCostAxis
+  | OperatingCostAxis
+  | OpportunityCostAxis
+
+fn selection_input_axis_wire(axis: SelectionInputAxis) -> String {
+  match axis {
+    AvailabilityAxis => "availability interval"
+    CommitmentAxis => "paid-through commitment state"
+    StartCostAxis => "start cost"
+    TransitionCostAxis => "transition cost"
+    OperatingCostAxis => "marginal operating cost"
+    OpportunityCostAxis => "opportunity cost"
+  }
+}
+
+// AXIS 1 -- THE AVAILABILITY INTERVAL, AS TWO DURATIONS RELATIVE TO THE DECISION INSTANT
+// RATHER THAN AS TWO TIMESTAMPS.
+//
+// SupplierOffer already carries ready_at, and it is a std.types Timestamp, which is a String.
+// No arithmetic exists over it, so a fold that wanted to know how long a grant must wait
+// could not derive it from that field however much the field looks like it should. Deriving
+// it anyway would mean inventing timestamp arithmetic in the one place a wrong answer silently
+// reorders the ranking.
+//
+// So the interval arrives as it is actually observed: how long until this offer can start,
+// and how long it remains available once it has. Both are stated relative to the instant the
+// selection is taken, which is also the instant every other axis below is stated at. A
+// consumer that reads these at one moment and selects at another has compared facts from two
+// worlds; that is a property of the caller and is named here rather than checked, because
+// nothing in this module can observe the caller's clock.
+type AvailabilityObservation
+  = AvailableForInterval { delay: Second, interval: Second, receipt: ObservationReceiptRef }
+  | AvailabilityUnobserved { obligation: NonEmptyStr }
+
+// AXIS 2 -- THE PAID-THROUGH COMMITMENT STATE.
+//
+// An hour already bought has a marginal cash cost of zero until it expires, and that is the
+// single fact that decides whether a rented box we are already holding beats an idle owned
+// slot on this particular grant. Without it every offer is priced as though its meter starts
+// now, which systematically overprices exactly the capacity we have already committed to.
+//
+// The remaining interval is carried, not the moment it ends, for the reason axis 1 gives.
+// PayAsYouGo is a MEASURED absence of commitment and CommitmentUnread is ignorance about it;
+// they are separated because their remedies differ -- one needs no work at all, the other
+// needs a ledger read -- and because collapsing them makes the ignorance case price as the
+// expensive one, which reads as conservative and is simply wrong: it hides supply we own.
+type CommitmentState
+  = PayAsYouGo
+  | PaidThrough { remaining: Second, receipt: ObservationReceiptRef }
+  | CommitmentUnread { obligation: NonEmptyStr }
+
+// AXIS 3 -- THE START COST: what is paid ONCE to bring this offer to a state where it can
+// accept the work. Provisioning, boot, image pull, a supplier's fixed or setup charge.
+//
+// It is a MoneyOnce rather than a bare amount because it carries its own currency, and a
+// start charge quoted in a currency the budget does not hold is a refusal rather than a
+// number to add. An always-ready host states an explicit zero here; supply.dag's rule that
+// absence must never be interpreted as free applies to every one of these axes and not only
+// to the quote.
+type StartCostObservation
+  = StartCostMeasured { amount: MoneyOnce, receipt: ObservationReceiptRef }
+  | StartCostUnread { obligation: NonEmptyStr }
+
+// AXIS 4 -- THE TRANSITION COST: what is paid ONCE because the work MOVES to this offer
+// rather than staying where it is. Egress, a cold cache, a re-materialized input set.
+//
+// It is a separate axis from the start cost and not a second field of one, because they have
+// different owners and different remedies: a start cost is a property of the offer alone,
+// while a transition cost exists only relative to where the work is now. The same offer
+// carries one start cost and as many transition costs as there are places the work could
+// come from, which is why NoTransitionRequired is a real arm -- work already sited on this
+// executor moves nowhere -- and is a measured zero rather than an unread one.
+type TransitionCostObservation
+  = NoTransitionRequired
+  | TransitionCostMeasured { amount: MoneyOnce, receipt: ObservationReceiptRef }
+  | TransitionCostUnread { obligation: NonEmptyStr }
+
+// AXIS 5 -- THE MARGINAL OPERATING COST, AND IT IS NOT THE QUOTE.
+//
+// The quote is a supplier-side ASKING PRICE. For owned capacity that price is an explicit
+// zero -- we do not invoice ourselves -- and it would be a serious error to read that zero as
+// the cost of running the machine. Power and cooling are incurred by the ACT of running, so
+// they are real cash and a real dispatch input; only the historical purchase is sunk, and
+// sunk cost is excluded from dispatch while being retained for accounting. An owned offer
+// whose operating cost went unpriced would win every comparison it entered, which is the one
+// outcome this whole model exists to avoid claiming without evidence.
+//
+// OperatingCostBorneBySupplier is the arm that keeps the same cash from being counted twice.
+// A rented offer's published rate already contains the vendor's power and cooling; adding our
+// own figure on top would charge the buyer twice for one kilowatt-hour. That is a statement
+// about who bears the cost, which is knowable, and it is deliberately not the same arm as
+// having failed to look.
+type OperatingCostObservation
+  = OperatingCostMeasured { rate: MoneyPerSecond, receipt: ObservationReceiptRef }
+  | OperatingCostBorneBySupplier
+  | OperatingCostUnread { obligation: NonEmptyStr }
+
+// AXIS 6 -- THE OPPORTUNITY COST, WITH THE TWO ARMS supply.dag NAMED SPECIFICALLY.
+//
+// What an hour could otherwise have earned is not a field on the supply row: it depends on
+// which OTHER demands could have used that hour, so it belongs to the assignment evaluation,
+// which is this fold. It arrives as an observation about the alternative uses that existed.
+//
+// NoFeasibleAlternativeUse is the arm supply.dag insisted on: an hour about to expire idle
+// displaced nobody, so its opportunity cost is a measured zero and must not be priced as
+// though a customer had been turned away. Pricing it otherwise makes idle owned capacity look
+// expensive precisely when it is free, which inverts the decision.
+//
+// AlternativeUseUnread is the other arm it insisted on, and it is the one that must never
+// become zero. Not having read the alternative uses is not the same as having read them and
+// found none, and the difference is the entire distance between a measured zero and an
+// absorbing fallback.
+type OpportunityCostObservation
+  = NoFeasibleAlternativeUse { receipt: ObservationReceiptRef }
+  | AlternativeUseDisplaced { forgone: MoneyOnce, receipt: ObservationReceiptRef }
+  | AlternativeUseUnread { obligation: NonEmptyStr }
+
+// THE SIX TRAVEL TOGETHER AND THEY NAME THE OFFER THEY DESCRIBE.
+//
+// Pricing offer A with offer B's inputs is a silent wrong answer of the worst kind: every
+// value is real, the arithmetic is correct, and the ranking is nonsense. The identity is
+// therefore carried ON the observation set and checked once, at the only place a pair can be
+// formed.
+type DispatchInputs<P> {
+  offer: FabricIdentity<P, OfferKey>
+  availability: AvailabilityObservation
+  commitment: CommitmentState
+  start: StartCostObservation
+  transition: TransitionCostObservation
+  operating: OperatingCostObservation
+  opportunity: OpportunityCostObservation
+}
+
+// A CANDIDATE IS A SEALED PAIR, so a mismatched one has no spelling rather than being caught
+// by a check the fold has to remember to run. sole_constructor confines construction to
+// bind_candidate below, which refuses the mismatch; DESIGN section 4b's ceiling applies
+// unchanged -- this confines WHO may construct and establishes nothing about whether the
+// observations themselves were honestly taken, which stays a boundary obligation on whoever
+// produced them.
+type CandidateOffer<P> sole_constructor {
+  offer: SupplierOffer<P>
+  dispatch: DispatchInputs<P>
+}
+
+type CandidateBinding<P>
+  = CandidateBound { candidate: CandidateOffer<P> }
+  | DispatchInputsNameAnotherOffer {
+      offer: FabricIdentity<P, OfferKey>,
+      inputs_name: FabricIdentity<P, OfferKey>,
+    }
+
+fn bind_candidate<P>(offer: SupplierOffer<P>, dispatch: DispatchInputs<P>) -> CandidateBinding<P> {
+  if !fabric_identity_eq(left: offer.id, right: dispatch.offer) {
+    DispatchInputsNameAnotherOffer { offer: offer.id, inputs_name: dispatch.offer }
+  } else {
+    CandidateBound { candidate: CandidateOffer { offer: offer, dispatch: dispatch } }
+  }
+}
+
+// THE COST IS CARRIED AS ITS COMPONENTS, AND THE TWO TOTALS ARE DERIVED FROM THEM.
+//
+// A stored total is a second representation of the sum, free to disagree with the parts it
+// claims to be the sum of, and the disagreement is invisible exactly when it matters. So
+// there is no total field: selection_liability and selection_total below are functions, and
+// a component that changes cannot leave a stale total behind it.
+//
+// The split into LIABILITY and TOTAL is demand.dag's three-fact rule enforced rather than
+// restated. Liability is cash that must be reserved before a grant may issue, so it is the
+// four axes that actually move money out. Total is the comparison number, so it additionally
+// carries opportunity cost -- which is real economics and not cash -- and valued delay, which
+// is the buyer's own statement of what waiting is worth. Ranking on cash alone waits minutes
+// to save cents; reserving against the comparison number would reserve money nobody pays.
+type SelectionCost {
+  marginal_charge: MoneyAmountMicro
+  start: MoneyAmountMicro
+  transition: MoneyAmountMicro
+  operating: MoneyAmountMicro
+  opportunity: MoneyAmountMicro
+  valued_delay: MoneyAmountMicro
+}
+
+fn selection_liability(c: SelectionCost) -> MoneyAmountMicro {
+  money_amount_micro(
+    count: money_amount_micro_count(m: c.marginal_charge)
+      + money_amount_micro_count(m: c.start)
+      + money_amount_micro_count(m: c.transition)
+      + money_amount_micro_count(m: c.operating),
+  )
+}
+
+fn selection_total(c: SelectionCost) -> MoneyAmountMicro {
+  money_amount_micro(
+    count: money_amount_micro_count(m: selection_liability(c: c))
+      + money_amount_micro_count(m: c.opportunity)
+      + money_amount_micro_count(m: c.valued_delay),
+  )
+}
+
+// A PROJECTED TOTAL AND A KNOWN ONE ARE DIFFERENT FACTS, and supply.dag already makes the
+// same distinction one level down with ExactGrantDuration against EstimatedGrantDuration.
+// The basis is derived from the duration arm rather than accepted as an argument, so a caller
+// cannot claim an exact basis over an estimated duration.
+type CostBasis
+  = ExactCost
+  | ProjectedCost
+
+fn cost_basis_for(duration: GrantDuration) -> CostBasis {
+  match duration {
+    ExactGrantDuration { seconds: _ } => ExactCost
+    EstimatedGrantDuration { seconds: _ } => ProjectedCost
+  }
+}
+
+// Nat subtraction with a floor at zero, written once. Every use below is a duration remainder
+// where the negative case means "already covered", never a defect: a commitment extending
+// past the grant leaves zero billable seconds, not minus some.
+fn saturating_difference(from: Nat, take: Nat) -> Nat {
+  if take >= from {
+    0
+  } else {
+    from - take
+  }
+}
+
+// AN UNREAD AXIS IS A TYPED, LOCATED, COUNTABLE REFUSAL rather than a zero entering a sum.
+// The axis is carried beside the obligation so a consumer can rank which measurement is
+// blocking the most supply, which is the property DESIGN section 5 asks of a degradation:
+// its frequency must be observable.
+type UnpricedInput {
+  axis: SelectionInputAxis
+  obligation: NonEmptyStr
+}
+
+// A currency the budget does not hold is refused per axis rather than converted. Converting
+// would require a rate this module has no authority over, and picking one silently is the
+// fabricated-plausible-output failure denominated in someone else's money.
+type SelectionCurrencyMismatch {
+  axis: SelectionInputAxis
+  stated: CurrencyCode
+  budgeted: CurrencyCode
+}
+
+type PricedAxis
+  = AxisPriced { amount: MoneyAmountMicro }
+  | AxisUnpriced { unpriced: UnpricedInput }
+  | AxisWrongCurrency { mismatch: SelectionCurrencyMismatch }
+
+fn priced_once(
+  axis: SelectionInputAxis,
+  amount: MoneyOnce,
+  budgeted: CurrencyCode,
+) -> PricedAxis {
+  if amount.currency != budgeted {
+    AxisWrongCurrency {
+      mismatch: SelectionCurrencyMismatch { axis: axis, stated: amount.currency, budgeted: budgeted },
+    }
+  } else {
+    AxisPriced { amount: money_amount_micro(count: money_once_micros(q: amount)) }
+  }
+}
+
+fn priced_start(o: StartCostObservation, budgeted: CurrencyCode) -> PricedAxis {
+  match o {
+    StartCostUnread { obligation: why } =>
+      AxisUnpriced { unpriced: UnpricedInput { axis: StartCostAxis, obligation: why } }
+    StartCostMeasured { amount: a, receipt: _ } =>
+      priced_once(axis: StartCostAxis, amount: a, budgeted: budgeted)
+  }
+}
+
+fn priced_transition(o: TransitionCostObservation, budgeted: CurrencyCode) -> PricedAxis {
+  match o {
+    TransitionCostUnread { obligation: why } =>
+      AxisUnpriced { unpriced: UnpricedInput { axis: TransitionCostAxis, obligation: why } }
+    NoTransitionRequired => AxisPriced { amount: money_amount_micro(count: 0) }
+    TransitionCostMeasured { amount: a, receipt: _ } =>
+      priced_once(axis: TransitionCostAxis, amount: a, budgeted: budgeted)
+  }
+}
+
+fn priced_opportunity(o: OpportunityCostObservation, budgeted: CurrencyCode) -> PricedAxis {
+  match o {
+    AlternativeUseUnread { obligation: why } =>
+      AxisUnpriced { unpriced: UnpricedInput { axis: OpportunityCostAxis, obligation: why } }
+    NoFeasibleAlternativeUse { receipt: _ } => AxisPriced { amount: money_amount_micro(count: 0) }
+    AlternativeUseDisplaced { forgone: a, receipt: _ } =>
+      priced_once(axis: OpportunityCostAxis, amount: a, budgeted: budgeted)
+  }
+}
+
+// Operating cost is a RATE over the seconds the work actually runs, not over the seconds the
+// supplier bills. A quantum rounds a bill up; it does not make the fans spin longer.
+fn priced_operating(
+  o: OperatingCostObservation,
+  run_seconds: Nat,
+  budgeted: CurrencyCode,
+) -> PricedAxis {
+  match o {
+    OperatingCostUnread { obligation: why } =>
+      AxisUnpriced { unpriced: UnpricedInput { axis: OperatingCostAxis, obligation: why } }
+    OperatingCostBorneBySupplier => AxisPriced { amount: money_amount_micro(count: 0) }
+    OperatingCostMeasured { rate: r, receipt: _ } =>
+      if r.currency != budgeted {
+        AxisWrongCurrency {
+          mismatch: SelectionCurrencyMismatch {
+            axis: OperatingCostAxis,
+            stated: r.currency,
+            budgeted: budgeted,
+          },
+        }
+      } else {
+        AxisPriced { amount: money_amount_micro(count: money_rate_micros(q: r) * run_seconds) }
+      }
+  }
+}
+
+// Waiting is priced at the buyer's own rate. Without this term a fabric optimizing money
+// alone prefers a supplier that saves a cent and starts in twenty minutes, which is the
+// failure demand.dag names when it defines SelectionCost as distinct from MaximumLiability.
+fn priced_delay(
+  delay_seconds: Nat,
+  valuation: MoneyPerSecond,
+  budgeted: CurrencyCode,
+) -> PricedAxis {
+  if valuation.currency != budgeted {
+    AxisWrongCurrency {
+      mismatch: SelectionCurrencyMismatch {
+        axis: AvailabilityAxis,
+        stated: valuation.currency,
+        budgeted: budgeted,
+      },
+    }
+  } else {
+    AxisPriced { amount: money_amount_micro(count: money_rate_micros(q: valuation) * delay_seconds) }
+  }
+}
+
+// THE COMMITMENT-REDUCED DURATION, WHICH IS WHERE AXIS 2 ACTUALLY BITES.
+//
+// A rate quote bills TIME, so an interval already paid through removes that much time from
+// the bill. A flat per-grant quote bills no time at all -- it is a charge for the grant, and
+// supply.dag already refuses to multiply it by a duration -- so a paid-through interval does
+// not reduce it. Treating the two the same would either double-count a prepaid rate or
+// discount a fee nobody prepaid, and the arm that decides which is the quote's own shape.
+fn quote_bills_time(q: OfferQuote) -> Bool {
+  match q {
+    QuotedFlatPerGrant(_) => false
+    QuotedPerSecond(_) => true
+    QuotedPerMinute(_) => true
+    QuotedPerHour(_) => true
+  }
+}
+
+fn billable_duration(duration: GrantDuration, commitment: CommitmentState, quote: OfferQuote) -> GrantDuration {
+  let full = second_count(s: grant_duration_seconds(d: duration))
+  let covered = match commitment {
+    PayAsYouGo => 0
+    CommitmentUnread { obligation: _ } => 0
+    PaidThrough { remaining: r, receipt: _ } =>
+      if quote_bills_time(q: quote) { second_count(s: r) } else { 0 }
+  }
+  let remaining = second(count: saturating_difference(from: full, take: covered))
+  match duration {
+    ExactGrantDuration { seconds: _ } => ExactGrantDuration { seconds: remaining }
+    EstimatedGrantDuration { seconds: _ } => EstimatedGrantDuration { seconds: remaining }
+  }
+}
+
+// THE CANDIDACY VOCABULARY. Every offer offered to the fold leaves it as exactly one of
+// these, so the rejected population is countable at identity grain and a broker can read WHY
+// each one lost rather than being told that nothing was admissible.
+type OfferCandidacy<P>
+  = OfferPriced { offer: FabricIdentity<P, OfferKey>, cost: SelectionCost, basis: CostBasis }
+  | OfferNotFungible { offer: FabricIdentity<P, OfferKey>, fungibility: OfferFungibility }
+  | OfferUnavailableForGrant {
+      offer: FabricIdentity<P, OfferKey>,
+      needed: Second,
+      available: Second,
+    }
+  | OfferNotPriceable { offer: FabricIdentity<P, OfferKey>, unpriced: UnpricedInput }
+  | OfferWrongCurrency { offer: FabricIdentity<P, OfferKey>, mismatch: SelectionCurrencyMismatch }
+  | OfferUnaffordable {
+      offer: FabricIdentity<P, OfferKey>,
+      affordability: DemandOfferAffordability,
+    }
+  | OfferLiabilityOverBuyOrder {
+      offer: FabricIdentity<P, OfferKey>,
+      liability: MoneyAmountMicro,
+      maximum: MoneyAmountMicro,
+    }
+
+fn candidacy_offer<P>(c: OfferCandidacy<P>) -> FabricIdentity<P, OfferKey> {
+  match c {
+    OfferPriced { offer: o, cost: _, basis: _ } => o
+    OfferNotFungible { offer: o, fungibility: _ } => o
+    OfferUnavailableForGrant { offer: o, needed: _, available: _ } => o
+    OfferNotPriceable { offer: o, unpriced: _ } => o
+    OfferWrongCurrency { offer: o, mismatch: _ } => o
+    OfferUnaffordable { offer: o, affordability: _ } => o
+    OfferLiabilityOverBuyOrder { offer: o, liability: _, maximum: _ } => o
+  }
+}
+
+// THE ORDER OF THE SCREENS IS LOAD-BEARING, and it is supply.dag's order with the two new
+// screens placed where they cannot rescue anything.
+//
+// FUNGIBILITY FIRST, with no money in scope, so price can never rescue an offer that cannot
+// run the work. AVAILABILITY SECOND: whether the offer exists for long enough to hold the
+// grant is a capability question and not a price one, so it belongs above the money screens
+// and below fungibility. PRICEABILITY THIRD, because the affordability screen below is fed a
+// commitment-reduced duration and an unread commitment must refuse before it silently prices
+// as pay-as-you-go. AFFORDABILITY FOURTH, against the buyer's ceiling. LIABILITY FIFTH,
+// because start, transition and operating cash are liability the quote screen never saw.
+// CHEAPEST LAST, over whatever survived.
+fn price_candidate<P>(
+  requirements: ExecutionRequirements,
+  candidate: CandidateOffer<P>,
+  duration: GrantDuration,
+  maximum_buy_order: MoneyAmountMicro,
+  budget_currency: CurrencyCode,
+  delay_valuation: MoneyPerSecond,
+) -> OfferCandidacy<P> {
+  let offer = candidate.offer
+  let inputs = candidate.dispatch
+  let fungibility = offer_fungibility_for(requirements: requirements, offer: offer)
+  match fungibility {
+    TrustDomainMismatch { required: _, offered: _ } =>
+      OfferNotFungible { offer: offer.id, fungibility: fungibility }
+    CapabilitiesNotOffered { required: _, offered: _ } =>
+      OfferNotFungible { offer: offer.id, fungibility: fungibility }
+    IsolationNotProvided { missing: _ } =>
+      OfferNotFungible { offer: offer.id, fungibility: fungibility }
+    ShapeAxesNotCovered { unmet: _ } =>
+      OfferNotFungible { offer: offer.id, fungibility: fungibility }
+    Fungible => price_available_candidate(
+      offer: offer,
+      inputs: inputs,
+      duration: duration,
+      maximum_buy_order: maximum_buy_order,
+      budget_currency: budget_currency,
+      delay_valuation: delay_valuation,
+    )
+  }
+}
+
+fn price_available_candidate<P>(
+  offer: SupplierOffer<P>,
+  inputs: DispatchInputs<P>,
+  duration: GrantDuration,
+  maximum_buy_order: MoneyAmountMicro,
+  budget_currency: CurrencyCode,
+  delay_valuation: MoneyPerSecond,
+) -> OfferCandidacy<P> {
+  let run_seconds = second_count(s: grant_duration_seconds(d: duration))
+  match inputs.availability {
+    AvailabilityUnobserved { obligation: why } =>
+      OfferNotPriceable {
+        offer: offer.id,
+        unpriced: UnpricedInput { axis: AvailabilityAxis, obligation: why },
+      }
+    AvailableForInterval { delay: d, interval: window, receipt: _ } =>
+      if second_count(s: window) < run_seconds {
+        OfferUnavailableForGrant {
+          offer: offer.id,
+          needed: second(count: run_seconds),
+          available: window,
+        }
+      } else {
+        price_committed_candidate(
+          offer: offer,
+          inputs: inputs,
+          duration: duration,
+          delay_seconds: second_count(s: d),
+          maximum_buy_order: maximum_buy_order,
+          budget_currency: budget_currency,
+          delay_valuation: delay_valuation,
+        )
+      }
+  }
+}
+
+fn price_committed_candidate<P>(
+  offer: SupplierOffer<P>,
+  inputs: DispatchInputs<P>,
+  duration: GrantDuration,
+  delay_seconds: Nat,
+  maximum_buy_order: MoneyAmountMicro,
+  budget_currency: CurrencyCode,
+  delay_valuation: MoneyPerSecond,
+) -> OfferCandidacy<P> {
+  match inputs.commitment {
+    CommitmentUnread { obligation: why } =>
+      OfferNotPriceable {
+        offer: offer.id,
+        unpriced: UnpricedInput { axis: CommitmentAxis, obligation: why },
+      }
+    PayAsYouGo => price_screened_candidate(
+      offer: offer,
+      inputs: inputs,
+      duration: duration,
+      delay_seconds: delay_seconds,
+      maximum_buy_order: maximum_buy_order,
+      budget_currency: budget_currency,
+      delay_valuation: delay_valuation,
+    )
+    PaidThrough { remaining: _, receipt: _ } => price_screened_candidate(
+      offer: offer,
+      inputs: inputs,
+      duration: duration,
+      delay_seconds: delay_seconds,
+      maximum_buy_order: maximum_buy_order,
+      budget_currency: budget_currency,
+      delay_valuation: delay_valuation,
+    )
+  }
+}
+
+// The affordability screen is supply.dag's own fold, called with the commitment-reduced
+// duration rather than re-derived here. Pricing is a single authority and this module
+// consumes it; a second price computed beside it would be the fork the fabric exists to
+// prevent, and it would be the fork in the one place two answers are indistinguishable
+// until money moves.
+fn price_screened_candidate<P>(
+  offer: SupplierOffer<P>,
+  inputs: DispatchInputs<P>,
+  duration: GrantDuration,
+  delay_seconds: Nat,
+  maximum_buy_order: MoneyAmountMicro,
+  budget_currency: CurrencyCode,
+  delay_valuation: MoneyPerSecond,
+) -> OfferCandidacy<P> {
+  let billable = billable_duration(duration: duration, commitment: inputs.commitment, quote: offer.quote)
+  let affordability = offer_affordability_for(
+    offer: offer,
+    maximum_buy_order: maximum_buy_order,
+    budget_currency: budget_currency,
+    duration: billable,
+  )
+  match affordability {
+    QuoteCurrencyMismatch { quoted: _, budgeted: _ } =>
+      OfferUnaffordable { offer: offer.id, affordability: affordability }
+    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } =>
+      OfferUnaffordable { offer: offer.id, affordability: affordability }
+    Affordable => assemble_cost(
+      offer: offer,
+      inputs: inputs,
+      duration: duration,
+      billable: billable,
+      delay_seconds: delay_seconds,
+      maximum_buy_order: maximum_buy_order,
+      budget_currency: budget_currency,
+      delay_valuation: delay_valuation,
+    )
+    AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => assemble_cost(
+      offer: offer,
+      inputs: inputs,
+      duration: duration,
+      billable: billable,
+      delay_seconds: delay_seconds,
+      maximum_buy_order: maximum_buy_order,
+      budget_currency: budget_currency,
+      delay_valuation: delay_valuation,
+    )
+  }
+}
+
+// The five remaining axes are priced and the first one that cannot be priced decides the
+// candidacy. Priced in a fixed order so that an offer missing two measurements always reports
+// the same one, which is what makes a refusal reproducible rather than dependent on
+// evaluation order.
+fn assemble_cost<P>(
+  offer: SupplierOffer<P>,
+  inputs: DispatchInputs<P>,
+  duration: GrantDuration,
+  billable: GrantDuration,
+  delay_seconds: Nat,
+  maximum_buy_order: MoneyAmountMicro,
+  budget_currency: CurrencyCode,
+  delay_valuation: MoneyPerSecond,
+) -> OfferCandidacy<P> {
+  let run_seconds = second_count(s: grant_duration_seconds(d: duration))
+  let charge = offer_quoted_total_for_grant(
+    quote: offer.quote,
+    duration: billable,
+    quantum: offer.billing_quantum,
+  )
+  let start = priced_start(o: inputs.start, budgeted: budget_currency)
+  let transition = priced_transition(o: inputs.transition, budgeted: budget_currency)
+  let operating = priced_operating(
+    o: inputs.operating,
+    run_seconds: run_seconds,
+    budgeted: budget_currency,
+  )
+  let opportunity = priced_opportunity(o: inputs.opportunity, budgeted: budget_currency)
+  let delay = priced_delay(
+    delay_seconds: delay_seconds,
+    valuation: delay_valuation,
+    budgeted: budget_currency,
+  )
+  match first_unpriced(axes: [start, transition, operating, opportunity, delay]) {
+    Present { value: bad } => bad_axis_candidacy(offer: offer.id, bad: bad)
+    Absent => screen_liability(
+      offer: offer.id,
+      cost: SelectionCost {
+        marginal_charge: charge,
+        start: axis_amount(a: start),
+        transition: axis_amount(a: transition),
+        operating: axis_amount(a: operating),
+        opportunity: axis_amount(a: opportunity),
+        valued_delay: axis_amount(a: delay),
+      },
+      basis: cost_basis_for(duration: duration),
+      maximum_buy_order: maximum_buy_order,
+    )
+  }
+}
+
+// The last screen, and the one the quote screen above could not perform: start, transition
+// and operating cash are liability the quoted total never saw, so an offer whose asking price
+// clears the ceiling can still commit more money than the ceiling allows.
+fn screen_liability<P>(
+  offer: FabricIdentity<P, OfferKey>,
+  cost: SelectionCost,
+  basis: CostBasis,
+  maximum_buy_order: MoneyAmountMicro,
+) -> OfferCandidacy<P> {
+  let liability = selection_liability(c: cost)
+  if money_amount_micro_count(m: liability) > money_amount_micro_count(m: maximum_buy_order) {
+    OfferLiabilityOverBuyOrder { offer: offer, liability: liability, maximum: maximum_buy_order }
+  } else {
+    OfferPriced { offer: offer, cost: cost, basis: basis }
+  }
+}
+
+// AxisPriced is not a refusal, so it is the arm that returns nothing; the two failure arms are
+// carried out whole so the candidacy can name which axis and which currency.
+fn first_unpriced(axes: List<PricedAxis>) -> PricedAxis? {
+  fold(axes, init: none, f: (found, a) =>
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match a {
+          AxisPriced { amount: _ } => none
+          AxisUnpriced { unpriced: _ } => Present { value: a }
+          AxisWrongCurrency { mismatch: _ } => Present { value: a }
+        }
+    })
+}
+
+fn bad_axis_candidacy<P>(offer: FabricIdentity<P, OfferKey>, bad: PricedAxis) -> OfferCandidacy<P> {
+  match bad {
+    AxisUnpriced { unpriced: u } => OfferNotPriceable { offer: offer, unpriced: u }
+    AxisWrongCurrency { mismatch: m } => OfferWrongCurrency { offer: offer, mismatch: m }
+    AxisPriced { amount: _ } =>
+      OfferNotPriceable {
+        offer: offer,
+        unpriced: UnpricedInput {
+          axis: AvailabilityAxis,
+          obligation: "unreachable: a priced axis was routed to the refusal renderer",
+        },
+      }
+  }
+}
+
+fn axis_amount(a: PricedAxis) -> MoneyAmountMicro {
+  match a {
+    AxisPriced { amount: m } => m
+    AxisUnpriced { unpriced: _ } => money_amount_micro(count: 0)
+    AxisWrongCurrency { mismatch: _ } => money_amount_micro(count: 0)
+  }
+}
+
+// THE OUTCOME CARRIES THE WHOLE CONSIDERED POPULATION, INCLUDING ON THE WINNING ARM.
+//
+// A selector that returned only its winner would make every decision unauditable at the
+// moment it is taken: nobody could tell whether the second-cheapest lost by a cent or was
+// refused for an unread measurement, and the deficits behind the refusals would have a
+// frequency of zero by construction. Carrying the losers is what makes "we could not price
+// four of the six offers" a countable fact rather than an invisible one.
+//
+// NoAdmissibleOffer is a refusal and never a degraded path. supply.dag is explicit that
+// budget exhausted, every ask above the ceiling, and nothing fungible all end in a typed
+// refusal or a demand that stays pending, and that there is no arm to reach for something
+// cheaper and unsuitable. There is none here.
+type SupplySelection<P>
+  = OfferSelected {
+      offer: SupplierOffer<P>,
+      cost: SelectionCost,
+      basis: CostBasis,
+      considered: List<OfferCandidacy<P>>,
+    }
+  | NoAdmissibleOffer { considered: List<OfferCandidacy<P>> }
+
+type SelectionRanking<P> {
+  best: CandidateOffer<P>?
+  best_cost: SelectionCost?
+  best_basis: CostBasis?
+  considered: List<OfferCandidacy<P>>
+}
+
+// TIE-BREAK, STATED HONESTLY. The comparison is strictly less-than, so the EARLIEST candidate
+// at the minimum wins and a re-run over the same roster in the same order returns the same
+// offer. That is stability with respect to the roster, which is all this fold can offer:
+// making the tie-break independent of roster order needs a total order over OfferKey, and
+// OfferKey is branded over NonEmptyStr, which std carries no ordering for. NEXT-RUNG TRIGGER:
+// a string ordering in std, at which point the tie-break becomes the lexicographically
+// smallest key and this note is deleted rather than amended.
+fn rank_candidate<P>(acc: SelectionRanking<P>, candidacy: OfferCandidacy<P>, candidate: CandidateOffer<P>) -> SelectionRanking<P> {
+  let considered = concat(acc.considered, [candidacy])
+  match candidacy {
+    OfferPriced { offer: _, cost: c, basis: b } =>
+      match acc.best_cost {
+        Absent =>
+          SelectionRanking {
+            best: Present { value: candidate },
+            best_cost: Present { value: c },
+            best_basis: Present { value: b },
+            considered: considered,
+          }
+        Present { value: incumbent } =>
+          if money_amount_micro_count(m: selection_total(c: c))
+            < money_amount_micro_count(m: selection_total(c: incumbent)) {
+            SelectionRanking {
+              best: Present { value: candidate },
+              best_cost: Present { value: c },
+              best_basis: Present { value: b },
+              considered: considered,
+            }
+          } else {
+            SelectionRanking {
+              best: acc.best,
+              best_cost: acc.best_cost,
+              best_basis: acc.best_basis,
+              considered: considered,
+            }
+          }
+      }
+    OfferNotFungible { offer: _, fungibility: _ } => carry_ranking(acc: acc, considered: considered)
+    OfferUnavailableForGrant { offer: _, needed: _, available: _ } => carry_ranking(acc: acc, considered: considered)
+    OfferNotPriceable { offer: _, unpriced: _ } => carry_ranking(acc: acc, considered: considered)
+    OfferWrongCurrency { offer: _, mismatch: _ } => carry_ranking(acc: acc, considered: considered)
+    OfferUnaffordable { offer: _, affordability: _ } => carry_ranking(acc: acc, considered: considered)
+    OfferLiabilityOverBuyOrder { offer: _, liability: _, maximum: _ } => carry_ranking(acc: acc, considered: considered)
+  }
+}
+
+fn carry_ranking<P>(acc: SelectionRanking<P>, considered: List<OfferCandidacy<P>>) -> SelectionRanking<P> {
+  SelectionRanking {
+    best: acc.best,
+    best_cost: acc.best_cost,
+    best_basis: acc.best_basis,
+    considered: considered,
+  }
+}
+
+// THE SELECTOR. Cheapest fungible with delay valuation, which is the one instantiation
+// SupplySelectionPolicy names, over a roster of offers each sealed to the six observations
+// that describe it.
+//
+// Rented supply losing to owned supply is a CONSEQUENCE here and never an arm. Nothing in
+// this fold knows which offers are ours: owned capacity wins while its total is the lowest
+// total, and when it is not -- because it is committed, because its operating cost is real,
+// because the alternative use it displaces is worth more than the rent -- the same
+// arithmetic picks somebody else's machine, with the receipt saying why.
+fn select_supply<P>(
+  requirements: ExecutionRequirements,
+  candidates: List<CandidateOffer<P>>,
+  duration: GrantDuration,
+  maximum_buy_order: MoneyAmountMicro,
+  budget_currency: CurrencyCode,
+  delay_valuation: MoneyPerSecond,
+) -> SupplySelection<P> {
+  let ranked = fold(
+    candidates,
+    init: SelectionRanking { best: none, best_cost: none, best_basis: none, considered: [] },
+    f: (acc, candidate) =>
+      rank_candidate(
+        acc: acc,
+        candidacy: price_candidate(
+          requirements: requirements,
+          candidate: candidate,
+          duration: duration,
+          maximum_buy_order: maximum_buy_order,
+          budget_currency: budget_currency,
+          delay_valuation: delay_valuation,
+        ),
+        candidate: candidate,
+      ),
+  )
+  match ranked.best {
+    Absent => NoAdmissibleOffer { considered: ranked.considered }
+    Present { value: winner } =>
+      match ranked.best_cost {
+        Absent => NoAdmissibleOffer { considered: ranked.considered }
+        Present { value: c } =>
+          match ranked.best_basis {
+            Absent => NoAdmissibleOffer { considered: ranked.considered }
+            Present { value: b } =>
+              OfferSelected {
+                offer: winner.offer,
+                cost: c,
+                basis: b,
+                considered: ranked.considered,
+              }
+          }
+      }
+  }
+}
