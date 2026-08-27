@@ -41,6 +41,8 @@ import gunbc.fleet_converge_plan {
   fleet_converge_observed_baseline_matches,
   fleet_converge_apply_subject_host_matches,
   fleet_converge_member_set_fingerprint_matches,
+  FleetConvergeRequest,
+  FullHostConverge,
   timer_retirement_observed_legacy_srv1,
   fleet_converge_generation_store_path,
   fleet_converge_locked_apply_script,
@@ -303,24 +305,22 @@ func fleet_converge_apply_wet() -> ProcessExit
                     reason: concat("fleet_converge_apply: RunnerSlotsUnobserved — ", why as String),
                   )
                 RunnerSlotsObserved { members: observed_slots } =>
-              if !fleet_converge_member_set_fingerprint_matches(
-                planned_fingerprint_text: read_member_fp.content,
+              let observed_request = FullHostConverge {
                 host: observed_host,
                 observed_timers: observed_timers,
                 observed_caps: observed_caps,
                 observed_spark: [],
                 observed_slots: observed_slots,
                 observed_fabric_cells: observed_fabric_cells,
+              }
+              if !fleet_converge_member_set_fingerprint_matches(
+                planned_fingerprint_text: read_member_fp.content,
+                observed: observed_request,
               ) {
                 exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
               } else if !fleet_converge_observed_baseline_matches(
-                host: observed_host,
                 observed_baseline_hex: trim(s: read_base.content),
-                observed_timers: observed_timers,
-                observed_caps: observed_caps,
-                observed_spark: [],
-                observed_slots: observed_slots,
-                observed_fabric_cells: observed_fabric_cells,
+                observed: observed_request,
               ) {
                 exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review")
               } else if !fleet_converge_plan_bundle_matches(

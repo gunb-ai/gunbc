@@ -350,28 +350,20 @@ fn fleet_converge_apply_generation_stale(planned_generation: Int, store_generati
   store_generation >= planned_generation
 }
 
+// THE APPLY-SIDE PREDICATES TAKE THE REQUEST, SO PRODUCTION CONSUMES THE CANONICAL DECISION
+// RATHER THAN A SECOND ONE SHAPED LIKE IT. These two rebuilt a FullHostConverge internally from
+// five loose family parameters, which meant the request coproduct was the authority everywhere
+// EXCEPT on the live apply path -- the canonical decision standing beside the predecessor seam
+// instead of replacing it, which is DESIGN section 3's two-authorities case arriving as a
+// leftover rather than as a fork. Taking the request also carries SCOPE into apply by
+// construction: a fabric-only plan re-observed as a full host now cannot reach these at all,
+// because the caller had to say which request it observed.
 fn fleet_converge_member_set_fingerprint_matches(
   planned_fingerprint_text: String,
-  host: NonEmptyStr,
-  observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<CapMember>,
-  observed_spark: List<SparkServingMember>,
-  observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellObservationDecision,
+  observed: FleetConvergeRequest,
 ) -> Bool {
   trim(s: planned_fingerprint_text) == (
-    serialize_content_hash(
-      hash: fleet_converge_member_set_fingerprint(
-        request: FullHostConverge {
-          host: host,
-          observed_timers: observed_timers,
-          observed_caps: observed_caps,
-          observed_spark: observed_spark,
-          observed_slots: observed_slots,
-          observed_fabric_cells: observed_fabric_cells,
-        },
-      ),
-    ) as String
+    serialize_content_hash(hash: fleet_converge_member_set_fingerprint(request: observed)) as String
   )
 }
 
@@ -2074,24 +2066,10 @@ data fleet_converge_plan_prior_generation_path: String = "/tmp/fleet-converge-pl
 data fleet_converge_plan_member_set_fp_path: String = "/tmp/fleet-converge-plan/subject_member_set.txt"
 
 fn fleet_converge_observed_baseline_matches(
-  host: NonEmptyStr,
   observed_baseline_hex: Fnv1a64StructuralDigestHex,
-  observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<CapMember>,
-  observed_spark: List<SparkServingMember>,
-  observed_slots: List<RunnerSlotMember>,
-  observed_fabric_cells: FabricCellObservationDecision,
+  observed: FleetConvergeRequest,
 ) -> Bool {
-  let baseline = observed_baseline_text(
-    request: FullHostConverge {
-      host: host,
-      observed_timers: observed_timers,
-      observed_caps: observed_caps,
-      observed_spark: observed_spark,
-      observed_slots: observed_slots,
-      observed_fabric_cells: observed_fabric_cells,
-    },
-  )
+  let baseline = observed_baseline_text(request: observed)
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) => structural.digest == observed_baseline_hex
     _ => false
