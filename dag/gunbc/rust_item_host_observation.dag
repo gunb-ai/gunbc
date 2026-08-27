@@ -1,0 +1,1004 @@
+module gunbc.rust_item_host_observation
+
+import extdeps.git
+import gunbc.output_policy { ExpectSuccess }
+import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.generated_artifact { committed_generated_artifact_paths }
+import gunbc.stage0_rust_host_observation {
+  EmitPopulationConfirmed,
+  EmitPopulationEvidence,
+  EmitPopulationUnobserved,
+  observe_emit_population_evidence
+}
+import gunbc.rust_item_identity {
+  RustImplBlock,
+  RustImplMethod,
+  RustItemIdentity,
+  rust_item_identity_key,
+  rust_item_identity_qualified_name
+}
+import gunbc.rust_item_scan {
+  RustFileScan,
+  RustFileScanned,
+  RustFileScanRefused,
+  RustMacroRegion,
+  attribute_scanned_line,
+  AttributedToItem,
+  AttributedToFileLevel,
+  AttributedToUnnamedMacroBlock,
+  AttributionOutOfRange,
+  scan_rust_source
+}
+import std.algebra { trim }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, GitRef, Int, List, NonEmptyStr, Set, String }
+import v2.std.algebra { HeadAbsent, HeadFound, any, filter, fold_list, length, list_append, list_head, list_map, list_snoc_item }
+
+// TWO POPULATIONS, TWO FUNCTIONS, AND THEY MAY NOT BE COLLAPSED.
+//
+// gunbc.seed_growth_admission's own forward-freeze row states this as a condition on enrolment,
+// learned the hard way: seed_growth_join_declarations used ONE candidate set both to find
+// unjustified additions and to declare roster rows stale, so a changed-item population makes every
+// justification for an untouched item look stale, while a live population no longer isolates what
+// the change added. The two questions have different denominators -- "what did this change add"
+// is over merge-base-to-HEAD, "which roster rows still name something real" is over the current
+// surface -- so this module answers them with two observations that never substitute for one
+// another.
+//
+// THE FAIL-CLOSED RULE THIS MODULE EXISTS TO HOLD: a changed hand-written Rust region that cannot
+// be attributed to an item REFUSES. It does not report an empty delta. An unattributed change
+// rendered as "nothing changed" is the empty-observation narrow DESIGN's failure-mode list names --
+// strictly worse than the widen section 5 forbids, because a widen is merely expensive and a narrow
+// is silently uncovered, and it is the one failure mode that would make the admission join read
+// green while admitting exactly what it exists to refuse.
+data rust_item_host_observation_note: String = "Item-grain Rust observation for seed-growth admission. Supplies TWO populations from two functions: RustItemChangeObservation over merge-base-to-HEAD (added, modified and deleted hand items plus generated-path changes) and LiveHandRustObservation over the current hand-Rust surface. Item extraction is gunbc.rust_item_scan; generated-versus-hand classification is derived from gunbc.stage0_rust_source_lifecycle_scaffold's emitted population and gunbc.generated_artifact, never hand-listed. Every arm that cannot attribute a changed hand-Rust region is a typed, located refusal; none returns an empty delta."
+
+// THE NAMESPACE MAP IS A DECLARED TABLE BECAUSE THE CITATIONS IT MUST JOIN AGAINST ALREADY EXIST.
+// The roster in gunbc.seed_growth_admission cites v1_compiler.cli_run, v1_compiler.tests.
+// declaration_index_integrity and v1_compiler_tests.anonymous_record_struct_resolution_test; those
+// three spellings are three different repository prefixes, so the mapping is a fact about the
+// authored corpus and is written down where it can be read, rather than inferred from a path shape.
+// A path matching no row REFUSES: minting a plausible namespace for an unmapped tree would produce
+// a DeclarationRef that joins against nothing while looking exactly like one that does.
+type RustSourceNamespaceRow {
+  repo_prefix: String
+  namespace_prefix: String
+}
+
+data rust_source_namespace_rows: List<RustSourceNamespaceRow> = [
+  RustSourceNamespaceRow { repo_prefix: "src/v1/stage0/src/bin/", namespace_prefix: "v1_compiler.bin." },
+  RustSourceNamespaceRow { repo_prefix: "src/v1/stage0/src/", namespace_prefix: "v1_compiler." },
+  RustSourceNamespaceRow { repo_prefix: "src/v1/stage0/tests/", namespace_prefix: "v1_compiler.tests." },
+  RustSourceNamespaceRow { repo_prefix: "src/v1/tests/src/", namespace_prefix: "v1_compiler_tests." }
+]
+
+type RustModulePathProjection
+  = RustModulePathProjected { module_path: String }
+  | RustModulePathRefused { repo_path: String, detail: String }
+
+fn path_replace_slashes(s: String) -> String {
+  replace(s: s, pattern: "/", replacement: ".")
+}
+
+fn strip_rs_suffix(s: String) -> String {
+  let n = string_length(s: s)
+  if n > 3 && substring(s: s, start: n - 3, end: n) == ".rs" {
+    substring(s: s, start: 0, end: n - 3)
+  } else {
+    s
+  }
+}
+
+// LONGEST PREFIX WINS, AND THE FOLD IS WHY THE ROWS ABOVE MAY BE AUTHORED IN ANY ORDER.
+// src/v1/stage0/src/bin/ is a subtree of src/v1/stage0/src/, so a first-match reader would give
+// every binary the library's namespace and the row order would silently be load-bearing.
+fn rust_namespace_row_for_path(repo_path: String) -> List<RustSourceNamespaceRow> {
+  fold_list(
+    xs: rust_source_namespace_rows,
+    empty: [] as List<RustSourceNamespaceRow>,
+    cons: fn(best, row) {
+      if !starts_with(s: repo_path, prefix: row.repo_prefix) {
+        best
+      } else {
+        fold_list(
+          xs: best,
+          empty: [row],
+          cons: fn(_acc, chosen) {
+            if string_length(s: row.repo_prefix) > string_length(s: chosen.repo_prefix) {
+              [row]
+            } else {
+              [chosen]
+            }
+          }
+        )
+      }
+    }
+  )
+}
+
+fn rust_module_path_for_repo_path(repo_path: String) -> RustModulePathProjection {
+  fold_list(
+    xs: rust_namespace_row_for_path(repo_path: repo_path),
+    empty: RustModulePathRefused {
+      repo_path: repo_path,
+      detail: "no rust_source_namespace_rows prefix claims this path, so no module path can be derived for it"
+    },
+    cons: fn(_acc, row) {
+      let relative = substring(
+        s: repo_path,
+        start: string_length(s: row.repo_prefix),
+        end: string_length(s: repo_path)
+      )
+      let stem = path_replace_slashes(s: strip_rs_suffix(s: relative))
+      if stem == "" {
+        RustModulePathRefused { repo_path: repo_path, detail: "path carries no module stem" }
+      } else {
+        RustModulePathProjected { module_path: concat(row.namespace_prefix, stem) }
+      }
+    }
+  )
+}
+
+// AN IMPL METHOD AND AN IMPL BLOCK ARE REAL ITEMS AND ARE NOT CITABLE, so they are projected into
+// their own arm rather than dropped or forced into a DeclarationRef they do not fit. std.decl_ref
+// DeclField offers WholeDeclaration or NamedField and a trait-impl method is neither -- the
+// repository has carried exactly one such item in prose since the Cargo-manifest bridge, and two
+// earlier attempts to spell it anyway (an invented symbol, then a NamedField naming a field that
+// does not exist) are recorded there as the workaround class. The join reports this population
+// separately, as gunbc.seed_growth_admission already does for the prose-only item.
+type ItemDeclarationRefProjection
+  = ItemDeclarationRefProjected { ref: DeclarationRef }
+  | ItemDeclarationRefUncitable { item_key: String, detail: String }
+  | ItemDeclarationRefRefused { item_key: String, detail: String }
+
+fn item_declaration_ref(item: RustItemIdentity) -> ItemDeclarationRefProjection {
+  let key = rust_item_identity_key(item: item)
+  if item.kind == RustImplMethod || item.kind == RustImplBlock {
+    ItemDeclarationRefUncitable {
+      item_key: key,
+      detail: "std.decl_ref DeclField cannot name a method on an impl block, nor an unnamed impl block itself"
+    }
+  } else {
+    match rust_module_path_for_repo_path(repo_path: item.repo_path as String) {
+      RustModulePathRefused { repo_path: _, detail: detail } =>
+        ItemDeclarationRefRefused { item_key: key, detail: detail }
+      RustModulePathProjected { module_path: module_path } =>
+        if item.enclosing_module == "" {
+          ItemDeclarationRefProjected {
+            ref: DeclarationRef {
+              module_path: module_path as NonEmptyStr,
+              decl_name: item.name,
+              field: WholeDeclaration
+            }
+          }
+        } else {
+          ItemDeclarationRefProjected {
+            ref: DeclarationRef {
+              module_path: concat(module_path, concat(".", item.enclosing_module)) as NonEmptyStr,
+              decl_name: item.name,
+              field: WholeDeclaration
+            }
+          }
+        }
+    }
+  }
+}
+
+type LineRange {
+  start: Int
+  count: Int
+}
+
+type RustFileChangedRanges {
+  repo_path: String
+  old_ranges: List<LineRange>
+  new_ranges: List<LineRange>
+}
+
+fn line_range_contains(range: LineRange, line: Int) -> Bool {
+  range.count > 0 && line >= range.start && line <= range.start + range.count - 1
+}
+
+fn any_range_contains(ranges: List<LineRange>, line: Int) -> Bool {
+  any(xs: ranges, predicate: fn(r) { line_range_contains(range: r, line: line) })
+}
+
+fn ranges_overlap_item(ranges: List<LineRange>, item: RustItemIdentity) -> Bool {
+  any(
+    xs: ranges,
+    predicate: fn(r) {
+      r.count > 0
+        && r.start <= item.start_line + item.loc - 1
+        && r.start + r.count - 1 >= item.start_line
+    }
+  )
+}
+
+fn range_line_numbers(range: LineRange, at: Int, acc: List<Int>) -> List<Int> {
+  if at >= range.count {
+    acc
+  } else {
+    range_line_numbers(range: range, at: at + 1, acc: list_snoc_item(xs: acc, item: range.start + at))
+  }
+}
+
+fn ranges_line_numbers(ranges: List<LineRange>) -> List<Int> {
+  fold_list(
+    xs: ranges,
+    empty: [] as List<Int>,
+    cons: fn(acc, r) { list_append(left: acc, right: range_line_numbers(range: r, at: 0, acc: [])) }
+  )
+}
+
+// THE HUNK HEADER IS GIT'S OWN FORMAT AND IS READ AS SUCH. `@@ -a,b +c,d @@` with the count elided
+// meaning one -- that is the unified-diff format the operation's own argv pins with -U0, cited to
+// the transport rather than guessed at. A header this reader cannot decode does NOT become an empty
+// range set: it refuses, because an undecoded hunk is precisely a changed region nobody attributed.
+type HunkRangeParse
+  = HunkRangeParsed { old_range: LineRange, new_range: LineRange }
+  | HunkRangeRefused { header: String, detail: String }
+
+fn digits_from(s: String, at: Int, acc: String) -> String {
+  if at >= string_length(s: s) {
+    acc
+  } else {
+    let c = char_at(s: s, index: at)
+    if c >= "0" && c <= "9" {
+      digits_from(s: s, at: at + 1, acc: concat(acc, c))
+    } else {
+      acc
+    }
+  }
+}
+
+type RangeTokenParse
+  = RangeTokenParsed { range: LineRange }
+  | RangeTokenRefused { token: String }
+
+fn parse_range_token(token: String, sign: String) -> RangeTokenParse {
+  if !starts_with(s: token, prefix: sign) {
+    RangeTokenRefused { token: token }
+  } else {
+    let body = substring(s: token, start: 1, end: string_length(s: token))
+    let start_digits = digits_from(s: body, at: 0, acc: "")
+    if start_digits == "" {
+      RangeTokenRefused { token: token }
+    } else {
+      let rest = substring(s: body, start: string_length(s: start_digits), end: string_length(s: body))
+      let count_digits = if starts_with(s: rest, prefix: ",") {
+        digits_from(s: rest, at: 1, acc: "")
+      } else {
+        "1"
+      }
+      if starts_with(s: rest, prefix: ",") && count_digits == "" {
+        RangeTokenRefused { token: token }
+      } else {
+        match parse_int(s: start_digits) {
+          Absent => RangeTokenRefused { token: token }
+          Present { value: start } =>
+            match parse_int(s: count_digits) {
+              Absent => RangeTokenRefused { token: token }
+              Present { value: count } => RangeTokenParsed { range: LineRange { start: start, count: count } }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn first_token_with_prefix(tokens: List<String>, prefix: String) -> String {
+  match list_head(xs: filter(xs: tokens, predicate: fn(t) { starts_with(s: t, prefix: prefix) })) {
+    HeadAbsent => ""
+    HeadFound { value: token } => token
+  }
+}
+
+fn parse_hunk_header(header: String) -> HunkRangeParse {
+  let body = trim(s: substring(s: header, start: 2, end: string_length(s: header)))
+  let tokens = filter(xs: split(s: body, delimiter: " "), predicate: fn(t) { t != "" })
+  let old_token = first_token_with_prefix(tokens: tokens, prefix: "-")
+  let new_token = first_token_with_prefix(tokens: tokens, prefix: "+")
+  match parse_range_token(token: old_token, sign: "-") {
+    RangeTokenRefused { token: _ } =>
+      HunkRangeRefused { header: header, detail: "hunk header carries no decodable old range" }
+    RangeTokenParsed { range: old_range } =>
+      match parse_range_token(token: new_token, sign: "+") {
+        RangeTokenRefused { token: _ } =>
+          HunkRangeRefused { header: header, detail: "hunk header carries no decodable new range" }
+        RangeTokenParsed { range: new_range } =>
+          HunkRangeParsed { old_range: old_range, new_range: new_range }
+      }
+  }
+}
+
+// THE CURRENT FILE'S RANGES ACCUMULATE IN THE STATE AND ARE FLUSHED ONCE, rather than being merged
+// into the files list per hunk. The per-hunk form walked every file already collected on every
+// hunk, which is a fold whose cost is files times hunks -- the copied-accumulator shape DESIGN
+// section 6 says is always fixed regardless of the realized n, and here n is a real diff.
+type DiffRangeFoldState {
+  files: List<RustFileChangedRanges>
+  current_path: String
+  current_old: List<LineRange>
+  current_new: List<LineRange>
+  refusal_header: String
+  refusal_detail: String
+}
+
+fn diff_state_flush(state: DiffRangeFoldState) -> DiffRangeFoldState {
+  if state.current_path == "" {
+    state
+  } else {
+    DiffRangeFoldState {
+      files: list_snoc_item(
+        xs: state.files,
+        item: RustFileChangedRanges {
+          repo_path: state.current_path,
+          old_ranges: state.current_old,
+          new_ranges: state.current_new
+        }
+      ),
+      current_path: "",
+      current_old: [],
+      current_new: [],
+      refusal_header: state.refusal_header,
+      refusal_detail: state.refusal_detail
+    }
+  }
+}
+
+fn diff_state_refused(state: DiffRangeFoldState) -> Bool {
+  state.refusal_detail != ""
+}
+
+fn path_is_rust_source(path: String) -> Bool {
+  let n = string_length(s: path)
+  n > 3 && substring(s: path, start: n - 3, end: n) == ".rs"
+}
+
+fn diff_git_header_new_path(line: String) -> String {
+  let tokens = filter(xs: split(s: line, delimiter: " "), predicate: fn(t) { t != "" })
+  let last = fold_list(xs: tokens, empty: "", cons: fn(_acc, t) { t })
+  if starts_with(s: last, prefix: "b/") {
+    substring(s: last, start: 2, end: string_length(s: last))
+  } else {
+    last
+  }
+}
+
+fn diff_state_record_hunk(
+  state: DiffRangeFoldState,
+  old_range: LineRange,
+  new_range: LineRange
+) -> DiffRangeFoldState {
+  DiffRangeFoldState {
+    files: state.files,
+    current_path: state.current_path,
+    current_old: list_snoc_item(xs: state.current_old, item: old_range),
+    current_new: list_snoc_item(xs: state.current_new, item: new_range),
+    refusal_header: state.refusal_header,
+    refusal_detail: state.refusal_detail
+  }
+}
+
+fn diff_state_enter_path(state: DiffRangeFoldState, path: String) -> DiffRangeFoldState {
+  let flushed = diff_state_flush(state: state)
+  DiffRangeFoldState {
+    files: flushed.files,
+    current_path: path,
+    current_old: [],
+    current_new: [],
+    refusal_header: flushed.refusal_header,
+    refusal_detail: flushed.refusal_detail
+  }
+}
+
+fn diff_range_fold_line(state: DiffRangeFoldState, line: String) -> DiffRangeFoldState {
+  if diff_state_refused(state: state) {
+    state
+  } else if starts_with(s: line, prefix: "diff --git ") {
+    let path = diff_git_header_new_path(line: line)
+    if path_is_rust_source(path: path) {
+      diff_state_enter_path(state: state, path: path)
+    } else {
+      diff_state_flush(state: state)
+    }
+  } else if starts_with(s: line, prefix: "@@") && state.current_path != "" {
+    match parse_hunk_header(header: line) {
+      HunkRangeRefused { header: header, detail: detail } =>
+        DiffRangeFoldState {
+          files: state.files,
+          current_path: state.current_path,
+          current_old: state.current_old,
+          current_new: state.current_new,
+          refusal_header: header,
+          refusal_detail: detail
+        }
+      HunkRangeParsed { old_range: old_range, new_range: new_range } =>
+        diff_state_record_hunk(state: state, old_range: old_range, new_range: new_range)
+    }
+  } else {
+    state
+  }
+}
+
+type RustDiffRangeObservation
+  = RustDiffRangesObserved { files: List<RustFileChangedRanges> }
+  | RustDiffRangesRefused { header: String, detail: String }
+
+fn rust_changed_ranges(diff_text: String) -> RustDiffRangeObservation {
+  let final = fold_list(
+    xs: split(s: diff_text, delimiter: "\n"),
+    empty: DiffRangeFoldState {
+      files: [],
+      current_path: "",
+      current_old: [],
+      current_new: [],
+      refusal_header: "",
+      refusal_detail: ""
+    },
+    cons: fn(acc, line) { diff_range_fold_line(state: acc, line: line) }
+  )
+  if diff_state_refused(state: final) {
+    RustDiffRangesRefused { header: final.refusal_header, detail: final.refusal_detail }
+  } else {
+    RustDiffRangesObserved { files: diff_state_flush(state: final).files }
+  }
+}
+
+// THE CHANGE OBSERVATION'S PURE CORE TAKES ITS FILES ALREADY READ, so every arm below is reachable
+// from a fixture. The wet half is one function at the bottom of this module and does nothing but
+// fetch: git decides which paths changed and what their bytes are at each end, and every decision
+// about what that MEANS is made here, where a witness can plant it.
+type RustFileChangeInput {
+  repo_path: String
+  base_content: String
+  head_content: String
+  present_at_base: Bool
+  present_at_head: Bool
+  old_ranges: List<LineRange>
+  new_ranges: List<LineRange>
+}
+
+type RustItemChangeObservation
+  = RustItemChangeObserved {
+      added_hand_items: List<RustItemIdentity>,
+      modified_hand_items: List<RustItemIdentity>,
+      deleted_hand_items: List<RustItemIdentity>,
+      generated_changes: List<String>
+    }
+  | RustItemChangeUnattributed { repo_path: String, line: Int, detail: String }
+  | RustItemChangeScanRefused { repo_path: String, line: Int, line_text: String, detail: String }
+  | RustItemChangeHostRefused { detail: String }
+
+type RustChangeFoldState {
+  added: List<RustItemIdentity>
+  modified: List<RustItemIdentity>
+  deleted: List<RustItemIdentity>
+  generated: List<String>
+  refusal: RustItemChangeObservation
+  refused: Bool
+}
+
+fn change_state_refuse(state: RustChangeFoldState, refusal: RustItemChangeObservation) -> RustChangeFoldState {
+  if state.refused {
+    state
+  } else {
+    RustChangeFoldState {
+      added: state.added,
+      modified: state.modified,
+      deleted: state.deleted,
+      generated: state.generated,
+      refusal: refusal,
+      refused: true
+    }
+  }
+}
+
+// MEMBERSHIP IS A SET LOOKUP AND NOT A LINEAR SCAN PER ITEM. The scan-per-item form is a fold whose
+// cost is items squared, and cli_run.rs alone carries items in the thousands; DESIGN section 6's
+// standing rule is that a proven cost shape is fixed regardless of the realized n, because n is not
+// a time-stable fact.
+fn item_key_set(items: List<RustItemIdentity>) -> Set<String> {
+  fold_list(
+    xs: items,
+    empty: empty_set() as Set<String>,
+    cons: fn(acc, i) { set_insert(acc, rust_item_identity_key(item: i)) }
+  )
+}
+
+// EVERY CHANGED LINE IS ATTRIBUTED, AND THE ATTRIBUTION IS CHECKED RATHER THAN ASSUMED. Attributing
+// to an item is what makes a modification visible; attributing to a file-level line is what keeps a
+// `use` edit from being reported as a capability change. The third answer -- a line the scan cannot
+// place -- is the refusal this whole carrier exists to produce, and it is asked for every changed
+// line rather than inferred from the file's shape.
+fn change_lines_unattributed(
+  items: List<RustItemIdentity>,
+  macro_regions: List<RustMacroRegion>,
+  line_count: Int,
+  lines: List<Int>
+) -> List<Int> {
+  filter(
+    xs: lines,
+    predicate: fn(line) {
+      match attribute_scanned_line(
+        items: items,
+        macro_regions: macro_regions,
+        line_count: line_count,
+        line: line
+      ) {
+        AttributionOutOfRange { line: _, line_count: _ } => true
+        AttributedToUnnamedMacroBlock { macro_name: _, line: _ } => true
+        AttributedToItem { item_key: _ } => false
+        AttributedToFileLevel => false
+      }
+    }
+  )
+}
+
+fn change_state_with_generated(state: RustChangeFoldState, path: String) -> RustChangeFoldState {
+  RustChangeFoldState {
+    added: state.added,
+    modified: state.modified,
+    deleted: state.deleted,
+    generated: list_snoc_item(xs: state.generated, item: path),
+    refusal: state.refusal,
+    refused: state.refused
+  }
+}
+
+fn change_state_with_items(
+  state: RustChangeFoldState,
+  added: List<RustItemIdentity>,
+  modified: List<RustItemIdentity>,
+  deleted: List<RustItemIdentity>
+) -> RustChangeFoldState {
+  RustChangeFoldState {
+    added: list_append(left: state.added, right: added),
+    modified: list_append(left: state.modified, right: modified),
+    deleted: list_append(left: state.deleted, right: deleted),
+    generated: state.generated,
+    refusal: state.refusal,
+    refused: state.refused
+  }
+}
+
+fn change_fold_hand_file(
+  state: RustChangeFoldState,
+  file_change: RustFileChangeInput,
+  base_scan: RustFileScan,
+  head_scan: RustFileScan
+) -> RustChangeFoldState {
+  match head_scan {
+    RustFileScanRefused { repo_path: path, line: line, line_text: text, detail: detail } =>
+      change_state_refuse(
+        state: state,
+        refusal: RustItemChangeScanRefused { repo_path: path, line: line, line_text: text, detail: detail }
+      )
+    RustFileScanned {
+      repo_path: _,
+      items: head_items,
+      macro_regions: head_macro_regions,
+      line_count: head_line_count
+    } =>
+      match base_scan {
+        RustFileScanRefused { repo_path: path, line: line, line_text: text, detail: detail } =>
+          change_state_refuse(
+            state: state,
+            refusal: RustItemChangeScanRefused { repo_path: path, line: line, line_text: text, detail: detail }
+          )
+        RustFileScanned {
+          repo_path: _,
+          items: base_items,
+          macro_regions: base_macro_regions,
+          line_count: base_line_count
+        } => {
+          let unattributed_new = change_lines_unattributed(
+            items: head_items,
+            macro_regions: head_macro_regions,
+            line_count: head_line_count,
+            lines: ranges_line_numbers(ranges: file_change.new_ranges)
+          )
+          let unattributed_old = change_lines_unattributed(
+            items: base_items,
+            macro_regions: base_macro_regions,
+            line_count: base_line_count,
+            lines: ranges_line_numbers(ranges: file_change.old_ranges)
+          )
+          if length(xs: unattributed_new) > 0 {
+            change_state_refuse(
+              state: state,
+              refusal: fold_list(
+                xs: unattributed_new,
+                empty: RustItemChangeHostRefused { detail: "unattributed line list was non-empty and then empty" },
+                cons: fn(_acc, line) {
+                  RustItemChangeUnattributed {
+                    repo_path: file_change.repo_path,
+                    line: line,
+                    detail: "changed line at HEAD falls outside every scanned item and outside the file's recognized line range"
+                  }
+                }
+              )
+            )
+          } else if length(xs: unattributed_old) > 0 {
+            change_state_refuse(
+              state: state,
+              refusal: fold_list(
+                xs: unattributed_old,
+                empty: RustItemChangeHostRefused { detail: "unattributed line list was non-empty and then empty" },
+                cons: fn(_acc, line) {
+                  RustItemChangeUnattributed {
+                    repo_path: file_change.repo_path,
+                    line: line,
+                    detail: "changed line at the merge base falls outside every scanned item and outside the file's recognized line range"
+                  }
+                }
+              )
+            )
+          } else {
+            let base_keys = item_key_set(items: base_items)
+            let head_keys = item_key_set(items: head_items)
+            change_state_with_items(
+              state: state,
+              added: filter(
+                xs: head_items,
+                predicate: fn(i) { !set_contains(base_keys, rust_item_identity_key(item: i)) }
+              ),
+              modified: filter(
+                xs: head_items,
+                predicate: fn(i) {
+                  set_contains(base_keys, rust_item_identity_key(item: i))
+                    && ranges_overlap_item(ranges: file_change.new_ranges, item: i)
+                }
+              ),
+              deleted: filter(
+                xs: base_items,
+                predicate: fn(i) { !set_contains(head_keys, rust_item_identity_key(item: i)) }
+              )
+            )
+          }
+        }
+      }
+  }
+}
+
+fn change_fold_file(
+  state: RustChangeFoldState,
+  generated_repo_paths: List<String>,
+  file_change: RustFileChangeInput
+) -> RustChangeFoldState {
+  if state.refused {
+    state
+  } else if any(xs: generated_repo_paths, predicate: fn(p) { p == file_change.repo_path }) {
+    change_state_with_generated(state: state, path: file_change.repo_path)
+  } else {
+    change_fold_hand_file(
+      state: state,
+      file_change: file_change,
+      base_scan: if file_change.present_at_base {
+        scan_rust_source(repo_path: file_change.repo_path, content: file_change.base_content)
+      } else {
+        RustFileScanned { repo_path: file_change.repo_path, items: [], macro_regions: [], line_count: 0 }
+      },
+      head_scan: if file_change.present_at_head {
+        scan_rust_source(repo_path: file_change.repo_path, content: file_change.head_content)
+      } else {
+        RustFileScanned { repo_path: file_change.repo_path, items: [], macro_regions: [], line_count: 0 }
+      }
+    )
+  }
+}
+
+fn observe_rust_item_change(
+  generated_repo_paths: List<String>,
+  inputs: List<RustFileChangeInput>
+) -> RustItemChangeObservation {
+  let final = fold_list(
+    xs: inputs,
+    empty: RustChangeFoldState {
+      added: [],
+      modified: [],
+      deleted: [],
+      generated: [],
+      refusal: RustItemChangeHostRefused { detail: "no refusal recorded" },
+      refused: false
+    },
+    cons: fn(acc, file_change) {
+      change_fold_file(state: acc, generated_repo_paths: generated_repo_paths, file_change: file_change)
+    }
+  )
+  if final.refused {
+    final.refusal
+  } else {
+    RustItemChangeObserved {
+      added_hand_items: final.added,
+      modified_hand_items: final.modified,
+      deleted_hand_items: final.deleted,
+      generated_changes: final.generated
+    }
+  }
+}
+
+// THE LIVE OBSERVATION IS A SECOND POPULATION AND NOT A PROJECTION OF THE FIRST. It answers "which
+// hand Rust items exist right now", which is what a staleness question needs and what a change
+// population cannot supply. A file it cannot scan is REPORTED, counted, with its refusal -- never
+// dropped, because a live surface silently missing the files that refuse is a smaller population
+// wearing the shape of a complete one.
+type LiveHandRustObservation
+  = LiveHandRustObserved {
+      items: List<RustItemIdentity>,
+      unscannable: List<RustFileScan>
+    }
+  | LiveHandRustHostRefused { detail: String }
+
+type LiveFoldState {
+  items: List<RustItemIdentity>
+  unscannable: List<RustFileScan>
+}
+
+fn observe_live_hand_rust(sources: List<RustFileChangeInput>, generated_repo_paths: List<String>) -> LiveHandRustObservation {
+  let final = fold_list(
+    xs: filter(
+      xs: sources,
+      predicate: fn(file_change) {
+        file_change.present_at_head && !any(xs: generated_repo_paths, predicate: fn(p) { p == file_change.repo_path })
+      }
+    ),
+    empty: LiveFoldState { items: [], unscannable: [] },
+    cons: fn(acc, file_change) {
+      match scan_rust_source(repo_path: file_change.repo_path, content: file_change.head_content) {
+        RustFileScanned { repo_path: p, items: items, macro_regions: _, line_count: n } =>
+          LiveFoldState {
+            items: list_append(left: acc.items, right: items),
+            unscannable: acc.unscannable
+          }
+        RustFileScanRefused { repo_path: p, line: line, line_text: text, detail: detail } =>
+          LiveFoldState {
+            items: acc.items,
+            unscannable: list_snoc_item(
+              xs: acc.unscannable,
+              item: RustFileScanRefused { repo_path: p, line: line, line_text: text, detail: detail }
+            )
+          }
+      }
+    }
+  )
+  LiveHandRustObserved { items: final.items, unscannable: final.unscannable }
+}
+
+fn change_observation_added_refs(observation: RustItemChangeObservation) -> List<ItemDeclarationRefProjection> {
+  match observation {
+    RustItemChangeObserved {
+      added_hand_items: added,
+      modified_hand_items: _,
+      deleted_hand_items: _,
+      generated_changes: _
+    } => list_map(xs: added, f: fn(item) { item_declaration_ref(item: item) })
+    RustItemChangeUnattributed { repo_path: _, line: _, detail: _ } => []
+    RustItemChangeScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => []
+    RustItemChangeHostRefused { detail: _ } => []
+  }
+}
+
+fn projected_declaration_refs(projections: List<ItemDeclarationRefProjection>) -> List<DeclarationRef> {
+  fold_list(
+    xs: projections,
+    empty: [] as List<DeclarationRef>,
+    cons: fn(acc, p) {
+      match p {
+        ItemDeclarationRefProjected { ref: ref } => list_snoc_item(xs: acc, item: ref)
+        ItemDeclarationRefUncitable { item_key: _, detail: _ } => acc
+        ItemDeclarationRefRefused { item_key: _, detail: _ } => acc
+      }
+    }
+  )
+}
+
+fn projected_uncitable_keys(projections: List<ItemDeclarationRefProjection>) -> List<String> {
+  fold_list(
+    xs: projections,
+    empty: [] as List<String>,
+    cons: fn(acc, p) {
+      match p {
+        ItemDeclarationRefUncitable { item_key: key, detail: _ } => list_snoc_item(xs: acc, item: key)
+        ItemDeclarationRefProjected { ref: _ } => acc
+        ItemDeclarationRefRefused { item_key: _, detail: _ } => acc
+      }
+    }
+  )
+}
+
+fn projected_refused_keys(projections: List<ItemDeclarationRefProjection>) -> List<String> {
+  fold_list(
+    xs: projections,
+    empty: [] as List<String>,
+    cons: fn(acc, p) {
+      match p {
+        ItemDeclarationRefRefused { item_key: key, detail: _ } => list_snoc_item(xs: acc, item: key)
+        ItemDeclarationRefProjected { ref: _ } => acc
+        ItemDeclarationRefUncitable { item_key: _, detail: _ } => acc
+      }
+    }
+  )
+}
+
+// THE WET HALF, AND IT IS A FUNCTION RATHER THAN A TOP-LEVEL data FOR THE REASON
+// gunbc.stage0_rust_host_observation records at length: a top-level data declaration is EVALUATED
+// WHEN A MODULE IMPORTS IT, so a dead import alone would perform Git I/O under the hermetic
+// envelope and fail an entire discovery batch. As a function the effect is reachable only by
+// calling it, and every type and fold above may be imported and exercised without it.
+data rust_item_change_repository_path: String = "."
+
+// THE GENERATED POPULATION IS THE UNION OF TWO AUTHORITIES AND NEITHER MAY BE ASSUMED. The
+// generated-artifact registry owns the drift-gated artifacts; the emitted-population manifest owns
+// the stage0 mirrors the compiler writes. A change observation that consulted only the registry
+// would classify every regenerated mirror as hand-authored and report the whole emit as unjustified
+// additions -- so an UNOBSERVED emit population is a refusal here rather than a smaller generated
+// set, exactly as gunbc.stage0_rust_host_observation's own carrier requires of its consumers.
+type GeneratedPopulation
+  = GeneratedPopulationObserved { repo_paths: List<String> }
+  | GeneratedPopulationUnobserved { detail: String }
+
+fn generated_population_at(revision: String) -> GeneratedPopulation {
+  match observe_emit_population_evidence(revision: revision) {
+    EmitPopulationUnobserved { detail: detail } =>
+      GeneratedPopulationUnobserved { detail: detail }
+    EmitPopulationConfirmed { emitted_stage0_repo_paths: emitted } =>
+      GeneratedPopulationObserved {
+        repo_paths: list_append(left: emitted, right: committed_generated_artifact_paths())
+      }
+  }
+}
+
+fn git_refusal_detail(operation: String, stderr: String) -> String {
+  let detail = trim(s: stderr)
+  if detail == "" {
+    concat(operation, " refused without stderr")
+  } else {
+    concat(operation, concat(": ", detail))
+  }
+}
+
+fn observe_rust_item_change_against(base_ref: String) -> RustItemChangeObservation {
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  if !head.success || (head.sha as String) == "" {
+    RustItemChangeHostRefused { detail: "git.Inspect.HeadCommit refused or returned an empty revision" }
+  } else {
+    let revision = head.sha as String
+    let baseline = git.Inspect.MergeBase(
+      repository_path: rust_item_change_repository_path,
+      left: revision as GitRef,
+      right: base_ref as GitRef,
+      expect: ExpectSuccess
+    )
+    if !baseline.success || (baseline.sha as String) == "" {
+      RustItemChangeHostRefused {
+        detail: git_refusal_detail(operation: "git.Inspect.MergeBase", stderr: baseline.stderr)
+      }
+    } else {
+      let diff = git.Core.DiffUnified0(
+        base: baseline.sha as GitRef,
+        head: revision as GitRef,
+        range: TwoDot,
+        expect: ExpectSuccess
+      )
+      if !diff.success {
+        RustItemChangeHostRefused { detail: "git.Core.DiffUnified0 refused" }
+      } else {
+        match generated_population_at(revision: revision) {
+          GeneratedPopulationUnobserved { detail: detail } =>
+            RustItemChangeHostRefused {
+              detail: concat(
+                "the emitted stage0 population was not observed, so generated Rust cannot be told from hand Rust: ",
+                detail
+              )
+            }
+          GeneratedPopulationObserved { repo_paths: generated_repo_paths } =>
+        match rust_changed_ranges(diff_text: diff.diff) {
+          RustDiffRangesRefused { header: header, detail: detail } =>
+            RustItemChangeHostRefused {
+              detail: concat(detail, concat(" -- header: ", header))
+            }
+          RustDiffRangesObserved { files: files } =>
+            observe_rust_item_change(
+              generated_repo_paths: generated_repo_paths,
+              inputs: list_map(
+                xs: files,
+                f: fn(entry) {
+                  let base_show = git.Core.Show(
+                    ref: baseline.sha as GitRef,
+                    path: entry.repo_path,
+                    expect: ExpectSuccess
+                  )
+                  let head_show = git.Core.Show(
+                    ref: revision as GitRef,
+                    path: entry.repo_path,
+                    expect: ExpectSuccess
+                  )
+                  RustFileChangeInput {
+                    repo_path: entry.repo_path,
+                    base_content: base_show.content,
+                    head_content: head_show.content,
+                    present_at_base: base_show.success,
+                    present_at_head: head_show.success,
+                    old_ranges: entry.old_ranges,
+                    new_ranges: entry.new_ranges
+                  }
+                }
+              )
+            )
+        }
+        }
+      }
+    }
+  }
+}
+
+fn current_rust_item_change_observation() -> RustItemChangeObservation {
+  observe_rust_item_change_against(base_ref: gunbc_merge_target_ref as String)
+}
+
+fn rust_paths_from_nul(raw: String) -> List<String> {
+  filter(
+    xs: split(s: raw, delimiter: from_code_point(0)),
+    predicate: fn(path) { path_is_rust_source(path: path) }
+  )
+}
+
+// THE LIVE POPULATION IS SCOPED TO THE TREES THE NAMESPACE MAP CLAIMS, and that is a declared scope
+// rather than a silent narrowing. A hand Rust file under a tree no row claims has no DeclarationRef
+// at all, so including it in a STALENESS population would answer a question no roster row can ask;
+// including it in an ADDITION population is a different matter and is not narrowed -- the change
+// observation scans whatever the diff names, and an added item under an unclaimed tree REFUSES at
+// the join rather than being skipped here.
+fn live_hand_rust_candidate_paths(tracked_paths: List<String>) -> List<String> {
+  filter(
+    xs: tracked_paths,
+    predicate: fn(path) {
+      length(xs: rust_namespace_row_for_path(repo_path: path)) > 0
+    }
+  )
+}
+
+fn observe_current_live_hand_rust() -> LiveHandRustObservation {
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  if !head.success || (head.sha as String) == "" {
+    LiveHandRustHostRefused { detail: "git.Inspect.HeadCommit refused or returned an empty revision" }
+  } else {
+    let revision = head.sha as String
+    let tree = git.Inspect.ListTreePathsAtRevision(ref: revision as GitRef, expect: ExpectSuccess)
+    if !tree.success {
+      LiveHandRustHostRefused {
+        detail: git_refusal_detail(operation: "git.Inspect.ListTreePathsAtRevision(HEAD)", stderr: tree.stderr)
+      }
+    } else {
+      match generated_population_at(revision: revision) {
+        GeneratedPopulationUnobserved { detail: detail } =>
+          LiveHandRustHostRefused {
+            detail: concat(
+              "the emitted stage0 population was not observed, so generated Rust cannot be told from hand Rust: ",
+              detail
+            )
+          }
+        GeneratedPopulationObserved { repo_paths: generated_repo_paths } =>
+      observe_live_hand_rust(
+        generated_repo_paths: generated_repo_paths,
+        sources: list_map(
+          xs: live_hand_rust_candidate_paths(tracked_paths: rust_paths_from_nul(raw: tree.paths_nul)),
+          f: fn(path) {
+            let show = git.Core.Show(ref: revision as GitRef, path: path, expect: ExpectSuccess)
+            RustFileChangeInput {
+              repo_path: path,
+              base_content: "",
+              head_content: show.content,
+              present_at_base: false,
+              present_at_head: show.success,
+              old_ranges: [],
+              new_ranges: []
+            }
+          }
+        )
+      )
+      }
+    }
+  }
+}

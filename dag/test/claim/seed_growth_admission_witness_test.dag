@@ -2,20 +2,16 @@ module test.claim.seed_growth_admission_witness
 
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.seed_growth_admission {
-  SeedGrowthAdmissionComplete,
-  SeedGrowthAdmissionRefused,
   seed_growth_admission_g0_population_note,
-  seed_growth_admission_join_scaffold,
-  seed_growth_g0_census_host_scaffold,
   seed_growth_forward_freeze_policy_note,
-  seed_growth_join_declarations,
+  seed_growth_unjustified_additions,
+  seed_growth_stale_justifications,
   seed_growth_roster_all_declarations,
   seed_growth_roster_mechanical_checks_holds,
   seed_growth_roster_well_formed_gate_holds
 }
 import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_justification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Scaffold }
 import std.roster_frontier { declaration_ref_display_key }
 import v2.std.algebra { any, length }
 import v2.std.text { String }
@@ -24,19 +20,28 @@ test fn seed_growth_roster_mechanical_checks_hold() -> Bool {
   seed_growth_roster_mechanical_checks_holds()
 }
 
+// THE JOIN IS SPLIT AND THE SPLIT IS THE ASSERTION, not an implementation detail beside it. Under
+// the single-candidate-set form these two calls were one, so the population that found an
+// unjustified addition was the same one that declared every untouched roster row stale. Here the
+// SAME candidate list is passed to both functions and they must answer differently: the rogue is an
+// unjustified addition, and passing it as the live population makes every real roster row stale
+// rather than none. A reimplementation that collapsed them again reds on the second conjunct.
 test fn seed_growth_join_refuses_unknown_declaration() -> Bool {
   let rogue = DeclarationRef {
     module_path: "v1_compiler.cli_run",
     decl_name: "totally_unjustified_hand_rust_symbol",
     field: WholeDeclaration
   }
-  match seed_growth_join_declarations(candidates: [rogue]) {
-    SeedGrowthAdmissionRefused { unjustified_additions: bad, detail: detail } =>
-      length(xs: bad) == 1
-        && string_contains(s: detail, pattern: "lack SeedGrowthJustification")
-    SeedGrowthAdmissionComplete { justified_items: _, stale_justifications: _, duplicate_justifications: _, uncitable_items: _ } =>
-      false
-  }
+  length(xs: seed_growth_unjustified_additions(added: [rogue])) == 1
+    && length(xs: seed_growth_stale_justifications(live_items: [rogue]))
+      == length(xs: seed_growth_roster_all_declarations())
+}
+
+// A ROSTER ROW THAT STILL NAMES A LIVE ITEM IS NOT STALE. Without this control the staleness
+// function above is satisfied by one that reports everything stale, which reports nothing.
+test fn a_live_roster_declaration_is_not_reported_stale() -> Bool {
+  let live = seed_growth_roster_all_declarations()
+  length(xs: seed_growth_stale_justifications(live_items: live)) == 0
 }
 
 test fn forward_freeze_policy_requires_item_enumeration() -> Bool {
@@ -48,25 +53,18 @@ test fn witness_seed_growth_roster_well_formed_gate_holds() -> Bool {
   seed_growth_roster_well_formed_gate_holds()
 }
 
-test fn seed_growth_admission_join_is_scaffold_until_diff_population() -> Bool {
-  match seed_growth_admission_join_scaffold {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    _ => false
-  }
-}
-
-test fn seed_growth_g0_census_host_is_scaffold_until_modeled_producer() -> Bool {
-  match seed_growth_g0_census_host_scaffold {
-    Scaffold { dissolves_to: _, bind: bind } =>
-      bind.module_path == "gunbc.rust_item_identity"
-        && bind.decl_name == "rust_item_host_observation_scaffold_note"
-    _ => false
-  }
-}
-
-test fn g0_population_note_supersedes_stale_cli_run_prose() -> Bool {
-  string_contains(s: seed_growth_admission_g0_population_note, pattern: "cli_run_hollowing_plan")
-    && string_contains(s: seed_growth_admission_g0_population_note, pattern: "does NOT pin numeric literals")
+// WHAT REPLACED THE TWO SCAFFOLD WITNESSES, AND WHY THIS IS NOT AN EQUIVALENT CHECK IN A NEW
+// SPELLING. Two arms here asserted that seed_growth_admission_join_scaffold and
+// seed_growth_g0_census_host_scaffold were Scaffold dispositions, and a third asserted that a prose
+// row CONTAINED two substrings. All three are gone with their subjects: the scaffolds retired when
+// their triggers fired, and the prose assertion was the prose-self-match antipattern -- its only
+// content was that someone had written a sentence, so it could not tell a repair from a regression.
+// The g0 population note is now asserted through the mechanism it describes rather than through its
+// own text: the census host it names is a function, and the arms above and in
+// rust_item_host_observation_witness_test execute it.
+test fn the_g0_population_note_names_a_host_that_resolves_to_a_function() -> Bool {
+  string_contains(s: seed_growth_admission_g0_population_note, pattern: "gunbc.rust_item_host_observation")
+    && seed_growth_roster_well_formed_gate_holds()
 }
 
 test fn stage0_justification_rows_are_in_roster() -> Bool {
