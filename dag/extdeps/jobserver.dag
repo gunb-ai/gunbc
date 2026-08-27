@@ -32,6 +32,17 @@ fn jobserver_build_pool_bytes(nproc: HardwareThreadCount, mem_total: ByteSize, c
   measure_scale_fraction_floor(m: cfg.mib_per_job, num: hardware_thread_count_value(t: tokens), den: 1)
 }
 
+// THE WIRE SPELLING OF A FIFO-MODE JOBSERVER HANDOFF, WHICH IS UPSTREAM'S AND NOT A CALLER'S.
+//
+// GNU make advertises an inheritable jobserver to its children through MAKEFLAGS, and the fifo-style
+// form -- `--jobserver-auth=fifo:PATH` -- is make's own grammar. A consumer that concatenates that
+// prefix itself has taken a second copy of an upstream spelling, and the failure mode is silent in
+// exactly the way §3 warns about: cargo reads MAKEFLAGS, fails to recognise a mis-spelled auth
+// clause, and simply builds unbounded rather than refusing.
+fn jobserver_makeflags_fifo_auth(fifo_path: String) -> String {
+  join(["--jobserver-auth=fifo:", fifo_path], "")
+}
+
 type JobserverCitation
   = JobserverCited { config: JobserverConfig, provenance: String }
   | JobserverAbsent
