@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decimal { ExactDecimal, canonical_exact_decimal }
 import extdeps.languages.json.emit { JsonArray, JsonBool, JsonKeyValue, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
 import extdeps.languages.json.number {
-  JsonNumberDigitsUnreadable,
+  JsonNumberMagnitudeOutsideCarrierRange,
   JsonNumberExact,
   JsonNumberOutsideExactFragment,
   JsonNumberUsesExponent,

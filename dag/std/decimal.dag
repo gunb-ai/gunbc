@@ -2,6 +2,7 @@ module std.decimal
 
 import std.types { String, Int, Bool }
 import std.render_repeat_string_bootstrap { repeat_string }
+import std.bytes { pure_dag_seam_unreachable }
 
 data decimal_note: String = "Positional decimal notation for a FIXED-POINT magnitude: an integer paired with the power of ten it is scaled by. It exists because two unrelated boundaries needed the identical projection and neither is the right owner of it — WebAudio's gain and time arguments are decimal seconds and a linear amplitude in [0, 1], and CSS transform scale factors are decimal ratios. Each carried its magnitude integrally upstream (a fractional literal in a .dag row would be a second representation of the same number), so each needed to divide exactly once, at its own wire. Giving each boundary its own formatter would have put the same numeral logic in two places for no reason other than that the two consumers are far apart in the layer graph, which is the horizontal redundancy DESIGN section 2 names — the concept is one, so it is modeled once and both uses derive.
 
@@ -70,14 +71,42 @@ type ExactDecimal {
 // every fn below that produces an ExactDecimal is responsible for its own non-negative argument.
 // Next-rung trigger: feature:where-refinement-predicate-coproduct, the same one std.content_hash
 // names for its non-literal digest positions.
-data exact_decimal_refinement_rung_note: String = "ExactDecimal.fraction_digits carries where range(min: 0), which refuses an authored negative literal at resolve and does not refuse a computed one. Mechanically preventable, not structural; measured on the same partial-wall behaviour recorded for PositiveFanCount in gunbc.fleet_fan_wiring."
+data exact_decimal_refinement_rung_note: String = "ExactDecimal.fraction_digits carries where range(min: 0), which refuses an authored negative literal at resolve and does not refuse a computed one. Mechanically preventable, not structural; measured on the same partial-wall behaviour recorded for PositiveFanCount in gunbc.fleet_fan_wiring. Because the wall is partial, every producer routes through admit_exact_decimal below and the canonicaliser DIVERGES rather than reinterpreting a negative scale."
+
+// THE MINT, AND WHY THE CANONICALISER NO LONGER ABSORBS A NEGATIVE SCALE. The first version of
+// this canonicaliser opened `if fraction_digits <= 0` and returned the same units at scale zero,
+// so a computed -4 was not merely representable -- it was silently reinterpreted as an integer,
+// and both the equality and the wire consumed that reinterpretation. A negative scale means
+// something (a value scaled UP by ten to the four); reading it as zero scale is the fabricated
+// plausible output this file is otherwise built to prevent, produced by the very function meant to
+// make comparison exact. Found in review of gunbc#9491.
+//
+// So the domain is enforced where a value is BUILT rather than assumed where it is read. The
+// canonicaliser's negative arm diverges through the std seam, which is the honest projection for
+// a state the mint cannot produce: it does not return a plausible number, and it does not pretend
+// the arm is unreachable by omitting it.
+type ExactDecimalAdmission
+  = ExactDecimalAdmitted { canonical: ExactDecimal }
+  | ExactDecimalScaleRefused { observed_fraction_digits: Int }
+
+fn admit_exact_decimal(units: Int, fraction_digits: Int) -> ExactDecimalAdmission {
+  if fraction_digits < 0 {
+    ExactDecimalScaleRefused { observed_fraction_digits: fraction_digits }
+  } else {
+    ExactDecimalAdmitted {
+      canonical: canonical_exact_decimal(d: ExactDecimal { units: units, fraction_digits: fraction_digits }),
+    }
+  }
+}
 
 // CANONICALISATION IS WHAT MAKES EQUALITY MEAN AGREEMENT. 30 and 30.0 are the same number written
 // two ways, so they must reduce to one representation before any comparison or digest sees them.
 // The reduction strips trailing zeros from the FRACTION only -- 300 with no fraction stays 300,
 // because dropping a zero there would change the number rather than its spelling.
 fn canonical_exact_decimal(d: ExactDecimal) -> ExactDecimal {
-  if d.fraction_digits <= 0 {
+  if d.fraction_digits < 0 {
+    ExactDecimal { units: pure_dag_seam_unreachable(), fraction_digits: 0 }
+  } else if d.fraction_digits == 0 {
     ExactDecimal { units: d.units, fraction_digits: 0 }
   } else if d.units - ((d.units / 10) * 10) == 0 {
     canonical_exact_decimal(d: ExactDecimal { units: d.units / 10, fraction_digits: d.fraction_digits - 1 })

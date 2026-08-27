@@ -5,7 +5,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.decimal { ExactDecimal, canonical_exact_decimal, exact_decimal_equal, exact_decimal_wire }
 import extdeps.languages.json.emit { json_string }
 import extdeps.languages.json.number {
-  JsonNumberDigitsUnreadable,
+  JsonNumberMagnitudeOutsideCarrierRange,
   JsonNumberExact,
   JsonNumberOutsideExactFragment,
   JsonNumberUsesExponent,
@@ -77,7 +77,7 @@ fn the_exponent_form_refuses_by_name() -> Bool {
     JsonNumberOutsideExactFragment { lexeme, refusal } =>
       lexeme == "1e3" && match refusal {
         JsonNumberUsesExponent => true
-        JsonNumberDigitsUnreadable => false
+        other => false
       }
     other => false
   }
@@ -135,6 +135,20 @@ fn unreduced_equality_still_separates_different_numbers() -> Bool {
   )
 }
 
+// AN EXPONENT-FREE NUMERAL TOO LARGE FOR THE CARRIER IS NAMED AS A MAGNITUDE LIMIT, NOT AS
+// UNREADABLE DIGITS. The lexeme is perfectly well-formed JSON and its digits are perfectly
+// readable; what it exceeds is this fragment's carrier, and the two facts have different owners.
+fn an_oversized_coefficient_names_the_carrier_limit() -> Bool {
+  match read_json_number_lexeme(lexeme: "123456789012345678901234567890") {
+    JsonNumberOutsideExactFragment { lexeme, refusal } =>
+      match refusal {
+        JsonNumberMagnitudeOutsideCarrierRange => true
+        other => false
+      }
+    other => false
+  }
+}
+
 fn json_exact_number_witness() -> ProcessExit {
   if the_two_spellings_of_thirty_agree()
     && two_different_numbers_still_differ()
@@ -146,7 +160,8 @@ fn json_exact_number_witness() -> ProcessExit {
     && the_wire_renders_the_canonical_value()
     && the_negative_wire_carries_its_sign_outside_the_whole_part()
     && equality_reduces_values_it_was_handed_unreduced()
-    && unreduced_equality_still_separates_different_numbers() {
+    && unreduced_equality_still_separates_different_numbers()
+    && an_oversized_coefficient_names_the_carrier_limit() {
     ExitSuccess
   } else {
     exit_failure(reason: "JSON exact number reading: canonical equality across spellings, the deployed coefficients, or the exponent refusal changed")

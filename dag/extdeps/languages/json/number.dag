@@ -1,7 +1,7 @@
 module extdeps.languages.json.number
 
 import std.types { Bool, Int, NonEmptyStr, String }
-import std.decimal { ExactDecimal, canonical_exact_decimal }
+import std.decimal { ExactDecimal, ExactDecimalAdmitted, ExactDecimalScaleRefused, admit_exact_decimal }
 import extdeps.languages.json.grammar { JsonNumberLexeme }
 import extdeps.languages.json.emit { JsonArray, JsonBool, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
 
@@ -25,9 +25,17 @@ import extdeps.languages.json.emit { JsonArray, JsonBool, JsonNull, JsonNumber, 
 // fabricated one. So the exponent form is named as outside the fragment and stops the line, which
 // leaves the decision with a caller that knows its own domain -- and costs nothing today, because
 // no captured document uses it.
+// THE FRAGMENT IS NARROWER THAN "EXPONENT-FREE RFC NUMBERS", AND SAYING SO IS THE POINT. The
+// digits are read into the substrate's Int, so an exponent-free numeral whose exact coefficient
+// exceeds that range is refused -- and it is refused as a MAGNITUDE limit, not as unreadable
+// digits. A grammar-validated lexeme does not have unreadable digits merely because the carrier
+// that would hold it is bounded, and the two have different owners: one is a document to fix, the
+// other is this fragment reaching its edge. Found in review of gunbc#9491, where both landed on
+// one arm.
 type JsonNumberFragmentRefusal
   = JsonNumberUsesExponent
-  | JsonNumberDigitsUnreadable
+  | JsonNumberMagnitudeOutsideCarrierRange
+  | JsonNumberScaleRefused
 
 type JsonNumberReading
   = JsonNumberExact { value: ExactDecimal }
@@ -36,7 +44,8 @@ type JsonNumberReading
 fn json_number_fragment_refusal_text(r: JsonNumberFragmentRefusal) -> NonEmptyStr {
   match r {
     JsonNumberUsesExponent => "json number uses the exponent form, which is outside the exactly-read fragment"
-    JsonNumberDigitsUnreadable => "json number digits did not read as an integer"
+    JsonNumberMagnitudeOutsideCarrierRange => "json number coefficient does not fit the substrate integer carrier"
+    JsonNumberScaleRefused => "json number fraction-digit count was refused by the exact decimal mint"
   }
 }
 
@@ -95,13 +104,19 @@ fn read_json_number_lexeme(lexeme: String) -> JsonNumberReading {
     ], "")
     match json_number_signed_units(digits: digits, negative: negative) {
       Present { value: units } =>
-        JsonNumberExact {
-          value: canonical_exact_decimal(d: ExactDecimal {
-            units: units,
-            fraction_digits: json_number_fraction_digit_count(body: body, point: point),
-          }),
+        match admit_exact_decimal(
+          units: units,
+          fraction_digits: json_number_fraction_digit_count(body: body, point: point),
+        ) {
+          ExactDecimalAdmitted { canonical } => JsonNumberExact { value: canonical }
+          ExactDecimalScaleRefused { observed_fraction_digits } =>
+            JsonNumberOutsideExactFragment { lexeme: lexeme, refusal: JsonNumberScaleRefused }
         }
-      Absent => JsonNumberOutsideExactFragment { lexeme: lexeme, refusal: JsonNumberDigitsUnreadable }
+      Absent =>
+        JsonNumberOutsideExactFragment {
+          lexeme: lexeme,
+          refusal: JsonNumberMagnitudeOutsideCarrierRange,
+        }
     }
   }
 }
