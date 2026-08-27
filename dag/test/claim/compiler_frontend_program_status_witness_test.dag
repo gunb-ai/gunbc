@@ -16,6 +16,9 @@ import gunbc.compiler_frontend_program_interlock {
   NamespaceFirstSemanticWave,
   milestone_label,
 }
+import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
+import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
+import gunbc.cli_dispatch_surface { gunbc_cli_emitter_gap }
 import gunbc.compiler_frontend_program_status {
   MilestoneStanding,
   Clear,
@@ -57,6 +60,7 @@ import gunbc.compiler_frontend_program_status {
   standing_census_from_rows,
   standing_class,
   standing_class_label,
+  emitter_retained_artifact_outstanding,
   milestone_status,
   milestone_startability,
   startability_from_populations,
@@ -110,22 +114,46 @@ test fn a_populated_observation_is_outstanding_not_clear() -> Bool {
     && count(standing_outstanding_members(s: s)) == 1
 }
 
-// THE LIVE CLAIM, at identity grain rather than by count. It reds if the arm stops reading the
-// stage0 divergence roster, if it fabricates Clear, and -- this is the half a count would miss --
-// if the arm is narrowed to read only ONE of the two rosters the divergent row's own restoration
-// trigger names. It reds the day the emitter closes the gap, which is deliberate: that is a
-// change this file must be re-read on, not one it should survive.
-test fn the_emitter_artifact_milestone_reports_both_halves_of_its_population() -> Bool {
-  let s = milestone_status(m: SelfHostEmitterProducesEveryRetainedArtifact)
-  let members = standing_outstanding_members(s: s)
-  standing_is(want: ClassOutstanding, s: s)
-    && any(members, n => n == "stage0-divergent:main")
-    && any(members, n => starts_with(s: n, prefix: "cli-emitter-gap:"))
+// THE TWO-ROSTER UNION, AS A LAW RATHER THAN TODAY'S MEMBERS. This arm previously asserted that
+// specific live members are present ("stage0-divergent:main", a "cli-emitter-gap:" entry) and that
+// the milestone reads OUTSTANDING. Both pin current state: the day the emitter closes either gap
+// the arm reds, and its closing move is to edit the expected members. I kept it deliberately in an
+// earlier commit and argued the red was the COST of the only evidence that the population unions
+// TWO rosters -- reading only the registrations would report Clear the moment that row is deleted
+// while the CLI surface stayed unemitted. That reasoning was right about what the arm was worth and
+// wrong about the only way to get it, which is the same mistake the census fixture made: the union
+// is a LAW over the two sources, and a law does not need today's members to be checkable.
+//
+// Stated as containment of BOTH sources' contributions, it reds exactly when the fold stops reading
+// one of them, and stays green as either roster shrinks -- vacuously so when both are empty, which
+// is the state the program is trying to reach.
+test fn the_emitter_population_unions_both_of_its_rosters() -> Bool {
+  let members = standing_outstanding_members(s: milestone_status(m: SelfHostEmitterProducesEveryRetainedArtifact))
+  let both = emitter_retained_artifact_outstanding()
+  count(members) == count(both)
+    && all(both, b => any(members, m => m == b))
+    && all(emitter_produced_divergent_registrations,
+         row => any(members, m => m == concat("stage0-divergent:", row.basename)))
+    && all(gunbc_cli_emitter_gap(),
+         name => any(members, m => m == concat("cli-emitter-gap:", name)))
 }
 
-// S4a, live. Today the ratchet runner declares NoConsumer, so the milestone is OUTSTANDING.
-test fn the_ratchet_observation_milestone_is_outstanding_today() -> Bool {
-  standing_is(want: ClassOutstanding, s: milestone_status(m: SelfHostRatchetObservationEnrolled))
+// S4a'S WIRING, AS A RELATION RATHER THAN TODAY'S STATE. This arm used to assert that the
+// milestone reads OUTSTANDING, which is a live snapshot: the day the ratchet gains a scheduled
+// route the milestone goes Clear, this reds, and the closing move is to edit or delete it. Same
+// backward-running contract as the anti-inflation witness and the census fixture before it, and
+// the third instance of one shape in this file.
+//
+// What the arm was actually WORTH is the WIRING, which its fixture twin below cannot see: that
+// S4a's standing is derived from the ratchet cadence fold and not from something else. Rewiring
+// the milestone to a different population leaves the fold arm green and reds this one. Stated as
+// an equality between the milestone's members and the fold's own output, it checks exactly that
+// and moves on both sides at once, so progress cannot red it -- including the day both are empty.
+test fn the_ratchet_observation_milestone_is_wired_to_its_fold() -> Bool {
+  let members = standing_outstanding_members(s: milestone_status(m: SelfHostRatchetObservationEnrolled))
+  let fold = ratchet_observation_outstanding(cadence: emit_ratchet_runner_cadence)
+  count(members) == count(fold)
+    && all(fold, f => any(members, m => m == f))
 }
 
 // AND THE FUNCTION BEHIND IT IS NOT CONSTANT, which is what keeps the arm above from being a
