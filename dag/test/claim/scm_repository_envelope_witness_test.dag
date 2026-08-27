@@ -9,6 +9,7 @@ module test.claim.scm_repository_envelope_witness
 // commit id, not on bytes and not on a stored field, because there is no stored field to assert on.
 
 import std.types { Bool, Int, List, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, JsonObject, JsonArray, JsonNull,
@@ -30,6 +31,7 @@ import gunbc.scm.object_store {
   CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision, copy_object,
 }
 import gunbc.scm.commit_closure { uncontained_targets }
+import gunbc.scm.ancestry { CommitAncestry, RootCommit, DescendsFrom, RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommit,
   RepositoryDecodeOutcome, RepositoryDecoded, RepositoryDecodeRefused,
@@ -38,6 +40,8 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeOutcome, RepositoryEncoded, RepositoryEncodeRefused,
   RepositoryEncodeRefusal, RepositoryEncodeUncontainedTarget,
   RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
+  RepositoryCommitParentNotInCommits, RepositoryCommitParentReferenceUnresolved,
+  RepositoryCommitAncestryCyclic, RepositoryDecodedAncestryCyclic,
   RepositoryDecodeRefusal, RepositoryDecodeClosureDocRefusal, RepositoryMemberReadRefused, RepositoryFormatUnrecognized,
   RepositoryIdentityRuleUnrecognized,
   RepositoryTargetReferenceRefused,
@@ -45,7 +49,45 @@ import gunbc.scm.repository_envelope {
   RepositoryUnexpectedMember, RepositoryMemberContext,
   RepositoryEnvelopeMembers, RepositoryCommitMembers,
   encode_repository_checked,
+  unresolved_commit_parent,
+  commit_at_reference,
 }
+
+// THIS DECLARATION DOES NOT CHANGE WHETHER THESE CLAIMS EXECUTE, AND TWO EARLIER REVISIONS OF THIS
+// ANNOTATION SAID IT DID. Both are retracted here against the source rather than against a rerun.
+//
+// THE FLOOR'S AUTOMATIC ROUTE IS A COLUMN-ZERO TEXT SCAN (`witness_file_from_source`, v1 seed):
+// a line must `starts_with("data ")` AND contain BOTH `LiveTreeDisposition` AND `ReadsLiveTree`.
+// An undeclared module matches nothing, so `reads_live_tree` is false and the module is ROUTED.
+// A module declaring SubstrateInputsOnly also matches nothing -- the second token is absent -- so it
+// is likewise ROUTED. Before this row and after it, the floor's answer for this module is the same.
+// The 37 claims below were executing already.
+//
+// WHERE THE ROW DOES CHANGE SOMETHING: the SELECTION path. `parse_entry_live_tree_disposition` ends
+// `Ok(declared.unwrap_or(true))`, so silence there reads as "reads the live tree" and the module is
+// not selection-eligible; declaring SubstrateInputsOnly is what makes it eligible. That is a real
+// effect on affected-set work, and it is not the effect the earlier revisions claimed.
+//
+// SO THE REASON TO DECLARE IS AMBIGUITY, NOT EXECUTION. Three routes read this one fact and two of
+// them disagree about silence. `cli_run.rs` says so in its own words at the scan -- "ONE FACT, TWO
+// COMPUTATIONS, IN ONE BINARY -- a section 3 defect, recorded here rather than silently carried" --
+// and records that the floor's copy is deleted rather than reconciled, because the two consumers ask
+// different questions. An authored answer removes this module from that disagreement; it does not
+// resolve the disagreement, which is not this module's to resolve.
+//
+// SubstrateInputsOnly IS A TRUE STATEMENT ABOUT THIS MODULE, verified before declaring: the entire
+// import surface is std.types, the json emit/parse grammars, v2.std.node and three gunbc.scm
+// carriers, and nothing here opens a file, shells out, or reads the tree. Had the closure genuinely
+// reached the tree the honest act would have been to leave it undeclared and say so, not to author
+// the value that produces a green number.
+//
+// ONE AUTHORING HAZARD, since this row is now parsed by two scanners: the selection parser REFUSES a
+// second matching row ("declared more than once in one entry"), and the floor scan keys on tokens a
+// prose line could carry. Comments are safe from both -- the selection parser trims then requires the
+// `data` prefix, the floor scan requires column zero -- but a SECOND `data live_tree_disposition` row
+// anywhere in this file is a refusal, not a duplicate.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn scm_env_atom(identity: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
@@ -88,8 +130,12 @@ fn scm_env_two_commit_repository() -> RepositoryEnvelope {
   RepositoryEnvelope {
     store: second.store,
     commits: [
-      RepositoryCommit { root: first.identity, message: "first" },
-      RepositoryCommit { root: second.identity, message: "second" },
+      RepositoryCommit { root: first.identity, message: "first", ancestry: RootCommit },
+      RepositoryCommit {
+        root: second.identity,
+        message: "second",
+        ancestry: DescendsFrom { parent: RepositoryCommitRef { reference: "0" } },
+      },
     ],
     checked_out: Present { value: second.identity },
   }
@@ -219,7 +265,7 @@ test fn scm_env_the_encoded_counter_distinguishes_a_smaller_repository() -> Bool
     v: encode_repository(
       repo: RepositoryEnvelope {
         store: only.store,
-        commits: [RepositoryCommit { root: only.identity, message: "only" }],
+        commits: [RepositoryCommit { root: only.identity, message: "only", ancestry: RootCommit }],
         checked_out: none,
       }
     )
@@ -354,7 +400,7 @@ test fn scm_env_re_encoding_is_stable() -> Bool {
 // only in a commit MESSAGE -- a log fact that participates in no identity -- must still serialize
 // differently, or the stability claim would hold for a comparison that ignored content.
 fn scm_env_relabel_one(c: RepositoryCommit) -> RepositoryCommit {
-  RepositoryCommit { root: c.root, message: concat(c.message, "!") }
+  RepositoryCommit { root: c.root, message: concat(c.message, "!"), ancestry: c.ancestry }
 }
 
 fn scm_env_relabel(commits: List<RepositoryCommit>) -> List<RepositoryCommit> {
@@ -435,6 +481,8 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
         RepositoryEncodeUncontainedTarget { target: _ } => "uncontained_target"
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
         RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
+        RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
+        RepositoryCommitAncestryCyclic { detected_from: _ } => "ancestry_cycle"
       }
   }
 }
@@ -444,7 +492,7 @@ fn scm_env_absent_root_repository() -> RepositoryEnvelope {
   let orphan = scm_env_put(store: empty_store(), n: scm_env_program_two())
   RepositoryEnvelope {
     store: empty_store(),
-    commits: [RepositoryCommit { root: orphan.identity, message: "dangling" }],
+    commits: [RepositoryCommit { root: orphan.identity, message: "dangling", ancestry: RootCommit }],
     checked_out: none,
   }
 }
@@ -455,7 +503,7 @@ fn scm_env_non_commit_checkout_repository() -> RepositoryEnvelope {
   let second = scm_env_put(store: first.store, n: scm_env_program_two())
   RepositoryEnvelope {
     store: second.store,
-    commits: [RepositoryCommit { root: first.identity, message: "first" }],
+    commits: [RepositoryCommit { root: first.identity, message: "first", ancestry: RootCommit }],
     checked_out: Present { value: second.identity },
   }
 }
@@ -480,7 +528,7 @@ test fn scm_env_an_uncontained_target_refuses_to_encode_and_names_it() -> Bool {
   }
   let repo = RepositoryEnvelope {
     store: grafted,
-    commits: [RepositoryCommit { root: full.identity, message: "grafted" }],
+    commits: [RepositoryCommit { root: full.identity, message: "grafted", ancestry: RootCommit }],
     checked_out: none,
   }
   let outcome = encode_repository_checked(repo: repo)
@@ -499,6 +547,8 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
           })
         RepositoryCommitRootNotInStore { root: _ } => false
         RepositoryCheckoutNotInCommits { selected: _ } => false
+        RepositoryCommitParentNotInCommits { parent: _ } => false
+        RepositoryCommitAncestryCyclic { detected_from: _ } => false
       }
   }
 }
@@ -547,6 +597,8 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
         RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
         RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
         RepositoryCheckoutReferenceUnresolved { reference: _ } => "checked_out"
+        RepositoryCommitParentReferenceUnresolved { reference: _ } => "commit_parent"
+        RepositoryDecodedAncestryCyclic { detected_from: _ } => "ancestry_cycle"
         RepositoryUnexpectedMember { context: _, key: _ } => "unexpected_member"
         RepositoryTargetReferenceRefused { cause: _ } => "target_reference"
       }
@@ -716,4 +768,262 @@ test fn scm_env_a_commit_root_with_no_arms_is_a_target_reference_refusal() -> Bo
       )
     )
   ) == "target_reference"
+}
+
+// ------------------------------------------------------------------------------------------------
+// Ancestry on the wire
+// ------------------------------------------------------------------------------------------------
+
+fn scm_env_commit_ancestry_at(v: JsonValue, reference: String) -> CommitAncestry? {
+  match decode_repository(v: v) {
+    RepositoryDecodeRefused { cause: _ } => none
+    RepositoryDecoded { envelope: e } =>
+      match commit_at_reference(commits: e.commits, reference: reference) {
+        Absent => none
+        Present { value: c } => Present { value: c.ancestry }
+      }
+  }
+}
+
+// THE CLAIM THE WIDENING EXISTS FOR: a parent stated by the writer is the parent recovered by the
+// reader, at the identity grain rather than merely "some ancestry survived". A codec that dropped the
+// member and rebuilt every commit as a root would still round-trip a well-formed repository -- which
+// is exactly the silent reinterpretation this asserts against.
+test fn scm_env_a_stated_parent_survives_the_round_trip() -> Bool {
+  let repo = scm_env_two_commit_repository()
+  let encoded = encode_repository(repo: repo)
+  match scm_env_commit_ancestry_at(v: encoded, reference: "1") {
+    Absent => false
+    Present { value: ancestry } =>
+      match ancestry {
+        RootCommit => false
+        DescendsFrom { parent: parent } => parent.reference == "0"
+      }
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE CLAIM ABOVE, and it is not decoration: without it, a codec that
+// answered DescendsFrom for EVERY commit would satisfy the assertion above while destroying the
+// distinction the coproduct exists to carry. The first commit must come back a root.
+test fn scm_env_a_root_commit_survives_as_a_root() -> Bool {
+  match scm_env_commit_ancestry_at(v: encode_repository(repo: scm_env_two_commit_repository()), reference: "0") {
+    Absent => false
+    Present { value: ancestry } =>
+      match ancestry {
+        RootCommit => true
+        DescendsFrom { parent: _ } => false
+      }
+  }
+}
+
+// A COMMIT CARRYING NO `ancestry` MEMBER REFUSES RATHER THAN READING AS A ROOT. This is the arm a
+// default would have swallowed, and it is the reason the member is required: a document written
+// before the member existed must not load as a history whose every commit begins it.
+test fn scm_env_a_commit_without_ancestry_refuses() -> Bool {
+  match decode_repository(v: scm_env_commit_without_ancestry()) {
+    RepositoryDecoded { envelope: _ } => false
+    RepositoryDecodeRefused { cause: _ } => true
+  }
+}
+
+// A DANGLING PARENT REFUSES RATHER THAN DEGRADING TO A ROOT COMMIT -- the wire half of the
+// structural-root claim in gunbc.scm.ancestry.
+test fn scm_env_a_dangling_parent_reference_refuses() -> Bool {
+  match decode_repository(v: scm_env_commit_with_parent_reference(reference: "7")) {
+    RepositoryDecoded { envelope: _ } => false
+    RepositoryDecodeRefused { cause: c } =>
+      match c {
+        RepositoryCommitParentReferenceUnresolved { reference: r } => r == "7"
+        _ => false
+      }
+  }
+}
+
+// THE CHECKED ENCODER ADJUDICATES A BROKEN PARENT BEFORE THE WRITE, not after the load. The
+// unchecked encoder cannot refuse -- it returns a JsonValue -- so this is the boundary a persistence
+// layer must call, and the refusal names the parent identity the caller supplied rather than a wire
+// string it would have to parse back.
+test fn scm_env_the_checked_encoder_refuses_a_parent_that_is_not_a_commit() -> Bool {
+  match encode_repository_checked(repo: scm_env_orphan_parent_repository()) {
+    RepositoryEncoded { value: _ } => false
+    RepositoryEncodeRefused { cause: c } =>
+      match c {
+        RepositoryCommitParentNotInCommits { parent: _ } => true
+        _ => false
+      }
+  }
+}
+
+// A PARENT MAY APPEAR LATER IN THE ARRAY THAN ITS CHILD. Nothing about descent constrains storage
+// order, and a single-pass decoder that resolved parents as it read them would refuse this document
+// -- imposing a storage-order rule on a relation that has none.
+test fn scm_env_a_forward_parent_reference_resolves() -> Bool {
+  match scm_env_commit_ancestry_at(v: scm_env_forward_reference_document(), reference: "0") {
+    Absent => false
+    Present { value: ancestry } =>
+      match ancestry {
+        RootCommit => false
+        DescendsFrom { parent: _ } => true
+      }
+  }
+}
+
+// Three fixtures, each rewriting the `ancestry` member of every commit in an encoded document. They
+// are separate small functions rather than one higher-order mapper because only the forward-reference
+// case needs the index at all, and threading an index through the other two would be machinery in
+// service of a generality nothing here asks for.
+fn scm_env_commit_members_mapped(v: JsonValue, f: fn(JsonValue) -> JsonValue) -> JsonValue {
+  json_object(members: map(scm_env_members(v: v), m => scm_env_commits_member_mapped(m: m, f: f)))
+}
+
+fn scm_env_commits_member_mapped(m: JsonKeyValue, f: fn(JsonValue) -> JsonValue) -> JsonKeyValue {
+  if m.key == "commits" {
+    match m.value {
+      JsonArray { elements: es } => json_kv(key: "commits", value: json_array(elements: map(es, e => f(e))))
+      _ => m
+    }
+  } else {
+    m
+  }
+}
+
+fn scm_env_commit_without_ancestry() -> JsonValue {
+  scm_env_commit_members_mapped(
+    v: encode_repository(repo: scm_env_two_commit_repository()),
+    f: c => json_object(members: scm_env_drop_key(members: scm_env_members(v: c), key: "ancestry"))
+  )
+}
+
+fn scm_env_commit_with_parent_reference(reference: String) -> JsonValue {
+  scm_env_commit_members_mapped(
+    v: encode_repository(repo: scm_env_two_commit_repository()),
+    f: c => scm_env_with(v: c, key: "ancestry", value: json_string(s: reference))
+  )
+}
+
+type ScmEnvForwardAcc {
+  index: Int
+  out: List<JsonValue>
+}
+
+// Commit 0 names commit 1 as its parent and commit 1 is a root -- the reverse of the storage order
+// the encoder produces, which is the whole point: the document is legal, and a single-pass decoder
+// that resolved parents as it read them would refuse it, imposing a storage-order rule on a relation
+// that has none.
+fn scm_env_forward_reference_document() -> JsonValue {
+  json_object(
+    members: map(
+      scm_env_members(v: encode_repository(repo: scm_env_two_commit_repository())),
+      m => scm_env_forward_member(m: m)
+    )
+  )
+}
+
+fn scm_env_forward_member(m: JsonKeyValue) -> JsonKeyValue {
+  if m.key == "commits" {
+    match m.value {
+      JsonArray { elements: es } =>
+        json_kv(
+          key: "commits",
+          value: json_array(
+            elements: match fold(
+              es,
+              init: ScmEnvForwardAcc { index: 0, out: [] },
+              f: fn(acc, e) {
+                ScmEnvForwardAcc {
+                  index: acc.index + 1,
+                  out: concat([scm_env_forward_commit(c: e, index: acc.index)], acc.out),
+                }
+              }
+            ) {
+              ScmEnvForwardAcc { index: _, out: out } => reverse(out)
+            }
+          )
+        )
+      _ => m
+    }
+  } else {
+    m
+  }
+}
+
+fn scm_env_forward_commit(c: JsonValue, index: Int) -> JsonValue {
+  if index == 0 {
+    scm_env_with(v: c, key: "ancestry", value: json_string(s: "1"))
+  } else {
+    scm_env_with(v: c, key: "ancestry", value: JsonNull)
+  }
+}
+
+fn scm_env_orphan_parent_repository() -> RepositoryEnvelope {
+  let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let second = scm_env_put(store: first.store, n: scm_env_program_two())
+  RepositoryEnvelope {
+    store: second.store,
+    commits: [
+      RepositoryCommit {
+        root: first.identity,
+        message: "child",
+        ancestry: DescendsFrom { parent: RepositoryCommitRef { reference: "1" } },
+      },
+    ],
+    checked_out: none,
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// A cyclic history is refused at BOTH ends of the persistence boundary (review 56207)
+// ------------------------------------------------------------------------------------------------
+
+// Two commits naming each other as parent. Every parent IS in the commit list, so the membership
+// check the encoder already had is fully satisfied -- which is exactly the point: membership does
+// not imply acyclicity, and before this the checked encoder would have serialized it.
+fn scm_env_cyclic_repository() -> RepositoryEnvelope {
+  let first = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let second = scm_env_put(store: first.store, n: scm_env_program_two())
+  RepositoryEnvelope {
+    store: second.store,
+    commits: [
+      RepositoryCommit {
+        root: first.identity,
+        message: "first",
+        ancestry: DescendsFrom { parent: RepositoryCommitRef { reference: "1" } },
+      },
+      RepositoryCommit {
+        root: second.identity,
+        message: "second",
+        ancestry: DescendsFrom { parent: RepositoryCommitRef { reference: "0" } },
+      },
+    ],
+    checked_out: none,
+  }
+}
+
+// THE POSITIVE CONTROL FOR BOTH CLAIMS BELOW, and without it they prove nothing: it establishes that
+// the membership check this fixture satisfies really is satisfied, so the refusals are about the
+// CYCLE and not about some unrelated defect the fixture happens to carry.
+test fn scm_env_the_cyclic_fixture_has_every_parent_in_the_commit_list() -> Bool {
+  match unresolved_commit_parent(commits: scm_env_cyclic_repository().commits) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE WRITE SIDE. gunbc.scm.ancestry classifies a cycle as a REFUSAL, so a persistence boundary that
+// serialized one would put an illegal substrate state on disk under a successful operation.
+test fn scm_env_a_cyclic_history_refuses_to_encode() -> Bool {
+  scm_env_encode_cause_tag(outcome: encode_repository_checked(repo: scm_env_cyclic_repository()))
+    == "ancestry_cycle"
+}
+
+// THE READ SIDE, AND THE HALF THAT MATTERS MORE. A document is bytes from anywhere, and a
+// hand-authored one can state a cycle whether or not any encoder here would produce it. Guarding
+// only the write path would be a wall that fires solely on its own author.
+//
+// The document is built by ENCODING the cyclic repository with the UNCHECKED encoder -- the one that
+// cannot refuse -- so the bytes are exactly what a writer without this wall would have produced.
+test fn scm_env_a_cyclic_document_refuses_to_decode() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: decode_repository(v: encode_repository(repo: scm_env_cyclic_repository()))
+  ) == "ancestry_cycle"
 }

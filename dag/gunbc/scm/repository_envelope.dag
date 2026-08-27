@@ -35,6 +35,22 @@ import extdeps.languages.json.emit {
   json_string,
 }
 
+import gunbc.scm.ancestry {
+  CommitAncestry,
+  RootCommit,
+  DescendsFrom,
+  RepositoryCommitRef,
+  repository_commit_ref_eq,
+  AncestryStep,
+  RepositoryHistory,
+  AncestryWalk,
+  AncestryTraced,
+  AncestryBrokenAt,
+  AncestryStartNotInHistory,
+  AncestryRevisitsACommit,
+  ancestry_walk,
+}
+
 import gunbc.scm.target_reference {
   TargetReferenceRefusal,
   TargetReferenceMemberReadRefused,
@@ -119,14 +135,24 @@ data repository_envelope_format_tag: String = "gunbc-scm-repository-v1"
 // change-detector failure -- it would go green precisely when the rule changed.
 data repository_node_identity_rule_tag: String = "fnv1a64-structural-canonical-v1"
 
-type RepositoryCommitRecord {
-  root_reference: String
-  message: String
-}
-
+// ANCESTRY IS A COMMIT REFERENCE, NOT A NODE REFERENCE, and that is this module's own ruling reused
+// rather than a fresh choice. The annotation on `checked_out` records why it resolves against the
+// COMMIT LIST and not the object table: a node reference admits documents naming an arbitrary
+// interior object -- a child three levels down -- as the thing being pointed at, and nothing refuses,
+// because nothing asks the question. A parent has exactly that property. `root` may be a node
+// reference because a commit's root IS a node; a parent may not, because a parent is a COMMIT, and
+// spelling it as a node reference would readmit the precise state that ruling made unwritable.
+//
+// THE POSITION IN THE ARRAY IS A STORAGE LOCATOR, NEVER AN ORDERING FACT, and the distinction is the
+// one gunbc.scm.ancestry exists to protect. The wire reference means "the commit at this position in
+// this document" -- it NAMES which commit, and adjacency between two positions still means nothing.
+// Encoding the parent as a position is not the position-implies-ancestry defect; deriving a parent
+// FROM a position would be, and nothing here does that: a commit with no `ancestry` member refuses
+// rather than defaulting to its neighbour.
 type RepositoryCommit {
   root: ObjectId
   message: String
+  ancestry: CommitAncestry
 }
 
 type RepositoryEnvelope {
@@ -168,6 +194,8 @@ type RepositoryEncodeRefusal
   = RepositoryEncodeUncontainedTarget { target: ObjectId }
   | RepositoryCommitRootNotInStore { root: ObjectId }
   | RepositoryCheckoutNotInCommits { selected: ObjectId }
+  | RepositoryCommitParentNotInCommits { parent: RepositoryCommitRef }
+  | RepositoryCommitAncestryCyclic { detected_from: RepositoryCommitRef }
 
 // The decode side keeps `String` references for now, and that is a REMAINING conflation rather than
 // a resolved one: an image-local position is still spelled as bare text here, and commit_closure_json_v2's whole
@@ -180,6 +208,8 @@ type RepositoryDecodeRefusal
   | RepositoryIdentityRuleUnrecognized { found: String }
   | RepositoryCommitRootReferenceUnresolved { reference: String }
   | RepositoryCheckoutReferenceUnresolved { reference: String }
+  | RepositoryCommitParentReferenceUnresolved { reference: String }
+  | RepositoryDecodedAncestryCyclic { detected_from: RepositoryCommitRef }
   | RepositoryUnexpectedMember { context: RepositoryMemberContext, key: String }
   | RepositoryTargetReferenceRefused { cause: TargetReferenceRefusal }
 
@@ -314,8 +344,74 @@ fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit) -> JsonValue {
     members: [
       json_kv(key: "root", value: encoded_root_reference(acc: acc, root: commit.root)),
       json_kv(key: "message", value: json_string(s: commit.message)),
+      json_kv(key: "ancestry", value: encode_ancestry(ancestry: commit.ancestry)),
     ]
   )
+}
+
+// A ROOT COMMIT IS JsonNull, AN UNRESOLVABLE PARENT IS THE EMPTY REFERENCE, and those are two states
+// rather than one for the same reason `checked_out` splits them: the empty string is already what an
+// unknown reference yields and what decode rejects, so spelling "this commit begins the history" that
+// way would fuse the ordinary first commit with a dangling parent. That is the structural-root
+// argument from gunbc.scm.ancestry carried onto the wire, where it would otherwise be quietly lost --
+// a coproduct arm is worth nothing if the serialization collapses it back to a nothing-value.
+// THE POSITIONAL SPELLING OWES TWO WALLS AND THIS CODEC DISCHARGES ONE OF THEM. Reported by review
+// 56461, and the citation is this repository's own: gunbc.scm.ancestry, on RepositoryCommitRef,
+// states that a positional spelling owes an APPEND-ONLY wall (records only ever appended -- this is
+// what buys stability) and an ORDER-PRESERVING wall (the codec round-trips `commits` in exactly its
+// authored order). It also states the consequence of naming them: if either is hard to make
+// structural, that is the argument for the reference carrying something INTRINSIC instead.
+//
+// ORDER-PRESERVING IS DISCHARGED HERE and is guarded by execution -- the decode-order pair and
+// scm_env_the_root_signature_distinguishes_order fail if the list is rebuilt in any other order.
+//
+// APPEND-ONLY IS NOT DISCHARGED AND IS NOT CLAIMED TO BE. `RepositoryEnvelope.commits` is an
+// unrestricted List, so an insertion, deletion or reorder retargets every still-valid parent
+// reference at once, and neither the membership check nor the cycle check can see it: every
+// reference still resolves, to the wrong row. That is the well-formed-confident-wrong answer the
+// ancestry type was recut to remove, which is exactly why the model named the wall rather than
+// assuming it.
+//
+// WHAT MAKES IT NOT YET HARMFUL IS ALSO WHAT MAKES IT URGENT, and stating only the first half would
+// be the reachability-read-as-occupancy error. NO COMMIT-AUTHORING VERB EXISTS -- gunbc.scm.ancestry
+// says so in its own header, and a corpus search finds none -- so no operation can mutate the list
+// and the state is reachable only by hand-authoring an envelope. The commit producer is the NEXT
+// work. The wall is therefore an ORDERING OBLIGATION, not a backlog item: it must exist before the
+// first producer, because the producer is the thing that makes the state reachable.
+//
+// TRIGGER: the reference-vocabulary keying cut, the same one the cycle-validation cost names -- an
+// intrinsic commit identity dissolves this wall by removing positions altogether, which is the
+// escape the model's own annotation points at. If that cut lands first the wall is never needed; if
+// the producer would land first the wall is required ahead of it.
+//
+// THIS PR BINDS ANCESTRY TO THE WIRE ANYWAY, and the reason is the window rather than convenience:
+// nothing has ever written a repository document, so the format is not frozen and binding now costs
+// no migration. Deferring the binding until the wall exists would not make the wall arrive sooner --
+// it would only move the format change to the far side of the event that freezes it.
+//
+// THE ENCODER NO LONGER SEARCHES FOR THE PARENT, and that deletion is the whole repair.
+//
+// It previously took the parent's ObjectId and walked the commit list for a row carrying that root,
+// taking the FIRST match. Because two rows may legitimately share a root, that search could not
+// answer the question it was asked: it returned the first OCCURRENCE of the parent's program, which
+// on any revert is a different record than the parent. The commits argument is gone with it -- a
+// reference needs no population to resolve against at encode time, so the parameter that made the
+// search possible does not exist to be misused.
+//
+// THAT LAST CLAUSE WAS FALSE WHEN FIRST WRITTEN, AND THE REPAIR IS WHY IT NOW HOLDS. This branch
+// removed the search from `encode_ancestry` and left `commits` threaded through the enclosing
+// `encode_commit_record`, unread. main carries no such parameter, so the branch ADDED it back while
+// this annotation declared it gone -- prose saying a mechanism is removed over code where the
+// mechanism-shaped parameter remains, which is the class this lane repaired in gunbc#9282 and
+// promptly re-authored one file away. It is deleted here rather than documented, because an unused
+// population parameter at the exact site that used to search that population is not inert: it is the
+// cheapest possible route back to the first-match defect, needing no new argument at any call site.
+// Reported by external review; the added-not-left provenance is measured against main.
+fn encode_ancestry(ancestry: CommitAncestry) -> JsonValue {
+  match ancestry {
+    RootCommit => JsonNull
+    DescendsFrom { parent: parent } => json_string(s: parent.reference)
+  }
 }
 
 fn encode_commit_records(acc: EncodeAcc, commits: List<RepositoryCommit>) -> List<JsonValue> {
@@ -403,7 +499,17 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
           match unresolved_checkout_selection(commits: repo.commits, selected: repo.checked_out) {
             Present { value: selected } =>
               RepositoryEncodeRefused { cause: RepositoryCheckoutNotInCommits { selected: selected } }
-            Absent => RepositoryEncoded { value: encode_repository(repo: repo) }
+            Absent =>
+              match unresolved_commit_parent(commits: repo.commits) {
+                Present { value: parent } =>
+                  RepositoryEncodeRefused { cause: RepositoryCommitParentNotInCommits { parent: parent } }
+                Absent =>
+                  match a_cyclic_commit(commits: repo.commits) {
+                    Present { value: from } =>
+                      RepositoryEncodeRefused { cause: RepositoryCommitAncestryCyclic { detected_from: from } }
+                    Absent => RepositoryEncoded { value: encode_repository(repo: repo) }
+                  }
+              }
           }
       }
   }
@@ -435,6 +541,164 @@ fn unresolved_commit_root_step(acc: EncodeAcc, found: ObjectId?, commit: Reposit
   }
 }
 
+// A PARENT NAMING A COMMIT THIS REPOSITORY DOES NOT HOLD IS ADJUDICATED BEFORE THE WRITE, for the
+// same reason the checkout is: encode_repository cannot refuse, so its only honest output is the
+// empty reference decode later rejects -- which surfaces to whoever LOADS the document rather than to
+// whoever caused it. A broken ancestry link is exactly the fact a reader must be able to trust.
+//
+// It answers with A parent, not THE FIRST one, matching an_uncontained_target: the refusal needs one
+// actionable example and nothing downstream depends on which, so naming an order would freeze an
+// incidental traversal into the interface.
+fn unresolved_commit_parent(commits: List<RepositoryCommit>) -> RepositoryCommitRef? {
+  fold(commits, init: none, f: fn(acc, c) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match c.ancestry {
+          RootCommit => none
+          DescendsFrom { parent: parent } =>
+            match commit_at_reference(commits: commits, reference: parent.reference) {
+              Absent => Present { value: parent }
+              Present { value: _ } => none
+            }
+        }
+    }
+  })
+}
+
+// A CYCLE IS REFUSED AT BOTH ENDS OF THE PERSISTENCE BOUNDARY, and this is the hole that binding
+// ancestry to the wire OPENED. Before the member existed a cyclic history had no spelling here at
+// all; with it, every-parent-is-in-commits is satisfiable by a two-commit cycle, so the checked
+// encoder would have serialized a state gunbc.scm.ancestry classifies as a REFUSAL. Membership and
+// acyclicity are different properties and the first does not imply the second (review 56207).
+//
+// THE DETECTION IS BORROWED, NOT REBUILT. ancestry_walk already decides this, by exhausting the
+// population rather than by keeping a visited set, so calling it is what keeps one authority for
+// "is this history cyclic". Re-deriving the test here would be a second answer to one question --
+// and the two would drift the first time the walk's bound changed.
+//
+// COST, STATED RATHER THAN HIDDEN, AND THE FIGURE BELOW IS THE CORRECTED ONE. This annotation first
+// said O(n^2), which understated the shape by one exponent. The derivation, written out because the
+// wrong figure came from stopping one level too early -- counting the walks and taking each walk to
+// be linear, without opening the walk:
+//
+//   history_step_at        folds the whole step list                              O(n)
+//   ancestry_walk          up to n steps, one history_step_at at each             O(n^2)
+//   a_cyclic_commit        one walk per commit, over n starts                     O(n^3)
+//
+// The bad bound is realized by the ORDINARY case, not a pathological one: on an acyclic history no
+// start finds a cycle early, so every start is walked to exhaustion. n is a repository's whole commit
+// count and grows without bound, so this is not a "small n" the rule excuses -- DESIGN section 6 fixes
+// a proven cost shape regardless of realized n, and the realized n here is the one that keeps growing.
+//
+// THIS IS A DECLARED COST DEFECT, NOT AN ACCEPTED COST. The distinction is the whole point of writing
+// it down: nothing here argues the shape is fine, and no later reader may cite this annotation as
+// having settled it. It is O(n^3) realized in the ORDINARY case -- not quadratic, and not "cubic in
+// the worst case", because the healthy acyclic repository IS the worst case.
+//
+// ALL THREE FACTORS DISSOLVE ON THE SAME TRIGGER, which is why it is declared rather than partly
+// repaired: the lookup is linear because the carrier is a list, and the all-starts fold cannot skip a
+// start already proven acyclic without a visited set. Both want the same keyed representation.
+//
+// TRIGGER: the reference-vocabulary keying cut -- one cut over the whole vocabulary, taking history
+// steps, `checked_out` and the reference lookups together. Converting this one site instead would
+// relocate the positional-carrier fork rather than remove it, which is the objection that deferred
+// `checked_out`; a leaf conversion is not a smaller version of this repair, it is a different and
+// worse one. Ruled B by the lane owner after independently deriving the nesting, with that cut named
+// as the next SCM work item dispatched once this stack lands.
+//
+// It runs on ENCODE AND DECODE -- every write and every read, not once per write as an earlier
+// revision of this annotation said. Corrected after external review measured the nesting; both the
+// original exponent and that frequency were authored here.
+// KEYED ON THE ROW, NOT THE PROGRAM. The previous form folded for the first row whose ROOT matched,
+// so on a history containing a revert it answered with the wrong record's ancestry -- and answered
+// confidently, since a first match is a successful lookup. Resolving through commit_at_reference
+// means there is nothing to be first among: a reference denotes one row or none.
+// THE COMMIT LIST PROJECTS ONTO THE WALK'S CARRIER, and this is the only place the two meet.
+//
+// It replaces a `lookup` function paired with a separate reference list. That pairing let the two
+// disagree -- one answered membership, the other bounded the walk -- and the walk's own module now
+// refuses to accept them separately. Building the carrier here means a row's REFERENCE and its
+// ANCESTRY are derived in one pass from one list, so a position can never name a row whose ancestry
+// came from somewhere else.
+// THIS BUILDER IS WHERE REFERENCE UNIQUENESS IS DISCHARGED, and saying so is not decoration: the
+// carrier does not enforce it. The residual duplicated-`at` state, its rung and its next-rung trigger
+// are stated ONCE, on RepositoryHistory in gunbc.scm.ancestry, because that is the carrier the fact is
+// about. They are deliberately not restated here: two annotations that agree are still two
+// authorities for one fact, and the one that drifts is the one nobody is reading.
+//
+// What THIS module owes is the discharge itself. Every reference is minted from this fold's own index
+// counter, so two rows cannot collide, and no other production code constructs the carrier.
+//
+// THE FOLD PREPENDS AND REVERSES ONCE. An earlier revision appended with `concat(acc.steps, [step])`,
+// which copies the whole accumulator per row and makes building an n-commit history O(n^2). DESIGN
+// section 6 fixes that shape ALWAYS, regardless of the realized n, because "n is small here" is not a
+// time-stable fact -- and this module had the receipt in front of it, since gunbc.scm.merge carries an
+// annotation recording that it committed this same defect and repaired it this same way. Prepending
+// costs one cell per row, which is the whole of the repair.
+//
+// THE TRAILING `reverse` HAS NO DISCRIMINATING WITNESS AND IS STILL LOAD-BEARING. Step order here is
+// not unobservable -- it is OBSERVABLE BUT UNSPECIFIED, and the distinction is the whole reason this
+// line stays. `a_cyclic_commit` folds these steps and reports the FIRST one whose walk finds a cycle,
+// and that commit reaches a user as the actionable example in a cycle refusal. Reverse the sequence
+// and the refusal names a different commit: a changed user-visible output that no witness fails on,
+// because the interface deliberately declines to promise WHICH commit (its own annotation says it
+// answers A cycle, not THE first, so that no traversal order is frozen into the interface).
+//
+// That is why the repair keeps it. Dropping it would make this one commit do two things -- fix a
+// quadratic cost shape AND silently change which commit a refusal names -- and nothing in the corpus
+// would catch the second. The bare-minimum-cost rule does not object: it targets a cost SHAPE defect,
+// this repair fixes the shape (O(n^2) to O(n)), and one further linear pass over an already-linear
+// construction changes a constant factor, not the shape.
+//
+// A WITNESS FOR THIS WOULD BE WRONG, not merely absent: asserting which commit a cycle is reported
+// from would be a change detector over an explicitly unspecified choice, and would freeze into the
+// interface the very thing the annotation above refuses to promise.
+//
+// TRAP FOR THE NEXT READER, stated as a warning and not as a promise the code makes: deleting this
+// `reverse` reverses the step sequence relative to `commits`. Nothing observes that alignment today
+// and no witness checks it, so this is what you would be changing, not an invariant you may rely on.
+fn repository_history(commits: List<RepositoryCommit>) -> RepositoryHistory {
+  RepositoryHistory {
+    steps: reverse(
+      fold(commits, init: HistoryBuildAcc { index: 0, steps: [] }, f: fn(acc, c) {
+        HistoryBuildAcc {
+          index: acc.index + 1,
+          steps: concat([AncestryStep {
+            at: RepositoryCommitRef { reference: position_reference(n: acc.index) },
+            ancestry: c.ancestry,
+          }], acc.steps),
+        }
+      }).steps
+    ),
+  }
+}
+
+type HistoryBuildAcc {
+  index: Int
+  steps: List<AncestryStep>
+}
+
+
+// Answers A commit a cycle was detected from, not THE first one, matching an_uncontained_target: the
+// refusal needs one actionable example and nothing downstream depends on which, so naming an order
+// would freeze an incidental traversal into the interface.
+fn a_cyclic_commit(commits: List<RepositoryCommit>) -> RepositoryCommitRef? {
+  let history = repository_history(commits: commits)
+  fold(history.steps, init: none, f: fn(acc, step) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match ancestry_walk(start: step.at, history: history) {
+          AncestryRevisitsACommit { detected_from: from } => Present { value: from }
+          AncestryTraced { chain: _ } => none
+          AncestryBrokenAt { commit: _, missing_parent: _ } => none
+          AncestryStartNotInHistory { start: _ } => none
+        }
+    }
+  })
+}
+
 fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: ObjectId?) -> ObjectId? {
   match selected {
     Absent => none
@@ -463,8 +727,120 @@ fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: Obje
 // scm_env_the_root_signature_distinguishes_order is the claim that would go red if the reverse were
 // dropped or applied twice.
 type CommitDecodeAcc {
+  commits: List<PendingCommit>
+  refusal: RepositoryDecodeRefusal?
+}
+
+// DECODING A COMMIT IS TWO PHASES BECAUSE THE WIRE FACT IS NOT RESOLVABLE WHEN IT IS READ, and this
+// type is that intermediate state rather than a parallel representation of a commit.
+//
+// A parent reference is a position in the commits array, and the fold that reads commit k has not
+// necessarily read the commit that position names -- nothing requires a parent to appear earlier in
+// the array, and requiring it would put a storage-order constraint on a relation that has none. So
+// phase one reads what the document SAYS and phase two resolves it once every position exists.
+//
+// `parent_reference` being absent means the document said RootCommit (JsonNull). It is NOT "we could
+// not read it": an unreadable member refuses in phase one and never reaches here, so this Optional
+// carries one meaning rather than two.
+type PendingCommit {
+  root: ObjectId
+  message: String
+  parent_reference: String?
+}
+
+// The inverse of commit_reference_of over the PENDING list, walking the same ordinary index counter
+// the encoder does, so the two cannot drift -- the pairing commit_at_reference already establishes
+// for the checkout, applied one phase earlier because a parent must resolve before a RepositoryCommit
+// can be built at all.
+// IT ANSWERS WHETHER THE REFERENCE DENOTES A ROW, WHICH IS THE ONLY QUESTION ASKED OF IT.
+//
+// It previously returned the referenced row's ROOT, and the caller discarded that value -- it needed
+// existence, not identity. Returning a program from a row-existence check is what made it natural to
+// then STORE that program as the parent, which is the defect this change removes; a Bool cannot be
+// misused that way. The walk over the same index counter is unchanged.
+fn pending_contains_reference(pending: List<PendingCommit>, reference: String) -> Bool {
+  fold(
+    pending,
+    init: PendingRefScan { index: 0, found: false },
+    f: fn(acc, _c) {
+      if acc.found {
+        PendingRefScan { index: acc.index + 1, found: true }
+      } else {
+        PendingRefScan {
+          index: acc.index + 1,
+          found: position_reference(n: acc.index) == reference,
+        }
+      }
+    }
+  ).found
+}
+
+type PendingRefScan {
+  index: Int
+  found: Bool
+}
+
+type ResolvedCommitAcc {
   commits: List<RepositoryCommit>
   refusal: RepositoryDecodeRefusal?
+}
+
+// A DANGLING PARENT REFUSES RATHER THAN DEGRADING TO A ROOT COMMIT. Those are the two states
+// gunbc.scm.ancestry made structurally distinct, and answering the first for the second here would
+// undo that at the only boundary where it matters: a document whose ancestry link is broken would
+// load as a healthy repository with an extra beginning, and the damage would be indistinguishable
+// from ordinary history for every reader after it.
+fn resolve_pending_commits(pending: List<PendingCommit>) -> ResolvedCommitAcc {
+  match fold(
+    pending,
+    init: ResolvedCommitAcc { commits: [], refusal: none },
+    f: fn(acc, c) { resolve_pending_step(pending: pending, acc: acc, c: c) }
+  ) {
+    ResolvedCommitAcc { commits: reversed, refusal: refusal } =>
+      ResolvedCommitAcc { commits: reverse(reversed), refusal: refusal }
+  }
+}
+
+fn resolve_pending_step(
+  pending: List<PendingCommit>,
+  acc: ResolvedCommitAcc,
+  c: PendingCommit
+) -> ResolvedCommitAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match c.parent_reference {
+        Absent =>
+          ResolvedCommitAcc {
+            commits: concat(
+              [RepositoryCommit { root: c.root, message: c.message, ancestry: RootCommit }],
+              acc.commits
+            ),
+            refusal: acc.refusal,
+          }
+        Present { value: reference } =>
+          if !pending_contains_reference(pending: pending, reference: reference) {
+              ResolvedCommitAcc {
+                commits: acc.commits,
+                refusal: Present { value: RepositoryCommitParentReferenceUnresolved { reference: reference } },
+              }
+          } else {
+              ResolvedCommitAcc {
+                commits: concat(
+                  [RepositoryCommit {
+                    root: c.root,
+                    message: c.message,
+                    ancestry: DescendsFrom {
+                      parent: RepositoryCommitRef { reference: reference },
+                    },
+                  }],
+                  acc.commits
+                ),
+                refusal: acc.refusal,
+              }
+          }
+      }
+  }
 }
 
 // A commit record's member set is closed for the same reason the envelope's is: a writer that states
@@ -476,7 +852,7 @@ fn decode_commit_step(positions: DecodePositions, acc: CommitDecodeAcc, value: J
     Absent =>
       match repository_member_set_refusal(
         v: value,
-        allowed: ["root", "message"],
+        allowed: ["root", "message", "ancestry"],
         context: RepositoryCommitMembers
       ) {
         Present { value: c } =>
@@ -514,6 +890,35 @@ fn decode_commit_root(positions: DecodePositions, root_value: JsonValue) -> Comm
   }
 }
 
+type PendingParentRead
+  = PendingParentRead { reference: String? }
+  | PendingParentRefused { cause: RepositoryDecodeRefusal }
+
+// A MISSING `ancestry` MEMBER REFUSES; IT DOES NOT DEFAULT TO A ROOT COMMIT. Defaulting would make
+// every commit in a document that predates this member read as a beginning of history, which is a
+// well-formed repository that is not the one that was written -- the silent-reinterpretation failure
+// the identity-rule tag exists to prevent, arriving through the schema axis instead.
+//
+// The member is REQUIRED rather than optional because no document exists to be compatible with: the
+// only consumer of this encoder is a witness, rebuilt from source every run, so there is no durable
+// artifact whose absence of this key has to be tolerated. Were one to exist, this would be a second
+// format arm rather than a widened v1 body.
+fn read_pending_parent_reference(value: JsonValue) -> PendingParentRead {
+  match read_member_value(v: value, key: "ancestry") {
+    MemberLookupFailed { cause: c } =>
+      PendingParentRefused { cause: RepositoryMemberReadRefused { cause: c } }
+    MemberValue { value: found } =>
+      match found {
+        JsonNull => PendingParentRead { reference: none }
+        JsonString { value: reference } => PendingParentRead { reference: Present { value: reference } }
+        _ =>
+          PendingParentRefused {
+            cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "ancestry" } }
+          }
+      }
+  }
+}
+
 fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value: JsonValue) -> CommitDecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
@@ -530,9 +935,17 @@ fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value
                 MemberFailed { cause: c } =>
                   CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: c } } }
                 MemberString { value: message } =>
-                  CommitDecodeAcc {
-                    commits: concat([RepositoryCommit { root: root, message: message }], acc.commits),
-                    refusal: acc.refusal,
+                  match read_pending_parent_reference(value: value) {
+                    PendingParentRefused { cause: c } =>
+                      CommitDecodeAcc { commits: acc.commits, refusal: Present { value: c } }
+                    PendingParentRead { reference: reference } =>
+                      CommitDecodeAcc {
+                        commits: concat(
+                          [PendingCommit { root: root, message: message, parent_reference: reference }],
+                          acc.commits
+                        ),
+                        refusal: acc.refusal,
+                      }
                   }
                 _ =>
                   CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "message" } } } }
@@ -622,9 +1035,23 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
                       match commit_refusal {
                         Present { value: c } => RepositoryDecodeRefused { cause: c }
                         Absent =>
-                          decode_repository_checkout(
-                            v: v, store: store, positions: positions, commits: reverse(reversed_commits)
-                          )
+                          match resolve_pending_commits(pending: reverse(reversed_commits)) {
+                            ResolvedCommitAcc { commits: commits, refusal: resolve_refusal } =>
+                              match resolve_refusal {
+                                Present { value: c } => RepositoryDecodeRefused { cause: c }
+                                Absent =>
+                                  match a_cyclic_commit(commits: commits) {
+                                    Present { value: from } =>
+                                      RepositoryDecodeRefused {
+                                        cause: RepositoryDecodedAncestryCyclic { detected_from: from }
+                                      }
+                                    Absent =>
+                                      decode_repository_checkout(
+                                        v: v, store: store, positions: positions, commits: commits
+                                      )
+                                  }
+                              }
+                          }
                       }
                   }
                 _ => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "commits" } } }
@@ -635,6 +1062,16 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
   }
 }
 
+// THE DECODE SIDE REFUSES A CYCLE TOO, AND THIS IS THE HALF THAT MATTERS MORE. The encoder's
+// argument is a value some caller in this process built; a DOCUMENT is bytes from anywhere, and a
+// hand-authored one can state a cycle whether or not any encoder here would produce it. Refusing on
+// the write path alone would guard the direction we control and leave the untrusted direction open,
+// which is the shape of a wall that only ever fires on its own author.
+//
+// It is checked AFTER parents resolve and BEFORE the checkout, because a cycle is only decidable
+// once every reference denotes a commit, and reporting a checkout on a repository whose history is
+// illegal would be answering a question about a state that should not have loaded.
+//
 // A DANGLING CHECKOUT REFERENCE REFUSES RATHER THAN DEGRADING TO "nothing checked out". Those are
 // different states: one is an ordinary empty repository, the other is a document whose workspace
 // selection names an object the table does not contain. Answering the first for the second would
@@ -701,6 +1138,21 @@ fn decode_repository_checkout(
 // good and unreadable ONLY HERE -- the same shape as an unrecognized format tag. Calling it malformed
 // would let an older reader destroy a newer writer's repository over a rule it simply lacks, which is
 // the one outcome the standing vocabulary exists to prevent.
+//
+// THE TWO ANCESTRY ARMS WERE ADDED BY INTEGRATION, NOT BY EITHER SIDE, and they are classified here
+// rather than left to the merge because a textually clean merge is what produced the gap. This
+// classifier landed on main total over the refusal population as it stood; the ancestry decode landed
+// on a branch that widened that population by two. Neither change is wrong and neither touched the
+// other's lines, so git merged both and the exhaustive match silently stopped being exhaustive --
+// the obligation is created by the integration itself. It surfaces loudly because the match descends,
+// which is the property the paragraph above was written to defend, now with a receipt.
+//
+// BOTH ARE MALFORMED RATHER THAN UNSUPPORTED, and the cyclic one is the arm worth stating a reason
+// for. An unresolved parent reference is a document naming a commit it does not contain, which is the
+// same damage the root and checkout arms above already carry. A cycle is NOT a rule a newer writer
+// might legitimately implement and this build might lack: acyclicity is a substrate law, so no
+// conforming writer emits one at any version. Classifying it as unsupported would tell a reader to
+// stand aside for a document that is damaged, which inverts the remedy.
 fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStanding {
   match cause {
     RepositoryFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
@@ -728,6 +1180,8 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
       }
     RepositoryCommitRootReferenceUnresolved { reference: _ } => LoadDocumentMalformed
     RepositoryCheckoutReferenceUnresolved { reference: _ } => LoadDocumentMalformed
+    RepositoryCommitParentReferenceUnresolved { reference: _ } => LoadDocumentMalformed
+    RepositoryDecodedAncestryCyclic { detected_from: _ } => LoadDocumentMalformed
     RepositoryUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
   }
 }

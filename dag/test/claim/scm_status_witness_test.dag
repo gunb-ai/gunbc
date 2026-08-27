@@ -4,6 +4,7 @@ import std.types { Bool, String, List, Int }
 import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm.object_store { ObjectStore, ObjectId, empty_store, store_node, Stored, LocatorCollision }
+import gunbc.scm.ancestry { RootCommit, DescendsFrom }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 import gunbc.scm.merge { Proposal, Requirement, RequireBinding, RequireBindingAbsent }
 import gunbc.scm.authoring { author_requirement, empty_proposal }
@@ -44,7 +45,7 @@ fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
   let root = status_witness_stored_id(name: ^r1)
   RepositoryEnvelope {
     store: empty_store(),
-    commits: [RepositoryCommit { root: root, message: "first" }],
+    commits: [RepositoryCommit { root: root, message: "first", ancestry: RootCommit }],
     checked_out: Present { value: root },
   }
 }
@@ -52,7 +53,7 @@ fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
 fn status_witness_repository_with_dangling_checkout() -> RepositoryEnvelope {
   RepositoryEnvelope {
     store: empty_store(),
-    commits: [RepositoryCommit { root: status_witness_stored_id(name: ^r1), message: "first" }],
+    commits: [RepositoryCommit { root: status_witness_stored_id(name: ^r1), message: "first", ancestry: RootCommit }],
     checked_out: Present { value: status_witness_stored_id(name: ^elsewhere) },
   }
 }

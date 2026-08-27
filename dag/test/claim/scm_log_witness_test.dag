@@ -11,6 +11,7 @@ import gunbc.scm.object_store {
   Stored,
   LocatorCollision,
 }
+import gunbc.scm.ancestry { RootCommit, DescendsFrom, RepositoryCommitRef }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 import gunbc.scm.log {
   repository_log,
@@ -51,8 +52,8 @@ fn log_witness_two_commit_repository() -> RepositoryEnvelope {
   RepositoryEnvelope {
     store: b.store,
     commits: [
-      RepositoryCommit { root: a.identity, message: "first" },
-      RepositoryCommit { root: b.identity, message: "second" },
+      RepositoryCommit { root: a.identity, message: "first", ancestry: RootCommit },
+      RepositoryCommit { root: b.identity, message: "second", ancestry: DescendsFrom { parent: RepositoryCommitRef { reference: "0" } } },
     ],
     checked_out: none,
   }
@@ -66,8 +67,8 @@ fn log_witness_repository_with_unheld_root() -> RepositoryEnvelope {
   RepositoryEnvelope {
     store: a.store,
     commits: [
-      RepositoryCommit { root: a.identity, message: "held" },
-      RepositoryCommit { root: orphan.identity, message: "not held" },
+      RepositoryCommit { root: a.identity, message: "held", ancestry: RootCommit },
+      RepositoryCommit { root: orphan.identity, message: "not held", ancestry: RootCommit },
     ],
     checked_out: none,
   }
@@ -129,8 +130,8 @@ test fn two_commits_sharing_a_root_still_get_distinct_references() -> Bool {
   let repo = RepositoryEnvelope {
     store: a.store,
     commits: [
-      RepositoryCommit { root: a.identity, message: "relabelled once" },
-      RepositoryCommit { root: a.identity, message: "relabelled twice" },
+      RepositoryCommit { root: a.identity, message: "relabelled once", ancestry: RootCommit },
+      RepositoryCommit { root: a.identity, message: "relabelled twice", ancestry: RootCommit },
     ],
     checked_out: none,
   }
