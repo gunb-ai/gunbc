@@ -69,9 +69,12 @@ import v2.workflow.legacy_binding_delta {
 // by name. That revision also named its own trigger: the condition binds in the same change that
 // rebases this module onto the arm, at which point the ref is verifiable at the moment it is written.
 //
-// gunbc#9359 is that change. It lands the third arm and rebases this file onto it in one commit, so
-// the citation is authored at the first moment it CAN be authored honestly rather than at the first
-// moment it is convenient. Leaving it unbound here would have been worse than merely stale: a
+// gunbc#9359 landed `OccurrenceProjected`. THIS change is the first that rebases this module's
+// claims onto that capability and authors the now-resolvable citation, so the citation is written at
+// the first moment it CAN be written honestly rather than at the first moment it is convenient. The
+// two-step interval is the interesting part and an earlier revision of this sentence erased it by
+// attributing both to one commit: #9359 merged WITHOUT this rebase, and for the gap between them
+// main carried a dissolution row asserting the absence of an arm declared in the same tree. Leaving it unbound here would have been worse than merely stale: a
 // dissolution condition is machine-consumed, so the debt would have reported UNBOUND while its own
 // binding declaration sat in the same commit -- a false fact rather than a false comment.
 //
@@ -79,8 +82,14 @@ import v2.workflow.legacy_binding_delta {
 // carrier boundary is closed and the PROJECTOR is not yet wired across it. Binding the dissolution
 // records that the blocking declaration now exists; it does not claim this module emits insertions.
 //
-// The instrument for the claim, rather than a transcription of it: grep `caused_by` across `dag/std`
-// and `src/v2/std`, and read `NodeOccurrenceIdentity`'s arms in `std.occurrence_identity`.
+// THE INSTRUMENTS ARE THE FACTS THAT ARE NOW TRUE, not the absence that closed. Read
+// `std.occurrence_identity` `NodeOccurrenceIdentity` for the `OccurrenceProjected` arm, and
+// `v2.workflow.legacy_binding_delta` `insertion_provenance_entry` for the derivation of
+// `ProjectedAsInsertion` from it. An earlier revision named a grep for `caused_by` across `dag/std`
+// and `src/v2/std`, which was correct while the count was zero and INVERTED SILENTLY the moment the
+// arm landed -- a reader running it now gets a nonzero answer and cannot tell a wrong annotation
+// from a mis-run. Naming an instrument beats transcribing its output, but an instrument that
+// measures an ABSENCE rots exactly like a transcribed number once someone closes the absence.
 data legacy_binding_projection_insertion_dissolution: DissolutionCondition = bound_dissolution(
   ref: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceProjected")
 )
