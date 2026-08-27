@@ -13,6 +13,29 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data write_owner_only_realization_note: String = "v1 realization: Unix OpenOptions create_new + mode 0600 at creation (O_EXCL); non-Unix hosts refuse rather than degrading to unmodeled write."
 
+// The operation below carries the transport observation as independent channels: the read
+// either supplied content or supplied an error, but the wire itself does not make those states
+// exclusive. Consumers that need the modeled result fold those channels through this coproduct.
+// Keeping the fold here makes the interface authority own the meaning while the file transport
+// remains only a realization of its scalar channels.
+type FilesystemReadOutcome
+  = FilesystemReadSucceeded { content: String }
+  | FilesystemReadRefused { error: String }
+
+fn filesystem_read_outcome(
+  content: String,
+  success: Bool,
+  error: String,
+) -> FilesystemReadOutcome {
+  if success {
+    FilesystemReadSucceeded { content: content }
+  } else {
+    FilesystemReadRefused { error: error }
+  }
+}
+
+data filesystem_read_outcome_adoption_standing: String = "RUNG: mitigatable. filesystem_read_outcome provides the single modeled fold from Filesystem.Read's scalar transport observation into FilesystemReadSucceeded | FilesystemReadRefused, but nothing forces callers through it. gunbc.ci_yaml_validate is the first converted consumer and preserves read refusal separately from YAML parse refusal. The raw operation remains directly consumed elsewhere, so content+success+error nonsense combinations remain writable at those sites. BASELINE POPULATION measured on origin/main 04fb02657f8cf361d1b424d7306f3d3f32fbef6e: 92 occurrences across 48 .dag files of the assignment-form call, with 120 direct reads of the bound result's success/error/content fields. REMAINDER after the first conversion: 91 calls across 47 files. Re-derive the call population with git grep restricted to *.dag for the assignment form '= Filesystem.Read(' and count both rows and distinct paths; re-derive field reads by collecting the assigned result names from those rows and counting their .success/.error/.content projections. NEXT-RUNG TRIGGER: cut all 91 remaining raw call sites over to this fold and enforce that no direct Filesystem.Read result projection remains. The compiler-only filesystem_read intrinsic is a separate replacement migration and is not part of this population or this fold."
+
 service Filesystem {
 
   operation Write {
