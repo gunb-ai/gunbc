@@ -18,7 +18,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 fn observation(entry: v2.std.node.Symbol, surface: v2.std.node.Symbol) -> v2.compiler.self_host.emitted_surface_census.EmittedMemberIdentity {
   v2.compiler.self_host.emitted_surface_census.EmittedMemberIdentity {
     entry: entry,
-    source_module: ^v2_std_node,
+    source_module: "v2.std.node",
+    target_filename: ^v2_std_node,
     member_digest: surface,
     linkage_surface_digest: surface,
     instrument_vintage: ^fixture,
@@ -29,7 +30,8 @@ fn observation(entry: v2.std.node.Symbol, surface: v2.std.node.Symbol) -> v2.com
 fn provider_row_with_two_surfaces() -> v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
   v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
     product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
-    source_module: ^v2_std_node,
+    source_module: "v2.std.node",
+    target_filename: ^v2_std_node,
     observations: [
       observation(entry: ^entry_integer, surface: ^surface_with_cardinality),
       observation(entry: ^entry_node_query, surface: ^surface_without_cardinality)
@@ -40,7 +42,8 @@ fn provider_row_with_two_surfaces() -> v2.compiler.self_host.emitted_surface_cen
 fn provider_row_with_one_surface() -> v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
   v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
     product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
-    source_module: ^v2_std_node,
+    source_module: "v2.std.node",
+    target_filename: ^v2_std_node,
     observations: [
       observation(entry: ^entry_integer, surface: ^surface_agreed),
       observation(entry: ^entry_coercion, surface: ^surface_agreed)
@@ -52,7 +55,8 @@ fn provider_row_with_one_surface() -> v2.compiler.self_host.emitted_surface_cens
 fn crate_root_row_with_two_surfaces() -> v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
   v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
     product: v2.compiler.self_host.emitted_surface_census.CrateRoot,
-    source_module: ^lib_rs,
+    source_module: "lib",
+    target_filename: ^lib_rs,
     observations: [
       observation(entry: ^entry_integer, surface: ^root_surface_45_modules),
       observation(entry: ^entry_node_query, surface: ^root_surface_18_modules)
@@ -82,7 +86,8 @@ fn witness_single_observation_is_admitted() -> Bool {
   v2.compiler.self_host.emitted_surface_census.row_admissible(
     row: v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
       product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
-      source_module: ^v2_std_node,
+      source_module: "v2.std.node",
+      target_filename: ^v2_std_node,
       observations: [observation(entry: ^entry_integer, surface: ^surface_agreed)]
     }
   )
@@ -156,7 +161,8 @@ fn witness_partially_observed_module_is_refused() -> Bool {
       rows: [
         v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
           product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
-          source_module: ^v2_std_node,
+          source_module: "v2.std.node",
+          target_filename: ^v2_std_node,
           observations: [observation(entry: ^entry_integer, surface: ^surface_agreed)]
         }
       ]

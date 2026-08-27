@@ -6,6 +6,7 @@ import v2.std.collection { List }
 import v2.std.diagnostic { Diagnostic, Outcome, outcome_accepted, outcome_rejected, textual_whole_file_diagnostic, Correction, Unavailable, NoCorrectionReason, ExternalContractUnknown }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
+import v2.std.text { String }
 import v2.std.integer { Int }
 
 // CLOSURE SELECTS PRODUCTS; IT DOES NOT DEFINE PROVIDER INTERFACES.
@@ -40,12 +41,40 @@ type ProductKind
 // `code @ basename : line : col` cannot be joined across entries at all.
 type EmittedMemberIdentity {
   entry: Symbol
-  source_module: Symbol
+  source_module: String
+  target_filename: Symbol
   member_digest: Symbol
   linkage_surface_digest: Symbol
   instrument_vintage: Symbol
   members: List<Symbol>
 }
+
+// THE JOIN KEY IS THE DOTTED AUTHORED NAME, NEVER THE TARGET FILENAME, AND THE TWO ARE CARRIED
+// SEPARATELY BECAUSE THEY ARE DIFFERENT FACTS.
+//
+// module_to_filename is `name |> split(delimiter: ".") |> join(separator: "_")`, which is
+// MANY-TO-ONE: `a.b_c` and `a_b.c` both render `a_b_c`. Joining this census on the filename would
+// merge two distinct authored modules into one row, and their genuinely different surfaces would
+// then be reported as one module carrying two linkage surfaces -- a false positive
+// INDISTINGUISHABLE from the finding this carrier exists to report. That is worse than a miss,
+// because the whole value of the refusal is that it means something specific.
+//
+// Measured rather than asserted: 4080 authored modules render 4080 distinct filenames today, so
+// the live collision count is ZERO -- and 3456 of those names contain an underscore, so the
+// collision fuel is the overwhelming majority of the corpus and today's zero is luck about segment
+// placement rather than a property of the mapping. Keying on the authored name costs nothing while
+// the population is clean; retrofitting an identity after a collision lands means re-auditing every
+// comparison ever made.
+//
+// source_module is the identity the census joins and refuses on. target_filename is the locator a
+// reader opens, and it is what the diagnostics point at, because a reader chasing a refusal opens a
+// file. Reconstructing either from the other would be a derivation standing beside the fact it
+// derives.
+//
+// The identity is a String rather than a Symbol because a dotted authored name has no symbol
+// spelling here: the corpus carries dotted module names as String throughout and contains no dotted
+// symbol literal anywhere. Spelling one would have made this the only such site in the tree, which
+// is the same one-of-one that produced this module's container-arity resolve failure.
 
 // WHY THE ROW CARRIES BOTH THE DIGEST AND THE MEMBERS, AND WHY THE EMITTER PUBLISHES ONLY THE
 // LATTER.
@@ -62,6 +91,24 @@ type EmittedMemberIdentity {
 // census would become a consumer that can only compare what another party already decided was
 // comparable. Declaring what was decided is the emitter's job; deciding what counts as the same
 // surface is this carrier's.
+//
+// WHICH HALF OF THE SURFACE ACTUALLY DISCRIMINATES, STATED SO IT IS NEVER CITED AS MORE.
+//
+// A member set has two kinds of row: the module's own DECLARATIONS and its REEXPORTS. For a
+// ProviderModule the declarations come from that module's own source, which no closure touches, so
+// they are ENTRY-INVARIANT BY CONSTRUCTION and cannot exhibit the variation this census exists to
+// detect. Every bit of discriminating power sits in the reexports.
+//
+// Declarations are therefore carried as EVIDENCE AND CONTEXT, never as a second discriminator. The
+// distinction is worth writing down because the opposite claim -- "declarations are compared too"
+// -- would read as coverage for a class the comparison structurally cannot catch, which is the
+// decoration failure: a check permanently green by construction is worse than an absent one,
+// because it gets cited.
+//
+// Receipt from the first live measurement: the one varying provider module carried 164 declared
+// items under BOTH entries and differed only in reexports, 11 against 10. The single case where
+// declarations did vary was the crate root, 45 against 18 -- and there the varying fact is pub-mod
+// closure membership, which the standing law permits and which the CrateRoot arm above admits.
 
 // The OBSERVED union of exports across a sample. This is a migration candidate and nothing more.
 //
@@ -78,7 +125,8 @@ type ObservedExportEnvelope {
 
 type SurfaceCensusRow {
   product: ProductKind
-  source_module: Symbol
+  source_module: String
+  target_filename: Symbol
   observations: List<EmittedMemberIdentity>
 }
 
@@ -159,7 +207,7 @@ fn census_undiscriminating_diagnostic(census: SurfaceCensus) -> Diagnostic {
 fn uncovered_row_diagnostic(row: SurfaceCensusRow) -> Diagnostic {
   textual_whole_file_diagnostic(
     reason: ^seed_module_not_observed_under_every_sampled_entry,
-    module_file: row.source_module,
+    module_file: row.target_filename,
     correction: Unavailable { reason: ExternalContractUnknown }
   )
 }
@@ -167,7 +215,7 @@ fn uncovered_row_diagnostic(row: SurfaceCensusRow) -> Diagnostic {
 fn entry_conditioned_surface_diagnostic(row: SurfaceCensusRow) -> Diagnostic {
   textual_whole_file_diagnostic(
     reason: ^seed_module_carries_more_than_one_linkage_surface,
-    module_file: row.source_module,
+    module_file: row.target_filename,
     correction: Unavailable { reason: ExternalContractUnknown }
   )
 }
