@@ -13,6 +13,7 @@ import gunbc.target_binding {
   TargetBindingIndexBuild, TargetBindingIndexReady, TargetBindingIndexRefused,
   build_target_binding_index,
   TargetProducer, HeadsReadingDifferentialProducer, BehavioralReceiptPlanProducer,
+  BehavioralReceiptCensusProducer, BehavioralReceiptSelftestProducer,
   HeadsReadingDifferentialStanding,
   HeadsReadingDifferentialCompleted, HeadsReadingDifferentialSubjectUnreached,
   HeadsReadingDifferentialRefused,
@@ -34,6 +35,8 @@ import gunbc.instrument_targets {
   heads_reading_differential_label,
   heads_reading_differential_target,
   heads_reading_differential_binding,
+  behavioral_receipt_plan_label, behavioral_receipt_census_label,
+  behavioral_receipt_selftest_label,
   instrument_targets, instrument_bindings,
   invoke_target,
   heads_reading_differential_termination,
@@ -84,6 +87,25 @@ test fn the_acceptance_operand_routes_to_the_real_differential_producer() -> Boo
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: heads_reading_differential_label())
         && (b.producer == HeadsReadingDifferentialProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn every_behavioral_instrument_operand_routes_to_its_own_producer() -> Bool {
+  let plan = invoke_target(operand: "//gunbc/instruments:behavioral-receipt-plan")
+  let census = invoke_target(operand: "//gunbc/instruments:behavioral-receipt-census")
+  let selftest = invoke_target(operand: "//gunbc/instruments:behavioral-receipt-selftest")
+  match plan {
+    TargetInvocationRouted { binding: p } => match census {
+      TargetInvocationRouted { binding: c } => match selftest {
+        TargetInvocationRouted { binding: s } =>
+          (p.producer == BehavioralReceiptPlanProducer {})
+            && (c.producer == BehavioralReceiptCensusProducer {})
+            && (s.producer == BehavioralReceiptSelftestProducer {})
+        TargetInvocationRouteRefused { cause: _ } => false
+      }
+      TargetInvocationRouteRefused { cause: _ } => false
+    }
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
@@ -269,8 +291,8 @@ test fn the_instrument_target_and_its_binding_are_the_same_identity() -> Bool {
          LabelNonCanonical { cause: _ } => false
        })
     && (render_label(l: t.label) == differential_operand())
-    && ((instrument_targets() |> count) == 1)
-    && ((instrument_bindings() |> count) == 1)
+    && ((instrument_targets() |> count) == 4)
+    && ((instrument_bindings() |> count) == 4)
 }
 
 // THE ABSENCE PROOF, MEASURED OVER THE DERIVED POPULATION RATHER THAN ASSERTED IN PROSE.
