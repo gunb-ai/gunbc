@@ -177,7 +177,8 @@ use crate::v1_std_core::CallSemantics::{
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded,
-    InternalError, ParameterDefaultFormNotAdmitted, UnlistedImportUse,
+    InternalError, ParameterDefaultFormNotAdmitted, ReferenceDerivedImportExportUnproven,
+    ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
 };
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -5500,18 +5501,28 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             });
         }
         let test_projections = ctx.test_projections.clone();
-        let module_files = Rc::new({
+        let module_emissions = Rc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
-                __result.push(
-                    emit_module_full_with_dispositions(
-                        tm.clone(),
-                        ctx.clone(),
-                        typed.modules.clone(),
-                    )
-                    .file
-                    .clone(),
-                );
+                __result.push(emit_module_full_with_dispositions(
+                    tm.clone(),
+                    ctx.clone(),
+                    typed.modules.clone(),
+                ));
+            }
+            __result
+        });
+        let module_files = Rc::new({
+            let mut __result = Vec::new();
+            for e in module_emissions.iter().cloned() {
+                __result.push(e.file.clone());
+            }
+            __result
+        });
+        let import_refusals = Rc::new({
+            let mut __result = Vec::new();
+            for e in module_emissions.iter().cloned() {
+                __result.extend((*e.import_refusals.clone()).iter().cloned());
             }
             __result
         });
@@ -5631,7 +5642,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         );
         Rc::new(EmitResult {
             files: files.clone(),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: import_refusals.clone(),
         })
     }
 }
@@ -7746,28 +7757,9 @@ pub fn collect_item_realized_surface_names(
 pub enum ReferenceDerivedCandidateDisposition {
     CandidateSurvived { provider_module: String },
     CandidateOwnModule,
+    CandidateVariantDelegatedToParent { parent_enum: String },
     CandidateRegistryAbsent,
     CandidateExportProofFailed { provider_module: String },
-}
-impl ReferenceDerivedCandidateDisposition {
-    pub fn provider_module(&self) -> String {
-        match self {
-            ReferenceDerivedCandidateDisposition::CandidateSurvived {
-                provider_module: __val,
-                ..
-            } => __val.clone(),
-            ReferenceDerivedCandidateDisposition::CandidateOwnModule => {
-                panic!("no provider_module on unit variant")
-            }
-            ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
-                panic!("no provider_module on unit variant")
-            }
-            ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
-                provider_module: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -7785,34 +7777,88 @@ pub fn reference_derived_candidate_disposition(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
 ) -> Rc<ReferenceDerivedCandidateDisposition> {
-    match v1_rt::map_get(&registry, name.clone()) {
-        Some(info) => {
-            if (info.module_name.clone() == this_module_name.clone()) {
-                Rc::new(ReferenceDerivedCandidateDisposition::CandidateOwnModule)
-            } else {
-                if provider_proven_exports_symbol(
-                    name.clone(),
-                    info.module_name.clone(),
-                    export_sets.clone(),
-                    typed_modules.clone(),
-                    source_indices.clone(),
-                    module_index.clone(),
-                ) {
-                    Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
-                        provider_module: info.module_name.clone(),
-                    })
+    if is_known_variant(type_summaries.clone(), name.clone()) {
+        match v1_rt::map_get(&variant_to_enum, name.clone()) {
+            Some(parent) => Rc::new(
+                ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
+                    parent_enum: parent.clone(),
+                },
+            ),
+            None => Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
+        }
+    } else {
+        match v1_rt::map_get(&registry, name.clone()) {
+            Some(info) => {
+                if (info.module_name.clone() == this_module_name.clone()) {
+                    Rc::new(ReferenceDerivedCandidateDisposition::CandidateOwnModule)
                 } else {
-                    Rc::new(
-                        ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+                    if provider_proven_exports_symbol(
+                        name.clone(),
+                        info.module_name.clone(),
+                        export_sets.clone(),
+                        typed_modules.clone(),
+                        source_indices.clone(),
+                        module_index.clone(),
+                    ) {
+                        Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
                             provider_module: info.module_name.clone(),
-                        },
-                    )
+                        })
+                    } else {
+                        Rc::new(
+                            ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+                                provider_module: info.module_name.clone(),
+                            },
+                        )
+                    }
                 }
             }
+            None => Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
         }
-        None => Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
     }
+}
+
+pub fn reference_derived_row_diagnostics(
+    rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
+    module_span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for r in rows.iter().cloned() {
+            __result.extend(
+                (*match (*r.disposition.clone()).clone() {
+                    ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
+                        Rc::new(vec![make_error_node(
+                            Rc::new(CompilerDiagnostic::ReferenceDerivedImportProviderUnknown {
+                                name: r.name.clone(),
+                                referencing_module: r.module_name.clone(),
+                                span: module_span.clone(),
+                            }),
+                            r.module_name.clone(),
+                        )])
+                    }
+                    ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+                        provider_module: p,
+                        ..
+                    } => Rc::new(vec![make_error_node(
+                        Rc::new(CompilerDiagnostic::ReferenceDerivedImportExportUnproven {
+                            name: r.name.clone(),
+                            referencing_module: r.module_name.clone(),
+                            provider_module: p.clone(),
+                            span: module_span.clone(),
+                        }),
+                        r.module_name.clone(),
+                    )]),
+                    _ => Rc::new(vec![]),
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
 }
 
 pub fn reference_derived_candidate_survived(
@@ -7834,6 +7880,10 @@ pub fn reference_derived_disposition_name(
             provider_module: _, ..
         } => "survived".to_string(),
         ReferenceDerivedCandidateDisposition::CandidateOwnModule => "own-module".to_string(),
+        ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
+            parent_enum: _,
+            ..
+        } => "variant-delegated-to-parent".to_string(),
         ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
             "registry-absent".to_string()
         }
@@ -7849,6 +7899,7 @@ pub struct ReferenceDerivedCensus {
     pub candidates: i64,
     pub survived: i64,
     pub own_module: i64,
+    pub variant_delegated_to_parent: i64,
     pub registry_absent: i64,
     pub export_proof_failed: i64,
 }
@@ -7875,6 +7926,18 @@ pub fn reference_derived_census(
             for r in rows.iter().cloned() {
                 if (reference_derived_disposition_name(r.disposition.clone())
                     == "own-module".to_string())
+                {
+                    __result.push(r);
+                }
+            }
+            __result
+        })
+        .len() as i64),
+        variant_delegated_to_parent: (Rc::new({
+            let mut __result = Vec::new();
+            for r in rows.iter().cloned() {
+                if (reference_derived_disposition_name(r.disposition.clone())
+                    == "variant-delegated-to-parent".to_string())
                 {
                     __result.push(r);
                 }
@@ -8129,6 +8192,8 @@ pub fn reference_derived_use_line_plan(
                                 typed_modules.clone(),
                                 source_indices.clone(),
                                 module_index.clone(),
+                                emit_info.type_summaries.clone(),
+                                emit_info.variant_to_enum.clone(),
                             ),
                         })])
                     })
@@ -8329,6 +8394,7 @@ pub fn reference_derived_use_lines(
 pub struct ModuleEmission {
     pub file: Rc<TextFile>,
     pub reference_rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
+    pub import_refusals: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn emit_module_full_with_dispositions(
@@ -8736,6 +8802,10 @@ pub fn emit_module_full(
                 content: content.clone(),
             }),
             reference_rows: reference_plan.rows.clone(),
+            import_refusals: reference_derived_row_diagnostics(
+                reference_plan.rows.clone(),
+                m.span.clone(),
+            ),
         })
     }
 }

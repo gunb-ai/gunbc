@@ -554,6 +554,17 @@ pub enum CompilerDiagnostic {
         name: String,
         span: Rc<SourceSpan>,
     },
+    ReferenceDerivedImportProviderUnknown {
+        name: String,
+        referencing_module: String,
+        span: Rc<SourceSpan>,
+    },
+    ReferenceDerivedImportExportUnproven {
+        name: String,
+        referencing_module: String,
+        provider_module: String,
+        span: Rc<SourceSpan>,
+    },
     UnlistedVariantValueUse {
         name: String,
         span: Rc<SourceSpan>,
@@ -729,6 +740,8 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::DeclaredTypeNotInhabited { span: s, .. } => s.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedVariantValueUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
         CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { span: s, .. } => s.clone(),
@@ -787,6 +800,8 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::DeclaredTypeNotInhabited { position: pos, expected: e, got: g, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("value does not inhabit its declared type at the ".to_string(), pos.clone()), ": declared '".to_string()), e.clone()), "', produced '".to_string()), g.clone()), "'".to_string()),
     CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position: pos, reason: r, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("declared-type inhabitance is undecidable at the ".to_string(), pos.clone()), " (".to_string()), r.clone()), "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
+    CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name: n, referencing_module: rm, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no provider is present for '".to_string(), n.clone()), "', referenced by module '".to_string()), rm.clone()), "': the compile closure carries no module that declares the name, so no use-line can be synthesized and the emitted Rust references a name it never imported. The remedy is to AUTHOR AN IMPORT -- closure membership is driven by imports, so a name the module never imported is a name the closure was never asked to supply".to_string()),
+    CompilerDiagnostic::ReferenceDerivedImportExportUnproven { name: n, referencing_module: rm, provider_module: p, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the provider of '".to_string(), n.clone()), "' is present but its export could not be established: module '".to_string()), rm.clone()), "' references the name, the registry maps it to '".to_string()), p.clone()), "', and that module's transitive export surface does not establish it. The remedy is NOT an import -- the provider is already in the closure -- it is that the emitter cannot prove an export the provider may well hold".to_string()),
     CompilerDiagnostic::UnlistedVariantValueUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted variant value use '".to_string(), n.clone()), "' (a coproduct arm referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
     CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name: n, .. } => v1_rt::concat(v1_rt::concat("visible declarations of '".to_string(), n.clone()), "' could not be enumerated: the import re-export walk exceeded its depth bound, so no verdict is asserted about how many declarations answer to the name".to_string()),
@@ -862,6 +877,8 @@ pub fn diagnostic_frontier_occurrence_key_note() -> String {
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
+        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { .. } => false,
+        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => false,
         CompilerDiagnostic::UnlistedVariantValueUse { .. } => false,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
@@ -870,6 +887,15 @@ pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
         }
         _ => true,
     }
+}
+
+pub fn reference_derived_import_refusal_severity_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "owner: v1.compiler.emit_rust (reference_derived_use_line_plan's per-candidate disposition). These two diagnostics are the SURFACING half of the disposition #9439 landed: that change factored the emitter's per-candidate import decision into a typed disposition and COUNTED it, and its own note records that the census is not surfaced during an ordinary build. A census nothing surfaces is a count, not a refusal -- the failure arms still vanished from the emission, which is the empty-observation narrow DESIGN names (the emitter answering 'this name is not part of the interface' where the truth is 'I could not prove that it was'), and DESIGN rates a narrow strictly worse than the widen section 5 forbids because a widen is merely expensive and a narrow is silently uncovered. TWO DIAGNOSTICS, NOT ONE CARRYING A CAUSE (ruling: warm-hawk-909, compiler direction, relayed through smart-ram-730, 2026-08-27). The question is upstream of severity: are these one error class? They are not. ReferenceDerivedImportProviderUnknown is CandidateRegistryAbsent -- the closure carries no provider for the name -- and its remedy is to AUTHOR AN IMPORT, since closure membership is driven by imports and a name the module never imported is one the closure was never asked to supply. ReferenceDerivedImportExportUnproven is CandidateExportProofFailed -- the provider is present and its export could not be established -- and its remedy is the opposite: not an import at all, but making the emitter able to prove an export the provider may already hold. Different mechanism, different remedy, different owner, different population, potentially different reachability; one symbol over two opposite remedies would be the state-space conflation DESIGN names, and DESIGN 4b files one row per class, so two classes carry two diagnostics and two independent is_error_diagnostic booleans. BOTH ARE ADVISORY TODAY and blocking nowhere. FLIP CONDITION, and it is strictly stronger than a count: an arm flips to blocking when its population over a NAMED CLOSURE is zero AND A DISCRIMINATING RED IS AUTHORABLE. A zero alone is never sufficient -- an observation of zero on an arm that has never produced anything is indistinguishable in a count from an arm that CANNOT fire, and flipping the latter yields a permanently-green check that is then cited as coverage, which DESIGN 4b rates worse than absent. Reachability is judged against what a FIXTURE may author, never against what the accepted corpus contains. ProviderUnknown's reachability is established: std.algebra under the src/v2/std/node.dag closure references Optional and empty_map it never imports (deep-ant-102, measured). ExportUnproven's is established by nothing yet, so if its population returns zero the MISSING FIXTURE is that class's next-rung trigger rather than a clearance to block. ProviderUnknown's roster is NOT new work: it is UnlistedImportUse clause (b) seen from the emitter side, so its trigger points at the EXISTING family-closure-SVN burndown recorded in v1.compiler.resolve resolve_node_bounded_masked_boundary and must not become a second burndown with its own schedule. Whether either flips is warm-hawk-909's call, not this module's.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn where_refinement_deferral_reason_scaffold_note() -> String {
@@ -893,6 +919,8 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => false,
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => false,
+        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { .. } => false,
+        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => false,
         _ => true,
     }
 }
@@ -905,6 +933,8 @@ pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnosti
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => true,
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => true,
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => true,
+        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { .. } => true,
+        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => true,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
             is_where_refinement_unenforced_advisory_reason(r.clone())
         }
