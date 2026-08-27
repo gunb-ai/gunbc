@@ -4,6 +4,11 @@ import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
+import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
+import v2.std.diagnostic { Outcome }
+import extdeps.languages.yaml.gha_workflow { pr_activity_string }
+import extdeps.github.actions { PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed }
 
 // THE CI PHASES ARE THE PROGRAM'S TO SEQUENCE, NOT THE JOB'S (operator directive, 2026-08-20:
 // "i would much prefer if it was all handled within the witnesses step and within the gunbc
@@ -77,7 +82,7 @@ test fn w_ci_invokes_one_composed_mode_not_a_step_ladder() -> Bool {
         && !string_contains(s: yml, pattern: "--required-floor")
         && !string_contains(s: yml, pattern: "--required-regen")
         && !string_contains(s: yml, pattern: "target/release/v1_src_dag_parse")
-    WitnessFloorGenerationRefused => false
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
@@ -90,7 +95,7 @@ test fn w_no_phase_precondition_reads_another_phases_outcome() -> Bool {
     WitnessFloorGenerated { content: yml } =>
       !string_contains(s: yml, pattern: "steps.required_regen.outcome")
         && string_contains(s: yml, pattern: "steps.build_witness_fold.outcome == 'success'")
-    WitnessFloorGenerationRefused => false
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
@@ -119,7 +124,7 @@ test fn w_the_required_workflow_does_not_build_the_parse_binary() -> Bool {
       string_contains(s: yml, pattern: "--required-ci")
         && string_contains(s: yml, pattern: "--bin claim_executor")
         && !string_contains(s: yml, pattern: "--bin v1_src_dag_parse")
-    WitnessFloorGenerationRefused => false
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
@@ -153,7 +158,7 @@ test fn w_RED_the_retired_step_names_do_not_return() -> Bool {
         && !string_contains(s: yml, pattern: "name: src/v1 .dag sources parse")
         && !string_contains(s: yml, pattern: "Regen fixed point:")
         && !string_contains(s: yml, pattern: "Regen determinism:")
-    WitnessFloorGenerationRefused => false
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
@@ -171,7 +176,7 @@ test fn w_the_required_workflow_carries_both_lanes() -> Bool {
         && string_contains(s: yml, pattern: concat("  ", concat(build_lane_job_id, ":")))
         && string_contains(s: yml, pattern: concat("  ", concat(floor_lane_job_id, ":")))
         && string_contains(s: yml, pattern: concat("  ", concat(witness_floor_workflow_job_id, ":")))
-    WitnessFloorGenerationRefused => false
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
@@ -200,12 +205,12 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
       string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, concat(", ", concat(floor_lane_job_id, "]")))))
         && !string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, "]")))
         && !string_contains(s: yml, pattern: concat("needs: [", concat(floor_lane_job_id, "]")))
-    WitnessFloorGenerationRefused => false
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
-// THE GATE RUNS AT ALL, AND THEN REFUSES. Two claims, and the first one is the one that was
-// missing -- this row's earlier form asserted only the second and went green over the defect.
+// THE GATE RUNS FOR EVERY ATTEMPT, INCLUDING A CANCELLED ONE, AND THEN REFUSES A NON-SUCCESS
+// LANE.
 //
 // THE DEFECT IT MISSED, kept here because the row is only trustworthy if its own blind spot is
 // on the record. It asserted `if: always()` appeared SOMEWHERE in the file. It did -- on the
@@ -223,20 +228,114 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 // spaces cannot be satisfied by the step's condition, which is the exact substitution that
 // produced the green above.
 //
+// THE NEGATIVE CLAUSE IS NEW AND IT IS THE LOAD-BEARING ONE. gunbc#9339 landed a job-level
+// exclusion of cancelled lanes here -- `always() && needs.build.result != 'cancelled' && ...` --
+// under a declared rung drop whose own restoration trigger named this construction. That
+// exclusion is dissolved in the same change that lands this clause, and DESIGN 4b(4) says the
+// EVIDENCE stays enrolled when the production machinery beside it goes: so this witness is
+// RE-POINTED rather than deleted, and becomes the regression control that the exclusion does not
+// return. Asserting the presence of `always()` alone would not do that -- the excluded form
+// CONTAINS `always()` as a substring, so a presence-only probe goes green over exactly the shape
+// it exists to refuse. Pinning the absence of `!= 'cancelled'` is what makes it discriminating,
+// and the trailing newline in the positive pattern is what stops it matching the longer form.
+//
 // THE THIRD AND FOURTH CLAUSES ARE THE REFUSAL ITSELF. A job that runs and reports success
 // regardless would satisfy the first two, so the nonzero exit and the strict inequality against
 // `success` are what turn a read of two results into a verdict -- and the strictness is
 // load-bearing in its own right: `cancelled` and `skipped` are not `success`, so a lane that
 // never produced a verdict refuses here rather than passing.
-test fn w_RED_the_gate_runs_and_refuses_on_a_failed_lane() -> Bool {
+//
+// (THE COMPARISON'S SPELLING CHANGED WITH ITS PRODUCER, NOT ITS MEANING. The gate is now built
+// as Nodes in `gunbc.required_lanes_gate` and serialized through the bash grammar rows, which
+// quote every word, so the emitted text is `'!=' 'success'` rather than `!= "success"`. The
+// clause is re-pointed at the serializer's spelling rather than relaxed to a substring both
+// forms share: a pattern loose enough to survive any producer is a pattern that stops
+// discriminating, which is exactly how the job-level guard defect above went green.)
+//
+// THIS IS EMITTED-SHAPE EVIDENCE, NOT A BEHAVIOURAL GITHUB RECEIPT, and the caveat survives the
+// re-pointing unchanged. It proves the job condition and the live-attempt refusal are present at
+// their distinct YAML grains. It does not prove what GitHub does with a required context on a
+// cancelled run, nor what branch protection does with a skipped one.
+// `gunbc.floor_attempt_standing` `floor_attempt_standing_acquisition_trigger` carries the half
+// that is still unobserved; a string_contains witness must not be cited as having closed it.
+test fn w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one() -> Bool {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
-      string_contains(s: yml, pattern: "\n    if: always()")
+      string_contains(s: yml, pattern: "\n    if: always()\n")
+        && !string_contains(s: yml, pattern: "!= 'cancelled'")
         && string_contains(s: yml, pattern: "\n        if: always()")
         && string_contains(s: yml, pattern: "exit 1")
-        && string_contains(s: yml, pattern: "!= \"success\"")
-    WitnessFloorGenerationRefused => false
+        && string_contains(s: yml, pattern: "'!=' 'success'")
+    WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
 data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+
+// THE UNRENDERABLE-GATE REFUSAL IS EXECUTED, NOT DESCRIBED.
+//
+// This arm exists because the receipt was once WRONG about it in a way nothing executed could
+// have caught: the refusal program was declared `-> List<Node>` while returning a single
+// stmt-list `Node`, so the middle rung of the gate's three-state argument -- "gate rejects, the
+// refusal still serializes, and the run stops loudly" -- was dead in exactly the arm the
+// argument is about (review 55928). The prose said it was Nodes through the same fold; what
+// executed was the wrong shape.
+//
+// So the property is asserted by running the fold over it and reading the program back: it must
+// SERIALIZE, and the text must carry both halves of the refusal -- the annotation the operator
+// sees and the nonzero exit that actually stops the line. An empty or exit-0 program here would
+// publish the required context green over lanes it never read.
+test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool {
+  match bash_fold_serialize_program(stmts: required_lanes_gate_unrenderable_stmts(), set_e: false) {
+    Accepted { value: script, diagnostics: _ } =>
+      string_contains(s: script, pattern: "::error::")
+        && string_contains(s: script, pattern: "could not be serialized")
+        && string_contains(s: script, pattern: "exit 1")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+// THE PULL-REQUEST ACTIVITY SET IS EXACTLY THE THREE THAT CAN CARRY A NEW SUBJECT.
+//
+// gunbc#9361 deleted `ready_for_review` from this workflow's trigger. Nothing in the tree
+// asserted the activity set at all, so the deletion was a +3/-3 diff over an unwitnessed fact --
+// and the reverse deletion, or a re-add, would have been equally invisible.
+//
+// BOTH HALVES ARE ASSERTED AND THAT IS THE POINT. An absence-only row greens if the whole
+// activity list is deleted, which is a DIFFERENT defect (the workflow would then run on every
+// PR activity GitHub defines) passing the same check. So the surviving three are read by name,
+// through the same `pr_activity_string` mapping the emitter uses, so a respelling moves both
+// sides together rather than silently vacating the negative.
+//
+// WHY ready_for_review IS THE ONE THAT GOES, stated at the grain that is actually true: the
+// question that matters is whether a HEAD has been verified against the relevant BASE; the
+// event being consumed is whether the PR moved from draft to ready. Those correlate and are not
+// equivalent. `ready_for_review` accidentally catches some base movement that happened before
+// the undraft, misses base movement after it, misses drafts that stay drafts, and reruns
+// subjects where neither head nor base moved. Since this workflow already tests drafts from
+// `Opened`, what remains of it is duplicate runs against a fixed runner pool. This row does NOT
+// claim the trigger can never observe anything new -- main may move while the head is unchanged,
+// so an undraft can face a base it has genuinely not been tested against. A future
+// base-congruence requirement therefore needs a carrier naming the base sha or merge subject
+// directly; a lifecycle event cannot stand in for it, which is the limitation rather than an
+// incapacity.
+//
+// EXECUTED, BOTH DIRECTIONS, ON THE HEAD THIS LANDS WITH. GREEN on the tree as authored. RED on
+// two mutations of the authority, run separately: re-adding ReadyForReview to the activity set
+// (the reversion this row exists to catch) and emptying the activity list entirely (the
+// over-deletion an absence-only row would have passed). Both went FAIL; the unmutated tree went
+// PASS.
+test fn w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(
+        s: yml,
+        pattern: concat("    types: [", concat(pr_activity_string(a: Opened), concat(", ", concat(pr_activity_string(a: Synchronize), concat(", ", concat(pr_activity_string(a: Reopened), "]"))))))
+      )
+        && !string_contains(s: yml, pattern: pr_activity_string(a: ReadyForReview))
+        && !string_contains(s: yml, pattern: pr_activity_string(a: Closed))
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
+}

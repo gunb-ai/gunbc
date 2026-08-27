@@ -87,6 +87,7 @@ fn srv3_shell_stdout_from_apply(
       match e {
         ShellEffectApplied { stdout: out, exit_code: _ } => Present { value: out }
         ConvergePlanApplied { stdout: _, exit_code: _ } => none
+        ToolchainHomeInterferenceDiscriminated => none
       }
     NotConverged { reason: _, applied: _ } => none
   }

@@ -143,13 +143,22 @@ data capacity_class_refused_remedies: List<CapacityClassRemedy> = [
 // is the ruled remedy landing on Shape, at which point it becomes a matching refusal and can be
 // measured as one. Recorded here rather than left to be rediscovered, per §4b(2): the difference
 // between "cannot climb" and "can climb now but unbuilt" is the whole point of naming the trigger.
-// THE CITATIONS IN THIS MODULE ARE NOT CHECKED BY ANYTHING, AND I MEASURED THAT RATHER THAN
-// ASSUMING EITHER WAY.
+// THE CITATIONS IN THIS MODULE WERE NOT CHECKED BY ANYTHING, AND THEY NOW ARE. The measurement
+// below is kept because it was taken rather than assumed, and because the state it found is the
+// exact gap that closed: as of 2026-08-25 `v1_compiler.declaration_index` resolves EVERY authored
+// `DeclarationRef` in a non-fixture module inside the parse phase of `--required-ci`, so the eight
+// above are enrolled and a stale citation here now stops the line. Read what follows as the
+// account of a closed gap, not a live one -- this heading asserted the opposite in the present
+// tense until 2026-08-26.
 //
 // The eight DeclarationRefs above look like the ones the cited-symbol gate enforces. They are not.
-// Replacing "TrustDomainRef" with a fabricated name and re-running --required-cited-symbol still
-// reports OK with checked=390, unchanged -- before and after this module gained an importing
-// witness. So a stale citation here would not be caught.
+// Replacing "TrustDomainRef" with a fabricated name and re-running --required-cited-symbol
+// REPORTED OK with checked=390, unchanged -- before and after this module gained an importing
+// witness. So a stale citation here would not be caught BY THAT CENSUS. Past tense as of
+// 2026-08-26: that flag and its census are deleted and the measurement cannot be re-taken through
+// them. What replaced them does not share the limitation that made this measurement worth taking:
+// the declaration index enrolls by walking the `Node` tree for `DeclarationRef` literals rather
+// than from a hand-named carrier population, so a module cannot be outside it by omission.
 //
 // THIS IS A DECLARED SCOPE, NOT A DEFECT, and saying so is the point of writing it down. The lens's
 // own law states its population: every DeclarationRef enrolled in

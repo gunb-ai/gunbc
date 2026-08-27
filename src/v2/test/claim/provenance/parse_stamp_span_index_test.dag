@@ -121,7 +121,7 @@ fn parse_stamp_derived_by_pair_holds(
 }
 
 test fn parse_stamp_terminal_from_source_holds() -> Bool {
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_stamp_span_index_test_grammar_contract)
   match grammar_validate_for_parse(root: parse_stamp_terminal_root(), at: at) {
     Rejected { diagnostics: _ } => false
     Accepted { value: validated, diagnostics: _ } =>
@@ -157,7 +157,7 @@ test fn parse_stamp_terminal_from_source_holds() -> Bool {
 }
 
 test fn parse_stamp_sequence_derived_by_holds() -> Bool {
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_stamp_span_index_test_grammar_contract)
   match grammar_validate_for_parse(root: parse_stamp_sequence_root(), at: at) {
     Rejected { diagnostics: _ } => false
     Accepted { value: validated, diagnostics: _ } =>

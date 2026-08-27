@@ -6,11 +6,7 @@ use std::process::{Command, ExitCode};
 use std::rc::Rc;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
-use v1_compiler::cli_run::{
-    make_eval_context, resolve_entry_graph_shared, run_value, PhaseProfile,
-};
-use v1_compiler::memory_governor::{binding_cap_cgroup_dir, leaf_cgroup_dir, mem_total_bytes};
-use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
+use v1_compiler::cli_run::PhaseProfile;
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
@@ -34,81 +30,6 @@ fn require_path_value(args: &[String], idx: usize, flag: &str) -> Result<String,
             Err(ExitCode::from(2))
         }
     }
-}
-
-#[cfg(test)]
-fn classify_witness_expectations(
-    outcomes: &[DiscoveryWitnessOutcome],
-    expected_red: &[(String, String)],
-) -> WitnessExpectationTally {
-    classify_witness_expectations_in(outcomes, expected_red, &[])
-}
-
-/// One read of the whole-tree job footprint and its budget context, taken in a single cgroup walk so
-/// a consumer (placement divisor, compile-jobs derive) can parse usage AND budget from one emitted
-/// line without re-walking. `cap_bytes` is the tightest numeric `memory.max` on the leaf→root walk
-/// (`None` = uncapped / RAM-bound); `host_ram` is the physical-RAM budget that binds when uncapped;
-/// `sccache_under_leaf` classifies the sccache server's cgroup as a descendant (already counted in
-/// `leaf_peak`) vs a sibling (must be subtracted as `host_fixed_overhead`) — the "accounted exactly
-/// once" decision, read from paths rather than guessed.
-struct CgroupMeasurement {
-    leaf_peak: u64,
-    leaf_rel: String,
-    cap_bytes: Option<u64>,
-    host_ram: Option<u64>,
-    pids_current: u64,
-    pids_max: String,
-    sccache_rel: Option<String>,
-    sccache_under_leaf: bool,
-}
-
-fn cgroup_job_measurement() -> Option<CgroupMeasurement> {
-    let leaf = leaf_cgroup_dir()?;
-    let leaf_peak = fs::read_to_string(leaf.join("memory.peak"))
-        .ok()?
-        .trim()
-        .parse::<u64>()
-        .ok()?;
-    let leaf_rel = leaf
-        .strip_prefix("/sys/fs/cgroup")
-        .map(|p| format!("/{}", p.to_string_lossy().trim_start_matches('/')))
-        .unwrap_or_else(|_| leaf.to_string_lossy().into_owned());
-    let cap_bytes = binding_cap_cgroup_dir()
-        .and_then(|d| fs::read_to_string(d.join("memory.max")).ok())
-        .and_then(|s| s.trim().parse::<u64>().ok());
-    let pids_current = fs::read_to_string(leaf.join("pids.current"))
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-        .unwrap_or(0);
-    let pids_max = fs::read_to_string(leaf.join("pids.max"))
-        .ok()
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-    let sccache_rel = sccache_server_cgroup_rel();
-    // Descendant iff sccache's cgroup is the leaf or strictly under it — a PATH-COMPONENT prefix,
-    // not a bare string prefix, so a sibling like `<leaf>-other.service` is NOT misclassified as a
-    // descendant (that would under-count host overhead — the fail-OPEN direction). When the leaf is
-    // the cgroup root (`leaf_r` empty — e.g. a single-cgroup container) everything is a descendant.
-    // On the real fleet the leaf is the runner-service cgroup and sccache is a sibling service
-    // cgroup, so this is `false` (subtract as host_fixed_overhead).
-    let leaf_r = leaf_rel.trim_start_matches('/').to_string();
-    let sccache_under_leaf = sccache_rel
-        .as_deref()
-        .map(|r| {
-            let r = r.trim_start_matches('/');
-            leaf_r.is_empty() || r == leaf_r || r.starts_with(&format!("{leaf_r}/"))
-        })
-        .unwrap_or(false);
-    Some(CgroupMeasurement {
-        leaf_peak,
-        leaf_rel,
-        cap_bytes,
-        host_ram: mem_total_bytes(),
-        pids_current,
-        pids_max,
-        sccache_rel,
-        sccache_under_leaf,
-    })
 }
 
 /// Verify each declared release artifact exists, is executable, and is non-empty — failing CLOSED
@@ -164,87 +85,6 @@ fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
         if paths.len() == 1 { "y" } else { "ies" }
     );
     Ok(ExitCode::SUCCESS)
-}
-
-/// Single authority for the one-line whole-tree cgroup measurement, shared by the floor run and the
-/// standalone `--measure-cgroup-peak` mode so the `ci` and `rust_tests` jobs report an
-/// identically-shaped line. `context` distinguishes the call site.
-fn emit_cgroup_measurement(context: &str) {
-    let emoji = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
-    match cgroup_job_measurement() {
-        Some(m) => {
-            let label = format!("cgroup peak @ {} ({context})", m.leaf_rel);
-            eprintln!(
-                "{}",
-                v1_compiler::cli_run::render_peak_rss_line_mirror(&label, Some(m.leaf_peak), emoji)
-            );
-            // Diagnostic companions (cap/pids/sccache) stay as Ambient detail beside the
-            // Measured peak — not the old raw-byte `[measurement]` dump. Placement still
-            // reads the typed `cgroup_job_measurement` fact, not this prose.
-            let cap = match m.cap_bytes {
-                Some(b) => format!("{b} bytes"),
-                None => "uncapped(RAM-bound)".to_string(),
-            };
-            let host_ram = m
-                .host_ram
-                .map(|b| format!("{b} bytes"))
-                .unwrap_or_else(|| "unknown".to_string());
-            let sccache = match (&m.sccache_rel, m.sccache_under_leaf) {
-                (Some(r), true) => format!("{r} (descendant: counted in memory.peak)"),
-                (Some(r), false) => format!("{r} (sibling: subtract as host_fixed_overhead)"),
-                (None, _) => "not-found (treat as fixed host overhead)".to_string(),
-            };
-            eprintln!(
-                "  memory.max={cap} host_ram={host_ram} pids_current={pc} pids_max={pm} sccache-server-cgroup={sccache}",
-                pc = m.pids_current,
-                pm = m.pids_max
-            );
-        }
-        None => {
-            let label = format!("cgroup peak ({context})");
-            eprintln!(
-                "{}",
-                v1_compiler::cli_run::render_peak_rss_line_mirror_with_cause(
-                    &label,
-                    None,
-                    "no leaf cgroup or memory.peak unreadable; kernel < 5.19?",
-                    emoji,
-                )
-            );
-        }
-    }
-}
-
-/// Best-effort cgroup-v2 relative path of the sccache SERVER daemon (a `sccache` comm), scanned
-/// from `/proc`. Emitted beside the binding-cap ancestor path so the analysis can classify the
-/// "accounted exactly once" case: a path UNDER the ancestor → sccache is inside `memory.peak`
-/// (don't subtract); a SIBLING path → subtract it as `host_fixed_overhead`. Returns `None` when
-/// no sccache server process is found (then it's fixed host overhead by default, fail-closed).
-fn sccache_server_cgroup_rel() -> Option<String> {
-    for entry in fs::read_dir("/proc").ok()?.flatten() {
-        let p = entry.path();
-        let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if !name.bytes().all(|b| b.is_ascii_digit()) {
-            continue;
-        }
-        if fs::read_to_string(p.join("comm"))
-            .unwrap_or_default()
-            .trim()
-            != "sccache"
-        {
-            continue;
-        }
-        if let Some(rel) = fs::read_to_string(p.join("cgroup")).ok().and_then(|cg| {
-            cg.lines()
-                .find_map(|l| l.strip_prefix("0::"))
-                .map(|s| s.trim().to_string())
-        }) {
-            return Some(rel);
-        }
-    }
-    None
 }
 
 const FLOOR_WORKER_TERMINAL_ENV: &str = "GUNBC_FLOOR_WORKER_TERMINAL_RECEIPT";
@@ -314,18 +154,16 @@ fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
-    let mut measure_cgroup_peak = false;
     let mut verify_artifacts: Vec<String> = Vec::new();
     let mut verify_artifacts_mode = false;
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
     let mut required_ci_lane: Option<RequiredCiLane> = None;
-    let mut required_cited_symbol_mode = false;
     let mut required_v2_emission_mode = false;
-    let mut required_v2_emission_selftest_mode = false;
     let mut required_regen_mode = false;
+    let mut emit_partition_crates_mode = false;
+    let mut emit_partition_crates_write = false;
     let mut required_regen_fixed_point_mode = false;
-    let mut heads_reading_differential_mode = false;
     let mut behavioral_receipt_plan_mode = false;
     let mut behavioral_receipt_selftest_mode = false;
     let mut behavioral_receipt_census_mode = false;
@@ -369,20 +207,20 @@ fn run() -> Result<ExitCode, ExitCode> {
                     }
                 }
             }
-            "--required-cited-symbol" => {
-                required_cited_symbol_mode = true;
-            }
             "--required-v2-emission" => {
                 required_v2_emission_mode = true;
-            }
-            "--required-v2-emission-selftest" => {
-                required_v2_emission_selftest_mode = true;
             }
             "--required-regen" => {
                 required_regen_mode = true;
             }
-            "--heads-reading-differential" => {
-                heads_reading_differential_mode = true;
+            // THE SANCTIONED PRODUCER for the derived partition's boundary files. Named by the
+            // phase's own refusal, because a stop whose only remedy does not exist is what
+            // produced this class in the first place.
+            "--emit-partition-crates" => {
+                emit_partition_crates_mode = true;
+            }
+            "--write" => {
+                emit_partition_crates_write = true;
             }
             "--required-regen-fixed-point" => {
                 required_regen_fixed_point_mode = true;
@@ -404,7 +242,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 i += 1;
                 regen_receipt_path = require_value(&args, i, "--regen-receipt")?;
             }
-            "--measure-cgroup-peak" => measure_cgroup_peak = true,
             other => {
                 eprintln!("claim_executor: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -423,54 +260,60 @@ fn run() -> Result<ExitCode, ExitCode> {
         return verify_build_artifacts(&verify_artifacts);
     }
 
-    // Standalone whole-tree cgroup measurement (no plan run): the `rust_tests` job invokes this
-    // after its gate to emit ITS leaf cgroup peak (a separate ephemeral runner cgroup from the `ci`
-    // job's), reusing the same single-authority walk/emit. Short-circuits before the plan-arg
-    // requirements so it needs no `--source-root`/`--plan-entry`.
-    if measure_cgroup_peak {
-        let job = std::env::var("GITHUB_JOB").unwrap_or_else(|_| "standalone".to_string());
-        emit_cgroup_measurement(&format!("job={job} (--measure-cgroup-peak)"));
-        return Ok(ExitCode::SUCCESS);
-    }
-
-    // ── V2 EMISSION: TWO STANDALONE ENTRY POINTS BESIDE THE REQUIRED PHASE ──────
+    // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, for the reason `--verify-build-artifacts`
+    // is: this mode takes NO roots. It renders from the emitted
+    // authority carrier and reads only the files it is adjudicating, so the generic guard below
+    // would refuse the only invocation it has -- a mode that could never have run once.
+    // MEASURED, NOT REASONED -- the first remote run of this entry point exited 2 with
+    // `provide at least one --source-root` before the branch was moved here.
     //
-    // The v2-emission transaction IS ENROLLED in `--required-ci` as phase 3 (see that
-    // mode below), on an operator ruling relayed through the requesting session
-    // 2026-08-23, at a measured +135s against the floor's ~30-40 minutes. These two
-    // flags are not an opt-in alternative to that phase and must not be read as one:
-    // they exist because running the emission alone, or running only its red/green
-    // evidence, are real local actions -- the same reason the `src/v1` .dag parse sweep
-    // keeps its own bin beside its required phase.
-    //
-    // This comment said "DELIBERATELY NOT ENROLLED" in the revision that ADDED the
-    // enrolment, which is the premise contamination DESIGN warns about rather than a
-    // stale comment: a reader grepping here would conclude the phase is opt-in when it
-    // is required. It is rewritten rather than annotated, because two accounts of one
-    // fact is what produced the contradiction.
-    //
-    // Both flags run the SAME producer the required phase runs
-    // (`cli_run::compile_entry_emission`), so a green here and a green there cannot be
-    // different facts.
-    if required_v2_emission_selftest_mode {
-        let failures = v1_compiler::cli_run::run_required_v2_emission_selftest();
-        for failure in &failures {
-            eprintln!("required-v2-emission-selftest: FAIL {failure}");
+    // THE PRODUCER, AS ITS OWN ENTRY POINT. `--write` installs; without it the run reports and
+    // changes nothing, so the read-only form is safe to run anywhere and the `written` list is
+    // empty BY CONSTRUCTION rather than by a caller remembering not to ask.
+    if emit_partition_crates_mode {
+        let outcome =
+            v1_compiler::cli_run::run_partition_crate_boundary(emit_partition_crates_write);
+        match &outcome {
+            v1_compiler::cli_run::PartitionCrateBoundaryOutcome::CarrierRefused { cause } => {
+                eprintln!("emit-partition-crates: CarrierRefused cause={cause}");
+                return Err(ExitCode::from(1));
+            }
+            v1_compiler::cli_run::PartitionCrateBoundaryOutcome::Rendered { files, written } => {
+                for file in files {
+                    eprintln!(
+                        "emit-partition-crates: {} {}",
+                        file.disposition().name(),
+                        file.path
+                    );
+                }
+                eprintln!(
+                    "emit-partition-crates: rendered={} written={} mode={}",
+                    files.len(),
+                    written.len(),
+                    if emit_partition_crates_write {
+                        "write"
+                    } else {
+                        "read-only"
+                    }
+                );
+                // A READ-ONLY RUN THAT FOUND DRIFT EXITS NONZERO; the write form is what closes
+                // it. Exiting zero here would make the producer's own entry point disagree with
+                // the phase that names it as the remedy.
+                let unresolved = outcome.divergent().len();
+                return if emit_partition_crates_write || unresolved == 0 {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                };
+            }
         }
-        return if failures.is_empty() {
-            eprintln!(
-                "required-v2-emission-selftest: OK red fixture refused on the annotation cause, green fixture emitted"
-            );
-            Ok(ExitCode::SUCCESS)
-        } else {
-            Err(ExitCode::from(1))
-        };
     }
 
     if source_roots.is_empty() {
         eprintln!("claim_executor: provide at least one --source-root");
         return Err(ExitCode::from(2));
     }
+
     let _phase_profile = PhaseProfile::install_from_env();
 
     // THE REQUIRED WITNESS FLOOR: one repository preparation, one immutable scope per distinct
@@ -573,7 +416,53 @@ fn run() -> Result<ExitCode, ExitCode> {
                 &v1_compiler::cli_run::workspace_root(),
                 &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
             ) {
-                Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
+                Ok(sweep) => {
+                    eprintln!(
+                        "required-ci: parse OK {} file(s) parse-clean",
+                        sweep.parse_clean
+                    );
+                    // THE DECLARATION INTEGRITY CHECKS RIDE THE PARSE THAT JUST RAN.
+                    //
+                    // They are reported inside this phase rather than as a phase of their own
+                    // because they are not a second pass over anything: the index was built by
+                    // insertion from the sweep above, so there is no walk to order, nothing to
+                    // schedule, and no second acquisition of the corpus. DESIGN §6 and §3's
+                    // cited-symbol row both name exactly this — one module's facts from one
+                    // module's source, at ingestion, instead of a corpus-wide job per question.
+                    let population =
+                        v1_compiler::cli_run::declaration_index::index_population(&sweep.index);
+                    let findings =
+                        v1_compiler::cli_run::declaration_index::corpus_findings(&sweep.index);
+                    // A GREEN NAMES ITS DENOMINATORS. `checked=0` and `all clean` are different
+                    // states with different remedies, and an instrument that renders them
+                    // identically is the failure DESIGN §5 names, not a tidy report.
+                    eprintln!(
+                        "required-ci: declarations modules={} declared={} import_members={} \
+                         citations={} debt={} in_fixtures={} outside_index={} kernel_named={} lens_modules={}",
+                        population.modules,
+                        population.declarations,
+                        population.import_members,
+                        population.citations,
+                        population.citations_pre_existing_debt,
+                        population.citations_in_fixtures,
+                        population.citations_outside_index,
+                        population.import_members_kernel_named,
+                        population.lens_modules,
+                    );
+                    for finding in &findings {
+                        eprintln!(
+                            "required-ci: declarations FAIL {}",
+                            v1_compiler::cli_run::declaration_index::render_finding(
+                                &v1_compiler::cli_run::workspace_root(),
+                                finding
+                            )
+                        );
+                    }
+                    if !findings.is_empty() {
+                        phase_failures
+                            .push(format!("declarations ({} finding(s))", findings.len()));
+                    }
+                }
                 Err(errors) => {
                     for e in &errors {
                         eprintln!("required-ci: parse FAIL {e}");
@@ -646,33 +535,56 @@ fn run() -> Result<ExitCode, ExitCode> {
         // a green here and an emitting board are one fact rather than two.
         if required_ci_phase_selected(RequiredCiPhase::V2Emission, required_ci_lane) {
             eprintln!("required-ci: phase v2-emission (the v2 compiler entry, full closure)");
+
+            // THE PHASE'S DISCRIMINATING EVIDENCE, RUN BEFORE THE PRODUCER IT VOUCHES FOR.
+            //
+            // This selftest was reachable only through a standalone flag no workflow invoked, so
+            // the phase below ran a producer whose REFUSAL had never once been shown to fire. A
+            // green emission then established that the emitter emitted, not that it still refuses
+            // what it must -- specification-without-execution, and DESIGN 4b(4) is explicit that a
+            // class's discriminating RED and positive control stay ENROLLED as the evidence the
+            // rung is real. Unenrolled evidence is not weaker evidence; it is none.
+            //
+            // It runs FIRST because it is cheap (two fixtures, measured under a second) and
+            // because a producer green means nothing if the red fixture stopped refusing.
+            {
+                let failures = v1_compiler::cli_run::run_required_v2_emission_selftest();
+                for failure in &failures {
+                    eprintln!("required-ci: v2-emission-selftest FAIL {failure}");
+                }
+                if failures.is_empty() {
+                    eprintln!(
+                        "required-ci: v2-emission-selftest OK red fixture refused on the annotation cause, green fixture emitted"
+                    );
+                } else {
+                    phase_failures.push(format!(
+                        "v2-emission-selftest ({} evidence failure(s))",
+                        failures.len()
+                    ));
+                }
+            }
             match v1_compiler::cli_run::run_required_v2_emission(&source_roots) {
                 Ok(runs) => {
                     let mut not_completed = 0usize;
                     for run in &runs {
                         eprintln!("{}", run.measurement_line("required-ci: v2-emission"));
                         match &run.disposition {
-                            v1_compiler::cli_run::EntryEmissionDisposition::Completed {
-                                ..
-                            } => {}
-                            v1_compiler::cli_run::EntryEmissionDisposition::Refused {
-                                phase,
-                                cause,
-                            } => {
+                            v1_compiler::cli_run::CompileDisposition::Completed { .. } => {}
+                            v1_compiler::cli_run::CompileDisposition::Refused { phase, cause } => {
                                 not_completed += 1;
                                 eprintln!(
-                                    "required-ci: v2-emission EmissionRefused entry={} phase={phase} cause={cause}",
-                                    run.entry
+                                    "required-ci: v2-emission EmissionRefused {} phase={phase} cause={cause}",
+                                    run.subject.receipt()
                                 );
                             }
-                            v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                            v1_compiler::cli_run::CompileDisposition::NotExecuted {
                                 earlier_phase,
                                 cause,
                             } => {
                                 not_completed += 1;
                                 eprintln!(
-                                    "required-ci: v2-emission EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
-                                    run.entry
+                                    "required-ci: v2-emission EmissionNotExecuted {} earlier_phase={earlier_phase} cause={cause}",
+                                    run.subject.receipt()
                                 );
                             }
                         }
@@ -689,6 +601,112 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             }
             ran.push("v2-emission");
+        }
+
+        // PHASE — the derived stage0 partition's crate boundary.
+        //
+        // WHAT IT ANSWERS, and it is deliberately not what a reader assumes from the name: the
+        // committed `lib.rs` and `Cargo.toml` of the seven partition crates are exactly what
+        // `v1.compiler.stage0_crates` renders from the authority. It is a DRIFT question, not a
+        // compile question, and the two are independent — the incident that produced this phase
+        // was a stale AUTHORITY, whose projection was byte-perfect and did not compile. So this
+        // phase is necessary and NOT sufficient; the compile half is the partition crates being
+        // built, which `-p v1-compiler --bins` does not reach (a `-p` selector scopes `--bins`
+        // to that one package, and these are separate packages).
+        //
+        // A CARRIER REFUSAL IS NOT A CLEAN RUN. The outcome type reaches every verdict THROUGH
+        // the rendered population, so `refused before rendering` cannot inhabit the same arm as
+        // `rendered, nothing drifted`. Reporting a zero here without that distinction is the
+        // execution-provenance loss DESIGN names: an unreached observation reading as a pass.
+        if required_ci_phase_selected(RequiredCiPhase::PartitionCrates, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase partition-crates (the derived stage0 partition's boundary files)"
+            );
+            match v1_compiler::cli_run::run_partition_crate_boundary(false) {
+                v1_compiler::cli_run::PartitionCrateBoundaryOutcome::CarrierRefused { cause } => {
+                    eprintln!(
+                        "required-ci: partition-crates CarrierRefused cause={cause} \
+                         (the authority declined to render; nothing was compared)"
+                    );
+                    phase_failures.push(format!("partition-crates carrier refused: {cause}"));
+                }
+                outcome @ v1_compiler::cli_run::PartitionCrateBoundaryOutcome::Rendered {
+                    ..
+                } => {
+                    let divergent = outcome.divergent();
+                    if let v1_compiler::cli_run::PartitionCrateBoundaryOutcome::Rendered {
+                        files,
+                        ..
+                    } = &outcome
+                    {
+                        eprintln!(
+                            "required-ci: partition-crates rendered={} matches={} drifted={} absent={}",
+                            files.len(),
+                            files.len() - divergent.len(),
+                            divergent
+                                .iter()
+                                .filter(|f| f.disposition()
+                                    == v1_compiler::cli_run::BoundaryFileDisposition::Drifted)
+                                .count(),
+                            divergent
+                                .iter()
+                                .filter(|f| f.disposition()
+                                    == v1_compiler::cli_run::BoundaryFileDisposition::Absent)
+                                .count(),
+                        );
+                    }
+                    for file in &divergent {
+                        eprintln!(
+                            "required-ci: partition-crates {} {}",
+                            file.disposition().name(),
+                            file.path
+                        );
+                    }
+                    if !divergent.is_empty() {
+                        // THE REFUSAL NAMES A ROUTE THAT EXISTS. The header on these files used
+                        // to name `regen_stage0`, deleted 2026-08-20, so the only move the stop
+                        // offered was unavailable and the author hand-edited instead.
+                        eprintln!(
+                            "required-ci: partition-crates these are GENERATED projections of \
+                             v2.workflow.rust_crate_partition — do not hand-edit; regenerate with: {}",
+                            v1_compiler::cli_run::PARTITION_CRATE_PRODUCING_COMMAND
+                        );
+                        phase_failures.push(format!(
+                            "partition-crates ({} boundary file(s) not derived)",
+                            divergent.len()
+                        ));
+                    }
+                }
+            }
+
+            // THE SECOND CONJUNCT, AND IT RUNS WHATEVER THE FIRST ANSWERED. Drift being clean
+            // says the projection matches its authority; it says NOTHING about the authority
+            // being complete. The defect this phase exists for had drift ZERO across four
+            // projection links and did not compile, so a drift-only phase reports green on it.
+            //
+            // PLACEMENT IS LOAD-BEARING, and this sat inside the `Rendered` arm first: a
+            // `CarrierRefused` returned before the compile, so the one state where the authority
+            // is most suspect was the one state that skipped the completeness check. The two
+            // conjuncts are independent in both directions, so neither may gate the other.
+            let packages = v1_compiler::cli_run::partition_package_names();
+            let compile = v1_compiler::cli_run::compile_partition_crates(&packages);
+            eprintln!(
+                "required-ci: partition-crates compile {}",
+                compile.summary()
+            );
+            if !compile.passed() {
+                if let v1_compiler::cli_run::PartitionCompileOutcome::Completed {
+                    stderr_tail,
+                    ..
+                } = &compile
+                {
+                    for line in stderr_tail.lines() {
+                        eprintln!("required-ci: partition-crates cargo| {line}");
+                    }
+                }
+                phase_failures.push(format!("partition-crates compile: {}", compile.summary()));
+            }
+            ran.push("partition-crates");
         }
 
         // PHASE 4 — the witness floor. Independent; runs whatever happened above.
@@ -747,25 +765,22 @@ fn run() -> Result<ExitCode, ExitCode> {
                     // of nothing by anything that reads one line at a time.
                     eprintln!("{}", run.measurement_line("required-v2-emission"));
                     match &run.disposition {
-                        v1_compiler::cli_run::EntryEmissionDisposition::Completed { .. } => {}
-                        v1_compiler::cli_run::EntryEmissionDisposition::Refused {
-                            phase,
-                            cause,
-                        } => {
+                        v1_compiler::cli_run::CompileDisposition::Completed { .. } => {}
+                        v1_compiler::cli_run::CompileDisposition::Refused { phase, cause } => {
                             not_completed += 1;
                             eprintln!(
-                                "required-v2-emission: EmissionRefused entry={} phase={phase} cause={cause}",
-                                run.entry
+                                "required-v2-emission: EmissionRefused {} phase={phase} cause={cause}",
+                                run.subject.receipt()
                             );
                         }
-                        v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                        v1_compiler::cli_run::CompileDisposition::NotExecuted {
                             earlier_phase,
                             cause,
                         } => {
                             not_completed += 1;
                             eprintln!(
-                                "required-v2-emission: EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
-                                run.entry
+                                "required-v2-emission: EmissionNotExecuted {} earlier_phase={earlier_phase} cause={cause}",
+                                run.subject.receipt()
                             );
                         }
                     }
@@ -835,110 +850,36 @@ fn run() -> Result<ExitCode, ExitCode> {
         };
     }
 
-    // THE CITED-SYMBOL CENSUS IS ITS OWN REQUIRED CHECK, NOT A PHASE OF `--required-ci`.
+    // THE CITED-SYMBOL CENSUS IS GONE FROM HERE, AND ITS SUBJECT MOVED RATHER THAN LAPSING.
     //
-    // WHY IT IS NOT A PHASE. The operator narrowed `--required-ci` from eight phases to three on
-    // 2026-08-21 (#8791), and that ruling is about what one composed entry point is responsible
-    // for. A census with a different subject gets its own named check instead: `--required-ci`
-    // stays at exactly three phases, so nothing about the narrowing is weakened, contradicted or
-    // quietly reinterpreted. Routing the same phase in under a different name would be the
-    // workaround this repository refuses; a distinct concern with its own check is the shape the
-    // ruling points at.
+    // `--required-cited-symbol` ran `v2.lens.cited_symbol_resolution` over the corpus-wide
+    // `decl_facts` + `module_declaration_facts` walks, answering each authored reference by a
+    // LINEAR SCAN of a flat list of every declaration in the repository. DESIGN §3's rung-drop
+    // row names exactly that shape as the thing to stop doing: the wall belongs "checked at
+    // ingestion, on the module whose source carries the citation, from that module's own text,
+    // rather than reconstructed corpus-wide by a second job".
     //
-    // WHY IT IS NOT A FLOOR CLAIM EITHER, and this one is structural rather than a preference.
-    // `run_required_floor` declines any entry that reads the live tree (`DeclinedLiveTree`), and
-    // reading the live corpus IS this census's subject -- relocating the witness moves it from
-    // `DeclinedLongModule` to `DeclinedLiveTree` and never to `Planned`. No amount of making it
-    // cheaper opens that door.
-    //
-    // WHAT IT REPORTS. Every unresolved reference with the typed arm that refused it, and -- on a
-    // green -- the population it checked. An empty refusal list means both "every authored
-    // reference resolved" and "there were no references to check"; those are different states and
-    // only the first is coverage, so a population it cannot read FAILS rather than greening over
-    // an unknown denominator.
-    if required_cited_symbol_mode {
-        let (ctx, _entry) = match cited_symbol_lens_context(&source_roots) {
-            Ok(v) => v,
-            Err(e) => {
-                eprintln!("cited-symbol: refused: {e}");
-                return Err(ExitCode::from(1));
-            }
-        };
-        let rows = match cited_symbol_census(&ctx) {
-            Ok(rows) => rows,
-            Err(e) => {
-                eprintln!("cited-symbol: refused: {e}");
-                return Err(ExitCode::from(1));
-            }
-        };
-        if !rows.is_empty() {
-            for row in &rows {
-                eprintln!("cited-symbol: REFUSED {row}");
-            }
-            eprintln!(
-                "cited-symbol: FAIL {} authored reference(s) do not resolve — a citation outlived \
-                 what it names (DESIGN §3)",
-                rows.len()
-            );
-            return Err(ExitCode::from(1));
-        }
-        return match cited_symbol_population(&ctx) {
-            Ok(checked) => {
-                eprintln!("cited-symbol: OK every authored reference resolves checked={checked}");
-                Ok(ExitCode::SUCCESS)
-            }
-            Err(e) => {
-                eprintln!("cited-symbol: refused: population unreadable: {e}");
-                Err(ExitCode::from(1))
-            }
-        };
-    }
+    // It is now the `parse` phase above, over the per-module declaration index the sweep builds
+    // from the parse it was already performing. The mode is deleted rather than left standing as
+    // a second route to one question (§3, single authority), and the replacement is STRICTLY
+    // WIDER, which is the test §3's replacement doctrine sets: it enrolls every authored
+    // `DeclarationRef` in the corpus rather than the five carriers the lens's population named,
+    // and it indexes test modules, which `decl_facts` deliberately did not — so the
+    // outside-index disposition those exclusions forced is not needed at all.
 
-    // The heads reading's own instrument. It is not enrolled in the required run and this
-    // clause does not pretend otherwise: reading 3875 modules TWICE is precisely the cost
-    // the heads reading exists to remove, so paying it on every push would spend more than
-    // the repair saves. It is a re-runnable receipt — the differential this change was
-    // landed on can be re-taken by anyone, on any tree, rather than being a number quoted
-    // from a run nobody can repeat.
-    if heads_reading_differential_mode {
-        let roots = if source_roots.is_empty() {
-            vec!["dag".to_string(), "src/v2".to_string()]
-        } else {
-            source_roots.clone()
-        };
-        let d = v1_compiler::cli_run::heads_reading_differential(&roots);
-        eprintln!(
-            "heads-reading-differential: compared={} divergent={} narrowed={} regressed={} both_refused={}",
-            d.modules_compared,
-            d.divergent.len(),
-            d.narrowed.len(),
-            d.regressed.len(),
-            d.both_refused.len(),
-        );
-        // The two readings' summed parse wall, from the same process over the same
-        // modules. This is the PARSE term only — not the whole `pool_parse` row, which
-        // also pays tokenize, newline indexing and per-file setup that neither reading
-        // changes.
-        eprintln!(
-            "heads-reading-differential: full_reading_parse_ms={} heads_reading_parse_ms={}",
-            d.full_reading_nanos / 1_000_000,
-            d.heads_reading_nanos / 1_000_000,
-        );
-        for path in d.divergent.iter().take(20) {
-            eprintln!("heads-reading-differential: DIVERGENT {path}");
-        }
-        for path in d.regressed.iter().take(20) {
-            eprintln!("heads-reading-differential: REGRESSED {path}");
-        }
-        for path in d.narrowed.iter().take(20) {
-            eprintln!("heads-reading-differential: narrowed (declared scope) {path}");
-        }
-        return if d.holds() {
-            Ok(ExitCode::SUCCESS)
-        } else {
-            Err(ExitCode::from(1))
-        };
-    }
+    // THE HEADS READING'S OWN INSTRUMENT MOVED TO `gunbc test`, AND IT MOVED ATOMICALLY.
+    //
+    // What stood here was a `--heads-reading-differential` mode: the same producer, reached by a
+    // flag on this binary. It is DELETED in the change that makes the instrument addressable as
+    // `//gunbc/instruments:heads-reading-differential`, rather than left standing beside it. Two
+    // routes to one producer is the fork DESIGN section 3 forbids, and the interval in which both
+    // work is exactly when a caller learns the old one and keeps it.
+    //
+    // The reason it was never enrolled in the required run is unchanged and is now recorded on the
+    // target instead: reading the corpus TWICE is precisely the cost the heads reading exists to
+    // remove, so paying it on every push would spend more than the repair saves. The instrument is
+    // outside `//:required` by construction there -- `gunbc.discovery_census` derives that
+    // aggregate from discovered witness sites, and no fold feeds the instrument population into it.
 
     if required_regen_mode {
         return match v1_compiler::cli_run::run_required_regen(
@@ -1146,6 +1087,7 @@ enum RequiredCiPhase {
     Parse,
     Regen,
     V2Emission,
+    PartitionCrates,
     Floor,
 }
 
@@ -1155,6 +1097,7 @@ impl RequiredCiPhase {
             RequiredCiPhase::Parse => "parse",
             RequiredCiPhase::Regen => "regen",
             RequiredCiPhase::V2Emission => "v2-emission",
+            RequiredCiPhase::PartitionCrates => "partition-crates",
             RequiredCiPhase::Floor => "floor",
         }
     }
@@ -1170,15 +1113,21 @@ impl RequiredCiPhase {
             RequiredCiPhase::Parse => RequiredCiLane::Witnesses,
             RequiredCiPhase::Regen => RequiredCiLane::Build,
             RequiredCiPhase::V2Emission => RequiredCiLane::Build,
+            // A DRIFT COMPARISON OVER DERIVED RUST, so it belongs beside regen and
+            // v2-emission rather than beside the witness corpus. The two lanes carry no
+            // `needs` edge, so this costs nothing until the build lane exceeds the floor's
+            // wall clock; beside the floor it would be pure addition to the critical path.
+            RequiredCiPhase::PartitionCrates => RequiredCiLane::Build,
             RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
         }
     }
 }
 
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 4] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 5] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::Regen,
     RequiredCiPhase::V2Emission,
+    RequiredCiPhase::PartitionCrates,
     RequiredCiPhase::Floor,
 ];
 
@@ -1209,12 +1158,11 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // not. The three are printed together so the subtraction is visible rather
     // than inferable.
     eprintln!(
-        "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
+        "required-floor: offered={} routed={} declined_long={} \
          declined_live={} — every discovered site is exactly one of these",
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
-        outcome.declined_fixture_member,
         outcome.declined_live_tree
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
@@ -1240,7 +1188,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // refusing. Modelling that split is a RequiredFloorDisposition question in
     // src/v2/workflow/required_floor.dag, not something to decide inside an eprintln!.
     eprintln!(
-        "required-floor: planned={} executed={} terminal={} passed={} \
+        "required-floor: planned={} executed={} not_attempted={} terminal={} passed={} \
          known_red_held={} failed={} stale_quarantine={} \
          interrupted_before_verdict={} completed_over_cost_requirement={} \
          host_tool_unresolved={} route_gap_unenrolled={} route_gap_held={} \
@@ -1250,6 +1198,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
          known_red_observation_unreadable={} over_cost_line_diagnostic={}",
         outcome.claims_planned,
         outcome.claims_executed,
+        outcome.not_attempted_after_abort,
         outcome.receipt_identities,
         outcome.passed,
         outcome.known_red_held,
@@ -1438,43 +1387,6 @@ fn main() -> ExitCode {
 mod tests {
     use super::*;
 
-    // Process-wide eval-recompute totals are shared across every test in this
-    // binary. Tests that drain or assert on the accumulator must serialize so
-    // one cannot steal another's totals (DESIGN §5 hermetic discriminating tests).
-    static PROCESS_EVAL_RECOMPUTE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn with_process_eval_recompute_test_lock<F: FnOnce()>(f: F) {
-        let _guard = PROCESS_EVAL_RECOMPUTE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        let prior_trace = std::env::var_os("GUNBC_RECOMPUTE_TRACE");
-        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
-        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
-        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-        match prior_trace {
-            Some(value) => std::env::set_var("GUNBC_RECOMPUTE_TRACE", value),
-            None => std::env::remove_var("GUNBC_RECOMPUTE_TRACE"),
-        }
-        v1_compiler::v1_interpreter::refresh_eval_recompute_trace_enabled_cache_for_tests();
-        match run {
-            Ok(()) => {}
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-
-    fn with_workspace_root_current_dir<F: FnOnce()>(root: &std::path::Path, f: F) {
-        let prior_cwd = std::env::current_dir().ok();
-        std::env::set_current_dir(root).expect("chdir to workspace root for receipt paths");
-        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-        if let Some(cwd) = prior_cwd {
-            let _ = std::env::set_current_dir(cwd);
-        }
-        match run {
-            Ok(()) => {}
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-
     fn repo_root_from_manifest() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../..")
@@ -1485,19 +1397,6 @@ mod tests {
     fn dag_source_from_repo(rel: &str) -> String {
         let path = repo_root_from_manifest().join(rel);
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
-    }
-
-    fn dag_string_data_literal(source: &str, data_name: &str) -> String {
-        let marker = format!("data {data_name}: String = \"");
-        let start = source
-            .find(&marker)
-            .unwrap_or_else(|| panic!("string data row {data_name} not found in authority source"))
-            + marker.len();
-        let rest = &source[start..];
-        let end = rest
-            .find('"')
-            .expect("unterminated string literal in authority source");
-        rest[..end].to_string()
     }
 
     fn dag_record_string_field(source: &str, data_name: &str, field: &str) -> String {
@@ -1564,10 +1463,6 @@ mod tests {
             TEST_NATIVE_BUNDLE_OBLIGATION_FUNCTION,
         );
     }
-
-    /// The `<entry>::<function>` a refusal locates itself at — the same shape the
-    /// production caller passes.
-    const TEST_PLAN_SITE: &str = "src/v2/workflow/ci_floor_plan.dag::gunbc_ci_floor_plan";
 
     // --- floor-finalization DISPOSITION visibility (the fix this PR ships) -----------
     //
@@ -1658,12 +1553,6 @@ mod tests {
         );
     }
 
-    fn parse_materialization_receipt_field(body: &str, key: &str) -> Option<u64> {
-        body.lines()
-            .find_map(|line| line.strip_prefix(key))
-            .and_then(|v| v.trim().parse::<u64>().ok())
-    }
-
     // --- build-artifact verification teeth (DESIGN §5 fail-open guard) ---
 
     fn write_exec(dir: &std::path::Path, name: &str, bytes: &[u8]) -> String {
@@ -1726,17 +1615,6 @@ mod tests {
         );
     }
 
-    fn drift_authority_source_roots() -> Vec<String> {
-        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(3)
-            .expect("workspace root");
-        vec![
-            workspace.join("dag").to_string_lossy().into_owned(),
-            workspace.join("src/v2").to_string_lossy().into_owned(),
-        ]
-    }
-
     // ---- walk-attempt identity ----
     //
     // The refusals below are the point of the feature, so each is asserted as a REFUSAL,
@@ -1763,48 +1641,6 @@ mod tests {
             "the persisted row must retain the phase, state, and detail: {persisted:?}"
         );
     }
-}
-
-#[cfg(test)]
-mod witness_walk_flags_tests {
-    use super::witness_walk_flags;
-
-    /// The scoped-child boundary deletion narrowed the roster walk. This pins that it narrowed
-    /// ONLY the walk: a scoped child still executes rows, so it must still be handed the
-    /// per-witness eval budget. RED if the two questions are ever collapsed back into one flag —
-    /// the collapse is silent at the type level and would weaken a budget wall while reading as a
-    /// pure scope narrowing.
-    #[test]
-    fn witness_walk_flags_split_the_two_questions() {
-        let ordinary = witness_walk_flags(true, false);
-        assert!(ordinary.executes_witness_rows);
-        assert!(
-            ordinary.schedules_discovery,
-            "an ordinary worker carrying witness rows must still derive the roster"
-        );
-
-        let scoped = witness_walk_flags(true, true);
-        assert!(
-            scoped.executes_witness_rows,
-            "a scoped child executes its frozen rows, so it must keep the eval budget"
-        );
-        assert!(
-            !scoped.schedules_discovery,
-            "a scoped child must never re-derive a roster its parent already froze"
-        );
-
-        // No rows at all: neither question is yes, for either role.
-        for is_scoped in [false, true] {
-            let empty = witness_walk_flags(false, is_scoped);
-            assert!(!empty.executes_witness_rows);
-            assert!(!empty.schedules_discovery);
-        }
-    }
-}
-
-#[cfg(test)]
-mod scoped_execution_request_tests {
-    use super::*;
 }
 
 /// Run git in the workspace and return trimmed stdout, or a refusal naming the command.
@@ -4049,112 +3885,6 @@ fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, Ex
             eprintln!("receipt-census: REFUSED — {e}");
             Err(ExitCode::from(1))
         }
-    }
-}
-
-/// THE RECEIPT'S OWN ARMS, ENROLLED.
-///
-/// A behavioral receipt is only evidence if it can still tell equivalence from divergence. That
-/// property is not established by the mode existing, and it is not established by a transcript in
-/// a pull request: a red control that no longer discriminates looks exactly like a red control
-/// that does, until the day it is needed. So both arms live here and execute -- DESIGN §4b: the
-/// discriminating RED and the positive control REMAIN ENROLLED as the executing evidence that the
-/// rung stays real.
-///
-/// Run against a CONTROLLED FIXTURE (`fixtures/receipt_fixture`), never against the live corpus.
-/// The fixture independently authors its own input and its own expected outcome, which is what
-/// DESIGN §5 requires of an oracle -- a measurement copied from the current tree is not one. It
-/// also means this control cannot be satisfied by a tree in which nothing happens to have changed.
-///
-/// WHAT THIS CONTROL COVERS: the grammar-backed read of a declared surface, the derivation of the
-/// corpus from it, the enumeration of argument tuples, driver generation, both builds, the
-/// transcript comparison, and the verdict. WHAT IT DOES NOT COVER, stated rather than implied:
-/// the emit, and the emit-path-to-mirror lookup. Those have their own gates; this one would
-/// report a false green about them, so it does not speak about them at all.
-/// THE CITED-SYMBOL CENSUS, RUN AS ITS OWN REQUIRED CHECK BECAUSE IT CANNOT BE RUN AS A CLAIM.
-///
-/// `v2.lens.cited_symbol_resolution` resolves every structural `DeclarationRef` the repository
-/// authors -- hand-authored doc binds, the generated design document's references, and the roster
-/// registry -- against live declaration facts, and refuses a reference whose module, declaration or
-/// field is absent or ambiguous. Its live-corpus claim was carried only by a witness under
-/// `dag/test/claim/long/`, whose entire file is classified `OfflineLocalRecipe`, so nothing executed
-/// it: on unmodified main the lens was RED with 27 refusing production references while every
-/// required check was green.
-///
-/// WHY NOT THE FLOOR. `run_required_floor` declines an identity whose entry reads the live tree
-/// (`DeclinedLiveTree`), and reading the live corpus IS this census's subject. Relocating the
-/// witness out of the long home moves it from one decline arm to the other and never to `Planned`.
-/// The route is therefore a MODE, `--required-cited-symbol`, invoked by its own job -- not a claim,
-/// so it sits outside both the per-claim safety deadline and the live-tree arm, and not a phase of
-/// `--required-ci`, which the operator narrowed to three on 2026-08-21 and which this leaves
-/// byte-unchanged.
-///
-/// Returns the located refusals -- one line per unresolved reference, carrying the typed arm that
-/// refused it -- so the failure names what to fix rather than reporting a count.
-/// The size of the population the census just checked, so a green names its denominator.
-///
-/// An empty refusal list is returned both when every reference resolves and when there are no
-/// references at all; those are different states and only the first is coverage.
-fn cited_symbol_population(ctx: &InterpContext) -> Result<i64, String> {
-    match run_value(ctx, "cited_symbol_production_reference_count") {
-        Ok(Value::Int(n)) => Ok(n),
-        Ok(other) => Err(format!(
-            "cited_symbol_production_reference_count must be an Int, got {other:?}"
-        )),
-        Err(msg) => Err(msg),
-    }
-}
-
-/// The lens's evaluation context. The caller builds it ONCE and lends it to both readers -- the
-/// refusal report and the population count -- which is why they take a `&InterpContext` rather
-/// than source roots: two constructions would be two reads of a tree that can change between them,
-/// and a denominator is only meaningful for the census it accompanies. An earlier revision said
-/// this while both helpers built their own; the comment was true of the intent and false of the
-/// code, which is the stale-claim class this very census exists to catch (found in review 54581).
-fn cited_symbol_lens_context(source_roots: &[String]) -> Result<(InterpContext, String), String> {
-    const LENS_REL: &str = "lens/cited_symbol_resolution.dag";
-    let entry = source_roots
-        .iter()
-        .map(|r| Path::new(r).join(LENS_REL))
-        .find(|p| p.exists())
-        .ok_or_else(|| {
-            format!(
-                "cited-symbol: no source root carries {LENS_REL} (roots: {}) -- the census cannot \
-                 be run, which is ignorance and not a green",
-                source_roots.join(", ")
-            )
-        })?
-        .to_string_lossy()
-        .into_owned();
-    let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry)
-        .map_err(|e| format!("cited-symbol: resolve {entry} failed: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-    Ok((ctx, entry))
-}
-
-fn cited_symbol_census(ctx: &InterpContext) -> Result<Vec<String>, String> {
-    match run_value(ctx, "cited_symbol_unresolved_reference_report") {
-        Ok(Value::List(rows)) => {
-            let mut out = Vec::new();
-            for row in rows.iter() {
-                match row {
-                    Value::Str(s) => out.push(s.to_string()),
-                    other => {
-                        return Err(format!(
-                            "cited-symbol: report rows must be String, got {other:?} (fail-closed)"
-                        ))
-                    }
-                }
-            }
-            Ok(out)
-        }
-        Ok(other) => Err(format!(
-            "cited-symbol: cited_symbol_unresolved_reference_report must return a List, got \
-             {other:?} (fail-closed)"
-        )),
-        Err(msg) => Err(format!(
-            "cited-symbol: census unavailable (fail-closed): {msg}"
-        )),
     }
 }
 

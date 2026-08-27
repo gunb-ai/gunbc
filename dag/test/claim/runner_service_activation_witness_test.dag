@@ -23,7 +23,7 @@ import gunbc.runner_host_deploy {
 }
 import gunbc.runner_host_grants { runner_host_privileged_operations, runner_slot_activation_operations }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
-import gunbc.runner_lifecycle { runner_unit_name_for_instance }
+import gunbc.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner_activation { BuildCacheInstanceReady, HostCompilePoolReady }
 import gunbc.build_cache_instance {
   BuildCacheInstance, ProcessIdentity, ci_cache_instance,
@@ -72,7 +72,7 @@ import gunbc.guarantee_rung_drop {
   stall_is_below_ceiling,
   stall_is_permanent,
 }
-import gunbc.fabric_cell_converge { fabric_cell_population_unobserved }
+import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
 
 // THE DISCRIMINATING RED FOR THE DEFECT THIS LANE WAS DISPATCHED FOR. The emitted apply.sh carried
 // daemon-reload and disable and nothing else -- enable count 0, start count 0 -- so convergence
@@ -155,7 +155,7 @@ fn witness_apply_text(deploy: RunnerHostDeploy, readiness: RunnerActivationReadi
     timer_plan: timer_retirement_plan(observed: []),
     host: deploy.host_label,
     observed_slots: [],
-    observed_fabric_cells: fabric_cell_population_unobserved(host: deploy.host_label as HostIdentity),
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: deploy.host_label as HostIdentity),
     observed_activation_readiness: readiness,
     terminal: witness_terminal(deploy: deploy, readiness: readiness),
   )
@@ -168,7 +168,7 @@ fn witness_terminal(deploy: RunnerHostDeploy, readiness: RunnerActivationReadine
     observed_caps: [],
     timer_plan: timer_retirement_plan(observed: []),
     cap_plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: []),
-    observed_fabric_cells: fabric_cell_population_unobserved(host: deploy.host_label as HostIdentity),
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: deploy.host_label as HostIdentity),
     observed_activation_readiness: readiness,
   )
 }
