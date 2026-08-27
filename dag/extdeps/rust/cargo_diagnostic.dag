@@ -15,7 +15,9 @@ import extdeps.languages.json.emit {
   JsonObject
 }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -359,9 +361,10 @@ fn cargo_diagnostic_scan_line(state: CargoDiagnosticScan, line: String) -> Cargo
   match state {
     CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n, build_succeeded: ok, terminal_seen: seen } => {
       let line_number = n + 1
-      match parse_json(s: line) {
-        Absent => CargoDiagnosticLineUnparseable { line_number: line_number }
-        Present { value: doc } =>
+      match parse_json_document(s: line) {
+        JsonDocumentUnreadable { gap: _ } =>
+          CargoDiagnosticLineUnparseable { line_number: line_number }
+        JsonDocumentParsed { value: doc } =>
           match json_object_unique_member(v: doc, key: cargo_message_reason_member) {
             JsonMemberNotAnObject => CargoDiagnosticLineNotAnObject { line_number: line_number }
             JsonMemberAbsent => CargoDiagnosticReasonAbsent { line_number: line_number }

@@ -9115,7 +9115,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                             unit_type()
                         }
                     }
-                    None => unit_type(),
+                    None => type_variable_node("empty_list_element".to_string()),
                 }
             };
             let empty_list_diags = if ((elem_results.clone().len() as i64) == 0) {
@@ -11433,6 +11433,7 @@ pub struct DescentContext {
     pub scope_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub func_env: Rc<ResolvedFuncEnv>,
     pub per_field_vars: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    pub body_locals: Rc<HashMap<String, bool>>,
 }
 
 pub fn classify_size_expr(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<DescentSizeExpr>> {
@@ -11854,12 +11855,8 @@ pub fn build_per_field_for_let(
         ExprData::ExprCall { .. } => {
             let callee =
                 expr_call_func_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-            match (*func_sig_for_derivation(lookup_func_sig(
-                ctx.func_env.clone(),
-                ctx.type_env.clone(),
-                callee.clone(),
-            )))
-            .clone()
+            match (*func_sig_for_derivation(descent_callee_sig(ctx.clone(), callee.clone())))
+                .clone()
             {
                 DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
                     if ((sig.output_provenance.clone().len() as i64) > 1) {
@@ -11920,12 +11917,8 @@ pub fn build_per_field_for_let(
         } => {
             let callee =
                 expr_method_name_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-            match (*func_sig_for_derivation(lookup_func_sig(
-                ctx.func_env.clone(),
-                ctx.type_env.clone(),
-                callee.clone(),
-            )))
-            .clone()
+            match (*func_sig_for_derivation(descent_callee_sig(ctx.clone(), callee.clone())))
+                .clone()
             {
                 DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
                     if ((sig.output_provenance.clone().len() as i64) > 1) {
@@ -12275,25 +12268,22 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
         ExprData::ExprCall { .. } => {
             let callee =
                 expr_call_func_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-            let from_provenance = match (*func_sig_for_derivation(lookup_func_sig(
-                ctx.func_env.clone(),
-                ctx.type_env.clone(),
-                callee.clone(),
-            )))
-            .clone()
-            {
-                DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
-                    match sig.output_provenance.clone().first().cloned() {
-                        Some(param_map) => classify_call_via_provenance(
-                            val.clone(),
-                            param_map.clone(),
-                            ctx.clone(),
-                        ),
-                        None => None,
+            let from_provenance =
+                match (*func_sig_for_derivation(descent_callee_sig(ctx.clone(), callee.clone())))
+                    .clone()
+                {
+                    DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
+                        match sig.output_provenance.clone().first().cloned() {
+                            Some(param_map) => classify_call_via_provenance(
+                                val.clone(),
+                                param_map.clone(),
+                                ctx.clone(),
+                            ),
+                            None => None,
+                        }
                     }
-                }
-                DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
-            };
+                    DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
+                };
             match from_provenance.clone() {
                 Some(_) => from_provenance.clone(),
                 None => {
@@ -12866,26 +12856,23 @@ pub fn classify_argument(
                                     arg_expr.clone(),
                                     ctx.type_env.clone().source_indices.clone(),
                                 );
-                                let from_provenance =
-                                    match (*func_sig_for_derivation(lookup_func_sig(
-                                        ctx.func_env.clone(),
-                                        ctx.type_env.clone(),
-                                        callee.clone(),
-                                    )))
-                                    .clone()
-                                    {
-                                        DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
-                                            match sig.output_provenance.clone().first().cloned() {
-                                                Some(param_map) => classify_call_via_provenance(
-                                                    arg_expr.clone(),
-                                                    param_map.clone(),
-                                                    ctx.clone(),
-                                                ),
-                                                None => None,
-                                            }
+                                let from_provenance = match (*func_sig_for_derivation(
+                                    descent_callee_sig(ctx.clone(), callee.clone()),
+                                ))
+                                .clone()
+                                {
+                                    DerivedCalleeSig::DerivedFromSig { sig: sig, .. } => {
+                                        match sig.output_provenance.clone().first().cloned() {
+                                            Some(param_map) => classify_call_via_provenance(
+                                                arg_expr.clone(),
+                                                param_map.clone(),
+                                                ctx.clone(),
+                                            ),
+                                            None => None,
                                         }
-                                        DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
-                                    };
+                                    }
+                                    DerivedCalleeSig::NoDerivableSig { reason: _, .. } => None,
+                                };
                                 match from_provenance.clone() {
                                     Some(prov_rel) => prov_rel.clone(),
                                     None => {
@@ -13351,6 +13338,81 @@ pub fn descent_source_type(found: String, arg_node: Rc<Node>, ctx: Rc<DescentCon
     }
 }
 
+pub fn descent_callee_sig(ctx: Rc<DescentContext>, name: String) -> Rc<FuncSigLookup> {
+    if v1_rt::map_has(&ctx.body_locals.clone(), name.clone()) {
+        Rc::new(FuncSigLookup::FuncSigUnresolved)
+    } else {
+        lookup_func_sig(ctx.func_env.clone(), ctx.type_env.clone(), name.clone())
+    }
+}
+
+pub fn provenance_callee_sig(
+    callee: String,
+    param_types: Rc<HashMap<String, String>>,
+    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    func_env: Rc<ResolvedFuncEnv>,
+    type_env: Rc<TypeEnv>,
+) -> Rc<FuncSigLookup> {
+    if (v1_rt::map_has(&param_types, callee.clone()) || v1_rt::map_has(&let_prov, callee.clone())) {
+        Rc::new(FuncSigLookup::FuncSigUnresolved)
+    } else {
+        lookup_func_sig(func_env.clone(), type_env.clone(), callee.clone())
+    }
+}
+
+pub fn descent_pattern_bound_names(pattern: Rc<MatchPattern>) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*pattern.clone()).clone() {
+            MatchPattern::Bind {
+                declaration: declaration,
+                ..
+            } => Rc::new(vec![declaration.name.clone()]),
+            MatchPattern::VariantPattern {
+                field_bindings: bindings,
+                ..
+            } => Rc::new({
+                let mut __result = Vec::new();
+                for fb in bindings.iter().cloned() {
+                    __result.extend(
+                        (*descent_pattern_bound_names(field_binding_pattern(fb.clone())))
+                            .iter()
+                            .cloned(),
+                    );
+                }
+                __result
+            }),
+            _ => Rc::new(vec![]),
+        }
+    })
+}
+
+pub fn descent_ctx_shadowing_names(
+    ctx: Rc<DescentContext>,
+    names: Rc<Vec<String>>,
+) -> Rc<DescentContext> {
+    Rc::new(DescentContext {
+        fn_name: ctx.fn_name.clone(),
+        param_names: ctx.param_names.clone(),
+        param_order: ctx.param_order.clone(),
+        type_env: ctx.type_env.clone(),
+        sub_value_vars: ctx.sub_value_vars.clone(),
+        size_aliases: ctx.size_aliases.clone(),
+        scope_locals: ctx.scope_locals.clone(),
+        func_env: ctx.func_env.clone(),
+        per_field_vars: ctx.per_field_vars.clone(),
+        body_locals: names.iter().cloned().fold(
+            ctx.body_locals.clone(),
+            |acc: Rc<HashMap<String, bool>>, n: String| {
+                if (n.clone() == "".to_string()) {
+                    acc.clone()
+                } else {
+                    v1_rt::rc_map_insert(acc.clone(), n.clone(), true)
+                }
+            },
+        ),
+    })
+}
+
 pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
@@ -13465,6 +13527,7 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                                                 scope_locals: ctx.scope_locals.clone(),
                                                 func_env: ctx.func_env.clone(),
                                                 per_field_vars: ctx.per_field_vars.clone(),
+                                                body_locals: ctx.body_locals.clone(),
                                             });
                                             make_arg_node(
                                                 arg_name_at(
@@ -13636,9 +13699,8 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                             scrut.clone(),
                             ctx.type_env.clone().source_indices.clone(),
                         );
-                        match (*func_sig_for_derivation(lookup_func_sig(
-                            ctx.func_env.clone(),
-                            ctx.type_env.clone(),
+                        match (*func_sig_for_derivation(descent_callee_sig(
+                            ctx.clone(),
                             callee.clone(),
                         )))
                         .clone()
@@ -13687,6 +13749,7 @@ let arm_ctx = match variant_arm_ctx.clone() {
     scope_locals: c.scope_locals.clone(),
     func_env: c.func_env.clone(),
     per_field_vars: c.per_field_vars.clone(),
+    body_locals: c.body_locals.clone(),
 }),
     MatchPattern::VariantPattern { name: inner_vname, field_bindings: inner_bindings, .. } => {
                             let inner_ind_fields = inductive_fields_for(c.type_env.clone(), ind_field.element_type.clone());
@@ -13712,6 +13775,7 @@ match inner_matching.clone() {
     scope_locals: ic.scope_locals.clone(),
     func_env: ic.func_env.clone(),
     per_field_vars: ic.per_field_vars.clone(),
+    body_locals: ic.body_locals.clone(),
 })
                                 } else {
                                     ic.clone()
@@ -13749,6 +13813,7 @@ match matching.clone() {
     scope_locals: c.scope_locals.clone(),
     func_env: c.func_env.clone(),
     per_field_vars: c.per_field_vars.clone(),
+    body_locals: c.body_locals.clone(),
 })
                             } else {
                                 c.clone()
@@ -13769,6 +13834,7 @@ match matching.clone() {
     scope_locals: ctx.scope_locals.clone(),
     func_env: ctx.func_env.clone(),
     per_field_vars: ctx.per_field_vars.clone(),
+    body_locals: ctx.body_locals.clone(),
 })
                     } else {
                         match scrut_inducing_field.clone() {
@@ -13785,6 +13851,7 @@ match matching.clone() {
     scope_locals: ctx.scope_locals.clone(),
     func_env: ctx.func_env.clone(),
     per_field_vars: ctx.per_field_vars.clone(),
+    body_locals: ctx.body_locals.clone(),
 }),
     None => ctx.clone(),
 }
@@ -13795,7 +13862,7 @@ match matching.clone() {
                     ctx.clone()
                 },
 };
-let annotated_body = annotate_descent(arm_body(arm_node.clone()), arm_ctx.clone());
+let annotated_body = annotate_descent(arm_body(arm_node.clone()), descent_ctx_shadowing_names(arm_ctx.clone(), descent_pattern_bound_names(arm_pattern(arm_node.clone()))));
 make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annotated_body.clone(), arm_node.span.clone())
 });
                     }
@@ -13882,6 +13949,11 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                             ),
                             func_env: ctx.func_env.clone(),
                             per_field_vars: inner_per_field.clone(),
+                            body_locals: v1_rt::rc_map_insert(
+                                ctx.body_locals.clone(),
+                                binding_name.clone(),
+                                true,
+                            ),
                         })
                     }
                     None => Rc::new(DescentContext {
@@ -13902,6 +13974,11 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                         ),
                         func_env: ctx.func_env.clone(),
                         per_field_vars: inner_per_field.clone(),
+                        body_locals: v1_rt::rc_map_insert(
+                            ctx.body_locals.clone(),
+                            binding_name.clone(),
+                            true,
+                        ),
                     }),
                 };
                 let annotated_value = annotate_descent(val.clone(), ctx.clone());
@@ -13999,6 +14076,11 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                                             ),
                                             func_env: acc.ctx.clone().func_env.clone(),
                                             per_field_vars: acc.ctx.clone().per_field_vars.clone(),
+                                            body_locals: v1_rt::rc_map_insert(
+                                                acc.ctx.clone().body_locals.clone(),
+                                                bname.clone(),
+                                                true,
+                                            ),
                                         })
                                     }
                                     None => Rc::new(DescentContext {
@@ -14021,6 +14103,11 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                                         ),
                                         func_env: acc.ctx.clone().func_env.clone(),
                                         per_field_vars: acc.ctx.clone().per_field_vars.clone(),
+                                        body_locals: v1_rt::rc_map_insert(
+                                            acc.ctx.clone().body_locals.clone(),
+                                            bname.clone(),
+                                            true,
+                                        ),
                                     }),
                                 }
                             }
@@ -14238,6 +14325,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                                     scope_locals: ctx.scope_locals.clone(),
                                     func_env: ctx.func_env.clone(),
                                     per_field_vars: ctx.per_field_vars.clone(),
+                                    body_locals: ctx.body_locals.clone(),
                                 }),
                                 None => Rc::new(DescentContext {
                                     fn_name: ctx.fn_name.clone(),
@@ -14253,6 +14341,7 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                                     scope_locals: ctx.scope_locals.clone(),
                                     func_env: ctx.func_env.clone(),
                                     per_field_vars: ctx.per_field_vars.clone(),
+                                    body_locals: ctx.body_locals.clone(),
                                 }),
                             },
                             None => ctx.clone(),
@@ -14329,6 +14418,18 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                     })
                 }
             }
+            ExprData::ExprLambda => {
+                let lam_ctx = descent_ctx_shadowing_names(
+                    ctx.clone(),
+                    lambda_param_names_at(
+                        body.clone(),
+                        ctx.type_env.clone().source_indices.clone(),
+                    ),
+                );
+                map_children(body.clone(), |child| {
+                    annotate_descent(child.clone(), lam_ctx.clone())
+                })
+            }
             ExprData::ExprForEach => {
                 let coll = foreach_collection(body.clone());
                 let fe_body = foreach_body(body.clone());
@@ -14356,6 +14457,11 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                         scope_locals: ctx.scope_locals.clone(),
                         func_env: ctx.func_env.clone(),
                         per_field_vars: ctx.per_field_vars.clone(),
+                        body_locals: v1_rt::rc_map_insert(
+                            ctx.body_locals.clone(),
+                            fe_var.clone(),
+                            true,
+                        ),
                     }),
                     None => Rc::new(DescentContext {
                         fn_name: ctx.fn_name.clone(),
@@ -14367,6 +14473,11 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
                         scope_locals: ctx.scope_locals.clone(),
                         func_env: ctx.func_env.clone(),
                         per_field_vars: ctx.per_field_vars.clone(),
+                        body_locals: v1_rt::rc_map_insert(
+                            ctx.body_locals.clone(),
+                            fe_var.clone(),
+                            true,
+                        ),
                     }),
                 };
                 let annotated_coll = annotate_descent(coll.clone(), ctx.clone());
@@ -14613,6 +14724,8 @@ pub fn classify_body_provenance(
                         expr.clone(),
                         func_env.clone(),
                         type_env.clone(),
+                        param_types.clone(),
+                        let_prov.clone(),
                         type_env.source_indices.clone(),
                     ),
                     param_names.clone(),
@@ -14893,16 +15006,20 @@ pub fn method_call_args_by_name(
     call: Rc<Node>,
     func_env: Rc<ResolvedFuncEnv>,
     type_env: Rc<TypeEnv>,
+    param_types: Rc<HashMap<String, String>>,
+    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
     {
         let mname = expr_method_name_at(call.clone(), source_indices.clone());
         let recv = method_receiver(call.clone());
         let mc_args = method_arg_nodes(call.clone());
-        let base = match (*func_sig_for_derivation(lookup_func_sig(
+        let base = match (*func_sig_for_derivation(provenance_callee_sig(
+            mname.clone(),
+            param_types.clone(),
+            let_prov.clone(),
             func_env.clone(),
             type_env.clone(),
-            mname.clone(),
         )))
         .clone()
         {
@@ -14952,10 +15069,12 @@ pub fn compose_callee_provenance(
     func_env: Rc<ResolvedFuncEnv>,
     let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
 ) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
-    match (*func_sig_for_derivation(lookup_func_sig(
+    match (*func_sig_for_derivation(provenance_callee_sig(
+        callee.clone(),
+        param_types.clone(),
+        let_prov.clone(),
         func_env.clone(),
         type_env.clone(),
-        callee.clone(),
     )))
     .clone()
     {
@@ -15396,6 +15515,7 @@ pub fn arm_ctx_from_variant_provenance(
                                             scope_locals: c.scope_locals.clone(),
                                             func_env: c.func_env.clone(),
                                             per_field_vars: c.per_field_vars.clone(),
+                                            body_locals: c.body_locals.clone(),
                                         }),
                                     }
                                 }
@@ -15618,10 +15738,12 @@ pub fn collect_variant_constructors(
             },
             ExprData::ExprCall { .. } => {
                 let callee = expr_call_func_at(body.clone(), type_env.source_indices.clone());
-                match (*func_sig_for_derivation(lookup_func_sig(
+                match (*func_sig_for_derivation(provenance_callee_sig(
+                    callee.clone(),
+                    param_types.clone(),
+                    let_prov.clone(),
                     func_env.clone(),
                     type_env.clone(),
-                    callee.clone(),
                 )))
                 .clone()
                 {
@@ -16129,6 +16251,16 @@ pub fn annotate_descent_evidence(
             scope_locals: scope_locals.clone(),
             func_env: func_env.clone(),
             per_field_vars: v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<SubValueRelation>>>>(
+            ),
+            body_locals: params.iter().cloned().fold(
+                v1_rt::rc_empty_map::<String, bool>(),
+                |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        param_node_name_at(p.clone(), type_env.source_indices.clone()),
+                        true,
+                    )
+                },
             ),
         });
         annotate_descent(body.clone(), ctx.clone())

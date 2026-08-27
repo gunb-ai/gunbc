@@ -354,6 +354,7 @@ type GuardResult { guard: Node?, tokens: TokenStream, ctx: ParseContext, err: Er
 type FromKeyResult { from_key: String?, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 
 type PostfixResult { expr: Node, changed: Bool, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+type PipeCalleeResult { spine: Node?, method: String, method_span: SourceSpan, tokens: TokenStream, err: ErrorNode? }
 type ParserParam { name: String, span: SourceSpan }
 type LambdaCheckResult { is_lambda: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type IdentCollectResult { success: Bool, params: List<ParserParam>, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
@@ -1664,6 +1665,17 @@ fn parse_import(tokens: TokenStream, ctx: ParseContext) -> ImportResult {
     let names = r.names
     let tokens = r.tokens
     let ctx = r.ctx
+    if (names |> count) == 0 {
+      return ImportResult {
+        import: err_import,
+        tokens: tokens,
+        ctx: ctx,
+        err: Present { value: parse_error(
+          msg: concat("import of `", concat(mod_path, "` binds no names: a member list of arity zero names a module and imports none of it, which is a declaration with no content. Write the members, or delete the import.")),
+          span: mod_path_span
+        ) }
+      }
+    }
     let r = expect(tokens: tokens, expected: ExpectRBrace)
     if has_err(err: r.err) { return ImportResult { import: err_import, tokens: r.tokens, ctx: ctx, err: r.err } }
     let tokens = skip_newlines(tokens: r.tokens)
@@ -4253,19 +4265,74 @@ fn infix_bp(tokens: TokenStream) -> BindingPower? {
   }
 }
 
+// WHAT DECIDES THAT A DOTTED PIPE CALLEE IS A QUALIFIED CALLEE RATHER THAN A METHOD FOLLOWED
+// BY FIELD ACCESS, and why the discriminator is the application and not the shape of the path.
+// The parser cannot know that `a.b` names a module -- that fact lives in the symbol index, which
+// resolution owns and parse does not have. So the pipe production decides it syntactically:
+// `x |> a.b.f(...)` is the qualified callee `a.b.f` applied to `x`, and `x |> m.field` -- a
+// dotted path with NO application -- keeps the older reading, the method `m` on the receiver
+// followed by ordinary field access on its result.
+//
+// THE RECEIPT IS A LIVE SITE, and it is why this arm exists at all rather than the path being
+// consumed unconditionally. An earlier draft of this change consumed every `.segment` after the
+// pipe callee regardless of what followed, which silently re-denoted v1.compiler.emit_rust's
+// `field_names |> first.value` -- pipe into the kernel method `first`, then take `.value` off the
+// Optional it returns -- as a call to a function `value` in a module named `first`. A corpus scan
+// for a dotted pipe callee finds exactly one site and it is that one, so the population is small;
+// the point is that it is not empty, and the shape it uses is correct code that the unconditional
+// rule would have refused.
+//
+// WHAT THIS COSTS, stated rather than left to be discovered: `(x |> m).f(...)` is no longer
+// spellable as `x |> m.f(...)`; it needs the parentheses that say what it means. That spelling has
+// zero occurrences in the corpus today. What it does NOT cost is a second resolution path -- both
+// pipe forms produce one ExprMethodCall node, and the qualified one is exactly the node shape
+// v1.compiler.infer's qualified_direct_call arm already reads off an ordinary call site.
+
+fn pipe_callee_path_is_applied(candidate: PipeCalleeResult) -> Bool {
+  match candidate.spine {
+    Absent => true
+    Present { value: _ } => tok_is_lparen(tok: token_stream_first(stream: skip_newlines(tokens: candidate.tokens)))
+  }
+}
+
+fn parse_pipe_callee_rest(tokens: TokenStream, spine: Node?, name: String, name_span: SourceSpan) -> PipeCalleeResult {
+  if tok_is_dot(tok: token_stream_first(stream: tokens)) {
+    let r = expect_name(tokens: token_stream_advance(stream: tokens, n: 1))
+    if has_err(err: r.err) { return PipeCalleeResult { spine: spine, method: name, method_span: name_span, tokens: r.tokens, err: r.err } }
+    let next_spine = match spine {
+      Absent => make_named_expr_node(name: name, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: name_span, name_span: name_span)
+      Present { value: base } => make_named_expr_node(name: name, expr_data: ExprFieldAccess { summary: none }, children: [base], inferred: none, span: name_span, name_span: name_span)
+    }
+    parse_pipe_callee_rest(tokens: r.tokens, spine: Present { value: next_spine }, name: r.name, name_span: r.span)
+  } else {
+    PipeCalleeResult { spine: spine, method: name, method_span: name_span, tokens: tokens, err: none }
+  }
+}
+
 fn parse_pipe_rhs(tokens: TokenStream, ctx: ParseContext, receiver: Node, span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
   let r = expect_name(tokens: tokens)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
-  let method = r.name
-  let tokens = skip_newlines(tokens: r.tokens)
+  let dotted = parse_pipe_callee_rest(tokens: r.tokens, spine: none, name: r.name, name_span: r.span)
+  if has_err(err: dotted.err) { return ExprResult { expr: dummy_expr, tokens: dotted.tokens, ctx: ctx, err: dotted.err } }
+  let callee = if pipe_callee_path_is_applied(candidate: dotted) {
+    dotted
+  } else {
+    PipeCalleeResult { spine: none, method: r.name, method_span: r.span, tokens: r.tokens, err: none }
+  }
+  let method = callee.method
+  let leading = match callee.spine {
+    Absent => [receiver]
+    Present { value: qualifier } => [qualifier, make_arg_node(name: none, value: receiver, span: receiver.span, name_span: receiver.span)]
+  }
+  let tokens = skip_newlines(tokens: callee.tokens)
 
   if tok_is_lparen(tok: token_stream_first(stream: tokens)) {
     let r2 = parse_call_args(tokens: tokens, ctx: ctx)
     if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], r2.args |> map(na => make_arg_node(name: arg_name_at(n: na, source_indices: ctx.source_indices), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: r.span), tokens: r2.tokens, ctx: r2.ctx, err: none }
+    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: concat(leading, r2.args |> map(na => make_arg_node(name: arg_name_at(n: na, source_indices: ctx.source_indices), value: arg_value(n: na), span: na.span, name_span: node_name_span(n: na)))), inferred: none, span: span, name_span: callee.method_span), tokens: r2.tokens, ctx: r2.ctx, err: none }
   } else {
-    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: [receiver], inferred: none, span: span, name_span: r.span), tokens: tokens, ctx: ctx, err: none }
+    ExprResult { expr: make_named_expr_node(name: method, expr_data: ExprMethodCall { method_semantics: none }, children: leading, inferred: none, span: span, name_span: callee.method_span), tokens: tokens, ctx: ctx, err: none }
   }
 }
 

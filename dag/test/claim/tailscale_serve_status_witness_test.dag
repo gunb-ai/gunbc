@@ -3,16 +3,45 @@ module test.claim.tailscale_serve_status_witness
 import std.types { Bool }
 import extdeps.tailscale.serve {
   ServeRootMount,
+  ServeStatusProxies,
+  ServeStatusUnreadable,
   tailscale_serve_status_proxy_targets,
 }
 
 test fn tailscale_serve_status_root_proxy_is_structurally_projected() -> Bool {
-  tailscale_serve_status_proxy_targets(
+  match tailscale_serve_status_proxy_targets(
     status_json: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:8080\"}}}}}",
     mount: ServeRootMount,
-  ) == ["http://127.0.0.1:8080"]
+  ) {
+    ServeStatusProxies { targets: t } => t == ["http://127.0.0.1:8080"]
+    ServeStatusUnreadable => false
+  }
 }
 
-test fn tailscale_serve_status_malformed_json_has_no_plausible_proxy() -> Bool {
-  count(tailscale_serve_status_proxy_targets(status_json: "not-json", mount: ServeRootMount)) == 0
+// THIS WITNESS PREVIOUSLY ASSERTED THE DEFECT. It read
+//   count(tailscale_serve_status_proxy_targets(status_json: "not-json", ...)) == 0
+// which is satisfied exactly by the swallow the projection has now stopped doing: an unreadable
+// status answered the empty list, and the witness certified that answer as the contract. A green
+// test encoding a degradation is worse than an absent one, because it is cited as coverage and it
+// makes the repair look like the regression.
+//
+// It now asserts the distinction instead, and its name changed with its meaning: not "no plausible
+// proxy" -- which was true of the old behaviour and of the new one alike -- but that an unreadable
+// document is REPORTED as unreadable rather than projected as a configuration fact.
+test fn tailscale_serve_status_malformed_json_is_reported_unreadable() -> Bool {
+  match tailscale_serve_status_proxy_targets(status_json: "not-json", mount: ServeRootMount) {
+    ServeStatusUnreadable => true
+    ServeStatusProxies { targets: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ARM ABOVE, and the reason the pair is needed: a document that PARSES
+// but carries no Web member must still project an empty proxy list, not a refusal. Without this,
+// answering ServeStatusUnreadable for every input would satisfy the malformed witness while
+// destroying the projection's actual job.
+test fn tailscale_serve_status_parsed_document_without_web_is_empty_not_unreadable() -> Bool {
+  match tailscale_serve_status_proxy_targets(status_json: "{\"TCP\":{}}", mount: ServeRootMount) {
+    ServeStatusProxies { targets: t } => count(t) == 0
+    ServeStatusUnreadable => false
+  }
 }

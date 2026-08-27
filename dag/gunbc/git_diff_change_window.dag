@@ -22,7 +22,10 @@ import extdeps.languages.json.emit {
   json_object
 }
 import extdeps.languages.json.parse {
-  parse_json,
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
   json_object_unique_member,
   JsonMemberFound,
   JsonMemberAbsent,
@@ -223,10 +226,10 @@ fn git_diff_window_json(window: GitExactDiffWindow) -> String {
 }
 
 fn git_diff_window_from_json(text: String) -> GitDiffWindowObservation {
-  match parse_json(s: text) {
-    Absent =>
-      GitDiffWindowMalformed { detail: "git diff window payload is not valid JSON" }
-    Present { value: doc } =>
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: gap } =>
+      GitDiffWindowMalformed { detail: concat("the git diff window payload is ", json_document_gap_text(gap: gap)) }
+    JsonDocumentParsed { value: doc } =>
       match git_diff_window_required_string(doc: doc, key: "schema") {
         Absent =>
           GitDiffWindowMalformed { detail: "git diff window payload missing schema member" }

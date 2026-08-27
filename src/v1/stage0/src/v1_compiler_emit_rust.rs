@@ -165,7 +165,8 @@ pub use crate::v1_compiler_trait_derive_emit::{
     v1_emit_struct_from_capability_table, v1_emit_type_params_with_bounds,
     v1_emit_type_params_with_clone_bounds, v1_generic_params_needing_clone_bound,
     v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_field_type_exprs,
-    v1_map_key_required_type_names, v1_trait_derive_refuse, v1_with_map_key_requirement,
+    v1_item_wf_propagated_clone_bounded_param_names, v1_map_key_required_type_names,
+    v1_trait_derive_refuse, v1_with_map_key_requirement,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -174,7 +175,8 @@ use crate::v1_std_core::CallSemantics::{
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousAnonymousRecordLiteral, InternalError, UnlistedImportUse,
+    AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded,
+    InternalError, ParameterDefaultFormNotAdmitted, UnlistedImportUse,
 };
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -2572,13 +2574,23 @@ pub fn render_rust_alias_rhs_type(
                         Some(carrier) => carrier.clone(),
                         None => {
                             let leaf = qualified_last_segment(name.clone());
-                            let rendered =
-                                rust_render_type_leaf_name(leaf.clone(), variant_to_enum.clone());
-                            render_rust_shared_type_if_needed(
+                            match rust_scalar_checkpoint_reference_base(
                                 leaf.clone(),
-                                rendered.clone(),
-                                shared_types.clone(),
-                            )
+                                type_reference_decl_file(n.clone()),
+                            ) {
+                                Some(scalar) => scalar.clone(),
+                                None => {
+                                    let rendered = rust_render_type_leaf_name(
+                                        leaf.clone(),
+                                        variant_to_enum.clone(),
+                                    );
+                                    render_rust_shared_type_if_needed(
+                                        leaf.clone(),
+                                        rendered.clone(),
+                                        shared_types.clone(),
+                                    )
+                                }
+                            }
                         }
                     },
                 }
@@ -13093,6 +13105,47 @@ pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bo
     }
 }
 
+pub fn emit_item_header_clone_param_names(
+    item: Rc<Node>,
+    item_name: String,
+    has_fn_fields: bool,
+    generic_param_names: Rc<Vec<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    if has_fn_fields.clone() {
+        v1_item_wf_propagated_clone_bounded_param_names(
+            item_name.clone(),
+            item.clone(),
+            generic_param_names.clone(),
+            emit_info.clone_bounded_type_params.clone(),
+            source_indices.clone(),
+        )
+    } else {
+        v1_item_clone_bounded_param_names(
+            item_name.clone(),
+            generic_param_names.clone(),
+            emit_info.clone_bounded_type_params.clone(),
+        )
+    }
+}
+
+pub fn emit_type_params_from_clone_param_names(
+    params: Rc<Vec<Rc<Node>>>,
+    clone_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((clone_param_names.clone().len() as i64) > 0) {
+        v1_emit_type_params_with_clone_bounds(
+            params.clone(),
+            clone_param_names.clone(),
+            source_indices.clone(),
+        )
+    } else {
+        emit_type_params(params.clone(), source_indices.clone())
+    }
+}
+
 pub fn emit_item_type_params_with_clone_bounds(
     item_name: String,
     params: Rc<Vec<Rc<Node>>>,
@@ -13179,6 +13232,21 @@ pub fn emit_type_def_from_connective(
         if is_product.clone() {
             {
                 let has_fn_fields = type_has_fn_fields(item_text.clone(), emit_info.clone());
+                let header_clone_param_names = emit_item_header_clone_param_names(
+                    item.clone(),
+                    item_text.clone(),
+                    has_fn_fields.clone(),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for p in item.params.clone().iter().cloned() {
+                            __result
+                                .push(generic_param_name_at(p.clone(), env.source_indices.clone()));
+                        }
+                        __result
+                    }),
+                    emit_info.clone(),
+                    env.source_indices.clone(),
+                );
                 let sealed = item_seals_construction(item.clone());
                 let deserialize_forbidden = item_forbids_deserialize(
                     item.clone(),
@@ -13204,33 +13272,15 @@ pub fn emit_type_def_from_connective(
                         __result
                     }),
                     env.source_indices.clone(),
-                    v1_carrier_param_needs_clone_bound(
-                        item_text.clone(),
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for p in item.params.clone().iter().cloned() {
-                                __result.push(generic_param_name_at(
-                                    p.clone(),
-                                    env.source_indices.clone(),
-                                ));
-                            }
-                            __result
-                        }),
-                        emit_info.clone(),
-                    ),
+                    ((header_clone_param_names.clone().len() as i64) > 0),
                     deserialize_forbidden.clone(),
                     emit_info.type_decl_items.clone(),
                 );
-                let type_params = if !has_fn_fields.clone() {
-                    emit_item_type_params_with_clone_bounds(
-                        item_text.clone(),
-                        item.params.clone(),
-                        emit_info.clone(),
-                        env.source_indices.clone(),
-                    )
-                } else {
-                    emit_type_params(item.params.clone(), env.source_indices.clone())
-                };
+                let type_params = emit_type_params_from_clone_param_names(
+                    item.params.clone(),
+                    header_clone_param_names.clone(),
+                    env.source_indices.clone(),
+                );
                 let generic_param_names = Rc::new({
                     let mut __result = Vec::new();
                     for p in item.params.clone().iter().cloned() {
@@ -20169,38 +20219,20 @@ pub fn emit_rust_empty_set_expr(
     }
 }
 
-pub fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> bool {
-    (v1_rt::map_contains_key(&rt_wraps_result(), function_name.clone())
-        || v1_rt::map_contains_key(&rust_method_wraps_result(), function_name.clone()))
+pub fn rust_runtime_bridge_result_wraps_in_rc(function_name: String) -> bool {
+    v1_rt::map_contains_key(&rt_wraps_result(), function_name.clone())
 }
 
-pub fn rust_runtime_bridge_collection_result_needs_rc_elements(
-    function_name: String,
-    result_type: Option<Rc<InferredNode>>,
+pub fn rust_method_template_result_wraps_in_rc(method_name: String) -> bool {
+    v1_rt::map_contains_key(&rust_method_wraps_result(), method_name.clone())
+}
+
+pub fn rust_plain_call_emits_as_runtime_bridge(
+    func: String,
+    callee_is_function_value: bool,
 ) -> bool {
-    false
-}
-
-pub fn rust_wrap_runtime_collection_result(
-    call_str: String,
-    function_name: String,
-    result_type: Option<Rc<InferredNode>>,
-) -> String {
-    if rust_runtime_bridge_wraps_collection_result_in_rc(function_name.clone()) {
-        if rust_runtime_bridge_collection_result_needs_rc_elements(
-            function_name.clone(),
-            result_type.clone(),
-        ) {
-            v1_rt::concat(
-                v1_rt::concat("Rc::new((".to_string(), call_str.clone()),
-                ").into_iter().map(Rc::new).collect::<Vec<_>>())".to_string(),
-            )
-        } else {
-            rust_shared_wrap_ctor(call_str.clone())
-        }
-    } else {
-        call_str.clone()
-    }
+    ((callee_is_function_value.clone() == false)
+        && v1_rt::map_contains_key(&rt_functions(), func.clone()))
 }
 
 pub fn emit_rust_expr_var(
@@ -21337,8 +21369,8 @@ pub fn emit_typed_call_expr(
                 )
             }
         };
-        if ((callee_is_function_value.clone() == false)
-            && rust_runtime_bridge_wraps_collection_result_in_rc(func.clone()))
+        if (rust_plain_call_emits_as_runtime_bridge(func.clone(), callee_is_function_value.clone())
+            && rust_runtime_bridge_result_wraps_in_rc(func.clone()))
         {
             rust_shared_wrap_ctor(call_str.clone())
         } else {
@@ -21748,8 +21780,8 @@ pub fn emit_typed_call(
             shared_types.clone(),
             emit_info.clone(),
         );
-        let is_rt = ((callee_is_function_value.clone() == false)
-            && v1_rt::map_contains_key(&rt_functions(), func.clone()));
+        let is_rt =
+            rust_plain_call_emits_as_runtime_bridge(func.clone(), callee_is_function_value.clone());
         let is_rt_ref_map = ((callee_is_function_value.clone() == false)
             && v1_rt::map_contains_key(&rt_ref_map_functions(), func.clone()));
         let arg_strs = Rc::new({
@@ -24022,7 +24054,7 @@ pub fn emit_rust_generic_method_call(
                         ),
                         ")".to_string(),
                     );
-                    if rust_runtime_bridge_wraps_collection_result_in_rc(function_name.clone()) {
+                    if rust_runtime_bridge_result_wraps_in_rc(function_name.clone()) {
                         rust_shared_wrap_ctor(lowered.clone())
                     } else {
                         lowered.clone()
@@ -24392,7 +24424,7 @@ pub fn emit_typed_method_call(
                                                                         tmpl.clone(),
                                                                         bindings.clone(),
                                                                     );
-                                                                    if rust_runtime_bridge_wraps_collection_result_in_rc(method_name.clone()) {
+                                                                    if rust_method_template_result_wraps_in_rc(method_name.clone()) {
                                                         rust_shared_wrap_ctor(raw.clone())
                                                     } else {
                                                         raw.clone()
@@ -24467,8 +24499,7 @@ pub fn emit_typed_method_call(
                                     first_arg_str.clone(),
                                 );
                                 let raw = apply_named_template(tmpl.clone(), bindings.clone());
-                                if rust_runtime_bridge_wraps_collection_result_in_rc(method.clone())
-                                {
+                                if rust_method_template_result_wraps_in_rc(method.clone()) {
                                     rust_shared_wrap_ctor(raw.clone())
                                 } else {
                                     raw.clone()
@@ -33711,17 +33742,19 @@ if resolved.clone() {
         } else {
             match v1_rt::map_get(&wf.unresolvable_default_data_references.clone(), param_name.clone()) {
     Some(unresolvable) => match (*unresolvable.cause.clone()).clone() {
-    DataReferenceUnresolvableCause::DataReferenceAmbiguous { modules: mods, .. } => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("workflow CLI default for parameter `".to_string(), param_name.clone()), "` names `".to_string()), unresolvable.name.clone()), "`, which more than one visible data declaration answers to (".to_string()), mods.clone().join(&", ".to_string())), "); qualify the reference or narrow the import".to_string()),
+    DataReferenceUnresolvableCause::DataReferenceAmbiguous { modules: mods, .. } => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::AmbiguousReference {
+    name: unresolvable.name.clone(),
+    candidates: mods.clone(),
     span: param.span.clone(),
 }), wf.module_name.clone())]),
-    DataReferenceUnresolvableCause::DataReferenceVisibilityBudgetExhausted => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("workflow CLI default for parameter `".to_string(), param_name.clone()), "` names `".to_string()), unresolvable.name.clone()), "`, whose visible declarations could not be enumerated: the import re-export walk exceeded its depth bound, so this is a compiler limit and not an authoring error".to_string()),
+    DataReferenceUnresolvableCause::DataReferenceVisibilityBudgetExhausted => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded {
+    name: unresolvable.name.clone(),
     span: param.span.clone(),
 }), wf.module_name.clone())]),
 },
-    None => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
-    message: v1_rt::concat(v1_rt::concat("workflow CLI default for parameter `".to_string(), param_name.clone()), "` must be a string, int, float, bool literal, or data reference".to_string()),
+    None => Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ParameterDefaultFormNotAdmitted {
+    parameter: param_name.clone(),
+    admitted: Rc::new(vec!["string literal".to_string(), "int literal".to_string(), "float literal".to_string(), "bool literal".to_string(), "data reference".to_string()]),
     span: param.span.clone(),
 }), wf.module_name.clone())]),
 }
@@ -33956,10 +33989,16 @@ pub fn emit_main_rs(
         } else {
             "".to_string()
         };
+        let cli_version_attr = if has_pipeline.clone() {
+            ", version = env!(\"GUNBC_BUILD_IDENTITY\")".to_string()
+        } else {
+            "".to_string()
+        };
         let cli_struct = emit_cli_struct(
             workflow_funcs.clone(),
             binary_name.clone(),
             cli_about.clone(),
+            cli_version_attr.clone(),
         );
         let subcommand_enum = emit_subcommand_enum(workflow_funcs.clone(), has_pipeline.clone());
         let pipeline_fns = if has_pipeline.clone() {
@@ -34075,6 +34114,7 @@ pub fn emit_cli_struct(
     workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     binary_name: String,
     about: String,
+    version_attr: String,
 ) -> String {
     {
         let about_attr = if (about.clone() != "".to_string()) {
@@ -34097,14 +34137,17 @@ pub fn emit_cli_struct(
                                             v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
-                                                        "#[derive(Parser)]\n".to_string(),
-                                                        "#[command(name = \"".to_string(),
+                                                        v1_rt::concat(
+                                                            "#[derive(Parser)]\n".to_string(),
+                                                            "#[command(name = \"".to_string(),
+                                                        ),
+                                                        binary_name.clone(),
                                                     ),
-                                                    binary_name.clone(),
+                                                    "\"".to_string(),
                                                 ),
-                                                "\"".to_string(),
+                                                about_attr.clone(),
                                             ),
-                                            about_attr.clone(),
+                                            version_attr.clone(),
                                         ),
                                         ")]\n".to_string(),
                                     ),

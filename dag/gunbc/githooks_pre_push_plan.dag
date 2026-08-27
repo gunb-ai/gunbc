@@ -24,7 +24,6 @@ import extdeps.git.hooks { pre_push_zero_sha }
 type PrePushGateKind
   = DocWitnessRun { entry: String, function: String }
   | CargoFmtCheck
-  | WitnessCorpusRun { fail_recipe: String }
 
 type PrePushGateBinding {
   kind: PrePushGateKind
@@ -57,12 +56,21 @@ fn pre_push_fmt_spawn_refusal_recipe(cause: String) -> String {
   )
 }
 
-data pre_push_witness_fail_recipe: String = "affected tests FAILED — fix them and re-push, or 'git push --no-verify' to override (CI still gates)."
-
-data pre_push_witness_corpus_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
-
-data pre_push_witness_corpus_plan_fn: String = "gunbc_ci_witness_corpus_only_batches"
-
+// THE WITNESS-CORPUS PRE-PUSH GATE IS DELETED, 2026-08-26, AND ITS TWO HALVES DIED OF
+// DIFFERENT CAUSES. Its EMISSION died on 2026-07-25: pre_push_fmt_only_note records the
+// operator ruling that made the hook fmt-only, and the emitted .githooks/pre-push has
+// carried no corpus step since. Its INVOCATION died on 2026-08-25: the transport built
+// `claim_executor --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function
+// gunbc_ci_witness_corpus_only_batches`, an entry the 2026-08-15 floor cut deleted and
+// flags claim_executor no longer parses, so the one path that still reached it would have
+// spent minutes cargo-building the executor in order to exit 2.
+//
+// It is deleted rather than repointed at --required-ci for the reason the fmt-only ruling
+// already gives and this cut does not relitigate: a hook is opt-in per clone, bypassable
+// with --no-verify, and absent in container worktrees, so it enforces nothing while
+// costing a push its wall time. The `pre_push_witness_trigger_globs` fan-out over
+// witness_layer_roots went with it, which is why an ordinary dag/ or src/v2/ push no
+// longer arms any gate but fmt.
 fn pre_push_source_roots() -> List<String> {
   witness_layer_roots
 }
@@ -78,19 +86,8 @@ fn pre_push_path_hits_binding(path: String, binding: PrePushGateBinding) -> Bool
   }
 }
 
-fn pre_push_witness_trigger_globs() -> List<String> {
-  map(witness_layer_roots, r => concat(r, "/"))
-}
-
-fn pre_push_witness_binding() -> PrePushGateBinding {
-  PrePushGateBinding {
-    kind: WitnessCorpusRun { fail_recipe: pre_push_witness_fail_recipe },
-    trigger_globs: pre_push_witness_trigger_globs()
-  }
-}
-
 fn pre_push_all_bindings() -> List<PrePushGateBinding> {
-  concat(pre_push_bindings(), [pre_push_witness_binding()])
+  pre_push_bindings()
 }
 
 fn pre_push_bindings() -> List<PrePushGateBinding> {
@@ -136,10 +133,3 @@ fn pre_push_zero_sha_authority() -> String {
   pre_push_zero_sha
 }
 
-fn pre_push_witness_corpus_plan_entry_authority() -> String {
-  pre_push_witness_corpus_plan_entry
-}
-
-fn pre_push_witness_corpus_plan_fn_authority() -> String {
-  pre_push_witness_corpus_plan_fn
-}

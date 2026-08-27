@@ -10,7 +10,7 @@ fn parse_memo_counter_stats_for_grammar(
   grammar: ParseGrammar
 ) -> ParseMemoStats {
   let lm = dag_language_model()
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_table_memo_counter_witness_test_grammar_contract)
   match tokenize(text: source_text, file: ^probe, rules: lm.lex) {
     Rejected { diagnostics: _ } =>
       ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }

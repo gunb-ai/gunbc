@@ -1,27 +1,70 @@
 module tools.emit_subject_clean_ratchet
 
-import std.types { String }
+import std.types { String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.dag_compile_clean_shard_roster {
-  CompileCleanShardEntryPathsBuilt,
-  CompileCleanShardEntryPathsDuplicatePath,
-  compile_clean_shard_entry_paths
+  CompileCleanShardEntryDiscovered,
+  CompileCleanShardEntryDiscoveryDuplicatePath,
+  compile_clean_shard_entry_discovery
 }
-import tools.emission_entry_instrument { EmissionMeasurement, measure_entry_emission }
+import tools.emission_entry_instrument {
+  EmissionMeasurement,
+  EmissionMeasurementSubject,
+  EmissionSubjectCarried,
+  SubjectCarried,
+  SubjectNotCarried,
+  emission_measurement_subject,
+  measure_entry_emission
+}
+import extdeps.github.actions_environment {
+  ActionsRunCoordinate,
+  ActionsRunCoordinateObserved,
+  ActionsRunCoordinateMissing,
+  ActionsRunCoordinateEmpty,
+  github_run_id_variable_name,
+  github_run_attempt_variable_name,
+  github_runner_name_variable_name
+}
+import extdeps.shell
 import gunbc.emit_subject_clean_frontier {
+  UnevaluatedSubject,
+  UnevaluatedReason,
+  RatchetUniverse,
+  DualUniverse,
+  IndexOnlyUniverse,
   EmitSubjectCleanRatchet,
   EmitRatchetStanding,
   EmitRatchetHeld,
   EmitRatchetRefused,
+  EmitRatchetEnrolment,
+  EnrolledAsGate,
+  EmitRatchetEnrolmentAdmission,
+  EnrolmentPermitted,
+  EnrolmentRefusedNoUniverse,
+  EnrolmentRefusedDenominator,
+  EnrolmentRefusedUnevaluated,
+  EmitRatchetObservation,
+  ObservationTaken,
+  ObservationNotTaken,
   RosterDiscoveryPolicy,
-  RosterDenominators,
-  DeclarationIndexOnly,
   DeclarationIndexUnderRoots,
+  roster_discovery_policy_roots,
+  SubjectSelection,
+  SelectionWholeRoster,
+  SelectionSubset,
+  subject_selection_entries,
   emit_subject_clean_admissions,
   emit_ratchet_report_text,
   emit_ratchet_standing,
+  emit_ratchet_observation,
+  emit_ratchet_observation_text,
+  ObservationBinding,
+  BindingAbsent,
+  observation_binding,
+  observation_binding_text,
+  emit_ratchet_enrolment_admission,
+  emit_ratchet_enrolment_admission_text,
   fold_emit_subject_clean_ratchet
 }
 
@@ -39,31 +82,32 @@ import gunbc.emit_subject_clean_frontier {
 // standing REFUSES. That is not a limitation worked around, it is the contract: the ratchet holds
 // only over a roster measured whole, and a subset run reports exactly which subjects were missing.
 
-data emit_subject_clean_roster_policy: RosterDiscoveryPolicy = DeclarationIndexUnderRoots {
-  roots: witness_layer_roots
-}
 
-// ONE DENOMINATOR TODAY, AND THE CARRIER REFUSES TO BE GATED ON IT. A module that stops parsing is
-// not indexed, so it is not a subject, so the fold is never asked about it -- it vanishes from the
-// denominator rather than blocking, and a shrinking denominator makes everything left look better.
-// The second denominator is a module inventory, and until it lands
-// gunbc.emit_subject_clean_frontier emit_ratchet_gating_admission refuses any enrolment naming
-// exactly what is missing.
-data emit_subject_clean_roster_denominators: RosterDenominators = DeclarationIndexOnly
-
-// THE ROSTER IS DISCOVERED, NEVER AUTHORED. compile_clean_shard_entry_paths reads the parsed
+// THE ROSTER IS DISCOVERED, NEVER AUTHORED. compile_clean_shard_entry_discovery reads the parsed
 // declaration index under the declared source roots, so the universe is not derived from imports,
 // from successful resolution, or from anything the ratchet is measuring -- a module no import edge
 // reaches is still a subject. A duplicate path is a refusal there and stays a refusal here rather
 // than being deduplicated into a smaller universe.
+//
+// AND THE POLICY IS DERIVED FROM THAT READ RATHER THAN ASSERTED BESIDE IT. This module used to
+// declare `DeclarationIndexUnderRoots { roots: witness_layer_roots }` as a constant and hand it to
+// the fold as the description of a scan it had not watched: two representations of one fact, held
+// together only by a witness comparing two declarations, which stays green when the discovery
+// starts scanning somewhere else. The discoverer now hands its roots back with its paths, so the
+// policy in the universe is the roots that were walked — there is no way to hold one without the
+// other, which is the construction the constant conceded.
 type EmitRatchetRosterRead
-  = EmitRatchetRosterEntries { entries: List<String> }
+  = EmitRatchetRosterEntries { policy: RosterDiscoveryPolicy, entries: List<String> }
   | EmitRatchetRosterUnreadable { cause: String }
 
 fn emit_ratchet_roster() -> EmitRatchetRosterRead {
-  match compile_clean_shard_entry_paths() {
-    CompileCleanShardEntryPathsBuilt { paths: ps } => EmitRatchetRosterEntries { entries: ps }
-    CompileCleanShardEntryPathsDuplicatePath { path: p, first: f, duplicate: d } =>
+  match compile_clean_shard_entry_discovery() {
+    CompileCleanShardEntryDiscovered { roots: rs, paths: ps } =>
+      EmitRatchetRosterEntries {
+        policy: DeclarationIndexUnderRoots { roots: rs },
+        entries: ps
+      }
+    CompileCleanShardEntryDiscoveryDuplicatePath { roots: _, path: p, first: f, duplicate: d } =>
       EmitRatchetRosterUnreadable {
         cause: concat(
           concat("the discovered roster carries ", p),
@@ -76,15 +120,70 @@ fn emit_ratchet_roster() -> EmitRatchetRosterRead {
   }
 }
 
-fn selected_entries(entries: String, roster: List<String>) -> List<String> {
-  if entries == "" {
-    roster
+// ---------------------------------------------------------------------------------------------
+// THE SECOND DENOMINATOR: the file inventory.
+//
+// WHY IT IS A FIND AND NOT A SECOND INDEX. The declaration index answers "which modules parsed";
+// this answers "which .dag files EXIST". A file that the index cannot classify is invisible to the
+// first question and plainly visible to the second, and no amount of care inside the index closes
+// that -- `module_path_index` documents its own unclassified arm as inseparable, and it is
+// inseparable FROM THE INDEX. Presence on disk does not depend on whether the header parsed.
+//
+// SORTED, so two runs over an unchanged tree produce the same roster and therefore the same digest.
+// Traversal order is not a fact about the corpus and must not reach the identity.
+type ModuleInventoryRead
+  = ModuleInventoryFiles { paths: List<String> }
+  | ModuleInventoryUnreadable { root: String, cause: String }
+
+fn inventory_lines(stdout: String) -> List<String> {
+  fold(
+    split(s: stdout, delimiter: "\n"),
+    init: [],
+    f: (acc, line) => if line == "" { acc } else { concat(acc, [line]) }
+  )
+}
+
+// A ROOT THAT CANNOT BE LISTED REFUSES, and does not contribute an empty list. An unreadable root
+// rendered as "no files here" is the empty-observation narrow at the point where the denominator is
+// built -- the failure would shrink the universe, which is the precise defect this denominator was
+// added to close, committed by the thing closing it.
+fn module_inventory_for_root(root: String) -> ModuleInventoryRead {
+  let found = shell.Find.FilesByNameSorted(root: root, name_glob: "*.dag")
+  if !found.success {
+    ModuleInventoryUnreadable { root: root, cause: found.stderr }
   } else {
-    fold(
-      split(s: entries, delimiter: ","),
-      init: [],
-      f: (acc, e) => if e == "" { acc } else { concat(acc, [e]) }
-    )
+    ModuleInventoryFiles { paths: inventory_lines(stdout: found.stdout) }
+  }
+}
+
+// THE ROOTS ARE THE POLICY'S, NEVER A CONSTANT OF THIS MODULE'S OWN. The caller passes what the
+// discoverer handed back, so the two denominators describe one route by construction: a universe
+// carries exactly one policy, and the inventory is listed over the roots that policy names.
+fn module_inventory(roots: List<String>) -> ModuleInventoryRead {
+  fold(
+    roots,
+    init: ModuleInventoryFiles { paths: [] },
+    f: (acc, root) =>
+      match acc {
+        ModuleInventoryUnreadable { root: r, cause: c } => ModuleInventoryUnreadable { root: r, cause: c }
+        ModuleInventoryFiles { paths: so_far } =>
+          match module_inventory_for_root(root: root) {
+            ModuleInventoryUnreadable { root: r, cause: c } => ModuleInventoryUnreadable { root: r, cause: c }
+            ModuleInventoryFiles { paths: more } => ModuleInventoryFiles { paths: concat(so_far, more) }
+          }
+      }
+  )
+}
+
+// An empty `entries` is WHOLE-ROSTER and not an empty subset. That is the one place the two could
+// have been conflated, and the coproduct is what keeps them apart all the way to the report.
+fn subject_selection(entries: String, roster: List<String>) -> SubjectSelection {
+  if entries == "" {
+    SelectionWholeRoster
+  } else {
+    SelectionSubset {
+      entries: filter(split(s: entries, delimiter: ","), e => e != "")
+    }
   }
 }
 
@@ -92,56 +191,261 @@ fn measure_selected(selection: List<String>) -> List<EmissionMeasurement> {
   map(selection, entry => measure_entry_emission(entry: entry))
 }
 
-fn run_emit_subject_clean_ratchet(entries: String, roster: List<String>) -> EmitSubjectCleanRatchet {
-  fold_emit_subject_clean_ratchet(
-    policy: emit_subject_clean_roster_policy,
-    denominators: emit_subject_clean_roster_denominators,
-    roster: roster,
-    admissions: emit_subject_clean_admissions,
-    measurements: measure_selected(selection: selected_entries(entries: entries, roster: roster))
+// ONE SELECTION, READ TWICE. The list the instrument is invoked over and the selection the fold
+// classifies against are derived from the same value rather than computed twice from `entries` --
+// two derivations could disagree, and a disagreement here would render as an UNMEASURED subject
+// the run had in fact measured, which is the precise confusion the selection carrier removes.
+// THE MEASUREMENTS ARE RETAINED, not discarded at the fold. The fold reduces each measurement to
+// a reading of entry and outcome, which is all a verdict needs -- but the provenance of the run
+// lives on the measurement's SUBJECT, and reducing first threw it away. The subjects and the
+// verdicts now come from ONE measurement pass, so the binding cannot describe a different run
+// from the one the verdicts came from.
+type RatchetRun {
+  ratchet: EmitSubjectCleanRatchet
+  subjects: List<EmissionMeasurementSubject>
+  selection: SubjectSelection
+}
+
+fn measured_subjects(measurements: List<EmissionMeasurement>) -> List<EmissionMeasurementSubject> {
+  fold(
+    measurements,
+    init: [],
+    f: (acc, m) =>
+      match emission_measurement_subject(m: m) {
+        SubjectNotCarried { entry: _ } => acc
+        SubjectCarried { subject: sub } => concat(acc, [sub])
+      }
+  )
+}
+
+fn run_emit_subject_clean_ratchet(
+  entries: String,
+  policy: RosterDiscoveryPolicy,
+  roster: List<String>,
+  inventory: List<String>
+) -> RatchetRun {
+  let selection = subject_selection(entries: entries, roster: roster)
+  let measurements = measure_selected(
+    selection: subject_selection_entries(selection: selection, roster: roster)
+  )
+  RatchetRun {
+    ratchet: fold_emit_subject_clean_ratchet(
+      universe: DualUniverse {
+        policy: policy,
+        entries: roster,
+        inventory: inventory
+      },
+      admissions: emit_subject_clean_admissions,
+      selection: selection,
+      measurements: measurements
+    ),
+    subjects: measured_subjects(measurements: measurements),
+    selection: selection
+  }
+}
+
+// The run coordinates are read from the environment the RUNNER supplies, never derived from the
+// repository -- a coordinate derived from the thing under test cannot fail and would be reflection
+// evidence standing where a control belongs. Missing and present-but-empty stay separate arms.
+fn run_coordinate(variable: String) -> ActionsRunCoordinate {
+  let reading = shell.Env.Get(name: variable as NonEmptyStr)
+  match reading.value {
+    Absent => ActionsRunCoordinateMissing { variable: variable }
+    Present { value: v } =>
+      if v == "" {
+        ActionsRunCoordinateEmpty { variable: variable }
+      } else {
+        ActionsRunCoordinateObserved { value: v }
+      }
+  }
+}
+
+fn current_observation_binding(subjects: List<EmissionMeasurementSubject>) -> ObservationBinding {
+  observation_binding(
+    subjects: subjects,
+    run_identity: run_coordinate(variable: github_run_id_variable_name),
+    run_attempt: run_coordinate(variable: github_run_attempt_variable_name),
+    runner_binding: run_coordinate(variable: github_runner_name_variable_name)
   )
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE CLI SURFACE.
+// THE ATTEMPT, WHICH IS WHERE THE HOST HALF'S EXECUTION PROVENANCE LIVES.
+//
+// Two things can go wrong before a fold exists at all: the roster cannot be read, or a source root
+// cannot be listed. Neither is a standing about the corpus and neither may be folded into one -- a
+// run that never reached the fold and a run that folded and found nothing are the two states DESIGN
+// says must not render alike, and here they are separated at the point where the difference is
+// still knowable. Below this line every consumer holds a fold or a typed cause, never a silence.
+// ---------------------------------------------------------------------------------------------
+type RatchetRunAttempt
+  = RatchetRunFolded { run: RatchetRun }
+  | RatchetRunUnattempted { cause: String }
+
+fn attempt_emit_subject_clean_ratchet(entries: String) -> RatchetRunAttempt {
+  match emit_ratchet_roster() {
+    EmitRatchetRosterUnreadable { cause: c } =>
+      RatchetRunUnattempted { cause: concat("the entry roster could not be read — ", c) }
+    EmitRatchetRosterEntries { policy: policy, entries: roster } =>
+      match module_inventory(roots: roster_discovery_policy_roots(policy: policy)) {
+        ModuleInventoryUnreadable { root: rt, cause: c } =>
+          RatchetRunUnattempted {
+            cause: concat(
+              concat("the file inventory could not list ", rt),
+              concat(
+                " — refusing rather than folding an unreadable root into an empty one: ",
+                c
+              )
+            )
+          }
+        ModuleInventoryFiles { paths: inventory } =>
+          RatchetRunFolded {
+            run: run_emit_subject_clean_ratchet(
+              entries: entries,
+              policy: policy,
+              roster: roster,
+              inventory: inventory
+            )
+          }
+      }
+  }
+}
+
+// THE REPORT NAMES ITS OWN RUN. Writing the rows without the binding would produce an artifact
+// that cannot say which revision, compiler or workflow attempt produced it -- citable only by
+// whoever still remembers, which is not citable at all.
+fn write_ratchet_report(report: String, run: RatchetRun) -> Bool {
+  Filesystem.Write(
+    path: report,
+    content: emit_ratchet_report_text(
+      binding: current_observation_binding(subjects: run.subjects),
+      selection: run.selection,
+      r: run.ratchet
+    )
+  ).success
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CLI SURFACE: TWO VERBS, BECAUSE ENROLMENT IS TWO QUESTIONS.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/tools/emit_subject_clean_ratchet.dag --function check \
+//     --entry dag/tools/emit_subject_clean_ratchet.dag --function observe \
 //     --arg entries=dag/std/logic.dag --arg report=/tmp/ratchet.tsv
 //
 // The report is WRITTEN rather than returned for the same reason the instrument's is: `gunbc run`
 // maps a returned value to an exit status and has no value-printing verb.
 //
-// THE EXIT STATUS REPORTS THE RATCHET, and unlike the instrument beneath it that is a statement
-// about the SUBJECT: a refusing standing is a refusing entry, an orphaned admission row, or a run
-// that did not measure its whole roster. An instrument that could not run reaches the fold as
-// RatchetStandingUnestablished and refuses there, so a broken instrument and a dirty corpus are
-// both nonzero -- and the report says which, per subject, on its own row.
-fn check(entries: String, report: String) -> ProcessExit {
+// `observe` REPORTS AND DOES NOT JUDGE THE CORPUS. Its exit status answers one question and it is
+// not the one a reader expects: did the observation happen. A refusing standing -- a regressed
+// entry, a stale admission row, a subject with no verdict -- exits SUCCESS, because the observation
+// succeeded and its content is bad news that belongs in the report a human reads. What exits
+// FAILURE is being unable to observe: the roster unreadable, a source root unlistable, the report
+// unwritable, or a universe of no subjects. That is the split DESIGN's execution-provenance row
+// demands, placed on the one channel a CI step actually reads.
+//
+// `check` IS THE GATE VERB AND IT REFUSES TO BE ONE TODAY. It routes through the enrolment
+// admission first, so a consumer that wires it into a merge decision receives a typed refusal
+// naming what disqualifies the carrier -- a single denominator, or roster subjects with no verdict
+// at all -- rather than a verdict computed over a universe the fold could not evaluate. The
+// refusal is a construction rather than a note precisely because no `Accepted` program can read a
+// note, and the note is what this repository has already watched fail.
+// ---------------------------------------------------------------------------------------------
+fn observe(entries: String, report: String) -> ProcessExit {
   if report == "" {
-    exit_failure(reason: "check: --arg report=<path> is required — the standing is written, not printed")
+    exit_failure(reason: "observe: --arg report=<path> is required — the observation is written, not printed")
   } else {
-    match emit_ratchet_roster() {
-      EmitRatchetRosterUnreadable { cause: c } =>
-        exit_failure(reason: concat("check: the entry roster could not be read — ", c))
-      EmitRatchetRosterEntries { entries: roster } => {
-        let r = run_emit_subject_clean_ratchet(entries: entries, roster: roster)
-        let write = Filesystem.Write(path: report, content: emit_ratchet_report_text(r: r))
-        if !write.success {
-          exit_failure(reason: concat("check: could not write the standing to ", report))
+    match attempt_emit_subject_clean_ratchet(entries: entries) {
+      RatchetRunUnattempted { cause: c } =>
+        exit_failure(reason: concat("observe: the observation was not taken — ", c))
+      RatchetRunFolded { run: run } =>
+        if !write_ratchet_report(report: report, run: run) {
+          exit_failure(
+            reason: concat(
+              "observe: the observation was taken and could not be written to ",
+              report
+            )
+          )
         } else {
-          match emit_ratchet_standing(r: r) {
-            EmitRatchetHeld { subject_count: _ } => ExitSuccess
-            EmitRatchetRefused { failing_rows: rows } =>
+          match emit_ratchet_observation(
+            binding: current_observation_binding(subjects: run.subjects),
+            selection: run.selection,
+            r: run.ratchet
+          ) {
+            ObservationTaken {
+              binding: _,
+              selection: _,
+              roster: _,
+              unevaluated_subjects: _,
+              standing: _
+            } => ExitSuccess
+            ObservationNotTaken { binding: _, admission: a } =>
               exit_failure(
                 reason: concat(
-                  concat("check: the emit-subject clean ratchet refused — ", to_string(count(rows))),
-                  concat(" row(s), named in ", report)
+                  "observe: the observation was not taken — ",
+                  emit_ratchet_enrolment_admission_text(admission: a)
                 )
               )
           }
         }
-      }
     }
+  }
+}
+
+fn check(entries: String, report: String) -> ProcessExit {
+  if report == "" {
+    exit_failure(reason: "check: --arg report=<path> is required — the standing is written, not printed")
+  } else {
+    match attempt_emit_subject_clean_ratchet(entries: entries) {
+      RatchetRunUnattempted { cause: c } =>
+        exit_failure(reason: concat("check: ", c))
+      RatchetRunFolded { run: run } =>
+        if !write_ratchet_report(report: report, run: run) {
+          exit_failure(reason: concat("check: could not write the standing to ", report))
+        } else {
+          match emit_ratchet_enrolment_admission(enrolment: EnrolledAsGate, r: run.ratchet) {
+            EnrolmentPermitted { enrolment: _ } => check_standing(r: run.ratchet, report: report)
+            EnrolmentRefusedNoUniverse { enrolment: e } =>
+              exit_failure(
+                reason: concat(
+                  "check: this carrier may not decide a merge — ",
+                  emit_ratchet_enrolment_admission_text(
+                    admission: EnrolmentRefusedNoUniverse { enrolment: e }
+                  )
+                )
+              )
+            EnrolmentRefusedDenominator { enrolment: e, missing: m } =>
+              exit_failure(
+                reason: concat(
+                  "check: this carrier may not decide a merge — ",
+                  emit_ratchet_enrolment_admission_text(
+                    admission: EnrolmentRefusedDenominator { enrolment: e, missing: m }
+                  )
+                )
+              )
+            EnrolmentRefusedUnevaluated { enrolment: e, subjects: ss } =>
+              exit_failure(
+                reason: concat(
+                  "check: this carrier may not decide a merge — ",
+                  emit_ratchet_enrolment_admission_text(
+                    admission: EnrolmentRefusedUnevaluated { enrolment: e, subjects: ss }
+                  )
+                )
+              )
+          }
+        }
+    }
+  }
+}
+
+fn check_standing(r: EmitSubjectCleanRatchet, report: String) -> ProcessExit {
+  match emit_ratchet_standing(r: r) {
+    EmitRatchetHeld { subject_count: _ } => ExitSuccess
+    EmitRatchetRefused { failing_rows: rows } =>
+      exit_failure(
+        reason: concat(
+          concat("check: the emit-subject clean ratchet refused — ", to_string(count(rows))),
+          concat(" row(s), named in ", report)
+        )
+      )
   }
 }

@@ -35,9 +35,12 @@ import v2.std.diagnostic {
   UserInputBoundary,
   diagnostics_merge,
   diagnostics_singleton,
+  node_locus,
   outcome_accepted,
-  port_locus,
-  rejected_with_pending
+  invariant_port_locus,
+  port_refusal_locus,
+  rejected_with_pending,
+  source_port_locus
 }
 import v2.std.grammar_choice_ambiguity { GrammarChoiceAmbiguityRow }
 import v2.std.node {
@@ -299,23 +302,37 @@ data prepared_grammar_carrier_note: String = "PreparedGrammar is the once-per-gr
 fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^parse_grammar_not_well_formed,
-    at: at,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_not_well_formed),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn parse_g0_tokens_remain_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
-    reason: ^parse_g0_tokens_remain,
-    at: at,
-    correction: Unavailable { reason: UserInputBoundary }
+fn parse_g0_tokens_remain_diagnostic(tokens: List<Token>) -> Diagnostic {
+  match list_at_optional(xs: tokens, index: 0) {
+    Present { value: token } => Diagnostic {
+      reason: ^parse_g0_tokens_remain,
+      at: source_port_locus(
+        port: ^parse_stage_locus_port,
+        file: token.file,
+        extent: ByteRange { start: token.start, end: token.end }
+      ),
+      correction: Unavailable { reason: UserInputBoundary }
+    }
+    Absent => Diagnostic {
+      reason: ^parse_g0_tokens_remain,
+      at: invariant_port_locus(
+        port: ^parse_stage_locus_port,
+        invariant: ^parse_tokens_remain_reported_without_a_first_token
+      ),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
   }
 }
 
 fn parse_grammar_left_recursive_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^parse_grammar_left_recursive,
-    at: at,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_left_recursive),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -323,7 +340,7 @@ fn parse_grammar_left_recursive_diagnostic(at: Locus) -> Diagnostic {
 fn parse_grammar_undefined_nonterminal_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^parse_grammar_undefined_nonterminal,
-    at: at,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_undefined_nonterminal),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -331,7 +348,7 @@ fn parse_grammar_undefined_nonterminal_diagnostic(at: Locus) -> Diagnostic {
 fn parse_grammar_duplicate_production_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^parse_grammar_duplicate_production,
-    at: at,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_duplicate_production),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -339,7 +356,7 @@ fn parse_grammar_duplicate_production_diagnostic(at: Locus) -> Diagnostic {
 fn parse_e1_syntax_error_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^parse_e1_syntax_error,
-    at: at,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_e1_syntax_error),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -372,7 +389,7 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
     Absent =>
       Violates {
         diagnostic: parse_grammar_undefined_nonterminal_diagnostic(
-          at: port_locus(port: ^parse_stage_locus_port)
+          at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_grammar_undefined_nonterminal)
         )
       }
   }
@@ -392,7 +409,7 @@ fn grammar_lookup_production_indexed(table: ParseTable, name: Symbol) -> Witness
   witness_from_optional(
     opt: map_lookup(m: table.productions_by_name, key: name),
     absent: parse_grammar_undefined_nonterminal_diagnostic(
-      at: port_locus(port: ^parse_stage_locus_port)
+      at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_grammar_undefined_nonterminal)
     )
   )
 }
@@ -400,7 +417,7 @@ fn grammar_lookup_production_indexed(table: ParseTable, name: Symbol) -> Witness
 fn parse_table_memo_miss_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^parse_table_memo_miss,
-    at: at,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_table_memo_miss),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -408,7 +425,7 @@ fn parse_table_memo_miss_diagnostic(at: Locus) -> Diagnostic {
 fn parse_table_entries_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<ParseMemoEntry> {
   witness_from_optional(
     opt: table.entries.lookup(key),
-    absent: parse_table_memo_miss_diagnostic(at: port_locus(port: ^parse_stage_locus_port))
+    absent: parse_table_memo_miss_diagnostic(at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_table_memo_miss))
   )
 }
 
@@ -418,7 +435,7 @@ fn parse_table_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<Parse
     false => {
       Violates {
         diagnostic: parse_table_memo_store_refused_diagnostic(
-          at: port_locus(port: ^parse_stage_locus_port)
+          at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_table_memo_store_refused)
         )
       }
     }
@@ -428,7 +445,7 @@ fn parse_table_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<Parse
 fn parse_table_memo_store_refused_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^parse_table_memo_store_refused,
-    at: at,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_table_memo_store_refused),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -1603,7 +1620,7 @@ fn grammar_choice_ambiguity_count(root: GrammarRoot) -> Int {
 fn parse_grammar_choice_ambiguity_diagnostic(at: Locus, count: Int) -> Diagnostic {
   Diagnostic {
     reason: ^parse_grammar_choice_ambiguity,
-    at: at,
+    at: port_refusal_locus(at: at, port: ^parse_stage_locus_port, invariant: ^parse_grammar_choice_ambiguity),
     correction: match count > 0 {
       true => Unavailable { reason: ExternalContractUnknown }
       false => Unavailable { reason: UserInputBoundary }
@@ -2491,7 +2508,7 @@ fn parse_production_prepared(
   production_name: Symbol
 ) -> Outcome<ParseArtifact> {
   let root = validated.root
-  let at = port_locus(port: ^parse_stage_locus_port)
+  let at = node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
   match grammar_lookup_production(root: root, name: production_name) {
     Holds { value: production } =>
       let prov = parse_prov_initial()
@@ -2516,7 +2533,7 @@ fn parse_production_prepared(
               diagnostics: parse_diags_to_diagnostics(diags: diags)
             }
           } else {
-            Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+            Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(tokens: remaining)) }
           }
         ParseExprRejected { diagnostics: diags, table: _ } =>
           Rejected {
@@ -2561,8 +2578,8 @@ fn parse_production_tree(
   }
 }
 fn prepare_grammar(grammar: ParseGrammar) -> Outcome<PreparedGrammar> {
-  let at = port_locus(port: ^parse_stage_locus_port)
   let grammar_node = grammar_to_node(grammar: grammar)
+  let at = node_locus(node: grammar_node)
   if well_formed(n: grammar_node) {
     match grammar {
       VoidGrammar =>
@@ -2602,7 +2619,6 @@ fn parse_module_prepared(
   prepared: PreparedGrammar,
   validation_residue: Diagnostics
 ) -> Outcome<ParseArtifact> {
-  let at = port_locus(port: ^parse_stage_locus_port)
   let ntok = token_stream_remaining_count(stream: tokens)
   match prepared {
     PreparedVoidGrammar =>
@@ -2612,7 +2628,11 @@ fn parse_module_prepared(
           diagnostics: validation_residue
         }
       } else {
-        Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: parse_g0_tokens_remain_diagnostic(tokens: token_stream_remaining(stream: tokens))
+          )
+        }
       }
     PreparedModeled { modeled: modeled } =>
       match parse_production_prepared(

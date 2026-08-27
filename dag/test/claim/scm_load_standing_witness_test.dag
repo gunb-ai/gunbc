@@ -20,15 +20,33 @@ import gunbc.scm.object_store {
 import gunbc.scm.load_standing {
   LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
   LoadDocumentMalformed, LoadIdentityCollision,
-  standing_may_supersede_generation, standing_loaded,
+  standing_loaded,
 }
-import gunbc.scm.json_member { MemberReadSubjectNotObject }
-import gunbc.scm.target_reference { TargetReferenceNotOneArm }
+import std.decl_ref { DeclarationRef }
+import gunbc.scm.supersession {
+  HeadSlot, SupersessionApplied, SupersessionRefused,
+  observe_generation, supersede_head_slot, supersession_applied,
+}
+import gunbc.scm.json_member {
+  MemberReadRefusal, MemberReadSubjectNotObject, MemberReadMissing,
+  MemberReadDuplicated, MemberReadWrongShape,
+}
+import gunbc.scm.target_reference { TargetReferenceNotOneArm, TargetReferenceMemberReadRefused }
 import gunbc.scm.object_table_json {
   ObjectTableUnknownKindTag,
   ObjectTableEdgeTargetUnresolved,
   ObjectTableObjectCollision,
   object_table_load_standing,
+}
+import gunbc.scm.repository_envelope {
+  RepositoryFormatUnrecognized,
+  RepositoryTargetReferenceRefused,
+  RepositoryMemberReadRefused,
+  RepositoryIdentityRuleUnrecognized,
+  RepositoryUnexpectedMember,
+  RepositoryEnvelopeMembers,
+  RepositoryCommitRootReferenceUnresolved,
+  repository_envelope_load_standing,
 }
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal, ClosureDocFormatUnrecognized, ClosureDocObjectTableRefused,
@@ -71,6 +89,47 @@ fn ls_grafted() -> ObjectStore {
   }
 }
 
+
+// THE PERMISSION ARM IS NO LONGER A PREDICATE, so these witnesses drive the real actuator and read
+// its verdict. Everything but the standing is held at its admitting value -- same slot, evidence
+// examined exactly the generation the slot holds, proposal different from it -- so the only variable
+// left is the standing, which is what the three tests below vary. A helper that also varied the
+// generation would report false for the wrong reason (DESIGN: a control that does not flip).
+fn ls_slot() -> HeadSlot {
+  HeadSlot { slot: "head", generation: ls_full().root }
+}
+
+fn ls_other_generation() -> ObjectId {
+  ls_child_identity()
+}
+
+fn ls_child_identity() -> ObjectId {
+  match store_node(store: empty_store(), n: ls_child()) {
+    Stored { store: _, identity: i } => i
+    LocatorCollision { identity: i, existing: _, incoming: _ } => i
+  }
+}
+
+fn ls_permits(standing: LoadStanding) -> Bool {
+  let slot = ls_slot()
+  supersession_applied(
+    outcome: supersede_head_slot(
+      slot: slot,
+      evidence: observe_generation(
+        slot: slot,
+        examined_root: slot.generation,
+        schema_identity: "gunbc-scm-commit-closure-v2",
+        standing: standing,
+        authority: decl_ref(
+          module_path: "test.claim.scm_load_standing_witness",
+          decl_name: "ls_permits",
+        ),
+      ),
+      proposed_generation: ls_other_generation(),
+    )
+  )
+}
+
 fn standing_eq(a: LoadStanding, b: LoadStanding) -> Bool {
   standing_tag(s: a) == standing_tag(s: b)
 }
@@ -103,17 +162,17 @@ test fn an_incomplete_closure_loads_partial_and_a_complete_one_does_not() -> Boo
 // wrong before, and it is the one most likely to be got wrong now by treating "not everything" as
 // "damaged".
 test fn a_partial_load_is_never_supersedable() -> Bool {
-  !standing_may_supersede_generation(standing: LoadPartial)
-    && !standing_may_supersede_generation(standing: LoadComplete)
+  !ls_permits(standing: LoadPartial)
+    && !ls_permits(standing: LoadComplete)
 }
 
 // MALFORMED IS THE SOLE SUPERSEDABLE STANDING, and the three refusals are refused for three
 // different reasons rather than by one rule. If this were the empty set the negative tests above
 // would pass vacuously.
 test fn malformed_is_the_only_standing_that_permits_replacement() -> Bool {
-  standing_may_supersede_generation(standing: LoadDocumentMalformed)
-    && !standing_may_supersede_generation(standing: LoadUnsupportedProtocol)
-    && !standing_may_supersede_generation(standing: LoadIdentityCollision)
+  ls_permits(standing: LoadDocumentMalformed)
+    && !ls_permits(standing: LoadUnsupportedProtocol)
+    && !ls_permits(standing: LoadIdentityCollision)
     && !standing_loaded(standing: LoadDocumentMalformed)
 }
 
@@ -161,6 +220,91 @@ test fn an_honest_collision_is_its_own_standing_and_never_supersedes() -> Bool {
   )
   standing_eq(a: collision, b: LoadIdentityCollision)
     && standing_eq(a: malformed, b: LoadDocumentMalformed)
-    && !standing_may_supersede_generation(standing: collision)
-    && standing_may_supersede_generation(standing: malformed)
+    && !ls_permits(standing: collision)
+    && ls_permits(standing: malformed)
+}
+
+// THE THIRD FORMAT NOW CLASSIFIES ITS OWN REFUSALS, and until this landed it did not. gunbc#9258
+// made the destination proof-bearing; auditing every PRODUCER reaching it found the repository
+// envelope had no classifier at all, so a consumer holding a RepositoryDecodeRefusal had to reach
+// into that format's error enum and assign a standing itself -- one format's vocabulary answering a
+// format-agnostic question, which is the placement defect that closed gunbc#8940. A missing
+// classifier fails silently: nothing refuses, the consumer simply invents the answer.
+//
+// THE IDENTITY-RULE ARM IS THE ONE WORTH PINNING. The envelope versions its node-identity rule
+// separately from its schema, so a document may parse perfectly under a derivation rule this build
+// does not implement. Those bytes are unreadable ONLY HERE, exactly like an unrecognized format tag,
+// and classifying them as damage would let an older reader destroy a newer writer's repository over
+// a rule it simply lacks. The malformed pair beside it is what makes the assertion discriminating: a
+// classifier answering UnsupportedProtocol for everything would satisfy the first two clauses alone.
+//
+// THE LAST TWO CLAUSES CARRY IT THROUGH TO THE DESTINATION rather than stopping at the standing,
+// because the standing is only interesting for what it authorizes: the protocol gap must not
+// supersede a generation and the malformed document must.
+test fn an_unimplemented_identity_rule_is_a_protocol_gap_not_damage() -> Bool {
+  let rule = repository_envelope_load_standing(
+    cause: RepositoryIdentityRuleUnrecognized { found: "blake3-structural-v2" }
+  )
+  let format = repository_envelope_load_standing(
+    cause: RepositoryFormatUnrecognized { found: "gunbc-scm-repository-v9" }
+  )
+  let member = repository_envelope_load_standing(
+    cause: RepositoryUnexpectedMember { context: RepositoryEnvelopeMembers, key: "provenance" }
+  )
+  let unresolved = repository_envelope_load_standing(
+    cause: RepositoryCommitRootReferenceUnresolved { reference: "11" }
+  )
+  standing_eq(a: rule, b: LoadUnsupportedProtocol)
+    && standing_eq(a: format, b: LoadUnsupportedProtocol)
+    && standing_eq(a: member, b: LoadDocumentMalformed)
+    && standing_eq(a: unresolved, b: LoadDocumentMalformed)
+    && !ls_permits(standing: rule)
+    && ls_permits(standing: member)
+}
+
+
+// A MEMBER-READ CAUSE REACHES EACH CLASSIFIER BY TWO ROUTES, AND BOTH MUST ANSWER. Both formats
+// wrapped the identical MemberReadRefusal population twice -- once undecorated on their own
+// member-read arm, once nested inside a target-reference refusal -- and descended only the first,
+// binding the target-reference payload bare. Each of the four causes is driven through BOTH routes
+// at BOTH classifiers here, so the nested position is executed rather than merely exhaustive; the
+// paired protocol-gap clause is what keeps a collapse-everything classifier from satisfying it.
+fn ls_member_cause_is_malformed_everywhere(cause: MemberReadRefusal) -> Bool {
+  standing_eq(
+    a: closure_document_load_standing(cause: ClosureDocMemberReadRefused { cause: cause }),
+    b: LoadDocumentMalformed
+  )
+    && standing_eq(
+      a: closure_document_load_standing(
+        cause: ClosureDocTargetReferenceRefused {
+          cause: TargetReferenceMemberReadRefused { cause: cause }
+        }
+      ),
+      b: LoadDocumentMalformed
+    )
+    && standing_eq(
+      a: repository_envelope_load_standing(cause: RepositoryMemberReadRefused { cause: cause }),
+      b: LoadDocumentMalformed
+    )
+    && standing_eq(
+      a: repository_envelope_load_standing(
+        cause: RepositoryTargetReferenceRefused {
+          cause: TargetReferenceMemberReadRefused { cause: cause }
+        }
+      ),
+      b: LoadDocumentMalformed
+    )
+}
+
+test fn a_member_read_cause_is_malformed_by_either_route_at_both_classifiers() -> Bool {
+  ls_member_cause_is_malformed_everywhere(cause: MemberReadSubjectNotObject)
+    && ls_member_cause_is_malformed_everywhere(cause: MemberReadMissing { key: "at" })
+    && ls_member_cause_is_malformed_everywhere(cause: MemberReadDuplicated { key: "at" })
+    && ls_member_cause_is_malformed_everywhere(cause: MemberReadWrongShape { key: "at" })
+    && !standing_eq(
+      a: repository_envelope_load_standing(
+        cause: RepositoryIdentityRuleUnrecognized { found: "blake3-structural-v2" }
+      ),
+      b: LoadDocumentMalformed
+    )
 }
