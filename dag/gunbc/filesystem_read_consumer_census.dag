@@ -4,8 +4,11 @@ import std.types { List, NonEmptyStr, String }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome_adoption_standing }
 
 // The extdeps standing is the sole authority for what counts as unconverted and
-// how that population is re-derived. This module adds only the per-site policy
-// disposition; it neither defines a second roster nor carries another instrument.
+// how that population is re-derived. Its population is the population enumerated
+// below: if the standing's population moves, this enumeration must move with it;
+// agreement on 91 is dependency, not an independent second measurement. This
+// module adds only the per-site policy disposition; it neither defines a second
+// roster nor carries another instrument.
 data filesystem_read_consumer_census_subject: String = filesystem_read_outcome_adoption_standing
 
 // Disposition census over the unconverted-consumption subject defined by
