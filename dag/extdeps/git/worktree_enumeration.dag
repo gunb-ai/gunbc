@@ -107,6 +107,10 @@ fn git_worktree_first_fault(attributes: GitWorktreeAttributes, reason: String) -
   }
 }
 
+// `locked` and `prunable` appear bare or with a trailing reason, so both spellings are
+// admitted. The reason is git's prose for a human and carries no decidable fact this
+// decoder consumes, so it is deliberately not retained -- keeping it would invent a
+// second authority for a string git may reword at any release.
 fn git_worktree_attribute_step(
   attributes: GitWorktreeAttributes,
   attribute: String,
@@ -169,10 +173,6 @@ fn git_worktree_attribute_step(
             fault: attributes.fault,
           }
         } else {
-          // `locked` and `prunable` appear bare or with a trailing reason, so both spellings are
-          // admitted. The reason is git's prose for a human and carries no decidable fact this
-          // decoder consumes, so it is deliberately not retained -- keeping it would invent a
-          // second authority for a string git may reword at any release.
           if attribute == "locked" || starts_with(s: attribute, prefix: "locked ") {
             GitWorktreeAttributes {
               head: attributes.head,
