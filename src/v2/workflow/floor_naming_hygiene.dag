@@ -140,6 +140,39 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
 // OWES. Without it a `*_test.dag` file that declares none enrolls zero rows and no consumer
 // can tell that apart from a file whose rows were all excluded -- the floor reports nothing
 // missing because nothing asked.
+// AND THE WALL BELOW WAS UNREACHABLE FROM THE REQUIRED FLOOR FOR AS LONG AS IT HAS EXISTED,
+// measured rather than inferred: main run 33092582255 (headSha 107304a579), both lanes green,
+// with FOUR barren `*_test.dag` entries present in the tree at that sha and zero occurrences of
+// `barren` or `sidecar` anywhere in the 693KB run log. 41 claims sat behind a live wall.
+//
+// THE CAUSE IS NOT THIS PREDICATE AND NOT ITS DENOMINATOR. It is that ONE FACT -- what a test
+// decl IS -- has THREE SCANNERS in one binary, and the wall guards the one production retired:
+//
+//   floor_discovery_scan_test_decl_names   this module; `test fn ` / `test data `; the walled
+//                                          path, reached only via invoke_floor_discovery_producer
+//                                          <- discover_floor_witness_roster, whose entire caller
+//                                          set is claim_batch and the discovery-corpus mode
+//   cli_run.rs scan_test_decl_lines        `test fn ` / `test data `
+//   cli_run.rs witness_file_from_source    `test fn ` ONLY -- and THIS is the required floor's
+//                                          roster, via assemble_prepared_subject
+//
+// Each is locally reasonable, which is why nobody saw it. The Rust unit test asserting the
+// wiring (cli_run.rs mod sidecar_placement_hygiene_tests) is not the missing piece either: it
+// still PASSES, because the wiring it asserts is genuinely intact on the producer path. A green
+// run of it says nothing about whether the required floor can reach the wall.
+//
+// WHAT LANDED: the required floor now asks this module's own `floor_test_sidecar_suffix` about
+// the files its preparation found carrying no `test fn`, so the RULE keeps one home and only its
+// consumer moved. The two scanners are NOT unified here -- collapsing them needs the canonical
+// parser to retain the authored `test` marker, and the note below states why that is blocked on
+// a GrammarExpr contextual-keyword terminal that does not exist yet.
+//
+// STILL OPEN, DECLARED RATHER THAN LEFT TO BE REDISCOVERED: witness_file_from_source recognises
+// `test fn ` and not `test data `, so every `test data` claim is dropped from the required
+// floor's roster -- including from files it otherwise enrolls. Measured over both source roots
+// at 3bbd53c05a: 40 decls in 15 files (34 in 13 files that carry no `test fn` at all, 6 in 2
+// files the floor does enrol). That is a separate repair with its own population and its own
+// triage, not a widening of this one.
 fn floor_entry_is_barren_test_sidecar(entry_path: String, content: String) -> Bool {
   if floor_entry_requires_test_sidecar(entry_path: entry_path) {
     length(xs: floor_discovery_scan_test_decl_names(content: content)) == 0

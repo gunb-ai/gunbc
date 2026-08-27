@@ -40,7 +40,7 @@ data fleet: List<HostIdentity> = [
 // construction rather than enumerated as not-applicable, which is the whole point of removing that
 // arm: a sizing authority has no standing to answer the residency question, and an earlier cut
 // answered it anyway on the strength of an ABSENT aggregate reading.
-fn the_sizing_table_answers_only_how_much() -> Bool {
+test fn the_sizing_table_answers_only_how_much() -> Bool {
   let srv1_allows = match session_reservation_sizing_for(host: operator_host_srv1) {
     ReservationAllowance { bytes: b, evidence_floor: _, operator_reason: _ } =>
       byte_size_count(b: b) == 55834574848
@@ -70,7 +70,7 @@ fn the_sizing_table_answers_only_how_much() -> Bool {
 // contradicting residency was silently ignored rather than surfaced. This is the discriminating RED
 // for that hole -- it drives an allowance through the absent-residency join and requires a
 // disagreement, which the old code could not have produced at all.
-fn an_allowance_on_a_session_free_host_refuses() -> Bool {
+test fn an_allowance_on_a_session_free_host_refuses() -> Bool {
   let planted = ReservationAllowance {
     bytes: byte_size(55834574848),
     evidence_floor: srv1_session_aggregate_epoch_peak,
@@ -87,7 +87,7 @@ fn an_allowance_on_a_session_free_host_refuses() -> Bool {
 // THE OTHER DIRECTION, kept beside it so the pair proves the join reads BOTH authorities rather
 // than one. Residency says sessions are present, the sizing table has no row: refuse rather than
 // charge nothing for a population known to exist.
-fn a_session_host_with_no_sizing_row_refuses() -> Bool {
+test fn a_session_host_with_no_sizing_row_refuses() -> Bool {
   match sizing_against_present_residency(s: ReservationSizingAbsent) {
     SessionReservationUnsized { cause: _ } => true
     SessionReservationCharged { bytes: _, evidence_floor: _ } => false
@@ -99,7 +99,7 @@ fn a_session_host_with_no_sizing_row_refuses() -> Bool {
 // THE THREE-ARM RESOLUTION DISTINGUISHES THE TWO ABSENCES. The Option it replaces returned Absent
 // for both "safely charge nothing" and "refuse the whole derivation", which have opposite remedies.
 // Asserting only that neither yields bytes would pass against that collapse, so each arm is named.
-fn the_two_absences_are_distinguishable() -> Bool {
+test fn the_two_absences_are_distinguishable() -> Bool {
   let srv1_bytes = match session_reservation_bytes(host: operator_host_srv1) {
     ReservationBytes { bytes: b } => byte_size_count(b: b) == 55834574848
     ReservationBytesNotApplicable => false
@@ -145,7 +145,7 @@ fn resolution_agrees_with_bytes(host: HostIdentity) -> Bool {
   }
 }
 
-fn every_production_projection_agrees_on_every_host() -> Bool {
+test fn every_production_projection_agrees_on_every_host() -> Bool {
   fold(fleet, init: true, f: (acc, h) => acc && resolution_agrees_with_bytes(host: h))
 }
 
@@ -153,7 +153,7 @@ fn every_production_projection_agrees_on_every_host() -> Bool {
 // fleet-wide row handed ONE knob list to every host, so a converge would have written srv1's
 // sessions.slice MemoryMax as 20 GiB against a slice already observed peaking at 55216033792.
 // Now a host that owes no reservation emits no knobs, and srv1 emits some.
-fn converge_knobs_are_derived_per_host() -> Bool {
+test fn converge_knobs_are_derived_per_host() -> Bool {
   let srv1_has_knobs = session_knobs_for(host: operator_host_srv1).length() > 0
   let srv2_has_none = session_knobs_for(host: operator_host_srv2).length() == 0
   let srv3_has_none = session_knobs_for(host: operator_host_srv3).length() == 0
@@ -163,7 +163,7 @@ fn converge_knobs_are_derived_per_host() -> Bool {
 // AN ALLOWANCE BELOW ITS OWN EVIDENCE FLOOR IS A CONTRADICTION. The planted row is the RED: it
 // carries the real srv1 floor under a smaller allowance, so a check that merely confirmed both
 // fields were present would pass it.
-fn an_allowance_may_not_sit_below_its_evidence() -> Bool {
+test fn an_allowance_may_not_sit_below_its_evidence() -> Bool {
   let inverted = ReservationAllowance {
     bytes: byte_size(1),
     evidence_floor: srv1_session_aggregate_epoch_peak,
@@ -181,7 +181,7 @@ fn an_allowance_may_not_sit_below_its_evidence() -> Bool {
 
 // AN UNESTABLISHED DENOMINATOR GROUNDS NO FLOOR. srv2 observed a real peak, and that peak is still
 // not a floor on the HOST's demand, because the population it was measured over is incomplete.
-fn an_unestablished_denominator_grounds_no_floor() -> Bool {
+test fn an_unestablished_denominator_grounds_no_floor() -> Bool {
   match session_reservation_sizing_for(host: operator_host_srv2) {
     ReservationUnestablished { evidence: e, cause: _ } =>
       match evidence_floor_bytes(e: e) {
@@ -196,32 +196,17 @@ fn an_unestablished_denominator_grounds_no_floor() -> Bool {
 // THE EVIDENCE CARRIES THE EXECUTION THAT PRODUCED IT, not a description of a function. A prose
 // receipt cannot distinguish one invocation from another, which is exactly the failure that made
 // step 4A necessary.
-fn the_evidence_names_its_execution() -> Bool {
+test fn the_evidence_names_its_execution() -> Bool {
   srv1_session_aggregate_citation.run_id == "33007869268"
     && srv1_session_aggregate_citation.metric == "memory.peak"
     && srv1_session_aggregate_citation.host == "srv1"
-}
-
-fn session_reservation_policy_holds() -> Bool {
-  the_two_empty_knob_answers_are_distinguishable()
-    && an_allowance_below_its_evidence_floor_is_refused_not_charged()
-    &&
-  the_sizing_table_answers_only_how_much()
-    && an_allowance_on_a_session_free_host_refuses()
-    && a_session_host_with_no_sizing_row_refuses()
-    && the_two_absences_are_distinguishable()
-    && every_production_projection_agrees_on_every_host()
-    && converge_knobs_are_derived_per_host()
-    && an_allowance_may_not_sit_below_its_evidence()
-    && an_unestablished_denominator_grounds_no_floor()
-    && the_evidence_names_its_execution()
 }
 
 // THE TWO EMPTY ANSWERS ARE NOW DISTINGUISHABLE, AND THIS IS THE ARM THAT PROVES IT. Asserting only
 // that srv2 and srv3 both yield no knobs passes against the collapsed form this replaces -- both
 // returned the same empty list. The standing separates them: srv3 owes nothing, srv2's reservation
 // could not be grounded, and those have opposite remedies.
-fn the_two_empty_knob_answers_are_distinguishable() -> Bool {
+test fn the_two_empty_knob_answers_are_distinguishable() -> Bool {
   match session_knob_standing_for(host: operator_host_srv3) {
     SessionKnobsNotOwed { cause: _ } => true
     SessionKnobsDerived { knobs: _ } => false
@@ -244,7 +229,7 @@ fn the_two_empty_knob_answers_are_distinguishable() -> Bool {
 // production path, so a row authored below its floor degrades to ReservationUnestablished instead of
 // being charged. This drives the wall with a constructed violation rather than the live rows, which
 // all pass -- otherwise the arm would be green by never being reached.
-fn an_allowance_below_its_evidence_floor_is_refused_not_charged() -> Bool {
+test fn an_allowance_below_its_evidence_floor_is_refused_not_charged() -> Bool {
   match admit_sizing(s: ReservationAllowance {
     bytes: byte_size(1073741824),
     evidence_floor: srv1_session_aggregate_epoch_peak,

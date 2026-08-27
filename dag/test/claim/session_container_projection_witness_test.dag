@@ -20,7 +20,7 @@ import gunbc.session_admission_policy {
 // against srv3: both yield no number, and a carrier with one "no value" arm would render them
 // identically while their remedies are opposite -- srv2 owes a measurement nobody took, srv3 owes
 // nothing at all. Asserting only that neither projects bytes would pass against that collapse.
-fn the_aggregate_projection_separates_not_owed_from_unprojectable() -> Bool {
+test fn the_aggregate_projection_separates_not_owed_from_unprojectable() -> Bool {
   let srv1_projects = match session_aggregate_projection_for(host: operator_host_srv1) {
     SessionAggregateProjected { bytes: b } => byte_size_count(b: b) == 55834574848
     SessionAggregateNotOwed { cause: _ } => false
@@ -47,7 +47,7 @@ fn the_aggregate_projection_separates_not_owed_from_unprojectable() -> Bool {
 // NO HOST PROJECTS A PER-CONTAINER CAP TODAY, and this witness records that as the measured live
 // state rather than as an aspiration. It goes red the moment an admitted limit is declared for any
 // host, which is exactly when someone must revisit it -- the refusal is not meant to be permanent.
-fn no_live_host_projects_a_per_container_cap() -> Bool {
+test fn no_live_host_projects_a_per_container_cap() -> Bool {
   let none_projected = fold(
     [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
     init: true,
@@ -73,7 +73,7 @@ fn no_live_host_projects_a_per_container_cap() -> Bool {
 // THE POSITIVE CONTROL. Without it the refusal above could be a decoration over a derivation that
 // does not work: every host refusing is equally consistent with a function that can never project.
 // This authors the admitted limit the live table lacks and asserts the exact quotient.
-fn an_admitted_limit_derives_an_exact_cap() -> Bool {
+test fn an_admitted_limit_derives_an_exact_cap() -> Bool {
   match per_container_cap_from(
     a: SessionAggregateProjected { bytes: byte_size(55834574848) },
     c: ConcurrencyAdmitted { limit: 16, operator_reason: "fixture-authored admitted limit" },
@@ -91,7 +91,7 @@ fn an_admitted_limit_derives_an_exact_cap() -> Bool {
 // aggregate and the integer are IDENTICAL to the positive control above; only the variant differs.
 // A carrier that stored concurrency as a bare Int could not express this pair at all, so the two
 // witnesses together prove the distinction is load-bearing rather than nominal.
-fn an_observed_count_is_not_an_admitted_limit() -> Bool {
+test fn an_observed_count_is_not_an_admitted_limit() -> Bool {
   match per_container_cap_from(
     a: SessionAggregateProjected { bytes: byte_size(55834574848) },
     c: ConcurrencyObserved { count: 16, receipt: "fixture-authored observation of the present population" },
@@ -105,7 +105,7 @@ fn an_observed_count_is_not_an_admitted_limit() -> Bool {
 // FLOOR DIVISION IS THE SOUND DIRECTION, and 100 over 3 is chosen because it does not divide: a
 // ceiling or a rounding would put 3 * 34 = 102 over an aggregate of 100, over-issuing the whole
 // reservation. The assertion is the conservation property itself, not the quotient.
-fn the_admitted_population_never_exceeds_its_aggregate() -> Bool {
+test fn the_admitted_population_never_exceeds_its_aggregate() -> Bool {
   match derive_per_container_cap(aggregate: byte_size(100), limit: 3) {
     PerContainerCapProjected { bytes: b, aggregate: agg, admitted: n } =>
       byte_size_count(b: b) * n <= byte_size_count(b: agg) && byte_size_count(b: b) == 33
@@ -115,7 +115,7 @@ fn the_admitted_population_never_exceeds_its_aggregate() -> Bool {
 }
 
 // A DEGENERATE LIMIT REFUSES RATHER THAN PRODUCING AN UNBOUNDED CAP.
-fn a_non_positive_limit_refuses() -> Bool {
+test fn a_non_positive_limit_refuses() -> Bool {
   match derive_per_container_cap(aggregate: byte_size(55834574848), limit: 0) {
     PerContainerCapUnderivable { cause: _ } => true
     PerContainerCapProjected { bytes: _, aggregate: _, admitted: _ } => false
@@ -128,7 +128,7 @@ fn a_non_positive_limit_refuses() -> Bool {
 // sixteen, so an assertion that merely reached ConcurrencyUnestablished would pass equally under the
 // superseded state where no carrier existed at all, and would keep passing if the enforcement axis
 // were quietly dropped. Matching the cause pins WHICH absence this is.
-fn the_live_basis_is_unestablished_because_nothing_enforces_the_limit() -> Bool {
+test fn the_live_basis_is_unestablished_because_nothing_enforces_the_limit() -> Bool {
   match session_concurrency_basis() {
     ConcurrencyUnestablished { cause: why } => string_contains(s: why, pattern: "enforces")
     ConcurrencyAdmitted { limit: _, operator_reason: _ } => false
@@ -140,7 +140,7 @@ fn the_live_basis_is_unestablished_because_nothing_enforces_the_limit() -> Bool 
 // green decoration. A fixture policy whose only difference is the enforcement arm yields
 // ConcurrencyAdmitted, so the live refusal is attributable to enforcement alone -- and the day an
 // actuator lands, this pair is already the discriminating evidence that the flip was real.
-fn an_enforced_policy_yields_an_admitted_basis() -> Bool {
+test fn an_enforced_policy_yields_an_admitted_basis() -> Bool {
   match concurrency_basis_of(p: SessionAdmissionDeclared {
     oomd_eviction_ceiling: byte_size(10737418240),
     admitted_concurrency: 16,
@@ -150,15 +150,4 @@ fn an_enforced_policy_yields_an_admitted_basis() -> Bool {
     ConcurrencyUnestablished { cause: _ } => false
     ConcurrencyObserved { count: _, receipt: _ } => false
   }
-}
-
-fn session_container_projection_holds() -> Bool {
-  the_aggregate_projection_separates_not_owed_from_unprojectable()
-    && no_live_host_projects_a_per_container_cap()
-    && an_admitted_limit_derives_an_exact_cap()
-    && an_observed_count_is_not_an_admitted_limit()
-    && the_admitted_population_never_exceeds_its_aggregate()
-    && a_non_positive_limit_refuses()
-    && the_live_basis_is_unestablished_because_nothing_enforces_the_limit()
-    && an_enforced_policy_yields_an_admitted_basis()
 }

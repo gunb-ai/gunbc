@@ -46,7 +46,7 @@ import v2.std.optional { Present, Absent }
 // fabricates a limit the host does not have, and taking the absolute value of "-1" turns malformed
 // bytes into the plausible value 1. A parser that did either would pass a test that only checked
 // the well-formed case.
-fn limit_parse_discriminates() -> Bool {
+test fn limit_parse_discriminates() -> Bool {
   let unlimited = match parse_cgroup_memory_limit(body: "max\n") {
     CgroupMemoryUnlimited => true
     CgroupMemoryLimited { bytes: _ } => false
@@ -69,7 +69,7 @@ fn limit_parse_discriminates() -> Bool {
 // MALFORMED in a count file. This is the pair that proves the two parsers are genuinely different
 // rather than one aliased twice -- a single shared parser would answer Unlimited here and go green
 // against a weaker test.
-fn count_parse_has_no_sentinel_arm() -> Bool {
+test fn count_parse_has_no_sentinel_arm() -> Bool {
   let max_is_malformed_here = match parse_cgroup_memory_count(body: "max") {
     CgroupMemoryCountUnparseable { body: _ } => true
     CgroupMemoryCount { bytes: _ } => false
@@ -81,7 +81,7 @@ fn count_parse_has_no_sentinel_arm() -> Bool {
   max_is_malformed_here && counts
 }
 
-fn metric_kinds_follow_the_authority() -> Bool {
+test fn metric_kinds_follow_the_authority() -> Bool {
   let current = match cgroup_memory_metric_kind(f: MemoryCurrent) {
     Instantaneous => true
     LifetimeEpochScoped => false
@@ -105,7 +105,7 @@ fn metric_kinds_follow_the_authority() -> Bool {
 // the arm does the work rather than the length. If unclassifiable were dropped from the population
 // instead, both calls would return Complete and the denominator would have silently shrunk to the
 // containers that happened to classify.
-fn census_refuses_rather_than_dropping() -> Bool {
+test fn census_refuses_rather_than_dropping() -> Bool {
   let a = ManagedSession { identity: "a", cgroup: "/sys/fs/cgroup/sessions.slice/a" }
   let b = LegacyFlatSession { identity: "b", cgroup: "/sys/fs/cgroup/system.slice/b" }
   let u = SessionPlacementUnclassifiable { identity: "c", cause: "flat scope with no attributable session" }
@@ -124,7 +124,7 @@ fn census_refuses_rather_than_dropping() -> Bool {
 // all rather than a signal over the classifiable subset. A partial signal is the dangerous shape:
 // it would flow into #9280's classifier, which would faithfully classify a population that is not
 // the host's.
-fn incomplete_census_yields_no_signal() -> Bool {
+test fn incomplete_census_yields_no_signal() -> Bool {
   let a = ManagedSession { identity: "a", cgroup: "/sys/fs/cgroup/sessions.slice/a" }
   let u = SessionPlacementUnclassifiable { identity: "c", cause: "unattributable" }
   let projected = match census_membership_signal(c: session_placement_census(placements: [a])) {
@@ -142,7 +142,7 @@ fn incomplete_census_yields_no_signal() -> Bool {
 // sessions; it must not answer the same thing as a producer that never ran. The two grant capacity
 // on opposite grounds, so this is the arm most worth pinning: an implementation that folded them
 // would look correct on every host that actually has sessions.
-fn counted_zero_is_not_unavailable() -> Bool {
+test fn counted_zero_is_not_unavailable() -> Bool {
   let zero = match session_demand_membership_gate(host: operator_host_srv1, m: NoSessionsObserved) {
     MembershipAdmitsAggregate { managed_count: _ } => false
     MembershipRefusesAggregate { observation: o } => match o {
@@ -162,7 +162,7 @@ fn counted_zero_is_not_unavailable() -> Bool {
 // ONLY THE ALL-MANAGED ARM MAY ESTABLISH AN AGGREGATE. Mixed and AllLegacy both refuse, and they
 // refuse SEPARATELY from the counted zero above, which is what keeps three different situations
 // from sharing one attractive small number.
-fn only_all_managed_opens_the_gate() -> Bool {
+test fn only_all_managed_opens_the_gate() -> Bool {
   let opens = match session_demand_membership_gate(
     host: operator_host_srv1,
     m: AllSessionsManaged { managed_count: 19 },
@@ -205,22 +205,12 @@ fn only_all_managed_opens_the_gate() -> Bool {
   opens && mixed_refuses && legacy_refuses
 }
 
-fn session_demand_carriers_hold() -> Bool {
-  limit_parse_discriminates()
-    && count_parse_has_no_sentinel_arm()
-    && metric_kinds_follow_the_authority()
-    && census_refuses_rather_than_dropping()
-    && incomplete_census_yields_no_signal()
-    && counted_zero_is_not_unavailable()
-    && only_all_managed_opens_the_gate()
-}
-
 // THE PRODUCER'S PURE HALF, exercised so that resolving this witness TYPECHECKS
 // gunbc.session_demand_observe and, through its imports, the two new HostOperation variants in
 // gunbc.host_operation_exec. The host-effect half cannot run here -- a session container sees a
 // namespaced cgroup root and no fleet host -- so what is asserted is exactly the part that does not
 // need a host, and the live receipt is obtained by dispatching the fleet workflow at this branch.
-fn child_name_parsing_holds() -> Bool {
+test fn child_name_parsing_holds() -> Bool {
   let three = cgroup_child_names(stdout: "a\nb\nc\n")
   let empty_is_a_counted_zero = cgroup_child_names(stdout: "")
   let ragged = cgroup_child_names(stdout: "  a  \n\n  b\n")
@@ -230,7 +220,7 @@ fn child_name_parsing_holds() -> Bool {
 // A CHILD OF THE MANAGED SLICE IS MANAGED BY VIRTUE OF WHERE IT WAS FOUND, and a flat scope is
 // unclassifiable rather than guessed into the legacy count. This pair is the producer's whole
 // classification argument, and it needs no docker naming convention to hold.
-fn placement_classification_needs_no_naming_authority() -> Bool {
+test fn placement_classification_needs_no_naming_authority() -> Bool {
   let managed = managed_placements(identities: ["x", "y"])
   let legacy = legacy_placements(identities: ["docker-0000000000000000000000000000000000000000000000000000000000000000.scope"])
   let all_managed = all(managed, p => placement_is_managed(p: p))
@@ -243,7 +233,7 @@ fn placement_classification_needs_no_naming_authority() -> Bool {
 // units and zero docker scopes, so a producer that fed every child into the legacy arm would mark
 // 37 containers unclassifiable and REFUSE the census of a perfectly converged host. The names below
 // are taken from that receipt, not invented.
-fn systemd_units_are_not_session_candidates() -> Bool {
+test fn systemd_units_are_not_session_candidates() -> Bool {
   let observed = ["cron.service", "containerd.service", "systemd-networkd.service", "systemd-udevd.service"]
   let a_real_scope = "docker-aa3d9bb8a098135107b8f25f6e024f423ceeecf089c0773e0a5ce40f2721e8f0.scope"
   let none_of_the_units = count(flat_session_candidates(identities: observed)) == 0
@@ -264,7 +254,7 @@ fn systemd_units_are_not_session_candidates() -> Bool {
 // so losing it silently is what turns an unobserved host into "AllSessionsManaged, an aggregate
 // may be established". The managed side failing is the safe direction and is asserted too, so the
 // test cannot pass by guarding only the arm that happens to be checked.
-fn unreadable_inventory_never_establishes_a_population() -> Bool {
+test fn unreadable_inventory_never_establishes_a_population() -> Bool {
   let observed_managed = SessionContainerInventoryObserved {
     host: operator_host_srv1,
     identities: ["docker-0000000000000000000000000000000000000000000000000000000000000000.scope"],
@@ -306,7 +296,7 @@ fn unreadable_inventory_never_establishes_a_population() -> Bool {
 // has system.slice, so its absence means the probe is lying to us and the flat side is unknown.
 // That must refuse, and refusing it is what stops NO_SUCH_SLICE from becoming a second absorbing
 // answer that quietly admits anything it is given.
-fn an_absent_slice_is_not_an_unreadable_one() -> Bool {
+test fn an_absent_slice_is_not_an_unreadable_one() -> Bool {
   let observed_empty = SessionContainerInventoryObserved { host: operator_host_srv1, identities: [] }
   let absent = SessionContainerInventoryAbsent {
     host: operator_host_srv1,
@@ -348,7 +338,7 @@ fn an_absent_slice_is_not_an_unreadable_one() -> Bool {
 // mention a read at all, and an OBSERVED slice whose counters genuinely could not be read must
 // still say UNREAD -- so collapsing the two would take one half or the other red. Asserting only
 // the first would pass against a projection that had simply stopped printing UNREAD anywhere.
-fn an_absent_parent_slice_reports_no_read_at_all() -> Bool {
+test fn an_absent_parent_slice_reports_no_read_at_all() -> Bool {
   let absent = parent_slice_lines(o: ParentSliceAbsent { cgroup: "/sys/fs/cgroup/sessions.slice" })
   let unread = parent_slice_lines(o: ParentSliceObserved {
     demand: ParentSliceDemand {
@@ -375,7 +365,7 @@ fn an_absent_parent_slice_reports_no_read_at_all() -> Bool {
 //
 // The pair discriminates: identical placements and identical parent slice, differing only in
 // whether one session's memory.current parsed. If deficits stopped gating, the first half goes red.
-fn an_unread_metric_refuses_a_complete_population() -> Bool {
+test fn an_unread_metric_refuses_a_complete_population() -> Bool {
   let cg = "/sys/fs/cgroup/sessions.slice"
   let good_slice = ParentSliceDemand {
     cgroup: cg,
@@ -410,7 +400,7 @@ fn an_unread_metric_refuses_a_complete_population() -> Bool {
 // TWO HOSTS' EVIDENCE MAY NOT BE JOINED INTO ONE POPULATION. Production reads both inventories
 // locally under one observed host, so this never fired in the field -- but the classifier's TYPE
 // permitted it, and a type that permits cross-subject evidence will eventually be handed it.
-fn two_hosts_evidence_never_mints_one_population() -> Bool {
+test fn two_hosts_evidence_never_mints_one_population() -> Bool {
   let srv1_managed = SessionContainerInventoryObserved { host: operator_host_srv1, identities: [] }
   let srv2_legacy = SessionContainerInventoryObserved { host: operator_host_srv2, identities: [] }
   let srv1_legacy = SessionContainerInventoryObserved { host: operator_host_srv1, identities: [] }
@@ -427,15 +417,4 @@ fn two_hosts_evidence_never_mints_one_population() -> Bool {
     SessionPopulationNoSessionSlice { cgroup_path: _ } => false
   }
   mismatch_refuses && same_host_establishes
-}
-
-fn session_demand_producer_pure_half_holds() -> Bool {
-  child_name_parsing_holds()
-    && placement_classification_needs_no_naming_authority()
-    && systemd_units_are_not_session_candidates()
-    && unreadable_inventory_never_establishes_a_population()
-    && an_absent_slice_is_not_an_unreadable_one()
-    && an_absent_parent_slice_reports_no_read_at_all()
-    && an_unread_metric_refuses_a_complete_population()
-    && two_hosts_evidence_never_mints_one_population()
 }
