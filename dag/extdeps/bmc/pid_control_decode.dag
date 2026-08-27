@@ -13,10 +13,34 @@ import extdeps.languages.json.number {
   JsonValueIsNotANumber,
   read_json_number_value,
 }
+import extdeps.languages.json.member_conservation {
+  JsonMemberOccurrence,
+  MemberConsumed,
+  MemberDisposition,
+  MemberUnmodeled,
+  ObjectMemberPartition,
+  occurrences_of_object,
+}
 import extdeps.bmc.pid_control_program {
+  DbusBoundsDisposition,
+  DbusBoundsIgnored,
+  DbusBoundsUnstated,
+  DbusBoundsUsed,
   DemandCurvePoint,
+  FanTachometerSensor,
+  ProgramSensor,
+  ProgramSensorRole,
+  SensorBoundsDeclared,
+  SensorBoundsUnstated,
+  SensorDrivesOutput,
+  SensorReadOnly,
+  SensorReadingBounds,
+  SensorTimeoutDeclared,
+  SensorTimeoutUnstated,
+  TemperatureSensor,
   decimal_celsius,
   decimal_percent,
+  decimal_seconds,
 }
 
 // DECODING A CAPTURED CONFIGURATION ONTO THE NEUTRAL MODEL. Every refusal here is typed and names
@@ -324,6 +348,227 @@ fn decode_curve(container: JsonValue, path: DocumentPath) -> CurveDecode {
         CurveSideRefused { refusal } => CurveRefused { refusal: refusal }
         CurveSideDecoded { entries: outputs } =>
           curve_join(path: path, readings: readings, outputs: outputs)
+      }
+  }
+}
+
+// FROM HERE DOWN, EVERY OBJECT DECODE RETURNS ITS MEMBER DISPOSITIONS ALONGSIDE ITS VALUE. That is
+// what wires the conservation wall into the decode rather than leaving it as a check somebody
+// might run: a decoder that reads five of a sensor's six members produces five dispositions, the
+// join against the source occurrences fails, and the program does not become representable. The
+// dispositions are built at the same place the fields are read, so a new field cannot be consumed
+// without appearing in them.
+type ObjectDecodeResidue {
+  path: DocumentPath
+  source: List<JsonMemberOccurrence>
+  dispositions: List<MemberDisposition>
+}
+
+fn occurrence_at(source: List<JsonMemberOccurrence>, ordinal: Int) -> List<JsonMemberOccurrence> {
+  filter(source, occurrence => occurrence.identity.ordinal == ordinal)
+}
+
+fn occurrences_named(source: List<JsonMemberOccurrence>, key: String) -> List<JsonMemberOccurrence> {
+  filter(source, occurrence => occurrence.member.key == key)
+}
+
+// A CONSUMED MEMBER IS RECORDED BY ITS OCCURRENCE, NOT BY ITS KEY, so that a document carrying a
+// field twice produces two occurrences and the decoder's single read accounts for exactly one of
+// them -- leaving the other unaccounted, which is what the duplicate refusal above already
+// reported and what the conservation join independently confirms.
+fn consumed_disposition(source: List<JsonMemberOccurrence>, key: String, role: NonEmptyStr) -> List<MemberDisposition> {
+  map(occurrences_named(source: source, key: key), occurrence =>
+    MemberConsumed { occurrence: occurrence, role: role })
+}
+
+// EVERY OCCURRENCE THE FIELD READS DID NOT CLAIM IS UNMODELLED, AND THAT IS DERIVED RATHER THAN
+// LISTED. A hand-written residue list is a second place to forget a field; deriving it from the
+// keys actually consumed means a member the decoder does not read cannot be silently absent from
+// the residue either.
+fn unmodeled_dispositions(source: List<JsonMemberOccurrence>, consumed_keys: List<String>) -> List<MemberDisposition> {
+  map(
+    filter(source, occurrence => !any(consumed_keys, key => key == occurrence.member.key)),
+    occurrence => MemberUnmodeled { occurrence: occurrence },
+  )
+}
+
+fn object_partition(
+  path: DocumentPath,
+  container: JsonValue,
+  consumed: List<NonEmptyStr>,
+) -> ObjectMemberPartition {
+  let source = occurrences_of_object(object_path: path.text, value: container)
+  let consumed_keys = map(consumed, key => key as String)
+  ObjectMemberPartition {
+    object_path: path.text,
+    source: source,
+    dispositions: flat_map(
+      [
+        flat_map(consumed, key => consumed_disposition(source: source, key: key as String, role: key)),
+        unmodeled_dispositions(source: source, consumed_keys: consumed_keys),
+      ],
+      group => group,
+    ),
+  }
+}
+
+type StringField
+  = StringFieldRead { value: String }
+  | StringFieldRefused { refusal: FieldRefusal }
+
+fn string_field(container: JsonValue, path: DocumentPath, field: NonEmptyStr) -> StringField {
+  match select_member(container: container, path: path, field: field) {
+    MemberSelectionRefused { refusal } => StringFieldRefused { refusal: refusal }
+    MemberSelected { value: v } =>
+      match v {
+        JsonString { value: s } => StringFieldRead { value: s }
+        other => StringFieldRefused { refusal: FieldNotAString { path: path, field: field } }
+      }
+  }
+}
+
+// AN OPTIONAL FIELD IS A THREE-WAY ANSWER, NOT A TWO-WAY ONE. Present-and-readable, absent, and
+// present-but-wrong are different facts: the middle one is the document declining to state a
+// policy and the last is the document stating it wrongly. A reader that folded the third into the
+// second would report a malformed timeout as an unstated one.
+type OptionalDecimalField
+  = OptionalDecimalRead { value: ExactDecimal }
+  | OptionalDecimalUnstated
+  | OptionalDecimalRefused { refusal: FieldRefusal }
+
+fn optional_decimal_field(container: JsonValue, path: DocumentPath, field: NonEmptyStr) -> OptionalDecimalField {
+  let hits = members_named(value: container, key: field as String)
+  if hits.length() == 0 {
+    OptionalDecimalUnstated
+  } else {
+    match decimal_field(container: container, path: path, field: field) {
+      DecimalFieldRefused { refusal } => OptionalDecimalRefused { refusal: refusal }
+      DecimalFieldRead { value } => OptionalDecimalRead { value: value }
+    }
+  }
+}
+
+type OptionalBoolField
+  = OptionalBoolRead { value: Bool }
+  | OptionalBoolUnstated
+  | OptionalBoolRefused { refusal: FieldRefusal }
+
+fn optional_bool_field(container: JsonValue, path: DocumentPath, field: NonEmptyStr) -> OptionalBoolField {
+  let hits = members_named(value: container, key: field as String)
+  if hits.length() == 0 {
+    OptionalBoolUnstated
+  } else {
+    match select_member(container: container, path: path, field: field) {
+      MemberSelectionRefused { refusal } => OptionalBoolRefused { refusal: refusal }
+      MemberSelected { value: v } =>
+        match v {
+          JsonBool { value: b } => OptionalBoolRead { value: b }
+          other => OptionalBoolRefused { refusal: FieldNotABool { path: path, field: field } }
+        }
+    }
+  }
+}
+
+type SensorDecode
+  = SensorDecoded { sensor: ProgramSensor, partition: ObjectMemberPartition }
+  | SensorRefused { refusal: FieldRefusal }
+
+// THE ROLE STRING IS A CLOSED VOCABULARY AND AN UNKNOWN ONE REFUSES. phosphor-pid-control's own
+// schema admits exactly these two sensor types; a third would mean this decoder is behind its
+// upstream, which is a fact worth stopping on rather than reading as "some other kind of sensor".
+type SensorRoleRead
+  = SensorRoleKnown { role: ProgramSensorRole }
+  | SensorRoleUnknown
+
+fn sensor_role(value: String) -> SensorRoleRead {
+  if value == "fan" {
+    SensorRoleKnown { role: FanTachometerSensor }
+  } else if value == "temp" {
+    SensorRoleKnown { role: TemperatureSensor }
+  } else {
+    SensorRoleUnknown
+  }
+}
+
+fn sensor_bounds(minimum: OptionalDecimalField, maximum: OptionalDecimalField) -> SensorReadingBounds {
+  match minimum {
+    OptionalDecimalRead { value: lo } =>
+      match maximum {
+        OptionalDecimalRead { value: hi } => SensorBoundsDeclared { minimum: lo, maximum: hi }
+        other => SensorBoundsUnstated
+      }
+    other => SensorBoundsUnstated
+  }
+}
+
+fn dbus_bounds_disposition(field: OptionalBoolField) -> DbusBoundsDisposition {
+  match field {
+    OptionalBoolRead { value: ignore } => if ignore { DbusBoundsIgnored } else { DbusBoundsUsed }
+    OptionalBoolUnstated => DbusBoundsUnstated
+    OptionalBoolRefused { refusal: _ } => DbusBoundsUnstated
+  }
+}
+
+data sensor_consumed_keys: List<NonEmptyStr> = [
+  "name",
+  "type",
+  "readPath",
+  "writePath",
+  "min",
+  "max",
+  "timeout",
+  "ignoreDbusMinMax",
+]
+
+fn decode_sensor(container: JsonValue, path: DocumentPath) -> SensorDecode {
+  match string_field(container: container, path: path, field: "name") {
+    StringFieldRefused { refusal } => SensorRefused { refusal: refusal }
+    StringFieldRead { value: name } =>
+      match string_field(container: container, path: path, field: "type") {
+        StringFieldRefused { refusal } => SensorRefused { refusal: refusal }
+        StringFieldRead { value: type_text } =>
+          match sensor_role(value: type_text) {
+            SensorRoleUnknown =>
+              SensorRefused {
+                refusal: FieldValueUnknown { path: path, field: "type", value: type_text },
+              }
+            SensorRoleKnown { role } =>
+              match string_field(container: container, path: path, field: "readPath") {
+                StringFieldRefused { refusal } => SensorRefused { refusal: refusal }
+                StringFieldRead { value: read_path } => {
+                  let actuation = match string_field(container: container, path: path, field: "writePath") {
+                    StringFieldRead { value: write_path } => SensorDrivesOutput { write_path: write_path }
+                    other => SensorReadOnly
+                  }
+                  let timeout = match optional_decimal_field(container: container, path: path, field: "timeout") {
+                    OptionalDecimalRead { value: seconds } =>
+                      SensorTimeoutDeclared { seconds: decimal_seconds(value: seconds) }
+                    other => SensorTimeoutUnstated
+                  }
+                  SensorDecoded {
+                    sensor: ProgramSensor {
+                      name: name,
+                      role: role,
+                      read_path: read_path,
+                      actuation: actuation,
+                      bounds: sensor_bounds(
+                        minimum: optional_decimal_field(container: container, path: path, field: "min"),
+                        maximum: optional_decimal_field(container: container, path: path, field: "max"),
+                      ),
+                      dbus_bounds: dbus_bounds_disposition(
+                        field: optional_bool_field(container: container, path: path, field: "ignoreDbusMinMax"),
+                      ),
+                      timeout: timeout,
+                    },
+                    partition: object_partition(
+                      path: path,
+                      container: container,
+                      consumed: sensor_consumed_keys,
+                    ),
+                  }
+                }
+              }
+          }
       }
   }
 }

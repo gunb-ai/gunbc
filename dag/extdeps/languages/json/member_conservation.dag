@@ -1,4 +1,4 @@
-module gunbc.json_member_conservation
+module extdeps.languages.json.member_conservation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.json.emit { JsonArray, JsonBool, JsonKeyValue, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
@@ -14,6 +14,11 @@ import extdeps.languages.json.emit { JsonArray, JsonBool, JsonKeyValue, JsonNull
 // The remedy is a checked partition: every member occurrence in the source object is accounted for
 // exactly once as consumed, unmodelled, or defective. This module owns that check and knows nothing
 // about fans, PIDs or OpenBMC.
+//
+// IT SITS BESIDE THE JSON GRAMMAR RATHER THAN IN THE CONSUMER THAT NEEDED IT FIRST, because its
+// subject is a JSON object and nothing about it is specific to any one decoder. It claims no
+// upstream fact -- this is a discipline for READING documents, not a model of RFC 8259 -- so it
+// carries no citation of its own and adds none to the JSON authority's.
 //
 // WHY IDENTITY AND NOT COUNT, WHICH IS THE WHOLE POINT. A conservation check written as
 // `source.length() == consumed.length() + unmodeled.length() + defective.length()` passes this:

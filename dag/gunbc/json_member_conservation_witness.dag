@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.languages.json.emit { JsonKeyValue, JsonNumber, JsonString, JsonValue, json_object }
 import extdeps.languages.json.parse { JsonDocumentParsed, parse_json_document }
-import gunbc.json_member_conservation {
+import extdeps.languages.json.member_conservation {
   ConservationVerdict,
   JsonMemberOccurrence,
   MemberConsumed,
