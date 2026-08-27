@@ -2740,6 +2740,54 @@ pub fn parse_context_after_node(ctx: Rc<ParseContext>, node: Rc<Node>) -> Rc<Par
     )
 }
 
+pub fn parse_context_after_node_list(
+    ctx: Rc<ParseContext>,
+    nodes: Rc<Vec<Rc<Node>>>,
+) -> Rc<ParseContext> {
+    parse_context_with_occurrence_state(
+        ctx.clone(),
+        Some(occurrence_allocator_after_node_list(
+            parse_context_occurrence_allocator(ctx.clone()),
+            nodes.clone(),
+        )),
+        ctx.occurrence_index.clone(),
+        ctx.declaration_occurrences.clone(),
+        ctx.reference_occurrences.clone(),
+    )
+}
+
+pub fn parse_context_after_optional_node(
+    ctx: Rc<ParseContext>,
+    node: Option<Rc<Node>>,
+) -> Rc<ParseContext> {
+    parse_context_with_occurrence_state(
+        ctx.clone(),
+        Some(occurrence_allocator_after_optional_node(
+            parse_context_occurrence_allocator(ctx.clone()),
+            node.clone(),
+        )),
+        ctx.occurrence_index.clone(),
+        ctx.declaration_occurrences.clone(),
+        ctx.reference_occurrences.clone(),
+    )
+}
+
+pub fn parse_context_after_inferred_node(
+    ctx: Rc<ParseContext>,
+    inferred: Option<Rc<InferredNode>>,
+) -> Rc<ParseContext> {
+    parse_context_with_occurrence_state(
+        ctx.clone(),
+        Some(occurrence_allocator_after_inferred_node(
+            parse_context_occurrence_allocator(ctx.clone()),
+            inferred.clone(),
+        )),
+        ctx.occurrence_index.clone(),
+        ctx.declaration_occurrences.clone(),
+        ctx.reference_occurrences.clone(),
+    )
+}
+
 pub fn stamp_parsed_node_list(
     nodes: Rc<Vec<Rc<Node>>>,
     ancestors: Rc<Vec<OccurrenceId>>,
@@ -6939,7 +6987,13 @@ pub fn parse_fn_body_from_prefix(
         let type_params = prefix.type_params.clone();
         let params = prefix.params.clone();
         let inferred = prefix.inferred.clone();
-        let ctx = prefix.ctx.clone();
+        let ctx = parse_context_after_inferred_node(
+            parse_context_after_node_list(
+                prefix.ctx.clone(),
+                v1_rt::concat(type_params.clone(), params.clone()),
+            ),
+            inferred.clone(),
+        );
         let all_params = v1_rt::concat(type_params.clone(), params.clone());
         let named_dummy = Rc::new(Node {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -7015,7 +7069,11 @@ pub fn parse_fn_body_from_prefix(
             });
         }
         let body = body_result.expr.clone();
-        let minted = mint_parsed_node_identity(body_result.ctx.clone());
+        let parent_ctx = parse_context_after_node_list(
+            parse_context_after_node(body_result.ctx.clone(), body.clone()),
+            admit_props.clone(),
+        );
+        let minted = mint_parsed_node_identity(parent_ctx.clone());
         let item = Rc::new(Node {
             occurrence_identity: minted.identity.clone(),
             name: name.clone(),

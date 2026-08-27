@@ -1272,6 +1272,51 @@ fn parse_context_after_node(ctx: ParseContext, node: Node) -> ParseContext {
   )
 }
 
+fn parse_context_after_node_list(ctx: ParseContext, nodes: List<Node>) -> ParseContext {
+  parse_context_with_occurrence_state(
+    ctx: ctx,
+    occurrence_allocator: Present {
+      value: occurrence_allocator_after_node_list(
+        alloc: parse_context_occurrence_allocator(ctx: ctx),
+        nodes: nodes
+      ),
+    },
+    occurrence_index: ctx.occurrence_index,
+    declaration_occurrences: ctx.declaration_occurrences,
+    reference_occurrences: ctx.reference_occurrences
+  )
+}
+
+fn parse_context_after_optional_node(ctx: ParseContext, node: Node?) -> ParseContext {
+  parse_context_with_occurrence_state(
+    ctx: ctx,
+    occurrence_allocator: Present {
+      value: occurrence_allocator_after_optional_node(
+        alloc: parse_context_occurrence_allocator(ctx: ctx),
+        node: node
+      ),
+    },
+    occurrence_index: ctx.occurrence_index,
+    declaration_occurrences: ctx.declaration_occurrences,
+    reference_occurrences: ctx.reference_occurrences
+  )
+}
+
+fn parse_context_after_inferred_node(ctx: ParseContext, inferred: InferredNode?) -> ParseContext {
+  parse_context_with_occurrence_state(
+    ctx: ctx,
+    occurrence_allocator: Present {
+      value: occurrence_allocator_after_inferred_node(
+        alloc: parse_context_occurrence_allocator(ctx: ctx),
+        inferred: inferred
+      ),
+    },
+    occurrence_index: ctx.occurrence_index,
+    declaration_occurrences: ctx.declaration_occurrences,
+    reference_occurrences: ctx.reference_occurrences
+  )
+}
+
 fn stamp_parsed_node_list(
   nodes: List<Node>,
   ancestors: FreeMonoid<OccurrenceId>,
@@ -2920,7 +2965,10 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   let type_params = prefix.type_params
   let params = prefix.params
   let inferred = prefix.inferred
-  let ctx = prefix.ctx
+  let ctx = parse_context_after_inferred_node(
+    ctx: parse_context_after_node_list(ctx: prefix.ctx, nodes: concat(type_params, params)),
+    inferred: inferred
+  )
 
   let all_params = concat(type_params, params)
   let named_dummy = Node { occurrence_identity: OccurrenceSynthetic, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -2944,7 +2992,11 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   if has_err(err: body_result.err) { return ItemResult { item: named_dummy, tokens: body_result.tokens, ctx: body_result.ctx, err: body_result.err } }
   let body = body_result.expr
 
-  let minted = mint_parsed_node_identity(ctx: body_result.ctx)
+  let parent_ctx = parse_context_after_node_list(
+    ctx: parse_context_after_node(ctx: body_result.ctx, node: body),
+    nodes: admit_props
+  )
+  let minted = mint_parsed_node_identity(ctx: parent_ctx)
   let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params,
     inferred: inferred, return_cardinality: Required, uses: [],
     body: Present { value: body }, connective: NoConnective, transport: none,
