@@ -297,8 +297,9 @@ type NameResult { name: String, span: SourceSpan, tokens: TokenStream, err: Erro
 // Invariant: a combinator must publish the context its accepted child returned, never the
 // context it received. The bounded population repaired here is function parent publication
 // after params/type params/inferred/body/properties, if condition/branch/parent publication,
-// recursive accepted-child lists, and index/slice operand publication (#9344); this is not
-// a claim over every parse shape.
+// recursive accepted-child lists, and slice end-operand publication (#9344); the index arm
+// was made uniform but had no observed failure. Refusing error paths publish no successful
+// node/context pair and are outside this population. This is not a claim over every parse shape.
 // The attainable ceiling is STRUCTURALLY IMPOSSIBLE.
 // NEXT-RUNG TRIGGER (DESIGN section 4b(2)): introduce a distinct published-context carrier:
 // parse functions consume an input context, successful child results carry an advanced
