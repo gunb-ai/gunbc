@@ -2,8 +2,14 @@ module gunbc.runner_deploy_emit
 
 import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
-  PlanDerived,
-  PlanUnsound,
+  HostRunnerDeploymentStanding, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
+  HostRunnerDeploymentRefusal,
+  PrimaryCpuUnavailable, UsableRamUnavailable, SessionReservationUnestablished,
+  FixedOverheadUnavailable, CompilePoolUnavailable,
+  HostAllocationOversubscribedOnHost, HostAllocationUnchargeableOnHost,
+  ZeroRunnerWidth, HostNotEnrolledInFleet,
+  FleetDeploymentComplete, FleetDeploymentIncomplete, fleet_deployment_completion,
+  host_deployment_refusal_text,
   RunnerHostDeployment,
   runner_deployment_plan,
   SessionReservationPlan,
@@ -18,14 +24,12 @@ import gunbc.ci_runner_placement {
   InteractiveLatencySensitive,
   workload_class_cpu_weight,
 }
-import gunbc.ci_floor_measurement {
-  SessionReservationMode,
-  Regime2AggregateOomd,
-  Regime1WorstCase,
-  SessionReservationModeUnset,
-  SessionAggregateMeasured,
-  SessionAggregateUnmeasured,
-  gunbc_ci_session_reservation_mode,
+import gunbc.session_admission_policy {
+  gunbc_session_admission_policy, session_admission_oomd_ceiling,
+}
+import gunbc.session_reservation_policy {
+  ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
+  session_reservation_bytes,
 }
 import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy }
@@ -77,16 +81,39 @@ fn manifest_host_doc(h: RunnerHostDeployment) -> Doc {
   serialize_fields_doc(knobs: manifest_record_knobs, fields: manifest_host_fields(h: h))
 }
 
-fn runner_plan_doc() -> Doc {
-  match runner_deployment_plan() {
-    PlanUnsound { reason: reason } =>
-      doc_line_of(text: concat("runner-deploy UNSOUND: ", reason))
-    PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
-      doc_concat(parts: append(
-        map(hosts, h => doc_concat(parts: [doc_text(text: "runner-deploy "), manifest_host_doc(h: h), DocLine])),
-        items: [doc_line_of(text: concat("runner-deploy fleet_concurrent_runs=", to_string(total)))]
+// THE MANIFEST RENDERS EVERY HOST, INCLUDING THE REFUSED ONES. The shape this replaces printed one
+// UNSOUND line for the whole fleet and dropped every host that HAD derived, so a reader could not
+// tell which host failed or what the other three would have deployed. Omitting a refused host
+// silently would be the opposite error: the roster must show that srv2 was considered and refused,
+// not that srv2 does not exist.
+fn runner_standing_doc(st: HostRunnerDeploymentStanding) -> Doc {
+  match st {
+    HostRunnerDeploymentDerived { deployment: h } =>
+      doc_concat(parts: [doc_text(text: "runner-deploy deployment=derived "), manifest_host_doc(h: h), DocLine])
+    HostRunnerDeploymentRefused { refusal: r } =>
+      doc_line_of(text: concat(concat("runner-deploy deployment=refused host=", r.host), concat(" cause=", host_deployment_refusal_text(c: r.cause))))
+  }
+}
+
+
+fn fleet_completion_line(p: RunnerDeploymentPlan) -> Doc {
+  match fleet_deployment_completion(p: p) {
+    FleetDeploymentComplete { deployments: _, fleet_concurrent_runs: total } =>
+      doc_line_of(text: concat("runner-deploy fleet-completion=complete fleet_concurrent_runs=", to_string(total)))
+    FleetDeploymentIncomplete { derived_hosts: _, refused_hosts: refused, known_derived_runs: known } =>
+      doc_line_of(text: concat(
+        concat("runner-deploy fleet-completion=incomplete known_derived_runs=", to_string(known)),
+        fold(refused, init: " refused_hosts=", f: (acc, r) => concat(acc, concat(r.host, " ")))
       ))
   }
+}
+
+fn runner_plan_doc() -> Doc {
+  let plan = runner_deployment_plan()
+  doc_concat(parts: append(
+    map(plan.hosts, st => runner_standing_doc(st: st)),
+    items: [fleet_completion_line(p: plan)]
+  ))
 }
 
 fn session_host_fields(h: SessionHostReservation) -> List<SerialField> {
@@ -146,34 +173,43 @@ fn operating_curve_doc() -> Doc {
   ))
 }
 
-fn session_slice_doc() -> Doc {
-  match gunbc_ci_session_reservation_mode {
-    SessionReservationModeUnset =>
-      doc_line_of(text: "session-slice UNSOUND: session reservation mode unset")
-    Regime1WorstCase { point: _ } =>
-      doc_line_of(text: "session-slice UNSOUND: REGIME-1 mode has no aggregate reservation; session-slice apply requires REGIME-2")
-    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg } =>
-      match agg {
-        SessionAggregateUnmeasured =>
-          doc_line_of(text: "session-slice UNSOUND: aggregate_reservation is unmeasured; commit a measured concurrent peak before wiring the apply")
-        SessionAggregateMeasured { bytes: agg_bytes } =>
-          doc_concat(parts: map(fleet_intent_offers, o => doc_line_of(text: concat(
-            "session-slice ",
+// THE EMITTED SESSION-SLICE MANIFEST NAMED EVERY HOST AND ONE AGGREGATE. It mapped a single
+// agg_bytes across fleet_intent_offers, so the generated artifact could carry "srv2 UNSOUND" from
+// the host-keyed placement path and "20 GiB for every offer" from the fleet-wide row, in one file.
+// Each host now renders the reservation it actually owes, and a host that owes none or cannot be
+// sized renders that verdict instead of a number.
+fn session_slice_line(host: HostIdentity, ceiling: ByteSize) -> Doc {
+  match session_reservation_bytes(host: host) {
+    ReservationBytesNotApplicable =>
+      doc_line_of(text: concat("session-slice host=", host, " NOT_APPLICABLE residency observes no interactive sessions on this host, so it owes no sessions.slice reservation"))
+    ReservationBytesUnestablished { cause: why } =>
+      doc_line_of(text: concat("session-slice host=", host, " UNSIZED ", why))
+    ReservationBytes { bytes: agg_bytes } =>
+      doc_line_of(text: concat(
+        "session-slice ",
+        concat(
+          concat(
             concat(
               concat(
-                concat(
-                  concat(
-                    concat(concat("host=", o.supply.physical.identity), concat(" slice_max_bytes=", to_string(byte_size_count(b: agg_bytes)))),
-                    concat(" per_session_max_bytes=", to_string(byte_size_count(b: ceiling)))
-                  ),
-                  " oom_pressure_kill=true"
-                ),
-                concat(" oom_pressure_limit_pct=", to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)))
+                concat(concat("host=", host), concat(" slice_max_bytes=", to_string(byte_size_count(b: agg_bytes)))),
+                concat(" per_session_max_bytes=", to_string(byte_size_count(b: ceiling)))
               ),
-              concat(" cpu_weight=", to_string(workload_class_cpu_weight(wc: InteractiveLatencySensitive)))
-            )
-          ))))
-      }
+              " oom_pressure_kill=true"
+            ),
+            concat(" oom_pressure_limit_pct=", to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)))
+          ),
+          concat(" cpu_weight=", to_string(workload_class_cpu_weight(wc: InteractiveLatencySensitive)))
+        )
+      ))
+  }
+}
+
+fn session_slice_doc() -> Doc {
+  match session_admission_oomd_ceiling(p: gunbc_session_admission_policy) {
+    Absent =>
+      doc_line_of(text: "session-slice UNSOUND: no per-session oomd eviction ceiling is established in gunbc.session_admission_policy")
+    Present { value: ceiling } =>
+      doc_concat(parts: map(fleet_intent_offers, o => session_slice_line(host: o.supply.physical.identity, ceiling: ceiling)))
   }
 }
 
@@ -195,10 +231,20 @@ fn runner_deploy_drifted(committed: String) -> Bool {
 }
 
 fn expected_runner_deploy_manifest_json() -> String {
-  match runner_deployment_plan() {
-    PlanUnsound { reason: reason } =>
-      render(doc: doc_line_of(text: concat("runner-deploy UNSOUND: ", reason)), proto: runner_deploy_protocol)
-    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+  runner_deploy_manifest_json_for(p: runner_deployment_plan())
+}
+
+// THE RENDERER TAKES ITS PLAN RATHER THAN READING THE LIVE ONE. It used to read
+// runner_deployment_plan() directly, which made the JSON shape unassertable the moment the live
+// fleet stopped being complete -- srv2's refusal sends every call down the INCOMPLETE arm, so the
+// only witness covering the JSON format had no subject that could produce JSON. Parameterising is
+// the single-authority move rather than a second renderer for tests: one function, two subjects,
+// so a change to the format cannot green a fixture while the live path diverges.
+fn runner_deploy_manifest_json_for(p: RunnerDeploymentPlan) -> String {
+  match fleet_deployment_completion(p: p) {
+    FleetDeploymentIncomplete { derived_hosts: _, refused_hosts: refused, known_derived_runs: _ } =>
+      render(doc: doc_line_of(text: fold(refused, init: "runner-deploy INCOMPLETE refused_hosts=", f: (acc, r) => concat(acc, concat(r.host, " ")))), proto: runner_deploy_protocol)
+    FleetDeploymentComplete { deployments: hosts, fleet_concurrent_runs: _ } =>
       render(
         doc: doc_concat(parts: map(hosts, h =>
           doc_concat(parts: [
