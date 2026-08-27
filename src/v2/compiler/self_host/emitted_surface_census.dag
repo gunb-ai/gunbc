@@ -395,11 +395,21 @@ fn refused_row_count(census: SurfaceCensus) -> Int {
 //
 // NEXT-RUNG TRIGGER, naming the capability rather than an artifact that would contribute to one:
 // the emitter stops conditioning a module's published linkage surface on closure membership, so
-// that a seed module's interface is a function of the seed module. The located mechanism is the
-// export-proof gate on use-line synthesis (`provider_proven_exports_symbol` in v1's Rust emitter),
-// which admits a synthesised reexport only when some OTHER module in the same closure proves the
-// export -- so the same source publishes different interfaces under different closures. When that
-// holds, this function is enrolled as a required phase and this paragraph is deleted, not amended.
+// that a seed module's interface is a function of the seed module. When that holds, this function
+// is enrolled as a required phase and this paragraph is deleted, not amended.
+//
+// THE ROUTE IS USE-LINE SYNTHESIS, AND THE SUB-GATE IS NAMED AT THE GRAIN THE EVIDENCE SUPPORTS.
+// Of the four ways a name reaches a module's reexports, exactly one both reads the closure and can
+// introduce a name the source never imported: the reference-derived use-line walk in v1's Rust
+// emitter. Within it a candidate can fail in TWO places -- the registry lookup finds no row at all,
+// or it finds one and the export cannot be proven. The specimen above fails at the FIRST: under the
+// narrower entry the providers of `Optional` and `empty_map` are absent from the closure entirely,
+// so the registry carries no row and the export-proof gate is never reached. An earlier revision of
+// this paragraph named the proof gate as the located mechanism, which the specimen does not
+// exercise; it is a sibling arm, and the distinction is not cosmetic because the two have different
+// remedies -- the closure carries no provider, versus it carries one whose export could not be
+// established. The capability named by the trigger is unaffected either way, which is the point of
+// stating a trigger as a capability rather than as a mechanism.
 //
 // WHAT WOULD FALSIFY THE TRIGGER RATHER THAN SATISFY IT: repairing std.algebra alone. That closes
 // one specimen and leaves the mechanism, and the population of modules with a closure-conditioned
