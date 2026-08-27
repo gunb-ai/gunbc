@@ -1,0 +1,12 @@
+module test.fixture.effect_reach_conjunction.sink_only_entry
+
+import test.fixture.effect_reach_conjunction.host_sink_provider { effect_reach_fixture_reads_a_host_path }
+
+// THE DISCRIMINATING RED. This entry's import closure reaches a real filesystem read and
+// nothing else, so by the meaning `v2.std.live_tree` gives the disposition it READS THE LIVE
+// TREE. The derivation answers that it does not, because no module in the closure happens to
+// carry a repository path literal — the second term of a conjunction that has nothing to do
+// with whether a read occurs.
+fn effect_reach_fixture_sink_only_entry() -> Bool {
+  effect_reach_fixture_reads_a_host_path(target: "/tmp/effect_reach_fixture_absent")
+}
