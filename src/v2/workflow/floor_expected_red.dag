@@ -707,6 +707,83 @@ fn floor_expected_red_chunk_22() -> List<String> {
   Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.green_control_sanctioned_reader_body_not_flagged", tail: Empty {} }
 }
 
+// chunk_23 CARRIES ONE ROW AND IT ENTERS THIS ROSTER BY A ROUTE THE HEADER DOES NOT DESCRIBE, so
+// the route is written here rather than left for the next reader to infer from the identity.
+//
+// THE MEASUREMENT IS CARRIED HERE RATHER THAN CITED, deliberately: a row that has told an
+// assertion not to assert is exactly where a reader most needs the reason, and a pointer to a
+// pull request is worthless to them if that request has not landed (or never does). The four
+// facts, standalone:
+//
+//   1. WHAT THE WITNESS ASSERTS. `FreeMonoid<Node>` passed to a parameter declared
+//      `FreeMonoid<NormalizedTree>` -- a container-element type mismatch at a direct call
+//      argument -- must be REFUSED. The witness holds `!compile_dag_rust_emit_check(...)`, so it
+//      passes only when the embedded fixture fails to compile.
+//   2. IT IS ACCEPTED, AND THE CONTROLS ARE WHAT ESTABLISH IT. Two fixtures carrying the IDENTICAL
+//      container-element mismatch, built from a locally declared record with no `Node`, no
+//      `v2.std.node` and no occurrence identity anywhere in them -- one reusing the wrapper name
+//      `NormalizedTree`, one using a corpus-unique wrapper name -- BOTH COMPILE CLEAN ON MAIN
+//      (@ ddb7f533e4e), zero blocking diagnostics. They share nothing with the occurrence-identity
+//      cut, so the acceptance is a property of the compiler and not of this branch.
+//   3. THE PREVIOUS GREEN WAS NOT ITS OWN ASSERTION. On main the real fixture refuses with exactly
+//      `UnresolvedType std.occurrence_identity.OccurrenceId` x2 and `ScopedOccurrenceRef` x1, and
+//      carries NO type-mismatch diagnostic at all. `v2.std.node` referenced those two types fully
+//      qualified WITHOUT importing that module, so every closure importing `v2.std.node` inherited
+//      them. This branch adds the import, they resolve, and the accidental refusal goes with them.
+//   4. NEXT-RUNG TRIGGER. `container_element_nominal_brand_mismatch` reaching the
+//      direct-call-argument position.
+//
+// Measured with the witness's own oracle (`compile_dag_rust_emit_check`) alongside
+// `compile_dag_diagnostic_census`, over both corpora, 2026-08-27.
+//
+// Every other row here names a witness that FAILS and that someone is repairing. This one names a
+// witness whose SUBJECT was never guarded, and the repair it waits on is not a repair to the
+// witness -- it is a compiler wall that does not exist yet. The header's rule (a row belongs here
+// only while someone is fixing it) is stated so this roster cannot become a skip list, and this
+// row is admitted against the letter of that rule with the tension named rather than hidden: it
+// has a trigger, it is at identity grain, and it is on the same self-emptying path as everything
+// else -- the moment the wall lands, the witness passes, this roster reds the build naming this
+// row, and the row is deleted. What it does NOT have is an owner mid-repair today.
+//
+// THE CLASS IS RUNG INFLATION, DESIGN 4b(1) -- NOT a 4b(3) rung drop, and the distinction decides
+// what a reader may do with this row. Nothing regressed. The container-element mismatch judgment
+// at a direct call argument does not fire and never did:
+// `record_literal_container_element_mismatch_at_call_arg_still_refuses` was GREEN ON MAIN because
+// `v2.std.node` referenced `std.occurrence_identity.OccurrenceId` and `ScopedOccurrenceRef` fully
+// qualified WITHOUT importing that module, so every closure importing `v2.std.node` inherited two
+// `UnresolvedType` diagnostics and refused for THAT reason. Measured on main @ ddb7f533e4e with the
+// witness's own oracle, the fixture's refusal is exactly those two diagnostics and carries no
+// type-mismatch diagnostic at all; the same container-element mismatch built from a locally
+// declared record, with no `Node` and no `v2.std.node` in it, COMPILES CLEAN ON MAIN. This branch
+// adds the import that resolves them, and the accidental refusal goes with them.
+//
+// SO THE ROW A READER MUST NOT WRITE is "restore the previous behaviour". The previous behaviour
+// was an accident, and re-adding unresolved references to buy back the red would be manufacturing
+// a refusal from a defect -- which is what this roster exists to make visible, not to launder.
+//
+// A witness green on a defect in its own closure is NEGATIVE coverage, not weak coverage: it is
+// cited as evidence the wall is live, so the class never ranks for climbing. The nominal sibling
+// `record_literal_nominal_mismatch_at_call_arg_still_refuses` stays green through a DIFFERENT path
+// (`literal_introduction_type_mismatch`, whose actual is a record literal rather than a call),
+// which is why the family read as coherent and was not.
+//
+// The class row and its ceiling are ALSO filed in
+// `docs/plans/compiler-guarantee-recovery-gap-analysis.md` (gunbc#9457, against main, because the
+// finding is about main) -- in ADDITION to the four facts above, never instead of them, because
+// merge order is not this branch's to control and that row may land after this one or not at all.
+// THE ENROLMENT COULD NOT LAND THERE and the reason is mechanical: on main
+// this witness still PASSES, `required_floor_outcome_is_clean` requires `stale_quarantine` to be
+// empty, and an enrolled row that passes reds the build -- so enrolling it on main would red
+// main's own required floor. It fails here, which is the only tree where it is honestly enrollable.
+//
+// REMOVAL TRIGGER: `container_element_nominal_brand_mismatch` reaching the direct-call-argument
+// position -- i.e. `nominal_call_arg_brand_mismatch` admitting two distinct nominal element types
+// under a shared container template. The witness is the ready-made RED for that work and needs no
+// new fixture.
+fn floor_expected_red_chunk_23() -> List<String> {
+  Cons { head: "test.claim.record_literal_call_arg_handoff_witness.record_literal_container_element_mismatch_at_call_arg_still_refuses", tail: Empty {} }
+}
+
 // THIRTEEN FURTHER IDENTITIES RETIRED 2026-08-26 BY ONE REPAIR, and the number is the finding
 // rather than the bookkeeping. The local-binding-shadow repair -- a call site spelling a name held
 // by both a local binding and a module-level free function now reaches the LOCAL -- was enrolled
@@ -724,7 +801,7 @@ fn floor_expected_red_chunk_22() -> List<String> {
 // enrolled and now passes, which is what keeps the repair's reach measured rather than asserted:
 // if the gate regresses, thirteen independent modules go red before the shadow fixture does.
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import

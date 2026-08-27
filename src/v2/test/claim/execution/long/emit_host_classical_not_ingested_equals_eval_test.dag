@@ -1,5 +1,6 @@
 module v2.test.long.emit_host_classical_not_ingested_equals_eval
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
@@ -72,8 +73,7 @@ import v2.std.node {
   Match,
   Node,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.node_query { find_arrow_body_child, find_named_child }
 import v2.std.runtime {
@@ -636,7 +636,7 @@ fn ingested_classical_not_arrow_empty_domain_fixture() -> Node {
     domain: Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     return_type_binding: ^dag_binding_type_int,
     body: ingested_classical_not_match_only_param_body_fixture()

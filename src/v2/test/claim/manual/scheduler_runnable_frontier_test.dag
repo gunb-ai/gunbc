@@ -7,25 +7,25 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data scheduler_build_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^scheduler_build_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data scheduler_test_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^scheduler_test_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data scheduler_emit_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^scheduler_emit_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data scheduler_missing_source_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^scheduler_missing_source_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data scheduler_fixture_graph: Node = Node {
@@ -35,7 +35,7 @@ data scheduler_fixture_graph: Node = Node {
     Edge { label: Named { name: ^scheduler_test_symbol }, target: scheduler_test_node },
     Edge { label: Named { name: ^scheduler_emit_symbol }, target: scheduler_emit_node }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data scheduler_build_to_emit_dependency: DependencyView = DependencyView {

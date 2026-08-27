@@ -508,7 +508,7 @@ fn go_run_fixture(source: String) -> LeafModelGoRunFixture {
 
 fn go_leaf_model_fact_atom(id: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: id } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 

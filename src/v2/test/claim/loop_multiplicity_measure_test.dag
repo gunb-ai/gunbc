@@ -7,7 +7,7 @@ fn lmm_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -18,7 +18,7 @@ fn lmm_loop_with_measure(measure: Node) -> Node {
       Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit) },
       Edge { label: Named { name: ^loop_bound_edge }, target: measure }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -28,7 +28,7 @@ fn lmm_loop_without_measure() -> Node {
     children: [
       Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -39,7 +39,7 @@ fn lmm_conj_measure(a: Node, b: Node) -> Node {
       Edge { label: Named { name: ^lmm_dim_left }, target: a },
       Edge { label: Named { name: ^lmm_dim_right }, target: b }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -180,7 +180,7 @@ test fn nested_unproven_loop_still_poisons_the_fold() -> Bool {
         target: lmm_atom(s: ^dag_loop_measure_sym)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
   lmm_is_proven(m: loop_multiplicity(n: outer))
     && !lmm_termination_holds(w: termination_proof_witness_for_node(n: outer))

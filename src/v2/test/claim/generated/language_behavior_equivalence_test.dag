@@ -1,5 +1,6 @@
 module v2.test.generated.language_behavior_equivalence
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
@@ -31,7 +32,7 @@ import v2.std.diagnostic {
   Rejected,
   Unavailable,
   diagnostics_singleton, node_locus }
-import v2.std.node { Atom, Hash, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Hash, Node, Symbol, TypeNode }
 import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -85,7 +86,7 @@ fn lbe_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
