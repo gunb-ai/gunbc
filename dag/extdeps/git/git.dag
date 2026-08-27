@@ -371,6 +371,28 @@ data git_reflog_external_authority_anchor: ExternalAuthority = ExternalAuthority
   }
 }
 
+// UNTRACKED RESIDUE IS WHAT `reset --hard` CANNOT REACH, and reporting a convergence without
+// observing it would be a fabricated plausible output: `reset --hard` moves HEAD, the index and the
+// TRACKED bytes, so a tree that carries strays afterwards is candidate-union-strays and not the
+// candidate. On the deployed tree this is not hypothetical -- the sync being replaced wrote files
+// git never tracked, and they survive the transition untouched.
+//
+// `ls-files --others` rather than `status --porcelain` because the question is exactly "which paths
+// does git not track", with no interest in staged or modified state, and `--exclude-standard` keeps
+// ignored build output out of the answer: a target/ directory is not residue, it is a gitignored
+// artifact the candidate tree also expects to be absent from. `-z` because a path may contain a
+// newline, and a newline-delimited reading of this output would silently split one path into two.
+//
+// THIS OPERATION OBSERVES AND DOES NOT REMOVE. `git clean -fdx` would make the tree match by
+// deleting whatever it found, which widens rather than refuses (DESIGN section 5) and would destroy
+// operator state nobody adjudicated. The consumer refuses and names the residue instead.
+data git_ls_files_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-ls-files"
+  }
+}
+
 // ONE OPERATION MOVES HEAD, THE INDEX AND THE TRACKED BYTES TOGETHER, which is the property the
 // deployed tree lost. The sync it replaces moved tracked bytes by rsync and HEAD by file copy and
 // left the index untouched entirely, so the three could and did disagree -- measured on srv1 as
@@ -1167,6 +1189,19 @@ service git.Core {
     readonly
     transport shell {
       argv: ["git", "-C", "{repo}", "reflog", "show", "--format=%H %gd %gs", "{ref}"]
+    }
+  }
+
+  operation ListUntrackedInRepo {
+    input { repo: FilePath }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["git", "-C", "{repo}", "ls-files", "--others", "--exclude-standard", "-z"]
     }
   }
 
