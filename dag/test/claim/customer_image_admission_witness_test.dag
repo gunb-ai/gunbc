@@ -59,6 +59,24 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// HOW TO CHECK THAT THESE ROWS DISCRIMINATE, STATED AS A PROCEDURE RATHER THAN AS A TRANSCRIBED
+// RESULT, so a later reader re-derives it instead of trusting a number that has since rotted.
+//
+// Run this module through `claim_batch --claim-run`, then delete ONE check in
+// product.fabric.customer_image and run it again. Each of these three deletions must turn exactly
+// ONE row red and leave every other row green:
+//
+//   customer_image_layers_agree returning true unconditionally
+//     -> only w_layer_count_disagreement_is_refused_with_both_counts
+//   admit_customer_image skipping the digest-pin test
+//     -> only w_tag_reference_is_refused_unpinned
+//   admit_customer_image_platform skipping the architecture comparison
+//     -> only w_foreign_architecture_image_is_refused_naming_both_sides
+//
+// A deletion that turns NOTHING red means the row is agreeing with the fold's shape rather than
+// testing its decision; a deletion that turns SEVERAL red means the rows are not independent and
+// one defect would be reported three times. Both are failures of this file, not of the fold.
+
 // THE FIRST EXECUTING CONSUMER OF THE OCI MODEL.
 //
 // Nine OCI modules typechecked for months with zero product consumers: accept_image_manifest and
