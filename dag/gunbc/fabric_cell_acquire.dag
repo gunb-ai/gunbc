@@ -1,0 +1,749 @@
+module gunbc.fabric_cell_acquire
+
+import std.types { String, List, Bool, NonEmptyStr }
+import std.algebra { trim }
+import std.disposition { Disposition, SingleAuthority }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.stat
+import extdeps.systemd.systemctl
+import extdeps.systemd {
+  systemd_unit_property_wire,
+  SystemdUnitProperty,
+  MemoryMax,
+  MemoryHigh,
+  MemorySwapMax,
+  TasksMax,
+  CPUWeight,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.fabric_cell_converge {
+  FabricCellResourceAddress,
+  FabricCellRootAddress,
+  FabricCellAttemptRootAddress,
+  FabricCellResourceBoundaryAddress,
+  fabric_cell_resource_addresses,
+  fabric_cell_base_dir,
+  fabric_cell_base_dir_parent,
+  fabric_cell_base_dir_entry_name,
+  fabric_cell_root_path,
+  fabric_cell_attempt_root_path,
+  fabric_cell_slice_name,
+  fabric_cell_expected_slots,
+  fabric_cell_boundary_state_digest_of,
+  fabric_cell_boundary_address_digest_of,
+}
+import gunbc.fabric_cell_observe {
+  FabricCellHostProbe,
+  FabricCellNamespaceProbeEntry,
+  FabricCellAddressProbeEntry,
+  FabricCellNamespace,
+  FabricCellsRootNamespace,
+  FabricCellChildNamespace,
+  FabricCellSliceNamespace,
+  FabricCellNamespaceProbe,
+  NamespaceEnumerated,
+  NamespaceObservedAbsent,
+  NamespaceEnumerationRefused,
+  FabricCellAddressProbe,
+  AddressStateRead,
+  AddressStateReadRefused,
+}
+
+data fabric_cell_acquire_authority_disposition: Disposition = SingleAuthority
+
+data fabric_cell_slice_unit_pattern: NonEmptyStr = "fabric-cell-*.slice" as NonEmptyStr
+
+// THIS MODULE IS THE HOST-EFFECT HALF THE PURE OBSERVER WAS SPLIT AWAY FROM, and it is a
+// realization handler bound to that observer's shape rather than a second observer. gunbc.fabric_cell_observe
+// owns what a probe RESULT means; this module owns how a probe result is ACQUIRED, and the only
+// thing it may produce is a `FabricCellHostProbe` -- a value, not a verdict. Nothing here decides
+// whether a cell is converged, absent or refused: those are consequences the pure half derives, and
+// keeping the decision out of the acquisition is what makes every law about them authorable as a
+// fixture (DESIGN section 3 -- transport is one of N handlers, never a fact about the interface).
+//
+// IT REACHES FOUR DECLARED READONLY OPERATIONS AND ADDED EXACTLY ONE OF THEM. `Filesystem.List`,
+// `systemd.Systemctl.ListUnits` and `systemd.Systemctl.ShowProperty` already existed with cited
+// upstream authorities. `extdeps.tools.stat` `stat.File.FileType` is new, and the reason it is new
+// is the reason worth writing down: this module was first built out of boolean path tests, twice,
+// and neither composition could distinguish a path that is not there from a path that could not be
+// looked at -- because every boolean test reports its own failure to observe as a negative answer.
+// That is not a transport gap, it is the observation model wanting a fact the declared vocabulary
+// could not express, so it was answered where modeling lives rather than approximated here.
+
+// A DIRECTORY HAS FOUR HONEST STATES AND NOT TWO, and collapsing them is what makes the difference
+// between planning a fresh host and refusing to touch a broken one. `Filesystem.List` answers
+// `success: Bool`, so a listing that failed and a directory that is not there are the SAME false
+// through that operation alone -- and they have opposite consequences: not-there licenses a
+// provisioning ADD, could-not-read must stop the line. The pair is separated by an independent
+// observation of the path's KIND rather than by reading the error text, because parsing a message
+// for "No such file" is a heuristic standing where a declared operation was available, and DESIGN
+// section 4 rules a heuristic never necessary in a closed system. Which observation carries that
+// separation is settled four paragraphs down and is NOT a boolean test: this sentence named
+// `test -d` while the same source below explained why every boolean construction was retired, so a
+// reader who stopped here left with the predecessor mechanism.
+//
+// THE FOURTH STATE IS THE ONE A `Bool` CANNOT HOLD AT ALL. A path occupied by something that is not
+// a directory is not an absence -- reporting it as one would license an ADD that cannot succeed,
+// and the failure would surface at apply time as a mkdir refusal rather than here as an
+// observation. It is not a listing either. It is a host in a state nobody intended, which is
+// exactly what an observer exists to report.
+//
+// "NOT A DIRECTORY" IS NOT "IS A REGULAR FILE" AND NEITHER PAIR OF BOOLEANS PROVES ABSENCE. Two
+// successive cuts of this module got this wrong in two different ways, and the second is the
+// instructive one. The first asked `test -f` after `test -d` and called everything else absent, so
+// a socket, a FIFO, a device node or a symlink reported a path that CANNOT BE CREATED as one free
+// to create. The second replaced that with `test -e` and `test -L`, which fixes the occupancy half
+// -- and still cannot answer the question, because `test -e` returns false BOTH for a path that is
+// not there AND for one whose parent directory cannot be searched. Absence and "I could not look"
+// are the pair whose remedies differ most, and no composition of booleans separates them: each one
+// reports its own failure to observe as a negative answer.
+//
+// SO THE KIND IS OBSERVED ONCE, AS A KIND. `stat -c %F` reports the type on success and reports
+// FAILURE otherwise -- it never reports absence, because a metadata read that failed establishes
+// nothing. GNU stat uses lstat by default, so a symbolic link reads as a link rather than as its
+// target, which is what an observer deciding whether a name is occupied needs.
+//
+// AND ABSENCE COMES FROM WHERE IT ALWAYS DID: THE PARENT ENUMERATION. That is the observe module's
+// own parent-observation law, applied here rather than approximated by a probe of the path itself.
+// A successful listing that does not hold the entry establishes absence; a stat that failed
+// establishes only that the read failed.
+type FabricCellDirectoryObservation
+  = DirectoryListed { entries: List<String> }
+  | DirectoryNotPresent
+  | DirectoryUnreadable { path: String, cause: String }
+  | PathOccupiedByNonDirectory { path: String, kind: FabricCellPathKind }
+
+// THE GNU FILE-TYPE WORDS, DECODED INTO A CLOSED VOCABULARY. Every token coreutils can print for
+// `%F` gets an arm, and anything else is UnknownKind carrying the word -- not a silent default,
+// because a type this repository has not seen is a fact about the host worth reporting verbatim.
+type FabricCellPathKind
+  = DirectoryKind
+  | RegularFileKind
+  | SymbolicLinkKind
+  | SocketKind
+  | FifoKind
+  | CharacterDeviceKind
+  | BlockDeviceKind
+  | UnknownKind { word: String }
+
+fn fabric_cell_path_kind_of(word: String) -> FabricCellPathKind {
+  let w = trim(word)
+  if w == "directory" { DirectoryKind }
+  else if w == "regular file" { RegularFileKind }
+  else if w == "regular empty file" { RegularFileKind }
+  else if w == "symbolic link" { SymbolicLinkKind }
+  else if w == "socket" { SocketKind }
+  else if w == "fifo" { FifoKind }
+  else if w == "character special file" { CharacterDeviceKind }
+  else if w == "block special file" { BlockDeviceKind }
+  else { UnknownKind { word: w } }
+}
+
+fn fabric_cell_path_kind_word(kind: FabricCellPathKind) -> String {
+  match kind {
+    DirectoryKind => "directory"
+    RegularFileKind => "regular file"
+    SymbolicLinkKind => "symbolic link"
+    SocketKind => "socket"
+    FifoKind => "fifo"
+    CharacterDeviceKind => "character special file"
+    BlockDeviceKind => "block special file"
+    UnknownKind { word: w } => w
+  }
+}
+
+// THE PROJECTION IS PURE AND TOTAL, WHICH IS WHERE EVERY LAW ABOUT THIS MODULE LIVES. The host
+// effects below are unreachable in a hermetic fixture; this function is not, so the mapping from
+// what a host reported to what the observer will believe is testable without a host.
+fn fabric_cell_namespace_probe_of(observation: FabricCellDirectoryObservation) -> FabricCellNamespaceProbe {
+  match observation {
+    DirectoryListed { entries: es } => NamespaceEnumerated { entries: es }
+    DirectoryNotPresent => NamespaceObservedAbsent
+    DirectoryUnreadable { path: p, cause: c } =>
+      NamespaceEnumerationRefused {
+        cause: join([
+          "listing ", p, " refused: ", c,
+          " -- a listing that failed asserts nothing about what is there, so this is not an empty directory",
+        ], ""),
+      }
+    PathOccupiedByNonDirectory { path: p, kind: k } =>
+      NamespaceEnumerationRefused {
+        cause: join([
+          p, " is a ", fabric_cell_path_kind_word(kind: k), " and not a directory",
+          " -- it holds no entries to enumerate and it is not absent either, so no membership may be planned against it",
+        ], ""),
+      }
+  }
+}
+
+// A LISTING'S BLANK LINES ARE NOT ENTRIES. `Filesystem.List` returns one text; an empty directory
+// and a directory holding one entry differ by whether that text is empty, and a trailing newline
+// makes the second look like two entries unless the blanks are dropped.
+fn fabric_cell_listing_entries(text: String) -> List<String> {
+  filter(map(split(text, separator: "\n"), l => trim(l)), l => l != "")
+}
+
+// THE FIVE PROPERTY READS COMPOSE INTO ONE DIGEST OR INTO ONE REFUSAL NAMING THE FIRST THAT FAILED.
+// A partial boundary read is not a boundary observation: four values and a hole would either have
+// to fabricate the fifth or render a digest that no host carries, and both are the fabricated
+// plausible output DESIGN section 5 forbids. The digest is built through the converge module's own
+// spelling authority so the observed and desired sides cannot fork.
+type FabricCellBoundaryReading
+  = BoundaryValuesRead {
+      memory_max: String
+      memory_high: String
+      memory_swap_max: String
+      tasks_max: String
+      cpu_weight: String
+    }
+  | BoundaryReadRefused { cause: String }
+
+fn fabric_cell_boundary_address_probe(
+  slot: RunnerSlotIdentity,
+  reading: FabricCellBoundaryReading,
+) -> FabricCellAddressProbe {
+  match reading {
+    BoundaryReadRefused { cause: c } => AddressStateReadRefused { cause: c }
+    BoundaryValuesRead {
+      memory_max: mx
+      memory_high: mh
+      memory_swap_max: ms
+      tasks_max: tm
+      cpu_weight: cw
+    } =>
+      AddressStateRead {
+        state_digest: fabric_cell_boundary_address_digest_of(
+          slice_name: fabric_cell_slice_name(slot: slot),
+          state: fabric_cell_boundary_state_digest_of(
+            memory_max: mx,
+            memory_high: mh,
+            memory_swap_max: ms,
+            tasks_max: tm,
+            cpu_weight: cw,
+          ),
+        ),
+      }
+  }
+}
+
+// A DIRECTORY'S OWN STATE IS ITS PATH, WHICH IS NOT A TAUTOLOGY BECAUSE THE READ CAN FAIL. The
+// desired digest for a cell root and an attempt root is the path itself -- existence is the whole
+// of their state -- so a successful read renders the path and an unreadable one refuses. What makes
+// this an observation rather than a restatement of the desired value is that it is reached only
+// after this host said the directory is there and readable.
+fn fabric_cell_directory_address_probe(
+  path: String,
+  observation: FabricCellDirectoryObservation,
+) -> FabricCellAddressProbe {
+  match observation {
+    DirectoryListed { entries: _ } => AddressStateRead { state_digest: path as NonEmptyStr }
+    DirectoryNotPresent =>
+      AddressStateReadRefused {
+        cause: join([path, " was not present when its state was read, after its parent listing held it"], ""),
+      }
+    DirectoryUnreadable { path: p, cause: c } =>
+      AddressStateReadRefused { cause: join(["reading ", p, " refused: ", c], "") }
+    PathOccupiedByNonDirectory { path: p, kind: k } =>
+      AddressStateReadRefused {
+        cause: join([p, " is a ", fabric_cell_path_kind_word(kind: k), " and not a directory"], ""),
+      }
+  }
+}
+
+// --- host effects ------------------------------------------------------------------------------
+
+// ORDERED SO THAT ABSENCE IS ESTABLISHED BEFORE A LISTING IS ATTEMPTED, not inferred from one that
+// failed. "not a directory" is not yet absence -- a regular file at the path answers the same way
+// -- so the two are separated by the parent's own listing rather than by assuming which one it was.
+// WHAT THE CONTAINING DIRECTORY SAID ABOUT THIS ENTRY, WHICH IS THE ONLY THING THAT CAN ESTABLISH
+// ABSENCE. A probe of the path itself cannot: every failure it can report is its own failure to
+// observe, and reading that as "nothing is there" is the empty-observation narrow at the smallest
+// possible scale.
+type FabricCellParentStanding
+  = ParentHoldsEntry
+  | ParentLacksEntry
+  | ParentUnobserved { cause: String }
+
+fn fabric_cell_parent_standing_of(
+  parent: FabricCellDirectoryObservation,
+  entry: String,
+) -> FabricCellParentStanding {
+  match parent {
+    DirectoryListed { entries: es } =>
+      if fabric_cell_entries_hold_name(entries: es, name: entry) { ParentHoldsEntry } else { ParentLacksEntry }
+    DirectoryNotPresent => ParentLacksEntry
+    DirectoryUnreadable { path: p, cause: c } =>
+      ParentUnobserved { cause: join(["the containing directory ", p, " could not be listed: ", c], "") }
+    PathOccupiedByNonDirectory { path: p, kind: k } =>
+      ParentUnobserved {
+        cause: join(["the containing directory ", p, " is a ", fabric_cell_path_kind_word(kind: k)], ""),
+      }
+  }
+}
+
+type FabricCellPathObservation
+  = PathKindObserved { kind: FabricCellPathKind }
+  | PathMetadataUnread { path: String, cause: String }
+
+// A COMPLETED `stat` THAT PRINTED NOTHING IS NOT A KIND, AND THE COLLAPSE IT CAUSES IS THE WORST
+// AVAILABLE ONE. Exit success alone was once taken as an answer here, so an empty `%F` fell through
+// the token decoder to `UnknownKind { word: "" }` and out as `PathOccupiedByNonDirectory` -- a
+// POSITIVE assertion that some object nobody can name is sitting on the path. That fails closed for
+// provisioning and is still wrong, because it sends the operator to the wrong remedy: "something is
+// in the way, go look at it" instead of "the metadata operation did not answer, the host read is
+// broken". The distinction is the same one the property reader below already draws for
+// `systemctl show`, and it is drawn here for the same reason -- success is a fact about the CALL,
+// never about whether the OUTPUT carrying the answer arrived.
+type FabricCellPathKindObservation
+  = PathKindRead { kind: FabricCellPathKind }
+  | PathKindReadRefused { cause: String }
+
+// PURE, SO THE `success` x `output` RELATION IS TESTABLE WITHOUT A HOST. The token decoder below it
+// is total over nonempty words by construction; what needed a wall is the step BEFORE it, which is
+// the only place an unanswered call can be mistaken for an answer.
+fn fabric_cell_path_kind_observation(
+  success: Bool,
+  output: String,
+) -> FabricCellPathKindObservation {
+  if success {
+    let w = trim(output)
+    if w == "" {
+      PathKindReadRefused {
+        cause: "the metadata read exited successfully and printed no file type, so the path kind is unanswered and not unrecognized",
+      }
+    } else {
+      PathKindRead { kind: fabric_cell_path_kind_of(word: w) }
+    }
+  } else {
+    PathKindReadRefused { cause: "the metadata read did not complete" }
+  }
+}
+
+func fabric_cell_observe_path_kind(path: String) -> FabricCellPathObservation {
+  let t = stat.File.FileType(path: path)
+  match fabric_cell_path_kind_observation(success: t.success, output: t.file_type) {
+    PathKindRead { kind: k } => PathKindObserved { kind: k }
+    PathKindReadRefused { cause: c } => PathMetadataUnread { path: path, cause: c }
+  }
+}
+
+// THE KIND DECIDES OCCUPANCY; THE PARENT DECIDES ABSENCE. A metadata read that failed is routed by
+// what the containing directory already established -- absent if the parent listed and did not hold
+// this entry, unreadable in every other case, including the case where the parent itself was never
+// observed. Nothing here turns a failed read into an absence on its own authority.
+func fabric_cell_observe_directory(
+  path: String,
+  parent: FabricCellParentStanding,
+) -> FabricCellDirectoryObservation {
+  match fabric_cell_observe_path_kind(path: path) {
+    PathMetadataUnread { path: p, cause: c } =>
+      fabric_cell_unread_path_observation(path: p, parent: parent, read_cause: c)
+    PathKindObserved { kind: k } =>
+      match k {
+        DirectoryKind => fabric_cell_list_directory(path: path)
+        RegularFileKind => PathOccupiedByNonDirectory { path: path, kind: k }
+        SymbolicLinkKind => PathOccupiedByNonDirectory { path: path, kind: k }
+        SocketKind => PathOccupiedByNonDirectory { path: path, kind: k }
+        FifoKind => PathOccupiedByNonDirectory { path: path, kind: k }
+        CharacterDeviceKind => PathOccupiedByNonDirectory { path: path, kind: k }
+        BlockDeviceKind => PathOccupiedByNonDirectory { path: path, kind: k }
+        UnknownKind { word: _ } => PathOccupiedByNonDirectory { path: path, kind: k }
+      }
+  }
+}
+
+fn fabric_cell_unread_path_observation(
+  path: String,
+  parent: FabricCellParentStanding,
+  read_cause: String,
+) -> FabricCellDirectoryObservation {
+  match parent {
+    ParentLacksEntry => DirectoryNotPresent
+    ParentHoldsEntry =>
+      DirectoryUnreadable {
+        path: path,
+        cause: join(["the containing directory holds this entry and ", read_cause], ""),
+      }
+    ParentUnobserved { cause: c } => DirectoryUnreadable { path: path, cause: c }
+  }
+}
+
+func fabric_cell_list_directory(path: String) -> FabricCellDirectoryObservation {
+  let listed = Filesystem.List(path: path)
+  if listed.success {
+    DirectoryListed { entries: fabric_cell_listing_entries(text: listed.entries) }
+  } else {
+    DirectoryUnreadable { path: path, cause: listed.error }
+  }
+}
+
+// A COMPLETED CALL THAT ANSWERED NOTHING IS NOT AN ANSWER. `systemctl show` can exit zero and print
+// an empty line, and the first cut of this reader admitted that as a value -- so an empty string
+// became part of a digest, the digest differed from the desired one, and the boundary reported
+// MemberChanged. A repair would then have been planned against a property nobody read. The honest
+// outcome is the same refusal a nonzero exit produces: the operation completed and did not answer
+// the requested question, which is the operation-completed-but-said-nothing arm of the same
+// state-space conflation the exit-zero-with-defaults defect had at the unit level.
+//
+// SPLIT OUT AS A PURE FUNCTION so the three answers are testable without a host, and so the
+// positive controls can cover "0", a decimal magnitude and "infinity" -- an empty-output refusal
+// that also rejected "0" would be a reader that refuses everything, which passes the negative row
+// and breaks every real host.
+type FabricCellPropertyObservation
+  = PropertyRead { value: NonEmptyStr }
+  | PropertyReadRefused { cause: String }
+
+fn fabric_cell_boundary_property_observation(
+  success: Bool,
+  output: String,
+  property: SystemdUnitProperty,
+) -> FabricCellPropertyObservation {
+  let word = systemd_unit_property_wire(property: property) as String
+  if !success {
+    PropertyReadRefused {
+      cause: join(["systemctl show ", word, " exited unsuccessfully for the cell slice"], ""),
+    }
+  } else {
+    let value = trim(output)
+    if value == "" {
+      PropertyReadRefused {
+        cause: join([
+          "systemctl show ", word,
+          " completed and printed nothing for the cell slice, so the property was not read",
+        ], ""),
+      }
+    } else {
+      PropertyRead { value: value as NonEmptyStr }
+    }
+  }
+}
+
+func fabric_cell_read_boundary_property(
+  unit: NonEmptyStr,
+  property: SystemdUnitProperty,
+) -> FabricCellPropertyObservation {
+  let shown = systemd.Systemctl.ShowProperty(unit: unit, property: property)
+  fabric_cell_boundary_property_observation(
+    success: shown.success,
+    output: shown.value,
+    property: property,
+  )
+}
+
+func fabric_cell_read_boundary(slot: RunnerSlotIdentity) -> FabricCellBoundaryReading {
+  let unit = fabric_cell_slice_name(slot: slot) as NonEmptyStr
+  match fabric_cell_read_boundary_property(unit: unit, property: MemoryMax) {
+    PropertyReadRefused { cause: c } => BoundaryReadRefused { cause: c }
+    PropertyRead { value: mx } =>
+      match fabric_cell_read_boundary_property(unit: unit, property: MemoryHigh) {
+        PropertyReadRefused { cause: c } => BoundaryReadRefused { cause: c }
+        PropertyRead { value: mh } =>
+          match fabric_cell_read_boundary_property(unit: unit, property: MemorySwapMax) {
+            PropertyReadRefused { cause: c } => BoundaryReadRefused { cause: c }
+            PropertyRead { value: ms } =>
+              match fabric_cell_read_boundary_property(unit: unit, property: TasksMax) {
+                PropertyReadRefused { cause: c } => BoundaryReadRefused { cause: c }
+                PropertyRead { value: tm } =>
+                  match fabric_cell_read_boundary_property(unit: unit, property: CPUWeight) {
+                    PropertyReadRefused { cause: c } => BoundaryReadRefused { cause: c }
+                    PropertyRead { value: cw } =>
+                      BoundaryValuesRead {
+                        memory_max: mx as String,
+                        memory_high: mh as String,
+                        memory_swap_max: ms as String,
+                        tasks_max: tm as String,
+                        cpu_weight: cw as String,
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE SLICE NAMESPACE IS ENUMERATED, NOT PROBED BY NAME. Asking systemd "is fabric-cell-srv3-06
+// loaded" can only ever return a subset of what this host already intended, so a slice nobody
+// desired would be invisible -- the same defect the runner-slot observer records for directory
+// enumeration. `list-units --type=slice` over the family's own prefix is the enumeration, and its
+// first field is the unit name.
+func fabric_cell_observe_slice_namespace() -> FabricCellNamespaceProbe {
+  let listed = systemd.Systemctl.ListUnits(
+    pattern: fabric_cell_slice_unit_pattern,
+    unit_type: "slice",
+    state: "loaded",
+  )
+  if listed.success {
+    NamespaceEnumerated {
+      entries: map(
+        fabric_cell_listing_entries(text: listed.stdout),
+        l => fabric_cell_unit_name_field(line: l),
+      ),
+    }
+  } else {
+    NamespaceEnumerationRefused {
+      cause: "systemctl list-units refused for the fabric cell slice family, so this host's slice population is unknown and is not empty",
+    }
+  }
+}
+
+// `list-units` PRINTS COLUMNS AND THE UNIT NAME IS THE FIRST. Taking the whole line would compare a
+// unit name against a name-plus-load-state-plus-description and never match, which reads as "the
+// slice is absent" -- the empty-observation narrow produced by a parsing slip rather than by a
+// modeling one.
+fn fabric_cell_unit_name_field(line: String) -> String {
+  fold(
+    split(trim(line), separator: " "),
+    init: "",
+    f: (acc, field) => if acc == "" { trim(field) } else { acc },
+  )
+}
+
+// ONE PROBE PER HOST, COVERING EXACTLY THE ADDRESSES THE AUTHORITY EXPECTS OF IT. The expected
+// roster drives the reads, so a host expecting no cells performs no per-slot effect at all and
+// still returns a real probe: its namespaces were read, and the pure half decides what an empty
+// expectation means. Supplying the roster from this side would be the observer reporting on what
+// it happened to probe, which is the blindness the observe module's own header rules out.
+func fabric_cell_probe_wet(host: HostIdentity) -> FabricCellHostProbe {
+  let root = fabric_cell_observe_cells_root()
+  let slices = fabric_cell_observe_slice_namespace()
+  let acquired = map(
+    fabric_cell_expected_slots(host: host),
+    s => fabric_cell_acquire_slot(slot: s, cells_root: root, slices: slices),
+  )
+  FabricCellHostProbe {
+    host: host,
+    namespaces: concat(
+      [
+        FabricCellNamespaceProbeEntry {
+          namespace: FabricCellsRootNamespace,
+          probe: fabric_cell_namespace_probe_of(observation: root),
+        },
+        FabricCellNamespaceProbeEntry {
+          namespace: FabricCellSliceNamespace,
+          probe: slices,
+        },
+      ],
+      map(acquired, a => fabric_cell_acquisition_namespace_entry(acquisition: a)),
+    ),
+    addresses: flat_map(acquired, a => fabric_cell_acquisition_address_entries(acquisition: a)),
+  }
+}
+
+// ONE SUBJECT IS ACQUIRED ONCE PER TICK, AND THE PROJECTIONS READ THE VALUE RATHER THAN THE HOST.
+// The previous cut observed each cell root TWICE inside one nominal probe: once while building the
+// child-namespace entry, and again inside the address fold. Two reads of one subject is not a
+// duplicate cost, it is a CONSISTENCY hole -- if the path changes between them, the observer
+// receives a namespace derived from read A and address evidence derived from read B and refuses a
+// contradiction its own acquisition layer manufactured. It fails closed, which is why it would
+// have surfaced as host drift that never happened rather than as a false ADD, and that is exactly
+// the kind of defect that gets diagnosed on the host instead of in the producer.
+//
+// This is the same law the plan and apply paths already obey one level up, where the probe is bound
+// once and compared twice. It is stated here at slot grain because the acquisition layer is where a
+// second read is cheapest to write and hardest to see.
+type FabricCellSlotAcquisition {
+  slot: RunnerSlotIdentity
+  cell_root: FabricCellDirectoryObservation
+  attempt_root: FabricCellDirectoryObservation
+  boundary: List<FabricCellAddressProbeEntry>
+}
+
+func fabric_cell_acquire_slot(
+  slot: RunnerSlotIdentity,
+  cells_root: FabricCellDirectoryObservation,
+  slices: FabricCellNamespaceProbe,
+) -> FabricCellSlotAcquisition {
+  let cell_root = fabric_cell_observe_cell_root(slot: slot, cells_root: cells_root)
+  FabricCellSlotAcquisition {
+    slot: slot,
+    cell_root: cell_root,
+    attempt_root: fabric_cell_observe_directory(
+      path: fabric_cell_attempt_root_path(slot: slot),
+      parent: fabric_cell_parent_standing_of(parent: cell_root, entry: fabric_cell_attempt_root_entry_name),
+    ),
+    boundary: fabric_cell_boundary_address_entries(slot: slot, slices: slices),
+  }
+}
+
+fn fabric_cell_acquisition_namespace_entry(
+  acquisition: FabricCellSlotAcquisition,
+) -> FabricCellNamespaceProbeEntry {
+  FabricCellNamespaceProbeEntry {
+    namespace: FabricCellChildNamespace { slot: acquisition.slot },
+    probe: fabric_cell_namespace_probe_of(observation: acquisition.cell_root),
+  }
+}
+
+fn fabric_cell_acquisition_address_entries(
+  acquisition: FabricCellSlotAcquisition,
+) -> List<FabricCellAddressProbeEntry> {
+  concat(
+    fabric_cell_directory_address_entries(
+      slot: acquisition.slot,
+      address: FabricCellRootAddress,
+      path: fabric_cell_root_path(slot: acquisition.slot),
+      observation: acquisition.cell_root,
+    ),
+    concat(
+      fabric_cell_directory_address_entries(
+        slot: acquisition.slot,
+        address: FabricCellAttemptRootAddress,
+        path: fabric_cell_attempt_root_path(slot: acquisition.slot),
+        observation: acquisition.attempt_root,
+      ),
+      acquisition.boundary,
+    ),
+  )
+}
+
+// A STATE READ IS PERFORMED ONLY WHERE THE ENUMERATION SAID THE ENTRY IS THERE, and that is the
+// contradiction law obeyed at acquisition time rather than repaired afterwards. Supplying a state
+// probe for an address whose namespace does not hold it is exactly the impossible host the observer
+// refuses -- absent from its listing and simultaneously read -- so this fold does not produce one.
+//
+// THE BOUNDARY WAS THE EXCEPTION AND IT WAS THE DANGEROUS ONE. The first cut of this function
+// obeyed that rule for the two directory addresses and issued `systemctl show` for the slice
+// UNCONDITIONALLY, which is worse than an inconsistency: `systemctl show` on a unit that does not
+// exist EXITS ZERO AND PRINTS DEFAULTS, so an unprovisioned slice returned a successful read of
+// values no host is carrying. The observer then saw an address absent from its namespace with a
+// state supplied, refused it as a contradiction, and the cell could never be planned -- the exact
+// "first real observation of an unprovisioned host blocked instead of planning" failure
+// gunbc.fabric_cell_observe records in its own header. A success exit is not evidence that a unit
+// exists, so the enumeration decides whether to ask at all.
+
+data fabric_cell_attempt_root_entry_name: String = "attempts"
+
+// THE CELLS ROOT'S OWN ABSENCE IS ESTABLISHED BY LISTING ITS PARENT, WHICH IS THE SAME LAW ONE
+// LEVEL UP RATHER THAN AN EXEMPTION FROM IT. Every other path in this family has a modeled
+// containing namespace to ask; this one is the top of the family, so without asking `/opt` there is
+// nothing that can distinguish a host where fabric has never been provisioned from one where the
+// directory cannot be read -- and those are the two states whose remedies are furthest apart. The
+// parent of the parent is not asked in turn: `/opt` on a Linux host is part of the filesystem
+// hierarchy standard rather than something this family provisions, so an unobservable `/opt` is a
+// refusal and not a recursion.
+func fabric_cell_observe_cells_root() -> FabricCellDirectoryObservation {
+  let parent = fabric_cell_list_directory(path: fabric_cell_base_dir_parent)
+  fabric_cell_observe_directory(
+    path: fabric_cell_base_dir,
+    parent: fabric_cell_parent_standing_of(parent: parent, entry: fabric_cell_base_dir_entry_name),
+  )
+}
+
+func fabric_cell_observe_cell_root(
+  slot: RunnerSlotIdentity,
+  cells_root: FabricCellDirectoryObservation,
+) -> FabricCellDirectoryObservation {
+  fabric_cell_observe_directory(
+    path: fabric_cell_root_path(slot: slot),
+    parent: fabric_cell_parent_standing_of(
+      parent: cells_root,
+      entry: runner_slot_instance_name(slot: slot),
+    ),
+  )
+}
+
+// THE SLICE ENUMERATION DECIDES WHETHER THE BOUNDARY IS ASKED, AND THE THREE ANSWERS ARE NOT TWO.
+// An enumeration that HOLDS the slice is the only state in which a state read is a question about
+// something -- so it is the only state that issues one. An enumeration that RAN and does not hold
+// it establishes absence, and absence is the namespace's answer: no entry, exactly as an absent
+// directory contributes none. An enumeration that REFUSED establishes nothing at all, and the
+// address must refuse with it rather than inherit the absence of an answer.
+// THE DECISION IS ITS OWN NAMED FACT, SEPARATE FROM ACTING ON IT, AND THAT SEPARATION IS WHAT
+// MAKES IT TESTABLE WITHOUT A HOST. An earlier cut of this pair decided and asked in one function,
+// so the row asserting "an absent slice is not asked" had to reach the arm that DOES ask in order
+// to establish the contrast -- and that arm performs a host effect. Under the hermetic runner it
+// passed against systemd's declared MOCK, which is a witness asserting a law about acquisition
+// against authored data: exactly the vacuous pass this file's own header rules out. Splitting the
+// decision out means both rows are pure, no mock participates, and the effect happens strictly
+// downstream of a fact that has already been established.
+type FabricCellBoundaryStanding
+  = BoundaryAsk
+  | BoundaryAbsentNoAsk
+  | BoundaryUnknownRefuse { cause: String }
+
+fn fabric_cell_boundary_standing(
+  slot: RunnerSlotIdentity,
+  slices: FabricCellNamespaceProbe,
+) -> FabricCellBoundaryStanding {
+  match slices {
+    NamespaceObservedAbsent => BoundaryAbsentNoAsk
+    NamespaceEnumerationRefused { cause: c } =>
+      BoundaryUnknownRefuse {
+        cause: join([
+          "the slice namespace was not enumerated, so whether this boundary exists is unknown: ", c,
+        ], ""),
+      }
+    NamespaceEnumerated { entries: es } =>
+      if fabric_cell_entries_hold_name(entries: es, name: fabric_cell_slice_name(slot: slot)) {
+        BoundaryAsk
+      } else {
+        BoundaryAbsentNoAsk
+      }
+  }
+}
+
+func fabric_cell_boundary_address_entries(
+  slot: RunnerSlotIdentity,
+  slices: FabricCellNamespaceProbe,
+) -> List<FabricCellAddressProbeEntry> {
+  match fabric_cell_boundary_standing(slot: slot, slices: slices) {
+    BoundaryAbsentNoAsk => []
+    BoundaryUnknownRefuse { cause: c } =>
+      [FabricCellAddressProbeEntry {
+        slot: slot,
+        address: FabricCellResourceBoundaryAddress,
+        probe: AddressStateReadRefused { cause: c },
+      }]
+    BoundaryAsk => [fabric_cell_boundary_probe_entry(slot: slot)]
+  }
+}
+
+fn fabric_cell_entries_hold_name(entries: List<String>, name: String) -> Bool {
+  fold(entries, init: false, f: (acc, e) => acc || e == name)
+}
+
+func fabric_cell_boundary_probe_entry(slot: RunnerSlotIdentity) -> FabricCellAddressProbeEntry {
+  FabricCellAddressProbeEntry {
+    slot: slot,
+    address: FabricCellResourceBoundaryAddress,
+    probe: fabric_cell_boundary_address_probe(
+      slot: slot,
+      reading: fabric_cell_read_boundary(slot: slot),
+    ),
+  }
+}
+
+// AN ABSENT DIRECTORY CONTRIBUTES NO ENTRY AT ALL, WHICH IS THE POINT OF RETURNING A LIST. The
+// alternative -- an entry carrying a refusal -- would make every unprovisioned address refuse
+// instead of reporting the absence its own namespace already established, so a fresh host could
+// never be planned. Absence is the namespace's answer; this fold declines to overrule it.
+fn fabric_cell_directory_address_entries(
+  slot: RunnerSlotIdentity,
+  address: FabricCellResourceAddress,
+  path: String,
+  observation: FabricCellDirectoryObservation,
+) -> List<FabricCellAddressProbeEntry> {
+  match observation {
+    DirectoryNotPresent => []
+    DirectoryListed { entries: _ } =>
+      [FabricCellAddressProbeEntry {
+        slot: slot,
+        address: address,
+        probe: fabric_cell_directory_address_probe(path: path, observation: observation),
+      }]
+    DirectoryUnreadable { path: _, cause: _ } =>
+      [FabricCellAddressProbeEntry {
+        slot: slot,
+        address: address,
+        probe: fabric_cell_directory_address_probe(path: path, observation: observation),
+      }]
+    PathOccupiedByNonDirectory { path: _, kind: _ } =>
+      [FabricCellAddressProbeEntry {
+        slot: slot,
+        address: address,
+        probe: fabric_cell_directory_address_probe(path: path, observation: observation),
+      }]
+  }
+}

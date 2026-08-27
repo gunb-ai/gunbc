@@ -1,0 +1,227 @@
+module product.fabric.customer_image
+
+import extdeps.container.engine {
+  ContainerEngineDeployment,
+  container_engine_deployment_label,
+}
+import extdeps.container.oci.image_config {
+  ImageConfigAccepted,
+  ImageConfigRejectReason,
+  ImageConfigRejected,
+  ImageConfiguration,
+  accept_image_configuration,
+  image_config_layer_count,
+  image_config_start_command,
+}
+import extdeps.container.oci.manifest {
+  ImageManifest,
+  ManifestAccepted,
+  ManifestRejectReason,
+  ManifestRejected,
+  accept_image_manifest,
+}
+import extdeps.container.oci.reference {
+  OciImageReference,
+  oci_reference_is_digest_pinned,
+  render_oci_image_reference,
+}
+import extdeps.toolchain.types { Architecture, Os, architecture_diagnostic_name }
+import std.types { Bool, Int, List, String }
+
+// A CUSTOMER-SUPPLIED CONTAINER IMAGE, AND WHAT IT TAKES TO ADMIT ONE.
+//
+// The image is the one container-shaped thing a tenant genuinely names: it is the program, and it
+// arrives from outside. That makes it a workload INPUT, and the OCI modules in extdeps already say
+// what such an input is -- a reference, a manifest and a configuration, each with its own typed
+// accept/refuse. Until this module they said it to nobody: every one of them had zero product
+// consumers, which is the declared-and-unrouted state that reads as covered and is not.
+//
+// THE ISOLATION MECHANISM IS NOT IN THIS FILE, AND ITS ABSENCE IS THE POINT.
+//
+// CustomerSuppliedImage has no field naming a runtime, a sandbox or an isolation boundary, and it
+// has no constructor that could carry one. That is structural rather than a convention: a tenant
+// cannot select the mechanism because there is nowhere to put the selection. What a tenant IS
+// promised is the guarantee set in product.fabric.isolation -- what holds, not what enforces it --
+// and the engine that enforces it is chosen by us and supplied here as part of the TARGET, on the
+// other side of the admission function.
+//
+// TARGET FACTS ARE PASSED IN RATHER THAN IMPORTED FROM THE FLEET. This module must stay usable by
+// any supplier: importing gunbc.fleet_intent to read an architecture would make the agnostic core
+// depend on one operator's hardware. The fleet projects its own surface into ExecutionTarget.
+type ExecutionTarget {
+  architecture: Architecture
+  os: Os
+  engine: ContainerEngineDeployment?
+}
+
+type CustomerSuppliedImage {
+  reference: OciImageReference
+  manifest: ImageManifest
+  configuration: ImageConfiguration
+}
+
+// EVERY REFUSAL NAMES ITS OWN CAUSE, BECAUSE THE REMEDIES ARE UNRELATED.
+//
+// "Image rejected" is unactionable. An architecture mismatch is fixed by the tenant pushing a
+// multi-arch build; a tag reference is fixed by pinning a digest; a layer disagreement means the
+// bytes are corrupt or forged and no tenant action helps. Collapsing them to a Bool -- or to one
+// String -- would erase the distinction at exactly the boundary that has to explain itself to
+// someone outside this repository.
+type CustomerImageRefusal
+  = TargetHasNoContainerEngine
+  | ReferenceNotDigestPinned { reference_wire: String }
+  | ManifestRefused { reason: ManifestRejectReason }
+  | ConfigurationRefused { reason: ImageConfigRejectReason }
+  | LayerCountDisagreement { manifest_layers: Int, config_diff_ids: Int }
+  | ArchitectureUnsupported { image: Architecture, target: Architecture }
+  | OperatingSystemUnsupported { image: Os, target: Os }
+  | NoStartCommand
+
+type CustomerImageAdmission
+  = CustomerImageAdmitted { image: CustomerSuppliedImage, engine: ContainerEngineDeployment }
+  | CustomerImageRefused { refusal: CustomerImageRefusal }
+
+// THE CROSS-MODULE INVARIANT NEITHER OCI MODULE CAN CHECK ALONE, AND THE REASON THIS FILE EXISTS.
+//
+// image-spec requires rootfs.diff_ids to correspond one-for-one with the manifest's layers: the
+// manifest lists the compressed blobs to fetch, the configuration lists the uncompressed layer
+// identities those blobs unpack to. accept_image_manifest sees only the first list and
+// accept_image_configuration only the second, so each accepts a pair that disagrees. A disagreeing
+// pair is not a cosmetic defect -- it is a manifest whose layer set does not match the identity the
+// config commits to, which is what a substituted layer looks like.
+fn customer_image_layers_agree(image: CustomerSuppliedImage) -> Bool {
+  count(image.manifest.layers) == image_config_layer_count(c: image.configuration)
+}
+
+fn admit_customer_image_platform(
+  image: CustomerSuppliedImage,
+  target: ExecutionTarget,
+  engine: ContainerEngineDeployment,
+) -> CustomerImageAdmission {
+  if image.configuration.architecture != target.architecture {
+    CustomerImageRefused {
+      refusal: ArchitectureUnsupported {
+        image: image.configuration.architecture,
+        target: target.architecture,
+      },
+    }
+  } else if image.configuration.os != target.os {
+    CustomerImageRefused {
+      refusal: OperatingSystemUnsupported { image: image.configuration.os, target: target.os },
+    }
+  } else if count(image_config_start_command(c: image.configuration)) == 0 {
+    CustomerImageRefused { refusal: NoStartCommand }
+  } else {
+    CustomerImageAdmitted { image: image, engine: engine }
+  }
+}
+
+fn admit_customer_image_contents(
+  image: CustomerSuppliedImage,
+  target: ExecutionTarget,
+  engine: ContainerEngineDeployment,
+) -> CustomerImageAdmission {
+  match accept_image_manifest(image.manifest) {
+    ManifestRejected { reason: reason } =>
+      CustomerImageRefused { refusal: ManifestRefused { reason: reason } }
+    ManifestAccepted { value: _ } =>
+      match accept_image_configuration(image.configuration) {
+        ImageConfigRejected { reason: reason } =>
+          CustomerImageRefused { refusal: ConfigurationRefused { reason: reason } }
+        ImageConfigAccepted { value: _ } =>
+          if !(customer_image_layers_agree(image: image)) {
+            CustomerImageRefused {
+              refusal: LayerCountDisagreement {
+                manifest_layers: count(image.manifest.layers),
+                config_diff_ids: image_config_layer_count(c: image.configuration),
+              },
+            }
+          } else {
+            admit_customer_image_platform(image: image, target: target, engine: engine)
+          }
+      }
+  }
+}
+
+// A TAG IS REFUSED HERE AND MODELLED IN EXTDEPS, WHICH IS NOT A CONTRADICTION.
+//
+// The distribution spec admits tags, so the extdeps reference model carries them: an upstream
+// module that could not represent a tag would be modelling our policy instead of the spec. Whether
+// we will RUN one is ours to decide, and the answer is no -- a tag resolves to different bytes on
+// different days, so admitting one means the thing we audited and the thing we executed are not
+// established to be the same program. That is the same posture the fleet already takes on Docker's
+// apt signing key and on pinned sccache release digests.
+fn admit_customer_image(image: CustomerSuppliedImage, target: ExecutionTarget) -> CustomerImageAdmission {
+  match target.engine {
+    Absent => CustomerImageRefused { refusal: TargetHasNoContainerEngine }
+    Present { value: engine } =>
+      if !(oci_reference_is_digest_pinned(reference: image.reference)) {
+        CustomerImageRefused {
+          refusal: ReferenceNotDigestPinned {
+            reference_wire: render_oci_image_reference(reference: image.reference),
+          },
+        }
+      } else {
+        admit_customer_image_contents(image: image, target: target, engine: engine)
+      }
+  }
+}
+
+fn customer_image_refusal_wire(refusal: CustomerImageRefusal) -> String {
+  match refusal {
+    TargetHasNoContainerEngine =>
+      "target declares no container engine deployment: it cannot run any image"
+    ReferenceNotDigestPinned { reference_wire: wire } =>
+      join(["image reference is not digest-pinned: ", wire], "")
+    ManifestRefused { reason: _ } => "image manifest refused by the OCI manifest authority"
+    ConfigurationRefused { reason: _ } =>
+      "image configuration refused by the OCI image-config authority"
+    LayerCountDisagreement { manifest_layers: layers, config_diff_ids: diff_ids } =>
+      join(
+        [
+          "manifest layer count ",
+          to_string(layers),
+          " disagrees with config rootfs.diff_ids count ",
+          to_string(diff_ids),
+        ],
+        "",
+      )
+    ArchitectureUnsupported { image: image_arch, target: target_arch } =>
+      join(
+        [
+          "image architecture ",
+          architecture_diagnostic_name(arch: image_arch) as String,
+          " is not the target architecture ",
+          architecture_diagnostic_name(arch: target_arch) as String,
+        ],
+        "",
+      )
+    OperatingSystemUnsupported { image: _, target: _ } =>
+      "image operating system is not the target operating system"
+    NoStartCommand => "image configuration carries neither Entrypoint nor Cmd: nothing to run"
+  }
+}
+
+fn customer_image_admitted(admission: CustomerImageAdmission) -> Bool {
+  match admission {
+    CustomerImageAdmitted { image: _, engine: _ } => true
+    CustomerImageRefused { refusal: _ } => false
+  }
+}
+
+fn customer_image_admission_wire(admission: CustomerImageAdmission) -> String {
+  match admission {
+    CustomerImageAdmitted { image: image, engine: engine } =>
+      join(
+        [
+          "admitted ",
+          render_oci_image_reference(reference: image.reference),
+          " on ",
+          container_engine_deployment_label(deployment: engine),
+        ],
+        "",
+      )
+    CustomerImageRefused { refusal: refusal } =>
+      join(["refused: ", customer_image_refusal_wire(refusal: refusal)], "")
+  }
+}
