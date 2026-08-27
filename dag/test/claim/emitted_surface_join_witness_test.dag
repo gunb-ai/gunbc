@@ -1,0 +1,133 @@
+module test.claim.emitted_surface_join_witness
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// WITNESSES FOR THE BUILD THAT TURNS EMITTED MANIFESTS INTO A CENSUS.
+//
+// These are authored rows, not a live emission, for the reason the census's own witnesses give: the
+// live specimen is expected to reach zero once the emitter fabrication is repaired, and a wall whose
+// RED can only come from a live violation becomes a decoration that day. The fixture reproduces the
+// live specimen's SHAPE -- one module, two entries, reexport rows differing by exactly one member,
+// declaration rows identical -- so the discrimination survives the repair.
+
+fn reexport_row(source_module: String, members: List<String>) -> gunbc.stage0_emitted_export_surface_observation.EmittedExportSurfaceRow {
+  gunbc.stage0_emitted_export_surface_observation.EmittedExportSurfaceRow {
+    source_module: source_module,
+    target_filename: "v2_std_node",
+    kind: gunbc.stage0_emitted_export_surface_observation.ReexportRow,
+    members: members
+  }
+}
+
+fn declaration_row(source_module: String, members: List<String>) -> gunbc.stage0_emitted_export_surface_observation.EmittedExportSurfaceRow {
+  gunbc.stage0_emitted_export_surface_observation.EmittedExportSurfaceRow {
+    source_module: source_module,
+    target_filename: "v2_std_node",
+    kind: gunbc.stage0_emitted_export_surface_observation.DeclarationRow,
+    members: members
+  }
+}
+
+// The live specimen at fixture grain: A carries the fabricated Cardinality, B does not, and the
+// declaration rows are identical on both sides so the reexport difference is attributable.
+fn entry_with_cardinality() -> v2.compiler.self_host.emitted_surface_join.EntryObservation {
+  v2.compiler.self_host.emitted_surface_join.EntryObservation {
+    entry: "dag/gunbc/native_scm_interaction_contract.dag",
+    observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved {
+      rows: [
+        declaration_row(source_module: "v2.std.node", members: ["Node", "Edge"]),
+        reexport_row(source_module: "v2.std.node", members: ["Cardinality", "ContentHash"])
+      ]
+    }
+  }
+}
+
+fn entry_without_cardinality() -> v2.compiler.self_host.emitted_surface_join.EntryObservation {
+  v2.compiler.self_host.emitted_surface_join.EntryObservation {
+    entry: "src/v2/std/node.dag",
+    observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved {
+      rows: [
+        declaration_row(source_module: "v2.std.node", members: ["Node", "Edge"]),
+        reexport_row(source_module: "v2.std.node", members: ["ContentHash"])
+      ]
+    }
+  }
+}
+
+fn entry_agreeing() -> v2.compiler.self_host.emitted_surface_join.EntryObservation {
+  v2.compiler.self_host.emitted_surface_join.EntryObservation {
+    entry: "src/v2/std/node.dag",
+    observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved {
+      rows: [
+        declaration_row(source_module: "v2.std.node", members: ["Node", "Edge"]),
+        reexport_row(source_module: "v2.std.node", members: ["Cardinality", "ContentHash"])
+      ]
+    }
+  }
+}
+
+fn entry_unreadable() -> v2.compiler.self_host.emitted_surface_join.EntryObservation {
+  v2.compiler.self_host.emitted_surface_join.EntryObservation {
+    entry: "src/v2/std/node.dag",
+    observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved {
+      detail: "the content carried no declared export-surface rows"
+    }
+  }
+}
+
+fn build(observations: List<v2.compiler.self_host.emitted_surface_join.EntryObservation>) -> v2.compiler.self_host.emitted_surface_join.CensusBuild {
+  v2.compiler.self_host.emitted_surface_join.census_from_entry_observations(observations: observations, vintage: "fixture-vintage")
+}
+
+// THE DISCRIMINATING RED FOR THE BUILD ITSELF. An entry whose manifest could not be read must refuse
+// the whole build. If it contributed zero rows instead, the module it should have covered would be
+// observed under one entry, would have nothing to disagree with, and would be ADMITTED as clean --
+// a failed read rendering as agreement.
+test fn witness_unreadable_entry_refuses_the_build() -> Bool {
+  match build(observations: [entry_with_cardinality(), entry_unreadable()]) {
+    v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => true
+    v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: _ } => false
+  }
+}
+
+// The positive control beside it: the same two-entry shape with BOTH manifests readable builds.
+test fn witness_readable_entries_build() -> Bool {
+  match build(observations: [entry_with_cardinality(), entry_without_cardinality()]) {
+    v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: _ } => true
+    v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
+  }
+}
+
+// THE LIVE SPECIMEN, REPRODUCED END TO END: build a census from two manifests that differ by exactly
+// one reexported member, and the census must REFUSE it.
+test fn witness_divergent_surfaces_are_refused_after_join() -> Bool {
+  match build(observations: [entry_with_cardinality(), entry_without_cardinality()]) {
+    v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
+    v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: census } =>
+      match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(census: census) {
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
+// THE GREEN CONTROL THAT MAKES THE RED MEAN SOMETHING: identical inputs except that the second
+// entry's reexport row agrees, and the same pipeline ADMITS. Without this the refusal above could
+// be produced by any defect in the join rather than by the surface difference.
+test fn witness_agreed_surfaces_are_admitted_after_join() -> Bool {
+  match build(observations: [entry_with_cardinality(), entry_agreeing()]) {
+    v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
+    v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: census } =>
+      match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(census: census) {
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+test fn emitted_surface_join_witnesses() -> Bool {
+  witness_unreadable_entry_refuses_the_build()
+    && witness_readable_entries_build()
+    && witness_divergent_surfaces_are_refused_after_join()
+    && witness_agreed_surfaces_are_admitted_after_join()
+}

@@ -1,0 +1,250 @@
+module v2.compiler.self_host.emitted_surface_join
+
+import gunbc.stage0_emitted_export_surface_observation {
+  EmittedExportSurfaceRow,
+  ExportSurfaceObservation,
+  ExportSurfaceObserved,
+  ExportSurfaceUnobserved,
+  ExportSurfaceRowKind,
+  ReexportRow,
+  DeclarationRow,
+  reexport_rows
+}
+import v2.compiler.self_host.emitted_surface_census {
+  EmittedMemberIdentity,
+  ProductKind,
+  CrateRoot,
+  ProviderModule,
+  ClosureVarianceCause,
+  Unattributed,
+  SurfaceCensus,
+  SurfaceCensusRow
+}
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { contains, filter, fold_list, length, list_map, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// THE JOIN IS A SEPARATE MODULE FROM THE CENSUS ON PURPOSE.
+//
+// The census JUDGES a SurfaceCensus and knows nothing about where one came from. This module BUILDS
+// one from a particular source -- the emitter's own export-surface manifest, read through
+// `gunbc.stage0_emitted_export_surface_observation`. Fusing them would make the judgement a fact
+// about one artifact format, so a second observation source could only be added by editing the
+// comparator (DESIGN section 3: the dispatch that selects a realization is itself realization, and
+// sits peripheral to the interface it serves).
+//
+// IT IS ALSO WHERE THE CENSUS'S THREE MISSING FACTS ARE SUPPLIED, AND THE ARTIFACT CANNOT SUPPLY
+// THEM. A manifest is ONE emission: it does not know which entry requested it, which binary wrote
+// it, or what any other emission produced. Entry and vintage are therefore properties of the
+// READING context, and cause is a property of a COMPARISON -- a single observation has no second
+// tree to disagree with, so any cause it carried would be fabricated. This module knows the entry
+// because it was told, knows the vintage because one binary produced every observation in the
+// frame, and attributes nothing.
+
+// One entry's reading of one emitted manifest, with the entry it was taken under.
+//
+// The entry is carried BESIDE the observation rather than inside it because the artifact has no
+// field for it and inventing one would put a reading-context fact inside a producer's carrier.
+type EntryObservation {
+  entry: String
+  observation: ExportSurfaceObservation
+}
+
+// AN UNOBSERVED ARM REFUSES THE WHOLE BUILD; IT DOES NOT CONTRIBUTE ZERO ROWS.
+//
+// This is the empty-observation narrow at the exact seam where it would do the most damage. An
+// entry whose manifest could not be read contributes no observations, so every module it should
+// have covered is observed under FEWER entries -- and a module with fewer observations has fewer
+// ways to disagree, so the missing read renders as AGREEMENT. The census's own coverage check
+// cannot save it either, because that check compares against the sample it was given and a build
+// that dropped an entry would simply hand it a smaller sample that is internally consistent.
+type CensusBuild
+  = CensusBuilt { census: SurfaceCensus }
+  | CensusNotBuilt { detail: String }
+
+data surface_member_separator: String = " "
+
+// The linkage surface as a comparable identity.
+//
+// Members are joined and hashed rather than compared as lists because the census compares digests,
+// and a digest is what a producer can carry across a boundary. The separator is a space, which is
+// the same separator the manifest itself uses between members, so a member containing one would
+// already have broken the artifact's own grammar upstream of here.
+fn surface_digest_of_members(members: List<String>) -> Fnv1a64Structural {
+  content_hash_atom(value: concat("surface:", join(xs: members, separator: surface_member_separator)))
+}
+
+fn rows_for_module(rows: List<EmittedExportSurfaceRow>, source_module: String) -> List<EmittedExportSurfaceRow> {
+  filter(xs: rows, predicate: row => row.source_module == source_module)
+}
+
+fn declaration_rows(rows: List<EmittedExportSurfaceRow>) -> List<EmittedExportSurfaceRow> {
+  filter(xs: rows, predicate: row => match row.kind {
+    DeclarationRow => true
+    ReexportRow => false
+  })
+}
+
+fn observed_rows(entry_observation: EntryObservation) -> List<EmittedExportSurfaceRow> {
+  match entry_observation.observation {
+    ExportSurfaceObserved { rows: rows } => rows
+    ExportSurfaceUnobserved { detail: _ } => []
+  }
+}
+
+fn unreadable_entries(observations: List<EntryObservation>) -> List<EntryObservation> {
+  filter(xs: observations, predicate: eo => match eo.observation {
+    ExportSurfaceObserved { rows: _ } => false
+    ExportSurfaceUnobserved { detail: _ } => true
+  })
+}
+
+// EVERY ROW THIS BUILDER PRODUCES IS A ProviderModule, AND THAT IS A FACT ABOUT THE ARTIFACT.
+//
+// The manifest carries rows for AUTHORED .dag modules only: lib.rs, main.rs, v1_rt.rs and the
+// emitter-synthesized closure stubs have no row at all. The crate root is therefore not something
+// this source can describe, so this builder never mints CrateRoot.
+//
+// THAT IS NOT AN ARGUMENT FOR DELETING THE CrateRoot ARM, and the distinction is the one DESIGN
+// draws between reachability and occupancy. The arm's mechanism exists, and it is reachable from
+// the CENSUS's denominator -- a fixture authors one today, and a second observation source that did
+// describe the crate root would produce one. It is unreachable only from THIS producer's fold.
+// An arm's reachability is a property of the denominator of the operation that returns it, not of
+// what one upstream source happens to observe.
+fn product_kind_for_manifest_row() -> ProductKind {
+  ProviderModule
+}
+
+// TYPED EMPTIES. A bare `[]` in a fold's `empty:` position carries no element type, and the
+// compiler refuses it rather than guessing -- the empty list is the one literal whose type its own
+// contents can never supply. A function's declared return type is the cheapest place to say it once.
+fn no_source_modules() -> List<String> {
+  []
+}
+
+fn no_member_identities() -> List<EmittedMemberIdentity> {
+  []
+}
+
+fn no_members() -> List<String> {
+  []
+}
+
+fn distinct_source_modules(observations: List<EntryObservation>) -> List<String> {
+  fold_list(
+    xs: observations,
+    empty: no_source_modules(),
+    cons: fn(acc, eo) {
+      fold_list(
+        xs: reexport_rows(rows: observed_rows(entry_observation: eo)),
+        empty: acc,
+        cons: fn(inner, row) {
+          if contains(xs: inner, item: row.source_module, eq: fn(a, b) { a == b }) {
+            inner
+          } else {
+            list_snoc_item(xs: inner, item: row.source_module)
+          }
+        }
+      )
+    }
+  )
+}
+
+// One entry's observation of one module, or nothing when that entry did not emit the module.
+//
+// ABSENCE HERE IS CORRECT AND IS NOT AN IGNORANCE STATE. A module genuinely outside an entry's
+// closure was not emitted by it, so there is no observation to make -- which is exactly what the
+// census's coverage check is for: it refuses a module the sample did not observe under every entry
+// rather than letting the missing observation read as agreement. The ignorance state -- an entry
+// whose manifest could not be READ -- is refused earlier, before any row is built.
+fn observations_of_module(observations: List<EntryObservation>, source_module: String, vintage: String) -> List<EmittedMemberIdentity> {
+  fold_list(
+    xs: observations,
+    empty: no_member_identities(),
+    cons: fn(acc, eo) {
+      fold_list(
+        xs: rows_for_module(rows: reexport_rows(rows: observed_rows(entry_observation: eo)), source_module: source_module),
+        empty: acc,
+        cons: fn(inner, row) {
+          list_snoc_item(
+            xs: inner,
+            item: EmittedMemberIdentity {
+              entry: eo.entry,
+              source_module: row.source_module,
+              target_filename: row.target_filename,
+              member_digest: surface_digest_of_members(members: declared_members_for(observations: observations, entry: eo.entry, source_module: source_module)),
+              linkage_surface_digest: surface_digest_of_members(members: row.members),
+              instrument_vintage: vintage,
+              members: row.members
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn declared_members_for(observations: List<EntryObservation>, entry: String, source_module: String) -> List<String> {
+  fold_list(
+    xs: filter(xs: observations, predicate: eo => eo.entry == entry),
+    empty: no_members(),
+    cons: fn(acc, eo) {
+      fold_list(
+        xs: rows_for_module(rows: declaration_rows(rows: observed_rows(entry_observation: eo)), source_module: source_module),
+        empty: acc,
+        cons: fn(inner, row) { concat_lists(a: inner, b: row.members) }
+      )
+    }
+  )
+}
+
+fn concat_lists(a: List<String>, b: List<String>) -> List<String> {
+  fold_list(xs: b, empty: a, cons: fn(acc, item) { list_snoc_item(xs: acc, item: item) })
+}
+
+fn census_row_for_module(observations: List<EntryObservation>, source_module: String, vintage: String) -> SurfaceCensusRow {
+  SurfaceCensusRow {
+    product: product_kind_for_manifest_row(),
+    cause: Unattributed,
+    source_module: source_module,
+    target_filename: target_filename_for(observations: observations, source_module: source_module),
+    observations: observations_of_module(observations: observations, source_module: source_module, vintage: vintage)
+  }
+}
+
+fn target_filename_for(observations: List<EntryObservation>, source_module: String) -> String {
+  fold_list(
+    xs: observations,
+    empty: "",
+    cons: fn(acc, eo) {
+      fold_list(
+        xs: rows_for_module(rows: reexport_rows(rows: observed_rows(entry_observation: eo)), source_module: source_module),
+        empty: acc,
+        cons: fn(inner, row) { row.target_filename }
+      )
+    }
+  )
+}
+
+// THE BUILD. An unreadable entry refuses before any row exists.
+fn census_from_entry_observations(observations: List<EntryObservation>, vintage: String) -> CensusBuild {
+  match unreadable_entries(observations: observations) {
+    Cons { head: bad, tail: _ } =>
+      CensusNotBuilt {
+        detail: concat("an entry's export-surface manifest could not be read, so its modules would be observed under fewer entries and the missing read would render as agreement: ", bad.entry)
+      }
+    Empty =>
+      CensusBuilt {
+        census: SurfaceCensus {
+          sample_entries: list_map(xs: observations, f: fn(eo) { eo.entry }),
+          rows: list_map(
+            xs: distinct_source_modules(observations: observations),
+            f: fn(source_module) { census_row_for_module(observations: observations, source_module: source_module, vintage: vintage) }
+          )
+        }
+      }
+  }
+}
