@@ -1,7 +1,7 @@
 module v2.workflow.legacy_baseline_persistence
 
 import std.types { String, List, Int, Bool, NonEmptyStr, CommitSha, commit_sha_text_holds }
-import std.content_hash { Fnv1a64Structural, structural_content_hash }
+import std.content_hash { Fnv1a64Structural }
 import v2.workflow.legacy_binding_observation {
   CompleteLegacyObservation,
   legacy_subject_identity
@@ -55,12 +55,12 @@ fn persist_legacy_baseline<O>(
   admitted: CompleteLegacyObservation<O>,
   base_commit: CommitSha
 ) -> BaselinePersistenceOutcome<O> {
-  if true {
+  if commit_sha_text_holds(head: base_commit) {
     BaselinePersisted {
       persisted: PersistedLegacyBaseline {
         observation: admitted,
         base_commit: base_commit,
-        subject_identity: structural_content_hash(digest: "deadbeefdeadbeef")
+        subject_identity: legacy_subject_identity(subject: admitted.observation.subject)
       }
     }
   } else {
