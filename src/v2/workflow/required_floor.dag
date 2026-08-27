@@ -238,9 +238,8 @@ fn fixture_home_prefixes() -> List<String> {
 // THE ADMISSION ORDER, HELD HERE RATHER THAN IN WHOEVER WALKS THE CORPUS.
 //
 // `RequiredFloorDisposition` above names the three arms. The ordering is long home, then fixture
-// home, then planned; `reads_live_tree` remains an input for source compatibility with callers
-// that also model affected-set eligibility, but it no longer changes floor admission. This decision
-// previously lived only in the host loop that walks the discovered files
+// home, then planned. This decision previously lived only in the host loop that walks the
+// discovered files
 // (`v1_compiler.cli_run` `run_required_floor`). That made the type an authority over the
 // vocabulary and not over the decision, and a second walker (the .dag census this function was
 // added for) would have had to re-author the order and could have re-authored it differently.
