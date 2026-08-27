@@ -46,36 +46,6 @@ fn git_worktree_records(raw: String) -> List<String> {
   }
 }
 
-type GitWorktreeGroupState {
-  entries_reversed: List<List<String>>
-  current_reversed: List<String>
-}
-
-fn git_worktree_group_step(state: GitWorktreeGroupState, record: String) -> GitWorktreeGroupState {
-  if record == "" {
-    GitWorktreeGroupState {
-      entries_reversed: Cons { head: reverse(state.current_reversed), tail: state.entries_reversed },
-      current_reversed: [],
-    }
-  } else {
-    GitWorktreeGroupState {
-      entries_reversed: state.entries_reversed,
-      current_reversed: Cons { head: record, tail: state.current_reversed },
-    }
-  }
-}
-
-// Prepend during the fold and reverse once at each exit, never a tail-append in the step: DESIGN
-// section 6 bare-minimum-cost treats a quadratic fold shape as always-fix regardless of the
-// realized number of worktrees.
-fn git_worktree_group(records: List<String>) -> GitWorktreeGroupState {
-  fold(
-    records,
-    init: GitWorktreeGroupState { entries_reversed: [], current_reversed: [] },
-    f: (state, record) => git_worktree_group_step(state: state, record: record),
-  )
-}
-
 // The attribute fold is TOTAL and accumulates a first fault rather than refusing in place, so that
 // the entry's own finalizer decides the outcome once, with the whole entry in hand. An unknown
 // attribute is a fault and not a skip: git adds attributes over time, and silently ignoring one we
@@ -383,6 +353,42 @@ fn git_worktree_set_observation_in_order(
   }
 }
 
+// GROUPING AND DECODING ARE ONE PASS, DELIBERATELY. An earlier shape folded records into a
+// List<List<String>> of entries and then folded THAT into worktrees, which materialized an
+// intermediate representation only to consume it immediately -- the redundant work DESIGN section 2
+// prices. Folding the records directly also keeps the decode in git's EMITTED order for free, and
+// that order is not cosmetic: it is what numbers entry_index 0,1,2 as a reader counts entries, and
+// what makes the FIRST malformed entry the one reported rather than the last. A fold over reversed
+// entries would still produce a correct worktree list and silently invert both.
+type GitWorktreeScanState {
+  observation: GitWorktreeSetObservation
+  current_reversed: List<String>
+  entry_index: Int
+}
+
+fn git_worktree_scan_step(state: GitWorktreeScanState, record: String) -> GitWorktreeScanState {
+  if record == "" {
+    let decoded = git_worktree_decode_step(
+      state: GitWorktreeDecodeState {
+        observation: state.observation,
+        entry_index: state.entry_index,
+      },
+      attributes_list: reverse(state.current_reversed),
+    )
+    GitWorktreeScanState {
+      observation: decoded.observation,
+      current_reversed: [],
+      entry_index: decoded.entry_index,
+    }
+  } else {
+    GitWorktreeScanState {
+      observation: state.observation,
+      current_reversed: Cons { head: record, tail: state.current_reversed },
+      entry_index: state.entry_index,
+    }
+  }
+}
+
 // The exit status is consulted BEFORE the payload. A path that is not a repository exits nonzero
 // with empty stdout, and a repository with no linked worktrees exits zero with a single entry, so
 // folding the payload first would render "git refused" and "git answered" identically -- the
@@ -396,23 +402,23 @@ fn git_worktree_set_observation_of(
   if exit_code != 0 {
     GitWorktreeSetReadRefused { exit_code: exit_code, stderr: stderr }
   } else {
-    let grouped = git_worktree_group(records: git_worktree_records(raw: raw))
-    if count(grouped.current_reversed) != 0 {
+    let scanned = fold(
+      git_worktree_records(raw: raw),
+      init: GitWorktreeScanState {
+        observation: GitWorktreeSetObserved { worktrees: [] },
+        current_reversed: [],
+        entry_index: 0,
+      },
+      f: (state, record) => git_worktree_scan_step(state: state, record: record),
+    )
+    if count(scanned.current_reversed) != 0 {
       GitWorktreeSetUndecodable {
-        entry_index: count(grouped.entries_reversed),
-        raw_entry: git_worktree_entry_text(attributes_list: reverse(grouped.current_reversed)),
+        entry_index: scanned.entry_index,
+        raw_entry: git_worktree_entry_text(attributes_list: reverse(scanned.current_reversed)),
         reason: "final entry is not terminated: the stream ends mid-entry",
       }
     } else {
-      git_worktree_set_observation_in_order(observation: fold(
-        reverse(grouped.entries_reversed),
-        init: GitWorktreeDecodeState {
-          observation: GitWorktreeSetObserved { worktrees: [] },
-          entry_index: 0,
-        },
-        f: (state, attributes_list) =>
-          git_worktree_decode_step(state: state, attributes_list: attributes_list),
-      ).observation)
+      git_worktree_set_observation_in_order(observation: scanned.observation)
     }
   }
 }
