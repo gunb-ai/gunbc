@@ -1018,12 +1018,34 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
 // same targets.
 //
 // SECOND, THE DUPLICATE WAS THE ONE ON THE CRITICAL PATH. The floor lane is the longer of the
-// two, so this step's cost was pure addition to the required check's wall clock -- measured
-// 3m13s on main run 33093831916, paid from a target dir warmed only by the floor's two-bin
-// build. In the build lane it lands after a `--bins` prelude that has already built every
-// target it names, which is the 12s marginal case the BUILD-RATHER-THAN-CHECK note above
-// measured. The redundancy did not become free by moving; it became parallel, and parallel to
-// a lane that finishes earlier.
+// two (64m against the build lane's 41m on green main run 33093831916), so this step's 3m13s
+// was pure addition to the required check's wall clock. Moving it to the shorter lane removes
+// it from that clock. THAT IS THE WHOLE CLAIM, and it is the only one execution supports.
+//
+// WHAT THIS STEP DOES NOT DO IS GET CHEAPER, AND AN EARLIER REVISION OF THIS COMMENT SAID IT
+// WOULD. It predicted "the 12s marginal case the BUILD-RATHER-THAN-CHECK note above measured",
+// reasoning that `build_lane_build_script` is `repo_self_build_all_bins_command()` so every
+// target this step names is already built when it runs. MEASURED ON RUN 33107459033, THE FIRST
+// RUN AFTER THE MOVE: 3m13s, indistinguishable from its cost in the floor lane. The prediction
+// was falsified by execution and is corrected here rather than left standing, because a
+// transcribed figure that nothing re-derives is exactly the rot DESIGN's name-the-instrument
+// rule exists to stop -- and this one was wrong on the day it was written.
+//
+// WHY THE PREDICTION FAILED, stated as a mechanism this lane's own log supports rather than as
+// a certainty: the reasoning looked at the PRELUDE and ignored the 39 minutes between it and
+// this step. Run 33107459033's build lane ran `emit-compile` from 19:40:24 to 19:58:54 --
+// eight emitted closures assembled and built through cargo -- and `partition-crates compile`
+// over 7 packages immediately after, all sharing this job's target directory. By the time this
+// step runs, the prelude's warmth is gone. The 12s figure was measured with the two-bin build
+// paid and NOTHING ELSE INTERVENING, which is not the position this step occupies in either
+// lane. What is CONFIRMED is the duration; the eviction is the mechanism that fits the log and
+// is not independently established, so do not cite it as measured.
+//
+// THE CONSEQUENCE FOR PLACEMENT IS SMALLER THAN IT LOOKS AND STILL FAVOURS THIS LANE. The move
+// buys wall clock on the required check, not compute: the same 3m13s is still spent, on a lane
+// with roughly 15 minutes of headroom under the floor rather than 23. If the build lane ever
+// overtakes the floor lane, this step becomes critical path again and the right response is to
+// re-derive both lane durations, not to move it back on the strength of this comment.
 //
 // WHY MOVED AND NOT DELETED. The two populations above are still two populations, and the
 // build lane's prelude answers the second only INCIDENTALLY -- it builds every bin because
