@@ -829,21 +829,6 @@ fn fleet_converge_fabric_cell_refusal_count(
   }
 }
 
-fn fabric_cell_action_line(action: MemberAction<FabricCellMember, String>) -> String {
-  match action {
-    MemberAdded { at: _, to: t } =>
-      concat("ADD fabric-cell ", fabric_cell_member_key(member: t))
-    MemberChanged { at: _, from: _, to: t } =>
-      concat("CHANGE fabric-cell ", fabric_cell_member_key(member: t))
-    MemberRemoved { at: _, from: f } =>
-      concat("REMOVE fabric-cell ", fabric_cell_member_key(member: f))
-    MemberRemovalRefused { from: f, cause: _ } =>
-      concat("REFUSED-REMOVAL fabric-cell ", fabric_cell_member_key(member: f))
-    MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: _ } =>
-      concat("REFUSED-DUPLICATE-KEY fabric-cell ", fabric_cell_member_key(member: f))
-  }
-}
-
 fn fleet_converge_slot_lines(
   host: NonEmptyStr,
   observed_slots: List<RunnerSlotMember>,
