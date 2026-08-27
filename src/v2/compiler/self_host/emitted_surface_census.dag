@@ -180,8 +180,33 @@ fn row_admissible(row: SurfaceCensusRow) -> Bool {
 
 // A census over fewer than two entries CANNOT exhibit an entry-conditioned surface. Admitting on
 // one is not a clean result, it is the absence of a measurement wearing a verdict's clothes.
+//
+// This asks its question of the sample's LENGTH, which is only the number of DISTINCT entries
+// once the sample is known to carry no repeat. That precondition is established by the refusal
+// below rather than assumed here, and it is not an ordering nicety: a repeated entry defeats this
+// check AND the coverage check together, which is exactly how it slipped through once already.
 fn census_can_discriminate(census: SurfaceCensus) -> Bool {
   length(xs: census.sample_entries) >= 2
+}
+
+// A SAMPLE THAT NAMES ONE ENTRY TWICE IS MALFORMED, AND REFUSING IT IS NOT THE SAME AS DEDUPING IT.
+//
+// The damage a repeat does is not that it inflates a count. It is that it defeats BOTH guards at
+// once, in the same direction, silently. `[A, A]` has length 2, so the sample passes for
+// discriminating; and a row observed a single time under A satisfies row_observed_under_entry for
+// BOTH slots, so count_where equals length and the row passes for covered. A census that observed
+// exactly one entry then reaches the variation check, where a lone observation cannot disagree with
+// anything, and is ADMITTED as clean. Both ignorance refusals are defeated by one duplicated
+// identity.
+//
+// Silently deduping to `[A]` would fix the arithmetic and hide a broken producer: the observation
+// builder is the only party that can author this sample, and a sample naming one entry twice means
+// that builder is wrong. Tolerating its output would be the absorbing fallback with the failure
+// frequency zeroed by construction. So this refuses with its own reason, pointing at the producer,
+// rather than repairing the data on its behalf.
+fn sample_repeats_an_entry(census: SurfaceCensus) -> Bool {
+  any(xs: census.sample_entries, predicate: entry =>
+    count_where(xs: census.sample_entries, predicate: other => other == entry) > 1)
 }
 
 fn row_observed_under_entry(row: SurfaceCensusRow, entry: Symbol) -> Bool {
@@ -194,6 +219,14 @@ fn row_observed_under_entry(row: SurfaceCensusRow, entry: Symbol) -> Bool {
 fn row_covers_sample(row: SurfaceCensusRow, census: SurfaceCensus) -> Bool {
   count_where(xs: census.sample_entries, predicate: entry => row_observed_under_entry(row: row, entry: entry))
     == length(xs: census.sample_entries)
+}
+
+fn sample_repeated_entry_diagnostic(census: SurfaceCensus) -> Diagnostic {
+  textual_whole_file_diagnostic(
+    reason: ^surface_census_sample_names_one_entry_more_than_once,
+    module_file: ^surface_census,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  )
 }
 
 fn census_undiscriminating_diagnostic(census: SurfaceCensus) -> Diagnostic {
@@ -234,8 +267,8 @@ fn refused_row_count(census: SurfaceCensus) -> Int {
 
 // Canonical seed assembly admission.
 //
-// Fail-closed in THREE directions, ordered so that ignorance is refused before cleanliness is
-// asserted. An admission means: the sample could have exhibited variation, every module was
+// Fail-closed in FOUR directions, ordered so that a malformed sample is refused before ignorance,
+// and ignorance before cleanliness is asserted. An admission means: the sample could have exhibited variation, every module was
 // observed across the whole sample, and none offered two surfaces. It is never a claim that a
 // canonical surface was chosen.
 //
@@ -243,7 +276,9 @@ fn refused_row_count(census: SurfaceCensus) -> Int {
 // states pass as verdicts, which is exactly the defect this ordering exists to make
 // unrepresentable.
 fn canonical_seed_admission(census: SurfaceCensus) -> Outcome<SurfaceCensus> {
-  if census_can_discriminate(census: census) == false {
+  if sample_repeats_an_entry(census: census) {
+    outcome_rejected(d: sample_repeated_entry_diagnostic(census: census))
+  } else if census_can_discriminate(census: census) == false {
     outcome_rejected(d: census_undiscriminating_diagnostic(census: census))
   } else {
     match uncovered_rows(census: census) {

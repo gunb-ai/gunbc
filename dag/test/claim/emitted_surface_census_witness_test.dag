@@ -173,6 +173,61 @@ fn witness_partially_observed_module_is_refused() -> Bool {
   }
 }
 
+// THE REVIEWER'S EXACT DEFEAT VECTOR (review 56554), kept as a permanent regression control.
+//
+// [A, A] passes the length>=2 discrimination check, AND a row observed a single time under A
+// satisfies coverage because the one observation matches BOTH duplicate slots. Before the repeat
+// refusal, this census reached the variation check with a lone observation that could not disagree
+// with anything and was ADMITTED. One duplicated identity defeated both ignorance guards at once.
+fn witness_duplicated_sample_entry_is_refused() -> Bool {
+  match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
+    census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
+      sample_entries: [^entry_integer, ^entry_integer],
+      rows: [
+        v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
+          product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
+          source_module: "v2.std.node",
+          target_filename: ^v2_std_node,
+          observations: [observation(entry: ^entry_integer, surface: ^surface_agreed)]
+        }
+      ]
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^surface_census_sample_names_one_entry_more_than_once
+  }
+}
+
+// THE REPEAT REFUSAL IS NOT A DEDUPE: a sample carrying a repeat is refused even when it ALSO names
+// enough distinct entries to discriminate. Deduping would have admitted this one, and admitting it
+// would tolerate a producer that cannot author a correct sample.
+fn witness_repeat_refused_even_when_distinct_count_suffices() -> Bool {
+  match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
+    census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
+      sample_entries: [^entry_integer, ^entry_integer, ^entry_node_query],
+      rows: []
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^surface_census_sample_names_one_entry_more_than_once
+  }
+}
+
+// ORDERING CONTROL: a malformed sample is named BEFORE ignorance. [A, A] is both repeated and
+// (distinctly) one-entry; the refusal must point at the producer defect, or a reader widens the
+// sample to two identical entries and believes they fixed it.
+fn witness_repeat_is_refused_before_undiscriminating() -> Bool {
+  match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(
+    census: v2.compiler.self_host.emitted_surface_census.SurfaceCensus {
+      sample_entries: [^entry_integer, ^entry_integer],
+      rows: []
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^surface_census_sample_names_one_entry_more_than_once
+  }
+}
+
 // ORDERING CONTROL: ignorance is refused BEFORE variation is reported. A census that is both
 // undiscriminating AND carries a varying row must name the sample defect, not the variation --
 // otherwise a reader repairs the module and the blind sample survives.
@@ -199,4 +254,7 @@ test fn emitted_surface_census_witnesses() -> Bool {
     && witness_single_entry_sample_is_refused()
     && witness_partially_observed_module_is_refused()
     && witness_ignorance_is_refused_before_variation()
+    && witness_duplicated_sample_entry_is_refused()
+    && witness_repeat_refused_even_when_distinct_count_suffices()
+    && witness_repeat_is_refused_before_undiscriminating()
 }
