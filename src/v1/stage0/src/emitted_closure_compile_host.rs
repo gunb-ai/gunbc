@@ -628,39 +628,6 @@ pub fn run_emit_compile_entry(source_roots: &[String], entry: &str) -> EmitCompi
 ///
 /// AN EMPTY ROSTER REFUSES. Zero entries compiled is not zero breaks; it is the phase failing
 /// to reach any subject, and reporting it as clean is the empty-observation narrow.
-/// THE DENOMINATOR THE COVER IS A FRACTION OF — authored `.dag` modules under the source roots
-/// the phase was invoked with.
-///
-/// WHY THE PHASE REPORTS THIS AND NOT ONLY ITS OWN COUNT. A required check named for compiling
-/// emitted closures that compiles a small declared cover and prints only `declared=8 passed=8`
-/// reads, to anyone scanning a log, as a statement about the tree. It is not: it is a statement
-/// about eight entries. DESIGN's own record of this shape is the compile-clean witness family —
-/// nine identities named for compile-clean, one of which passes, and that one checks whether two
-/// realizations agree about a policy row. A reader counting those nine concluded the corpus was
-/// compile-checked. Printing the denominator beside the cover is what makes that misreading
-/// unavailable from the output itself, rather than available to anyone who does not go and read
-/// the roster.
-///
-/// It counts modules rather than admissible entries deliberately: an admissible-entry denominator
-/// would be a second measurement that moves for reasons unrelated to coverage (an emitter repair
-/// clearing a widely-reached site returns many entries at once), and a coverage fraction whose
-/// denominator moves under repairs is not a coverage fraction. Authored modules is the stable
-/// subject the corpus actually has.
-fn authored_dag_module_count(source_roots: &[String]) -> usize {
-    let mut files = Vec::new();
-    for root in source_roots {
-        super::collect_dag_files_tolerant(std::path::Path::new(root), &mut files);
-    }
-    files.sort();
-    files.dedup();
-    files.len()
-}
-
-/// The cover fraction, rendered for the phase's summary line.
-pub fn emit_compile_cover_denominator(source_roots: &[String]) -> usize {
-    authored_dag_module_count(source_roots)
-}
-
 /// THE NUMERATOR, IN THE SAME UNIT AS THE DENOMINATOR: modules the cover's closures REACHED.
 ///
 /// WHY NOT THE ENTRY COUNT. `covered_entries=8 of 3900 authored modules` is not a fraction — the
@@ -944,8 +911,10 @@ pub fn run_required_emit_compile(
             break;
         }
     }
-    // The lock is released on the success path only. A run that returned early left the probe
-    // root in a state no later run should silently build on, and the stale lock is the signal.
+    // The lock is released here, at the one exit this function has below the acquisition: every
+    // branch of the loop pushes an outcome and falls through. A run killed before this point
+    // leaves the lock behind deliberately -- a probe root whose last writer died is not a state a
+    // later run should silently build on, and the stale lock is what says so.
     let _ = std::fs::remove_file(&lock);
     Ok(outcomes)
 }

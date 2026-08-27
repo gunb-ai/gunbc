@@ -1,0 +1,178 @@
+module v2.workflow.legacy_binding_projection
+
+import std.types { String, Bool, Int, List }
+import std.content_hash { Fnv1a64Structural }
+import std.dissolution { DissolutionCondition, bound_dissolution }
+import std.decl_ref { decl_ref }
+import std.occurrence_identity { OccurrenceId, ScopedOccurrenceRef }
+import v2.workflow.legacy_binding_observation {
+  LegacyBindingObservationSubject,
+  legacy_subject_identity
+}
+import v2.workflow.legacy_binding_delta {
+  ProjectionProvenance,
+  ProjectionProvenanceEntry,
+  ProjectedFromSource
+}
+
+// WHAT THIS EMITS, AND WHY IT IS HALF A PROJECTOR RATHER THAN A SMALL ONE.
+//
+// The delta between what the legacy resolver selected over base B and what the strict resolver
+// selects over the projection P(B) needs a correspondence, and there is no admissible cross-compile
+// occurrence key to compute one from -- OccurrenceId is a traversal ordinal and the projection's
+// inserted qualifier tokens are exactly what shifts it. So the correspondence is EMITTED by the
+// transformation that knows the relation, and this module is that emission's carrier: it turns a
+// per-occurrence carry decision into the ProjectionProvenance the delta consumes.
+//
+// It emits ProjectedFromSource ONLY. ProjectedAsInsertion is not merely unimplemented here, it is
+// UNEMITTABLE BY THIS MODULE, and the reason has MOVED -- it used to be a property of the substrate
+// and is now a property of this module's wiring. `std.occurrence_identity` `NodeOccurrenceIdentity`
+// once had two arms, `OccurrenceSynthetic` and `OccurrenceMinted`, neither carrying a cause; a
+// projector-created node had no representable provenance, and the arm it would have had to borrow is
+// already the fill value for every non-parser-constructed node, so borrowing it would have collapsed
+// parser-minted, incidentally-synthetic and projection-synthesized-with-cause into one symbol.
+//
+// gunbc#9359 closed that: `OccurrenceProjected { id, caused_by }` carries the cause, and
+// `v2.workflow.legacy_binding_delta` `insertion_provenance_entry` derives the `ProjectedAsInsertion`
+// row from it. THE REFUSAL BELOW STAYS ANYWAY, and the distinction is the point -- what this module
+// cannot do is no longer EXPRESS an insertion's cause but EMIT one, because nothing here has been
+// taught to allocate a projected occurrence and name what caused it. A refusal is honest about a
+// capability that is unbuilt; it would be dishonest as a claim that the capability is impossible.
+//
+// THE COST OF THAT IS A WRONG ANSWER, NOT A MISSING FEATURE, which is the whole reason this module
+// refuses instead of improvising. The delta's source-coverage law reads carried sources; an
+// insertion names the base occurrence it acts on behalf of, and `caused_by` is what stops that name
+// from discharging the dropped occurrence's coverage obligation. Give an insertion a placeholder
+// cause, or let `Synthetic` mean projector-created by local convention, and the law reports that a
+// dropped occurrence survived. That is exactly the defect a review caught on gunbc#9337, arriving
+// through the carrier instead of through the filter.
+//
+// That hazard is why the carrier gained a third ARM rather than an optional field: no placeholder
+// cause, no `caused_by: OccurrenceId?` on the minted arm, no convention -- each of those is the
+// fabricated cause wearing a different hat, and a fabricated cause is worse than an omitted
+// insertion because the omission is countable and the fabrication is not. With the arm landed, the
+// remaining work is wiring this projector across it, and until that lands the refusal below is
+// still the honest state.
+// THE RETIREMENT IS A TYPED CONDITION, NOT A SENTENCE. An earlier revision of this module carried
+// the whole thing as `data ...: String`, which is the shape §4c names as modeling debt and which
+// #6262/#6424 already swept once: a dissolution condition is machine-consumed, so it belongs in
+// `std.dissolution` where `dissolution_status` can read it, and prose that no `Accepted` program can
+// read belongs in an annotation like this one. A review read the String as admitted BECAUSE it named
+// a bounded trigger; that is backwards -- naming a trigger is precisely what makes it a fact rather
+// than commentary, and therefore precisely what disqualifies the String carrier.
+//
+// IT IS NOW BOUND, AND THIS IS THE CHANGE THAT WAS ENTITLED TO BIND IT. An earlier revision left it
+// UNBOUND and said so honestly: the bound form is `DeclarationAppears` over `std.occurrence_identity`
+// `OccurrenceProjected`, that declaration did not exist on the base this module was authored against,
+// and authoring the citation there would have been refused by the citation wall as a name that does
+// not resolve -- the §3 fabricated-citation class the dissolution module's own annotation warns about
+// by name. That revision also named its own trigger: the condition binds in the same change that
+// rebases this module onto the arm, at which point the ref is verifiable at the moment it is written.
+//
+// gunbc#9359 landed `OccurrenceProjected`. THIS change is the first that rebases this module's
+// claims onto that capability and authors the now-resolvable citation, so the citation is written at
+// the first moment it CAN be written honestly rather than at the first moment it is convenient. The
+// two-step interval is the interesting part and an earlier revision of this sentence erased it by
+// attributing both to one commit: #9359 merged WITHOUT this rebase, and for the gap between them
+// main carried a dissolution row asserting the absence of an arm declared in the same tree. Leaving it unbound here would have been worse than merely stale: a
+// dissolution condition is machine-consumed, so the debt would have reported UNBOUND while its own
+// binding declaration sat in the same commit -- a false fact rather than a false comment.
+//
+// WHAT DID NOT CHANGE: the refusal. `ProjectionInsertionUnrepresentable` still fires, because the
+// carrier boundary is closed and the PROJECTOR is not yet wired across it. Binding the dissolution
+// records that the blocking declaration now exists; it does not claim this module emits insertions.
+//
+// THE INSTRUMENTS ARE THE FACTS THAT ARE NOW TRUE, not the absence that closed. Read
+// `std.occurrence_identity` `NodeOccurrenceIdentity` for the `OccurrenceProjected` arm, and
+// `v2.workflow.legacy_binding_delta` `insertion_provenance_entry` for the derivation of
+// `ProjectedAsInsertion` from it. An earlier revision named a grep for `caused_by` across `dag/std`
+// and `src/v2/std`, which was correct while the count was zero and INVERTED SILENTLY the moment the
+// arm landed -- a reader running it now gets a nonzero answer and cannot tell a wrong annotation
+// from a mis-run. Naming an instrument beats transcribing its output, but an instrument that
+// measures an ABSENCE rots exactly like a transcribed number once someone closes the absence.
+data legacy_binding_projection_insertion_dissolution: DissolutionCondition = bound_dissolution(
+  ref: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceProjected")
+)
+
+// A CARRY DECISION IS PER BASE OCCURRENCE, AND ITS DENOMINATOR IS THE BASE OBSERVATION'S OWN
+// EXPECTED POPULATION -- not the projected side, and not the set of decisions this module happened
+// to receive. Naming that here rather than beside the filter is deliberate: the recurring defect in
+// this lane is a correct law ranging over the wrong population, so the population is stated before
+// any fold reads it.
+//
+// MULTIPLICITY: exactly one decision per base occurrence. Two decisions for one occurrence is a
+// fork, and it is refused here rather than left for the delta to discover as a repeated source,
+// because the two refusals mean different things -- the delta's says the emitted provenance is not
+// total, this one says the emitter contradicted itself.
+type ProjectionCarryDecision
+  = CarriedForward { base: OccurrenceId, projected: OccurrenceId }
+  | DroppedByProjection { base: OccurrenceId }
+
+fn carry_decision_base(decision: ProjectionCarryDecision) -> Int {
+  match decision {
+    CarriedForward { base: b, projected: _ } => b.value
+    DroppedByProjection { base: b } => b.value
+  }
+}
+
+fn decision_multiplicity(decisions: List<ProjectionCarryDecision>, base: Int) -> Int {
+  decisions |> filter(d => carry_decision_base(decision: d) == base) |> count
+}
+
+// THE REFUSAL VOCABULARY, ONE VARIANT PER REASON THE EMISSION CANNOT BE TRUSTED. Every arm carries
+// the occurrences that caused it, so a refusal is countable and locatable rather than a verdict.
+type ProjectionEmission
+  = ProvenanceEmitted { provenance: ProjectionProvenance }
+  | ProjectionDecisionMissing { occurrences: List<Int> }
+  | ProjectionDecisionForked { occurrences: List<Int> }
+  | ProjectionDecisionForeign { occurrences: List<Int> }
+  | ProjectionInsertionUnrepresentable { occurrences: List<Int> }
+  | ProjectionDroppedOccurrence { occurrences: List<Int> }
+
+// A DROP REFUSES HERE RATHER THAN DOWNSTREAM, AND THE TWO ARE NOT THE SAME REFUSAL. An emitted
+// provenance that omits a dropped occurrence is refused by the delta as ProvenanceSourceMissing --
+// correct, but it says the emitted provenance is not total, when the fact known HERE is that the
+// projection dropped a reference. Emitting something this module already knows the delta must
+// refuse would hand the reason to a consumer that cannot recover it, so the drop is named at the
+// point it is known. That is also why DroppedByProjection exists as a decision at all rather than
+// being expressed by omitting the occurrence: "you dropped it" and "you did not tell me about it"
+// are different facts with different owners, and collapsing them is the not-applicable-versus-
+// malformed conflation.
+//
+// EMISSION IS TOTAL OVER THE BASE POPULATION OR IT REFUSES.
+//
+// `expected_base` is the base observation's expected occurrence population -- the same denominator
+// the observation envelope admits against, passed in rather than re-derived so two derivations of
+// one fact cannot disagree. `inserted` is the projected-side occurrences the projection created
+// with no base source; it exists as a parameter so the caller can be HONEST about them, and the
+// only thing this module can do with a non-empty list is refuse.
+fn emit_projection_provenance(
+  base_subject: LegacyBindingObservationSubject,
+  projected_subject: LegacyBindingObservationSubject,
+  expected_base: List<Int>,
+  decisions: List<ProjectionCarryDecision>,
+  inserted: List<Int>
+) -> ProjectionEmission {
+  let base_identity = legacy_subject_identity(subject: base_subject)
+  let projected_identity = legacy_subject_identity(subject: projected_subject)
+  let decided = decisions |> map(d => carry_decision_base(decision: d))
+  let missing = expected_base |> filter(id => !(decided |> any(d => d == id)))
+  let forked = expected_base |> filter(id => decision_multiplicity(decisions: decisions, base: id) > 1)
+  let foreign = decided |> filter(id => !(expected_base |> any(e => e == id)))
+  let dropped = decisions |> flat_map(d => match d {
+    CarriedForward { base: _, projected: _ } => []
+    DroppedByProjection { base: b } => [b.value]
+  })
+  if (missing |> count) > 0 { ProjectionDecisionMissing { occurrences: missing } }
+  else if (forked |> count) > 0 { ProjectionDecisionForked { occurrences: forked } }
+  else if (foreign |> count) > 0 { ProjectionDecisionForeign { occurrences: foreign } }
+  else if (inserted |> count) > 0 { ProjectionInsertionUnrepresentable { occurrences: inserted } }
+  else if (dropped |> count) > 0 { ProjectionDroppedOccurrence { occurrences: dropped } }
+  else { ProvenanceEmitted { provenance: ProjectionProvenance { entries: decisions |> flat_map(d => match d {
+    CarriedForward { base: b, projected: p } => [ProjectedFromSource {
+      source: ScopedOccurrenceRef { scope: base_identity, occurrence: b },
+      target: ScopedOccurrenceRef { scope: projected_identity, occurrence: p }
+    }]
+    DroppedByProjection { base: _ } => []
+  }) } } }
+}

@@ -89,6 +89,7 @@ import v1.compiler.trait_derive_emit {
   v1_generic_params_needing_clone_bound,
   v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds,
   v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
+  v1_item_wf_propagated_clone_bounded_param_names,
   v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
   v1_clone_impl_required_type_params,
   v1_trait_derive_refuse,
@@ -1345,8 +1346,13 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
         Present { value: carrier } => carrier
         Absent => {
           let leaf = qualified_last_segment(name: name)
-          let rendered = rust_render_type_leaf_name(name: leaf, variant_to_enum: variant_to_enum)
-          render_rust_shared_type_if_needed(type_name: leaf, rendered: rendered, shared_types: shared_types)
+          match rust_scalar_checkpoint_reference_base(dag_name: leaf, decl_file: type_reference_decl_file(n: n)) {
+            Present { value: scalar } => scalar
+            Absent => {
+              let rendered = rust_render_type_leaf_name(name: leaf, variant_to_enum: variant_to_enum)
+              render_rust_shared_type_if_needed(type_name: leaf, rendered: rendered, shared_types: shared_types)
+            }
+          }
         }
       }
     }
@@ -5406,6 +5412,49 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
   (names |> count) > (unique_strings(items: names) |> count)
 }
 
+// The header-bound decision, taken ONCE per item and rendered by whoever needs it. The item
+// header and its supplemental impl headers are one fact -- Rust requires an impl's generics to
+// satisfy the type's own bounds -- so `emit_item_header_clone_param_names` is the single place
+// that answers it and both surfaces read the same list. Splitting `has_fn_fields` without this
+// would have put the two out of step: the header would gain a WF bound the impl header did not,
+// which does not compile.
+fn emit_item_header_clone_param_names(
+  item: Node,
+  item_name: String,
+  has_fn_fields: Bool,
+  generic_param_names: List<String>,
+  emit_info: EmitGraphInfo,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  if has_fn_fields {
+    v1_item_wf_propagated_clone_bounded_param_names(
+      item_name: item_name,
+      item: item,
+      generic_param_names: generic_param_names,
+      bounds: emit_info.clone_bounded_type_params,
+      source_indices: source_indices
+    )
+  } else {
+    v1_item_clone_bounded_param_names(
+      item_name: item_name,
+      generic_param_names: generic_param_names,
+      bounds: emit_info.clone_bounded_type_params
+    )
+  }
+}
+
+fn emit_type_params_from_clone_param_names(
+  params: List<Node>,
+  clone_param_names: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  if (clone_param_names |> count) > 0 {
+    v1_emit_type_params_with_clone_bounds(params: params, clone_param_names: clone_param_names, source_indices: source_indices)
+  } else {
+    emit_type_params(params: params, source_indices: source_indices)
+  }
+}
+
 fn emit_item_type_params_with_clone_bounds(item_name: String, params: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   let generic_param_names = params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
   let clone_param_names = v1_item_clone_bounded_param_names(
@@ -5494,26 +5543,53 @@ fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitG
 // declared type, and `PartialFunction<K, V>` is itself emitted bare, so it carries no obligation.
 // The exposing population is therefore EMPTY. That is a closed enumeration, not a spot check.
 //
-// WHY THIS IS DEFERRED, and it is NOT that evidence is unavailable: the new arm is provable by a
-// controlled fixture, and the regression risk — re-bounding the 16 derive carriers that correctly
-// stay bare — is testable against the real corpus by regenerating to a fixed point over the live
-// 17. Both are available today. The reason is §6 displaced cost: with the population empty the
-// benefit is ZERO, while the change carries nonzero regression risk against 17 live carriers and
-// consumes the one scarce slot on this file, ahead of work with a live population. It is worth
-// less than what it displaces, today — not unverifiable.
+// THE TRIGGER FIRED, AND THE SPLIT LANDED. This paragraph is rewritten rather than annotated,
+// because the deferral it recorded was priced against an EMPTY exposing population and that
+// premise is now false — leaving it standing in the present tense would tell the next reader the
+// benefit is still zero.
 //
-// NEXT-RUNG TRIGGER: the first carrier with a callable field that ALSO names a
-// well-formedness-bounded declared type (the `AmbiguousBindingCandidates` shape with a callable
-// field added — the callable field is irrelevant to why the bound is owed). The repair is the same
-// move as above: split `has_fn_fields` into the two questions it answers, so the derive half keeps
-// suppressing the header bound and the WF half is never consulted about callable fields at all.
-// EVIDENCE IT OWES, both halves: a controlled fixture for the new arm, PLUS a regen fixed point
-// over the existing 17 callable-field carriers as the regression control. A fixture alone is thin.
+// The trigger read: "the first carrier with a callable field that ALSO names a
+// well-formedness-bounded declared type". `std.interval` IntervalConstructionFold<T, R> is that
+// carrier — its field is `fn(OrderedClosedInterval<T>) -> R`, and OrderedClosedInterval<T: Clone>
+// is bounded from its own bare `low: T`. The emitted header went bare and rustc refused with
+// E0277, which is the same failure this note already records for AmbiguousBindingCandidates<N>,
+// reached through the callable field instead of through `Rc`.
+//
+// The repair is the one this note prescribed and no other: `has_fn_fields` no longer gates the
+// WELL-FORMEDNESS half. `emit_item_header_clone_param_names` takes the header decision once and
+// subtracts, for a callable-field struct, exactly the item's OWN derive-seed contribution — so the
+// derive half keeps suppressing the header bound on `Monoid<T> { identity: T }` while a bound
+// PROPAGATED from a field's declared type survives. A subtraction rather than a second fixpoint,
+// because propagation must still see every other item's seed to have anything to propagate from.
+//
+// ONE CORRECTION TO THE PRESCRIPTION, made because implementing it exposed the error: the clause
+// "the WF half is never consulted about callable fields at all" was written while the WF walk was
+// structurally blind to callables (`v1_type_expr_wf_needs_clone_param` opened on a zero-children
+// test, and a Callable node carries its components on `.params`/`.inferred`, never `.children`).
+// That blindness is what made a callable field LOOK obligation-free. It is not: an arrow realizes
+// as `Rc<dyn Fn(A) -> R>` and naming a bounded declared type at A or R is ill-formed exactly as at
+// a plain field. So the WF half must be consulted about callable fields, and
+// `v1_callable_type_expr_component_type_exprs` is what lets it see them. Suppressing the header
+// bound alone would not have been enough; neither half closes this carrier without the other.
+//
+// EVIDENCE, both halves the note demanded: a controlled fixture
+// (test.claim.clone_bound_callable_field_witness, four arms — argument position, return position,
+// a plain-field positive control, and a converse control requiring that a callable over UNBOUNDED
+// parameters still emits bare), PLUS the regen fixed point over the live callable-field carriers
+// as the regression control that the 16 derive carriers did not gain a header bound.
 fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
   if is_product {
     let has_fn_fields = type_has_fn_fields(name: item_text, emit_info: emit_info)
+    let header_clone_param_names = emit_item_header_clone_param_names(
+      item: item,
+      item_name: item_text,
+      has_fn_fields: has_fn_fields,
+      generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
+      emit_info: emit_info,
+      source_indices: env.source_indices
+    )
     let sealed = item_seals_construction(item: item)
     let deserialize_forbidden = item_forbids_deserialize(item: item, emit_info: emit_info, source_indices: env.source_indices)
     let capability_surface = v1_emit_struct_from_capability_table(
@@ -5525,19 +5601,15 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
       map_key_required: set_contains(emit_info.map_key_required_type_names, item_text),
       generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
       source_indices: env.source_indices,
-      carrier_param_needs_clone: v1_carrier_param_needs_clone_bound(
-        item_name: item_text,
-        generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
-        emit_info: emit_info
-      ),
+      carrier_param_needs_clone: (header_clone_param_names |> count) > 0,
       deserialize_forbidden: deserialize_forbidden,
       type_decl_items: emit_info.type_decl_items
     )
-    let type_params = if !has_fn_fields {
-      emit_item_type_params_with_clone_bounds(item_name: item_text, params: item.params, emit_info: emit_info, source_indices: env.source_indices)
-    } else {
-      emit_type_params(params: item.params, source_indices: env.source_indices)
-    }
+    let type_params = emit_type_params_from_clone_param_names(
+      params: item.params,
+      clone_param_names: header_clone_param_names,
+      source_indices: env.source_indices
+    )
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
     let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, sealed: sealed, deserialize_forbidden: deserialize_forbidden, env: env, emit_info: emit_info)
@@ -8154,27 +8226,45 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
   }
 }
 
-fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> Bool {
-
+// ONE ROSTER ANSWERS FOR THE POSITION IT LOWERS, AND FOR NO OTHER. The predicate replaced here was
+// the union of two rosters -- rt_wraps_result (v1_rt bridge functions) and rust_method_wraps_result
+// (the simple-method templates) -- consulted at four positions, only two of which lower through the
+// roster they were asking. The wrap is not a fact about a NAME: it is a fact about the TEXT the
+// emitter just produced, because a template that ends in `.collect::<Vec<_>>()` yields a bare Vec
+// that the shared reference layer then has to lift. Asking by name lets a roster answer for a
+// position it never lowered, and then the Rc level DISAGREES ACROSS THE CALL BOUNDARY: the callee's
+// own declaration already returns the wrapped level, the caller wraps it a second time, and the
+// emitted program carries a type error no stage located. MEASURED specimen, on the 01_tokenize
+// closure: v2.std.compilers.lexing token_stream_remaining is `skip(xs: stream.all, n: stream.pos)`,
+// a PLAIN CALL to the declared v2.std.algebra skip, which emits as an ordinary declared call and
+// returns Rc<Vec<Rc<Token>>>; `skip` is also a simple-method template name, so the plain-call site
+// wrapped it again and rustc reported `expected Vector<Rc<Token>>, found Rc<Vector<Rc<Token>>>`.
+// The method roster had no template on that path -- nothing was lowered by it -- so its wrap was
+// unpaired by construction. The repair is to pair each wrap with the roster that produced the text
+// beside it, and at the plain-call position to derive the gate from the SAME predicate that chose
+// the emission form (rust_plain_call_emits_as_runtime_bridge, read by emit_typed_call for is_rt and
+// by emit_typed_call_expr for the wrap), so no second opinion about the form exists to drift.
+// RUNG (DESIGN 4b): this moves the plain-call half of the class from silent wrongness -- emitted,
+// compiled by us, refused only by rustc downstream -- to STRUCTURALLY IMPOSSIBLE for the
+// cross-roster direction specifically: after this change no method-roster row can reach a plain
+// call, because the fused predicate that carried it there does not exist. It does NOT make every
+// wrapping-level disagreement unwritable; a row misdeclaring wraps_result against its own template
+// is still writable, and that residue's next rung is the modeled layer transition
+// v2.compiler.wrap_decision wrap_decision_flow_gate names.
+fn rust_runtime_bridge_result_wraps_in_rc(function_name: String) -> Bool {
   map_contains_key(rt_wraps_result(), function_name)
-    || map_contains_key(rust_method_wraps_result(), function_name)
 }
 
-fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: InferredNode?) -> Bool {
-
-  false
+fn rust_method_template_result_wraps_in_rc(method_name: String) -> Bool {
+  map_contains_key(rust_method_wraps_result(), method_name)
 }
 
-fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, result_type: InferredNode?) -> String {
-  if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: function_name) {
-    if rust_runtime_bridge_collection_result_needs_rc_elements(function_name: function_name, result_type: result_type) {
-      concat("Rc::new((", call_str, ").into_iter().map(Rc::new).collect::<Vec<_>>())")
-    } else {
-      rust_shared_wrap_ctor(inner_expr: call_str)
-    }
-  } else {
-    call_str
-  }
+// The emission-form predicate, read at both ends of the plain-call seam: emit_typed_call routes the
+// call through v1_rt exactly when this holds, and emit_typed_call_expr wraps its result only when
+// it holds. A function value is excluded at both ends because a value call names a binding, never a
+// bridge.
+fn rust_plain_call_emits_as_runtime_bridge(func: String, callee_is_function_value: Bool) -> Bool {
+  callee_is_function_value == false && map_contains_key(rt_functions(), func)
 }
 
 fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, module_name: String) -> String {
@@ -8544,7 +8634,8 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
     emit_typed_call(func: func, args: args, callee_is_function_value: callee_is_function_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
 
-  if callee_is_function_value == false && rust_runtime_bridge_wraps_collection_result_in_rc(function_name: func) {
+  if rust_plain_call_emits_as_runtime_bridge(func: func, callee_is_function_value: callee_is_function_value)
+    && rust_runtime_bridge_result_wraps_in_rc(function_name: func) {
     rust_shared_wrap_ctor(inner_expr: call_str)
   } else { call_str }
 }
@@ -8757,7 +8848,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
   let callee = lookup_item(registry: registry, name: qualified_last_segment(name: func))
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let is_rt = callee_is_function_value == false && map_contains_key(rt_functions(), func)
+  let is_rt = rust_plain_call_emits_as_runtime_bridge(func: func, callee_is_function_value: callee_is_function_value)
   let is_rt_ref_map = callee_is_function_value == false && map_contains_key(rt_ref_map_functions(), func)
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
@@ -9437,7 +9528,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
   let all_strs = concat([recv_str], arg_strs)
   let bridge_name = rust_runtime_bridge_name(function_name: function_name)
   let lowered = concat("v1_rt::", emit_ident(name: bridge_name, target: Rust), "(", all_strs |> join(separator: ", "), ")")
-  if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: function_name) {
+  if rust_runtime_bridge_result_wraps_in_rc(function_name: function_name) {
     rust_shared_wrap_ctor(inner_expr: lowered)
   } else { lowered }
   }
@@ -9516,7 +9607,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
           Present { value: tmpl } =>
             let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
             let raw = apply_named_template(template: tmpl, bindings: bindings)
-            if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method_name) {
+            if rust_method_template_result_wraps_in_rc(method_name: method_name) {
               rust_shared_wrap_ctor(inner_expr: raw)
             } else { raw }
           Absent =>
@@ -9536,7 +9627,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
           let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
           let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
           let raw = apply_named_template(template: tmpl, bindings: bindings)
-          if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method) {
+          if rust_method_template_result_wraps_in_rc(method_name: method) {
             rust_shared_wrap_ctor(inner_expr: raw)
           } else { raw }
         Absent =>

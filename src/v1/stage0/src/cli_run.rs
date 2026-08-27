@@ -49,12 +49,23 @@ use serde::Serialize;
 
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
+// THE WAVE-ADMISSION WALL RIDES THE SAME SWEEP the index above is built by, which is why it is
+// registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
+// and a second acquisition of the corpus to answer a second question is the cost-shape defect
+// DESIGN §6 names.
 pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
+#[path = "namespace_wave_admission.rs"]
+pub mod namespace_wave_admission;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
+// The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
+// the emitted crate's exported surface is unchanged; the obligation is enrolled in
+// `gunbc.target_invocation_seed_growth`.
+#[path = "target_invocation_host.rs"]
+pub mod target_invocation_host;
 
 #[path = "partition_crate_boundary_host.rs"]
 mod partition_crate_boundary_host;
@@ -13363,92 +13374,6 @@ pub fn render_typecheck_concluded_line_mirror(
     )
 }
 
-/// Snapshot of the floor's active-batch progress, sampled by the detached
-/// floor-memory heartbeat thread. Armed only when `entry_total` is known and
-/// non-zero — never a fabricated 0-of-0 (observation law 2 / §5).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HeartbeatFeedSnapshot {
-    pub batch_index: u64,
-    pub batch_label: String,
-    pub entry_done: u64,
-    pub entry_total: u64,
-}
-
-struct HeartbeatFeedState {
-    batch_index: u64,
-    batch_label: String,
-    /// `None` while a discovery batch has entered but its roster entry-count is
-    /// not yet known — the heartbeat thread skips emit until this is `Some(n>0)`.
-    entry_total: Option<u64>,
-    entry_done: AtomicU64,
-}
-
-/// Process-wide feed the floor-memory heartbeat samples. Updated at batch-enter
-/// (label + total when known) and at each `index_schedule_entry_completed` (and
-/// SingleClaim completion) — the existing per-entry point, never a parallel counter.
-static HEARTBEAT_FEED: Mutex<Option<HeartbeatFeedState>> = Mutex::new(None);
-
-/// Enter a floor batch. `entry_total = Some(n)` arms the feed when `n > 0`;
-/// `None` leaves it pending (discovery: total filled once the roster is known).
-/// Resets `entry_done` to 0. A zero total is refused (§5: never fabricate 0-of-0).
-pub fn heartbeat_feed_enter_batch(batch_index: u64, label: &str, entry_total: Option<u64>) {
-    let total = match entry_total {
-        Some(0) => None,
-        other => other,
-    };
-    let mut g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
-    *g = Some(HeartbeatFeedState {
-        batch_index,
-        batch_label: label.to_string(),
-        entry_total: total,
-        entry_done: AtomicU64::new(0),
-    });
-}
-
-/// Fill the entry total once a discovery roster's entry-group count is known.
-/// No-op when `total == 0` (refuses to arm a 0-of-0). No-op when no batch is open.
-pub fn heartbeat_feed_set_entry_total(total: u64) {
-    if total == 0 {
-        return;
-    }
-    let mut g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
-    if let Some(state) = g.as_mut() {
-        state.entry_total = Some(total);
-    }
-}
-
-/// Record one completed entry (discovery source-file grain, or one SingleClaim).
-/// Caps at `entry_total` when known so a late double-complete cannot invent
-/// "entry N+1 of N".
-pub fn heartbeat_feed_entry_completed() {
-    let g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
-    if let Some(state) = g.as_ref() {
-        let prev = state.entry_done.fetch_add(1, Ordering::Relaxed);
-        if let Some(total) = state.entry_total {
-            if prev >= total {
-                // Undo the overshoot — saturating at total.
-                state.entry_done.store(total, Ordering::Relaxed);
-            }
-        }
-    }
-}
-
-/// The armed snapshot, or `None` when no batch is open / total still pending.
-/// The heartbeat thread skips emit on `None` rather than printing a fabricated
-/// progress line.
-pub fn heartbeat_feed_snapshot() -> Option<HeartbeatFeedSnapshot> {
-    let g = HEARTBEAT_FEED.lock().unwrap_or_else(|p| p.into_inner());
-    let state = g.as_ref()?;
-    let entry_total = state.entry_total?;
-    let entry_done = state.entry_done.load(Ordering::Relaxed).min(entry_total);
-    Some(HeartbeatFeedSnapshot {
-        batch_index: state.batch_index,
-        batch_label: state.batch_label.clone(),
-        entry_done,
-        entry_total,
-    })
-}
-
 /// One in-flight witness attempt the floor has admitted but not yet finished.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActiveWorksetEntry {
@@ -13597,15 +13522,9 @@ fn index_schedule_entry_completed(
         let mut slot = index.schedule_retention.borrow_mut();
         match slot.as_mut() {
             Some(sr) => (sr.entry_completed(entry)?, sr.evict_enabled()),
-            None => {
-                // Schedule unarmed — the drain still advanced an entry; feed the heartbeat.
-                heartbeat_feed_entry_completed();
-                return Ok(());
-            }
+            None => return Ok(()),
         }
     };
-    // The same per-entry point feeds the observation heartbeat — one counter, not a fork.
-    heartbeat_feed_entry_completed();
     if !batch.typed_keys.is_empty() {
         let mut cache = index.typed_module_cache.borrow_mut();
         for key in &batch.typed_keys {
@@ -13699,44 +13618,6 @@ fn index_schedule_entry_completed(
         index.resolved_graph_memo.borrow().len(),
     );
     Ok(())
-}
-
-#[cfg(test)]
-mod heartbeat_feed_red_controls {
-    use super::{
-        heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_set_entry_total,
-        heartbeat_feed_snapshot,
-    };
-
-    #[test]
-    fn never_arms_a_fabricated_zero_of_zero() {
-        heartbeat_feed_enter_batch(0, "witness discovery", Some(0));
-        assert_eq!(
-            heartbeat_feed_snapshot(),
-            None,
-            "entry_total=0 must not arm the feed"
-        );
-        heartbeat_feed_enter_batch(0, "witness discovery", None);
-        assert_eq!(
-            heartbeat_feed_snapshot(),
-            None,
-            "pending total must not arm the feed"
-        );
-        heartbeat_feed_set_entry_total(0);
-        assert_eq!(
-            heartbeat_feed_snapshot(),
-            None,
-            "set_entry_total(0) must refuse to arm"
-        );
-        heartbeat_feed_set_entry_total(602);
-        let snap = heartbeat_feed_snapshot().expect("armed after real total");
-        assert_eq!(snap.batch_label, "witness discovery");
-        assert_eq!(snap.entry_done, 0);
-        assert_eq!(snap.entry_total, 602);
-        heartbeat_feed_entry_completed();
-        let snap = heartbeat_feed_snapshot().expect("still armed");
-        assert_eq!(snap.entry_done, 1);
-    }
 }
 
 #[cfg(test)]
@@ -27769,12 +27650,6 @@ fn run_discovery_corpus_with_options_inner(
             .then_some(options.execution_authority_source_roots.as_slice()),
         rows.iter().map(|row| row.entry.as_str()),
     );
-
-    // Arm the observation heartbeat's entry total at the same grain the drain walks
-    // (entry-groups), now that the roster is known — never a fabricated 0-of-0, and
-    // never earlier (batch-enter only had the opaque DiscoveryBatch runnable).
-    let discovery_entry_total = entry_row_groups(&rows).len() as u64;
-    heartbeat_feed_set_entry_total(discovery_entry_total);
 
     let floor_color = floor_color_enabled();
     let floor_stream = floor_stream_enabled();
@@ -45364,28 +45239,66 @@ fn process_cpu_ms() -> u64 {
 /// That is the attribution failure this PR's own thesis is about, introduced by this PR, caught
 /// by comparing the two runs rather than by reasoning about the code. `wall_s` was already
 /// right; only the CPU counter was absolute.
-fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
-    let stat = std::fs::read_to_string("/proc/self/stat").unwrap_or_default();
-    let f: Vec<&str> = stat
-        .rsplit(')')
-        .next()
-        .unwrap_or("")
-        .split_whitespace()
-        .collect();
-    // Fields are indexed from the field AFTER comm: utime/stime are 12/13 here, majflt is 10.
-    let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
-    let hz = 100u64;
-    let cpu_ms = ((tick(11) + tick(12)) * 1000 / hz).saturating_sub(cpu_baseline_ms);
-    let majflt = tick(9);
-    let rss_kb = std::fs::read_to_string("/proc/self/statm")
+/// The one spelling of "this reading would not read". Named rather than inlined so a check can
+/// bind to the arm that produces it: an unreadable field is `na` in every reader, and a fabricated
+/// number can only appear here by deleting this arm.
+const FLOOR_SAMPLE_UNREADABLE: &str = "na";
+
+/// ONE RENDERING FOR ONE STATE, for every numeric field of the heartbeat sample. A reading that
+/// would not read is the sentinel; a reading that read is its number. There is no third answer,
+/// and no field renders itself, so "fabricate a zero for this one field" is a change to a line
+/// that names the field -- which is what makes it detectable rather than a silent substitution.
+fn floor_sampled_field(v: Option<u64>) -> String {
+    match v {
+        Some(n) => n.to_string(),
+        None => FLOOR_SAMPLE_UNREADABLE.to_string(),
+    }
+}
+
+/// Resident kilobytes from `/proc/self/statm`, or `None` when the file will not read or parse.
+/// `None` is the ONLY absent answer -- never `Some(0)`, which is a resident set a live process
+/// cannot have and which read identically to an unreadable file before this was split out.
+fn floor_statm_rss_kb() -> Option<u64> {
+    const KB_PER_PAGE: u64 = 4;
+    std::fs::read_to_string("/proc/self/statm")
         .ok()
         .and_then(|m| {
             m.split_whitespace()
                 .nth(1)
                 .and_then(|v| v.parse::<u64>().ok())
         })
-        .map(|pages| pages * 4)
-        .unwrap_or(0);
+        .map(|pages| pages * KB_PER_PAGE)
+}
+
+fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
+    // ONE SENTINEL FOR ONE STATE. The cgroup and vmstat readers below answer `na` when their
+    // file will not read; these three answered a fabricated `0`, so `rss_kb=0` rendered
+    // identically whether the process held no resident pages -- which a live process cannot --
+    // or `/proc/self/statm` was unreadable. Those are different facts with opposite remedies,
+    // and this is the instrument that exists to settle a memory contradiction, so a zero it
+    // invented is worse here than anywhere else in the line. Same `na` convention now, and the
+    // cpu pair is all-or-nothing because a half-read stat cannot be summed.
+    let stat = std::fs::read_to_string("/proc/self/stat").ok();
+    let f: Vec<&str> = stat
+        .as_deref()
+        .unwrap_or("")
+        .rsplit(')')
+        .next()
+        .unwrap_or("")
+        .split_whitespace()
+        .collect();
+    // Fields are indexed from the field AFTER comm: utime/stime are 12/13 here, majflt is 10.
+    let tick = |i: usize| f.get(i).and_then(|v| v.parse::<u64>().ok());
+    let hz = 100u64;
+    let na = || FLOOR_SAMPLE_UNREADABLE.to_string();
+    let cpu_ms = floor_sampled_field(match (tick(11), tick(12)) {
+        (Some(utime), Some(stime)) => {
+            Some(((utime + stime) * 1000 / hz).saturating_sub(cpu_baseline_ms))
+        }
+        _ => None,
+    });
+    let majflt = floor_sampled_field(tick(9));
+    let rss_kb = floor_sampled_field(floor_statm_rss_kb());
     // THE CGROUP CHARGE AND THE THROTTLE EVENTS, on every beat, because the runs that most need
     // them are the ones that never reach an exit line. `floor_cgroup_envelope` reports the full
     // picture at entry; these three carry the parts that CHANGE, so a killed run still leaves
@@ -45427,7 +45340,7 @@ fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
                         .and_then(|l| l.split_whitespace().nth(1).map(|v| v.to_string()))
                 }
             })
-            .unwrap_or_else(|| "na".to_string())
+            .unwrap_or_else(na)
     };
     let cur_kb = cg("memory.current", usize::MAX);
     let ev_high = cg("memory.events", 1);
@@ -45484,7 +45397,7 @@ fn floor_resource_sample(cpu_baseline_ms: u64) -> String {
                         .map(|v| v.trim().to_string())
                 })
             })
-            .unwrap_or_else(|| "na".to_string())
+            .unwrap_or_else(na)
     };
     let pswpin = vm("pswpin");
     let pgmajfault = vm("pgmajfault");
@@ -48611,12 +48524,12 @@ pub use partition_crate_boundary_host::{
 /// Re-exported here for the same reason the two above are: every required phase addresses its
 /// producer through one surface.
 pub use emitted_closure_compile_host::{
-    cargo_verdict_stderr_tail, emit_compile_cover_denominator, emit_compile_modules_reached,
-    emit_compile_outcome_passed, emit_compile_outcome_summary, emit_compile_report,
-    emit_compile_selection, emit_compile_selection_not_selected_digest,
-    emit_compile_selection_selected_digest, emit_compile_selection_universe_digest,
-    required_emit_compile_entries, retain_not_selected_identities, run_required_emit_compile,
-    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, MutationVerdict,
+    cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
+    emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
+    emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
+    emit_compile_selection_universe_digest, required_emit_compile_entries,
+    retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
+    EmitCompileSelection, MutationVerdict,
 };
 
 /// The authority's own declared module path, for consumers outside this module.
