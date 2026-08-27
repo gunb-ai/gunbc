@@ -86,21 +86,20 @@ type RepositoryLoadRefusal
   | RepositoryDocumentUnparseable { path: String, gap: JsonDocumentGap }
   | RepositoryDocumentRefused { path: String, cause: RepositoryDecodeRefusal }
 
-type RepositoryLoad
-  = RepositoryLoaded { path: String, envelope: RepositoryEnvelope }
-  | RepositoryLoadRefused { cause: RepositoryLoadRefusal }
-
 // DERIVED, NEVER STORED. There is no `loaded: Bool` field anywhere in this module: the arm IS the
 // answer, so a value whose flag disagrees with its shape has no spelling. Same construction as
 // `gunbc.live_deploy.spec` `deployment_step_ownership`, whose authority note states the rule -- an
 // inconsistent ownership/payload pair is unwritable because ownership is projected, not recorded.
-fn repository_load_refusal_path(refusal: RepositoryLoadRefusal) -> String {
-  match refusal {
-    RepositoryFileUnreadable { path: p, error: _ } => p
-    RepositoryDocumentUnparseable { path: p, gap: _ } => p
-    RepositoryDocumentRefused { path: p, cause: _ } => p
-  }
-}
+//
+// AND NO PROJECTION OVER THE REFUSAL EITHER. Every refusal carries `path`, so a
+// `refusal -> String` accessor is authorable and was authored here and removed: with no consumer it
+// is DESIGN section 6 residue, and with one it is worse -- a fourth refusal arm would be absorbed by
+// the projection instead of failing to compile at each site that must decide about it. This exact
+// shape has now been removed three times (`checkout_succeeded`, `gunbc.scm.ancestry` under review
+// 56207, and here). Consumers match the arms.
+type RepositoryLoad
+  = RepositoryLoaded { path: String, envelope: RepositoryEnvelope }
+  | RepositoryLoadRefused { cause: RepositoryLoadRefusal }
 
 // THE ONLY HOST EFFECT IN THE READ PATH, AND IT IS FOLDED BEFORE IT IS READ. The scalar transport
 // observation -- content, success, error together -- is handed to `filesystem_read_outcome` rather
