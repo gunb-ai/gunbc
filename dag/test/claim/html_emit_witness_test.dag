@@ -120,7 +120,7 @@ test fn witness_trusted_href_serializes() -> Bool {
   }
 }
 
-test fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
+test fn witness_req_a_hostile_href_still_emits_with_html_escaping() -> Bool {
   match try_serialize_html_source(node: req_a_hostile_but_trusted_scheme()) {
     EmitOk { html: h } =>
       h == "<a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a>"

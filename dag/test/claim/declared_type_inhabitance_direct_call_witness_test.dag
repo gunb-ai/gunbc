@@ -83,7 +83,7 @@ test fn w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused() -> 
 // InternalError { message } -- measured, not assumed.
 data undefined_name_arg_source: String = "module probe_inhabit_dc_reach\nimport std.nat { Nat }\nfn takes_native(n: Nat) -> Int { 1 }\nfn probe() -> Int { takes_native(n: nosuchname_zzz_dc) }\n"
 
-test fn w_undefined_name_at_the_same_position_still_refuses() -> Bool {
+test fn w_undefined_name_at_the_direct_call_position_still_refuses() -> Bool {
   violation_count(source: undefined_name_arg_source, wanted: "InternalError") > 0
 }
 
