@@ -122,12 +122,22 @@ import std.types { List, String, Int }
 // and worse than the serial run it replaced, because the serial run's single job carried every
 // phase into the one context that gates.
 //
-// WHY AN AGGREGATION JOB AND NOT A RULESET EDIT. The ruleset is not a `.dag` fact and no wall
-// inside this repository can constrain what GitHub admits to main (the same boundary the
-// merge_group note below records). Landing a change whose safety depends on someone editing a
-// setting afterwards is a coverage gap with a promise attached, and it has a real window: until
-// the context is added, the lane is unguarded. An aggregation job needs no setting change and
-// no window -- the context that already gates keeps its name and now answers for BOTH lanes.
+// WHY AN AGGREGATION JOB AND NOT A RULESET EDIT. No wall inside this repository can constrain
+// what GitHub admits to main (the same boundary the merge_group note below records). Landing a
+// change whose safety depends on someone editing a setting afterwards is a coverage gap with a
+// promise attached, and it has a real window: until the context is added, the lane is unguarded.
+// An aggregation job needs no setting change and no window -- the context that already gates
+// keeps its name and now answers for BOTH lanes.
+//
+// THAT ARGUMENT SURVIVED A BOUNDARY MOVE AND ITS FIRST CLAUSE DID NOT. This note read `the
+// ruleset is not a .dag fact`, and it is one now: gunbc.repo_ruleset declares the desired ruleset,
+// observes the live one, reconciles, applies and READS BACK, and it imports the required context's
+// name from witness_floor_workflow_job_id below rather than spelling it again -- so renaming this
+// job can no longer leave the ruleset naming a context nothing publishes, which is the failure
+// that shows up as a check stuck pending rather than red. What did NOT change is the reason the
+// aggregation job exists: a converged authority ACTUATES and DETECTS, it does not gate, so it
+// still cannot make a required context exist at the moment a merge is attempted. The window
+// argument therefore stands unchanged on its own terms.
 //
 // WHAT IT COSTS, and it is not the parallelism. The two lane jobs still carry no `needs` edge
 // on each other and still start together; only the aggregator waits, and it does nothing but
@@ -1045,10 +1055,13 @@ fn witness_floor_job() -> Job {
 // merge_group event never fires, so this changes nothing about how CI runs today; it is a no-op
 // until a repository setting is changed, which is deliberate -- the prerequisite lands first so the
 // setting can be flipped without a window in which the required check cannot schedule. The other
-// half is not a .dag fact and cannot be one: the ruleset currently carries
-// strict_required_status_checks_policy false, no merge-queue rule, and an always-bypass role, and
-// no wall inside this repository can constrain what GitHub admits to main. That is an operator
-// decision, recorded here so the two halves are legible as one change rather than rediscovered.
+// half is a repository setting, and as of gunbc.repo_ruleset it is a DECLARED and OBSERVED one
+// rather than an invisible one: that module carries strict_required_status_checks_policy false as
+// a stated position and refuses on any divergence it can read. It still cannot flip a setting
+// nobody has declared -- there is no merge-queue rule in desired, because enabling the queue is an
+// operator decision and modelling it as desired would make this module apply a policy nobody
+// chose. And no wall inside this repository can constrain what GitHub admits to main in any case.
+// Recorded here so the two halves are legible as one change rather than rediscovered.
 //
 // THE INVARIANT BOTH HALVES SERVE: the commit admitted to main must be the exact composed commit
 // that passed the required checks. A merge queue establishes it by construction; requiring branches
