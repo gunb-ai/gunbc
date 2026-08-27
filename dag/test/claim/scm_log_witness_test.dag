@@ -11,7 +11,7 @@ import gunbc.scm.object_store {
   Stored,
   LocatorCollision,
 }
-import gunbc.scm.ancestry { RootCommit, DescendsFrom }
+import gunbc.scm.ancestry { RootCommit, DescendsFrom, RepositoryCommitRef }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 import gunbc.scm.log {
   repository_log,
@@ -53,7 +53,7 @@ fn log_witness_two_commit_repository() -> RepositoryEnvelope {
     store: b.store,
     commits: [
       RepositoryCommit { root: a.identity, message: "first", ancestry: RootCommit },
-      RepositoryCommit { root: b.identity, message: "second", ancestry: DescendsFrom { parent: a.identity } },
+      RepositoryCommit { root: b.identity, message: "second", ancestry: DescendsFrom { parent: RepositoryCommitRef { reference: "0" } } },
     ],
     checked_out: none,
   }
