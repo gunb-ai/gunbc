@@ -3782,6 +3782,12 @@ fn reference_derived_candidate_disposition(name: String, this_module_name: Strin
 // resolve time while registry-absent is dominated by Rust tokens that never passed through the
 // resolver at all. They are not two views of one population.
 //
+// NO WILDCARD ARM, DELIBERATELY. Every non-reporting disposition is enumerated, so a SIXTH arm added
+// to the coproduct fails to compile here rather than silently inheriting "produces no diagnostic".
+// That matters because the coproduct now holds three not-applicable arms against two genuine drops,
+// and a `_` would make the next drop arm silent by default -- total at the level examined, blind one
+// level down, which is the shape this whole change exists to repair.
+//
 // LOCATION GRAIN, stated rather than implied: the referencing MODULE's declaration span, because a
 // row carries (module, name, disposition) and the reference SITES are reduced to bare names by the
 // candidate walk before any disposition is assigned. Carrying the originating span on the row is the
@@ -3798,7 +3804,10 @@ fn reference_derived_row_diagnostics(rows: List<ReferenceDerivedCandidateRow>, m
         },
         module_name: r.module_name
       )]
-      _ => []
+      CandidateSurvived { provider_module: _ } => []
+      CandidateOwnModule => []
+      CandidateVariantDelegatedToParent { parent_enum: _ } => []
+      CandidateRegistryAbsent => []
     }
   )
 }
