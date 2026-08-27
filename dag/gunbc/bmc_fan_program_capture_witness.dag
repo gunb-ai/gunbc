@@ -14,19 +14,37 @@ import gunbc.bmc_fan_program_capture {
 
 // WHAT THIS WITNESS CAN AND CANNOT ESTABLISH, STATED FIRST BECAUSE THE GAP IS THE POINT.
 //
-// IT CANNOT CHECK THE DIGEST AGAINST THE BYTES. That check needs a filesystem read, and the
-// required floor evaluates witnesses inside a hermetic envelope that refuses host effects by
-// construction. A witness declaring ReadsLiveTree is discovered, counted and never run - it would
-// read as coverage while executing nothing, which is worse than its absence. So the binding between
-// artifacts/bmc/srvN-config-asrr.json and the hex recorded beside it is NOT machine-checked here.
+// IT DOES NOT CHECK THE DIGEST AGAINST THE BYTES, AND AN EARLIER REVISION OF THIS NOTE GAVE THE
+// WRONG REASON FOR THAT. It said the check needs a filesystem read and the required floor
+// "evaluates witnesses inside a hermetic envelope that refuses host effects by construction". The
+// outcome was right and the mechanism was wrong, which matters because the mechanism decides the
+// remedy: that account implies no such witness can ever execute, and the truth is that one is
+// blocked on a deletion already in flight.
 //
-// WHAT ESTABLISHES IT TODAY: the capture computed sha256 locally over the received bytes and each
-// BMC independently computed sha256sum over its own file, and the two agreed for both hosts. That
-// is two independent computations rather than one, which is why the digest is trustworthy - but it
-// happened once, at capture time, and nothing re-derives it. NEXT-RUNG TRIGGER: a phase that hashes
-// the committed artifact and joins it to this carrier by path. The parse sweep already walks the
-// tree on every required run and is the natural home; until it does, this class sits at
-// mitigatable and the paragraph above is the whole of its evidence.
+// WHAT ACTUALLY BLOCKS IT: hermetic mode carries a checkout-input carve-out
+// (`v1_interpreter` `hermetic_checkout_input_disposition_under`), under which a readonly
+// Filesystem.Read of a path proven under the checkout root is INPUT ACCESS -- the commit is the
+// run's deterministic input -- and NOT a host effect. So reading artifacts/bmc/srv3-config-asrr.json
+// is something the interpreter would admit. What declines it is the floor PLANNER's
+// `DeclinedLiveTree` arm, which vetoes any file declaring ReadsLiveTree BEFORE the interpreter is
+// ever asked to classify the effect. `v2.workflow.required_floor` already records that arm's
+// premise as stale and stages it for deletion at the root.
+//
+// This module therefore does not declare ReadsLiveTree, and does not enrol a digest check that
+// would be discovered and never run.
+//
+// WHAT ESTABLISHES THE DIGEST TODAY: the capture computed sha256 locally over the received bytes
+// and each BMC independently computed sha256sum over its own file, and the two agreed for both
+// hosts. That is two independent computations rather than one, which is why the digest is
+// trustworthy -- but it happened once, at capture time, and nothing re-derives it.
+//
+// NEXT-RUNG TRIGGER, corrected: the live-tree decline's deletion at the root, in flight as
+// gunbc#9106. When that lands, a witness reading the committed artifact and comparing its sha256
+// and byte count against this carrier routes and executes like any other, with no new admission
+// mechanism and no compiler change. Building a separate artifact-input bridge for this observer
+// instead would be a second admission path beside the checkout read the interpreter already
+// supports, and -- while the wider declined population stays declined -- an escape hatch around an
+// operator-owned population-and-cost decision.
 //
 // WHAT IT DOES ESTABLISH is that the carrier cannot quietly collapse two hosts into one. Every
 // field that distinguishes srv3's capture from srv4's is asserted distinct, so a copy-paste that
