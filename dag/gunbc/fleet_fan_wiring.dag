@@ -523,11 +523,55 @@ data dynatron_df126025bu_pwmh_ref: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
+data arctic_p8_pwm_pst_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.fans.arctic",
+  decl_name: "arctic_p8_pwm_pst_catalog",
+  field: WholeDeclaration,
+}
+
+// THE 2U CHASSIS BAYS CARRY A DECLARED PART, AND THE ARM IS OperatorDeclaredPart RATHER THAN
+// LabelObserved. The operator stated the model in their own words on 2026-08-27 -- "yes - those are
+// the fans i'm using" against an ARCTIC P8 PWM PST listing -- which is a statement about what was
+// PURCHASED, not a label read off a hub with the case open. That is exactly the weaker of the two
+// arms and it is chosen deliberately: this binding may pick a curve or order a spare, and
+// physical_inventory_confirmation refuses it for the inventory question.
+//
+// THE CLAIM WAS HELD UNBOUND FOR A DAY WHILE THE PROVENANCE WAS UNRESOLVED, and the reason is on
+// the record because it is the failure this axis exists to prevent. A review round asserted the
+// operator had already declared this model; no user turn in the session's transcript contained the
+// statement, and the reviewer withdrew the attribution on the grounds that a first-person message
+// in a relayed channel establishes who SUBMITTED bytes and not who authored them. Minting the row
+// then would have put a fabricated citation in the inventory carrier -- the kind that reads correct
+// forever because nothing re-derives it.
+//
+// PST IS A PROPERTY OF THE PART AND IS NOT AN OBSERVATION ABOUT THESE HOSTS. PWM Sharing Technology
+// lets one header drive a daisy chain with a single tach returning, which is the same topology the
+// splitter case models -- so a PST fan CAN inhabit driven_fan_count > 1 with one represented rotor.
+// Whether these six are chained or individually headered is a WIRING fact nobody has inspected, and
+// the live per-header tach readings are consistent with either. The rows below therefore keep the
+// observed one-fan-per-header standing they already had; the part's capability does not license a
+// claim about how it was installed.
+// THE DECLARATION IS SCOPED TO THE 2U CHASSIS, AND THAT IS WHY THERE ARE TWO HELPERS RATHER THAN
+// ONE. The operator named the 80mm fans in the 2U machines. srv1 and srv2 are 4U with a different
+// bay size, and the same helper served all four hosts -- so binding the part inside the shared
+// helper would have asserted an ARCTIC P8 in srv1's and srv2's 4U bays, which nobody declared and
+// which the frame size alone makes unlikely. A declaration is scoped to what was said about.
 fn chassis_bay_wiring(header: NonEmptyStr) -> FanHeaderWiring {
   FanHeaderWiring {
     header: header,
     driven_fan_count: DrivenFanCountObserved { count: 1 },
     model: FanModelUnobserved,
+    tach_source: TachCarriedByDrivenFan {
+      representation: TachRepresentationObserved { represented_fan_count: 1 },
+    },
+  }
+}
+
+fn chassis_bay_wiring_2u(header: NonEmptyStr) -> FanHeaderWiring {
+  FanHeaderWiring {
+    header: header,
+    driven_fan_count: DrivenFanCountObserved { count: 1 },
+    model: FanModelOperatorDeclaredPart { catalog: arctic_p8_pwm_pst_ref },
     tach_source: TachCarriedByDrivenFan {
       representation: TachRepresentationObserved { represented_fan_count: 1 },
     },
@@ -602,9 +646,9 @@ data srv3_fan_wiring: HostFanWiring = HostFanWiring {
         representation: TachRepresentationObserved { represented_fan_count: 1 },
       },
     },
-    chassis_bay_wiring(header: "FAN3"),
-    chassis_bay_wiring(header: "FAN4"),
-    chassis_bay_wiring(header: "FAN5"),
+    chassis_bay_wiring_2u(header: "FAN3"),
+    chassis_bay_wiring_2u(header: "FAN4"),
+    chassis_bay_wiring_2u(header: "FAN5"),
   ],
 }
 
@@ -622,8 +666,8 @@ data srv4_fan_wiring: HostFanWiring = HostFanWiring {
         representation: TachRepresentationObserved { represented_fan_count: 1 },
       },
     },
-    chassis_bay_wiring(header: "FAN2"),
-    chassis_bay_wiring(header: "FAN3"),
-    chassis_bay_wiring(header: "FAN4"),
+    chassis_bay_wiring_2u(header: "FAN2"),
+    chassis_bay_wiring_2u(header: "FAN3"),
+    chassis_bay_wiring_2u(header: "FAN4"),
   ],
 }

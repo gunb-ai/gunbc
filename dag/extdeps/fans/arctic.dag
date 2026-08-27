@@ -1,0 +1,84 @@
+module extdeps.fans.arctic
+
+import std.types { List }
+import std.measure { millimeter, percent, rpm }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.fans.types {
+  FanBearingUnpublished,
+  FanCatalogRow,
+  FanPublishedOperatingPoint,
+}
+import extdeps.vendor.arctic { arctic }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.arctic.de/en/P8-PWM-PST/ACFAN00150A"
+  }
+}
+
+// THE PUBLISHED FIGURES ARE A SPEED RANGE AND NOTHING ELSE, AND THAT IS THE WHOLE ROW.
+//
+// The listing gives 200-3000 rpm, 4-pin PWM, 12 V, 1.08 W, an 80 x 80 x 25 mm frame, and a noise
+// figure of 0.3 SONES. Two duty points are therefore authorable - the bottom and the top of the
+// controllable range - and neither carries a sound pressure level.
+//
+// 0.3 SONES IS NOT A dBA ANCHOR AND IS DELIBERATELY NOT CONVERTED. Sone is a loudness scale and
+// dBA is a sound pressure level; the mapping between them is psychoacoustic, depends on the
+// spectrum, and inverting it for a single broadband figure requires assumptions the vendor did not
+// publish. Writing tenths_dba(...) here from 0.3 sone would manufacture an anchor - a number that
+// looks like a measurement, is not one, and would then feed the acoustic law as though a vendor had
+// printed it. This lane already made that mistake once in the opposite direction (treating a sone
+// figure as an available dBA anchor) and was corrected in review, which is why the refusal is
+// recorded here rather than left as an omission a later author would try to helpfully fill in.
+//
+// The consequence is visible and intended: fan_acoustic_evidence returns
+// FanAcousticUnderdetermined at published_level_count 0. This fan cannot ground an acoustic law,
+// and the model says so instead of guessing.
+//
+// THE SPEED FIGURES ARE PAIRED WITH THE DUTY THAT PRODUCES THEM ONLY AT THE ENDPOINTS. A 4-pin fan
+// is not required to reach its minimum at any particular duty, and no intermediate point is
+// published, so the two rows below are the range's ends and not a two-point curve.
+data arctic_p8_pwm_pst_published_points: List<FanPublishedOperatingPoint> = [
+  FanPublishedOperatingPoint {
+    duty: percent(0),
+    speed: rpm(200),
+    sound_pressure: none,
+  },
+  FanPublishedOperatingPoint {
+    duty: percent(100),
+    speed: rpm(3000),
+    sound_pressure: none,
+  },
+]
+
+// THE MODEL IS "P8 PWM PST", NOT THE PACKAGE AND NOT THE CO VARIANT. The purchase is a five-pack,
+// whose own identifier names a shipment rather than a part; the fan inside it is one model and that
+// is what a header carries. "P8 PWM PST CO" is a separate ARCTIC product with a different bearing
+// intended for continuous operation, and the base name does not imply it - so binding a header to
+// this row asserts the base part specifically.
+//
+// BEARING IS UNPUBLISHED RATHER THAN ASSUMED. The listing names the frame material and says nothing
+// about the bearing; the CO variant's dual ball bearing is a fact about the CO variant.
+data arctic_p8_pwm_pst_catalog: FanCatalogRow = FanCatalogRow {
+  model: "P8 PWM PST",
+  manufacturer: arctic,
+  frame_size: millimeter(80),
+  bearing: FanBearingUnpublished,
+  pwm_controlled: true,
+  published_points: arctic_p8_pwm_pst_published_points,
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.fans.arctic",
+      decl_name: "arctic_p8_pwm_pst_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

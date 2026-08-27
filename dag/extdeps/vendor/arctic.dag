@@ -1,0 +1,32 @@
+module extdeps.vendor.arctic
+
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.arctic.de"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.arctic",
+      decl_name: "arctic",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The brand is written ARCTIC in the company's own product copy. The legal entity behind it is not
+// established here beyond the trading name, so the row carries what the cited authority prints
+// rather than a company form nobody checked - a plausible-looking "GmbH" would be exactly the
+// fabricated grounding this file exists to avoid.
+data arctic: Vendor<Hardware> = Vendor { legal_name: "ARCTIC" }

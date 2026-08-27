@@ -51,7 +51,10 @@ import gunbc.fleet_fan_wiring {
   catalog_selection,
   installed_fan_count_standing,
   dynatron_df126025bu_pwmh_ref,
+  arctic_p8_pwm_pst_ref,
   dynatron_w1_bundled_fan,
+  installed_fan_catalog,
+  srv2_fan_wiring,
   physical_inventory_confirmation,
   tach_readback_endpoint_derivation,
   HostFanWiring,
@@ -601,6 +604,69 @@ fn tach_expectation_refuses_both_broken_rosters() -> Bool {
   duplicate && header_dup && absent && established
 }
 
+// THE 2U DECLARATION IS BOUND AND SCOPED, AND THE SECOND HALF IS THE ONE THAT MATTERS. The operator
+// named the 80mm fans in the 2U machines; srv1 and srv2 are 4U with a different bay size and were
+// served by the SAME helper. Binding the part inside that shared helper would have asserted an
+// ARCTIC P8 in four bays nobody declared -- an over-claim that no downstream consumer could
+// distinguish from a real declaration, since both arms carry a catalog ref and both admit catalog
+// selection. So this conjunct asserts the negative as hard as the positive.
+fn arctic_declaration_is_bound_and_scoped() -> Bool {
+  let bound_2u = fold(
+    flat_map([srv3_fan_wiring.headers, srv4_fan_wiring.headers], g => g),
+    init: 0,
+    f: (acc, binding) =>
+      match binding.model {
+        FanModelOperatorDeclaredPart { catalog } =>
+          if catalog == arctic_p8_pwm_pst_ref { acc + 1 } else { acc }
+        other => acc
+      },
+  )
+  let unbound_4u = fold(
+    flat_map([srv1_fan_wiring.headers, srv2_fan_wiring.headers], g => g),
+    init: 0,
+    f: (acc, binding) =>
+      match binding.model {
+        FanModelUnobserved => acc + 1
+        other => acc
+      },
+  )
+  // six 2U chassis bays declared; all eight 4U chassis bays still unobserved (FAN1 on each 4U host
+  // is the cooler, which is assembly-derived rather than unobserved, so eight and not ten).
+  bound_2u == 6 && unbound_4u == 8
+}
+
+// A DECLARED PART IS NOT A PHYSICAL INVENTORY, and this is the conjunct that keeps the axis
+// load-bearing on the live rows rather than only on fixtures. Every one of the six answers the
+// catalog question and refuses the inventory question, because nobody has opened either machine.
+fn declared_2u_bays_refuse_physical_inventory() -> Bool {
+  fold(
+    flat_map([srv3_fan_wiring.headers, srv4_fan_wiring.headers], g => g),
+    init: true,
+    f: (acc, binding) =>
+      match binding.model {
+        FanModelOperatorDeclaredPart { catalog } =>
+          acc
+            && match physical_inventory_confirmation(standing: binding.model) {
+              PhysicalInventoryRefused { cause } =>
+                match cause {
+                  PhysicalLabelNotObservedDeclaredPart => true
+                  other => false
+                }
+              PhysicalInventoryConfirmed { catalog: c } => false
+            }
+            && catalog_selection_admits_this(standing: binding.model)
+        other => acc
+      },
+  )
+}
+
+fn catalog_selection_admits_this(standing: InstalledFanModelStanding) -> Bool {
+  match installed_fan_catalog(standing: standing) {
+    Present { value } => value == arctic_p8_pwm_pst_ref
+    none => false
+  }
+}
+
 fn fan_wiring_witness() -> ProcessExit {
   if srv3_srv4_differ_by_identity_not_count()
     && unobserved_tach_is_not_an_expected_readback()
@@ -614,6 +680,8 @@ fn fan_wiring_witness() -> ProcessExit {
     && tach_expectation_refuses_both_broken_rosters()
     && required_tach_is_per_host_not_fleet_wide()
     && unmodelled_host_has_no_tach_expectation()
+    && arctic_declaration_is_bound_and_scoped()
+    && declared_2u_bays_refuse_physical_inventory()
     && label_evidence_gates_physical_inventory()
     && unobserved_tach_refuses_the_readback_population()
     && unobserved_and_not_carried_answer_differently()
