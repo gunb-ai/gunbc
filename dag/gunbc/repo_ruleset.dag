@@ -1,0 +1,676 @@
+module gunbc.repo_ruleset
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { HttpStatus, NonEmptyStr }
+import std.realization_reconcile { Reconciliation, Converged, NotConverged }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  membership_reconcile,
+  membership_plan_admitting_outcome,
+  membership_write_count,
+  membership_removal_count,
+  membership_refusal_count,
+}
+import gunbc.ownership { Ownership, Owned }
+import gunbc.repository { gunbc_repository }
+import gunbc.witness_floor_workflow { witness_floor_workflow_job_id }
+import extdeps.github.actions { github_actions_app_integration_id }
+import extdeps.github.rulesets
+import extdeps.github.rulesets {
+  RequiredStatusCheckWire,
+  RulesetRuleWire,
+  RulesetConditionsWire,
+  RulesetRuleType,
+  DeletionRule,
+  NonFastForwardRule,
+  RequiredStatusChecksRule,
+  RulesetEnforcement,
+  RulesetActive,
+  RulesetTarget,
+  BranchTarget,
+  RulesetBypassStanding,
+  BypassNever,
+  RequiredStatusCheckStanding,
+  NoRequiredStatusChecksRule,
+  RequiredStatusChecks,
+  MultipleRequiredStatusChecksRules,
+  required_status_check_standing,
+  ruleset_rule_types,
+  ruleset_rule_type_wire_label,
+  ruleset_enforcement_wire_label,
+  ruleset_target_wire_label,
+  parse_ruleset_enforcement,
+  parse_ruleset_target,
+  parse_ruleset_bypass_standing,
+  required_status_check_row,
+  required_status_checks_rule,
+  parameterless_rule,
+  ref_name_conditions,
+  default_branch_ref_alias,
+}
+import extdeps.transports.rest {
+  RestOutcome,
+  RestOk,
+  RestStatusRefused,
+  RestTransportRefused,
+  RestBodyUndecodable,
+}
+import v2.std.collection { Absent, Present }
+
+// WHAT THIS MODULE IS FOR, AND WHY IT IS NOT A DOCUMENTATION FIX.
+//
+// DESIGN's Building & checks section states, as the fact the whole two-lane split turns on, that
+// this repository's `passing CI` ruleset is active, carries no bypass actors, and names exactly one
+// required status check -- `witnesses`. Until this module, that sentence was the ONLY place the
+// fact lived on our side of the boundary. The setting itself was a hand-maintained web form: no
+// authority declared it, nothing read it back, and nothing in the tree went red if it changed. The
+// aggregation job in gunbc.witness_floor_workflow exists precisely because a required context is
+// produced by a JOB and a second job's check is not required -- which means the safety of that
+// whole design rests on a value nobody in this repository could observe.
+//
+// That is the specification-without-execution failure DESIGN section 5 names, at the outermost
+// boundary the project has: a claim about the world, typed nowhere, checked by nothing. A prose
+// sentence is not a consumer. If someone adds a second required context, removes the one that
+// gates, flips enforcement to `evaluate`, or grants a bypass role, every gate inside this
+// repository stays green while nothing it produces can block a merge any more.
+//
+// So this module is the ordinary converged-authority treatment, following gunbc.repo_local_git_config
+// exactly: DESIRED state is declared, the live state is OBSERVED, the two are RECONCILED, drift is
+// APPLIED, and the result is READ BACK and verified against desired again -- convergence is claimed
+// only from the post-apply read, never from the apply's own success. The read-back is what makes it
+// a converged authority rather than a fire-and-hope actuator, and it is the half a hand-run `gh api`
+// command has never had.
+//
+// THE ONE FACT THAT STOPS BEING A NICKNAME. The required context's name is imported from
+// gunbc.witness_floor_workflow witness_floor_workflow_job_id -- the same row the emitted workflow
+// names its aggregation job with. Before this module those were two strings that happened to agree;
+// now they are one fact read in two directions, so renaming the job cannot leave the ruleset naming
+// a context nothing publishes (DESIGN section 3). That failure mode is specifically quiet: a
+// required context that no job publishes leaves the check permanently pending rather than red.
+data repo_ruleset_authority_note: String = "See the module-leading annotation. This row exists because the module's subject is a fact about the world rather than about the tree, and a reader arriving from gunbc.witness_floor_workflow needs the pointer."
+
+// WHY THE RULESET IS ADDRESSED BY ID RATHER THAN BY NAME. GitHub's update endpoint is
+// PUT /repos/{owner}/{repo}/rulesets/{ruleset_id}; the name is a mutable label and two rulesets may
+// carry the same one. The id is the identity the API itself uses, so addressing by it is what makes
+// "the ruleset we converge" and "the ruleset GitHub updates" the same subject rather than two
+// lookups that happen to agree. The name is still declared and still verified -- a live ruleset at
+// this id under a different name is drift this module reports, not a subject it silently accepts.
+data gunbc_passing_ci_ruleset_id: Int = 16178731
+data gunbc_passing_ci_ruleset_name: String = "passing CI"
+
+// THE ONE REQUIRED CONTEXT, DERIVED. See the module annotation: this is the aggregation job's id,
+// not a second spelling of it.
+fn desired_required_contexts() -> List<String> {
+  [witness_floor_workflow_job_id]
+}
+
+data desired_ruleset_enforcement: RulesetEnforcement = RulesetActive
+data desired_ruleset_target: RulesetTarget = BranchTarget
+
+// STRICT IS FALSE AND THAT IS A DECLARED POSITION, NOT AN OMISSION. A strict policy requires every
+// branch to be up to date with the base before merging, which re-runs the ~30-minute floor for
+// every pull request behind a merge. DESIGN's merge_group note records the merge queue as the
+// construction that establishes the same invariant without that cost, and records that the queue is
+// not configured yet. Declaring false here states the current position so that turning it on is a
+// visible edit to this row rather than a web-form change nobody sees.
+data desired_strict_required_status_checks_policy: Bool = false
+data desired_do_not_enforce_on_create: Bool = false
+
+data desired_ruleset_bypass_standing: RulesetBypassStanding = BypassNever
+
+// THE THREE RULES, IN THE ORDER GITHUB REPORTS THEM. deletion and non_fast_forward protect the
+// branch's history; required_status_checks is the one that gates. They are declared together
+// because the PUT is whole-ruleset (extdeps.github.rulesets Update): sending only the rule this
+// module cares about would DELETE the other two, which is exactly the read-modify-write hazard a
+// desired-state authority exists to remove.
+fn desired_ruleset_rule_types() -> List<RulesetRuleType> {
+  [DeletionRule, NonFastForwardRule, RequiredStatusChecksRule]
+}
+
+fn desired_required_status_checks() -> List<RequiredStatusCheckWire> {
+  map(desired_required_contexts(), c =>
+    required_status_check_row(context: c, integration_id: github_actions_app_integration_id))
+}
+
+fn desired_ruleset_rules() -> List<RulesetRuleWire> {
+  [
+    parameterless_rule(t: DeletionRule),
+    parameterless_rule(t: NonFastForwardRule),
+    required_status_checks_rule(
+      checks: desired_required_status_checks(),
+      strict: desired_strict_required_status_checks_policy,
+      do_not_enforce_on_create: desired_do_not_enforce_on_create,
+    ),
+  ]
+}
+
+fn desired_ruleset_conditions() -> RulesetConditionsWire {
+  ref_name_conditions(include: [default_branch_ref_alias], exclude: [])
+}
+
+// THE READ IS AN OBSERVATION WITH FOUR OUTCOMES, NOT A RULESET OR NOTHING. A ruleset that could not
+// be read is not a ruleset with no rules, and the three ways a read fails do not share a remedy: a
+// status refusal means a remote authority answered and its body usually says why; a transport
+// refusal means nothing was answered at all, so nothing about the ruleset has been learned; an
+// undecodable body means an answer arrived that this module could not read, which is a contract
+// fault rather than an access one. Collapsing any of them into an empty observation would report
+// "no required context" for "we could not look", and this module's whole verdict turns on that
+// distinction -- the empty-observation narrow DESIGN names.
+type RulesetReadRefusal
+  = RulesetReadStatusRefused { status: HttpStatus, body: String }
+  | RulesetReadTransportRefused { cause: NonEmptyStr }
+  | RulesetReadBodyUndecodable { status: HttpStatus, cause: NonEmptyStr }
+
+type RulesetObservation
+  = RulesetObserved {
+      name: String
+      enforcement: RulesetEnforcement
+      target: RulesetTarget
+      bypass: RulesetBypassStanding
+      include: List<String>
+      exclude: List<String>
+      rule_types: List<RulesetRuleType>
+      standing: RequiredStatusCheckStanding
+    }
+  | RulesetUnreadable { cause: RulesetReadRefusal }
+
+fn read_refusal_of_outcome(outcome: RestOutcome) -> RulesetReadRefusal? {
+  match outcome {
+    RestOk => none
+    RestStatusRefused { status: s, body: b } =>
+      Present { value: RulesetReadStatusRefused { status: s, body: b } }
+    RestTransportRefused { cause: c } =>
+      Present { value: RulesetReadTransportRefused { cause: c } }
+    RestBodyUndecodable { status: s, cause: c } =>
+      Present { value: RulesetReadBodyUndecodable { status: s, cause: c } }
+  }
+}
+
+fn render_read_refusal(cause: RulesetReadRefusal) -> String {
+  match cause {
+    RulesetReadStatusRefused { status: s, body: b } =>
+      join(["ruleset read refused with status ", to_string(s), ": ", b], "")
+    RulesetReadTransportRefused { cause: c } =>
+      concat("ruleset read never reached GitHub: ", c)
+    RulesetReadBodyUndecodable { status: s, cause: c } =>
+      join(["ruleset read returned status ", to_string(s), " with an unreadable body: ", c], "")
+  }
+}
+
+fn observe_repo_ruleset(owner: String, repo: String, ruleset_id: Int) -> RulesetObservation {
+  let r = github.Rulesets.Get(
+    auth_token: "",
+    owner: owner,
+    repo: repo,
+    ruleset_id: ruleset_id,
+  )
+  match read_refusal_of_outcome(outcome: r.outcome) {
+    Present { value: cause } => RulesetUnreadable { cause: cause }
+    Absent => RulesetObserved {
+      name: r.name,
+      enforcement: parse_ruleset_enforcement(raw: r.enforcement),
+      target: parse_ruleset_target(raw: r.target),
+      bypass: parse_ruleset_bypass_standing(raw: r.current_user_can_bypass),
+      include: r.conditions.ref_name.include,
+      exclude: r.conditions.ref_name.exclude,
+      rule_types: ruleset_rule_types(rules: r.rules),
+      standing: required_status_check_standing(rules: r.rules),
+    }
+  }
+}
+
+// THE CONTEXT ROSTER IS RECONCILED, NOT COMPARED. gunbc.membership_reconcile is the repository's
+// grain-agnostic desired-vs-observed diff and it answers the question this module actually has:
+// which contexts are missing, which are present that should not be, and which cannot be acted on.
+// Ownership is Owned rather than Ensured -- the opposite of gunbc.repo_local_git_config's choice,
+// and deliberately so. There, a binding absent from desired is someone else's git config and is
+// never torn down. Here, "witnesses is the ONE required context" is the whole claim: an extra
+// required context is exactly the drift this module exists to see, so a removal must be PLANNED
+// rather than refused. Ensured would have made the module blind to the additive half of its own
+// subject.
+type RequiredContextMemberAt = String
+
+fn required_context_key(c: RequiredStatusCheckWire) -> String { c.context }
+fn required_context_key_eq(a: String, b: String) -> Bool { a == b }
+fn required_context_value_eq(a: RequiredStatusCheckWire, b: RequiredStatusCheckWire) -> Bool {
+  a.integration_id == b.integration_id
+}
+fn required_context_ownership(_: RequiredStatusCheckWire) -> Ownership? {
+  Present { value: Owned }
+}
+
+fn required_context_reconcile(
+  observed: List<RequiredStatusCheckWire>,
+) -> MembershipPlan<RequiredStatusCheckWire, RequiredContextMemberAt> {
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
+      desired: desired_required_status_checks(),
+      observed: observed,
+      key_of: required_context_key,
+      key_eq: required_context_key_eq,
+      value_eq: required_context_value_eq,
+      ownership_of: required_context_ownership,
+    ),
+  )
+}
+
+// EVERY WAY THE LIVE RULESET CAN DISAGREE WITH DESIRED, AS A VALUE. A Bool verdict here would be
+// the collapse DESIGN keeps recording: "the ruleset is wrong" carries no remedy, and the remedies
+// differ completely -- a missing context is fixed by an apply, a granted bypass role is fixed by a
+// person, and an unrecognized enforcement string means GitHub's vocabulary moved and this module's
+// reading is no longer established.
+type RulesetDivergence
+  = RulesetNameDrift { observed: String }
+  | RulesetEnforcementDrift { observed: String }
+  | RulesetTargetDrift { observed: String }
+  | RulesetBypassGranted { observed: String }
+  | RefNameIncludeDrift { observed: List<String> }
+  | RefNameExcludeNonEmpty { observed: List<String> }
+  | RulesetRuleAbsent { rule: String }
+  | RequiredStatusChecksRuleAbsent
+  | RequiredStatusChecksRuleAmbiguous { count: Int }
+  | RequiredContextMissing { context: String }
+  | RequiredContextUnexpected { context: String }
+  | RequiredContextUnactionable { count: Int }
+  | StrictPolicyDrift { observed: Bool }
+  | DoNotEnforceOnCreateDrift { observed: Bool }
+
+fn enforcement_divergences(observed: RulesetEnforcement) -> List<RulesetDivergence> {
+  let label = ruleset_enforcement_wire_label(e: observed)
+  if label == ruleset_enforcement_wire_label(e: desired_ruleset_enforcement) {
+    []
+  } else {
+    [RulesetEnforcementDrift { observed: label }]
+  }
+}
+
+fn target_divergences(observed: RulesetTarget) -> List<RulesetDivergence> {
+  let label = ruleset_target_wire_label(t: observed)
+  if label == ruleset_target_wire_label(t: desired_ruleset_target) {
+    []
+  } else {
+    [RulesetTargetDrift { observed: label }]
+  }
+}
+
+// BYPASS IS READ THROUGH current_user_can_bypass AND THAT IS READER-RELATIVE, WHICH IS STATED
+// RATHER THAN GLOSSED. GitHub answers this field for the identity that made the request, so a
+// `never` here establishes that THIS reader cannot walk past the rule, not that no actor anywhere
+// can. It is still the strongest signal the read returns -- an administrator token reading `never`
+// means no bypass role covers an administrator -- and it is strictly better than the previous state
+// of no observation at all. The honest bound: a bypass role granted to an actor this module never
+// authenticates as would not be seen here, and closing that needs the bypass_actors roster, which
+// GitHub omits from the response entirely when it is empty rather than sending [].
+fn bypass_divergences(observed: RulesetBypassStanding) -> List<RulesetDivergence> {
+  match observed {
+    BypassNever => []
+    _ => [RulesetBypassGranted { observed: "reader may bypass this ruleset" }]
+  }
+}
+
+fn rule_presence_divergences(observed: List<RulesetRuleType>) -> List<RulesetDivergence> {
+  fold(desired_ruleset_rule_types(), init: [], f: fn(acc, wanted) {
+    let label = ruleset_rule_type_wire_label(t: wanted)
+    if any(observed, o => ruleset_rule_type_wire_label(t: o) == label) {
+      acc
+    } else {
+      append(acc, items: [RulesetRuleAbsent { rule: label }])
+    }
+  })
+}
+
+fn ref_name_divergences(include: List<String>, exclude: List<String>) -> List<RulesetDivergence> {
+  let want = [default_branch_ref_alias]
+  let include_ok = length(include) == length(want)
+    && all(want, w => any(include, i => i == w))
+  let head = if include_ok { [] } else { [RefNameIncludeDrift { observed: include }] }
+  if length(exclude) == 0 {
+    head
+  } else {
+    append(head, items: [RefNameExcludeNonEmpty { observed: exclude }])
+  }
+}
+
+fn context_roster_divergences(
+  contexts: List<String>,
+  strict: Bool,
+  do_not_enforce_on_create: Bool,
+) -> List<RulesetDivergence> {
+  let missing = fold(desired_required_contexts(), init: [], f: fn(acc, want) {
+    if any(contexts, c => c == want) {
+      acc
+    } else {
+      append(acc, items: [RequiredContextMissing { context: want }])
+    }
+  })
+  let unexpected = fold(contexts, init: missing, f: fn(acc, got) {
+    if any(desired_required_contexts(), w => w == got) {
+      acc
+    } else {
+      append(acc, items: [RequiredContextUnexpected { context: got }])
+    }
+  })
+  let with_strict = if strict == desired_strict_required_status_checks_policy {
+    unexpected
+  } else {
+    append(unexpected, items: [StrictPolicyDrift { observed: strict }])
+  }
+  if do_not_enforce_on_create == desired_do_not_enforce_on_create {
+    with_strict
+  } else {
+    append(with_strict, items: [DoNotEnforceOnCreateDrift { observed: do_not_enforce_on_create }])
+  }
+}
+
+fn standing_divergences(standing: RequiredStatusCheckStanding) -> List<RulesetDivergence> {
+  match standing {
+    NoRequiredStatusChecksRule => [RequiredStatusChecksRuleAbsent]
+    MultipleRequiredStatusChecksRules { count: n } =>
+      [RequiredStatusChecksRuleAmbiguous { count: n }]
+    RequiredStatusChecks { contexts: c, strict: s, do_not_enforce_on_create: d } =>
+      context_roster_divergences(contexts: c, strict: s, do_not_enforce_on_create: d)
+  }
+}
+
+fn name_divergences(observed: String) -> List<RulesetDivergence> {
+  if observed == gunbc_passing_ci_ruleset_name {
+    []
+  } else {
+    [RulesetNameDrift { observed: observed }]
+  }
+}
+
+fn observed_ruleset_divergences(
+  name: String,
+  enforcement: RulesetEnforcement,
+  target: RulesetTarget,
+  bypass: RulesetBypassStanding,
+  include: List<String>,
+  exclude: List<String>,
+  rule_types: List<RulesetRuleType>,
+  standing: RequiredStatusCheckStanding,
+) -> List<RulesetDivergence> {
+  append(
+    append(
+      append(
+        append(
+          append(
+            append(name_divergences(observed: name), items: enforcement_divergences(observed: enforcement)),
+            items: target_divergences(observed: target),
+          ),
+          items: bypass_divergences(observed: bypass),
+        ),
+        items: ref_name_divergences(include: include, exclude: exclude),
+      ),
+      items: rule_presence_divergences(observed: rule_types),
+    ),
+    items: standing_divergences(standing: standing),
+  )
+}
+
+fn render_divergence(d: RulesetDivergence) -> String {
+  match d {
+    RulesetNameDrift { observed: o } => concat("ruleset name is ", o)
+    RulesetEnforcementDrift { observed: o } => concat("enforcement is ", o)
+    RulesetTargetDrift { observed: o } => concat("target is ", o)
+    RulesetBypassGranted { observed: o } => o
+    RefNameIncludeDrift { observed: o } => concat("ref_name include is ", join(o, "|"))
+    RefNameExcludeNonEmpty { observed: o } => concat("ref_name exclude is non-empty: ", join(o, "|"))
+    RulesetRuleAbsent { rule: r } => concat("rule absent: ", r)
+    RequiredStatusChecksRuleAbsent => "no required_status_checks rule"
+    RequiredStatusChecksRuleAmbiguous { count: n } =>
+      concat("more than one required_status_checks rule: ", to_string(n))
+    RequiredContextMissing { context: c } => concat("required context missing: ", c)
+    RequiredContextUnexpected { context: c } => concat("unexpected required context: ", c)
+    RequiredContextUnactionable { count: n } =>
+      concat("required-context reconcile refused members: ", to_string(n))
+    StrictPolicyDrift { observed: o } =>
+      concat("strict_required_status_checks_policy is ", to_string(o))
+    DoNotEnforceOnCreateDrift { observed: o } =>
+      concat("do_not_enforce_on_create is ", to_string(o))
+  }
+}
+
+fn render_divergences(ds: List<RulesetDivergence>) -> String {
+  join(map(ds, d => render_divergence(d: d)), "; ")
+}
+
+fn observation_divergences(observation: RulesetObservation) -> List<RulesetDivergence> {
+  match observation {
+    RulesetUnreadable { cause: _ } => []
+    RulesetObserved {
+      name: n,
+      enforcement: e,
+      target: t,
+      bypass: b,
+      include: inc,
+      exclude: exc,
+      rule_types: rt,
+      standing: st,
+    } => observed_ruleset_divergences(
+      name: n,
+      enforcement: e,
+      target: t,
+      bypass: b,
+      include: inc,
+      exclude: exc,
+      rule_types: rt,
+      standing: st,
+    )
+  }
+}
+
+// THE RECONCILE PLAN IS COMPUTED FROM THE OBSERVED CONTEXT ROSTER AND IS WHAT DECIDES WHETHER TO
+// WRITE. It is not a second opinion beside the divergence list: the divergences answer "is the live
+// ruleset what we declared", across every field; the plan answers "does the context roster need an
+// apply", which is the only part of the subject this module can actuate. A bypass role is a real
+// divergence with no apply.
+fn observed_required_checks(standing: RequiredStatusCheckStanding) -> List<RequiredStatusCheckWire> {
+  match standing {
+    NoRequiredStatusChecksRule => []
+    MultipleRequiredStatusChecksRules { count: _ } => []
+    RequiredStatusChecks { contexts: c, strict: _, do_not_enforce_on_create: _ } =>
+      map(c, ctx => required_status_check_row(
+        context: ctx,
+        integration_id: github_actions_app_integration_id,
+      ))
+  }
+}
+
+type RepoRulesetConvergedEvidence {
+  writes_applied: Int
+  removals_applied: Int
+  required_contexts: List<String>
+  enforcement: String
+  bypass_is_never: Bool
+}
+
+fn apply_desired_ruleset(owner: String, repo: String, ruleset_id: Int) -> RulesetReadRefusal? {
+  let r = github.Rulesets.Update(
+    auth_token: "",
+    owner: owner,
+    repo: repo,
+    ruleset_id: ruleset_id,
+    name: gunbc_passing_ci_ruleset_name,
+    target: ruleset_target_wire_label(t: desired_ruleset_target),
+    enforcement: ruleset_enforcement_wire_label(e: desired_ruleset_enforcement),
+    conditions: desired_ruleset_conditions(),
+    rules: desired_ruleset_rules(),
+  )
+  read_refusal_of_outcome(outcome: r.outcome)
+}
+
+fn converged_evidence_of(
+  writes: Int,
+  removals: Int,
+  observation: RulesetObservation,
+) -> RepoRulesetConvergedEvidence {
+  match observation {
+    RulesetUnreadable { cause: _ } => RepoRulesetConvergedEvidence {
+      writes_applied: writes,
+      removals_applied: removals,
+      required_contexts: [],
+      enforcement: "",
+      bypass_is_never: false,
+    }
+    RulesetObserved {
+      name: _,
+      enforcement: e,
+      target: _,
+      bypass: b,
+      include: _,
+      exclude: _,
+      rule_types: _,
+      standing: st,
+    } => RepoRulesetConvergedEvidence {
+      writes_applied: writes,
+      removals_applied: removals,
+      required_contexts: map(observed_required_checks(standing: st), c => c.context),
+      enforcement: ruleset_enforcement_wire_label(e: e),
+      bypass_is_never: match b { BypassNever => true _ => false },
+    }
+  }
+}
+
+// THE CONVERGENCE CLAIM COMES FROM THE POST-APPLY READ AND FROM NOTHING ELSE. A 200 on the PUT says
+// GitHub accepted a request; it does not say the ruleset now denies a merge that lacks the required
+// context. So the apply's own success is never the evidence -- the second observation is, and it is
+// judged by the same divergence fold the pre-apply read went through. That is the whole difference
+// between this module and the `gh api` command it replaces.
+fn repo_ruleset_converge_actuate_at(
+  owner: String,
+  repo: String,
+  ruleset_id: Int,
+) -> Reconciliation<RulesetObservation, RepoRulesetConvergedEvidence> {
+  let before = observe_repo_ruleset(owner: owner, repo: repo, ruleset_id: ruleset_id)
+  match before {
+    RulesetUnreadable { cause: c } =>
+      NotConverged { reason: render_read_refusal(cause: c), applied: before }
+    RulesetObserved {
+      name: _,
+      enforcement: _,
+      target: _,
+      bypass: _,
+      include: _,
+      exclude: _,
+      rule_types: _,
+      standing: st,
+    } => {
+      let plan = required_context_reconcile(observed: observed_required_checks(standing: st))
+      let refusals = membership_refusal_count(plan: plan)
+      if refusals > 0 {
+        NotConverged {
+          reason: render_divergence(d: RequiredContextUnactionable { count: refusals }),
+          applied: before,
+        }
+      } else {
+        let writes = membership_write_count(plan: plan)
+        let removals = membership_removal_count(plan: plan)
+        let divergences_before = observation_divergences(observation: before)
+        if length(divergences_before) == 0 {
+          Converged {
+            evidence: converged_evidence_of(writes: 0, removals: 0, observation: before),
+            applied: before,
+          }
+        } else {
+          match apply_desired_ruleset(owner: owner, repo: repo, ruleset_id: ruleset_id) {
+            Present { value: c } =>
+              NotConverged {
+                reason: concat("ruleset apply refused: ", render_read_refusal(cause: c)),
+                applied: before,
+              }
+            Absent => {
+              let after = observe_repo_ruleset(owner: owner, repo: repo, ruleset_id: ruleset_id)
+              match after {
+                RulesetUnreadable { cause: rc } =>
+                  NotConverged {
+                    reason: concat("ruleset read-back after apply: ", render_read_refusal(cause: rc)),
+                    applied: after,
+                  }
+                _ => {
+                  let remaining = observation_divergences(observation: after)
+                  if length(remaining) == 0 {
+                    Converged {
+                      evidence: converged_evidence_of(
+                        writes: writes,
+                        removals: removals,
+                        observation: after,
+                      ),
+                      applied: after,
+                    }
+                  } else {
+                    NotConverged {
+                      reason: concat(
+                        "ruleset read-back after apply still diverges: ",
+                        render_divergences(ds: remaining),
+                      ),
+                      applied: after,
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn repo_ruleset_verify_at(
+  owner: String,
+  repo: String,
+  ruleset_id: Int,
+) -> Reconciliation<RulesetObservation, RepoRulesetConvergedEvidence> {
+  let observed = observe_repo_ruleset(owner: owner, repo: repo, ruleset_id: ruleset_id)
+  match observed {
+    RulesetUnreadable { cause: c } =>
+      NotConverged { reason: render_read_refusal(cause: c), applied: observed }
+    _ => {
+      let divergences = observation_divergences(observation: observed)
+      if length(divergences) == 0 {
+        Converged {
+          evidence: converged_evidence_of(writes: 0, removals: 0, observation: observed),
+          applied: observed,
+        }
+      } else {
+        NotConverged { reason: render_divergences(ds: divergences), applied: observed }
+      }
+    }
+  }
+}
+
+data repo_ruleset_converge_entry: String = "dag/gunbc/repo_ruleset.dag"
+data repo_ruleset_converge_function: String = "converge"
+data repo_ruleset_verify_function: String = "verify"
+
+// VERIFY IS READ-ONLY AND CONVERGE WRITES, AND THEY ARE TWO ENTRY POINTS RATHER THAN ONE WITH A
+// FLAG. A flag whose effect is "do not actuate" is a mode on one operation; two entry points make
+// the read-only path unable to write by construction, which is what a verifier enrolled in an
+// automated run needs. NEITHER IS ENROLLED IN CI BY THIS CHANGE, and that is stated so the module
+// is not read as wider than it is: what lands here is the authority, the read-back and the typed
+// verdict. Enrolling `verify` as a required phase is a separate change with its own operator
+// agreement, and until it happens the wall is a route somebody runs, not a gate.
+func verify() -> ProcessExit {
+  match repo_ruleset_verify_at(
+    owner: gunbc_repository.owner,
+    repo: gunbc_repository.name,
+    ruleset_id: gunbc_passing_ci_ruleset_id,
+  ) {
+    Converged { evidence: _, applied: _ } => ExitSuccess
+    NotConverged { reason: r, applied: _ } =>
+      exit_failure(reason: concat("repo ruleset verify refused: ", r))
+  }
+}
+
+func converge() -> ProcessExit {
+  match repo_ruleset_converge_actuate_at(
+    owner: gunbc_repository.owner,
+    repo: gunbc_repository.name,
+    ruleset_id: gunbc_passing_ci_ruleset_id,
+  ) {
+    Converged { evidence: _, applied: _ } => ExitSuccess
+    NotConverged { reason: r, applied: _ } =>
+      exit_failure(reason: concat("repo ruleset converge refused: ", r))
+  }
+}
