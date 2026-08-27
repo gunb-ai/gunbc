@@ -1,0 +1,266 @@
+module gunbc.compiler_frontend_program_interlock
+
+import std.types { NonEmptyStr, List }
+
+// WHY THIS CARRIER EXISTS, and why the ruling it holds is NOT written into the
+// two plan bodies that consume it. Operator ruling 2026-08-26 answered a
+// sequencing question both plans had open, and closed with an explicit
+// instruction: carry the precedence edges ONCE in a typed cross-program
+// interlock cited by both plans, and do not duplicate the ruling as prose in
+// both carriers. That instruction is DESIGN section 3 applied to a fact with two
+// natural homes -- a ruling copied into two plan bodies is one fact with two
+// authorities, and the two copies diverge on the first amendment. So both plans
+// cite this module and neither owns the relation; their prose RENDERS it.
+
+// THE RULING'S SHAPE, stated because the obvious reading of the question is the
+// wrong one. The question asked was "does the namespace cut block v2 self-host,
+// or the reverse" -- a total order over two programs. The ruling is that the
+// program grain is TOO COARSE and neither blocks the other whole. The relation
+// is a braid between MILESTONES: self-host's proof envelope blocks the first
+// namespace semantic wave, and namespace completion blocks self-host's
+// irreversible retirement step. A reader who collapses this back to a program
+// order gets a different plan whichever direction they collapse it in.
+type ProgramMilestone
+  = SelfHostWholeCorpusPopulationDerived
+  | SelfHostCargoPhaseEnrolled
+  | SelfHostRatchetObservationEnrolled
+  | SelfHostRatchetGateEnrolled
+  | NamespaceWaveAdmissionEnrolled
+  | NamespaceBaselineObservationComplete
+  | NamespaceFirstSemanticWave
+  | NamespaceFixForwardComplete
+  | NamespaceGrammarRetired
+  | SelfHostCorpusEmitsCleanly
+  | SelfHostBehavioralEquivalenceReestablished
+  | SelfHostEmitterProducesEveryRetainedArtifact
+  | SelfHostSeedRetirement
+
+fn milestone_label(m: ProgramMilestone) -> NonEmptyStr {
+  match m {
+    SelfHostWholeCorpusPopulationDerived => "self-host S2: the exact whole-corpus population re-derived" as NonEmptyStr
+    SelfHostCargoPhaseEnrolled => "self-host S3: required cargo-executing CI phase, enrolled with a discriminating red" as NonEmptyStr
+    SelfHostRatchetObservationEnrolled => "self-host S4a: the ratchet enrolled as an OBSERVATION -- taken and persisted, never merge-blocking" as NonEmptyStr
+    SelfHostRatchetGateEnrolled => "self-host S4b: the ratchet enrolled as a GATE, merge-blocking, against S2's identity-grain population" as NonEmptyStr
+    NamespaceWaveAdmissionEnrolled => "namespace: required wave-admission wall over closure, subject-membership and occurrence-binding deltas" as NonEmptyStr
+    NamespaceBaselineObservationComplete => "namespace Step 0.5: the pre-deletion baseline -- a content-addressed, past-tense record of what the legacy resolver ACTUALLY SELECTED over one exact base" as NonEmptyStr
+    NamespaceFirstSemanticWave => "namespace: first semantic wave (Step 1, deletion of the import-name universe)" as NonEmptyStr
+    NamespaceFixForwardComplete => "namespace: Steps 2-4 complete (host and emit machinery, repoints, fix-forward at class grain)" as NonEmptyStr
+    NamespaceGrammarRetired => "namespace: Step 5, the LAST step -- grammar and parse deletion, a no-op over a corpus that already spells nothing that way" as NonEmptyStr
+    SelfHostCorpusEmitsCleanly => "self-host S5 terminal: the whole v2 corpus emits Rust that cargo builds with zero blocking diagnostics" as NonEmptyStr
+    SelfHostBehavioralEquivalenceReestablished => "self-host: behavioral equivalence to the seed re-established on a discriminating corpus -- a clean corpus PERMITS S6 to be planned, this AUTHORIZES it" as NonEmptyStr
+    SelfHostEmitterProducesEveryRetainedArtifact => "self-host: no EmitterProducedDivergentRegistration remains -- the emitter can produce every artifact the seed retains, the CLI entry point included" as NonEmptyStr
+    SelfHostSeedRetirement => "self-host: S6 retirement of the v1 seed, the irreversible step" as NonEmptyStr
+  }
+}
+
+// WHY THE S2 CENSUS IS ITS OWN VARIANT RATHER THAN A WORD INSIDE ANOTHER ONE.
+// The ruling gates the first namespace wave on S2 + S3 + S4. An earlier revision
+// carried S3 and S4 in a single composite variant and left S2 implicit in the
+// phrase "proof envelope" -- which is a real gap and not a naming preference:
+// the closed variant makes an omitted MILESTONE fail to compile, but it cannot
+// make an omitted FACT fail to compile when that fact is hiding inside a
+// composite name. Totality protects the enumeration, never the contents of an
+// element of it. So a required precondition became unenforceable in exactly the
+// carrier built to enforce preconditions (operator, 2026-08-26). The general
+// rule this instance teaches: when a construction derives its guarantee from
+// exhaustiveness, every fact the guarantee is supposed to cover must be its own
+// element, because a composite element is a place for a fact to hide from the
+// very check that makes the construction worth having.
+//
+// THE SAME RULE THEN CAUGHT A SECOND INSTANCE IN THIS FILE, which is why the
+// paragraph above is stated as a rule and not as one repair. S3 and S4 were
+// still fused in one variant, and their prerequisites DIFFER: S3 (enrol a
+// cargo-executing phase) needs nothing, while S4 (enrol the ratchet against
+// S2's population) cannot precede S2. A fused variant must therefore state
+// either the minimum -- permitting S4 before the population it ratchets
+// against exists -- or the maximum, falsely blocking S3. It stated the
+// minimum. Adding S2 to the fused variant would have closed the permissive
+// half by introducing the false-blocking half, so the repair is the SPLIT:
+// two facts with two prerequisite sets are two elements (review 56376,
+// 2026-08-26).
+//
+// PREREQUISITES ARE DIRECT EDGES, not the transitive closure. S2 is not
+// repeated on NamespaceFirstSemanticWave because S4 already carries it; one
+// edge per fact, and the closure is derived rather than restated (DESIGN
+// section 2). Restating it would mean a later correction to S4's
+// prerequisites could leave a stale duplicate standing here, which is the
+// second-representation failure this document names.
+//
+// AND A THIRD INSTANCE, FOUND BY THE SESSION THE SECOND ONE WAS SENT TO
+// (loyal-lark-254, 2026-08-26). SelfHostRatchetEnrolled was ITSELF composite:
+// it fused enrolling the ratchet as an OBSERVATION -- taken, persisted, never
+// able to fail a merge -- with enrolling it as a GATE. Their prerequisites
+// differ for the same reason S3's and S4's did. An observation needs no
+// population to be about, because what it refuses is the inability to TAKE or
+// PERSIST it; a gate is meaningless without the identity-grain population it
+// gates against. Fused, the variant read as a prerequisite over both, which
+// would have blocked observation work an operator ruling had already
+// authorised -- a carrier landing AFTER a ruling and silently superseding it.
+// That is the authority collision this file exists to prevent, committed by
+// this file.
+//
+// THREE INSTANCES OF ONE SHAPE IN ONE FILE IS THE FINDING, not three repairs.
+// Every one was a variant fusing two facts whose prerequisites differ, and
+// every one was invisible to the exhaustiveness check that is this
+// construction's entire reason for existing, because a composite element
+// satisfies the match while hiding the distinction the match is meant to
+// force. Exhaustiveness protects the ENUMERATION, never the contents of an
+// element. The standing obligation on anyone adding a milestone here is
+// therefore not to state its prerequisites -- the match already forces that --
+// but to ask whether the variant carries TWO facts that would state DIFFERENT
+// prerequisites if separated. If it does, it is two variants.
+//
+// A FOURTH INSTANCE, found by running that obligation as a CENSUS over every
+// variant rather than repairing the site a review reported (loyal-lark-254,
+// 2026-08-26: a review reports one instance because it found one instance,
+// which is a property of the reviewer's attention and never a census).
+// NamespaceTerminalEndState fused Steps 1-5 into one "terminal end state".
+// The namespace plan marks Step 5, the grammar and parse deletion, as LAST --
+// and gives the reason: deleting the grammar first makes every unrepaired
+// module unparseable at once, converting a fix-forward program into a flag
+// day. So the fused variant ERASED ITS OWN ORDERING CONSTRAINT, and the one
+// it erased is the constraint that keeps the program survivable. Split into
+// Steps 2-4 and the grammar deletion that must follow them, with seed
+// retirement now downstream of the grammar rather than of a composite.
+//
+// FOUR INSTANCES, AND THE LAST WAS FOUND ONLY BY CENSUS. The first three were
+// each reported by someone who had run into them. That is the difference
+// between a repair and a wall: repairing reported sites converges on the
+// attention of reviewers, and enumerating the shape converges on the corpus.
+//
+// A FIFTH FINDING OF A DIFFERENT SHAPE, AND IT BOUNDS WHAT THIS CONSTRUCTION
+// CAN DO (snappy-dove-250, 2026-08-26). The four above were FUSIONS. This one
+// was an OMISSION: Step 0.5, the pre-deletion baseline observation, was not a
+// variant at all. It records what the legacy resolver ACTUALLY SELECTED over
+// one exact base, and it must precede Step 1 because ONCE THE CUT LANDS THAT
+// RECORD IS UNRECOVERABLE -- the strongest kind of ordering constraint there
+// is, since violating it destroys evidence rather than merely reordering work.
+// It was missing while a session built it, so the graph showed that session as
+// blocked on prerequisites its actual work does not have.
+//
+// THE LIMIT THIS EXPOSES: exhaustiveness forces prerequisites to be stated for
+// every milestone DECLARED. It cannot force a milestone to be declared. So the
+// match makes an unstated prerequisite unwritable and leaves an unstated
+// MILESTONE invisible -- totality protecting the enumeration and not its
+// completeness, one level up from the rule three entries above. A missing
+// variant is therefore NOT findable by any census of this file; it is only
+// findable by joining the file against the programs it claims to describe.
+// That join has no mechanism today and this annotation is not one.
+//
+// THE JOIN WAS THEN PERFORMED BY A REVIEWER, AND IT FOUND A SIXTH (review 56390,
+// 2026-08-26). SelfHostSeedRetirement depended on NamespaceGrammarRetired ALONE,
+// while the self-host plan requires two further conditions before S6: that the
+// emitted Rust compiles, and that behavioral equivalence to the seed is
+// re-established. Neither existed as a milestone, so the authoritative carrier
+// permitted THE ONE IRREVERSIBLE STEP IN EITHER PROGRAM on strictly weaker
+// conditions than the plan it claims to sequence.
+//
+// The plan draws the distinction this repair turns on, and it is why these are
+// TWO milestones rather than one: a rustc-clean corpus permits S6 to be PLANNED,
+// it does not AUTHORIZE it. Compiling is a property of the emitted text;
+// equivalence is a property of what that text DOES. Fusing them would have been
+// this file's characteristic defect committed while repairing its mirror image.
+//
+// That a reviewer found this by joining the carrier to the plan is evidence FOR
+// the limit stated above rather than against it: the join is what finds
+// omissions, no census of this file can, and the join currently happens only
+// when a human or a reviewer happens to perform it.
+//
+// A SEVENTH, AND THE ONE THAT MOST INDICTS THE METHOD: emitter CAPABILITY was
+// not a milestone at all. Measured by execution 2026-08-21 and accepted then as
+// a program-level correction: emit_main_rs produces 552 lines against the
+// committed 1318, and what is missing is the whole Ci subcommand, Converge,
+// Serve, and --entry on compile. INSTALLING THE EMITTER'S OUTPUT TODAY WOULD
+// DELETE THE CLI. No number of regenerations closes it.
+//
+// It is a distinct milestone because it is invisible to the two beside it. It
+// never appears in a rustc error count, so SelfHostCorpusEmitsCleanly can be
+// fully satisfied while it stands -- errors-to-zero is NECESSARY AND NOT
+// SUFFICIENT -- and it is not a behavioral difference between two producers,
+// so equivalence does not reach it either. It is the absence of a producer.
+// Its executable home already exists: EmitterProducedDivergentRegistration in
+// v2.compiler.self_host.stage0_crate_layout, enforced in three directions so a
+// row cannot outlive its producer. The milestone is that no such row remains.
+//
+// WHY THIS ONE INDICTS THE METHOD RATHER THAN JUST EXTENDING THE LIST: it was
+// not discovered. It was ALREADY KNOWN, recorded, and accepted as a correction
+// to this very program a week before this carrier was authored -- and the
+// carrier was still written without it. So the join that finds omissions is not
+// only unmechanized, it is not reliably performed even by someone holding the
+// fact. Three of seven defects here are omissions; none was found by reading
+// this file.
+//
+// THE PRECEDENCE RELATION AS A TOTAL FUNCTION, not a list of edges. A list is
+// satisfied by omission -- a milestone nobody wrote an edge for silently has no
+// prerequisites, and the failure is invisible. An exhaustive match over a closed
+// variant means a newly declared milestone FAILS TO COMPILE until its
+// prerequisites are stated. That is DESIGN section 5's construction-over-
+// validation: the unstated-prerequisite state is unwritable rather than checked.
+fn milestone_prerequisites(m: ProgramMilestone) -> List<ProgramMilestone> {
+  match m {
+    SelfHostWholeCorpusPopulationDerived => []
+    SelfHostCargoPhaseEnrolled => []
+    SelfHostRatchetObservationEnrolled => []
+    SelfHostRatchetGateEnrolled => [SelfHostWholeCorpusPopulationDerived, SelfHostCargoPhaseEnrolled, SelfHostRatchetObservationEnrolled]
+    NamespaceWaveAdmissionEnrolled => []
+    NamespaceBaselineObservationComplete => []
+    NamespaceFirstSemanticWave => [SelfHostRatchetGateEnrolled, NamespaceWaveAdmissionEnrolled, NamespaceBaselineObservationComplete]
+    NamespaceFixForwardComplete => [NamespaceFirstSemanticWave]
+    NamespaceGrammarRetired => [NamespaceFixForwardComplete]
+    SelfHostCorpusEmitsCleanly => [SelfHostRatchetGateEnrolled]
+    SelfHostBehavioralEquivalenceReestablished => [SelfHostCorpusEmitsCleanly]
+    SelfHostEmitterProducesEveryRetainedArtifact => []
+    SelfHostSeedRetirement => [NamespaceGrammarRetired, SelfHostBehavioralEquivalenceReestablished, SelfHostEmitterProducesEveryRetainedArtifact]
+  }
+}
+
+// THE EXECUTABLE CONSEQUENCE THE RULING ATTACHED TO THE NAMESPACE PLAN'S
+// DISCLOSED GAP. That plan recorded "no CI mechanism exists" as a named gap. The
+// ruling converts it from a disclosure into a BLOCKER: no namespace change that
+// can alter which modules enter a subject, or what an occurrence denotes, may
+// merge before the wave-admission wall exists. Preparatory work is explicitly
+// unaffected -- measurement, port-locus, instruments, lexical de-forking that
+// preserves the exact set, typed carriers, dry-run projections. Step 1 is not.
+type NamespaceChangeClass
+  = PreparatoryNoSemanticMotion
+  | AltersSubjectMembershipOrBinding
+
+
+// THE ADMISSION PREDICATE, recorded because the two spellings differ by one word
+// and the weaker one is the intuitive one. The wall admits when
+// UNADJUDICATED delta is empty, NOT when delta is empty: expected cut motion may
+// occur, unevaluated or unexplained motion may not. A wall demanding zero delta
+// would refuse the cut itself and would be repaired by weakening it.
+type NamespaceDeltaDisposition
+  = SameDeclarationIdentityRebind
+  | UnusedSubjectMembershipRemoved
+  | ExplicitlyEvaluatedZeroDelta
+  | TargetChanged
+  | NewAmbiguity
+  | NewUnresolvedness
+  | NewPoolCoincidenceResolution
+  | UnexplainedSubjectMotion
+  | NotEvaluated
+
+// NO BOOL PROJECTION OVER THIS COPRODUCT, DELIBERATELY. An earlier revision
+// carried delta_disposition_auto_admitted, a nine-into-two partition deciding
+// which dispositions the wall auto-admits. It is deleted for a reason that does
+// not depend on the predicate-dissolution question it was reviewed under
+// (review 56367): IT HAD NO CONSUMER. The wave-admission wall that will classify
+// deltas does not exist yet, and DESIGN section 6 names a new artifact with no
+// final consumer as experimental residue. A partition nobody computes over is a
+// guess about what the consumer will want.
+//
+// The partition the operator ruled is therefore recorded HERE, where it cannot
+// be mistaken for an executing mechanism: the wall AUTO-ADMITS a same-declaration
+// -identity rebind, a removal of genuinely unused subject membership, and an
+// explicitly evaluated zero delta. Every other disposition -- a changed target,
+// new ambiguity, new unresolvedness, new pool-coincidence resolution,
+// unexplained subject motion, and NotEvaluated -- REFUSES unless an exact
+// operator-authored transition admission names it.
+//
+// When the wall is built it matches on NamespaceDeltaDisposition directly. If a
+// shared projection is wanted at that point, it belongs beside the wall that
+// computes it, with the consumer that makes it load-bearing.
+
+data interlock_ruling_date: NonEmptyStr = "2026-08-26" as NonEmptyStr
