@@ -52,6 +52,8 @@ import std.integer { Int }
 // on the ENTRY PATH a witness was found in and carries no authored module name at all. The two
 // are different keys for different questions — where a declaration was found, versus which
 // identity it is — and the disposition below can only be computed from the second.
+// `reads_live_tree` now serves selection-eligibility consumers only. Required-floor disposition
+// no longer consumes it, and retaining the field here must not recreate the deleted decline.
 type DiscoveredSite {
   module_path: String
   function: String

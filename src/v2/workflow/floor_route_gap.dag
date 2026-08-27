@@ -23,7 +23,7 @@ type FloorRouteGapExpectation = {
 // THE ROUTE-GAP ROSTER: identities the required floor EXECUTES, that reach a host effect the
 // hermetic route has no arm for, enrolled by exact qualified name.
 //
-// WHY IT EXISTS. A file declaring `data live_tree_disposition: LiveTreeDisposition =
+// HISTORICAL MOTIVE FOR THIS ROSTER. A file declaring `data live_tree_disposition: LiveTreeDisposition =
 // ReadsLiveTree` had every one of its identities declined before execution
 // (`RequiredFloorDisposition.DeclinedLiveTree`) -- 778 of them across 112 files when that was
 // measured -- and since `claim_executor --required-floor` is the only witness-executing
@@ -34,8 +34,8 @@ type FloorRouteGapExpectation = {
 //
 // WHAT THIS ROSTER DOES NOT ESTABLISH, stated because an earlier revision of this header
 // asserted exactly the opposite: it does NOT establish that every discovered identity is
-// planned, and it does NOT establish whether `RequiredFloorDisposition.DeclinedLiveTree`
-// exists. That revision claimed the arm was deleted and that "every discovered identity is now
+// planned, and it never establishes which pre-execution disposition constructors currently
+// exist. That revision claimed the live-tree decline arm was deleted and every discovered identity was
 // routed and executed". Both halves were false when written, falsified by any floor run whose
 // receipt reports a nonzero pre-execution decline. It was rung inflation on the very axis the
 // sibling authority corrects ITSELF for (`required_floor`, review 54035) -- one carrier
@@ -48,8 +48,8 @@ type FloorRouteGapExpectation = {
 // completeness, because every identity it can see has already been planned. So the planner's
 // population is read from `v2.workflow.required_floor` and its per-identity receipt, never
 // copied here -- a copy is what drifted last time, and it would drift again in the same
-// direction. This paragraph stays true both before and after `DeclinedLiveTree` is deleted,
-// which is the property the sentence it replaces did not have.
+// direction. This paragraph remains valid across planner-constructor changes, which is the
+// property the sentence it replaces did not have.
 //
 // SO THIS ROSTER IS NOT A SKIP LIST, for exactly the reason `floor_expected_red` is not one:
 // every identity here EXECUTES and its outcome is still asserted. What enrollment changes is
