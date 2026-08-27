@@ -1,6 +1,7 @@
 module test.claim.compiler_frontend_program_status_witness
 
 import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.witness_admission { DiscoverySelection, NoConsumer }
 import gunbc.compiler_frontend_program_interlock {
@@ -34,6 +35,7 @@ import gunbc.compiler_frontend_program_status {
   NotBuilt,
   RefusedByAuthority,
   missing_instrument_obstacle,
+  instrument_obstacle_label,
   StandingCensus,
   standing_census,
   milestone_row,
@@ -62,7 +64,6 @@ import gunbc.compiler_frontend_program_status {
   standing_census_from_rows,
   standing_class,
   standing_class_label,
-  emitter_retained_artifact_outstanding,
   milestone_status,
   milestone_startability,
   startability_from_populations,
@@ -438,20 +439,33 @@ test fn every_declared_instrument_is_distinct_and_awaited() -> Bool {
     && all(all_missing_instruments, i => count(milestones_awaiting(i: i)) > 0)
 }
 
-// UNBUILT AND REFUSED ARE DIFFERENT STATES WITH DIFFERENT REMEDIES, and both arms are live today --
-// which is what stops this axis from being a variant nothing ever inhabits. The whole-corpus board
-// is refused by a named authority on host memory; the phase roster is genuinely absent. If the axis
-// ever collapses to one arm across every instrument, this reds and someone re-reads it rather than
-// carrying a distinction the data no longer makes.
-test fn the_obstacle_axis_has_both_arms_inhabited_today() -> Bool {
-  match missing_instrument_obstacle(i: WholeCorpusEmissionBoard) {
-    NotBuilt => false
-    RefusedByAuthority { authority: _, why: _ } =>
-      match missing_instrument_obstacle(i: RequiredCiPhaseRoster) {
-        NotBuilt => true
-        RefusedByAuthority { authority: _, why: _ } => false
-      }
+// UNBUILT AND REFUSED ARE DIFFERENT STATES WITH DIFFERENT REMEDIES, and this arm now exhibits that
+// at FIXTURE grain rather than naming two live instruments that happen to occupy one arm each.
+//
+// The previous form matched missing_instrument_obstacle(WholeCorpusEmissionBoard) expecting
+// RefusedByAuthority and missing_instrument_obstacle(RequiredCiPhaseRoster) expecting NotBuilt. Its
+// annotation claimed the axis is inhabited on both arms and that a collapse to one would red. Two
+// identities cannot carry an axis-wide claim, and worse, the arm is progress-sensitive in both
+// directions: the day the whole-corpus compile stops being refused, or the day the phase roster
+// becomes a substrate carrier and its obstacle changes, this reds and the closing move is to swap
+// in whichever instruments still occupy the arms. That is the sixth instance of the shape this file
+// has been closing, and my claim that the set was closed at three was wrong.
+//
+// What the arm was worth is that the two constructors are REACHABLE and RENDER DISTINGUISHABLY --
+// a variant nothing can inhabit, or two variants that render identically, is the decoration DESIGN
+// 4b rules worse than absent. Both are properties of the type and its renderer, so both are
+// authorable here and no program state can move them. What is deliberately NOT claimed: which live
+// instrument occupies which arm today. That is a fact about the world, it belongs in the report the
+// carrier already renders, and pinning it in a witness is what made the previous form a snapshot.
+test fn the_obstacle_axis_renders_its_two_arms_distinguishably() -> Bool {
+  let unbuilt = NotBuilt
+  let refused = RefusedByAuthority {
+    authority: decl_ref(module_path: "gunbc.fixture", decl_name: "fixture_authority"),
+    why: "fixture" as NonEmptyStr,
   }
+  instrument_obstacle_label(o: unbuilt) != instrument_obstacle_label(o: refused)
+    && instrument_obstacle_label(o: unbuilt) != ""
+    && instrument_obstacle_label(o: refused) != ""
 }
 
 // A REFUSAL NAMES ITS AUTHORITY AS A CITATION, NEVER AS PROSE. This asserts the refusing row cites
