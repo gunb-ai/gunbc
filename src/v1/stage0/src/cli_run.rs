@@ -3749,6 +3749,7 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
         && matches!(
             d.diagnostic.as_ref(),
             crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
+                | crate::v1_std_core::CompilerDiagnostic::UnlistedVariantValueUse { .. }
                 | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
                 | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
                 // A non-blocking variant that is absent from this list is counted by
@@ -5419,6 +5420,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
             "ServiceConfigReferenceJudgmentDeferred"
         }
+        CompilerDiagnostic::UnlistedVariantValueUse { .. } => "UnlistedVariantValueUse",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -5461,6 +5463,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeNotInhabited { position, .. } => position.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
+        CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name, .. } => name.clone(),
         CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter, .. } => parameter.clone(),
