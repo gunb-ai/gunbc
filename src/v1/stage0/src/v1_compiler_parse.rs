@@ -13595,7 +13595,7 @@ pub fn parse_index_or_slice(
         }
         let first_expr = r.expr.clone();
         let tokens = r.tokens.clone();
-        let ctx = r.ctx.clone();
+        let ctx = parse_context_after_node(r.ctx.clone(), first_expr.clone());
         if tok_is_dot_dot(token_stream_first(tokens.clone())) {
             {
                 let r = parse_expr(token_stream_advance(tokens.clone(), 1), ctx.clone());
@@ -13608,6 +13608,7 @@ pub fn parse_index_or_slice(
                     });
                 }
                 let end_expr = r.expr.clone();
+                let ctx = parse_context_after_node(r.ctx.clone(), end_expr.clone());
                 let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectRBracket));
                 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {

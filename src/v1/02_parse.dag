@@ -297,7 +297,8 @@ type NameResult { name: String, span: SourceSpan, tokens: TokenStream, err: Erro
 // Invariant: a combinator must publish the context its accepted child returned, never the
 // context it received. The bounded population repaired here is function parent publication
 // after params/type params/inferred/body/properties, if condition/branch/parent publication,
-// and recursive accepted-child lists (#9344); this is not a claim over every parse shape.
+// recursive accepted-child lists, and index/slice operand publication (#9344); this is not
+// a claim over every parse shape.
 // The attainable ceiling is STRUCTURALLY IMPOSSIBLE.
 // NEXT-RUNG TRIGGER (DESIGN section 4b(2)): introduce a distinct published-context carrier:
 // parse functions consume an input context, successful child results carry an advanced
@@ -5070,12 +5071,13 @@ fn parse_index_or_slice(tokens: TokenStream, ctx: ParseContext, base: Node, span
   if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let first_expr = r.expr
   let tokens = r.tokens
-  let ctx = r.ctx
+  let ctx = parse_context_after_node(ctx: r.ctx, node: first_expr)
 
   if tok_is_dot_dot(tok: token_stream_first(stream: tokens)) {
     let r = parse_expr(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
     if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let end_expr = r.expr
+    let ctx = parse_context_after_node(ctx: r.ctx, node: end_expr)
     let r = expect(tokens: r.tokens, expected: ExpectRBracket)
     if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
     parsed_expr_result(tokens: r.tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprSlice, children: [base, first_expr, end_expr], inferred: none, span: span))
