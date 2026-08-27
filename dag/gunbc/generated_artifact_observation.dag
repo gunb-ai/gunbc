@@ -4,8 +4,7 @@ import gunbc.generated_artifact { GeneratedArtifact, committed_generated_artifac
 import gunbc.generated_artifact_emit { ArtifactGenerated, ArtifactGenerationRefused, artifact_generate, artifact_extra_valid }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.generated_artifact_assessment {
-  GeneratedArtifactObservation, GeneratedArtifactObserved, GeneratedArtifactObservationRefused,
-  assess_generated_artifact_population
+  GeneratedArtifactObservation, GeneratedArtifactObserved, GeneratedArtifactObservationRefused
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -36,13 +35,4 @@ fn observe_generated_artifact(a: GeneratedArtifact) -> GeneratedArtifactObservat
 
 fn observe_generated_artifact_population() -> List<GeneratedArtifactObservation> {
   map(committed_generated_artifacts(), a => observe_generated_artifact(a: a))
-}
-
-data assess_generated_artifact_live_population_note: String = "The one function that legitimately spans both sides — produce, then assess. Lives here (the producer side), never in gunbc.generated_artifact_assessment; a witness meant to be pure must not call it."
-
-fn assess_generated_artifact_live_population() -> Bool {
-  assess_generated_artifact_population(
-    expected: committed_generated_artifacts(),
-    observations: observe_generated_artifact_population()
-  )
 }

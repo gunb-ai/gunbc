@@ -18,8 +18,9 @@ import gunbc.generated_artifact_observation {
   observe_generated_artifact_population
 }
 import gunbc.generated_artifact_assessment {
-  assess_generated_artifact_population,
-  first_failing_diagnostic_path
+  generated_artifact_population_findings,
+  generated_artifact_population_findings_empty,
+  generated_artifact_population_findings_rendered
 }
 
 fn exit_ok(e: ProcessExit) -> Bool {
@@ -30,13 +31,14 @@ data run_generated_artifact_drift_gate_body_note: String = "One live pass: obser
 
 func run_generated_artifact_drift_gate_body() -> ProcessExit {
   let observations = observe_generated_artifact_population()
-  let all_ok = assess_generated_artifact_population(expected: committed_generated_artifacts(), observations: observations)
+  let findings = generated_artifact_population_findings(expected: committed_generated_artifacts(), observations: observations)
+  let all_ok = generated_artifact_population_findings_empty(f: findings)
   let reason = if all_ok {
     ""
   } else {
     concat(
-      concat("generated-artifact drift/validation failed: ", first_failing_diagnostic_path(expected: committed_generated_artifacts(), observations: observations)),
-      " — it is a GENERATED projection of its .dag authority; do not hand-edit, regenerate via main_wet on dag/tools/generated_artifact_gate.dag"
+      concat("generated-artifact agreement failed: ", generated_artifact_population_findings_rendered(f: findings)),
+      "\nthese are GENERATED projections of their .dag authorities; do not hand-edit, regenerate via main_wet on dag/tools/generated_artifact_gate.dag"
     )
   }
   if all_ok {
