@@ -30,6 +30,12 @@ import gunbc.compiler_frontend_program_interlock {
 import gunbc.cli_dispatch_surface { gunbc_cli_emitter_gap }
 import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
+import v2.workflow.legacy_baseline_persistence {
+  LegacyBaselinePersistenceStanding,
+  NoLegacyBaselinePersisted,
+  LegacyBaselinePersisted,
+  legacy_baseline_persistence_standing,
+}
 
 // WHY THIS IS A SEPARATE MODULE FROM THE INTERLOCK IT READS. The interlock carries a RELATION --
 // which milestone precedes which -- and that relation is a closed, pure fact with no dependency on
@@ -328,10 +334,31 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
         why: "the wave-admission wall does not exist yet, so there is nothing to cite. gunbc.compiler_frontend_program_interlock records the admission partition as prose precisely because a partition with no consumer is a guess. Derivable once the wall exists and classifies deltas, at which point its unadjudicated-delta population is this milestone's own." as NonEmptyStr,
         cause: needs(i: NamespaceWaveAdmissionWall)
       }
+    // DEFINITIONAL WHERE A RECORD EXISTS, AND HONESTLY UNANSWERABLE WHERE NONE DOES. The milestone is
+    // the interlock's own label -- "a content-addressed, past-tense record of what the legacy
+    // resolver ACTUALLY SELECTED over one exact base" -- so the population that answers it is the
+    // persisted-baseline roster, not a proxy for it.
+    //
+    // THE ABSENT CASE STILL RETURNS NotDerivable WITH THE SAME CAUSE, and that is the admission test
+    // above being obeyed rather than a leftover. An empty roster is not evidence that the baseline is
+    // clear; `standing_from_evidence` reads an empty outstanding list as Clear, so folding the absent
+    // case through it would tick this milestone precisely because nobody had taken the observation.
+    // What changed is that the arm is now a FUNCTION of a population instead of a constant: a
+    // persisted row makes it derive, and its absence keeps the same typed cause.
     NamespaceBaselineObservationComplete =>
-      NotDerivable {
-        why: "v2.workflow.legacy_binding_observation can ADMIT a complete legacy observation, but whether one has been TAKEN over an exact base is a run fact and no carrier holds it. Derivable once an admitted CompleteLegacyObservation is persisted against a named base commit." as NonEmptyStr,
-        cause: needs(i: PersistedLegacyBaselineObservation)
+      match legacy_baseline_persistence_standing() {
+        NoLegacyBaselinePersisted =>
+          NotDerivable {
+            why: "v2.workflow.legacy_binding_observation can ADMIT a complete legacy observation, and v2.workflow.legacy_baseline_persistence can now RECORD one against a named base, but legacy_baseline_receipts is empty -- no baseline has been taken. Derivable as soon as one persisted receipt exists." as NonEmptyStr,
+            cause: needs(i: PersistedLegacyBaselineObservation)
+          }
+        LegacyBaselinePersisted { malformed_bases: malformed } =>
+          standing_from_evidence(
+            e: observe_outstanding(
+              subject: "namespace Step 0.5: a content-addressed baseline observation persisted against a named base" as NonEmptyStr,
+              outstanding: malformed
+            )
+          )
       }
     NamespaceFirstSemanticWave =>
       NotDerivable {

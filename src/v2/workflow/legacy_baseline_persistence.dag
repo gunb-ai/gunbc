@@ -1,0 +1,131 @@
+module v2.workflow.legacy_baseline_persistence
+
+import std.types { String, List, Int, Bool, NonEmptyStr, CommitSha, commit_sha_text_holds }
+import std.content_hash { Fnv1a64Structural }
+import v2.workflow.legacy_binding_observation {
+  CompleteLegacyObservation,
+  legacy_subject_identity
+}
+
+// WHETHER A BASELINE OBSERVATION HAS BEEN *TAKEN* IS A DIFFERENT FACT FROM WHETHER ONE CAN BE
+// ADMITTED, and only the first is a run fact. v2.workflow.legacy_binding_observation already answers
+// the second completely: it derives an independent expected-reference denominator, joins it at
+// identity grain, and mints CompleteLegacyObservation only on an exact join. Nothing there records
+// that the join ever RAN, against what, or on which commit -- so the namespace cut's Step 0.5
+// milestone had no population to read and gunbc.compiler_frontend_program_status reported it
+// NotDerivable rather than false.
+//
+// That is execution-provenance loss one level above a missing observation: the machinery exists and
+// answers correctly, and a consumer cannot tell whether it was reached. This module carries the
+// missing half and nothing else -- it does not observe, does not join, and does not re-derive a
+// denominator. Any second denominator here would be the parallel authority the admission already is.
+
+// THE MISMATCH THIS SHAPE EXISTS TO REFUSE: a record that says "observed at commit X" while carrying
+// an observation of something else. Two halves that can be assembled independently can be assembled
+// wrong, and a baseline whose base is a lie is worse than an absent one, because the cut would be
+// authorised against it.
+//
+// So the binding is structural rather than conventional. The type is `sole_constructor`, so
+// `persist_legacy_baseline` is the only route to a value; the subject identity is DERIVED inside
+// that mint from the admitted observation's own subject rather than accepted as a parameter, so
+// there is no spelling in which the stored identity describes a different observation than the one
+// carried beside it. A caller cannot state the identity, only supply the observation it comes from.
+type PersistedLegacyBaseline<O> sole_constructor {
+  observation: CompleteLegacyObservation<O>
+  base_commit: CommitSha
+  subject_identity: Fnv1a64Structural
+}
+
+// THE BASE COMMIT IS THE ONE HALF THAT IS *NOT* STRUCTURALLY GUARANTEED, and the honest rung is
+// stated here rather than implied by the mint's shape. `std.types` CommitSha is an unvalidated
+// `String` alias whose own note says so: "a validating CHECK a caller must remember to run, not a
+// construction wall", dissolving when CommitSha gains one validating constructor. So this mint
+// REMEMBERS to run it and refuses -- which makes a malformed base unwritable in THIS carrier while
+// leaving it writable in the alias. Mechanically preventable here, not structurally impossible, and
+// the next rung is CommitSha's own constructor rather than anything this module can add.
+//
+// Refusing is not the same as widening: the malformed base is returned in a typed arm carrying the
+// text that failed, so a caller learns which value was rejected instead of receiving a baseline
+// bound to a commit nobody can resolve.
+type BaselinePersistenceOutcome<O>
+  = BaselinePersisted { persisted: PersistedLegacyBaseline<O> }
+  | BaselineBaseMalformed { base_commit: String }
+
+fn persist_legacy_baseline<O>(
+  admitted: CompleteLegacyObservation<O>,
+  base_commit: CommitSha
+) -> BaselinePersistenceOutcome<O> {
+  if commit_sha_text_holds(head: base_commit) {
+    BaselinePersisted {
+      persisted: PersistedLegacyBaseline {
+        observation: admitted,
+        base_commit: base_commit,
+        subject_identity: legacy_subject_identity(subject: admitted.observation.subject)
+      }
+    }
+  } else {
+    BaselineBaseMalformed { base_commit: base_commit }
+  }
+}
+
+// THE DURABLE ROW IS THE CONTENT ADDRESS, NOT THE OBSERVATION, and that is what the interlock's own
+// label asks for: "a content-addressed, past-tense record of what the legacy resolver ACTUALLY
+// SELECTED over one exact base". A committed row cannot carry a run's whole observation, and it does
+// not need to -- an identity plus its base is checkable by RE-DERIVATION, which a transcribed
+// measurement is not. Re-run the observation at that base and the identity reproduces or the row is
+// false.
+//
+// The receipt is PROJECTED from a persisted baseline rather than authored beside one, so a row's
+// identity is the identity the mint computed and never a second reading of it.
+type LegacyBaselineReceipt {
+  base_commit: CommitSha
+  subject_identity: Fnv1a64Structural
+  observed_rows: Int
+}
+
+fn legacy_baseline_receipt<O>(persisted: PersistedLegacyBaseline<O>) -> LegacyBaselineReceipt {
+  LegacyBaselineReceipt {
+    base_commit: persisted.base_commit,
+    subject_identity: persisted.subject_identity,
+    observed_rows: count(persisted.observation.observation.rows)
+  }
+}
+
+// EMPTY, AND THE EMPTINESS IS THE MEASUREMENT: no baseline observation has been taken. This is the
+// population the Step 0.5 milestone is a function of, and it is deliberately not pre-filled -- a row
+// authored before a run existed would be exactly the hand-ticked milestone that DESIGN 4b calls
+// worse than sitting low.
+data legacy_baseline_receipts: List<LegacyBaselineReceipt> = []
+
+// THE TWO STATES A CONSUMER MUST NOT COLLAPSE. "No baseline exists" and "a baseline exists and has
+// problems" have opposite remedies -- take one, versus repair one -- and a single list would render
+// them identically as a count. An empty outstanding list would make the ABSENT case read as CLEAR,
+// which is how a milestone gets ticked by nobody having done anything.
+type LegacyBaselinePersistenceStanding
+  = NoLegacyBaselinePersisted
+  | LegacyBaselinePersisted { malformed_bases: List<String> }
+
+// The outstanding population, for the case where rows exist, is the rows whose base does not hold
+// the syntax wall. That is a real population rather than a formality: `legacy_baseline_receipts` is
+// a plain record list, so a row CAN be authored with a base the mint would have refused, and this is
+// where that shows up. It also gives `commit_sha_text_holds` the consumer its own note asks for.
+//
+// THE POPULATION IS A PARAMETER AND THE ROSTER IS ONE CALLER, so both directions of this decision are
+// authorable by a fixture. Reading the `data` row directly would have left the absent case as the only
+// reachable state until the day a real baseline landed, and a control that can only exercise one arm
+// cannot show that the other one works.
+fn legacy_baseline_standing_of(receipts: List<LegacyBaselineReceipt>) -> LegacyBaselinePersistenceStanding {
+  if count(receipts) == 0 {
+    NoLegacyBaselinePersisted
+  } else {
+    LegacyBaselinePersisted {
+      malformed_bases: receipts
+        |> filter(r => !commit_sha_text_holds(head: r.base_commit))
+        |> map(r => concat("legacy-baseline receipt names a malformed base commit: ", r.base_commit))
+    }
+  }
+}
+
+fn legacy_baseline_persistence_standing() -> LegacyBaselinePersistenceStanding {
+  legacy_baseline_standing_of(receipts: legacy_baseline_receipts)
+}
