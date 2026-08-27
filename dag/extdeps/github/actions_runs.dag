@@ -1,0 +1,191 @@
+module extdeps.github.actions_runs
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// THE ACTIONS *RUNS* SURFACE, WHICH IS NOT THE WORKFLOW-SYNTAX SURFACE.
+//
+// extdeps.github.actions is anchored on workflow-syntax-for-github-actions -- the shape an author
+// WRITES. This module is anchored on the workflow-runs API -- the shape GitHub REPORTS once a run
+// has executed. They are two independently documented surfaces of one product, and merging them
+// would put an authoring vocabulary and a reporting vocabulary under one anchor whose citation can
+// only be correct for one of them.
+//
+// WHAT THIS MODULE OWNS AND WHAT IT DOES NOT. It owns the SHAPE GitHub returns: the fields of a run
+// record and the closed conclusion/status vocabularies. It owns no policy. In particular it does
+// NOT decide what a `cancelled` run MEANS -- whether a cancellation was a lawful supersession or an
+// eviction is a judgement about THIS repository's concurrency configuration and its runner fleet,
+// which is a workflow-layer fact (gunbc.run_disposition). Modelling that here would be the layer
+// inversion DESIGN section 3 names: a policy literal wearing an upstream module's authority.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/workflow-runs"
+  }
+}
+
+// THE CONCLUSION VOCABULARY IS CLOSED AND IS CITED, NOT GUESSED.
+//
+// GitHub documents `conclusion` as null while a run is not completed, and otherwise one of the
+// values below. The variants are modelled rather than left as a String because the whole point of
+// the consumer is that two of these words are read as one state today; a String cannot refuse a
+// spelling that upstream never emits, and an unknown spelling must be a LOUD typed state rather
+// than silently classified. RunConclusionUnknown carries the spelling so a new upstream value
+// surfaces as itself instead of being folded into a neighbour.
+type RunConclusion
+  = RunSuccess
+  | RunFailure
+  | RunCancelled
+  | RunSkipped
+  | RunTimedOut
+  | RunActionRequired
+  | RunNeutral
+  | RunStale
+  | RunStartupFailure
+  | RunConclusionUnknown { spelling: String }
+
+data run_conclusion_success_wire: String = "success"
+data run_conclusion_failure_wire: String = "failure"
+data run_conclusion_cancelled_wire: String = "cancelled"
+data run_conclusion_skipped_wire: String = "skipped"
+data run_conclusion_timed_out_wire: String = "timed_out"
+data run_conclusion_action_required_wire: String = "action_required"
+data run_conclusion_neutral_wire: String = "neutral"
+data run_conclusion_stale_wire: String = "stale"
+data run_conclusion_startup_failure_wire: String = "startup_failure"
+
+fn run_conclusion_from_wire(spelling: String) -> RunConclusion {
+  if spelling == run_conclusion_success_wire {
+    RunSuccess
+  } else {
+    if spelling == run_conclusion_failure_wire {
+      RunFailure
+    } else {
+      if spelling == run_conclusion_cancelled_wire {
+        RunCancelled
+      } else {
+        if spelling == run_conclusion_skipped_wire {
+          RunSkipped
+        } else {
+          if spelling == run_conclusion_timed_out_wire {
+            RunTimedOut
+          } else {
+            if spelling == run_conclusion_action_required_wire {
+              RunActionRequired
+            } else {
+              if spelling == run_conclusion_neutral_wire {
+                RunNeutral
+              } else {
+                if spelling == run_conclusion_stale_wire {
+                  RunStale
+                } else {
+                  if spelling == run_conclusion_startup_failure_wire {
+                    RunStartupFailure
+                  } else {
+                    RunConclusionUnknown { spelling: spelling }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn run_conclusion_wire(conclusion: RunConclusion) -> String {
+  match conclusion {
+    RunSuccess => run_conclusion_success_wire
+    RunFailure => run_conclusion_failure_wire
+    RunCancelled => run_conclusion_cancelled_wire
+    RunSkipped => run_conclusion_skipped_wire
+    RunTimedOut => run_conclusion_timed_out_wire
+    RunActionRequired => run_conclusion_action_required_wire
+    RunNeutral => run_conclusion_neutral_wire
+    RunStale => run_conclusion_stale_wire
+    RunStartupFailure => run_conclusion_startup_failure_wire
+    RunConclusionUnknown { spelling: s } => s
+  }
+}
+
+// A RUN THAT HAS NOT COMPLETED HAS NO CONCLUSION, AND THAT IS A DIFFERENT STATE FROM EVERY
+// CONCLUSION IT MIGHT LATER CARRY. GitHub reports this as status != completed with conclusion null.
+// Carrying it as `RunSettlementInFlight` rather than as an Optional conclusion keeps the consumer
+// from writing `conclusion == none` and reading it as a verdict; an in-flight run is not a run that
+// concluded nothing.
+type RunSettlement
+  = RunSettlementInFlight
+  | RunSettled { conclusion: RunConclusion }
+
+data run_status_completed_wire: String = "completed"
+
+fn run_settlement_from_wire(status: String, conclusion: String) -> RunSettlement {
+  if status == run_status_completed_wire {
+    RunSettled { conclusion: run_conclusion_from_wire(spelling: conclusion) }
+  } else {
+    RunSettlementInFlight
+  }
+}
+
+fn run_settled(settlement: RunSettlement) -> Bool {
+  match settlement {
+    RunSettlementInFlight => false
+    RunSettled { conclusion: _ } => true
+  }
+}
+
+// THE RUN RECORD. Timestamps are carried as epoch SECONDS rather than as the wire's ISO-8601 text,
+// because every consumer question about them is arithmetic (did this run overlap that one) and a
+// consumer that had to parse text would be re-deriving a decode this boundary can do once.
+//
+// THE THREE TIMESTAMPS ARE NOT INTERCHANGEABLE and are named as upstream names them: `created_at`
+// is when the run was CREATED (queued), `run_started_at` is when it STARTED executing, `updated_at`
+// is the last update, which for a settled run is its conclusion time. A consumer that subtracts
+// across two of these without naming which side each came from produces a quantity with no
+// meaning -- a defect this repository has recorded on three separate surfaces -- so the field names
+// are kept verbatim from upstream rather than shortened to `start` and `end`.
+type WorkflowRunRecord {
+  run_id: Int
+  event: String
+  head_branch: String
+  status: String
+  conclusion: String
+  created_at_epoch_s: Int
+  run_started_at_epoch_s: Int
+  updated_at_epoch_s: Int
+}
+
+fn workflow_run_settlement(record: WorkflowRunRecord) -> RunSettlement {
+  run_settlement_from_wire(status: record.status, conclusion: record.conclusion)
+}
+
+// THE CLI TRANSPORT, one of N realizations of the shape above and not a fact about it.
+// `gh run list --json` is the read this repository already uses for pull requests
+// (extdeps.github.pulls github.CliPulls), so the transport choice is consistent rather than new.
+// The operation is `readonly`: it observes and never mutates a run.
+service github.CliActionsRuns {
+  operation ListRunsJson {
+    input {
+      repo: NonEmptyStr
+      workflow: NonEmptyStr
+      limit: Int
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "gh", "run", "list",
+        "--repo", "{repo}",
+        "--workflow", "{workflow}",
+        "--limit", "{limit}",
+        "--json", "databaseId,event,headBranch,status,conclusion,createdAt,startedAt,updatedAt",
+      ]
+    }
+  }
+}

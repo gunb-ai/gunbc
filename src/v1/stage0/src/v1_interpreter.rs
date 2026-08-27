@@ -2075,9 +2075,7 @@ pub fn eval_call_memo_frame_exit(ctx: &InterpContext) {
 #[derive(Default, Clone)]
 pub struct MutationCounters {
     pub map_insert_calls: u64,
-    pub map_insert_entries_copied: u64,
     pub map_merge_calls: u64,
-    pub map_merge_entries_copied: u64,
     pub list_push_calls: u64,
     pub list_push_items_copied: u64,
     pub list_concat_calls: u64,
@@ -2090,17 +2088,21 @@ pub struct MutationCounters {
 
 impl fmt::Display for MutationCounters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let rows: [(&str, u64, u64); 6] = [
-            (
-                "map_insert",
-                self.map_insert_calls,
-                self.map_insert_entries_copied,
-            ),
-            (
-                "map_merge",
-                self.map_merge_calls,
-                self.map_merge_entries_copied,
-            ),
+        // The map rows report calls only: nothing increments an entries-copied
+        // quantity for them, and printing a literal 0 would read as a measurement.
+        // The quantity is well defined -- rc_map_merge clones every overlay entry,
+        // so it is the overlay's size -- it is simply never computed.
+        writeln!(
+            f,
+            "  {:<12} {:>12} calls",
+            "map_insert", self.map_insert_calls
+        )?;
+        writeln!(
+            f,
+            "  {:<12} {:>12} calls",
+            "map_merge", self.map_merge_calls
+        )?;
+        let rows: [(&str, u64, u64); 4] = [
             (
                 "list_push",
                 self.list_push_calls,

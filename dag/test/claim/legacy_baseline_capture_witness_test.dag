@@ -1,0 +1,314 @@
+module test.claim.legacy_baseline_capture_witness
+
+import std.types { String, Bool, Int, List, SourceSpan }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { Fnv1a64Structural, structural_content_hash }
+import std.decl_ref { decl_ref }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIndex,
+  OccurrenceIndexEntry,
+  OccurrenceProjection,
+  OccurrenceContainmentPath,
+  LexicalValueOccurrence,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceTransport,
+  ValidatedOccurrenceTransport,
+  OccurrenceTransportValidated,
+  OccurrenceTransportRefused,
+  occurrence_transport_validate
+}
+import v2.workflow.legacy_binding_observation {
+  LegacyBindingObservation,
+  LegacyBindingObservationRow,
+  LegacyBindingObservationSubject,
+  ImportScopedPolicy
+}
+import v2.workflow.legacy_baseline_capture {
+  CheckoutMaterialization,
+  materialization_receipt,
+  TreeDerivedSubjectReceipt,
+  tree_derived_subject,
+  capture_legacy_baseline,
+  LegacyBaselineCaptured,
+  LegacyBaselineHeadMismatch,
+  LegacyBaselineWorktreeMismatch,
+  LegacyBaselineSubjectMismatch,
+  LegacyBaselineObservationIncomplete,
+  LegacyBaselineExecutionRefused,
+  subject_field_label,
+  RepairCensusPhase,
+  RepairObservationEnvelopeAbsent,
+  legacy_baseline_capture_capability,
+  CaptureBlocked,
+  CaptureAvailable
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type LbcTestOutcome
+  = LbcObserved
+  | LbcUnobserved
+
+// THE FIXTURE CANNOT NAME A COMMIT WITHOUT GOING THROUGH THE VALIDATING CONSTRUCTOR, which is the
+// regrounding working rather than a nuisance: there is no cast from text to GitObjectId, so an
+// arm below cannot smuggle in a malformed base to see what happens. The transport and the git id
+// both refuse, so every arm carries a fixture-refused branch -- collapsing those into a capture
+// verdict would let a fixture that never reached the capture read like one that reached it.
+type LbcOutcome
+  = LbcComputed { verdict: String }
+  | LbcFixtureRefused
+
+fn lbc_span() -> SourceSpan {
+  SourceSpan { file: "legacy-baseline-capture-fixture.dag", start: 1, end: 2 }
+}
+
+fn lbc_path(id: Int) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath { ancestors: [OccurrenceId { value: 900 }], terminal: OccurrenceId { value: id } }
+}
+
+fn lbc_oid(hex: String) -> GitObjectId? {
+  git_sha1_object_id(hex: hex)
+}
+
+fn lbc_commit_a() -> String { "1007efb256a20749f77c3b1295eed144fddeb9fd" }
+fn lbc_commit_b() -> String { "531308acfd891b399709711a8c03955aa7bbafca" }
+fn lbc_tree_a() -> String { "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+fn lbc_tree_b() -> String { "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+
+fn lbc_subject(source_set: String, artifact: String) -> LegacyBindingObservationSubject {
+  LegacyBindingObservationSubject {
+    semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
+    source_set_digest: structural_content_hash(digest: source_set),
+    compiler_artifact_digest: structural_content_hash(digest: artifact),
+    resolver_identity: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name"),
+    resolver_policy: ImportScopedPolicy,
+    occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
+    declaration_index_digest: structural_content_hash(digest: "5555555555555555")
+  }
+}
+
+fn lbc_observation(subject: LegacyBindingObservationSubject, ids: List<Int>) -> LegacyBindingObservation<LbcTestOutcome> {
+  LegacyBindingObservation {
+    subject: subject,
+    rows: ids |> map(id => LegacyBindingObservationRow {
+      occurrence: OccurrenceId { value: id },
+      outcome: LbcObserved
+    })
+  }
+}
+
+fn lbc_transport_of(expected: List<Int>) -> OccurrenceTransportValidation {
+  occurrence_transport_validate(transport: OccurrenceTransport {
+    index: OccurrenceIndex { entries: concat(
+      [OccurrenceIndexEntry {
+        projection: OccurrenceProjection {
+          occurrence: OccurrenceId { value: 900 },
+          authored_name: "root",
+          diagnostic_span: lbc_span()
+        },
+        containment: OccurrenceContainmentPath { ancestors: [], terminal: OccurrenceId { value: 900 } }
+      }],
+      expected |> map(id => OccurrenceIndexEntry {
+        projection: OccurrenceProjection {
+          occurrence: OccurrenceId { value: id },
+          authored_name: "r",
+          diagnostic_span: lbc_span()
+        },
+        containment: lbc_path(id: id)
+      })
+    ) },
+    declarations: [DeclarationOccurrence {
+      occurrence: OccurrenceId { value: 900 },
+      containment: OccurrenceContainmentPath { ancestors: [], terminal: OccurrenceId { value: 900 } },
+      category: LexicalValueOccurrence,
+      diagnostic_span: lbc_span()
+    }],
+    references: expected |> map(id => ReferenceOccurrence {
+      occurrence: OccurrenceId { value: id },
+      containment: lbc_path(id: id),
+      category: LexicalValueOccurrence,
+      diagnostic_span: lbc_span()
+    })
+  })
+}
+
+// Every arm renders its verdict as a label so one helper drives all of them and each test names the
+// single arm it expects. The labels are distinct per arm, so a wrong arm cannot read as the right one.
+fn lbc_run(
+  requested: String,
+  observed_head: String,
+  commit_tree: String,
+  observed_tree: String,
+  subject_tree: String,
+  expected_source_set: String,
+  observed_source_set: String,
+  expected_artifact: String,
+  observed_artifact: String,
+  rows: List<Int>,
+  expected_refs: List<Int>
+) -> LbcOutcome {
+  match lbc_oid(hex: requested) {
+    Absent => LbcFixtureRefused
+    Present { value: rq } => match lbc_oid(hex: observed_head) {
+      Absent => LbcFixtureRefused
+      Present { value: oh } => match lbc_oid(hex: commit_tree) {
+        Absent => LbcFixtureRefused
+        Present { value: ct } => match lbc_oid(hex: observed_tree) {
+          Absent => LbcFixtureRefused
+          Present { value: ot } => match lbc_oid(hex: subject_tree) {
+            Absent => LbcFixtureRefused
+            Present { value: st } => match lbc_transport_of(expected: expected_refs) {
+              OccurrenceTransportRefused { refusal: _ } => LbcFixtureRefused
+              OccurrenceTransportValidated { transport: t } => LbcComputed {
+                verdict: match capture_legacy_baseline(
+                  materialization: materialization_receipt(
+                    requested: rq,
+                    observed_head: oh,
+                    observed_tree: ot,
+                    commit_tree: ct
+                  ),
+                  tree_subject: tree_derived_subject(
+                    tree: st,
+                    subject: lbc_subject(source_set: expected_source_set, artifact: expected_artifact)
+                  ),
+                  observation: lbc_observation(
+                    subject: lbc_subject(source_set: observed_source_set, artifact: observed_artifact),
+                    ids: rows
+                  ),
+                  transport: t
+                ) {
+                  LegacyBaselineCaptured { capture: _ } => "captured"
+                  LegacyBaselineHeadMismatch { requested: _, materialized: _ } => "head-mismatch"
+                  LegacyBaselineWorktreeMismatch { commit_tree: _, observed_tree: _ } => "worktree-mismatch"
+                  LegacyBaselineSubjectMismatch { field: f } => concat("subject-mismatch:", subject_field_label(f: f) as String)
+                  LegacyBaselineObservationIncomplete { completeness: _ } => "observation-incomplete"
+                  LegacyBaselineExecutionRefused { phase: _, cause: _ } => "execution-refused"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// requested B, materialized B+1 -> HeadMismatch, and it refuses BEFORE anything else is compared:
+// the worktree and the subject are BOTH also wrong in this fixture, so a capture that checked them
+// out of order would report one of those instead.
+test fn a_materialized_head_that_is_not_the_requested_commit_refuses_first() -> Bool {
+  match lbc_run(
+    requested: lbc_commit_a(), observed_head: lbc_commit_b(),
+    commit_tree: lbc_tree_a(), observed_tree: lbc_tree_b(),
+    subject_tree: lbc_tree_b(),
+    expected_source_set: "2222222222222222", observed_source_set: "7777777777777777",
+    expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
+    rows: [10], expected_refs: [10]
+  ) {
+    LbcFixtureRefused => false
+    LbcComputed { verdict: v } => v == "head-mismatch"
+  }
+}
+
+// requested B, HEAD still B, DIRTY WORKTREE -> WorktreeMismatch. The subject also disagrees here, so
+// this arm additionally proves the worktree check precedes the subject comparison.
+test fn a_dirty_worktree_refuses_before_the_subject_is_compared() -> Bool {
+  match lbc_run(
+    requested: lbc_commit_a(), observed_head: lbc_commit_a(),
+    commit_tree: lbc_tree_a(), observed_tree: lbc_tree_b(),
+    subject_tree: lbc_tree_b(),
+    expected_source_set: "2222222222222222", observed_source_set: "7777777777777777",
+    expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
+    rows: [10], expected_refs: [10]
+  ) {
+    LbcFixtureRefused => false
+    LbcComputed { verdict: v } => v == "worktree-mismatch"
+  }
+}
+
+// a complete observation from ANOTHER source-set digest is never Captured.
+test fn an_observation_of_a_different_source_set_refuses_as_subject_mismatch() -> Bool {
+  match lbc_run(
+    requested: lbc_commit_a(), observed_head: lbc_commit_a(),
+    commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
+    subject_tree: lbc_tree_a(),
+    expected_source_set: "2222222222222222", observed_source_set: "7777777777777777",
+    expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
+    rows: [10], expected_refs: [10]
+  ) {
+    LbcFixtureRefused => false
+    LbcComputed { verdict: v } => v == "subject-mismatch:source_set_digest"
+  }
+}
+
+// The instrument that ran is a DIFFERENT field from the tree that was materialized, and a
+// disagreement there is still a subject mismatch rather than a worktree one.
+test fn an_observation_from_a_different_compiler_artifact_refuses_as_subject_mismatch() -> Bool {
+  match lbc_run(
+    requested: lbc_commit_a(), observed_head: lbc_commit_a(),
+    commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
+    subject_tree: lbc_tree_a(),
+    expected_source_set: "2222222222222222", observed_source_set: "2222222222222222",
+    expected_artifact: "3333333333333333", observed_artifact: "8888888888888888",
+    rows: [10], expected_refs: [10]
+  ) {
+    LbcFixtureRefused => false
+    LbcComputed { verdict: v } => v == "subject-mismatch:compiler_artifact_digest"
+  }
+}
+
+// a missing expected outcome -> ObservationIncomplete, and it is reached only once head, worktree and
+// subject all agree, so this arm is also the evidence that the earlier gates passed rather than were
+// skipped.
+test fn an_observation_missing_an_expected_occurrence_refuses_as_incomplete() -> Bool {
+  match lbc_run(
+    requested: lbc_commit_a(), observed_head: lbc_commit_a(),
+    commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
+    subject_tree: lbc_tree_a(),
+    expected_source_set: "2222222222222222", observed_source_set: "2222222222222222",
+    expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
+    rows: [10], expected_refs: [10, 11]
+  ) {
+    LbcFixtureRefused => false
+    LbcComputed { verdict: v } => v == "observation-incomplete"
+  }
+}
+
+// EVERY GATE PASSING STILL DOES NOT PRODUCE A BASELINE, and that is the declared hole rather than a
+// defect: the repair observation has no admission envelope, so the accepted arm is unreachable. An
+// empty captured baseline here would be the fabricated output the whole shape exists to refuse.
+test fn a_fully_agreeing_capture_still_refuses_because_the_repair_envelope_is_absent() -> Bool {
+  match lbc_run(
+    requested: lbc_commit_a(), observed_head: lbc_commit_a(),
+    commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
+    subject_tree: lbc_tree_a(),
+    expected_source_set: "2222222222222222", observed_source_set: "2222222222222222",
+    expected_artifact: "3333333333333333", observed_artifact: "3333333333333333",
+    rows: [10, 11], expected_refs: [10, 11]
+  ) {
+    LbcFixtureRefused => false
+    LbcComputed { verdict: v } => v == "execution-refused"
+  }
+}
+
+// The capability a consumer reads agrees with what the operation actually does. Two readings of one
+// fact that could drift apart, so they are joined here rather than each asserted alone.
+test fn the_reported_capability_is_blocked_at_the_repair_census() -> Bool {
+  match legacy_baseline_capture_capability() {
+    CaptureAvailable => false
+    CaptureBlocked { phase: _, cause: _ } => true
+  }
+}
+
+// An uppercase spelling of a real commit is refused by the git authority itself, so no capture can
+// be attempted with one. This arm is evidence the regrounding removed the local wall rather than
+// hiding it: the refusal happens in the constructor, before this module is reached.
+test fn an_uppercase_commit_spelling_has_no_git_object_id_at_all() -> Bool {
+  match lbc_oid(hex: "1007EFB256A20749F77C3B1295EED144FDDEB9FD") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
