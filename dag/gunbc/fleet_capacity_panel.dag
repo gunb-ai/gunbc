@@ -42,12 +42,18 @@ data fleet_capacity_panel_declared_note: String = "Widths are committed allocati
 // answer is DIMMs, where cores bind it is a different machine entirely, and a reader given only a
 // fleet total assumes one story across four hosts.
 //
-// THIS IS ABOUT TO MATTER MUCH MORE THAN IT DOES TODAY. Measured now, memory binds everywhere and
-// the rows agree, so the column looks redundant. Once the CPU axis lands (gunbc#8976) srv1/srv3/
-// srv4 become core-bound at 21 while srv2 stays memory-bound at 5 -- its 64 GiB DIMM install
-// failed training and was reverted, so it holds 8x16 GiB where the others hold 8x64 -- and the
-// single total becomes two unrelated stories. The column is authored before that lands rather than
-// after someone reads the total wrong.
+// THAT HAS NOW HAPPENED TWICE, AND THE SECOND TIME CHANGED WHAT THE COLUMN HAS TO SAY. The CPU
+// axis (gunbc#8976) made srv1/srv3/srv4 core-bound at 21 while srv2 sat apart at 5 -- its 64 GiB
+// DIMM install failed training and was reverted, so it holds 8x16 GiB where the others hold 8x64.
+// This note then said srv2 was MEMORY-BOUND at that 5, which was false: the number came from
+// subtracting a session reservation that is UNESTABLISHED on srv2, so no memory axis ever measured
+// it. With that axis honestly unmeasured, NO axis sits at srv2's committed width and its 5 is a
+// HELD allocation (runner_slot_allocation host_held_runner_width).
+//
+// So the column now carries three provenances, not two, and the third is the one an operator most
+// needs: a core bound is relieved by a different machine, a memory bound by DIMMs, and a held width
+// by neither -- only by re-grounding the denominator. A panel that rendered the hold as a binding
+// would send someone shopping for hardware that fixes nothing.
 data fleet_capacity_panel_binding_axis_note: String = "Each host row names its binding axis. A committed width is a minimum over axes and the surviving number cannot say which one bound it; the remedies differ per axis and per host."
 
 // THE DIVISOR IS DERIVED, NOT SPELLED. 1073741824 was a correct number and a second
