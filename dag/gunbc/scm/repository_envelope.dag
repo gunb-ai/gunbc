@@ -393,6 +393,40 @@ fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit) -> JsonValue {
 // way would fuse the ordinary first commit with a dangling parent. That is the structural-root
 // argument from gunbc.scm.ancestry carried onto the wire, where it would otherwise be quietly lost --
 // a coproduct arm is worth nothing if the serialization collapses it back to a nothing-value.
+// THE POSITIONAL SPELLING OWES TWO WALLS AND THIS CODEC DISCHARGES ONE OF THEM. Reported by review
+// 56461, and the citation is this repository's own: gunbc.scm.ancestry, on RepositoryCommitRef,
+// states that a positional spelling owes an APPEND-ONLY wall (records only ever appended -- this is
+// what buys stability) and an ORDER-PRESERVING wall (the codec round-trips `commits` in exactly its
+// authored order). It also states the consequence of naming them: if either is hard to make
+// structural, that is the argument for the reference carrying something INTRINSIC instead.
+//
+// ORDER-PRESERVING IS DISCHARGED HERE and is guarded by execution -- the decode-order pair and
+// scm_env_the_root_signature_distinguishes_order fail if the list is rebuilt in any other order.
+//
+// APPEND-ONLY IS NOT DISCHARGED AND IS NOT CLAIMED TO BE. `RepositoryEnvelope.commits` is an
+// unrestricted List, so an insertion, deletion or reorder retargets every still-valid parent
+// reference at once, and neither the membership check nor the cycle check can see it: every
+// reference still resolves, to the wrong row. That is the well-formed-confident-wrong answer the
+// ancestry type was recut to remove, which is exactly why the model named the wall rather than
+// assuming it.
+//
+// WHAT MAKES IT NOT YET HARMFUL IS ALSO WHAT MAKES IT URGENT, and stating only the first half would
+// be the reachability-read-as-occupancy error. NO COMMIT-AUTHORING VERB EXISTS -- gunbc.scm.ancestry
+// says so in its own header, and a corpus search finds none -- so no operation can mutate the list
+// and the state is reachable only by hand-authoring an envelope. The commit producer is the NEXT
+// work. The wall is therefore an ORDERING OBLIGATION, not a backlog item: it must exist before the
+// first producer, because the producer is the thing that makes the state reachable.
+//
+// TRIGGER: the reference-vocabulary keying cut, the same one the cycle-validation cost names -- an
+// intrinsic commit identity dissolves this wall by removing positions altogether, which is the
+// escape the model's own annotation points at. If that cut lands first the wall is never needed; if
+// the producer would land first the wall is required ahead of it.
+//
+// THIS PR BINDS ANCESTRY TO THE WIRE ANYWAY, and the reason is the window rather than convenience:
+// nothing has ever written a repository document, so the format is not frozen and binding now costs
+// no migration. Deferring the binding until the wall exists would not make the wall arrive sooner --
+// it would only move the format change to the far side of the event that freezes it.
+//
 // THE ENCODER NO LONGER SEARCHES FOR THE PARENT, and that deletion is the whole repair.
 //
 // It previously took the parent's ObjectId and walked the commit list for a row carrying that root,
