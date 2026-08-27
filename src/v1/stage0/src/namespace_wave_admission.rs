@@ -294,6 +294,19 @@ pub fn admission_subject_matches(pattern: &AdmissionSubject, subject: &DeltaSubj
     }
 }
 
+pub fn admission_subject_render(subject: &AdmissionSubject) -> String {
+    match subject {
+        AdmissionSubject::Membership { module, target } => {
+            format!("membership {module} -> {target}")
+        }
+        AdmissionSubject::Binding {
+            module,
+            in_declaration,
+            spelling,
+        } => format!("binding {module}::{in_declaration} `{spelling}`"),
+    }
+}
+
 /// An operator-authored admission for one exact subject under one exact disposition.
 ///
 /// THE GRAIN IS EXACT ON PURPOSE, AND THE COARSE FORM IS NOT BUILT HERE. The first semantic
@@ -314,6 +327,13 @@ pub struct TransitionAdmission {
     pub disposition: NamespaceDeltaDisposition,
 }
 
+/// CONST-NESS IS SAFETY, NOT STORAGE STYLE. A const roster cannot be computed from observed
+/// deltas, a file, environment state, or any other runtime input: its permission set is exactly
+/// what an author wrote and a reviewer read. `AdmissionSubject` therefore carries `&'static str`
+/// patterns distinct from runtime-owned `DeltaSubject` observations. The prior `String` subject
+/// admitted only the all-empty shape in a const; it refused loudly as stale, but no const row
+/// could name a real module.
+///
 /// Exact admissions for #9400's owner-qualified call-target cut. Each row was measured by the
 /// required floor against the merge base after the namespace wall landed; no disposition-wide
 /// predicate is admitted. A row that no longer matches is itself a finding
@@ -1230,7 +1250,7 @@ pub fn adjudicate(
                 "{} ({} {}) matches no delta in this run",
                 a.label,
                 disposition_label(a.disposition),
-                delta_subject_render(&a.subject)
+                admission_subject_render(&a.subject)
             )
         })
         .collect();
