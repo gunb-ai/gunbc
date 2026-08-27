@@ -558,3 +558,93 @@ fn a_rename_contributes_its_source_to_the_base_side_and_its_destination_to_the_h
         "scope is applied per side: a non-`.dag` path enters neither"
     );
 }
+
+// ── THE FIELD-LABEL PAIR: what a name OCCURRENCE has to be before it can carry a verdict ──
+//
+// The reference channel this wall reads once collected EVERY authored name in a module's tree.
+// A record literal's field label has an authored name, so `Row { widget: "x" }` contributed a
+// reference to `widget` — and the supplier set a reference is asked for is a function of the
+// CORPUS, so deleting an unrelated declaration of that spelling moved it to empty and the wall
+// refused a correct cut. The specimen was gunbc#9106: twelve labels, twelve fabricated
+// `NewUnresolvedness` rows. The two arms below are one mutation apart — the SAME deletion of
+// the SAME spelling, reached once from a field label and once from a real reference — because
+// collecting less is how a wall becomes a decoration, and only the pair can tell the repair
+// from that.
+
+const HOME_ROW: &str =
+    "module probe.home\n\ntype Row { widget: String }\n\ndata other: String = \"o\"\n";
+
+#[test]
+fn deleting_a_declaration_a_record_field_label_merely_spells_carries_no_delta() {
+    let base = "module probe.consumer\n\nimport probe.home { Row }\n\ndata widget: String = \"w\"\n\ndata sample: Row = Row { widget: \"x\" }\n";
+    let head = "module probe.consumer\n\nimport probe.home { Row }\n\ndata sample: Row = Row { widget: \"x\" }\n";
+    let report = compare(
+        "field_label",
+        &[("home.dag", HOME_ROW), ("consumer.dag", base)],
+        &[("home.dag", HOME_ROW), ("consumer.dag", head)],
+    );
+    // THE PLANT REACHED THE WALL: the record literal survives both sides and the comparison is
+    // non-empty, so the emptiness below is agreement rather than an index that saw nothing.
+    assert!(
+        report.population.binding_rows_compared > 0,
+        "no binding row was compared, so the absence below is ignorance rather than agreement"
+    );
+    assert!(
+        dispositions_for(&report, "widget").is_empty(),
+        "`widget` here is a FIELD LABEL of `Row`, not a reference to the deleted `data widget`. \
+         It never bound to that declaration and needs no supplier, so a delta about it is true \
+         of the declaration and false of the site it names. got: {:?}",
+        report
+            .deltas
+            .iter()
+            .map(|d| (disposition_label(d.disposition), d.detail.clone()))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn deleting_a_declaration_a_body_still_references_is_still_unresolvedness() {
+    // ONE MUTATION FROM THE ARM ABOVE: the same deletion of the same spelling, reached from a
+    // real reference instead of a label. If this arm ever goes quiet the repair above has
+    // stopped the wall seeing genuine unresolvedness, which is worse than the defect it fixed.
+    let base = "module probe.consumer\n\ndata widget: String = \"w\"\n\nfn use_it() -> String { widget }\n";
+    let head = "module probe.consumer\n\nfn use_it() -> String { widget }\n";
+    let report = compare(
+        "real_reference",
+        &[("consumer.dag", base)],
+        &[("consumer.dag", head)],
+    );
+    assert_eq!(
+        dispositions_for(&report, "widget"),
+        vec![NamespaceDeltaDisposition::NewUnresolvedness],
+        "a body that names `widget` REFERENCES it; deleting its only declaration leaves the \
+         reference denoting nothing and the wall must say so. got: {:?}",
+        report.deltas
+    );
+}
+
+#[test]
+fn deleting_a_declaration_a_qualified_spelling_reaches_is_still_unresolvedness() {
+    // THE PROJECTION HALF OF THE REPAIR, controlled. A field projection's MEMBER name stopped
+    // being collected as a bare reference — but a module-qualified spelling is authored as the
+    // same field-access shape, and its whole dotted spelling is still recorded, so this arm is
+    // the one that fails if the repair took the spelling instead of the member.
+    let home_head = "module probe.home\n\ndata other: String = \"o\"\n";
+    let report = compare(
+        "qualified_reference",
+        &[
+            ("home.dag", HOME),
+            ("consumer.dag", CONSUMER_QUALIFIES_HOME),
+        ],
+        &[
+            ("home.dag", home_head),
+            ("consumer.dag", CONSUMER_QUALIFIES_HOME),
+        ],
+    );
+    assert_eq!(
+        dispositions_for(&report, "widget"),
+        vec![NamespaceDeltaDisposition::NewUnresolvedness],
+        "`probe.home.widget` reaches a declaration that no longer exists. got: {:?}",
+        report.deltas
+    );
+}

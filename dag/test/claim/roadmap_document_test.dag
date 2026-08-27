@@ -137,7 +137,7 @@ test fn witness_exact_bytes() -> Bool {
   emit_roadmap(merged: [5491]) == expected_roadmap()
 }
 
-test fn witness_drift_receipt() -> Bool {
+test fn witness_roadmap_document_drift_receipt() -> Bool {
   emit_roadmap(merged: [5491]) == expected_roadmap()
     && !(emit_roadmap(merged: []) == expected_roadmap())
 }
