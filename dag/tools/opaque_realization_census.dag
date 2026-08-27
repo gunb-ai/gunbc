@@ -741,13 +741,13 @@ fn census_entry_emission(entry: String) -> OpaqueRealizationCensus {
 fn disposition_row(d: UseSiteDisposition) -> String {
   match d {
     OpaqueNameEmitted { consumer_file: cf, declaring_file: df, name: n } =>
-      concat("name-emitted\t", concat(cf, concat("\t", concat(df, concat("\t", concat(n, "\t"))))))
+      join(["name-emitted", cf, df, n, ""], "\t")
     RealizationExpandedColliding { consumer_file: cf, declaring_file: df, name: n, spelling: s, collides_with: cw } =>
-      concat("expanded-colliding\t", concat(cf, concat("\t", concat(df, concat("\t", concat(n, concat("\t", concat(s, concat("\tcollides-with=", cw)))))))))
+      join(["expanded-colliding", cf, df, n, s, concat("collides-with=", cw)], "\t")
     RealizationExpandedNonColliding { consumer_file: cf, declaring_file: df, name: n, spelling: s } =>
-      concat("expanded-non-colliding\t", concat(cf, concat("\t", concat(df, concat("\t", concat(n, concat("\t", s)))))))
+      join(["expanded-non-colliding", cf, df, n, s], "\t")
     ImportPresentNoUseSite { consumer_file: cf, declaring_file: df, name: n, spelling: s } =>
-      concat("no-use-site\t", concat(cf, concat("\t", concat(df, concat("\t", concat(n, concat("\t", s)))))))
+      join(["no-use-site", cf, df, n, s], "\t")
   }
 }
 
@@ -796,28 +796,36 @@ fn standing_text(s: DeclarationBodyStanding) -> String {
 }
 
 fn opaque_subject_row_text(r: OpaqueSubjectRow) -> String {
-  concat(r.declaring_file, concat("\t", concat(r.name, concat("\t", concat(r.source_module, concat("\t", standing_text(s: r.standing)))))))
+  join([r.declaring_file, r.name, r.source_module, standing_text(s: r.standing)], "\t")
 }
 
 fn census_report_text(c: OpaqueRealizationCensus) -> String {
   match c {
     CensusUnestablished { entry: e, stage: st, cause: cause } =>
-      concat(
-        "opaque-realization-census UNESTABLISHED\nentry\t", concat(e,
-        concat("\nstage\t", concat(census_stage_text(stage: st),
-        concat("\ncause\t", concat(cause, "\n"))))))
+      join([
+        "opaque-realization-census UNESTABLISHED",
+        concat("entry\t", e),
+        concat("stage\t", census_stage_text(stage: st)),
+        concat("cause\t", cause),
+        ""
+      ], "\n")
     CensusTaken { entry: e, emitted_file_count: n, dispositions: ds, opaque_subjects: subs } =>
-      concat(
-        "opaque-realization-census TAKEN\nentry\t", concat(e,
-        concat("\nemitted_files\t", concat(to_string(value: n),
-        concat("\nexpanded_colliding\t", concat(to_string(value: filter(ds, d => disposition_is_colliding(d: d)) |> count),
-        concat("\nexpanded_non_colliding\t", concat(to_string(value: filter(ds, d => disposition_is_non_colliding(d: d)) |> count),
-        concat("\nname_emitted\t", concat(to_string(value: filter(ds, d => disposition_is_name_emitted(d: d)) |> count),
-        concat("\nimport_no_use_site\t", concat(to_string(value: filter(ds, d => disposition_is_no_use_site(d: d)) |> count),
-        concat("\n\n# disposition\tconsumer\tdeclaring\tname\trealization\n",
-        concat(join(map(ds, d => disposition_row(d: d)), "\n"),
-        concat("\n\n# declaring\tname\tsource_module\tdeclaration_standing\n",
-        concat(join(map(subs, r => opaque_subject_row_text(r: r)), "\n"), "\n")))))))))))))))))
+      join([
+        "opaque-realization-census TAKEN",
+        concat("entry\t", e),
+        concat("emitted_files\t", to_string(value: n)),
+        concat("expanded_colliding\t", to_string(value: filter(ds, d => disposition_is_colliding(d: d)) |> count)),
+        concat("expanded_non_colliding\t", to_string(value: filter(ds, d => disposition_is_non_colliding(d: d)) |> count)),
+        concat("name_emitted\t", to_string(value: filter(ds, d => disposition_is_name_emitted(d: d)) |> count)),
+        concat("import_no_use_site\t", to_string(value: filter(ds, d => disposition_is_no_use_site(d: d)) |> count)),
+        "",
+        "# disposition\tconsumer\tdeclaring\tname\trealization",
+        join(map(ds, d => disposition_row(d: d)), "\n"),
+        "",
+        "# declaring\tname\tsource_module\tdeclaration_standing",
+        join(map(subs, r => opaque_subject_row_text(r: r)), "\n"),
+        ""
+      ], "\n")
   }
 }
 
