@@ -1,0 +1,76 @@
+module test.claim.alias_rhs_scalar_leaf_realization_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Permanent regression control for the class "an alias right-hand side renders a kernel scalar
+// by its AUTHORED dag spelling", whose observable form is an emitted crate referencing a type it
+// never defines.
+//
+// WHAT THE DEFECT WAS. render_rust_alias_rhs_type (v1.compiler.emit_rust) has two nominal arms.
+// The APPLIED arm (children > 0) consults rust_scalar_checkpoint_reference_base first, so a
+// leaf carrying a checkpoint row realizes as its Rust spelling. The LEAF arm (children == 0)
+// consulted only rust_seed_host_numeric_alias, which answers exclusively for a decl_file inside
+// numeric_realization_declaring_modules (dag/std/nat.dag, dag/std/integer.dag, <kernel:), and
+// otherwise fell through to the authored name verbatim. A reference to a where-refinement alias
+// -- `type Char = Int where unicode_scalar` in dag/std/types.dag -- arrives at that arm as its
+// PEELED base whose declaration identity is types.dag, not integer.dag, so the numeric roster
+// refuses and the literal `Int` was emitted. `Int` is a kernel scalar with no emitted
+// declaration anywhere in the crate, so the artifact referenced a type it does not define.
+//
+// MEASURED SPECIMEN (the reason this witness exists): the 01_tokenize closure emitted
+// `pub type String = Rc<Vec<Int>>;` into v2_std_text.rs, from v2/std/text.dag's
+// `type String = FreeMonoid<Char>`.
+//
+// WHAT THE REPAIR IS. The leaf arm now consults the SAME identity-keyed authority the applied
+// arm already consults -- rust_scalar_checkpoint_reference_base, which is gated by
+// structural_declaration_modules_for -- rather than gaining a second mechanism beside it.
+// A name whose declaration is structural (v2's String/Bool/Hash) still refuses the table and
+// renders structurally, exactly as before.
+//
+// THE POSITIVE CONTROL IS LOAD-BEARING. `FreeMonoid<Int>` was ALREADY correct before the repair
+// (the reference's decl_file is the integer authority, so the numeric roster answered), so a
+// single-arm fixture asserting only that i64 appears could not tell this defect apart from the
+// emitter never realizing scalars at all. The two arms differ in the aliasing of the element
+// only: Int directly, versus Char which is a where-refinement over Int.
+
+fn w_direct_scalar_element_realizes_natively() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aliasleaf.direct\n\nimport std.algebra { FreeMonoid }\nimport std.types { Int }\n\ntype Direct = FreeMonoid<Int>\n",
+    "src/aliasleaf_direct.rs",
+    ["Rc<Vec<i64>>"],
+    []
+  )
+}
+
+fn w_refinement_alias_element_realizes_natively() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aliasleaf.refined\n\nimport std.algebra { FreeMonoid }\nimport std.types { Char }\n\ntype Refined = FreeMonoid<Char>\n",
+    "src/aliasleaf_refined.rs",
+    ["Rc<Vec<i64>>"],
+    ["Vec<Int>"]
+  )
+}
+
+fn w_refinement_alias_whole_rhs_realizes_natively() -> Bool {
+  compile_dag_rust_emit_check(
+    "module aliasleaf.whole\n\nimport std.types { Char }\n\ntype Whole = Char\n",
+    "src/aliasleaf_whole.rs",
+    ["pub type Whole = i64;"],
+    ["= Int;"]
+  )
+}
+
+test fn direct_scalar_element_realizes_natively() -> Bool {
+  w_direct_scalar_element_realizes_natively()
+}
+
+test fn refinement_alias_element_realizes_natively() -> Bool {
+  w_refinement_alias_element_realizes_natively()
+}
+
+test fn refinement_alias_whole_rhs_realizes_natively() -> Bool {
+  w_refinement_alias_whole_rhs_realizes_natively()
+}

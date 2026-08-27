@@ -30,21 +30,49 @@ fn node_occurrence_id_to_shared(
   }
 }
 
+// THE FACADE CANNOT REPRESENT A PROJECTOR-CREATED OCCURRENCE, AND IT SAYS SO RATHER THAN GUESSING.
+//
+// std.occurrence_identity.NodeOccurrenceIdentity carries a third arm -- an occurrence a projector
+// created, naming the scoped reference it was created for. This coproduct has two arms and is
+// declared TEMPORARY COMPATIBILITY above, so the correct answer to "widen it" is no: growing a
+// surface whose whole purpose is to disappear buys nothing and delays the disappearance. What the
+// conversion owes instead is honesty about its own boundary, which is why it now returns a
+// narrowing rather than a NodeOccurrenceId.
+//
+// Collapsing the projected arm into SyntheticOccurrence would have been the available alternative
+// and it is the one this shape exists to refuse: it discards the cause at exactly the seam that was
+// built to preserve it, and it discards it silently, since every caller keeps compiling. The
+// refusal carries the payload it could not represent so that a caller reaching this arm can route
+// the value through the shared carrier instead of re-deriving what was lost.
+type NodeOccurrenceFacadeNarrowing
+  = FacadeRepresentable { occurrence: NodeOccurrenceId }
+  | FacadeCannotRepresentProjected {
+      id: std.occurrence_identity.OccurrenceId,
+      caused_by: std.occurrence_identity.ScopedOccurrenceRef,
+    }
+
 fn node_occurrence_id_from_shared(
   occurrence: std.occurrence_identity.NodeOccurrenceIdentity
-) -> NodeOccurrenceId {
+) -> NodeOccurrenceFacadeNarrowing {
   match occurrence {
     std.occurrence_identity.OccurrenceSynthetic =>
-      SyntheticOccurrence
+      FacadeRepresentable { occurrence: SyntheticOccurrence }
     std.occurrence_identity.OccurrenceMinted { id: id } =>
-      MintedOccurrence { id: id }
+      FacadeRepresentable { occurrence: MintedOccurrence { id: id } }
+    std.occurrence_identity.OccurrenceProjected { id: id, caused_by: caused_by } =>
+      FacadeCannotRepresentProjected { id: id, caused_by: caused_by }
   }
 }
 
+// THIS BUILDS THE FACADE ARM DIRECTLY RATHER THAN ROUTING THROUGH THE NARROWING, and the reason is
+// that the narrowing has an arm this function cannot answer. It previously went out to the shared
+// mint and back; that route now returns a coproduct, and the only ways to consume it here are to
+// fabricate a value for an arm that cannot occur or to change this function's return type for a
+// case its own argument makes unreachable. Both are worse than constructing the v2 arm that
+// corresponds to the shared mint, whose agreement with it is what the round-trip witnesses in
+// dag/test/claim/occurrence_identity_witness_test.dag execute.
 fn node_occurrence_minted(id: std.occurrence_identity.OccurrenceId) -> NodeOccurrenceId {
-  node_occurrence_id_from_shared(
-    occurrence: std.occurrence_identity.node_occurrence_identity_minted(id: id)
-  )
+  MintedOccurrence { id: id }
 }
 
 type Connective

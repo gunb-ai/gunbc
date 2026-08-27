@@ -37,15 +37,26 @@ import gunbc.host_effect {
   ReplaceRunnerIncarnation,
   ObserveRunnerLocalState,
   ObserveGitHubRunnerRegistration,
-  NodeControlPlane, HostOs, BmcController,
+  ProbeToolchainHomeInterference,
+  NodeControlPlane, HostOs, BmcController, RunnerLocalHost,
   Drive, OneShot, ConvergeLoop,
   HostEffectIntent, HostEffectEvidence, ShellEffectApplied, ConvergePlanApplied,
+  ToolchainHomeInterferenceDiscriminated,
   HostEffectTransport, LocalShell, SshShell, FleetSsh,
   EmitArtifactThenThinRun, BootstrapFragment,
   host_effect_drive, host_effect_identity_evidence, host_effect_read_evidence,
 }
 import extdeps.dns.domain_name { DnsLabel }
 import std.effects { IdempotencyEvidence }
+import v2.extdeps.toolchain_interference {
+  toolchain_interference_probe_on_host,
+  ToolchainInterferenceDiscriminated,
+  ToolchainInterferenceProbeRefused,
+  ToolchainPrivateHomeBindingMissing,
+  ToolchainSharedArmDidNotObserveInterference,
+  ToolchainPrivateHomeIsolationBreached,
+  ToolchainInterferenceFixtureFailed,
+}
 import std.realization_reconcile {
   Reconciliation, Converged, NotConverged,
   ReadObserved, Grounds, DoesNotGround,
@@ -415,6 +426,7 @@ type ResolvedHostEffectCell =
       slot: RunnerSlotIdentity,
       organization: NonEmptyStr,
     }
+  | ToolchainHomeInterferenceProbeOnHost
   | IncompatibleCell { reason: String }
 
 fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverge) -> String {
@@ -429,6 +441,11 @@ fn converge_plan_identity_mismatch_reason(node: ComputeHost, policy: HostConverg
 
 fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> ResolvedHostEffectCell {
   match target {
+    RunnerLocalHost =>
+      match effect {
+        ProbeToolchainHomeInterference {} => ToolchainHomeInterferenceProbeOnHost
+        _ => IncompatibleCell { reason: "host_effect: RunnerLocalHost admits only ProbeToolchainHomeInterference; fleet-addressed effects require HostOs or BmcController." }
+      }
     HostOs { node: n } =>
       match effect {
         OsInstallActuatorToolchainEnsure {} =>
@@ -457,6 +474,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           LiveDeployEnsureDependencyOnHost { node: n, dep: d }
         LiveDeployDigestReadback { port: p } =>
           LiveDeployDigestReadbackOnHost { node: n, port: p }
+        ProbeToolchainHomeInterference {} =>
+          IncompatibleCell { reason: "host_effect: ProbeToolchainHomeInterference is runner-local and cannot name a fleet HostOs; target RunnerLocalHost instead." }
         _ =>
           match effect {
             ShellCommand { script: s } =>
@@ -532,6 +551,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               ObserveRunnerLocalStateOnHost { node: n, slot: s }
             ObserveGitHubRunnerRegistration { slot: s, organization: o } =>
               ObserveGitHubRunnerRegistrationOnHost { node: n, slot: s, organization: o }
+            ProbeToolchainHomeInterference {} =>
+              IncompatibleCell { reason: "host_effect: ProbeToolchainHomeInterference is runner-local and cannot name a fleet HostOs; target RunnerLocalHost instead." }
             DeployAccessPreflight {} =>
               IncompatibleCell {
                 reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot be applied; typed mismatch, DESIGN section 5.",
@@ -621,6 +642,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               IncompatibleCell { reason: "host_effect: ObserveRunnerLocalState is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             ObserveGitHubRunnerRegistration { slot: _, organization: _ } =>
               IncompatibleCell { reason: "host_effect: ObserveGitHubRunnerRegistration is in-band (runner lifecycle on HostOs) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            ProbeToolchainHomeInterference {} =>
+              IncompatibleCell { reason: "host_effect: ProbeToolchainHomeInterference is an in-band concurrent filesystem/tool-execution probe and cannot target BmcController; target HostOs instead." }
             DeployAccessPreflight {} =>
               IncompatibleCell { reason: "host_effect: DeployAccessPreflight is intent-only (authorization gate record) and cannot target BmcController; typed mismatch, DESIGN section 5." }
           }
@@ -1322,6 +1345,7 @@ fn provision_codex_runtime_target_host(effect_intent: HostEffectIntent) -> HostI
   match effect_intent.target {
     HostOs { node: n } => Present { value: n.identity }
     BmcController { node: _ } => none
+    RunnerLocalHost => none
   }
 }
 
@@ -2884,6 +2908,7 @@ fn provision_build_cache_host_arch(effect_intent: HostEffectIntent) -> Architect
         Absent => none
       }
     BmcController { node: _ } => none
+    RunnerLocalHost => none
   }
 }
 
@@ -3543,6 +3568,27 @@ fn realize_hostname_read_on_host(
   }
 }
 
+fn realize_toolchain_home_interference_probe(
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match toolchain_interference_probe_on_host() {
+    ToolchainInterferenceDiscriminated =>
+      Converged { evidence: ToolchainHomeInterferenceDiscriminated, applied: intent }
+    ToolchainInterferenceProbeRefused { cause: c } =>
+      NotConverged {
+        reason: match c {
+          ToolchainPrivateHomeBindingMissing { observed: o, expected: e } =>
+            join(["ToolchainPrivateHomeBindingMissing observed=", o, " expected=", e], "")
+          ToolchainSharedArmDidNotObserveInterference => "ToolchainSharedArmDidNotObserveInterference"
+          ToolchainPrivateHomeIsolationBreached => "ToolchainPrivateHomeIsolationBreached"
+          ToolchainInterferenceFixtureFailed { detail: d } =>
+            concat("ToolchainInterferenceFixtureFailed ", d)
+        },
+        applied: intent,
+      }
+  }
+}
+
 fn realize_codex_supervised_worker_turn_on_host(
   intent: CodexAppServerStdioSessionIntent,
   lease_key: NonEmptyStr,
@@ -3772,6 +3818,25 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       runner_lifecycle_realize_observe_runner_local_state(intent: intent)
     ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } =>
       runner_lifecycle_realize_observe_github_runner_registration(intent: intent)
+    ToolchainHomeInterferenceProbeOnHost =>
+      match transport {
+        LocalShell => realize_toolchain_home_interference_probe(intent: intent)
+        SshShell { ssh_host: _ } =>
+          NotConverged {
+            reason: "host_effect_apply: ProbeToolchainHomeInterference requires LocalShell on RunnerLocalHost; SshShell would record a remote transport while executing the probe locally.",
+            applied: intent,
+          }
+        FleetSsh { target: _, context: _ } =>
+          NotConverged {
+            reason: "host_effect_apply: ProbeToolchainHomeInterference requires LocalShell on RunnerLocalHost; FleetSsh would record a remote transport while executing the probe locally.",
+            applied: intent,
+          }
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+          NotConverged {
+            reason: "host_effect_apply: ProbeToolchainHomeInterference requires LocalShell on RunnerLocalHost; deferred artifact execution cannot observe this job-scoped probe.",
+            applied: intent,
+          }
+      }
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -3811,6 +3876,7 @@ fn deploy_access_shell_apply_success_stdout(
             none
           }
         ConvergePlanApplied { stdout: _, exit_code: _ } => Absent
+        ToolchainHomeInterferenceDiscriminated => Absent
       }
     NotConverged { reason: _, applied: _ } => Absent
   }
@@ -3952,6 +4018,8 @@ fn host_effect_apply_gated(
           runner_lifecycle_realize_observe_runner_local_state(intent: intent)
         ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } =>
           runner_lifecycle_realize_observe_github_runner_registration(intent: intent)
+        ToolchainHomeInterferenceProbeOnHost =>
+          realize_toolchain_home_interference_probe(intent: intent)
         RedfishOnBmc { node: _, action: _ } =>
           NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
         IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
@@ -4021,6 +4089,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             ReplaceRunnerIncarnationOnHost { node: _, from: _, cause: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ObserveRunnerLocalStateOnHost { node: _, slot: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ObserveGitHubRunnerRegistrationOnHost { node: _, slot: _, organization: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            ToolchainHomeInterferenceProbeOnHost => not_converged_directive(drive: host_effect_drive(intent: intent))
             RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }
@@ -4643,6 +4712,11 @@ fn realize_ensure_compile_pool_slice(
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match effect_intent.target {
+    RunnerLocalHost =>
+      NotConverged {
+        reason: "host_effect_apply: EnsureCompilePoolSlice requires a fleet-addressed HostOs target; fail-closed.",
+        applied: effect_intent,
+      }
     BmcController { node: _ } =>
       NotConverged {
         reason: "host_effect_apply: EnsureCompilePoolSlice requires a HostOs target; fail-closed.",

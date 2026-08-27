@@ -2,8 +2,6 @@ module gunbc.cli_services
 
 import std.types { FilePath, String }
 import gunbc.cli_invoke {
-  PlanFunction,
-  claim_executor_run_plan_transport_argv,
   claim_executor_verify_artifacts_transport_argv,
   gunbc_run_transport_argv
 }
@@ -47,41 +45,6 @@ service gunbc.Cli {
 }
 
 service claim_executor.Executor {
-  operation RunPlan {
-    input {
-      workdir: FilePath
-      bin_path: FilePath
-      source_roots: List<String>
-      plan_entry: String
-      plan_function: PlanFunction
-      notice_title: String?
-    }
-    output {
-      success: Bool from "exit_success"
-      exit_code: Int from "exit_code"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell {
-      argv: [
-        "env",
-        "-C",
-        "{workdir}",
-        "{bin_path}",
-        claim_executor_run_plan_transport_argv(
-          source_roots: source_roots,
-          plan_entry: plan_entry,
-          plan_function: plan_function,
-          notice_title: notice_title
-        )
-      ]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "claim_executor plan run exited nonzero"
-    }
-  }
-
   operation VerifyBuildArtifacts {
     input { workdir: FilePath, bin_path: FilePath, artifact_paths: List<String> }
     output {
