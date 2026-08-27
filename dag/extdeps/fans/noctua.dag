@@ -7,6 +7,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.fans.types {
   FanCatalogRow,
   FanPublishedOperatingPoint,
+  FanSpeedRangeUnpublished,
+  FanStopBehaviorUnpublished,
   SelfStabilisingOilPressure,
 }
 import extdeps.vendor.noctua { noctua }
@@ -58,6 +60,8 @@ data noctua_nf_a9_hs_pwm_catalog: FanCatalogRow = FanCatalogRow {
   bearing: SelfStabilisingOilPressure,
   pwm_controlled: true,
   published_points: noctua_nf_a9_hs_pwm_published_points,
+  published_speed_range: FanSpeedRangeUnpublished,
+  published_stop_behavior: FanStopBehaviorUnpublished,
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {

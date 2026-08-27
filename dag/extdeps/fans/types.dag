@@ -35,7 +35,12 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // versioned authorities and leave nowhere to put a chassis fan, which belongs to no cooler at
 // all.
 
-type FanBearing = SleeveBearing | DoubleBallBearing | SelfStabilisingOilPressure | FanBearingUnpublished
+type FanBearing
+  = SleeveBearing
+  | DoubleBallBearing
+  | FluidDynamicBearing
+  | SelfStabilisingOilPressure
+  | FanBearingUnpublished
 
 // ONE ROW OF A VENDOR'S PUBLISHED TABLE. Vendors publish a handful of duty points, not a curve,
 // and every field here is something a datasheet actually prints. sound_pressure is optional
@@ -88,6 +93,42 @@ type FanAcousticEvidence
   | FanAcousticTwoPointLawAssumed { published_level_count: Int }
   | FanAcousticUnderdetermined { published_level_count: Int }
 
+// A SPEED RANGE IS NOT TWO OPERATING POINTS, and this arm exists because writing it as two was
+// the defect that produced this type. A vendor that prints "200-3000 rpm" has stated the ends of
+// the controllable range and has NOT stated which duty produces either end. Spelling that as a
+// FanPublishedOperatingPoint forces a duty field the datasheet never printed, so the author
+// invents one - percent(0) and percent(100) - and every consumer downstream then reads a
+// fabricated duty as a published anchor. A 4-pin fan is not required to reach its minimum at 0%
+// duty; many hold a floor and some stop entirely.
+//
+// The two shapes are therefore separate fields rather than one list, and a row may carry either,
+// both, or neither. That is a construction wall, not a check: with no duty field on this arm
+// there is no place for the invented number to go.
+// THE MINIMUM IS THE NONZERO FLOOR, NOT THE SLOWEST ATTAINABLE SPEED, and the field is named for
+// that because the two readings differ by exactly the stop behavior below. ARCTIC prints
+// "200-3000 rpm (0 rpm below 5 % PWM)": 200 is where the fan settles while it is still turning,
+// and 0 rpm is reachable. A field called `minimum` invites the reading that this fan never turns
+// slower than 200, which the same sentence refutes.
+type FanPublishedSpeedRange
+  = FanSpeedRangePublished { nonzero_minimum: RevolutionsPerMinute, maximum: RevolutionsPerMinute }
+  | FanSpeedRangeUnpublished
+
+// WHETHER THE FAN STOPS, AND WHERE. A PWM fan that stops below a duty threshold and one that
+// holds a floor all the way down are different machines to a controller: the first has a duty
+// band in which its tach reads zero for a healthy fan, so a zero reading there is not a fault.
+// Modelling this as absent would leave a consumer unable to tell a stopped P8 from a failed one.
+type FanPublishedStopBehavior
+  = FanStopsBelowPwm { threshold: Percent }
+  | FanStopBehaviorUnpublished
+
+// THE MAXIMUM IS A REFUSAL AND NOT A ZERO. Folding an empty published set to rpm(0) reports
+// "this fan does not spin" where the honest answer is "the vendor published no speed" - the
+// empty-observation narrow DESIGN names, with ARCTIC as the live specimen the moment its
+// fabricated points are removed.
+type FanMaximumSpeed
+  = FanMaximumSpeedKnown { speed: RevolutionsPerMinute }
+  | FanMaximumSpeedUnpublished
+
 type FanCatalogRow {
   model: NonEmptyStr
   manufacturer: Vendor<Hardware>
@@ -95,6 +136,8 @@ type FanCatalogRow {
   bearing: FanBearing
   pwm_controlled: Bool
   published_points: List<FanPublishedOperatingPoint>
+  published_speed_range: FanPublishedSpeedRange
+  published_stop_behavior: FanPublishedStopBehavior
 }
 
 fn fan_point_has_level(point: FanPublishedOperatingPoint) -> Bool {
@@ -125,12 +168,33 @@ fn fan_acoustic_evidence(row: FanCatalogRow) -> FanAcousticEvidence {
   }
 }
 
-fn fan_max_speed(row: FanCatalogRow) -> RevolutionsPerMinute {
+fn fan_speed_range_maximum(range: FanPublishedSpeedRange) -> FanMaximumSpeed {
+  match range {
+    FanSpeedRangeUnpublished => FanMaximumSpeedUnpublished
+    FanSpeedRangePublished { nonzero_minimum, maximum } => FanMaximumSpeedKnown { speed: maximum }
+  }
+}
+
+fn fan_maximum_speed_over(acc: FanMaximumSpeed, candidate: RevolutionsPerMinute) -> FanMaximumSpeed {
+  match acc {
+    FanMaximumSpeedUnpublished => FanMaximumSpeedKnown { speed: candidate }
+    FanMaximumSpeedKnown { speed } =>
+      if rpm_count(candidate) > rpm_count(speed) {
+        FanMaximumSpeedKnown { speed: candidate }
+      } else {
+        FanMaximumSpeedKnown { speed: speed }
+      }
+  }
+}
+
+// BOTH SOURCES ARE CONSULTED because a row may carry either and neither dominates: the Dynatron
+// publishes duty-paired points and no range, ARCTIC publishes a range and no points. Reading only
+// one field would answer Unpublished for half the catalogue.
+fn fan_max_speed(row: FanCatalogRow) -> FanMaximumSpeed {
   fold(
     row.published_points,
-    init: rpm(0),
-    f: (acc, point) =>
-      if rpm_count(point.speed) > rpm_count(acc) { point.speed } else { acc },
+    init: fan_speed_range_maximum(range: row.published_speed_range),
+    f: (acc, point) => fan_maximum_speed_over(acc: acc, candidate: point.speed),
   )
 }
 

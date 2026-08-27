@@ -319,12 +319,38 @@ fn the_total_carries_its_weakest_provenance() -> Bool {
     && unobserved_is_named
 }
 
-// AN UNKNOWN MODEL MUST NOT COST A CONTROL ENDPOINT. Every chassis fan on srv3 stands at
-// FanModelUnobserved and all four headers still derive. If this ever goes red it means a model
-// lookup crept into a derivation that has no business consulting one, and the visible symptom
-// would be a machine losing fan control because nobody read a label.
+// AN UNKNOWN MODEL MUST NOT COST A CONTROL ENDPOINT. If this goes red it means a model lookup
+// crept into a derivation that has no business consulting one, and the visible symptom would be a
+// machine losing fan control because nobody read a label.
+//
+// THIS CONTROL PREVIOUSLY NAMED srv3 AND WENT DEAD WHEN THE ARCTIC ROWS LANDED. Its annotation
+// asserted that every srv3 chassis fan stands at FanModelUnobserved; the operator declaration
+// moved three of them to FanModelOperatorDeclaredPart and FAN1 is assembly-derived, so srv3 no
+// longer contains an unobserved model at all. The conjunct stayed GREEN throughout - it counts
+// endpoints, and srv3 still has four - so the population change silently emptied its subject
+// while leaving every symptom of a working check. A mutation restricting control_endpoints to
+// known models would have survived it.
+//
+// It now names srv1, whose four 4U chassis bays are the population that is still genuinely
+// model-unobserved, and asserts BOTH counts rather than only the endpoint total. Asserting the
+// total alone is what let the srv3 form die quietly: five endpoints come back whether or not the
+// derivation consulted a model, so the unobserved count is the half that carries the meaning.
+// Restricting control_endpoints to known models now drops exactly the four bays and goes red.
+//
+// srv1 IS FIVE HEADERS, NOT EIGHT. The review that caught this named "the eight real 4U chassis
+// rows", which is srv1 and srv2 TOGETHER - four bays each, plus one cooler header apiece that is
+// assembly-derived rather than unobserved. Writing 8 against srv1 alone would have replaced a
+// dead control with a false one.
 fn unknown_model_still_derives_control() -> Bool {
-  control_endpoints(wiring: srv3_fan_wiring).length() == 4
+  let unobserved_bays = filter(
+    srv1_fan_wiring.headers,
+    binding => match binding.model {
+      FanModelUnobserved => true
+      other => false
+    },
+  )
+  unobserved_bays.length() == 4
+    && control_endpoints(wiring: srv1_fan_wiring).length() == 5
 }
 
 data srv3_wiring_missing_an_expected_header: HostFanWiring = HostFanWiring {

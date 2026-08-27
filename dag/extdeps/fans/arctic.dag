@@ -4,9 +4,10 @@ import std.types { List }
 import std.measure { millimeter, percent, rpm }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.fans.types {
-  FanBearingUnpublished,
   FanCatalogRow,
-  FanPublishedOperatingPoint,
+  FanSpeedRangePublished,
+  FanStopsBelowPwm,
+  FluidDynamicBearing,
 }
 import extdeps.vendor.arctic { arctic }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -38,37 +39,40 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // FanAcousticUnderdetermined at published_level_count 0. This fan cannot ground an acoustic law,
 // and the model says so instead of guessing.
 //
-// THE SPEED FIGURES ARE PAIRED WITH THE DUTY THAT PRODUCES THEM ONLY AT THE ENDPOINTS. A 4-pin fan
-// is not required to reach its minimum at any particular duty, and no intermediate point is
-// published, so the two rows below are the range's ends and not a two-point curve.
-data arctic_p8_pwm_pst_published_points: List<FanPublishedOperatingPoint> = [
-  FanPublishedOperatingPoint {
-    duty: percent(0),
-    speed: rpm(200),
-    sound_pressure: none,
-  },
-  FanPublishedOperatingPoint {
-    duty: percent(100),
-    speed: rpm(3000),
-    sound_pressure: none,
-  },
-]
-
+// THE RANGE IS CARRIED AS A RANGE. An earlier revision of this row spelled 200-3000 rpm as two
+// FanPublishedOperatingPoint rows at percent(0) and percent(100). ARCTIC publishes no duty
+// pairing at all, so both duties were invented, and fan_max_speed then read 3000 rpm through a
+// fabricated row - a correct number reached by a route that had manufactured its own premise.
+// Caught in review; the carrier now has no duty field on this arm, so the invention has nowhere
+// to go.
+//
+// THE PAGE ALSO REFUTES THE INVENTED ROW DIRECTLY. The full string is "200-3000 rpm (0 rpm below
+// 5 % PWM)", so at percent(0) this fan reads 0 rpm and not 200 - the fabricated point was not
+// merely unpublished, it was wrong, and the stop behavior is now carried as its own fact.
 // THE MODEL IS "P8 PWM PST", NOT THE PACKAGE AND NOT THE CO VARIANT. The purchase is a five-pack,
 // whose own identifier names a shipment rather than a part; the fan inside it is one model and that
 // is what a header carries. "P8 PWM PST CO" is a separate ARCTIC product with a different bearing
 // intended for continuous operation, and the base name does not imply it - so binding a header to
 // this row asserts the base part specifically.
 //
-// BEARING IS UNPUBLISHED RATHER THAN ASSUMED. The listing names the frame material and says nothing
-// about the bearing; the CO variant's dual ball bearing is a fact about the CO variant.
+// THE BEARING IS PUBLISHED AND AN EARLIER REVISION OF THIS ROW SAID IT WAS NOT. The manufacturer
+// page prints "Fluid Dynamic Bearing" for the ordinary P8 PWM PST; this row previously carried
+// FanBearingUnpublished on the reasoning that only the CO variant's bearing was stated. That was a
+// FABRICATED ABSENCE - the same class as a fabricated value and harder to see, because a missing
+// fact reads as conservatism rather than as a claim. It asserts "the vendor did not say", which is
+// checkable and was false. Caught in review, verified against the cited page.
 data arctic_p8_pwm_pst_catalog: FanCatalogRow = FanCatalogRow {
   model: "P8 PWM PST",
   manufacturer: arctic,
   frame_size: millimeter(80),
-  bearing: FanBearingUnpublished,
+  bearing: FluidDynamicBearing,
   pwm_controlled: true,
-  published_points: arctic_p8_pwm_pst_published_points,
+  published_points: [],
+  published_speed_range: FanSpeedRangePublished {
+    nonzero_minimum: rpm(200),
+    maximum: rpm(3000),
+  },
+  published_stop_behavior: FanStopsBelowPwm { threshold: percent(5) },
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {

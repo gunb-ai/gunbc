@@ -8,6 +8,8 @@ import extdeps.fans.types {
   DoubleBallBearing,
   FanCatalogRow,
   FanPublishedOperatingPoint,
+  FanSpeedRangeUnpublished,
+  FanStopBehaviorUnpublished,
 }
 import extdeps.vendor.dynatron { dynatron }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -52,6 +54,8 @@ data dynatron_df126025bu_pwmh_catalog: FanCatalogRow = FanCatalogRow {
   bearing: DoubleBallBearing,
   pwm_controlled: true,
   published_points: dynatron_df126025bu_pwmh_published_points,
+  published_speed_range: FanSpeedRangeUnpublished,
+  published_stop_behavior: FanStopBehaviorUnpublished,
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
