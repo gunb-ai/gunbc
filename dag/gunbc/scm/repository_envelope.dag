@@ -14,13 +14,19 @@ module gunbc.scm.repository_envelope
 //     commit root is a reference into it.
 //   - A CHECKED-OUT SELECTION, which is local workspace state, not authoritative history.
 //
-// COMMIT IDENTITY IS NOT STORED AND NOT STORABLE HERE. A commit's identity is its root object's
-// identity, and that is re-derived from structure on load exactly as commit_closure_json_v2 re-derives every
-// other. `message` is a log fact and participates in no identity; two commits with identical roots
-// and different messages name the SAME program, which is the point of content addressing and not a
-// collision.
+// COMMIT IDENTITY IS MINTED ONCE AND CARRIED WITH THE RECORD. A root identifies a program, not a
+// commit: reverts legitimately repeat roots, and equal messages need not make two authored records
+// one. The subject-parameterized identity from std.minted_identity stays stable across list insertion,
+// deletion and reorder without deriving meaning from content or position.
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, Map, String }
+import std.minted_identity {
+  MintedId,
+  MintedIdAllocator,
+  mint_id,
+  minted_id_eq,
+  minted_id_ordinal,
+}
 
 import extdeps.languages.json.emit {
   JsonValue,
@@ -28,11 +34,13 @@ import extdeps.languages.json.emit {
   JsonArray,
   JsonObject,
   JsonString,
+  JsonNumber,
   JsonNull,
   json_kv,
   json_array,
   json_object,
   json_string,
+  json_int,
 }
 
 import gunbc.scm.ancestry {
@@ -40,15 +48,10 @@ import gunbc.scm.ancestry {
   RootCommit,
   DescendsFrom,
   RepositoryCommitRef,
+  RepositoryCommitSubject,
   repository_commit_ref_eq,
   AncestryStep,
   RepositoryHistory,
-  AncestryWalk,
-  AncestryTraced,
-  AncestryBrokenAt,
-  AncestryStartNotInHistory,
-  AncestryRevisitsACommit,
-  ancestry_walk,
 }
 
 import gunbc.scm.target_reference {
@@ -77,7 +80,7 @@ import gunbc.scm.json_member {
   read_member_value,
   read_string_member,
 }
-import gunbc.scm.object_store { ObjectId, ObjectStore, empty_store, object_id_eq }
+import gunbc.scm.object_store { ObjectId, ObjectStore, empty_store, store_contains }
 import gunbc.scm.commit_closure { uncontained_targets }
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
@@ -89,7 +92,6 @@ import gunbc.scm.commit_closure_json_v2 {
   position_of,
   encoded_root_reference,
   decode_object_table,
-  position_reference,
   unexpected_member_key,
   resolve_reference,
   closure_document_load_standing,
@@ -143,13 +145,12 @@ data repository_node_identity_rule_tag: String = "fnv1a64-structural-canonical-v
 // reference because a commit's root IS a node; a parent may not, because a parent is a COMMIT, and
 // spelling it as a node reference would readmit the precise state that ruling made unwritable.
 //
-// THE POSITION IN THE ARRAY IS A STORAGE LOCATOR, NEVER AN ORDERING FACT, and the distinction is the
-// one gunbc.scm.ancestry exists to protect. The wire reference means "the commit at this position in
-// this document" -- it NAMES which commit, and adjacency between two positions still means nothing.
-// Encoding the parent as a position is not the position-implies-ancestry defect; deriving a parent
-// FROM a position would be, and nothing here does that: a commit with no `ancestry` member refuses
-// rather than defaulting to its neighbour.
-type RepositoryCommit {
+// THE COMMIT LIST ORDER IS PRESENTATION, NEVER IDENTITY OR ANCESTRY. Every parent and checkout edge
+// carries the commit's minted key, so inserting, deleting or reordering rows cannot silently retarget
+// another edge. This removes the subject of the former append-only obligation rather than adding a
+// wall that would become redundant at this cut.
+type RepositoryCommit sole_constructor {
+  reference: RepositoryCommitRef
   root: ObjectId
   message: String
   ancestry: CommitAncestry
@@ -158,7 +159,8 @@ type RepositoryCommit {
 type RepositoryEnvelope {
   store: ObjectStore
   commits: List<RepositoryCommit>
-  checked_out: ObjectId?
+  commit_allocator: MintedIdAllocator<RepositoryCommitSubject>
+  checked_out: RepositoryCommitRef?
 }
 
 // ENCODE AND DECODE HAVE DIFFERENT FAILURE POPULATIONS, SO THEY ARE DIFFERENT TYPES.
@@ -193,23 +195,21 @@ type RepositoryEnvelope {
 type RepositoryEncodeRefusal
   = RepositoryEncodeUncontainedTarget { target: ObjectId }
   | RepositoryCommitRootNotInStore { root: ObjectId }
-  | RepositoryCheckoutNotInCommits { selected: ObjectId }
+  | RepositoryCheckoutNotInCommits { selected: RepositoryCommitRef }
+  | RepositoryCommitReferenceDuplicated { reference: RepositoryCommitRef }
+  | RepositoryCommitReferenceOutsideAllocator { reference: RepositoryCommitRef, next_ordinal: Int }
   | RepositoryCommitParentNotInCommits { parent: RepositoryCommitRef }
-  | RepositoryCommitAncestryCyclic { detected_from: RepositoryCommitRef }
 
-// The decode side keeps `String` references for now, and that is a REMAINING conflation rather than
-// a resolved one: an image-local position is still spelled as bare text here, and commit_closure_json_v2's whole
-// reference vocabulary would have to be typed for this to be honest. Naming it here so the next
-// reader finds a declared gap instead of re-deriving it.
 type RepositoryDecodeRefusal
   = RepositoryDecodeClosureDocRefusal { cause: ClosureDocRefusal }
   | RepositoryMemberReadRefused { cause: MemberReadRefusal }
   | RepositoryFormatUnrecognized { found: String }
   | RepositoryIdentityRuleUnrecognized { found: String }
   | RepositoryCommitRootReferenceUnresolved { reference: String }
-  | RepositoryCheckoutReferenceUnresolved { reference: String }
-  | RepositoryCommitParentReferenceUnresolved { reference: String }
-  | RepositoryDecodedAncestryCyclic { detected_from: RepositoryCommitRef }
+  | RepositoryCheckoutReferenceUnresolved { reference: RepositoryCommitRef }
+  | RepositoryCommitReferenceDuplicatedOnWire { reference: RepositoryCommitRef }
+  | RepositoryCommitParentNotPreviouslyAdmitted { parent: RepositoryCommitRef }
+  | RepositoryDecodedCommitReferenceOutsideAllocator { reference: RepositoryCommitRef, next_ordinal: Int }
   | RepositoryUnexpectedMember { context: RepositoryMemberContext, key: String }
   | RepositoryTargetReferenceRefused { cause: TargetReferenceRefusal }
 
@@ -240,7 +240,81 @@ type RepositoryDecodeOutcome
   | RepositoryDecodeRefused { cause: RepositoryDecodeRefusal }
 
 fn empty_repository() -> RepositoryEnvelope {
-  RepositoryEnvelope { store: empty_store(), commits: [], checked_out: none }
+  RepositoryEnvelope {
+    store: empty_store(),
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+  }
+}
+
+type RepositoryCommitMint
+  = RepositoryCommitMinted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
+  | RepositoryCommitMintAllocatorInvalid { next_ordinal: Int }
+  | RepositoryCommitMintRootMissing { root: ObjectId }
+  | RepositoryCommitMintParentMissing { parent: RepositoryCommitRef }
+
+// PURE CONSTRUCTION WALL FOR INTERNAL HISTORIES. The allocator is carried by the repository and
+// advanced atomically with the new row; it is never reconstructed as max+1, because deleting the
+// highest row would then reuse an identity and let an old user-held reference resolve confidently to
+// a different commit. A descendant accepts only an EXISTING parent, so construction order makes a
+// cycle unwritable internally. This function performs no persistence, CLI action, or host effect.
+fn mint_repository_commit(
+  repository: RepositoryEnvelope,
+  root: ObjectId,
+  message: String,
+  parent: RepositoryCommitRef?,
+) -> RepositoryCommitMint {
+  if repository.commit_allocator.next_ordinal < 0 {
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
+  } else if !store_contains(store: repository.store, identity: root) {
+    RepositoryCommitMintRootMissing { root: root }
+  } else {
+    match parent {
+      Present { value: parent_ref } =>
+        match commit_at_reference(commits: repository.commits, reference: parent_ref) {
+          Absent => RepositoryCommitMintParentMissing { parent: parent_ref }
+          Present { value: _ } =>
+            mint_repository_commit_admitted(
+              repository: repository,
+              root: root,
+              message: message,
+              ancestry: DescendsFrom { parent: parent_ref },
+            )
+        }
+      Absent =>
+        mint_repository_commit_admitted(
+          repository: repository,
+          root: root,
+          message: message,
+          ancestry: RootCommit,
+        )
+    }
+  }
+}
+
+fn mint_repository_commit_admitted(
+  repository: RepositoryEnvelope,
+  root: ObjectId,
+  message: String,
+  ancestry: CommitAncestry,
+) -> RepositoryCommitMint {
+  let allocation = mint_id(alloc: repository.commit_allocator)
+  let reference = RepositoryCommitRef { identity: allocation.id }
+  RepositoryCommitMinted {
+    repository: RepositoryEnvelope {
+      store: repository.store,
+      commits: concat(repository.commits, [RepositoryCommit {
+        reference: reference,
+        root: root,
+        message: message,
+        ancestry: ancestry,
+      }]),
+      commit_allocator: allocation.alloc,
+      checked_out: repository.checked_out,
+    },
+    reference: reference,
+  }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -255,93 +329,35 @@ fn empty_repository() -> RepositoryEnvelope {
 // CHECKED_OUT IS A COMMIT REFERENCE, NOT A NODE REFERENCE, and that is a construction wall rather
 // than a check.
 //
-// An earlier revision resolved it against the OBJECT TABLE, which meant a document could name a
-// checkout that was not any commit -- an arbitrary interior node, a child three levels down. Nothing
-// refused it, because nothing asked the question: "checked out" means POSITIONED AT A COMMIT, and
-// the carrier admitted states that are not that. Resolving against the COMMIT LIST instead means the
-// invalid state has no spelling in the wire format at all, so it is unwritable rather than validated
-// (DESIGN section 5). An out-of-range commit index still refuses, but a non-commit checkout can no
-// longer be expressed to be refused.
-//
-// The reference is an index into the commits array, which is image-local exactly as node positions
-// are: it means "the commit at this position in this document" and nothing outside it.
-// The inverse of commit_reference_of, and it walks the SAME index sequence so the two cannot drift:
-// both derive a position from an ordinary counter over the commits list, rather than one of them
-// parsing a number the other formatted.
-fn commit_at_reference(commits: List<RepositoryCommit>, reference: String) -> RepositoryCommit? {
-  match fold(
-    commits,
-    init: CommitLookup { index: 0, found: none },
-    f: fn(acc, c) { commit_lookup_step(acc: acc, c: c, wanted: reference) }
-  ) {
-    CommitLookup { index: _, found: found } => found
-  }
+// An earlier revision resolved checkout against the OBJECT TABLE, which admitted an arbitrary
+// interior node as a selection. Resolution now asks the keyed commit population. The key is carried
+// by the commit and remains the same when rows move; the fold is only a collection lookup and derives
+// no identity from traversal order.
+fn commit_at_reference(commits: List<RepositoryCommit>, reference: RepositoryCommitRef) -> RepositoryCommit? {
+  fold(commits, init: none, f: fn(found, c) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        if repository_commit_ref_eq(left: c.reference, right: reference) {
+          Present { value: c }
+        } else {
+          none
+        }
+    }
+  })
 }
 
-type CommitLookup {
-  index: Int
-  found: RepositoryCommit?
-}
-
-fn commit_lookup_step(acc: CommitLookup, c: RepositoryCommit, wanted: String) -> CommitLookup {
-  match acc.found {
-    Present { value: _ } => CommitLookup { index: acc.index + 1, found: acc.found }
-    Absent =>
-      if position_reference(n: acc.index) == wanted {
-        CommitLookup { index: acc.index + 1, found: Present { value: c } }
-      } else {
-        CommitLookup { index: acc.index + 1, found: none }
-      }
-  }
-}
-
-fn commit_reference_of(commits: List<RepositoryCommit>, selected: ObjectId) -> String {
-  match fold(
-    commits,
-    init: CommitSearch { index: 0, found: none },
-    f: fn(acc, c) { commit_search_step(acc: acc, c: c, wanted: selected) }
-  ) {
-    CommitSearch { index: _, found: found } =>
-      match found {
-        Present { value: reference } => reference
-        Absent => ""
-      }
-  }
-}
-
-type CommitSearch {
-  index: Int
-  found: String?
-}
-
-// AN UNKNOWN CHECKOUT ENCODES TO THE EMPTY REFERENCE, which decode refuses -- the same treatment
-// encoded_root_reference gives a root naming no object. The encoder cannot refuse (it returns a
-// JsonValue, not an outcome), so what it must not do is emit something PLAUSIBLE: silently dropping
-// the checkout or substituting the first commit would produce a document that loads cleanly and
-// positions the user somewhere they never were.
-fn commit_search_step(acc: CommitSearch, c: RepositoryCommit, wanted: ObjectId) -> CommitSearch {
-  match acc.found {
-    Present { value: _ } => CommitSearch { index: acc.index + 1, found: acc.found }
-    Absent =>
-      if object_id_eq(left: c.root, right: wanted) {
-        CommitSearch { index: acc.index + 1, found: Present { value: position_reference(n: acc.index) } }
-      } else {
-        CommitSearch { index: acc.index + 1, found: none }
-      }
-  }
-}
-
-fn encode_optional_reference(commits: List<RepositoryCommit>, selected: ObjectId?) -> JsonValue {
+fn encode_optional_reference(selected: RepositoryCommitRef?) -> JsonValue {
   match selected {
     Absent => JsonNull
-    Present { value: identity } =>
-      json_string(s: commit_reference_of(commits: commits, selected: identity))
+    Present { value: reference } => json_int(n: minted_id_ordinal(id: reference.identity))
   }
 }
 
 fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit) -> JsonValue {
   json_object(
     members: [
+      json_kv(key: "id", value: json_int(n: minted_id_ordinal(id: commit.reference.identity))),
       json_kv(key: "root", value: encoded_root_reference(acc: acc, root: commit.root)),
       json_kv(key: "message", value: json_string(s: commit.message)),
       json_kv(key: "ancestry", value: encode_ancestry(ancestry: commit.ancestry)),
@@ -349,45 +365,10 @@ fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit) -> JsonValue {
   )
 }
 
-// A ROOT COMMIT IS JsonNull, AN UNRESOLVABLE PARENT IS THE EMPTY REFERENCE, and those are two states
-// rather than one for the same reason `checked_out` splits them: the empty string is already what an
-// unknown reference yields and what decode rejects, so spelling "this commit begins the history" that
-// way would fuse the ordinary first commit with a dangling parent. That is the structural-root
-// argument from gunbc.scm.ancestry carried onto the wire, where it would otherwise be quietly lost --
-// a coproduct arm is worth nothing if the serialization collapses it back to a nothing-value.
-// THE POSITIONAL SPELLING OWES TWO WALLS AND THIS CODEC DISCHARGES ONE OF THEM. Reported by review
-// 56461, and the citation is this repository's own: gunbc.scm.ancestry, on RepositoryCommitRef,
-// states that a positional spelling owes an APPEND-ONLY wall (records only ever appended -- this is
-// what buys stability) and an ORDER-PRESERVING wall (the codec round-trips `commits` in exactly its
-// authored order). It also states the consequence of naming them: if either is hard to make
-// structural, that is the argument for the reference carrying something INTRINSIC instead.
-//
-// ORDER-PRESERVING IS DISCHARGED HERE and is guarded by execution -- the decode-order pair and
-// scm_env_the_root_signature_distinguishes_order fail if the list is rebuilt in any other order.
-//
-// APPEND-ONLY IS NOT DISCHARGED AND IS NOT CLAIMED TO BE. `RepositoryEnvelope.commits` is an
-// unrestricted List, so an insertion, deletion or reorder retargets every still-valid parent
-// reference at once, and neither the membership check nor the cycle check can see it: every
-// reference still resolves, to the wrong row. That is the well-formed-confident-wrong answer the
-// ancestry type was recut to remove, which is exactly why the model named the wall rather than
-// assuming it.
-//
-// WHAT MAKES IT NOT YET HARMFUL IS ALSO WHAT MAKES IT URGENT, and stating only the first half would
-// be the reachability-read-as-occupancy error. NO COMMIT-AUTHORING VERB EXISTS -- gunbc.scm.ancestry
-// says so in its own header, and a corpus search finds none -- so no operation can mutate the list
-// and the state is reachable only by hand-authoring an envelope. The commit producer is the NEXT
-// work. The wall is therefore an ORDERING OBLIGATION, not a backlog item: it must exist before the
-// first producer, because the producer is the thing that makes the state reachable.
-//
-// TRIGGER: the reference-vocabulary keying cut, the same one the cycle-validation cost names -- an
-// intrinsic commit identity dissolves this wall by removing positions altogether, which is the
-// escape the model's own annotation points at. If that cut lands first the wall is never needed; if
-// the producer would land first the wall is required ahead of it.
-//
-// THIS PR BINDS ANCESTRY TO THE WIRE ANYWAY, and the reason is the window rather than convenience:
-// nothing has ever written a repository document, so the format is not frozen and binding now costs
-// no migration. Deferring the binding until the wall exists would not make the wall arrive sooner --
-// it would only move the format change to the far side of the event that freezes it.
+// A root commit is JsonNull; a parent is the minted commit ordinal encoded as a JSON integer. These
+// are disjoint shapes, so damage cannot silently become a new root. Unlike the former row position,
+// the ordinal names the same record after list insertion, deletion or reorder. The persisted
+// allocator watermark prevents a deleted high key from being reused on the next mint.
 //
 // THE ENCODER NO LONGER SEARCHES FOR THE PARENT, and that deletion is the whole repair.
 //
@@ -410,7 +391,7 @@ fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit) -> JsonValue {
 fn encode_ancestry(ancestry: CommitAncestry) -> JsonValue {
   match ancestry {
     RootCommit => JsonNull
-    DescendsFrom { parent: parent } => json_string(s: parent.reference)
+    DescendsFrom { parent: parent } => json_int(n: minted_id_ordinal(id: parent.identity))
   }
 }
 
@@ -439,10 +420,14 @@ fn encode_repository_v1(repo: RepositoryEnvelope) -> JsonValue {
       json_kv(key: "identity_rule", value: json_string(s: repository_node_identity_rule_tag)),
       json_kv(key: "objects", value: json_array(elements: acc.objects)),
       json_kv(
+        key: "next_commit_ordinal",
+        value: json_int(n: repo.commit_allocator.next_ordinal),
+      ),
+      json_kv(
         key: "commits",
         value: json_array(elements: encode_commit_records(acc: acc, commits: repo.commits))
       ),
-      json_kv(key: "checked_out", value: encode_optional_reference(commits: repo.commits, selected: repo.checked_out)),
+      json_kv(key: "checked_out", value: encode_optional_reference(selected: repo.checked_out)),
     ]
   )
 }
@@ -500,15 +485,22 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
             Present { value: selected } =>
               RepositoryEncodeRefused { cause: RepositoryCheckoutNotInCommits { selected: selected } }
             Absent =>
-              match unresolved_commit_parent(commits: repo.commits) {
-                Present { value: parent } =>
+              match admit_commit_order(
+                commits: repo.commits,
+                next_ordinal: repo.commit_allocator.next_ordinal,
+              ).refusal {
+                Present { value: CommitReferenceDuplicated { reference: reference } } =>
+                  RepositoryEncodeRefused { cause: RepositoryCommitReferenceDuplicated { reference: reference } }
+                Present { value: CommitParentNotPreviouslyAdmitted { parent: parent } } =>
                   RepositoryEncodeRefused { cause: RepositoryCommitParentNotInCommits { parent: parent } }
-                Absent =>
-                  match a_cyclic_commit(commits: repo.commits) {
-                    Present { value: from } =>
-                      RepositoryEncodeRefused { cause: RepositoryCommitAncestryCyclic { detected_from: from } }
-                    Absent => RepositoryEncoded { value: encode_repository(repo: repo) }
+                Present { value: CommitReferenceOutsideAllocator { reference: reference, next_ordinal: _ } } =>
+                  RepositoryEncodeRefused {
+                    cause: RepositoryCommitReferenceOutsideAllocator {
+                      reference: reference,
+                      next_ordinal: repo.commit_allocator.next_ordinal,
+                    }
                   }
+                Absent => RepositoryEncoded { value: encode_repository(repo: repo) }
               }
           }
       }
@@ -549,164 +541,80 @@ fn unresolved_commit_root_step(acc: EncodeAcc, found: ObjectId?, commit: Reposit
 // It answers with A parent, not THE FIRST one, matching an_uncontained_target: the refusal needs one
 // actionable example and nothing downstream depends on which, so naming an order would freeze an
 // incidental traversal into the interface.
-fn unresolved_commit_parent(commits: List<RepositoryCommit>) -> RepositoryCommitRef? {
-  fold(commits, init: none, f: fn(acc, c) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match c.ancestry {
-          RootCommit => none
-          DescendsFrom { parent: parent } =>
-            match commit_at_reference(commits: commits, reference: parent.reference) {
-              Absent => Present { value: parent }
-              Present { value: _ } => none
-            }
-        }
-    }
-  })
+// PERMANENT EXTERNAL-REALITY WALL. RepositoryCommit's sole constructor and the mint below make a
+// cycle structurally impossible for INTERNAL histories: a child can name only a parent already in
+// the repository. Decoded bytes are a different population. They can assert duplicate identities,
+// a forward/dangling parent, a cycle, or an ordinal outside the persisted allocator watermark, so
+// this single pass admits each row only after its parent and refuses at the first unadmitted edge.
+// The constructor is never a reason to delete this pass. Across both paths the class remains at the
+// mechanically-preventable boundary rung, not "structurally impossible" without qualification.
+//
+// This replaces the deleted all-start ancestry walk: history_step_at O(n) inside ancestry_walk O(n²)
+// inside a_cyclic_commit O(n³) on every healthy encode and decode. Map membership makes this pass
+// linear in rows under the substrate's keyed-map realization; no cycle traversal remains.
+type CommitOrderRefusal
+  = CommitReferenceDuplicated { reference: RepositoryCommitRef }
+  | CommitParentNotPreviouslyAdmitted { parent: RepositoryCommitRef }
+  | CommitReferenceOutsideAllocator { reference: RepositoryCommitRef, next_ordinal: Int }
+
+type CommitOrderAdmission {
+  seen: Map<Int, Bool>
+  refusal: CommitOrderRefusal?
 }
 
-// A CYCLE IS REFUSED AT BOTH ENDS OF THE PERSISTENCE BOUNDARY, and this is the hole that binding
-// ancestry to the wire OPENED. Before the member existed a cyclic history had no spelling here at
-// all; with it, every-parent-is-in-commits is satisfiable by a two-commit cycle, so the checked
-// encoder would have serialized a state gunbc.scm.ancestry classifies as a REFUSAL. Membership and
-// acyclicity are different properties and the first does not imply the second (review 56207).
-//
-// THE DETECTION IS BORROWED, NOT REBUILT. ancestry_walk already decides this, by exhausting the
-// population rather than by keeping a visited set, so calling it is what keeps one authority for
-// "is this history cyclic". Re-deriving the test here would be a second answer to one question --
-// and the two would drift the first time the walk's bound changed.
-//
-// COST, STATED RATHER THAN HIDDEN, AND THE FIGURE BELOW IS THE CORRECTED ONE. This annotation first
-// said O(n^2), which understated the shape by one exponent. The derivation, written out because the
-// wrong figure came from stopping one level too early -- counting the walks and taking each walk to
-// be linear, without opening the walk:
-//
-//   history_step_at        folds the whole step list                              O(n)
-//   ancestry_walk          up to n steps, one history_step_at at each             O(n^2)
-//   a_cyclic_commit        one walk per commit, over n starts                     O(n^3)
-//
-// The bad bound is realized by the ORDINARY case, not a pathological one: on an acyclic history no
-// start finds a cycle early, so every start is walked to exhaustion. n is a repository's whole commit
-// count and grows without bound, so this is not a "small n" the rule excuses -- DESIGN section 6 fixes
-// a proven cost shape regardless of realized n, and the realized n here is the one that keeps growing.
-//
-// THIS IS A DECLARED COST DEFECT, NOT AN ACCEPTED COST. The distinction is the whole point of writing
-// it down: nothing here argues the shape is fine, and no later reader may cite this annotation as
-// having settled it. It is O(n^3) realized in the ORDINARY case -- not quadratic, and not "cubic in
-// the worst case", because the healthy acyclic repository IS the worst case.
-//
-// ALL THREE FACTORS DISSOLVE ON THE SAME TRIGGER, which is why it is declared rather than partly
-// repaired: the lookup is linear because the carrier is a list, and the all-starts fold cannot skip a
-// start already proven acyclic without a visited set. Both want the same keyed representation.
-//
-// TRIGGER: the reference-vocabulary keying cut -- one cut over the whole vocabulary, taking history
-// steps, `checked_out` and the reference lookups together. Converting this one site instead would
-// relocate the positional-carrier fork rather than remove it, which is the objection that deferred
-// `checked_out`; a leaf conversion is not a smaller version of this repair, it is a different and
-// worse one. Ruled B by the lane owner after independently deriving the nesting, with that cut named
-// as the next SCM work item dispatched once this stack lands.
-//
-// It runs on ENCODE AND DECODE -- every write and every read, not once per write as an earlier
-// revision of this annotation said. Corrected after external review measured the nesting; both the
-// original exponent and that frequency were authored here.
-// KEYED ON THE ROW, NOT THE PROGRAM. The previous form folded for the first row whose ROOT matched,
-// so on a history containing a revert it answered with the wrong record's ancestry -- and answered
-// confidently, since a first match is a successful lookup. Resolving through commit_at_reference
-// means there is nothing to be first among: a reference denotes one row or none.
-// THE COMMIT LIST PROJECTS ONTO THE WALK'S CARRIER, and this is the only place the two meet.
-//
-// It replaces a `lookup` function paired with a separate reference list. That pairing let the two
-// disagree -- one answered membership, the other bounded the walk -- and the walk's own module now
-// refuses to accept them separately. Building the carrier here means a row's REFERENCE and its
-// ANCESTRY are derived in one pass from one list, so a position can never name a row whose ancestry
-// came from somewhere else.
-// THIS BUILDER IS WHERE REFERENCE UNIQUENESS IS DISCHARGED, and saying so is not decoration: the
-// carrier does not enforce it. The residual duplicated-`at` state, its rung and its next-rung trigger
-// are stated ONCE, on RepositoryHistory in gunbc.scm.ancestry, because that is the carrier the fact is
-// about. They are deliberately not restated here: two annotations that agree are still two
-// authorities for one fact, and the one that drifts is the one nobody is reading.
-//
-// What THIS module owes is the discharge itself. Every reference is minted from this fold's own index
-// counter, so two rows cannot collide, and no other production code constructs the carrier.
-//
-// THE FOLD PREPENDS AND REVERSES ONCE. An earlier revision appended with `concat(acc.steps, [step])`,
-// which copies the whole accumulator per row and makes building an n-commit history O(n^2). DESIGN
-// section 6 fixes that shape ALWAYS, regardless of the realized n, because "n is small here" is not a
-// time-stable fact -- and this module had the receipt in front of it, since gunbc.scm.merge carries an
-// annotation recording that it committed this same defect and repaired it this same way. Prepending
-// costs one cell per row, which is the whole of the repair.
-//
-// THE TRAILING `reverse` HAS NO DISCRIMINATING WITNESS AND IS STILL LOAD-BEARING. Step order here is
-// not unobservable -- it is OBSERVABLE BUT UNSPECIFIED, and the distinction is the whole reason this
-// line stays. `a_cyclic_commit` folds these steps and reports the FIRST one whose walk finds a cycle,
-// and that commit reaches a user as the actionable example in a cycle refusal. Reverse the sequence
-// and the refusal names a different commit: a changed user-visible output that no witness fails on,
-// because the interface deliberately declines to promise WHICH commit (its own annotation says it
-// answers A cycle, not THE first, so that no traversal order is frozen into the interface).
-//
-// That is why the repair keeps it. Dropping it would make this one commit do two things -- fix a
-// quadratic cost shape AND silently change which commit a refusal names -- and nothing in the corpus
-// would catch the second. The bare-minimum-cost rule does not object: it targets a cost SHAPE defect,
-// this repair fixes the shape (O(n^2) to O(n)), and one further linear pass over an already-linear
-// construction changes a constant factor, not the shape.
-//
-// A WITNESS FOR THIS WOULD BE WRONG, not merely absent: asserting which commit a cycle is reported
-// from would be a change detector over an explicitly unspecified choice, and would freeze into the
-// interface the very thing the annotation above refuses to promise.
-//
-// TRAP FOR THE NEXT READER, stated as a warning and not as a promise the code makes: deleting this
-// `reverse` reverses the step sequence relative to `commits`. Nothing observes that alignment today
-// and no witness checks it, so this is what you would be changing, not an invariant you may rely on.
-fn repository_history(commits: List<RepositoryCommit>) -> RepositoryHistory {
-  RepositoryHistory {
-    steps: reverse(
-      fold(commits, init: HistoryBuildAcc { index: 0, steps: [] }, f: fn(acc, c) {
-        HistoryBuildAcc {
-          index: acc.index + 1,
-          steps: concat([AncestryStep {
-            at: RepositoryCommitRef { reference: position_reference(n: acc.index) },
-            ancestry: c.ancestry,
-          }], acc.steps),
+fn admit_commit_order_step(next_ordinal: Int, acc: CommitOrderAdmission, c: RepositoryCommit) -> CommitOrderAdmission {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      let ordinal = minted_id_ordinal(id: c.reference.identity)
+      if ordinal < 0 || ordinal >= next_ordinal {
+        CommitOrderAdmission {
+          seen: acc.seen,
+          refusal: Present { value: CommitReferenceOutsideAllocator { reference: c.reference, next_ordinal: next_ordinal } },
         }
-      }).steps
-    ),
+      } else if map_contains_key(acc.seen, ordinal) {
+        CommitOrderAdmission {
+          seen: acc.seen,
+          refusal: Present { value: CommitReferenceDuplicated { reference: c.reference } },
+        }
+      } else {
+        match c.ancestry {
+          RootCommit => CommitOrderAdmission { seen: map_insert(acc.seen, ordinal, true), refusal: none }
+          DescendsFrom { parent: parent } =>
+            if map_contains_key(acc.seen, minted_id_ordinal(id: parent.identity)) {
+              CommitOrderAdmission { seen: map_insert(acc.seen, ordinal, true), refusal: none }
+            } else {
+              CommitOrderAdmission {
+                seen: acc.seen,
+                refusal: Present { value: CommitParentNotPreviouslyAdmitted { parent: parent } },
+              }
+            }
+        }
+      }
   }
 }
 
-type HistoryBuildAcc {
-  index: Int
-  steps: List<AncestryStep>
+fn admit_commit_order(commits: List<RepositoryCommit>, next_ordinal: Int) -> CommitOrderAdmission {
+  fold(
+    commits,
+    init: CommitOrderAdmission { seen: empty_map(), refusal: none },
+    f: fn(acc, c) { admit_commit_order_step(next_ordinal: next_ordinal, acc: acc, c: c) },
+  )
 }
 
-
-// Answers A commit a cycle was detected from, not THE first one, matching an_uncontained_target: the
-// refusal needs one actionable example and nothing downstream depends on which, so naming an order
-// would freeze an incidental traversal into the interface.
-fn a_cyclic_commit(commits: List<RepositoryCommit>) -> RepositoryCommitRef? {
-  let history = repository_history(commits: commits)
-  fold(history.steps, init: none, f: fn(acc, step) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match ancestry_walk(start: step.at, history: history) {
-          AncestryRevisitsACommit { detected_from: from } => Present { value: from }
-          AncestryTraced { chain: _ } => none
-          AncestryBrokenAt { commit: _, missing_parent: _ } => none
-          AncestryStartNotInHistory { start: _ } => none
-        }
-    }
-  })
+fn repository_history(commits: List<RepositoryCommit>) -> RepositoryHistory {
+  RepositoryHistory {
+    steps: map(commits, c => AncestryStep { at: c.reference, ancestry: c.ancestry }),
+  }
 }
 
-fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: ObjectId?) -> ObjectId? {
+fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: RepositoryCommitRef?) -> RepositoryCommitRef? {
   match selected {
     Absent => none
-    Present { value: identity } =>
-      if commit_reference_of(commits: commits, selected: identity) == "" {
-        Present { value: identity }
-      } else {
-        none
+    Present { value: reference } =>
+      match commit_at_reference(commits: commits, reference: reference) {
+        Absent => Present { value: reference }
+        Present { value: _ } => none
       }
   }
 }
@@ -731,114 +639,105 @@ type CommitDecodeAcc {
   refusal: RepositoryDecodeRefusal?
 }
 
-// DECODING A COMMIT IS TWO PHASES BECAUSE THE WIRE FACT IS NOT RESOLVABLE WHEN IT IS READ, and this
-// type is that intermediate state rather than a parallel representation of a commit.
-//
-// A parent reference is a position in the commits array, and the fold that reads commit k has not
-// necessarily read the commit that position names -- nothing requires a parent to appear earlier in
-// the array, and requiring it would put a storage-order constraint on a relation that has none. So
-// phase one reads what the document SAYS and phase two resolves it once every position exists.
-//
-// `parent_reference` being absent means the document said RootCommit (JsonNull). It is NOT "we could
-// not read it": an unreadable member refuses in phase one and never reaches here, so this Optional
-// carries one meaning rather than two.
+// The pending row carries only successfully decoded wire facts. `parent_reference` being absent
+// means the document said RootCommit (JsonNull); malformed or absent members refuse before a row is
+// admitted here.
 type PendingCommit {
+  reference: RepositoryCommitRef
   root: ObjectId
   message: String
-  parent_reference: String?
-}
-
-// The inverse of commit_reference_of over the PENDING list, walking the same ordinary index counter
-// the encoder does, so the two cannot drift -- the pairing commit_at_reference already establishes
-// for the checkout, applied one phase earlier because a parent must resolve before a RepositoryCommit
-// can be built at all.
-// IT ANSWERS WHETHER THE REFERENCE DENOTES A ROW, WHICH IS THE ONLY QUESTION ASKED OF IT.
-//
-// It previously returned the referenced row's ROOT, and the caller discarded that value -- it needed
-// existence, not identity. Returning a program from a row-existence check is what made it natural to
-// then STORE that program as the parent, which is the defect this change removes; a Bool cannot be
-// misused that way. The walk over the same index counter is unchanged.
-fn pending_contains_reference(pending: List<PendingCommit>, reference: String) -> Bool {
-  fold(
-    pending,
-    init: PendingRefScan { index: 0, found: false },
-    f: fn(acc, _c) {
-      if acc.found {
-        PendingRefScan { index: acc.index + 1, found: true }
-      } else {
-        PendingRefScan {
-          index: acc.index + 1,
-          found: position_reference(n: acc.index) == reference,
-        }
-      }
-    }
-  ).found
-}
-
-type PendingRefScan {
-  index: Int
-  found: Bool
+  parent_reference: RepositoryCommitRef?
 }
 
 type ResolvedCommitAcc {
   commits: List<RepositoryCommit>
+  seen: Map<Int, Bool>
   refusal: RepositoryDecodeRefusal?
 }
 
-// A DANGLING PARENT REFUSES RATHER THAN DEGRADING TO A ROOT COMMIT. Those are the two states
-// gunbc.scm.ancestry made structurally distinct, and answering the first for the second here would
-// undo that at the only boundary where it matters: a document whose ancestry link is broken would
-// load as a healthy repository with an extra beginning, and the damage would be indistinguishable
-// from ordinary history for every reader after it.
-fn resolve_pending_commits(pending: List<PendingCommit>) -> ResolvedCommitAcc {
+// DECODED BYTES REMAIN AN EXTERNAL POPULATION EVEN WHEN THE PURE MINT SEALS INTERNAL CONSTRUCTION.
+// The mint makes cycles structurally impossible for internally constructed histories because a
+// child accepts only an existing parent. It cannot constrain bytes authored elsewhere. This pass is
+// therefore the permanent external-boundary wall, not scaffolding redundant with the mint: one
+// authored-order fold admits each unique in-range key only after its parent, so duplicate, dangling,
+// forward and cyclic edges all refuse at the first unadmitted edge. The old all-start ancestry walk
+// was cubic; this keyed pass is linear in commits against the map.
+fn resolve_pending_commits(pending: List<PendingCommit>, next_ordinal: Int) -> ResolvedCommitAcc {
   match fold(
     pending,
-    init: ResolvedCommitAcc { commits: [], refusal: none },
-    f: fn(acc, c) { resolve_pending_step(pending: pending, acc: acc, c: c) }
+    init: ResolvedCommitAcc { commits: [], seen: empty_map(), refusal: none },
+    f: fn(acc, c) { resolve_pending_step(next_ordinal: next_ordinal, acc: acc, c: c) }
   ) {
-    ResolvedCommitAcc { commits: reversed, refusal: refusal } =>
-      ResolvedCommitAcc { commits: reverse(reversed), refusal: refusal }
+    ResolvedCommitAcc { commits: reversed, seen: seen, refusal: refusal } =>
+      ResolvedCommitAcc { commits: reverse(reversed), seen: seen, refusal: refusal }
   }
 }
 
 fn resolve_pending_step(
-  pending: List<PendingCommit>,
+  next_ordinal: Int,
   acc: ResolvedCommitAcc,
   c: PendingCommit
 ) -> ResolvedCommitAcc {
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match c.parent_reference {
-        Absent =>
-          ResolvedCommitAcc {
-            commits: concat(
-              [RepositoryCommit { root: c.root, message: c.message, ancestry: RootCommit }],
-              acc.commits
-            ),
-            refusal: acc.refusal,
-          }
-        Present { value: reference } =>
-          if !pending_contains_reference(pending: pending, reference: reference) {
+      let ordinal = minted_id_ordinal(id: c.reference.identity)
+      if ordinal < 0 || ordinal >= next_ordinal {
+        ResolvedCommitAcc {
+          commits: acc.commits,
+          seen: acc.seen,
+          refusal: Present {
+            value: RepositoryDecodedCommitReferenceOutsideAllocator {
+              reference: c.reference,
+              next_ordinal: next_ordinal,
+            }
+          },
+        }
+      } else if map_contains_key(acc.seen, ordinal) {
+        ResolvedCommitAcc {
+          commits: acc.commits,
+          seen: acc.seen,
+          refusal: Present { value: RepositoryCommitReferenceDuplicatedOnWire { reference: c.reference } },
+        }
+      } else {
+        match c.parent_reference {
+          Present { value: parent } =>
+            if !map_contains_key(acc.seen, minted_id_ordinal(id: parent.identity)) {
               ResolvedCommitAcc {
                 commits: acc.commits,
-                refusal: Present { value: RepositoryCommitParentReferenceUnresolved { reference: reference } },
+                seen: acc.seen,
+                refusal: Present { value: RepositoryCommitParentNotPreviouslyAdmitted { parent: parent } },
               }
-          } else {
+            } else {
               ResolvedCommitAcc {
                 commits: concat(
                   [RepositoryCommit {
+                    reference: c.reference,
                     root: c.root,
                     message: c.message,
-                    ancestry: DescendsFrom {
-                      parent: RepositoryCommitRef { reference: reference },
-                    },
+                    ancestry: DescendsFrom { parent: parent },
                   }],
                   acc.commits
                 ),
-                refusal: acc.refusal,
+                seen: map_insert(acc.seen, ordinal, true),
+                refusal: none,
               }
-          }
+            }
+          Absent =>
+            ResolvedCommitAcc {
+              commits: concat(
+                [RepositoryCommit {
+                  reference: c.reference,
+                  root: c.root,
+                  message: c.message,
+                  ancestry: RootCommit,
+                }],
+                acc.commits
+              ),
+              seen: map_insert(acc.seen, ordinal, true),
+              refusal: none,
+            }
+        }
       }
   }
 }
@@ -852,7 +751,7 @@ fn decode_commit_step(positions: DecodePositions, acc: CommitDecodeAcc, value: J
     Absent =>
       match repository_member_set_refusal(
         v: value,
-        allowed: ["root", "message", "ancestry"],
+        allowed: ["id", "root", "message", "ancestry"],
         context: RepositoryCommitMembers
       ) {
         Present { value: c } =>
@@ -891,8 +790,30 @@ fn decode_commit_root(positions: DecodePositions, root_value: JsonValue) -> Comm
 }
 
 type PendingParentRead
-  = PendingParentRead { reference: String? }
+  = PendingParentRead { reference: RepositoryCommitRef? }
   | PendingParentRefused { cause: RepositoryDecodeRefusal }
+
+fn repository_natural_from_json(value: JsonValue) -> Int? {
+  match value {
+    JsonNumber { lexeme: lexeme } =>
+      match parse_int(s: lexeme as String) {
+        Present { value: ordinal } =>
+          if ordinal >= 0 && (ordinal as String) == (lexeme as String) {
+            Present { value: ordinal }
+          } else { none }
+        Absent => none
+      }
+    _ => none
+  }
+}
+
+fn repository_commit_ref_from_json(value: JsonValue) -> RepositoryCommitRef? {
+  match repository_natural_from_json(value: value) {
+    Absent => none
+    Present { value: ordinal } =>
+      Present { value: RepositoryCommitRef { identity: MintedId { ordinal: ordinal } } }
+  }
+}
 
 // A MISSING `ancestry` MEMBER REFUSES; IT DOES NOT DEFAULT TO A ROOT COMMIT. Defaulting would make
 // every commit in a document that predates this member read as a beginning of history, which is a
@@ -910,11 +831,12 @@ fn read_pending_parent_reference(value: JsonValue) -> PendingParentRead {
     MemberValue { value: found } =>
       match found {
         JsonNull => PendingParentRead { reference: none }
-        JsonString { value: reference } => PendingParentRead { reference: Present { value: reference } }
-        _ =>
-          PendingParentRefused {
+        _ => match repository_commit_ref_from_json(value: found) {
+          Present { value: reference } => PendingParentRead { reference: Present { value: reference } }
+          Absent => PendingParentRefused {
             cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "ancestry" } }
           }
+        }
       }
   }
 }
@@ -923,6 +845,32 @@ fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
+      match read_member_value(v: value, key: "id") {
+        MemberLookupFailed { cause: c } =>
+          CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: c } } }
+        MemberValue { value: id_value } =>
+          match repository_commit_ref_from_json(value: id_value) {
+            Absent => CommitDecodeAcc {
+              commits: acc.commits,
+              refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "id" } } },
+            }
+            Present { value: reference } => decode_commit_members_after_reference(
+              positions: positions,
+              acc: acc,
+              value: value,
+              commit_reference: reference,
+            )
+          }
+      }
+  }
+}
+
+fn decode_commit_members_after_reference(
+  positions: DecodePositions,
+  acc: CommitDecodeAcc,
+  value: JsonValue,
+  commit_reference: RepositoryCommitRef
+) -> CommitDecodeAcc {
       match read_member(v: value, key: "root") {
         MemberFailed { cause: c } =>
           CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: c } } }
@@ -938,10 +886,15 @@ fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value
                   match read_pending_parent_reference(value: value) {
                     PendingParentRefused { cause: c } =>
                       CommitDecodeAcc { commits: acc.commits, refusal: Present { value: c } }
-                    PendingParentRead { reference: reference } =>
+                    PendingParentRead { reference: parent_reference } =>
                       CommitDecodeAcc {
                         commits: concat(
-                          [PendingCommit { root: root, message: message, parent_reference: reference }],
+                          [PendingCommit {
+                            reference: commit_reference,
+                            root: root,
+                            message: message,
+                            parent_reference: parent_reference,
+                          }],
                           acc.commits
                         ),
                         refusal: acc.refusal,
@@ -954,7 +907,6 @@ fn decode_commit_members(positions: DecodePositions, acc: CommitDecodeAcc, value
         _ =>
           CommitDecodeAcc { commits: acc.commits, refusal: Present { value: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "root" } } } }
       }
-  }
 }
 
 // THE IDENTITY RULE IS CHECKED BEFORE ANY OBJECT IS DECODED, for the same reason the format tag is:
@@ -1003,7 +955,7 @@ fn decode_repository_v1(v: JsonValue) -> RepositoryDecodeOutcome {
       } else {
         match repository_member_set_refusal(
           v: v,
-          allowed: ["format", "identity_rule", "objects", "commits", "checked_out"],
+          allowed: ["format", "identity_rule", "objects", "commits", "next_commit_ordinal", "checked_out"],
           context: RepositoryEnvelopeMembers
         ) {
           Present { value: c } => RepositoryDecodeRefused { cause: c }
@@ -1015,6 +967,22 @@ fn decode_repository_v1(v: JsonValue) -> RepositoryDecodeOutcome {
 }
 
 fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
+  match read_member_value(v: v, key: "next_commit_ordinal") {
+    MemberLookupFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
+    MemberValue { value: found } =>
+      match repository_natural_from_json(value: found) {
+        Absent => RepositoryDecodeRefused {
+          cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "next_commit_ordinal" } }
+        }
+        Present { value: next_ordinal } => decode_repository_body_with_allocator(
+          v: v,
+          next_ordinal: next_ordinal,
+        )
+      }
+  }
+}
+
+fn decode_repository_body_with_allocator(v: JsonValue, next_ordinal: Int) -> RepositoryDecodeOutcome {
   match read_member(v: v, key: "objects") {
     MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberArray { elements: object_values } =>
@@ -1035,21 +1003,20 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
                       match commit_refusal {
                         Present { value: c } => RepositoryDecodeRefused { cause: c }
                         Absent =>
-                          match resolve_pending_commits(pending: reverse(reversed_commits)) {
-                            ResolvedCommitAcc { commits: commits, refusal: resolve_refusal } =>
+                          match resolve_pending_commits(
+                            pending: reverse(reversed_commits),
+                            next_ordinal: next_ordinal,
+                          ) {
+                            ResolvedCommitAcc { commits: commits, seen: _, refusal: resolve_refusal } =>
                               match resolve_refusal {
                                 Present { value: c } => RepositoryDecodeRefused { cause: c }
                                 Absent =>
-                                  match a_cyclic_commit(commits: commits) {
-                                    Present { value: from } =>
-                                      RepositoryDecodeRefused {
-                                        cause: RepositoryDecodedAncestryCyclic { detected_from: from }
-                                      }
-                                    Absent =>
-                                      decode_repository_checkout(
-                                        v: v, store: store, positions: positions, commits: commits
-                                      )
-                                  }
+                                  decode_repository_checkout(
+                                    v: v,
+                                    store: store,
+                                    commits: commits,
+                                    next_ordinal: next_ordinal,
+                                  )
                               }
                           }
                       }
@@ -1062,16 +1029,6 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
   }
 }
 
-// THE DECODE SIDE REFUSES A CYCLE TOO, AND THIS IS THE HALF THAT MATTERS MORE. The encoder's
-// argument is a value some caller in this process built; a DOCUMENT is bytes from anywhere, and a
-// hand-authored one can state a cycle whether or not any encoder here would produce it. Refusing on
-// the write path alone would guard the direction we control and leave the untrusted direction open,
-// which is the shape of a wall that only ever fires on its own author.
-//
-// It is checked AFTER parents resolve and BEFORE the checkout, because a cycle is only decidable
-// once every reference denotes a commit, and reporting a checkout on a repository whose history is
-// illegal would be answering a question about a state that should not have loaded.
-//
 // A DANGLING CHECKOUT REFERENCE REFUSES RATHER THAN DEGRADING TO "nothing checked out". Those are
 // different states: one is an ordinary empty repository, the other is a document whose workspace
 // selection names an object the table does not contain. Answering the first for the second would
@@ -1079,8 +1036,8 @@ fn decode_repository_body(v: JsonValue) -> RepositoryDecodeOutcome {
 fn decode_repository_checkout(
   v: JsonValue,
   store: ObjectStore,
-  positions: DecodePositions,
-  commits: List<RepositoryCommit>
+  commits: List<RepositoryCommit>,
+  next_ordinal: Int
 ) -> RepositoryDecodeOutcome {
   match read_member_value(v: v, key: "checked_out") {
     MemberLookupFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
@@ -1088,21 +1045,31 @@ fn decode_repository_checkout(
       match found {
         JsonNull =>
           RepositoryDecoded {
-            envelope: RepositoryEnvelope { store: store, commits: commits, checked_out: none }
+            envelope: RepositoryEnvelope {
+              store: store,
+              commits: commits,
+              commit_allocator: MintedIdAllocator { next_ordinal: next_ordinal },
+              checked_out: none,
+            }
           }
-        JsonString { value: reference } =>
-          match commit_at_reference(commits: commits, reference: reference) {
+        _ => match repository_commit_ref_from_json(value: found) {
+          Absent => RepositoryDecodeRefused {
+            cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "checked_out" } }
+          }
+          Present { value: reference } => match commit_at_reference(commits: commits, reference: reference) {
             Absent =>
               RepositoryDecodeRefused { cause: RepositoryCheckoutReferenceUnresolved { reference: reference } }
-            Present { value: selected } =>
+            Present { value: _ } =>
               RepositoryDecoded {
                 envelope: RepositoryEnvelope {
-                  store: store, commits: commits, checked_out: Present { value: selected.root }
+                  store: store,
+                  commits: commits,
+                  commit_allocator: MintedIdAllocator { next_ordinal: next_ordinal },
+                  checked_out: Present { value: reference },
                 }
               }
           }
-        _ =>
-          RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: MemberReadWrongShape { key: "checked_out" } } }
+        }
       }
   }
 }
@@ -1180,8 +1147,9 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
       }
     RepositoryCommitRootReferenceUnresolved { reference: _ } => LoadDocumentMalformed
     RepositoryCheckoutReferenceUnresolved { reference: _ } => LoadDocumentMalformed
-    RepositoryCommitParentReferenceUnresolved { reference: _ } => LoadDocumentMalformed
-    RepositoryDecodedAncestryCyclic { detected_from: _ } => LoadDocumentMalformed
+    RepositoryCommitReferenceDuplicatedOnWire { reference: _ } => LoadDocumentMalformed
+    RepositoryCommitParentNotPreviouslyAdmitted { parent: _ } => LoadDocumentMalformed
+    RepositoryDecodedCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => LoadDocumentMalformed
     RepositoryUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
   }
 }
