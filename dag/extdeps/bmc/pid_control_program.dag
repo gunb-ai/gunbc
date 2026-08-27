@@ -1,0 +1,263 @@
+module extdeps.bmc.pid_control_program
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decimal { ExactDecimal, exact_decimal_equal }
+import std.measure { Dimensionless, Measure, One, Temperature, TemperatureDifference, Time }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Https, Uri }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "github.com/openbmc/phosphor-pid-control/blob/master/README.md",
+  },
+}
+
+// THE SUBJECT IS THE OpenBMC STACK ITSELF, CITED THROUGH THE DECLARATION THAT ALREADY EXISTS
+// RATHER THAN RESTATED. phosphor-pid-control is a component of that stack, versioned with it and
+// deployed with it; giving it a second subject marker would mint a nickname for a subject this
+// tree already names.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.firmware.openbmc.subject",
+      decl_name: "openbmc_stack",
+      field: WholeDeclaration,
+    },
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// THE COMPLETE SHAPE OF A phosphor-pid-control ZONE CONFIGURATION, MODELLED ONCE AND USED FROM
+// BOTH DIRECTIONS. An observation decodes a captured document onto it; an intent authors one; a
+// convergence compares the two. It is deliberately independent of the producer -- nothing here
+// mentions JSON, a file, a host or a transport -- because the moment the model knows how it was
+// obtained, the intent side has to either borrow that vocabulary or fork the model, and a forked
+// model is two answers to "what program is running".
+//
+// WHAT THE HARDWARE ACTUALLY DOES, WHICH THE FIELD LAYOUT ENCODES RATHER THAN ANNOTATES. A zone
+// runs ONE thermal demand controller -- a stepwise curve turning a temperature into a demand --
+// whose single output feeds MULTIPLE actuator controllers, each with its own transfer function
+// from that one demand to its own fans. The deployed program is exactly this: TEMP_SOC produces a
+// demand, and FAN1 and CHASSIS translate that same demand differently (FAN1 subtracts 8 and floors
+// at 3; CHASSIS adds 35 and floors at 40). An earlier framing of this as "two curves" was wrong
+// and would have modelled two demands where there is one, which makes the two actuators look
+// independently adjustable when moving the shared demand moves both.
+
+// EVERY MAGNITUDE IS EXACT AND DECIMAL, WHICH IS A CARRIER DECISION WITH A MEASUREMENT BEHIND IT.
+// std.measure's Percent and Celsius pin their magnitude to Nat and Int, and the deployed document
+// carries -8.0, -0.5, -3.0 and 0.005 -- values a Nat cannot hold and an Int cannot hold exactly.
+// So the QUANTITY authority is reused unchanged and only the magnitude parameter differs: these
+// are std.measure's own quantities at std.measure's own scale, over a magnitude that can carry
+// what the document carries. Minting a fresh temperature or ratio type here would have been the
+// §3 nicknaming violation; changing M is what the type parameter is for.
+type DecimalCelsius = Measure<Temperature, One, ExactDecimal>
+type DecimalCelsiusDelta = Measure<TemperatureDifference, One, ExactDecimal>
+type DecimalPercent = Measure<Dimensionless, One, ExactDecimal>
+type DecimalSeconds = Measure<Time, One, ExactDecimal>
+type DecimalRatio = Measure<Dimensionless, One, ExactDecimal>
+
+fn decimal_celsius(value: ExactDecimal) -> DecimalCelsius {
+  Measure { count: value }
+}
+
+fn decimal_celsius_delta(value: ExactDecimal) -> DecimalCelsiusDelta {
+  Measure { count: value }
+}
+
+fn decimal_percent(value: ExactDecimal) -> DecimalPercent {
+  Measure { count: value }
+}
+
+fn decimal_seconds(value: ExactDecimal) -> DecimalSeconds {
+  Measure { count: value }
+}
+
+fn decimal_ratio(value: ExactDecimal) -> DecimalRatio {
+  Measure { count: value }
+}
+
+// A SENSOR'S ROLE DECIDES WHAT ITS READING MEANS, and the two roles this schema admits are not
+// interchangeable: a fan sensor's reading is a tachometer speed and a temp sensor's is a
+// temperature. They are named rather than carried as the document's `type` string so that a third
+// role appearing upstream breaks every reader instead of silently reading as neither.
+type ProgramSensorRole = FanTachometerSensor | TemperatureSensor
+
+// WRITABILITY IS A PROPERTY OF THE SENSOR, NOT AN OPTIONAL FIELD. A temp sensor has no writePath
+// because there is nothing to drive; a fan sensor has one because that is where duty is written.
+// Modelling this as an absent string would let a fan sensor with no write path read as an ordinary
+// sensor rather than as an actuator that cannot actuate.
+type ProgramSensorActuation
+  = SensorDrivesOutput { write_path: NonEmptyStr }
+  | SensorReadOnly
+
+// THREE STATES, NOT TWO, AND THE THIRD IS THE ONE THAT COST US. `ignoreDbusMinMax` is absent on at
+// least one captured sensor entry, and absent is not false: false asserts that the D-Bus bounds
+// are to be used, while absent says the document did not decide and the daemon's default applies.
+// Collapsing absent into false would have this model assert a policy the document never states --
+// and the two have different repairs, since one is a program to change and the other is a program
+// to complete.
+type DbusBoundsDisposition
+  = DbusBoundsIgnored
+  | DbusBoundsUsed
+  | DbusBoundsUnstated
+
+type SensorReadingBounds
+  = SensorBoundsDeclared { minimum: ExactDecimal, maximum: ExactDecimal }
+  | SensorBoundsUnstated
+
+type SensorTimeout
+  = SensorTimeoutDeclared { seconds: DecimalSeconds }
+  | SensorTimeoutUnstated
+
+type ProgramSensor {
+  name: NonEmptyStr
+  role: ProgramSensorRole
+  read_path: NonEmptyStr
+  actuation: ProgramSensorActuation
+  bounds: SensorReadingBounds
+  dbus_bounds: DbusBoundsDisposition
+  timeout: SensorTimeout
+}
+
+// A CURVE POINT CARRIES BOTH HALVES, WHICH IS THE WHOLE REASON IT IS A TYPE. The document stores
+// the curve as two objects keyed "0".."8" -- one of readings, one of outputs -- so a reading whose
+// output key is missing is expressible in the document and is a real defect. Here it is not
+// expressible at all: there is no way to build a point with a reading and no output. That moves
+// the class from something a decoder must remember to check to something it cannot produce, and
+// leaves the decoder responsible only for REFUSING the malformed document rather than for
+// preserving a distinction it might drop.
+//
+// The index is retained because the document's keys carry it and dropping it would lose the join
+// back to the source -- but it is not what pairs the halves; the pairing already happened.
+type DemandCurvePoint {
+  index: Int
+  reading: DecimalCelsius
+  output: DecimalPercent
+}
+
+// HYSTERESIS IS A TEMPERATURE DIFFERENCE AND THE SETPOINT IS A TEMPERATURE, which are different
+// quantities in std.measure and are kept different here. The document writes both as bare numbers.
+type ThermalDemandController {
+  name: NonEmptyStr
+  inputs: List<NonEmptyStr>
+  setpoint: DecimalCelsius
+  failsafe_output: DecimalPercent
+  sample_period: DecimalSeconds
+  positive_hysteresis: DecimalCelsiusDelta
+  negative_hysteresis: DecimalCelsiusDelta
+  is_ceiling: Bool
+  curve: List<DemandCurvePoint>
+}
+
+type PidGains {
+  proportional: DecimalRatio
+  integral: DecimalRatio
+  derivative: DecimalRatio
+}
+
+// THE FEED-FORWARD PAIR IS WHAT MAKES THIS PROGRAM QUIET, so it is named as its own concept rather
+// than left as two more coefficients in a flat list. With all three gains at zero the actuator's
+// entire behaviour is `output = demand * gain + offset`, clamped and slew-limited -- so the offset
+// is not a trim on a feedback loop, it IS the transfer function, and it is where the difference
+// between the two actuators lives.
+type FeedForward {
+  gain: DecimalRatio
+  offset: DecimalPercent
+}
+
+type OutputBounds {
+  minimum: DecimalPercent
+  maximum: DecimalPercent
+}
+
+type IntegralBounds {
+  minimum: DecimalRatio
+  maximum: DecimalRatio
+}
+
+// SLEW IS PER SAMPLE PERIOD AND THE FIELD NAMES SAY SO, because a percent and a percent-per-second
+// are not the same magnitude and this schema writes them identically. The negative limit is
+// authored as a negative number in the document and is kept with its sign rather than being
+// normalised to a magnitude: a positive slewNeg is a different program, not the same one written
+// differently, and normalising here would make the two compare equal.
+type SlewLimits {
+  negative_per_sample: DecimalPercent
+  positive_per_sample: DecimalPercent
+}
+
+// THE ACTUATOR'S SETPOINT IS IN THE ZONE'S DEMAND UNITS, NOT DEGREES, even though the document
+// spells it with the same key as the thermal controller's setpoint. That ambiguity is resolved by
+// the split between these two types rather than by a comment: a reader holding an
+// ActuatorController cannot mistake its setpoint for a temperature, because the field's type is
+// not a temperature.
+type ActuatorController {
+  name: NonEmptyStr
+  inputs: List<NonEmptyStr>
+  setpoint: DecimalPercent
+  sample_period: DecimalSeconds
+  gains: PidGains
+  feed_forward: FeedForward
+  integral_limits: IntegralBounds
+  output_limits: OutputBounds
+  slew: SlewLimits
+}
+
+// THE TWO CONTROLLER LISTS ARE SEPARATE FIELDS, WHICH IS THE STRUCTURAL CLAIM THIS MODEL MAKES.
+// The document carries them as one heterogeneous array discriminated by a `type` string, so a
+// reader over the document has to decide what each entry is at every use. Here the decision
+// happens once, at the decode, and everything downstream reads a list whose element type already
+// answers it -- an actuator cannot appear where a demand controller is expected.
+type ProgramZone {
+  id: Int
+  minimum_thermal_output: DecimalPercent
+  failsafe_output: DecimalPercent
+  cycle_interval_ms: ExactDecimal
+  update_thermals_ms: ExactDecimal
+  thermal_demand_controllers: List<ThermalDemandController>
+  actuator_controllers: List<ActuatorController>
+}
+
+type BmcFanControlProgram {
+  sensors: List<ProgramSensor>
+  zones: List<ProgramZone>
+}
+
+// RELATION TO THE PARTIAL AUTHORITY THAT ALREADY EXISTS, DECLARED RATHER THAN LEFT FOR A REVIEWER
+// TO FIND. extdeps.bmc.openbmc_fan_control OpenBmcStepwiseController models a subset of this same
+// upstream concept, and two authorities for one fact is what DESIGN §3 forbids -- so the relation
+// is stated with its cutover rather than the two being left to drift.
+//
+// WHAT THAT ONE CANNOT REPRESENT, measured against the captured documents rather than asserted:
+// its magnitudes are Percent (Nat) and Celsius (Int), so the deployed -8.0, -3.0, -0.5 and 0.005
+// have no spelling in it; its curve is two parallel lists (readings, outputs) rather than paired
+// points, so an unpaired curve is representable; it carries no PID coefficients at all, so the
+// feed-forward offset that IS the difference between the two deployed actuators is absent; and it
+// mixes zone facts (minimum_duty, zone_failsafe_duty) into a controller record.
+//
+// WHY IT IS NOT DELETED HERE. It has an actuation consumer (extdeps.bmc.openbmc_operation), and
+// actuation is a separate lane under its own operator decision -- so this is the gap-intolerant
+// boundary carve-out DESIGN §3 names: the replacement is built in shadow and the cutover switches
+// the root once, rather than main hosting a dual-authority interval with a half-migrated writer.
+// Until then that type is FROZEN: no new fields, no new coefficients, no new callers. A change
+// that would widen it is a change that belongs here instead.
+data partial_prior_authority_note: String = "extdeps.bmc.openbmc_fan_control OpenBmcStepwiseController and OpenBmcFanController are a lossy subset of this model, retained because extdeps.bmc.openbmc_operation actuates through them and actuation is a separately-decided lane. Frozen: no new rows on their growth surfaces. Dissolve-on: the actuation cutover, which replaces the desired-config argument bundle with a projection of BmcFanControlProgram and deletes both types with openbmc_fan_config_desired_json."
+
+fn program_sensor_named(program: BmcFanControlProgram, name: NonEmptyStr) -> List<ProgramSensor> {
+  filter(program.sensors, sensor => sensor.name == name)
+}
+
+// AGREEMENT BETWEEN TWO PROGRAMS IS DECIDED ON VALUES, NEVER ON THE NUMERALS THEY WERE WRITTEN
+// WITH, which is the entire reason the magnitude carrier is exact and canonical. srv3 writes 30.0
+// where srv4 writes 30; those are the same program and must compare as one.
+fn decimal_measures_agree<Q, S>(a: Measure<Q, S, ExactDecimal>, b: Measure<Q, S, ExactDecimal>) -> Bool {
+  exact_decimal_equal(a: a.count, b: b.count)
+}
+
+fn curve_points_agree(a: DemandCurvePoint, b: DemandCurvePoint) -> Bool {
+  a.index == b.index
+    && decimal_measures_agree(a: a.reading, b: b.reading)
+    && decimal_measures_agree(a: a.output, b: b.output)
+}
