@@ -149,7 +149,7 @@ test fn non_variant_name_still_answers_registry_absent() -> Bool {
   )) == "registry-absent"
 }
 
-test fn only_the_two_failing_arms_produce_diagnostics() -> Bool {
+test fn only_export_proof_failed_produces_a_diagnostic() -> Bool {
   let rows = [
     ReferenceDerivedCandidateRow { module_name: "m", name: "a", disposition: CandidateSurvived { provider_module: "p" } },
     ReferenceDerivedCandidateRow { module_name: "m", name: "b", disposition: CandidateOwnModule },
@@ -157,25 +157,30 @@ test fn only_the_two_failing_arms_produce_diagnostics() -> Bool {
     ReferenceDerivedCandidateRow { module_name: "m", name: "c", disposition: CandidateRegistryAbsent },
     ReferenceDerivedCandidateRow { module_name: "m", name: "d", disposition: CandidateExportProofFailed { provider_module: "p" } }
   ]
-  reference_derived_row_diagnostics(rows: rows, module_span: no_span()) |> count == 2
+  reference_derived_row_diagnostics(rows: rows, module_span: no_span()) |> count == 1
 }
 
-test fn both_refusal_diagnostics_are_advisory_today() -> Bool {
+test fn the_export_unproven_diagnostic_is_advisory_today() -> Bool {
   let rows = [
-    ReferenceDerivedCandidateRow { module_name: "m", name: "c", disposition: CandidateRegistryAbsent },
     ReferenceDerivedCandidateRow { module_name: "m", name: "d", disposition: CandidateExportProofFailed { provider_module: "p" } }
   ]
   reference_derived_row_diagnostics(rows: rows, module_span: no_span())
     |> all(e => !is_error_diagnostic(d: e.diagnostic))
 }
 
-test fn the_two_refusals_carry_different_remedies() -> Bool {
+data registry_absent_not_surfaced_note: String = "The RED that keeps registry-absent OUT of the diagnostic stream. Measured over the regen seed closure, that arm returns 473 rows over 63 names dominated by Rust target-language tokens -- Vec, bool, Option, i64, empty_map -- which the candidate walk proposes by tokenizing the module's own emitted Rust and for which no .dag provider can ever exist. Wiring it would print a false report on every build. This test fails the moment someone adds that arm to reference_derived_row_diagnostics, which is the intended wall until the candidate walk stops proposing target-language vocabulary."
+
+test fn registry_absent_produces_no_diagnostic() -> Bool {
   let rows = [
-    ReferenceDerivedCandidateRow { module_name: "m", name: "c", disposition: CandidateRegistryAbsent },
+    ReferenceDerivedCandidateRow { module_name: "m", name: "bool", disposition: CandidateRegistryAbsent }
+  ]
+  reference_derived_row_diagnostics(rows: rows, module_span: no_span()) |> count == 0
+}
+
+test fn the_export_unproven_message_names_its_own_remedy() -> Bool {
+  let rows = [
     ReferenceDerivedCandidateRow { module_name: "m", name: "d", disposition: CandidateExportProofFailed { provider_module: "p" } }
   ]
-  let msgs = reference_derived_row_diagnostics(rows: rows, module_span: no_span())
-    |> map(e => diagnostic_to_message(d: e.diagnostic))
-  (msgs |> any(m => string_contains(s: m, pattern: "AUTHOR AN IMPORT")))
-    && (msgs |> any(m => string_contains(s: m, pattern: "NOT an import")))
+  reference_derived_row_diagnostics(rows: rows, module_span: no_span())
+    |> all(e => string_contains(s: diagnostic_to_message(d: e.diagnostic), pattern: "NOT an import"))
 }

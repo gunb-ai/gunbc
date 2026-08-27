@@ -3746,23 +3746,41 @@ fn reference_derived_candidate_disposition(name: String, this_module_name: Strin
   }
 }
 
-// THE SURFACING HALF. #9439 factored this decision into a typed disposition and COUNTED it; its own
-// note records that the census "is NOT SURFACED during an ordinary build". So the two FAILING arms
-// still vanished from the emission -- no diagnostic, no location, nothing a build could report --
-// which is the empty-observation narrow DESIGN names: the emitter answers "this name is not part of
-// the interface" where the truth is "I could not prove that it was", and a narrow is strictly worse
-// than the widen section 5 forbids because a widen is merely expensive and a narrow is silently
-// uncovered. Downstream the emitted crate references a name it never imported and rustc says
-// E0422/E0425/E0433 far from the cause; upstream the deficit's frequency is zero by construction,
-// so the wall's own gaps never rank for repair.
+// THE SURFACING HALF, AND IT SURFACES EXACTLY ONE OF THE TWO FAILING ARMS. #9439 factored this
+// decision into a typed disposition and COUNTED it; its own note records that the census "is NOT
+// SURFACED during an ordinary build". So both failing arms still vanished from the emission -- no
+// diagnostic, no location, nothing a build could report -- which is the empty-observation narrow
+// DESIGN names: the emitter answers "this name is not part of the interface" where the truth is "I
+// could not prove that it was". Downstream the emitted crate references a name it never imported and
+// rustc says E0422/E0425/E0433 far from the cause; upstream the deficit's frequency is zero by
+// construction, so the wall's own gaps never rank for repair.
 //
 // This is a THIRD projection of rows that already exist -- beside the use-lines and the census -- and
 // not a second decision. Nothing here re-derives the disposition, so the emitted crate cannot move.
 //
-// TWO diagnostics rather than one carrying a cause, because the arms are two error classes and not
-// one: registry-absent is fixed by AUTHORING AN IMPORT, export-proof-failed is fixed by making the
-// emitter able to prove an export the provider already holds. Opposite remedies, different owners,
-// different populations, potentially different reachability. DESIGN 4b files one row per class.
+// ONLY CandidateExportProofFailed BECOMES A DIAGNOSTIC, AND THAT IS A MEASUREMENT RESULT RATHER THAN
+// A DESIGN PREFERENCE. Both arms were instrumented and run over the regen seed closure (the census
+// invocation is recorded on the carrier note). Export-proof-failed returned ZERO. Registry-absent
+// returned 473 rows over 63 distinct names across 110 modules, and reading those names shows the
+// population is not what the arm's name suggests: the top of it is Vec 88, bool 73, Option 50, i64
+// 48, empty_map 33, with BTreeSet, Fn, fn, u8, serde_json, `_` and `-` behind them. Those are RUST
+// TARGET-LANGUAGE tokens, proposed by the candidate walk's emitted-source arm, which tokenizes the
+// module's own emitted Rust and offers every identifier in it. No `.dag` provider can ever supply
+// `bool`, so registry-absent is the correct disposition and a DIAGNOSTIC would be a false report in
+// every one of those rows -- printed on every build, in every module, forever.
+//
+// So registry-absent stays a census column and does not become a diagnostic. Its next-rung trigger is
+// NOT a burndown: it is that the candidate walk stop proposing target-language vocabulary, at which
+// point the arm's population becomes the `.dag` names it was always meant to name and the diagnostic
+// can be added without changing anything else here.
+//
+// A PREDICTION WAS REFUTED HERE AND IT IS RECORDED BECAUSE IT WAS DECISION-RELEVANT. Registry-absent
+// was expected to overlap heavily with UnlistedImportUse -- both said to mean "referenced but never
+// imported" -- and if it did not, one of the two mechanisms was not what anyone thought. Measured on
+// the same run: 63 registry-absent names, 36 UnlistedImportUse names, INTERSECTION ZERO. The
+// mechanisms have near-disjoint vocabularies, because UnlistedImportUse names `.dag` types masked at
+// resolve time while registry-absent is dominated by Rust tokens that never passed through the
+// resolver at all. They are not two views of one population.
 //
 // LOCATION GRAIN, stated rather than implied: the referencing MODULE's declaration span, because a
 // row carries (module, name, disposition) and the reference SITES are reduced to bare names by the
@@ -3771,14 +3789,6 @@ fn reference_derived_candidate_disposition(name: String, this_module_name: Strin
 fn reference_derived_row_diagnostics(rows: List<ReferenceDerivedCandidateRow>, module_span: SourceSpan) -> List<ErrorNode> {
   rows |> flat_map(r =>
     match r.disposition {
-      CandidateRegistryAbsent => [make_error_node(
-        diagnostic: ReferenceDerivedImportProviderUnknown {
-          name: r.name,
-          referencing_module: r.module_name,
-          span: module_span
-        },
-        module_name: r.module_name
-      )]
       CandidateExportProofFailed { provider_module: p } => [make_error_node(
         diagnostic: ReferenceDerivedImportExportUnproven {
           name: r.name,
