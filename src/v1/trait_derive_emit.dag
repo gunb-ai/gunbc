@@ -2120,6 +2120,47 @@ fn v1_emit_type_params_with_bounds(
 // calls it, and that caller is out of scope for this lane, so generalizing in place would have
 // forced an edit there. Output is byte-identical to the literal it replaces --
 // concat(pascal, ": ", ["Clone"] |> join(" + ")) is concat(pascal, ": Clone").
+// THE SPLIT `has_fn_fields` OWED, and the carrier that triggered it.
+//
+// The header-bareness note in v1.compiler.emit_rust (emit_type_def_from_connective) declared this
+// exact next-rung trigger: "the first carrier with a callable field that ALSO names a
+// well-formedness-bounded declared type". std.interval IntervalConstructionFold<T, R>, whose field
+// is `fn(OrderedClosedInterval<T>) -> R` against a T-Clone-bounded OrderedClosedInterval, is that
+// carrier -- so the population the note measured as EMPTY is empty no longer, and the deferral it
+// priced against a zero benefit has expired on its own stated terms.
+//
+// `has_fn_fields` answers two questions at once. For the DERIVE half it is a real discriminator:
+// a derive emits PER-IMPL bounds, so `Monoid<T> { identity: T }` needs no header bound and
+// suppressing it is correct. For the WELL-FORMEDNESS half it has no authority at all -- naming a
+// declared type whose parameters are bounded is ill-formed whatever the struct derives, and a
+// callable field names its argument and return types exactly as a plain field does
+// (`Rc<dyn Fn(OrderedClosedInterval<T>) -> R>` is ill-formed without `T: Clone`).
+//
+// This subtracts the item's OWN derive-seed contribution from the record and keeps the propagated
+// remainder. It is a subtraction rather than a second fixpoint because propagation must still see
+// every OTHER item's seed -- OrderedClosedInterval earns its bound from its own bare `low: T`
+// field, and a WF-only fixpoint with no seeds anywhere would have nothing to propagate FROM.
+fn v1_item_wf_propagated_clone_bounded_param_names(
+  item_name: String,
+  item: Node,
+  generic_param_names: List<String>,
+  bounds: Map<String, Set<String>>,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  let field_type_exprs = v1_item_field_type_exprs(item: item, source_indices: source_indices)
+  v1_item_clone_bounded_param_names(
+    item_name: item_name,
+    generic_param_names: generic_param_names,
+    bounds: bounds
+  ) |> filter(g =>
+    !v1_item_type_param_needs_clone_bound_struct(
+      param_name: g,
+      field_type_exprs: field_type_exprs,
+      source_indices: source_indices
+    )
+  )
+}
+
 fn v1_emit_type_params_with_clone_bounds(
   params: List<Node>,
   clone_param_names: List<String>,

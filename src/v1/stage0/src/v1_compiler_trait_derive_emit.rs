@@ -3854,6 +3854,38 @@ pub fn v1_emit_type_params_with_bounds(
     }
 }
 
+pub fn v1_item_wf_propagated_clone_bounded_param_names(
+    item_name: String,
+    item: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    bounds: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    {
+        let field_type_exprs = v1_item_field_type_exprs(item.clone(), source_indices.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for g in v1_item_clone_bounded_param_names(
+                item_name.clone(),
+                generic_param_names.clone(),
+                bounds.clone(),
+            )
+            .iter()
+            .cloned()
+            {
+                if !v1_item_type_param_needs_clone_bound_struct(
+                    g.clone(),
+                    field_type_exprs.clone(),
+                    source_indices.clone(),
+                ) {
+                    __result.push(g);
+                }
+            }
+            __result
+        })
+    }
+}
+
 pub fn v1_emit_type_params_with_clone_bounds(
     params: Rc<Vec<Rc<Node>>>,
     clone_param_names: Rc<Vec<String>>,

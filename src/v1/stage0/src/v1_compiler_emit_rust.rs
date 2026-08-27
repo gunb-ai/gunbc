@@ -165,7 +165,8 @@ pub use crate::v1_compiler_trait_derive_emit::{
     v1_emit_struct_from_capability_table, v1_emit_type_params_with_bounds,
     v1_emit_type_params_with_clone_bounds, v1_generic_params_needing_clone_bound,
     v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_field_type_exprs,
-    v1_map_key_required_type_names, v1_trait_derive_refuse, v1_with_map_key_requirement,
+    v1_item_wf_propagated_clone_bounded_param_names, v1_map_key_required_type_names,
+    v1_trait_derive_refuse, v1_with_map_key_requirement,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -13094,6 +13095,47 @@ pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bo
     }
 }
 
+pub fn emit_item_header_clone_param_names(
+    item: Rc<Node>,
+    item_name: String,
+    has_fn_fields: bool,
+    generic_param_names: Rc<Vec<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    if has_fn_fields.clone() {
+        v1_item_wf_propagated_clone_bounded_param_names(
+            item_name.clone(),
+            item.clone(),
+            generic_param_names.clone(),
+            emit_info.clone_bounded_type_params.clone(),
+            source_indices.clone(),
+        )
+    } else {
+        v1_item_clone_bounded_param_names(
+            item_name.clone(),
+            generic_param_names.clone(),
+            emit_info.clone_bounded_type_params.clone(),
+        )
+    }
+}
+
+pub fn emit_type_params_from_clone_param_names(
+    params: Rc<Vec<Rc<Node>>>,
+    clone_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if ((clone_param_names.clone().len() as i64) > 0) {
+        v1_emit_type_params_with_clone_bounds(
+            params.clone(),
+            clone_param_names.clone(),
+            source_indices.clone(),
+        )
+    } else {
+        emit_type_params(params.clone(), source_indices.clone())
+    }
+}
+
 pub fn emit_item_type_params_with_clone_bounds(
     item_name: String,
     params: Rc<Vec<Rc<Node>>>,
@@ -13180,6 +13222,21 @@ pub fn emit_type_def_from_connective(
         if is_product.clone() {
             {
                 let has_fn_fields = type_has_fn_fields(item_text.clone(), emit_info.clone());
+                let header_clone_param_names = emit_item_header_clone_param_names(
+                    item.clone(),
+                    item_text.clone(),
+                    has_fn_fields.clone(),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for p in item.params.clone().iter().cloned() {
+                            __result
+                                .push(generic_param_name_at(p.clone(), env.source_indices.clone()));
+                        }
+                        __result
+                    }),
+                    emit_info.clone(),
+                    env.source_indices.clone(),
+                );
                 let sealed = item_seals_construction(item.clone());
                 let deserialize_forbidden = item_forbids_deserialize(
                     item.clone(),
@@ -13205,33 +13262,15 @@ pub fn emit_type_def_from_connective(
                         __result
                     }),
                     env.source_indices.clone(),
-                    v1_carrier_param_needs_clone_bound(
-                        item_text.clone(),
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for p in item.params.clone().iter().cloned() {
-                                __result.push(generic_param_name_at(
-                                    p.clone(),
-                                    env.source_indices.clone(),
-                                ));
-                            }
-                            __result
-                        }),
-                        emit_info.clone(),
-                    ),
+                    ((header_clone_param_names.clone().len() as i64) > 0),
                     deserialize_forbidden.clone(),
                     emit_info.type_decl_items.clone(),
                 );
-                let type_params = if !has_fn_fields.clone() {
-                    emit_item_type_params_with_clone_bounds(
-                        item_text.clone(),
-                        item.params.clone(),
-                        emit_info.clone(),
-                        env.source_indices.clone(),
-                    )
-                } else {
-                    emit_type_params(item.params.clone(), env.source_indices.clone())
-                };
+                let type_params = emit_type_params_from_clone_param_names(
+                    item.params.clone(),
+                    header_clone_param_names.clone(),
+                    env.source_indices.clone(),
+                );
                 let generic_param_names = Rc::new({
                     let mut __result = Vec::new();
                     for p in item.params.clone().iter().cloned() {
