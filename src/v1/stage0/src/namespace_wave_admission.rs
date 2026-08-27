@@ -594,7 +594,7 @@ pub fn adjudicate(
             let disposition = binding_disposition(
                 base_set,
                 head_set,
-                locally_authored_claim_added(base_record, head_record, &key.1),
+                locally_authored_claim_added(head, base_record, head_record, &key.1),
             );
             deltas.push(NamespaceDelta {
                 subject: DeltaSubject::Binding {
@@ -618,7 +618,7 @@ pub fn adjudicate(
         let base_edges = base_membership.get(module).unwrap_or(&empty);
         let head_edges = head_membership.get(module).unwrap_or(&empty);
         for target in head_edges.difference(base_edges) {
-            let supported = membership_supported(head, head_record, target);
+            let supported = membership_declared(head, head_record, target);
             deltas.push(NamespaceDelta {
                 subject: DeltaSubject::Membership {
                     module: module.clone(),
@@ -642,7 +642,7 @@ pub fn adjudicate(
             });
         }
         for target in base_edges.difference(head_edges) {
-            let was_used = membership_supported(base, base_record, target);
+            let was_used = membership_bound_through(base, base_record, target);
             deltas.push(NamespaceDelta {
                 subject: DeltaSubject::Membership {
                     module: module.clone(),
@@ -751,20 +751,59 @@ fn binding_disposition(
     NamespaceDeltaDisposition::TargetChanged
 }
 
-/// Whether any name this module authors reaches into `target`'s surface.
+/// Whether `module` DECLARES a dependency on `target` -- the ADD direction's question.
+///
+/// AN AUTHORED IMPORT CLAIM IS THE ANSWER, NOT EVIDENCE TOWARD IT. On the add side
+/// `DeltaSubject::Membership` asks whether `module` gained `target` as a DIRECT DEPENDENCY,
+/// and `import <target> { .. }` is exactly that dependency stated in authored syntax. The
+/// reference set is a DOWNSTREAM PROXY for the same fact and a measurably lossy one: a name
+/// used ONLY as a match-arm pattern head is unreachable from `for_each_node` IN PRINCIPLE,
+/// because `MatchPattern::VariantPattern.name` is a `String` and never a `Node`. So a module
+/// importing a coproduct purely to name its variants in patterns declared the dependency and
+/// had it refused as `UnexplainedSubjectMotion`. Reading the weaker of two representations of
+/// one fact is DESIGN 3, not a leniency question.
+///
+/// THE SPLIT FROM `membership_bound_through` IS THE FINDING, NOT A TIDY-UP. One predicate
+/// served both directions until an executed RED showed the two ask OPPOSITE questions of the
+/// same data. Add asks *does this module depend on target*, which an import claim answers
+/// outright. Removal asks *was anything actually bound through it*, which an import claim
+/// CANNOT answer -- an unused import is precisely one that is declared and bound through by
+/// nothing. Widening the SHARED predicate therefore made every unused-import removal report
+/// `SameDeclarationIdentityRebind` instead of `UnusedSubjectMembershipRemoved`; that is the
+/// state-space conflation DESIGN names, one symbol answering two questions whose arms have
+/// opposite owners and opposite repairs. It was caught by the sibling test going red, not by
+/// review, which is why the fixture below is enrolled rather than described.
+fn membership_declared(
+    index: &DeclarationIndex,
+    record: &ModuleDeclarationRecord,
+    target: &str,
+) -> bool {
+    record.imports.iter().any(|claim| claim.target == target)
+        || membership_bound_through(index, record, target)
+}
+
 /// Did THIS module's own source gain a claim on `leaf` between the two sides?
 ///
-/// PURELY TEXTUAL, AND DELIBERATELY INDEX-FREE. The question is whether the AUTHOR wrote
-/// something, so it is answered from the two `ModuleDeclarationRecord`s alone. Consulting
-/// either index would reintroduce the conflation this discriminates: a blanket `import m`
-/// whose target grew `leaf` would read as a claim appearing in head, which is precisely the
-/// pool coincidence, not authorship. So a member-list import counts when it names the leaf, a
-/// blanket import counts only when the blanket IMPORT ITSELF is new, and a leaf the module
-/// began declaring counts too.
+/// EVERY ARM IS SCOPED TO `leaf`, AND THE BLANKET ARM IS WHERE THAT IS EASY TO GET WRONG. A
+/// member-list import and a self-declaration name the leaf in the source, so they answer from
+/// the two `ModuleDeclarationRecord`s alone. A blanket `import m` names no leaf at all, so a
+/// first revision of this function admitted authorship whenever ANY blanket target was new —
+/// which meant an unrelated new blanket import elsewhere in the same module auto-admitted a
+/// genuine pool coincidence, a fail-open widening in the one direction this function must
+/// never move (review 56882, on gunbc#9495, before it merged).
+///
+/// SO THE BLANKET ARM IS A CONJUNCTION, AND THE ORDER OF ITS TWO HALVES IS THE WHOLE POINT.
+/// The claim must be NEW IN THIS MODULE'S SOURCE **and** the head target must actually supply
+/// the leaf. Asking the second question alone is exactly the conflation this function exists
+/// to discriminate — an unchanged blanket import whose target grew `leaf` would read as
+/// authorship, which is the pool coincidence. Gating it behind the first question makes the
+/// index consultation safe rather than forbidden: a claim the author did not write cannot
+/// reach the surface check at all, whatever the target did.
 ///
 /// FALSE IS THE FAIL-CLOSED ANSWER: it leaves the delta on the refusing arm, where a human
-/// adjudicates. Nothing here can turn a refusal into silence by accident.
+/// adjudicates. A target absent from the index answers false for the same reason.
 fn locally_authored_claim_added(
+    head_index: &DeclarationIndex,
     base_record: &ModuleDeclarationRecord,
     head_record: &ModuleDeclarationRecord,
     leaf: &str,
@@ -789,13 +828,18 @@ fn locally_authored_claim_added(
             .map(|c| c.target.clone())
             .collect::<BTreeSet<String>>()
     };
-    !blanket_targets(head_record)
-        .difference(&blanket_targets(base_record))
-        .collect::<BTreeSet<_>>()
-        .is_empty()
+    let base_blanket = blanket_targets(base_record);
+    blanket_targets(head_record)
+        .difference(&base_blanket)
+        .any(|target| {
+            index_get(head_index, target)
+                .map(|t| import_surface_has(t, leaf))
+                .unwrap_or(false)
+        })
 }
 
-fn membership_supported(
+/// Whether any name this module authors reaches into `target`'s surface.
+fn membership_bound_through(
     index: &DeclarationIndex,
     record: &ModuleDeclarationRecord,
     target: &str,
