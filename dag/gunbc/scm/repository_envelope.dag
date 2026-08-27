@@ -135,11 +135,6 @@ data repository_envelope_format_tag: String = "gunbc-scm-repository-v1"
 // change-detector failure -- it would go green precisely when the rule changed.
 data repository_node_identity_rule_tag: String = "fnv1a64-structural-canonical-v1"
 
-type RepositoryCommitRecord {
-  root_reference: String
-  message: String
-}
-
 // ANCESTRY IS A COMMIT REFERENCE, NOT A NODE REFERENCE, and that is this module's own ruling reused
 // rather than a fresh choice. The annotation on `checked_out` records why it resolves against the
 // COMMIT LIST and not the object table: a node reference admits documents naming an arbitrary
