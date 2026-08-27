@@ -839,6 +839,48 @@ fn in_sweep_scope(rel: &str) -> bool {
         && !rel.contains("/tests/fixtures/")
 }
 
+/// The two sides of a diff, at file grain: which head paths the change touched, and which base
+/// paths must be re-read to reconstruct the baseline.
+///
+/// THEY ARE NOT THE SAME SET, AND A RENAME IS WHERE THEY COME APART. `git diff --name-only`
+/// reports a detected rename as ONE path -- the destination -- because rename detection is on by
+/// default. An earlier revision read that single list as both sides at once, so a renamed module
+/// lost its base side entirely: the source path was never re-read (it is not in the list) and the
+/// destination path is absent from the base tree, so every declaration in the module read as
+/// newly added and the wall could refuse an ordinary `.dag` rename over a delta it had invented.
+/// Review 56471 was right to reject it.
+///
+/// So the diff is read rename-aware, `--name-status -z -M`, and each entry contributes to the two
+/// sides SEPARATELY: a rename contributes its destination to the head side and its source to the
+/// base side, an addition contributes only a head path, a deletion only a base path, and an
+/// ordinary modification the same path to both. Scope is applied per side, because a rename may
+/// cross the sweep boundary in either direction.
+pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
+    let mut head_touched = Vec::new();
+    let mut base_side = Vec::new();
+    let mut fields = name_status_z.split('\0').filter(|f| !f.is_empty());
+    while let Some(status) = fields.next() {
+        // A rename or copy carries a similarity score after the letter and TWO paths after that.
+        let renamed = status.starts_with('R') || status.starts_with('C');
+        let Some(first) = fields.next() else { break };
+        if renamed {
+            let Some(second) = fields.next() else { break };
+            base_side.push(first.to_string());
+            head_touched.push(second.to_string());
+        } else if status.starts_with('A') {
+            head_touched.push(first.to_string());
+        } else if status.starts_with('D') {
+            base_side.push(first.to_string());
+        } else {
+            base_side.push(first.to_string());
+            head_touched.push(first.to_string());
+        }
+    }
+    head_touched.retain(|p| in_sweep_scope(p));
+    base_side.retain(|p| in_sweep_scope(p));
+    (head_touched, base_side)
+}
+
 /// One base-side source parsed into records, or a refusal naming what could not be read.
 ///
 /// A BASE FILE THAT DOES NOT PARSE IS AN UNOBSERVABLE BASELINE, NOT AN EMPTY ONE, and the
@@ -916,16 +958,15 @@ pub fn run_required_wave_admission(
         return Ok(WaveAdmissionOutcome::NoSubject { head });
     }
 
-    let changed = git_stdout(&workspace, &["diff", "--name-only", &base, &head])?;
-    let changed: Vec<String> = changed
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| in_sweep_scope(l))
-        .collect();
+    let name_status = git_stdout(
+        &workspace,
+        &["diff", "--name-status", "-z", "-M", &base, &head],
+    )?;
+    let (head_touched, base_side) = diff_sides(&name_status);
 
     let mut base_index = DeclarationIndex::default();
     for record in index_records(head_index) {
-        if !changed.iter().any(|c| c == &record.rel_path) {
+        if !head_touched.iter().any(|c| c == &record.rel_path) {
             crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
         }
     }
@@ -942,7 +983,7 @@ pub fn run_required_wave_admission(
     let base_paths = git_stdout(&workspace, &["ls-tree", "-r", "--name-only", &base])?;
     let base_paths: std::collections::BTreeSet<String> =
         base_paths.lines().map(|l| l.trim().to_string()).collect();
-    for rel in &changed {
+    for rel in &base_side {
         if !base_paths.contains(rel) {
             // Genuinely added by this change: no base side to read, established by the listing.
             continue;

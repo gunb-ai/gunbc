@@ -15,7 +15,7 @@
 use std::path::{Path, PathBuf};
 
 use v1_compiler::cli_run::namespace_wave_admission::{
-    adjudicate, base_records, disposition_label, report_unadjudicated, DeltaSubject,
+    adjudicate, base_records, diff_sides, disposition_label, report_unadjudicated, DeltaSubject,
     NamespaceDeltaDisposition, TransitionAdmission, WaveAdmissionReport,
 };
 use v1_compiler::cli_run::run_dag_parse_sweep;
@@ -508,5 +508,53 @@ fn a_base_side_source_that_does_not_parse_refuses_instead_of_reading_as_empty() 
         read.as_ref().map(|r| !r.is_empty()).unwrap_or(false),
         "a base source that parses must produce records, else the refusal above proves nothing \
          about parsing. Got: {read:?}"
+    );
+}
+
+/// A RENAME HAS TWO SIDES AND THE DIFF NAMES ONLY ONE OF THEM.
+///
+/// `git diff --name-only` reports a detected rename as its destination alone, so reading that
+/// single list as both the head-touched set and the base-side set drops the source path: the
+/// baseline for a renamed module is never read, every declaration in it looks newly added, and
+/// the wall can refuse an ordinary `.dag` rename over a delta it invented. The arm drives the
+/// rename-aware form and asserts the two sides come apart -- destination on the head side, source
+/// on the base side -- and the controls beside it assert the other three statuses still land where
+/// they belong, so the arm cannot pass by putting every path on both sides.
+#[test]
+fn a_rename_contributes_its_source_to_the_base_side_and_its_destination_to_the_head_side() {
+    let z = "R096\0dag/probe/old.dag\0dag/probe/new.dag\0";
+    let (head, base) = diff_sides(z);
+    assert_eq!(
+        head,
+        vec!["dag/probe/new.dag".to_string()],
+        "the head side of a rename is its DESTINATION"
+    );
+    assert_eq!(
+        base,
+        vec!["dag/probe/old.dag".to_string()],
+        "the base side of a rename is its SOURCE -- dropping it is the baseline hole review 56471 \
+         found, and it makes the whole module read as newly added"
+    );
+
+    let (head, base) = diff_sides("A\0dag/probe/added.dag\0");
+    assert_eq!(head, vec!["dag/probe/added.dag".to_string()]);
+    assert!(base.is_empty(), "an ADDED path has no base side to read");
+
+    let (head, base) = diff_sides("D\0dag/probe/gone.dag\0");
+    assert!(head.is_empty(), "a DELETED path has no head side");
+    assert_eq!(base, vec!["dag/probe/gone.dag".to_string()]);
+
+    let (head, base) = diff_sides("M\0dag/probe/same.dag\0");
+    assert_eq!(head, vec!["dag/probe/same.dag".to_string()]);
+    assert_eq!(
+        base,
+        vec!["dag/probe/same.dag".to_string()],
+        "an ordinary modification is the one status whose two sides ARE the same path"
+    );
+
+    let (head, base) = diff_sides("M\0src/v1/stage0/src/lib.rs\0R100\0README.md\0LICENSE\0");
+    assert!(
+        head.is_empty() && base.is_empty(),
+        "scope is applied per side: a non-`.dag` path enters neither"
     );
 }
