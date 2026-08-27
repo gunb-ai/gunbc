@@ -3,7 +3,7 @@ module extdeps.ci_runner.depot
 import std.types { List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { hardware_thread_count }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, WholeDeclaration }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.ci_runner.types {
   EntitlementUnstated,
@@ -13,7 +13,7 @@ import extdeps.ci_runner.types {
   RunnerShapesCited,
 }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -21,6 +21,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "depot.dev/docs/github-actions/runner-types"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_runner.depot",
+      decl_name: "depot_runner_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data depot_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor

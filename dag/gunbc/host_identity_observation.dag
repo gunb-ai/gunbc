@@ -70,6 +70,7 @@ fn host_identity_observation_from_apply(
         ShellEffectApplied { stdout: out, exit_code: _ } =>
           host_identity_observation_from_stdout(stdout: out, probed_at: probed_at)
         ConvergePlanApplied { stdout: _, exit_code: _ } => none
+        ToolchainHomeInterferenceDiscriminated => none
       }
     NotConverged { reason: _, applied: _ } => none
   }

@@ -2,7 +2,8 @@ module extdeps.linux.cgroup_v2_memory
 
 import std.algebra { trim }
 import std.checked_arithmetic { nat_magnitude }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Https, Uri }
 import std.measure { ByteSize, byte_size }
 import std.types { Int, NonEmptyStr, String }
@@ -13,6 +14,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.cgroup_v2_memory",
+      decl_name: "CgroupMemoryInterfaceFile",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // THE THREE KINDS ARE THE KERNEL'S, NOT OURS. cgroup-v2 documents each memory interface file with a

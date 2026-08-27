@@ -1,7 +1,8 @@
 module extdeps.posix.signal
 
 import std.types { NonEmptyStr, String, Bool }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -9,6 +10,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/kill.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.posix.signal",
+      decl_name: "posix.Signal",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // TerminateProcess sends SIGTERM only. The reaper's bound is at the CALLER (residual
