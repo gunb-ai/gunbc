@@ -152,12 +152,24 @@ test fn the_unit_is_installed_where_the_drop_in_directory_hangs_off() -> Bool {
   runner_unit_system_path == "/etc/systemd/system/actions-runner@.service"
 }
 
-// The [Service] User= stays the runner user. The de-privilege drop-in this fleet already carries
-// overrides it to root and hands the job to an unprivileged user through the wrapper's setpriv, and
-// a drop-in merges OVER the unit -- so rendering root here would defeat the reversibility that made
-// it a drop-in, and rendering nothing would run jobs as root on any host whose drop-in was removed.
+// THE DE-PRIVILEGE INVARIANT, ASSERTED AGAINST THE BASE UNIT ALONE -- WHICH IS THE ARM THAT CAN
+// ACTUALLY FAIL DANGEROUSLY.
+//
+// The de-privilege drop-in this fleet carries overrides User= to root and hands the job to an
+// unprivileged user through the wrapper's setpriv, and a drop-in merges OVER the unit. Two renders
+// would satisfy the MERGED result and only one is safe, so a witness that checked the merged file
+// would pass on a base unit that itself says root.
+//
+// So both halves are asserted here about the base unit and nothing else. It names the runner user,
+// and it does NOT name root. The second conjunct is the load-bearing one: the failure it forecloses
+// happens by OMISSION rather than by edit -- a host whose drop-in is missing, removed, or not yet
+// installed falls back to whatever the base unit says, and a base unit saying root would run
+// untrusted approved-fork-PR code as root with read on the GitHub App private key. Rendering root
+// here would also defeat the reversibility that made de-privilege a drop-in in the first place.
 test fn the_base_unit_leaves_the_privilege_drop_to_its_drop_in() -> Bool {
-  string_contains(s: rendered_text(intent: gunbc_runner_lifecycle_intent), pattern: "\nUser=briansrls\n")
+  let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
+  string_contains(s: text, pattern: "\nUser=briansrls\n")
+    && !string_contains(s: text, pattern: "\nUser=root\n")
 }
 
 // ── The two refusals, which are separate facts with separate remedies ───────────────────────────
