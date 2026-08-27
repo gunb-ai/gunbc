@@ -43,8 +43,12 @@ use super::{
 };
 use crate::extdeps_cargo::{CargoDepSource, CargoDependency};
 use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
+use crate::gunbc_stage0_crate_partition_generated::{
+    GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
+};
 use crate::v1_compiler_stage0_crates::{
-    render_stage0_crate_dep, stage0_foundation_runtime_dependencies,
+    render_stage0_crate_dep, render_stage0_crate_features_section,
+    stage0_foundation_runtime_dependencies, stage0_partition_row_features,
 };
 
 const REQUIRED_EMIT_COMPILE_ENTRIES_DATA_NAME: &str = "required_emit_compile_entries";
@@ -339,8 +343,35 @@ fn probe_manifest(workspace: &Path, entry: &str) -> String {
         .map(|dep| render_stage0_crate_dep(std::rc::Rc::new(dep)))
         .collect::<Vec<_>>()
         .join("");
+    // THE FEATURE SECTION IS NOT OPTIONAL, AND CI IS WHERE ITS ABSENCE BITES.
+    //
+    // The emitted `v1_rt.rs` gates on `#[cfg(feature = "text_lookup_work_counter")]`. A crate
+    // that references a feature it does not declare earns the `unexpected_cfgs` lint, which is a
+    // WARNING locally and a hard ERROR under CI's `RUSTFLAGS=-D warnings` — so the probe crate
+    // compiled clean on a workstation and failed `status=101` on every entry in CI, with the
+    // baseline arm reporting a red that had nothing to do with the emitted closure.
+    //
+    // Rendered from the same modeled authority the partition crates use
+    // (`stage0_partition_row_features` / `render_stage0_crate_features_section`) rather than
+    // authored here: the corpus already carries two hand-concatenated `[features]` blocks for
+    // exactly this reason, each with a note explaining the failure, and adding a third string
+    // would be the second representation those notes are evidence against.
+    let features = render_stage0_crate_features_section(stage0_partition_row_features(
+        std::rc::Rc::new(GeneratedPartitionCrateRow {
+            package_name: probe_package_name(entry),
+            crate_dir: String::new(),
+            // The foundation kind is the one that carries the feature the emitted `v1_rt.rs`
+            // gates on, and the emitted closure always contains `v1_rt`.
+            kind: GeneratedPartitionCrateKind::GeneratedFoundationCrate,
+            // `im::Vector`, not `std::Vec`: the generated row's list fields are the corpus
+            // `List<T>`, which that module aliases to `im::Vector`.
+            modules: std::rc::Rc::new(im::Vector::new()),
+            reexport_packages: std::rc::Rc::new(im::Vector::new()),
+            carries_non_empty_wrappers: false,
+        }),
+    ));
     format!(
-        "{}\nedition = \"2021\"\n\n[dependencies]\n{rendered}",
+        "{}\nedition = \"2021\"\n{features}\n[dependencies]\n{rendered}",
         render_cargo_package_header_prefix(probe_package_name(entry))
     )
 }
