@@ -223,6 +223,45 @@ fn oci_digest_parser_does_not_reuse_authored_identity() {
 }
 
 #[test]
+fn authored_identity_allocator_crosses_real_module_boundary() {
+    let materialization = parse_source(
+        include_str!("../../../../dag/extdeps/cache/materialization.dag"),
+        "dag/extdeps/cache/materialization.dag",
+        occurrence_id_allocator_initial(),
+    );
+    assert!(
+        materialization.result.error.is_none(),
+        "{:?}",
+        materialization.result.error
+    );
+    let digest = parse_source(
+        include_str!("../../../../dag/extdeps/container/oci/digest.dag"),
+        "dag/extdeps/container/oci/digest.dag",
+        materialization.occurrence_allocator.clone(),
+    );
+    assert!(digest.result.error.is_none(), "{:?}", digest.result.error);
+    let left: HashSet<i64> = materialization
+        .occurrence_transport
+        .index
+        .entries
+        .iter()
+        .map(|entry| entry.projection.occurrence.value)
+        .collect();
+    let overlap: Vec<i64> = digest
+        .occurrence_transport
+        .index
+        .entries
+        .iter()
+        .map(|entry| entry.projection.occurrence.value)
+        .filter(|id| left.contains(id))
+        .collect();
+    assert!(
+        overlap.is_empty(),
+        "cross-module identity overlap: {overlap:?}"
+    );
+}
+
+#[test]
 fn expected_red_roster_items_remain_annotation_subjects() {
     let parsed = parse_source(
         include_str!("../../expected_red_roster_join.dag"),
