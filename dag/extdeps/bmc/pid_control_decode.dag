@@ -199,7 +199,9 @@ type CurveRefusal
   | CurveSideNotAnObject { path: DocumentPath, side: CurveSide }
   | CurveSideDuplicated { path: DocumentPath, side: CurveSide, occurrences: Int }
   | CurveKeyNotAnIndex { path: DocumentPath, side: CurveSide, key: String }
-  | CurveIndexCollision { path: DocumentPath, side: CurveSide, index: Int, first_key: String, second_key: String }
+  | CurveKeyDuplicated { path: DocumentPath, side: CurveSide, key: String, occurrences: Int }
+  | CurveKeyNotCanonical { path: DocumentPath, side: CurveSide, key: String, canonical: String }
+  | CurveKeySetsDisagree { path: DocumentPath, side: CurveSide, key: String }
   | CurveValueNotANumber { path: DocumentPath, side: CurveSide, key: String }
   | CurveValueOutsideExactFragment { path: DocumentPath, side: CurveSide, key: String }
   | CurveReadingWithoutOutput { path: DocumentPath, index: Int }
@@ -223,8 +225,15 @@ fn indexed_decimal_entries_with(entries: List<IndexedDecimal>, index: Int) -> Li
   filter(entries, entry => entry.index == index)
 }
 
-// COLLISION IS DECIDED AGAINST THE ENTRIES ALREADY ACCEPTED, so the refusal can name BOTH keys.
-// Reporting only the second would leave a reader hunting for the one it collided with.
+// EACH SIDE ADMITS ONLY EXACT, CANONICALLY SPELLED KEYS, AND THAT IS AN UPSTREAM FACT RATHER THAN
+// A TIDINESS RULE. phosphor-pid-control asks each of these objects for the exact key it computes
+// from an integer position; it does not normalise, so "01" is simply a key it never asks for. A
+// decoder that read "01" as index 1 would report a curve point the daemon does not load.
+//
+// THE FIRST VERSION NORMALISED AND JOINED ON THE INTEGER, and the hole that opened is the one this
+// pair of refusals closes: `"reading": {"1": 55}` against `"output": {"01": 30}` has one member on
+// each side, so no within-side collision exists, both normalise to 1, and the two paired -- across
+// key sets that do not agree. Measured before the change, that document decoded to a curve point.
 fn curve_side_fold(
   path: DocumentPath,
   side: CurveSide,
@@ -241,15 +250,23 @@ fn curve_side_fold(
               refusal: CurveKeyNotAnIndex { path: path, side: side, key: member.key },
             }
           Present { value: index } => {
-            let clash = indexed_decimal_entries_with(entries: entries, index: index)
-            if clash.length() > 0 {
+            let same_key = filter(entries, entry => entry.key == member.key)
+            if same_key.length() > 0 {
               CurveSideRefused {
-                refusal: CurveIndexCollision {
+                refusal: CurveKeyDuplicated {
                   path: path,
                   side: side,
-                  index: index,
-                  first_key: clash.first().key,
-                  second_key: member.key,
+                  key: member.key,
+                  occurrences: same_key.length() + 1,
+                },
+              }
+            } else if to_string(index) != member.key {
+              CurveSideRefused {
+                refusal: CurveKeyNotCanonical {
+                  path: path,
+                  side: side,
+                  key: member.key,
+                  canonical: to_string(index),
                 },
               }
             } else {
@@ -327,6 +344,14 @@ type CurveDecode
   = CurveDecoded { points: List<DemandCurvePoint> }
   | CurveRefused { refusal: CurveRefusal }
 
+// THE JOIN IS BY INDEX AND THE KEY WALL ABOVE IS WHAT MAKES THAT EXACT. Written as an exact-key
+// join instead, it was measured to be indistinguishable: once every admitted key is canonical, the
+// keys and the indices are in bijection, so reducing the join to the index left every witness
+// green. Two mechanisms deciding one correspondence is the redundancy DESIGN removes, and the
+// canonical wall is the one that does work the other cannot -- it refuses `{"01": ...}` on BOTH
+// sides, where the key sets agree and an exact-key join would happily pair them into a point the
+// daemon never loads.
+//
 // THE JOIN RUNS IN BOTH DIRECTIONS, for the same reason the member conservation join does: a
 // reading with no output and an output with no reading are different defects, and checking only
 // one direction lets the other through whenever the two objects have equal key counts.
@@ -339,19 +364,39 @@ fn curve_join(path: DocumentPath, readings: List<IndexedDecimal>, outputs: List<
     CurveRefused { refusal: CurveOutputWithoutReading { path: path, index: unpaired_output.first().index } }
   } else {
     CurveDecoded {
-      points: map(readings, r =>
-        DemandCurvePoint {
-          index: r.index,
-          reading: decimal_celsius(value: r.magnitude),
-          output: decimal_percent(value: indexed_decimal_value_at(entries: outputs, index: r.index)),
-        }
+      points: sort_by(
+        map(readings, r =>
+          DemandCurvePoint {
+            index: r.index,
+            reading: decimal_celsius(value: r.magnitude),
+            output: decimal_percent(value: indexed_decimal_value_at(entries: outputs, index: r.index)),
+          }
+        ),
+        point => point.index,
       ),
     }
   }
 }
 
-// THE DECODED CURVE KEEPS THE READING OBJECT'S AUTHORED ORDER AND IS NOT SORTED, AND MONOTONICITY
-// IS NOT CHECKED HERE. A curve whose readings descend is a defective program, but refusing it at
+// THE DECODED CURVE IS ORDERED BY INDEX, NOT BY AUTHORED MEMBER ORDER, and that is semantic
+// canonicalisation rather than a validation. The daemon loads by integer position, so a document
+// whose reading object lists its members in a different order describes the SAME curve -- and a
+// semantic program that changed because someone reordered two members would make every downstream
+// digest and comparison sensitive to a difference the running system does not have. The authored
+// order remains in the captured artifact, which is where it belongs.
+//
+// ONE UPSTREAM BOUND IS DELIBERATELY NOT ENFORCED HERE, AND IS NAMED RATHER THAN GUESSED. Review
+// reported that phosphor-pid-control loads a bounded number of stepwise positions, so a key beyond
+// that bound would be a document the daemon does not fully load even though this decoder accepts
+// it. That is plausible and it is not verified against the upstream source by anyone who wrote
+// this file, so no numeric bound is asserted: writing a limit read from a summary would put a
+// fabricated constant in the one place this module exists to keep exact. NEXT-RUNG TRIGGER: read
+// the loader in the cited upstream, then add CurveIndexOutsideLoadedRange with the bound and its
+// citation. Until then the exact-key and canonical-spelling walls above stand, and they already
+// close the substitution class; what remains open is over-acceptance of a high index, which
+// produces a program that says MORE than the daemon runs rather than something different.
+//
+// MONOTONICITY IS STILL NOT CHECKED HERE. A curve whose readings descend is a defective program, but refusing it at
 // the decode would make a badly-configured host unobservable -- the observer's job is to say what
 // is running, including when what is running is wrong. That check belongs on the model, where it
 // can be reported about a program that was successfully read.

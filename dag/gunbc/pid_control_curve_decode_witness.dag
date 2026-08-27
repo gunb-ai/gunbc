@@ -9,7 +9,8 @@ import extdeps.languages.json.parse { JsonDocumentParsed, parse_json_document }
 import extdeps.bmc.pid_control_program { DemandCurvePoint }
 import extdeps.bmc.pid_control_decode {
   CurveDecoded,
-  CurveIndexCollision,
+  CurveKeyDuplicated,
+  CurveKeyNotCanonical,
   CurveKeyNotAnIndex,
   CurveOutputWithoutReading,
   CurveReadingWithoutOutput,
@@ -73,20 +74,46 @@ fn pairing_survives_a_reordered_output_object() -> Bool {
     && exact_decimal_wire(d: measure_count(m: zeroth.first().output)) == "22"
 }
 
-// TWO KEYS THAT NORMALISE TO ONE INDEX. "1" and "01" are different member names in JSON and the
-// same integer here, and picking either is picking a curve the document does not state.
-data colliding_curve_text: String = "\{\"reading\": \{\"0\": 40, \"1\": 55, \"01\": 62\}, \"output\": \{\"0\": 22, \"1\": 30, \"01\": 38\}\}"
+// A NON-CANONICAL KEY IS NOT AN INDEX THE DAEMON ASKS FOR. phosphor-pid-control requests the exact
+// key it computes from an integer position, so "01" is a key it never looks up; reading it as
+// index 1 would report a curve point the running system does not load.
+data noncanonical_curve_text: String = "\{\"reading\": \{\"0\": 40, \"01\": 62\}, \"output\": \{\"0\": 22, \"01\": 38\}\}"
 
-fn a_normalisation_collision_refuses_naming_both_keys() -> Bool {
-  match decode_curve(container: parsed(text: colliding_curve_text), path: document_path(text: "p")) {
+fn a_noncanonical_key_refuses_and_names_the_canonical_spelling() -> Bool {
+  match decode_curve(container: parsed(text: noncanonical_curve_text), path: document_path(text: "p")) {
     CurveRefused { refusal } =>
       match refusal {
-        CurveIndexCollision { path, side, index, first_key, second_key } =>
-          index == 1 && first_key == "1" && second_key == "01"
+        CurveKeyNotCanonical { path, side, key, canonical } => key == "01" && canonical == "1"
         other => false
       }
     other => false
   }
+}
+
+// THE HOLE THE INTEGER-NORMALISING JOIN LEFT OPEN, AND THE REASON THIS DECODE WAS REWRITTEN. One
+// member on each side, so no within-side duplicate exists; both normalise to 1; the two paired
+// across key sets that do not agree. Measured before the change, this document decoded to a curve
+// point.
+data cross_side_normalisation_text: String = "\{\"reading\": \{\"1\": 55\}, \"output\": \{\"01\": 30\}\}"
+
+fn keys_that_only_agree_after_normalisation_do_not_pair() -> Bool {
+  match decode_curve(container: parsed(text: cross_side_normalisation_text), path: document_path(text: "p")) {
+    CurveRefused { refusal } => true
+    other => false
+  }
+}
+
+// THE SAME POPULATION IN A DIFFERENT MEMBER ORDER IS THE SAME CURVE. The daemon loads by integer
+// position, so a semantic program that changed because two members were reordered would be
+// sensitive to a difference the running system does not have.
+data reordered_reading_curve_text: String = "\{\"reading\": \{\"2\": 62, \"0\": 40, \"1\": 55\}, \"output\": \{\"0\": 22, \"1\": 30, \"2\": 38\}\}"
+
+fn member_order_does_not_change_the_semantic_curve() -> Bool {
+  let points = decoded_points(text: reordered_reading_curve_text)
+  points.length() == 3
+    && points.first().index == 0
+    && exact_decimal_wire(d: measure_count(m: points.first().reading)) == "40"
+    && exact_decimal_wire(d: measure_count(m: points.skip(n: 2).first().reading)) == "62"
 }
 
 // A KEY THAT IS NOT AN INDEX AT ALL REFUSES RATHER THAN BEING SKIPPED. A skipped key is a curve
@@ -177,16 +204,35 @@ fn a_missing_side_refuses_and_names_which() -> Bool {
   }
 }
 
+// RFC 8259 PERMITS A DUPLICATE MEMBER NAME AND DOES NOT SAY WHICH WINS, so a curve side carrying
+// one is refused rather than resolved -- last-wins here would let a document carrying two values
+// for one curve position read as whichever the writer put second.
+data duplicate_key_curve_text: String = "\{\"reading\": \{\"0\": 40, \"0\": 62\}, \"output\": \{\"0\": 22\}\}"
+
+fn a_duplicated_exact_key_refuses() -> Bool {
+  match decode_curve(container: parsed(text: duplicate_key_curve_text), path: document_path(text: "p")) {
+    CurveRefused { refusal } =>
+      match refusal {
+        CurveKeyDuplicated { path, side, key, occurrences } => key == "0" && occurrences == 2
+        other => false
+      }
+    other => false
+  }
+}
+
 fn pid_control_curve_decode_witness() -> ProcessExit {
   if the_deployed_curve_decodes_paired()
     && pairing_survives_a_reordered_output_object()
-    && a_normalisation_collision_refuses_naming_both_keys()
+    && a_noncanonical_key_refuses_and_names_the_canonical_spelling()
+    && keys_that_only_agree_after_normalisation_do_not_pair()
+    && member_order_does_not_change_the_semantic_curve()
     && a_non_index_key_refuses_by_name()
     && an_unpaired_reading_is_named_with_its_index()
     && an_unpaired_output_is_named_with_its_index()
     && a_quoted_curve_value_refuses()
     && an_exponent_curve_value_refuses_as_outside_the_fragment()
-    && a_missing_side_refuses_and_names_which() {
+    && a_missing_side_refuses_and_names_which()
+    && a_duplicated_exact_key_refuses() {
     ExitSuccess
   } else {
     exit_failure(reason: "phosphor-pid-control curve decode: key-identity pairing, the normalisation-collision refusal, or the two-directional join changed")
