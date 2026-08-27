@@ -190,7 +190,7 @@ use crate::v1_std_core::CompilerDiagnostic::{
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
     ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation,
-    TypeMismatch, UnlistedImportUse, UnresolvedType, VariantCollision,
+    TypeMismatch, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -1061,7 +1061,7 @@ pub fn unlisted_variant_use_diagnostics(
                 ) == false))
             {
                 Rc::new(vec![make_error_node(
-                    Rc::new(CompilerDiagnostic::UnlistedImportUse {
+                    Rc::new(CompilerDiagnostic::UnlistedVariantValueUse {
                         name: name.clone(),
                         span: span.clone(),
                     }),
