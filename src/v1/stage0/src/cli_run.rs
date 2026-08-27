@@ -1721,7 +1721,6 @@ struct ModuleBindingManifestRow {
     module_path: String,
     rel_path: String,
     root_variant: String,
-    ident_span: Rc<SourceSpan>,
 }
 
 fn witness_layer_root_spelling(root: &str) -> String {
@@ -1852,7 +1851,6 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
                 module_path: binding.module_path,
                 rel_path: rel,
                 root_variant: root_variants[root_idx].clone(),
-                ident_span: binding.ident_span,
             },
         );
     });
@@ -32631,10 +32629,8 @@ pub fn emit_module_storage_binding_manifest(
     out.push_str("}\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import std.algebra { Cons, Empty }\n");
-    out.push_str("import v2.std.diagnostic { ByteRange, Textual }\n");
     out.push_str("import v2.std.integer { Int }\n");
-    out.push_str("import v2.std.node { MintedOccurrence }\n");
-    out.push_str("import v2.std.provenance { FromSource, span_index_empty, span_index_record }\n");
+    out.push_str("import v2.std.provenance { span_index_empty }\n");
     out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
     out.push('\n');
@@ -32691,37 +32687,36 @@ fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, Strin
     ))
 }
 
-/// The `OccurrenceId` construction is FULLY QUALIFIED deliberately, and the name is
-/// correspondingly absent from this manifest's `v2.std.node` import list.
+/// The bootstrap producer allocates NO occurrences, so the emitted rows carry
+/// `span_index_empty()` and nothing else.
 ///
-/// `v2.std.node.OccurrenceId` is a compatibility alias of `std.occurrence_identity.OccurrenceId`
-/// (#7352). Both modules sit in this overlay's compiled pool, so a BARE `OccurrenceId` in a
-/// record-literal position resolves to two candidates and the indexer refuses:
-/// "ambiguous reference 'OccurrenceId' ... qualify by containment path, alias, or rename".
-/// A bare reference in a TYPE position still resolves (v2/std/provenance.dag, v2/std/dependents.dag) —
-/// only construction sites need the qualification, which is why this reads as an inconsistency.
+/// This previously minted `v2.std.node.OccurrenceId { value: <ident_span.start> }` and recorded
+/// the module declaration's byte range against it. `std.occurrence_identity`'s own acceptance law
+/// names SourceSpan as a FORBIDDEN identity input: an `OccurrenceId` is unique only inside one
+/// explicit graph-scoped `OccurrenceIdAllocator`, and no allocator ran here. A byte offset is not
+/// an allocation — every file's module declaration sits at a near-identical offset, so the values
+/// collide across rows by construction, and `span_index_merge` would conflate them silently.
 ///
-/// #7352 applied exactly this qualification to the one COMMITTED construction site
-/// (src/v2/test/claim/manual/bind_demand_driven_eval_test.dag) and missed this generator.
-/// The gap stayed invisible because this file is generated: whole-tree compile-clean never
-/// sees it, and its only executing consumer is the module-binding supply gate, which moved
-/// off per-PR CI onto the falsifier cadence — where it then failed for four days.
+/// It was also a value nothing read. Traced across the corpus, every consumer of a
+/// `ParsedFromSource` provenance discards the field by pattern (`span_index: _` in
+/// `v2.compiler.source_authority.module_storage_binding_file_path` and at three sites in
+/// `gunbc.commit_workflow`); the two witnesses over `host_module_bindings`
+/// (`v2.test.long.module_binding_host_consistency`) join on module identity and storage path only.
+/// The sole `span_index_lookup` consumers — `v2.lens.identity_captured_navigation.analyze` and the
+/// provenance tests — read artifacts produced by `v2.compiler.parse`'s stamp pipeline, never this
+/// manifest. So the fabricated identity was §5's fabricated plausible output standing where an
+/// honest "no occurrences were allocated" was available, and §4b's decoration: unread, so nothing
+/// could ever refuse it.
 ///
-/// Dissolve-on: the `node_occurrence_id_v2_facade_dissolve_on` migration deletes the
-/// `v2.std.node` alias; the second candidate disappears and the qualification is free to drop.
-fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> String {
-    let start = span.start.max(0);
-    let end = span.end.max(start);
-    let occurrence_id = start.max(1);
-    format!(
-        "span_index_record(\n  index: span_index_empty(),\n  id: MintedOccurrence {{ id: v2.std.node.OccurrenceId {{ value: {occurrence_id} }} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
-    )
-}
-
+/// Emitting the empty index is the delete-first cut (§3): if a consumer of these rows' provenance
+/// ever appears, it needs REAL stamps and will refuse loudly rather than navigate an offset that
+/// happens to be an integer. That restoration is the follow-on already named in
+/// `v2.compiler.source_authority.module_storage_host_parse_note` — v1 bootstrap parse stamping
+/// `NodeOccurrenceId` the way `parse_production_prepared` does.
 fn emit_module_binding_row(row: &ModuleBindingManifestRow) -> Result<String, String> {
     let qn = emit_module_binding_qualified_name(&row.module_path)?;
     let artifact_id = source_root_ingest_artifact_id_for_path(&row.rel_path);
-    let span_index = emit_module_binding_span_index(&row.ident_span, &artifact_id);
+    let span_index = "span_index_empty()";
     Ok(format!(
         "module_storage_parsed_binding(\n  module: {qn},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  span_index: {span_index},\n  source_root: {}\n)",
         dag_manifest_scalar_escape(&row.rel_path)?,
