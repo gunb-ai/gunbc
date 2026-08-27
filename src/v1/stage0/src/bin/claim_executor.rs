@@ -161,6 +161,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_ci_mode = false;
     let mut required_ci_lane: Option<RequiredCiLane> = None;
     let mut required_v2_emission_mode = false;
+    let mut required_emit_compile_mode = false;
     let mut required_regen_mode = false;
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
@@ -210,6 +211,12 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-v2-emission" => {
                 required_v2_emission_mode = true;
+            }
+            // THE PHASE AS ITS OWN ENTRY POINT, for the reason `--required-v2-emission` is one:
+            // running this alone is a real local action, and it runs the SAME producer the
+            // required phase runs, so a green here and a green there cannot be two facts.
+            "--required-emit-compile" => {
+                required_emit_compile_mode = true;
             }
             "--required-regen" => {
                 required_regen_mode = true;
@@ -673,6 +680,90 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("v2-emission");
         }
 
+        // PHASE — the emitted closure, COMPILED.
+        //
+        // WHAT IT ANSWERS THAT THE PHASE ABOVE DOES NOT. `v2-emission` stops at the emitter:
+        // its own header names what it cannot see, and the first item is "a rustc error in the
+        // emitted tree (nothing here compiles the emission)". DESIGN's declared rung drop --
+        // "A BLOCKING EMIT-STAGE DIAGNOSTIC CAN SIT ON MAIN INDEFINITELY WITH NO REQUIRED
+        // PHASE THAT FAILS" -- names a required phase that emits over a closure and compiles it
+        // as its restoration trigger. This is that phase.
+        //
+        // THE PHASE ESTABLISHES ITS OWN DISCRIMINATING RED, EVERY RUN. A cargo verdict that is
+        // green because nothing was measured is the decoration DESIGN 4b calls worse than
+        // absent, so a green baseline alone is NOT a pass here: the run injects one fault into
+        // one emitted file, requires it to fail alone, restores the bytes and requires the
+        // green back. `emit_compile_outcome_passed` is that conjunction, and every
+        // non-discriminating mutation arm stops the line with its own typed cause.
+        if required_ci_phase_selected(RequiredCiPhase::EmitCompile, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase emit-compile (one entry's emitted closure, compiled, \
+                 with its own mutation-established red)"
+            );
+            match v1_compiler::cli_run::run_required_emit_compile(&source_roots) {
+                Ok(outcomes) => {
+                    let mut not_passed = 0usize;
+                    for outcome in &outcomes {
+                        eprintln!(
+                            "required-ci: emit-compile {}",
+                            v1_compiler::cli_run::emit_compile_outcome_summary(outcome)
+                        );
+                        if !v1_compiler::cli_run::emit_compile_outcome_passed(outcome) {
+                            not_passed += 1;
+                            if let v1_compiler::cli_run::EmitCompileOutcome::Measured {
+                                baseline,
+                                ..
+                            } = outcome
+                            {
+                                for line in
+                                    v1_compiler::cli_run::cargo_verdict_stderr_tail(baseline)
+                                        .lines()
+                                {
+                                    eprintln!("required-ci: emit-compile cargo| {line}");
+                                }
+                            }
+                        }
+                    }
+                    // THE COUNT IS OF DECLARED MEMBERS, NOT OF SURVIVORS. A phase that reported
+                    // how many entries passed would read identically whether the roster held
+                    // ten members or one, which is the coverage-moves-unnoticed failure the
+                    // roster row refuses by construction.
+                    eprintln!(
+                        "required-ci: emit-compile declared={} passed={} not_clean={not_passed}",
+                        outcomes.len(),
+                        outcomes.len() - not_passed
+                    );
+                    // ONE REPORT, BOTH SURFACES. See `emit_compile_report`: the remainder is
+                    // identities rather than a percentage, and a remainder that could not be
+                    // persisted stops the line.
+                    let (report, retention_error) = v1_compiler::cli_run::emit_compile_report(
+                        &outcomes,
+                        &source_roots,
+                        "required-ci: emit-compile",
+                    );
+                    for line in report {
+                        eprintln!("{line}");
+                    }
+                    if let Some(err) = retention_error {
+                        phase_failures
+                            .push(format!("emit-compile (remainder not retained: {err})"));
+                    }
+                    if not_passed > 0 {
+                        phase_failures.push(format!(
+                            "emit-compile ({not_passed} entry/entries not clean)"
+                        ));
+                    }
+                }
+                // A ROSTER THAT NAMES NOTHING IS NOT A CLEAN RUN. Reporting zero entries
+                // compiled as a pass is the empty-observation narrow.
+                Err(e) => {
+                    eprintln!("required-ci: emit-compile roster refused: {e}");
+                    phase_failures.push(format!("emit-compile roster: {e}"));
+                }
+            }
+            ran.push("emit-compile");
+        }
+
         // PHASE — the derived stage0 partition's crate boundary.
         //
         // WHAT IT ANSWERS, and it is deliberately not what a reader assumes from the name: the
@@ -932,6 +1023,55 @@ fn run() -> Result<ExitCode, ExitCode> {
         } else {
             Err(ExitCode::from(1))
         };
+    }
+
+    if required_emit_compile_mode {
+        let roots = if source_roots.is_empty() {
+            v1_compiler::cli_run::witness_layer_roots()
+        } else {
+            source_roots.clone()
+        };
+        match v1_compiler::cli_run::run_required_emit_compile(&roots) {
+            Ok(outcomes) => {
+                let mut not_passed = 0usize;
+                for outcome in &outcomes {
+                    eprintln!(
+                        "required-emit-compile: {}",
+                        v1_compiler::cli_run::emit_compile_outcome_summary(outcome)
+                    );
+                    if !v1_compiler::cli_run::emit_compile_outcome_passed(outcome) {
+                        not_passed += 1;
+                        if let v1_compiler::cli_run::EmitCompileOutcome::Measured {
+                            baseline, ..
+                        } = outcome
+                        {
+                            for line in
+                                v1_compiler::cli_run::cargo_verdict_stderr_tail(baseline).lines()
+                            {
+                                eprintln!("required-emit-compile: cargo| {line}");
+                            }
+                        }
+                    }
+                }
+                let (report, retention_error) = v1_compiler::cli_run::emit_compile_report(
+                    &outcomes,
+                    &roots,
+                    "required-emit-compile:",
+                );
+                for line in report {
+                    eprintln!("{line}");
+                }
+                return if not_passed == 0 && retention_error.is_none() {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                };
+            }
+            Err(e) => {
+                eprintln!("required-emit-compile: roster refused: {e}");
+                return Err(ExitCode::from(1));
+            }
+        }
     }
 
     if required_v2_emission_mode {
@@ -1272,6 +1412,7 @@ enum RequiredCiPhase {
     NamespaceWaveAdmission,
     Regen,
     V2Emission,
+    EmitCompile,
     PartitionCrates,
     GeneratedArtifact,
     Floor,
@@ -1284,6 +1425,7 @@ impl RequiredCiPhase {
             RequiredCiPhase::NamespaceWaveAdmission => "namespace-wave-admission",
             RequiredCiPhase::Regen => "regen",
             RequiredCiPhase::V2Emission => "v2-emission",
+            RequiredCiPhase::EmitCompile => "emit-compile",
             RequiredCiPhase::PartitionCrates => "partition-crates",
             RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::Floor => "floor",
@@ -1306,6 +1448,13 @@ impl RequiredCiPhase {
             RequiredCiPhase::NamespaceWaveAdmission => RequiredCiLane::Witnesses,
             RequiredCiPhase::Regen => RequiredCiLane::Build,
             RequiredCiPhase::V2Emission => RequiredCiLane::Build,
+            // THE SECOND HALF OF THE SAME QUESTION, so it rides beside the emission it
+            // extends: v2-emission asks whether the emitter produced a tree, this asks
+            // whether the tree it produced compiles. Its cost is a cargo build over one
+            // emitted closure against the dependency graph this lane's own first step has
+            // already compiled -- it shares that target directory and that profile
+            // deliberately, so the arm compiles the emitted crate and nothing else.
+            RequiredCiPhase::EmitCompile => RequiredCiLane::Build,
             // A DRIFT COMPARISON OVER DERIVED RUST, so it belongs beside regen and
             // v2-emission rather than beside the witness corpus. The two lanes carry no
             // `needs` edge, so this costs nothing until the build lane exceeds the floor's
@@ -1321,11 +1470,12 @@ impl RequiredCiPhase {
     }
 }
 
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 7] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 8] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::NamespaceWaveAdmission,
     RequiredCiPhase::Regen,
     RequiredCiPhase::V2Emission,
+    RequiredCiPhase::EmitCompile,
     RequiredCiPhase::PartitionCrates,
     RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::Floor,

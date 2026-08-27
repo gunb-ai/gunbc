@@ -91,6 +91,7 @@ src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs !merge
 src/v1/stage0/src/data_initializer_identity.rs !merge
 src/v1/stage0/src/declaration_index.rs !merge
 src/v1/stage0/src/derived_realization_schedule.rs !merge
+src/v1/stage0/src/emitted_closure_compile_host.rs !merge
 src/v1/stage0/src/generated_artifact_boundary_host.rs !merge
 src/v1/stage0/src/main.rs !merge
 src/v1/stage0/src/memory_governor.rs !merge

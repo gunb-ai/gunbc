@@ -71,6 +71,9 @@ pub mod target_invocation_host;
 mod generated_artifact_boundary_host;
 #[path = "partition_crate_boundary_host.rs"]
 mod partition_crate_boundary_host;
+
+#[path = "emitted_closure_compile_host.rs"]
+mod emitted_closure_compile_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
@@ -32383,6 +32386,20 @@ fn emit_source_root_entry_admission_data(admission: &SourceRootEntryAdmission) -
     )
 }
 
+/// The fnv1a64 digest of one NUL-delimited material string, rendered as `fnv1a64:<hex>`.
+///
+/// Extracted from `source_root_ingest_content_hash_fnv1a64` rather than copied beside it: a second
+/// site spelling out the same two constants would be one concept with two authorities, and the
+/// two would then be free to disagree about a digest two carriers are expected to compare.
+pub fn fnv1a64_digest_of_material(material: &str) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in material.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("fnv1a64:{hash:016x}")
+}
+
 pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord]) -> String {
     let mut material = String::new();
     for rec in records {
@@ -32391,12 +32408,7 @@ pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord])
         material.push_str(&rec.source);
         material.push('\0');
     }
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in material.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    format!("fnv1a64:{hash:016x}")
+    fnv1a64_digest_of_material(&material)
 }
 
 fn path_matches_any_subpath(path: &str, subpaths: &[String]) -> bool {
@@ -48578,6 +48590,20 @@ pub use generated_artifact_boundary_host::{
     generated_artifact_body_for_path, generated_artifact_ctx, run_generated_artifact_boundary,
     AdjudicatedArtifact, ArtifactDisposition, GeneratedArtifactBoundaryOutcome,
     GeneratedArtifactPathBody, UnadjudicatedArtifact, GENERATED_ARTIFACT_PRODUCING_COMMAND,
+};
+
+/// The emitted-closure compile phase: one entry's closure emitted, written as a crate, and
+/// compiled — with the discriminating red the phase establishes on itself every run.
+///
+/// Re-exported here for the same reason the two above are: every required phase addresses its
+/// producer through one surface.
+pub use emitted_closure_compile_host::{
+    cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
+    emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
+    emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
+    emit_compile_selection_universe_digest, required_emit_compile_entries,
+    retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
+    EmitCompileSelection, MutationVerdict,
 };
 
 /// The authority's own declared module path, for consumers outside this module.
