@@ -1,6 +1,7 @@
 module extdeps.cloud.gcp.adc_document
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -28,6 +29,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "cloud.google.com/docs/authentication/application-default-credentials"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cloud.gcp.adc_document",
+      decl_name: "GcpApplicationDefaultCredentials",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // The authorized-user ADC document is a JSON object, so the seam from a file to

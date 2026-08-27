@@ -1005,6 +1005,12 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
 // classifier (gunbc.scm.json_member, gunbc.scm.target_reference). They are not inconsistent with the
 // delegating arm above: the object-table module owns a classifier and those two do not, so each cause
 // is classified by whoever owns it.
+//
+// BOTH OF THOSE NESTED MATCHES DESCEND ALL THE WAY, which the target-reference one did not: its
+// TargetReferenceMemberReadRefused arm bound the payload bare and answered one standing for the
+// whole of MemberReadRefusal, while the sibling ClosureDocMemberReadRefused arm enumerated the same
+// four causes. The two arms now agree, so a new member-read cause fails to compile at every position
+// this function reaches it rather than only at the undecorated one.
 fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
   match cause {
     ClosureDocFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
@@ -1020,7 +1026,13 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
     ClosureDocObjectTableRefused { cause: c } => object_table_load_standing(cause: c)
     ClosureDocTargetReferenceRefused { cause: c } =>
       match c {
-        TargetReferenceMemberReadRefused { cause: _ } => LoadDocumentMalformed
+        TargetReferenceMemberReadRefused { cause: m } =>
+          match m {
+            MemberReadSubjectNotObject => LoadDocumentMalformed
+            MemberReadMissing { key: _ } => LoadDocumentMalformed
+            MemberReadDuplicated { key: _ } => LoadDocumentMalformed
+            MemberReadWrongShape { key: _ } => LoadDocumentMalformed
+          }
         TargetReferenceUnexpectedMember { key: _ } => LoadDocumentMalformed
         TargetReferenceNotOneArm { found: _ } => LoadDocumentMalformed
         TargetReferenceUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed

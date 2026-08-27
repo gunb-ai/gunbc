@@ -1,7 +1,8 @@
 module extdeps.linux.cgroup_v2
 
 import std.types { Bool, NonEmptyStr, String }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Https, Uri }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -9,6 +10,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "docs.kernel.org/admin-guide/cgroup-v2.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.cgroup_v2",
+      decl_name: "linux.CgroupV2",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // THE UNIFIED HIERARCHY IS MOUNTED AT ONE PLACE, AND IT IS THE KERNEL'S PLACE, NOT OURS. Every
