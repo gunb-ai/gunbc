@@ -505,7 +505,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                 // one that exists.
                 None => {
                     eprintln!(
-                        "required-ci: namespace-wave-admission NOT RUN — the parse phase did                          not produce an index (it refused, or this lane does not own it)"
+                        "required-ci: namespace-wave-admission NOT RUN — the parse phase did not \
+                         produce an index (it refused, or this lane does not own it)"
                     );
                     phase_failures.push("namespace-wave-admission (no head index)".to_string());
                 }
