@@ -5585,11 +5585,11 @@ fn parse_if(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let condition = r.expr
 
-  let r = parse_block(tokens: skip_newlines(tokens: r.tokens), ctx: r.ctx)
+  let r = parse_block(tokens: skip_newlines(tokens: r.tokens), ctx: parse_context_after_node(ctx: r.ctx, node: condition))
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let then_branch = r.expr
   let tokens = skip_newlines(tokens: r.tokens)
-  let ctx = r.ctx
+  let ctx = parse_context_after_node_list(ctx: r.ctx, nodes: [condition, then_branch])
 
   match eat(tokens: tokens, expected: ExpectKeyword { text: "else" }) {
   EatConsumed { token: _, tokens: __ec } =>
@@ -5597,11 +5597,11 @@ fn parse_if(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     if tok_is_keyword(tok: token_stream_first(stream: tokens), kw: "if") {
       let r2 = parse_if(tokens: tokens, ctx: ctx)
       if has_err(err: r2.err) { return ExprResult { expr: r2.expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-      parsed_expr_result(tokens: r2.tokens, ctx: r2.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span))
+      parsed_expr_result(tokens: r2.tokens, ctx: parse_context_after_node(ctx: r2.ctx, node: r2.expr), build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span))
     } else {
       let r2 = parse_block(tokens: tokens, ctx: ctx)
       if has_err(err: r2.err) { return ExprResult { expr: r2.expr, tokens: r2.tokens, ctx: r2.ctx, err: r2.err } }
-      parsed_expr_result(tokens: r2.tokens, ctx: r2.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span))
+      parsed_expr_result(tokens: r2.tokens, ctx: parse_context_after_node(ctx: r2.ctx, node: r2.expr), build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch, r2.expr], inferred: none, span: span))
     }
   EatUnchanged { tokens: __eu } =>
     parsed_expr_result(tokens: tokens, ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprIf, children: [condition, then_branch], inferred: none, span: span))

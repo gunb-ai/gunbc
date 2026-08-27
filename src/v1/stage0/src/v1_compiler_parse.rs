@@ -15021,7 +15021,10 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
             });
         }
         let condition = r.expr.clone();
-        let r = parse_block(skip_newlines(r.tokens.clone()), r.ctx.clone());
+        let r = parse_block(
+            skip_newlines(r.tokens.clone()),
+            parse_context_after_node(r.ctx.clone(), condition.clone()),
+        );
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -15032,7 +15035,10 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
         }
         let then_branch = r.expr.clone();
         let tokens = skip_newlines(r.tokens.clone());
-        let ctx = r.ctx.clone();
+        let ctx = parse_context_after_node_list(
+            r.ctx.clone(),
+            Rc::new(vec![condition.clone(), then_branch.clone()]),
+        );
         match (*eat(
             tokens.clone(),
             Rc::new(ExpectedToken::ExpectKeyword {
@@ -15054,19 +15060,23 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
                                 err: r2.err.clone(),
                             });
                         }
-                        parsed_expr_result(r2.tokens.clone(), r2.ctx.clone(), |identity| {
-                            make_expr_node(
-                                identity.clone(),
-                                Rc::new(ExprData::ExprIf),
-                                Rc::new(vec![
-                                    condition.clone(),
-                                    then_branch.clone(),
-                                    r2.expr.clone(),
-                                ]),
-                                None,
-                                span.clone(),
-                            )
-                        })
+                        parsed_expr_result(
+                            r2.tokens.clone(),
+                            parse_context_after_node(r2.ctx.clone(), r2.expr.clone()),
+                            |identity| {
+                                make_expr_node(
+                                    identity.clone(),
+                                    Rc::new(ExprData::ExprIf),
+                                    Rc::new(vec![
+                                        condition.clone(),
+                                        then_branch.clone(),
+                                        r2.expr.clone(),
+                                    ]),
+                                    None,
+                                    span.clone(),
+                                )
+                            },
+                        )
                     }
                 } else {
                     {
@@ -15079,19 +15089,23 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
                                 err: r2.err.clone(),
                             });
                         }
-                        parsed_expr_result(r2.tokens.clone(), r2.ctx.clone(), |identity| {
-                            make_expr_node(
-                                identity.clone(),
-                                Rc::new(ExprData::ExprIf),
-                                Rc::new(vec![
-                                    condition.clone(),
-                                    then_branch.clone(),
-                                    r2.expr.clone(),
-                                ]),
-                                None,
-                                span.clone(),
-                            )
-                        })
+                        parsed_expr_result(
+                            r2.tokens.clone(),
+                            parse_context_after_node(r2.ctx.clone(), r2.expr.clone()),
+                            |identity| {
+                                make_expr_node(
+                                    identity.clone(),
+                                    Rc::new(ExprData::ExprIf),
+                                    Rc::new(vec![
+                                        condition.clone(),
+                                        then_branch.clone(),
+                                        r2.expr.clone(),
+                                    ]),
+                                    None,
+                                    span.clone(),
+                                )
+                            },
+                        )
                     }
                 }
             }
