@@ -39,21 +39,18 @@ test fn witness_wif_binding_perturbation_reddens() -> Bool {
     && !operator_bindings_are_user_principal_accessor_only(bindings: [poisoned_wif])
 }
 
-// The five string comparisons this witness used to carry are DELETED rather than rehomed, and
-// the distinction matters under §4b(4). A climb keeps the discriminating RED that proves the
-// higher rung is real. There was no discriminating RED here to keep: every clause compared a
-// `DeclarationRef` row's literal field against the same literal, so the assertion was green by
-// construction and could only be reddened by editing the row it read. It was a decoration, not
-// evidence, and it was worse than absent because its name claimed the credential flow bound the
-// auth-pattern authorities while nothing bound them. The binding is now an import edge in
-// `gunbc.tailscale_acl_phase2_credential`, enforced by the compiler.
+// The six clauses this witness used to carry are DELETED rather than rehomed, and §4b(4) is why
+// the distinction matters. A climb keeps the discriminating RED that proves the higher rung is
+// real; there was no discriminating RED here to keep. Five compared a `DeclarationRef` row's
+// literal field against the same literal. The sixth matched `tailscale_acl_operator_adc_strategy`
+// -- itself a literal `data` constant -- into true/false, which has the SAME property: green by
+// construction, reddenable only by editing the row it reads. That is a change detector, not a
+// check, and keeping it while deleting the five for that exact reason would have been inconsistent.
 //
-// What survives is the clause that was never a tautology: the operator strategy is the
-// ADC-refresh arm of a closed coproduct and not the gcloud-CLI arm. Its RED is authorable by
-// changing the strategy, so it stays enrolled.
-test fn witness_operator_credential_strategy_is_adc_refresh() -> Bool {
-  tailscale_acl_operator_strategy_is_adc_refresh()
-}
+// The binding those clauses claimed is now an import edge in
+// `gunbc.tailscale_acl_phase2_credential`, enforced by the compiler. The strategy is carried
+// structurally too: `tailscale_acl_operator_adc_strategy` is passed to `gcp_oauth_access_token`,
+// so a strategy that does not inhabit `GcpOAuth2AccessTokenStrategy` refuses at that call.
 
 test fn witness_ephemeral_lifetime_matches_optional_impersonation_cap() -> Bool {
   second_count(s: tailscale_acl_ephemeral_lifetime) == 3600
