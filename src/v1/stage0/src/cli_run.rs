@@ -46233,7 +46233,8 @@ pub fn run_required_floor(
     //
     // WHAT THIS REPLACED, and why it was not an optimisation. The required outcome of this whole
     // region is exactly: exclude a witness whose AUTHORED module sits in the long home, exclude
-    // one that reads the live tree, claim everything else Hermetic. That decision used to be
+    // a walk-plan fixture member already driven by its recipe, and plan everything else. That
+    // decision used to be
     // made TWICE — once by `required_floor_manifest` over 10,498 records marshalled into the
     // interpreter, and again here in Rust, applying the same prefix test to explain the
     // difference between sites offered and claims returned. Between the two sat an interpreted
