@@ -55,19 +55,31 @@ type ConsumerImport {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The four dispositions. THREE OF THEM ARE THE MEASURED CLASS AND THE FOURTH IS NOT A CASE OF IT --
-// it is the honest arm for a pair whose consumer never spells either name, which would otherwise be
-// folded into the silent-expansion count and inflate it. Every discovered pair is exactly one of
-// these.
+// The four dispositions, in the order the classifier decides them. THREE OF THEM ARE THE MEASURED
+// CLASS AND THE FOURTH IS NOT A CASE OF IT -- ImportPresentNoUseSite is the honest arm for a pair
+// whose consumer never spells either name, which would otherwise be folded into the silent-expansion
+// count and inflate it. Every discovered pair is exactly one of these.
+//
+// OpaqueNameEmitted -- the consumer spells the DECLARED NAME. The realization stayed in its
+// declaring module, which is the working shape.
+//
+// RealizationExpandedColliding -- the consumer spells the REALIZATION and binds that same spelling
+// to something else. Two types, one spelling, substitution after resolution: the arm that produces
+// a type error in the emitted artifact.
+//
+// RealizationExpandedNonColliding -- the consumer spells the REALIZATION and does not bind that
+// spelling. The same substitution has happened and nothing refuses it today. It becomes the
+// colliding arm the day any consumer binds the spelling, so it is counted as the same defect and
+// never as a clean result.
+//
+// ImportPresentNoUseSite -- the consumer imports the name and spells NEITHER it nor its
+// realization. There is no use site here, so there is nothing to have been substituted.
 type UseSiteDisposition
-  // The consumer spells the DECLARED NAME. The realization stayed in its declaring module.
   = OpaqueNameEmitted {
       consumer_file: String
       declaring_file: String
       name: String
     }
-  // The consumer spells the REALIZATION, and binds that same spelling to something else. Two types,
-  // one spelling, substitution after resolution -- the arm that produces a type error.
   | RealizationExpandedColliding {
       consumer_file: String
       declaring_file: String
@@ -75,17 +87,12 @@ type UseSiteDisposition
       spelling: String
       collides_with: String
     }
-  // The consumer spells the REALIZATION and does not bind that spelling. The same substitution has
-  // happened; nothing refuses it today. It becomes the colliding arm the day any consumer binds the
-  // spelling, so it is counted as the same defect and never as a clean result.
   | RealizationExpandedNonColliding {
       consumer_file: String
       declaring_file: String
       name: String
       spelling: String
     }
-  // The consumer imports the name and spells NEITHER it nor its realization. There is no use site
-  // here, so there is nothing to have been substituted.
   | ImportPresentNoUseSite {
       consumer_file: String
       declaring_file: String
@@ -548,6 +555,9 @@ fn module_candidate_paths(source_module: String, roots: List<String>) -> List<St
 // A `type X` whose next non-blank line opens a coproduct has a body; that spelling does not occur in
 // this corpus without the `|` on a following line, so the standing is read from the declaration line
 // and its successor together.
+// A MODIFIER SUCH AS `nominal_opaque` OR `sole_constructor` SITS BETWEEN THE NAME AND THE BODY, so
+// the last arm decides the body question by what follows the modifier on the same line rather than
+// by the character immediately after the name.
 fn declaration_body_standing_in(content: String, name: String) -> DeclarationBodyStanding? {
   let header = concat("type ", name)
   fold(
@@ -569,8 +579,6 @@ fn declaration_body_standing_in(content: String, name: String) -> DeclarationBod
               || starts_with(s: rest, prefix: "<") {
               Present { value: DeclaredWithBody }
             } else {
-              // A modifier such as `nominal_opaque` or `sole_constructor` sits between the name and
-              // the body; the body question is decided by what follows it, on the same line.
               if string_contains(s: rest, pattern: "=") || string_contains(s: rest, pattern: "|") {
                 Present { value: DeclaredWithBody }
               } else {
