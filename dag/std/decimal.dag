@@ -40,3 +40,70 @@ fn fixed_point_wire(value: Int, decimals: Int) -> String {
 fn fixed_point_domain_ok(value: Int, decimals: Int) -> Bool {
   value >= 0 && decimals >= 0
 }
+
+// A SIGNED EXACT DECIMAL, ADDED BECAUSE A CONSUMER NEEDED TO COMPARE TWO NUMERALS RATHER THAN
+// RENDER ONE. Everything above this line projects an integer OUT to a wire. The reader that
+// prompted this needs the other direction and a further step: two captured configuration documents
+// write the same coefficient as `30` and as `30.0`, and a consumer asking whether the two programs
+// agree must answer yes. Comparing lexemes answers no, so the lexeme is not the value.
+//
+// The carrier is `units / 10^fraction_digits`, which is exact for the whole of RFC 8259's
+// number production minus its exponent form -- no rounding, no binary floating point, so a
+// comparison is a comparison of the authored number and not of an approximation of it. A float
+// carrier would have made `0.1` and its own nearest double indistinguishable, which is precisely
+// the fabricated-plausible-output failure at the point where the question is whether two documents
+// AGREE.
+//
+// SIGN IS ADMITTED HERE AND IS NOT ADMITTED ABOVE, which is a real difference and not an oversight
+// in either place: fixed_point_wire's domain note records that a negative value would render its
+// sign inside the whole part, and that stays true, so this type renders through its own projection
+// that splits the sign off first. The deployed program this was built for carries `-8.0` and
+// `-0.5`, so the negative case is the ordinary one, not an edge.
+type ExactDecimal {
+  units: Int
+  fraction_digits: Int where range(min: 0)
+}
+
+// WHAT THE REFINEMENT ABOVE ACTUALLY BUYS, STATED HONESTLY BECAUSE IT IS LESS THAN IT LOOKS. A
+// literal `fraction_digits: -1` refuses at resolve; a COMPUTED negative reaches the field and is
+// held. So this is mechanically preventable at authored sites and not structurally impossible, and
+// every fn below that produces an ExactDecimal is responsible for its own non-negative argument.
+// Next-rung trigger: feature:where-refinement-predicate-coproduct, the same one std.content_hash
+// names for its non-literal digest positions.
+data exact_decimal_refinement_rung_note: String = "ExactDecimal.fraction_digits carries where range(min: 0), which refuses an authored negative literal at resolve and does not refuse a computed one. Mechanically preventable, not structural; measured on the same partial-wall behaviour recorded for PositiveFanCount in gunbc.fleet_fan_wiring."
+
+// CANONICALISATION IS WHAT MAKES EQUALITY MEAN AGREEMENT. 30 and 30.0 are the same number written
+// two ways, so they must reduce to one representation before any comparison or digest sees them.
+// The reduction strips trailing zeros from the FRACTION only -- 300 with no fraction stays 300,
+// because dropping a zero there would change the number rather than its spelling.
+fn canonical_exact_decimal(d: ExactDecimal) -> ExactDecimal {
+  if d.fraction_digits <= 0 {
+    ExactDecimal { units: d.units, fraction_digits: 0 }
+  } else if d.units - ((d.units / 10) * 10) == 0 {
+    canonical_exact_decimal(d: ExactDecimal { units: d.units / 10, fraction_digits: d.fraction_digits - 1 })
+  } else {
+    d
+  }
+}
+
+// ZERO IS THE ONE CASE THE TRAILING-ZERO RULE ABOVE DOES NOT FINISH ON ITS OWN, and it is worth
+// its own arm rather than a comment: 0 with three fraction digits reduces by the loop to 0 with
+// zero fraction digits, which is right -- but 0 units with 0 fraction digits and a units value of
+// -0 are indistinguishable in Int, so no separate negative-zero case exists to reconcile.
+fn exact_decimal_equal(a: ExactDecimal, b: ExactDecimal) -> Bool {
+  let ca = canonical_exact_decimal(d: a)
+  let cb = canonical_exact_decimal(d: b)
+  ca.units == cb.units && ca.fraction_digits == cb.fraction_digits
+}
+
+// THE PROJECTION BACK TO A NUMERAL, WHICH IS NOT THE LEXEME IT WAS READ FROM AND DOES NOT CLAIM TO
+// BE. It renders the canonical form, so `30.0` reads in and `30` renders out. That is a round-trip
+// of the VALUE, never of the bytes; a consumer needing the authored bytes keeps the lexeme.
+fn exact_decimal_wire(d: ExactDecimal) -> String {
+  let c = canonical_exact_decimal(d: d)
+  if c.units < 0 {
+    join(["-", fixed_point_wire(value: 0 - c.units, decimals: c.fraction_digits)], "")
+  } else {
+    fixed_point_wire(value: c.units, decimals: c.fraction_digits)
+  }
+}
