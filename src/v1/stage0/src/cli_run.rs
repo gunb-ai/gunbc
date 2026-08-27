@@ -48214,7 +48214,33 @@ pub fn run_required_floor(
         .filter(|row| row.verdict_reached && observed_cost_ms(row, cost_basis) > row.cost_line_ms)
         .collect();
     outcome.over_cost_line_diagnostic = over_cost_members.len();
-    for row in &over_cost_members {
+    // THE WARNING TIER, RESTORED AT 100ms BY OPERATOR RULING (2026-08-27) AND PRINTED RANKED.
+    //
+    // WHY THIS IS NOT THE WARN TIER DELETED ON 2026-08-20, because it will otherwise be deleted
+    // again by a reader who recognises the shape. That tier was a second threshold ON THE SAFETY
+    // DEADLINE -- an admission mechanism -- and "over a threshold, reported, allowed to finish"
+    // is the widen DESIGN section 5 forbids of a FAILURE ARM. This line is not a failure arm and
+    // sits nowhere near admission: `exceeds_completed_cost_line` judges only COMPLETED claims,
+    // nothing reads `over_cost_line_diagnostic` to fail a run, and a row named here has already
+    // been admitted and has already answered. The pairing the operator asked for is a warning at
+    // 100ms and a hard error at 500ms, and those are two different mechanisms rather than two
+    // tiers of one: the hard error is `required_floor_claim_cpu_safety_limit_ms`, which refuses.
+    //
+    // RANKED AND BOUNDED, WITH THE REMAINDER STATED. At a 100ms line the population is ~835 rows
+    // on the measured corpus, and this file already carries the receipt for what that does to a
+    // log -- the prior 5000ms/10000ms pair "fired on the MEDIAN witness (several hundred
+    // `[floor-witness-slow]` lines)", and a signal at that volume is read by nobody. So the print
+    // is the 25 most expensive rows, which is the actionable head of a distribution whose median
+    // is ~1ms.
+    //
+    // THE CAP IS NOT SILENT (DESIGN section 5, no silent caps): the dropped count is printed and
+    // the FULL population is in the per-claim cost TSV, which is written unconditionally a few
+    // lines below and uploaded as a run artifact. A reader who needs row 26 has it; a reader
+    // skimming the log gets the head instead of 835 lines that hide every other diagnostic.
+    let mut ranked: Vec<&WitnessExecutionOccurrence> = over_cost_members.clone();
+    ranked.sort_by_key(|row| std::cmp::Reverse(observed_cost_ms(row, cost_basis)));
+    const OVER_COST_PRINT_LIMIT: usize = 25;
+    for row in ranked.iter().take(OVER_COST_PRINT_LIMIT) {
         eprintln!(
             "[over-cost] {} wall_ms={} cpu_ms={} line_ms={} outcome={}",
             row.identity,
@@ -48222,6 +48248,19 @@ pub fn run_required_floor(
             row.cpu_nanos / 1_000_000,
             row.cost_line_ms,
             row.outcome
+        );
+    }
+    if ranked.len() > OVER_COST_PRINT_LIMIT {
+        eprintln!(
+            "[over-cost] ... and {} further row(s) over the {}ms line, not printed. The complete \
+             population is in the per-claim cost TSV uploaded by this run; this list is the {} \
+             most expensive, ranked on the declared cost basis.",
+            ranked.len() - OVER_COST_PRINT_LIMIT,
+            over_cost_members
+                .first()
+                .map(|row| row.cost_line_ms)
+                .unwrap_or(0),
+            OVER_COST_PRINT_LIMIT
         );
     }
     if let Some(path) = claim_cost_path {
