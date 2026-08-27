@@ -77,10 +77,12 @@ type HostEffect =
   | ReplaceRunnerIncarnation { from: LocalRunnerSlotIncarnation, cause: RunnerReplacementCause }
   | ObserveRunnerLocalState { slot: RunnerSlotIdentity }
   | ObserveGitHubRunnerRegistration { slot: RunnerSlotIdentity, organization: NonEmptyStr }
+  | ProbeToolchainHomeInterference {}
 
 type NodeControlPlane =
     HostOs { node: ComputeHost }
   | BmcController { node: ComputeHost }
+  | RunnerLocalHost
 
 type Drive = OneShot | ConvergeLoop
 
@@ -190,6 +192,7 @@ type HostEffectIntent {
 type HostEffectEvidence =
     ShellEffectApplied { exit_code: Int, stdout: String, stderr: String }
   | ConvergePlanApplied { exit_code: Int, stdout: String }
+  | ToolchainHomeInterferenceDiscriminated
 
 fn host_effect_drive_from_evidence(evidence: IdempotencyEvidence) -> Drive {
   if host_effect_is_converge_loop_evidence(evidence: evidence) {
