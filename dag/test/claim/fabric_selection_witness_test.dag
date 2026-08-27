@@ -683,7 +683,11 @@ test fn untimed_work_does_not_belong_on_a_seven_minute_remainder() -> Bool {
 // the remainder plus one billing unit -- and admitted this offer, because that number is
 // finite and small. It was never a duration: the horizon says what the decision commits, not
 // how long the work runs, so the comparison was a fabricated bound standing where a guarantee
-// was required. This witness is that hole nailed shut.
+// was required. This witness is that hole nailed shut, and its window is chosen to be the
+// exact fail-open case rather than merely a refusal: five thousand seconds EXCEEDS the old
+// comparison's wall of four thousand and twenty (a seven-minute remainder plus one hour), so
+// the previous fold admitted this offer and priced it. A shorter window would have been
+// refused by both folds, on different arms, and would have proved much less.
 //
 // The arm is its own, not folded into OfferUnavailableForGrant, because the remedies differ:
 // too small says find a bigger window, and cannot-know says measure the job.
@@ -692,7 +696,7 @@ test fn a_finite_window_refuses_an_unbounded_job_rather_than_comparing() -> Bool
     candidates: t_rented_candidate(
       availability: AvailableForInterval {
         delay: second(count: 0),
-        interval: second(count: 480),
+        interval: second(count: 5000),
         receipt: "gunbc.observation.availability-boxed",
       },
       commitment: PaidThrough {
