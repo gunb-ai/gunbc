@@ -1,5 +1,6 @@
 module v2.extdeps.formats.sql
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.dag { dag_named_edge }
 import v2.std.grammar { GrammarSchema }
 import std.algebra { Cons, Empty }
@@ -30,7 +31,7 @@ import v2.std.diagnostic {
 }
 import v2.std.nat { Nat }
 import v2.std.cardinality { NonZeroNat }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v2.std.model_core {
   PrimitiveFactBundle,
   ModelCoreFactAxisEncoding,
@@ -215,7 +216,7 @@ fn sql_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -228,7 +229,7 @@ fn sql_integer_facts_node(facts: SqlIntegerPrimitiveFacts) -> Node {
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -241,7 +242,7 @@ fn sql_float_facts_node(facts: SqlFloatPrimitiveFacts) -> Node {
         target: sql_inhabitant_atom(id: facts.surface_spelling),
       ),
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -258,7 +259,7 @@ fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
         target: sql_inhabitant_atom(id: facts.representation),
       ),
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -387,7 +388,7 @@ fn sql_join_strings(separator: String, parts: List<String>) -> String {
 data sql_serialize_diagnostic_anchor: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn sql_serialize_unsupported_operation_diagnostic(variant: Symbol) -> Diagnostic {

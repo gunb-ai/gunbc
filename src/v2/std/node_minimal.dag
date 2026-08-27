@@ -10,8 +10,7 @@ import v2.std.node {
   Edge,
   Node,
   NodeKind,
-  NodeOccurrenceId,
-  Symbol
+  Symbol,
 }
 
 type NodeSupersetField
@@ -178,7 +177,7 @@ type MinimalResolvedNode
   = MrnSubstrateGraph {
       kind: NodeKind
       children: List<Edge>
-      occurrence_id: NodeOccurrenceId
+      occurrence_id: std.occurrence_identity.NodeOccurrenceIdentity
     }
   | MrnSurfaceExprLeaf {
       expr: SurfaceExprTag

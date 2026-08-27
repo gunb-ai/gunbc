@@ -1,5 +1,6 @@
 module v2.test.execution.emit_host_transport_wire
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
@@ -27,7 +28,7 @@ import v2.std.host_transport {
   WorkspaceFile
 }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
+import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -37,7 +38,7 @@ fn wire_probe_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^emit_host_wire_probe } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

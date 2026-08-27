@@ -1,5 +1,6 @@
 module v2.compiler.trait_derive_completeness
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.trait_derive_shape {
   ReprDeriveElemKernelBool,
   ReprDeriveElemKernelInt,
@@ -55,8 +56,7 @@ import v2.std.node {
   Disj,
   Edge,
   Node,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.compilers.coproduct_variant_shape {
   coproduct_all_variants_nullary
@@ -75,7 +75,7 @@ fn trait_derive_int_kernel_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^int_kernel_type_atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -83,7 +83,7 @@ fn trait_derive_unit_kernel_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^unit_kernel_type_atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

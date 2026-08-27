@@ -1,5 +1,6 @@
 module v2.test.emit.rust_literal_bind_emit
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.test.complexity_gate.table_fixture_bind_subject_producer {
   table_fixture_bind_arrow_with_body,
   table_fixture_bind_wrong_value_arrow_with_body
@@ -49,7 +50,7 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.logic { Bool }
-import v2.std.node { Conj, Disj, Node, SyntheticOccurrence, TypeNode }
+import v2.std.node { Conj, Disj, Node, TypeNode }
 import v2.std.witness { Violates, Witness }
 import v2.std.algebra { free_monoid_type_node }
 import v2.std.compilers.target_model { char_kernel_type_node }
@@ -187,7 +188,7 @@ test fn rust_literal_bind_string_rope_refusal_is_executed() -> Bool {
           value: Node {
             kind: TypeNode { connective: Conj },
             children: [],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: OccurrenceSynthetic
           }
         ),
         target: rust_bind_literal_target_model(),

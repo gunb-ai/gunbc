@@ -1,7 +1,7 @@
 module gunbc.plans.expressibility_frontier
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote, cell, row }
 
@@ -78,6 +78,7 @@ fn expressibility_frontier_body() -> List<MarkdownBlock> {
 }
 
 data expressibility_frontier_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "expressibility-frontier",
   title: "The expressibility frontier — what a modeling discipline can gate, and what stays review",
   body: expressibility_frontier_body(),

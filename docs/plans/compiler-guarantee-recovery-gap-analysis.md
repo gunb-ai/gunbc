@@ -1263,6 +1263,53 @@ enforces end to end.
 
 ## 11. Audit queue
 
+0. **Optional payload member `value` shadows an unwrapped record field, and the resulting
+   record is then accepted in an `Int` context.** Filed 2026-08-27 from gunbc#9491, where it
+   silently made every decoded fan-curve output carry the entry record instead of its
+   magnitude. **The class is two questions and the eventual owner must not collapse them**,
+   because only the second is unambiguously a defect.
+
+   **(1) Member-selection policy.** `src/v1/04_lookup.dag` `field_summary_for_type` opens
+   `if field == "value" && normed_opt`, and `lookup_field_type_node` carries the same
+   name-conditioned branch. So field access through an optional auto-unwraps for every
+   spelling EXCEPT `value`, which selects the optional's own payload. Two accesses on one
+   expression resolve against two different carriers, decided by the field's name, with no
+   diagnostic. Whether that should select the payload, unwrap to the record's field, or refuse
+   as ambiguous is a language-semantics decision, not obviously a bug.
+
+   **(2) Type conformance, and this half is below floor independently of (1).** Whichever
+   member selection is chosen, a record-valued expression must not be accepted where an `Int`
+   is required. It is: measured on a local record `Boxed { tag: Int, value: Int }`, the whole
+   of `boxes.first().value == 99` resolves clean, evaluates, and answers false — placing a
+   `Boxed` against an `Int`. That is DESIGN's own floor clause ("values inhabit declared
+   types") failing silently.
+
+   MINIMAL REPRODUCTION, WITH ITS CONTROL, kept inline rather than as a separate artifact —
+   `docs/probes/` was bankrupted and deleted whole on 2026-08-24, and re-creating a probe
+   directory would re-open the parallel measurement corpus that deletion closed:
+
+   ```
+   type Boxed { tag: Int, value: Int }
+   data boxes: List<Boxed> = [Boxed { tag: 1, value: 99 }]
+
+   boxes.first().tag    -> 1        // control: auto-unwraps to the record's field
+   boxes.first().value  -> Boxed    // the payload, not the field; no diagnostic
+   boxes.first().value == 99        // resolves clean, evaluates false: record vs Int
+   ```
+
+   OWNER SEAM: `v1.compiler.infer_lookup` `field_summary_for_type` and `lookup_field_type_node`
+   for (1); the downstream expression-conformance path for (2).
+   CURRENT RUNG: **below floor**, on the measured source→interpretation path. Not a ladder
+   position — a silent wrong answer, which §4b places outside the ladder entirely.
+   WORKAROUND IN USE: avoid `value` as a record field name where the record is reached through
+   an optional. `extdeps.bmc.pid_control_decode` renames its field to `magnitude` on exactly
+   this ground and claims no compiler guarantee.
+   NEXT TRIGGER: the selection policy in (1) decided, and an executing compiler-floor witness
+   enrolled for (2) — which does not depend on (1) and can land first.
+   NOT ENROLLED as `floor_expected_red`: that roster's rows are executing failures somebody is
+   actively repairing, and this has no repair owner yet. Enrolling it would use the roster as
+   an ownerless defect backlog, which its own contract refuses.
+
 1. ~~Recover `docs/error-examples.md`~~ **DONE — see §8b**; ~~`correctness-dimensions`~~
    **DONE — see §8c.** Still to pull: `what-falls-out`, `two-groundings`,
    `the-derived-homomorphism`.

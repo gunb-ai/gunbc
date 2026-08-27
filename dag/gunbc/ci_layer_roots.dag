@@ -195,6 +195,23 @@ data required_v2_emission_dissolution: DissolutionCondition = unbound_dissolutio
 // sized against a TEMPORARY CONDITION: emitter repairs that clear a widely-reached site return
 // many entries to admissibility at once.
 //
+// THE FAULT GOES INTO THE ENTRY'S OWN EMITTED MODULE, AND THAT IS A LOAD-BEARING CHOICE RATHER
+// THAN AN IMPLEMENTATION DETAIL. The selector first shipped preferring any declared member OTHER
+// than the entry, on the reasoning that a dependency is the stronger subject because it proves
+// the verdict reaches past the entry's own bytes. Measured over this whole roster, that rule
+// mutated a SHARED-CORE module for every single entry -- the emitted runtime in one case, which
+// is in every closure there is. Each verdict was honestly discriminating and each one established
+// `cargo refused when the shared core was broken`, never `THIS entry's closure is what was
+// compiled`: total at the level examined, blind one level down.
+//
+// The entry's own module is the one member NOTHING ELSE REFERENCES -- the others are its
+// dependencies, and a dependency does not import the root -- so it is exactly the file a faulty
+// emission can DROP while the crate still compiles. A drop that breaks a reference is already
+// caught by the baseline; the uncaught case is a REFERENCE-CLOSED drop, and the entry's own leaf
+// is the canonical one. Its ABSENCE is therefore a typed refusal naming the entry, never a
+// fallback to some other member: falling back would hand the phase a discriminating verdict
+// computed over precisely the tree that is broken.
+//
 // A FAILED RESTORE IS TERMINAL FOR THE RUN. If the mutation arm's byte-exact restore does not
 // hold, the phase stops at that entry and reports every later one as NotExecuted; it is not a
 // per-entry finding the siblings continue past, and it is not recoverable by re-running the
