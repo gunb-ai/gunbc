@@ -155,8 +155,23 @@ type FanTachSourceStanding
 //
 // DrivenFanCountDerivedFromAssembly carries the specification it came from, which is what makes
 // it a claim someone can check rather than a number someone typed.
+//
+// AND THE CHASSIS BAYS WERE NEVER OBSERVED EITHER, WHICH THIS ARM CORRECTS RATHER THAN ADDS TO.
+// They carried DrivenFanCountObserved { count: 1 } and nobody had counted them: a BMC publishes one
+// tach per header, which says nothing about how many fans hang off it -- exactly the inference this
+// module exists to forbid one field away. The operator settled it on 2026-08-27, asked directly
+// about PWM Sharing Technology: "they are not daisy chained today, nothing is, but yes they have
+// that." So one fan per chassis header is a DECLARATION, and the arm now says which kind of fact
+// it is.
+//
+// WHAT THAT STATEMENT IS NOT TAKEN TO COVER: the processor cooler headers. The NH-D9 AMP-4926 ships
+// two fans and the board offers one FAN1, so those two share that header by construction -- a
+// statement that nothing is chained cannot mean the second cooler fan is unplugged. The question
+// asked was about the PST chassis fans, so the cooler headers keep their assembly derivation and
+// the reading is recorded here rather than quietly widened.
 type DrivenFanCountStanding
   = DrivenFanCountObserved { count: Int }
+  | DrivenFanCountOperatorDeclared { count: Int }
   | DrivenFanCountDerivedFromAssembly {
       expected_count: Int
       specification: AssemblyBundledFanSpecification
@@ -381,57 +396,78 @@ type InstalledFanCountStanding
   = InstalledFanCountObservedExact { count: Int }
   | InstalledFanCountMixed {
       observed_count: Int
+      declared_additional: Int
       assembly_expected_additional: Int
+      declared_headers: List<NonEmptyStr>
       assembly_derived_headers: List<NonEmptyStr>
       unobserved_headers: List<NonEmptyStr>
     }
 
-fn headers_with_driven_standing(
+fn driven_fan_count_value(standing: DrivenFanCountStanding) -> Int? {
+  match standing {
+    DrivenFanCountObserved { count } => Present { value: count }
+    DrivenFanCountOperatorDeclared { count } => Present { value: count }
+    DrivenFanCountDerivedFromAssembly { expected_count, specification } =>
+      Present { value: expected_count }
+    DrivenFanCountUnobserved => none
+  }
+}
+
+type DrivenProvenance = ProvObserved | ProvDeclared | ProvDerived | ProvUnobserved
+
+fn driven_provenance(standing: DrivenFanCountStanding) -> DrivenProvenance {
+  match standing {
+    DrivenFanCountObserved { count } => ProvObserved
+    DrivenFanCountOperatorDeclared { count } => ProvDeclared
+    DrivenFanCountDerivedFromAssembly { expected_count, specification } => ProvDerived
+    DrivenFanCountUnobserved => ProvUnobserved
+  }
+}
+
+fn headers_with_provenance(
   wiring: HostFanWiring,
-  want_derived: Bool,
+  want: DrivenProvenance,
 ) -> List<NonEmptyStr> {
   map(
     filter(
       wiring.headers,
-      binding =>
-        match binding.driven_fan_count {
-          DrivenFanCountDerivedFromAssembly { expected_count, specification } => want_derived
-          DrivenFanCountUnobserved => !want_derived
-          DrivenFanCountObserved { count } => false
-        },
+      binding => driven_provenance(standing: binding.driven_fan_count) == want,
     ),
     binding => binding.header,
   )
 }
 
+fn count_with_provenance(wiring: HostFanWiring, want: DrivenProvenance) -> Int {
+  fold(
+    wiring.headers,
+    init: 0,
+    f: (acc, binding) =>
+      if driven_provenance(standing: binding.driven_fan_count) == want {
+        match driven_fan_count_value(standing: binding.driven_fan_count) {
+          Present { value } => acc + value
+          none => acc
+        }
+      } else {
+        acc
+      },
+  )
+}
+
 fn installed_fan_count_standing(wiring: HostFanWiring) -> InstalledFanCountStanding {
-  let derived_headers = headers_with_driven_standing(wiring: wiring, want_derived: true)
-  let unobserved_headers = headers_with_driven_standing(wiring: wiring, want_derived: false)
-  let observed_count = fold(
-    wiring.headers,
-    init: 0,
-    f: (acc, binding) =>
-      match binding.driven_fan_count {
-        DrivenFanCountObserved { count } => acc + count
-        other => acc
-      },
-  )
-  let derived_count = fold(
-    wiring.headers,
-    init: 0,
-    f: (acc, binding) =>
-      match binding.driven_fan_count {
-        DrivenFanCountDerivedFromAssembly { expected_count, specification } =>
-          acc + expected_count
-        other => acc
-      },
-  )
-  if derived_headers.length() == 0 && unobserved_headers.length() == 0 {
+  let declared_headers = headers_with_provenance(wiring: wiring, want: ProvDeclared)
+  let derived_headers = headers_with_provenance(wiring: wiring, want: ProvDerived)
+  let unobserved_headers = headers_with_provenance(wiring: wiring, want: ProvUnobserved)
+  let observed_count = count_with_provenance(wiring: wiring, want: ProvObserved)
+  if declared_headers.length() == 0
+    && derived_headers.length() == 0
+    && unobserved_headers.length() == 0 {
     InstalledFanCountObservedExact { count: observed_count }
   } else {
     InstalledFanCountMixed {
       observed_count: observed_count,
-      assembly_expected_additional: derived_count,
+      declared_additional: count_with_provenance(wiring: wiring, want: ProvDeclared),
+      assembly_expected_additional: count_with_provenance(wiring: wiring, want: ProvDerived),
+      declared_headers: declared_headers,
       assembly_derived_headers: derived_headers,
       unobserved_headers: unobserved_headers,
     }
@@ -559,7 +595,7 @@ data arctic_p8_pwm_pst_ref: DeclarationRef = DeclarationRef {
 fn chassis_bay_wiring(header: NonEmptyStr) -> FanHeaderWiring {
   FanHeaderWiring {
     header: header,
-    driven_fan_count: DrivenFanCountObserved { count: 1 },
+    driven_fan_count: DrivenFanCountOperatorDeclared { count: 1 },
     model: FanModelUnobserved,
     tach_source: TachCarriedByDrivenFan {
       representation: TachRepresentationObserved { represented_fan_count: 1 },
@@ -570,7 +606,7 @@ fn chassis_bay_wiring(header: NonEmptyStr) -> FanHeaderWiring {
 fn chassis_bay_wiring_2u(header: NonEmptyStr) -> FanHeaderWiring {
   FanHeaderWiring {
     header: header,
-    driven_fan_count: DrivenFanCountObserved { count: 1 },
+    driven_fan_count: DrivenFanCountOperatorDeclared { count: 1 },
     model: FanModelOperatorDeclaredPart { catalog: arctic_p8_pwm_pst_ref },
     tach_source: TachCarriedByDrivenFan {
       representation: TachRepresentationObserved { represented_fan_count: 1 },

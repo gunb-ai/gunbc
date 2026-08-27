@@ -121,12 +121,16 @@ fn tach_suppressed_header_is_actuated_but_unobserved() -> Bool {
     && match installed_fan_count_standing(wiring: srv1_splitter_variant) {
       InstalledFanCountMixed {
         observed_count,
+        declared_additional,
         assembly_expected_additional,
+        declared_headers,
         assembly_derived_headers,
         unobserved_headers,
       } =>
-        observed_count == 4
+        observed_count == 0
+          && declared_additional == 4
           && assembly_expected_additional == 2
+          && declared_headers.length() == 4
           && assembly_derived_headers.length() == 1
           && unobserved_headers.length() == 0
       InstalledFanCountObservedExact { count } => false
@@ -203,6 +207,24 @@ fn per_header_coverage_states_stay_separate() -> Bool {
 }
 
 // EVERY HEADER OBSERVED, so the exact arm is reachable rather than a variant nothing can produce.
+// NOTHING ON THE LIVE FLEET INHABITS IT: every real header is declared, assembly-derived or
+// unobserved, because nobody has counted fans in a case. That is the correct reading and it is
+// exactly why this fixture exists at the FIXTURE boundary -- an arm no authorable input can reach
+// would be a decoration, and one no PRODUCTION row reaches is simply a quiet guard.
+data srv3_chassis_headers_counted: HostFanWiring = HostFanWiring {
+  host: srv3_fan_wiring.host,
+  headers: map(
+    filter(srv3_fan_wiring.headers, binding => binding.header != "FAN1"),
+    binding =>
+      FanHeaderWiring {
+        header: binding.header,
+        driven_fan_count: DrivenFanCountObserved { count: 1 },
+        model: binding.model,
+        tach_source: binding.tach_source,
+      },
+  ),
+}
+
 // srv3's own total is MIXED as well -- its FAN1 is the Dynatron cooler and equally assembly-derived
 // -- which I got wrong on the first pass and the witness caught: I had written srv3 as the exact
 // control on the assumption that only the Noctua hosts carried a derived count.
@@ -220,12 +242,16 @@ fn the_total_carries_its_weakest_provenance() -> Bool {
   let srv1_is_mixed = match installed_fan_count_standing(wiring: srv1_fan_wiring) {
     InstalledFanCountMixed {
       observed_count,
+      declared_additional,
       assembly_expected_additional,
+      declared_headers,
       assembly_derived_headers,
       unobserved_headers,
     } =>
-      observed_count == 4
+      observed_count == 0
+        && declared_additional == 4
         && assembly_expected_additional == 2
+        && declared_headers.length() == 4
         && assembly_derived_headers.length() == 1
         && unobserved_headers.length() == 0
     InstalledFanCountObservedExact { count } => false
@@ -233,20 +259,38 @@ fn the_total_carries_its_weakest_provenance() -> Bool {
   let srv3_is_mixed_too = match installed_fan_count_standing(wiring: srv3_fan_wiring) {
     InstalledFanCountMixed {
       observed_count,
+      declared_additional,
       assembly_expected_additional,
+      declared_headers,
       assembly_derived_headers,
       unobserved_headers,
     } =>
-      observed_count == 3 && assembly_expected_additional == 1
+      observed_count == 0 && declared_additional == 3 && assembly_expected_additional == 1
     InstalledFanCountObservedExact { count } => false
   }
-  let chassis_only_is_exact = match installed_fan_count_standing(
+  let chassis_only_is_declared = match installed_fan_count_standing(
     wiring: srv3_chassis_headers_only,
+  ) {
+    InstalledFanCountMixed {
+      observed_count,
+      declared_additional,
+      assembly_expected_additional,
+      declared_headers,
+      assembly_derived_headers,
+      unobserved_headers,
+    } =>
+      observed_count == 0 && declared_additional == 3 && assembly_expected_additional == 0
+    InstalledFanCountObservedExact { count } => false
+  }
+  let counted_is_exact = match installed_fan_count_standing(
+    wiring: srv3_chassis_headers_counted,
   ) {
     InstalledFanCountObservedExact { count } => count == 3
     InstalledFanCountMixed {
       observed_count,
+      declared_additional,
       assembly_expected_additional,
+      declared_headers,
       assembly_derived_headers,
       unobserved_headers,
     } => false
@@ -256,16 +300,23 @@ fn the_total_carries_its_weakest_provenance() -> Bool {
   ) {
     InstalledFanCountMixed {
       observed_count,
+      declared_additional,
       assembly_expected_additional,
+      declared_headers,
       assembly_derived_headers,
       unobserved_headers,
     } =>
-      observed_count == 4
+      observed_count == 0
+        && declared_additional == 4
         && assembly_expected_additional == 0
         && unobserved_headers.length() == 1
     InstalledFanCountObservedExact { count } => false
   }
-  srv1_is_mixed && srv3_is_mixed_too && chassis_only_is_exact && unobserved_is_named
+  srv1_is_mixed
+    && srv3_is_mixed_too
+    && chassis_only_is_declared
+    && counted_is_exact
+    && unobserved_is_named
 }
 
 // AN UNKNOWN MODEL MUST NOT COST A CONTROL ENDPOINT. Every chassis fan on srv3 stands at
@@ -610,6 +661,10 @@ fn tach_expectation_refuses_both_broken_rosters() -> Bool {
 // ARCTIC P8 in four bays nobody declared -- an over-claim that no downstream consumer could
 // distinguish from a real declaration, since both arms carry a catalog ref and both admit catalog
 // selection. So this conjunct asserts the negative as hard as the positive.
+//
+// The counts: six 2U chassis bays declared, and all EIGHT 4U chassis bays still unobserved -- eight
+// rather than ten because FAN1 on each 4U host is the cooler, which is assembly-derived rather than
+// unobserved and so is not in that population.
 fn arctic_declaration_is_bound_and_scoped() -> Bool {
   let bound_2u = fold(
     flat_map([srv3_fan_wiring.headers, srv4_fan_wiring.headers], g => g),
@@ -630,8 +685,6 @@ fn arctic_declaration_is_bound_and_scoped() -> Bool {
         other => acc
       },
   )
-  // six 2U chassis bays declared; all eight 4U chassis bays still unobserved (FAN1 on each 4U host
-  // is the cooler, which is assembly-derived rather than unobserved, so eight and not ten).
   bound_2u == 6 && unbound_4u == 8
 }
 
