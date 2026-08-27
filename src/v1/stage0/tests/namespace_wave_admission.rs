@@ -725,3 +725,73 @@ fn membership_declared_by_an_import_whose_names_appear_only_in_pattern_arms() {
             .collect::<Vec<_>>()
     );
 }
+
+// THE ADD-SIDE CONTROL THAT SURVIVES THE READER REPAIR, AND WHY THE SIBLING ABOVE DOES NOT.
+//
+// `membership_declared_by_an_import_whose_names_appear_only_in_pattern_arms` was genuinely
+// discriminating when it landed -- run with the import-claim disjunct removed, it reported
+// `UnexplainedSubjectMotion`. It stops discriminating once the declaration index projects
+// variant-pattern names into `referenced`: `membership_bound_through` then finds `Accepted` on
+// its own and the arm is green with the disjunct AND without it. Nothing edits the test; a repair
+// landing UNDERNEATH it removes its power, which is the rotted-figure decay one layer up. It is
+// retained above as a behavioural control on the disposition, and it is NOT evidence that the
+// disjunct is load-bearing. This fixture is.
+//
+// AND THE DISJUNCT *IS* LOAD-BEARING, on a case no reader channel can ever reach. An import whose
+// member is authored and never referenced has NO reference by construction -- there is nothing in
+// the tree for any projection to find, however many channels are added. Removing the disjunct
+// therefore does not degrade to the reference set, it FABRICATES A REFUSAL over an import that is
+// declared, correct, and merely unused: the mirror of the false green the reader repair closes.
+//
+// So DESIGN §4b(4) does not fire the way it first appears. The clause deletes machinery a climb
+// made REDUNDANT; here the climb made the sibling TEST redundant and left the MACHINERY answering
+// a case that test never covered. Deleting the disjunct on the strength of the sibling's green
+// arm alone would have opened a false-refusal direction and looked principled doing it.
+const UNUSED_MEMBER_HOME: &str = "module probe.payload\n\ntype Wrapper\n  = Wrapped\n";
+
+const UNUSED_MEMBER_CONSUMER: &str =
+    "module probe.consumer\n\nimport probe.payload { Wrapper }\n\nfn decide() -> String { \"unset\" }\n";
+
+#[test]
+fn membership_declared_by_an_import_whose_member_is_authored_and_never_referenced() {
+    let base = "module probe.consumer\n\nfn decide() -> String { \"unset\" }\n";
+    let report = compare(
+        "unused_member_membership",
+        &[("payload.dag", UNUSED_MEMBER_HOME), ("consumer.dag", base)],
+        &[
+            ("payload.dag", UNUSED_MEMBER_HOME),
+            ("consumer.dag", UNUSED_MEMBER_CONSUMER),
+        ],
+    );
+
+    // PLANT ASSERTION FIRST: a disposition read off a delta that was never produced is a verdict
+    // about nothing.
+    assert!(
+        report.deltas.iter().any(|d| matches!(
+            &d.subject,
+            DeltaSubject::Membership { target, .. } if target == "probe.payload"
+        )),
+        "PLANT NEVER REACHED: no membership delta for probe.payload, got: {:?}",
+        report.deltas
+    );
+
+    let dispositions = membership_dispositions(&report, "probe.payload");
+    assert!(
+        !dispositions.contains(&NamespaceDeltaDisposition::UnexplainedSubjectMotion),
+        "an import whose member is authored and never referenced is a DECLARED dependency that \
+         no reference channel can ever see -- refusing it fabricates a refusal over correct \
+         source, which is the mirror of the false green the reader repair closes, got: {:?}",
+        dispositions
+            .iter()
+            .map(|d| disposition_label(*d))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        report_unadjudicated(&report).is_empty(),
+        "nothing here needs adjudicating, got: {:?}",
+        report_unadjudicated(&report)
+            .iter()
+            .map(|d| (disposition_label(d.disposition), d.detail.clone()))
+            .collect::<Vec<_>>()
+    );
+}
