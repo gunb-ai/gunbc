@@ -1,0 +1,326 @@
+module test.claim.scm_checkout_verb_witness
+
+// THE CHECKOUT VERB AT REPOSITORY GRAIN. The reconstruction half of checkout is already covered by
+// scm_object_store_witness; these claims are about SELECTION -- which commit a repository is
+// positioned at, what refuses, and what checkout does and does not depend on.
+//
+// THE CLAIM THIS FILE EXISTS FOR is scm_ck_a_commit_with_a_missing_parent_still_checks_out. Checkout
+// does not consult ancestry: a fixture can mint a valid parent and child, then assemble an envelope
+// retaining only the child. The history is truncated while the child's program remains intact.
+
+import std.types { Bool, Int, String, List }
+import std.minted_identity { MintedId, MintedIdAllocator }
+import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.object_store {
+  ObjectStore,
+  ObjectId,
+  empty_store,
+  store_node,
+  Stored,
+  LocatorCollision,
+}
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryCommit,
+  commit_at_reference,
+  repository_history,
+  RepositoryCommitMinted,
+  RepositoryCommitMintAllocatorInvalid,
+  RepositoryCommitMintParentMissing,
+  RepositoryCommitMintRootMissing,
+  mint_repository_commit,
+}
+import gunbc.scm.merge { Proposal }
+import gunbc.scm.status {
+  StatusCheckout,
+  NothingCheckedOut,
+  CheckedOutCommit,
+  CheckedOutCommitMissing,
+  RepositoryStatus,
+  repository_status,
+}
+import gunbc.scm.ancestry {
+  CommitAncestry,
+  RootCommit,
+  DescendsFrom,
+  RepositoryCommitRef,
+  AncestryWalk,
+  AncestryTraced,
+  AncestryBrokenAt,
+  AncestryStartNotInHistory,
+  AncestryRevisitsACommit,
+  ancestry_walk,
+}
+import gunbc.scm.checkout {
+  Commit,
+  CheckoutRefusal,
+  MissingObject,
+  RepositoryCheckout,
+  RepositoryCheckedOut,
+  CheckoutReferenceUnresolved,
+  CheckoutProgramUnreconstructable,
+  checkout_repository_at,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Names qualified: top-level definitions are corpus-wide and the resolver silently selects among
+// duplicates (#8707), which this layer's witness files already document hitting.
+type ScmCkPut {
+  store: ObjectStore
+  identity: ObjectId
+}
+
+fn scm_ck_put(store: ObjectStore, n: Node) -> ScmCkPut {
+  match store_node(store: store, n: n) {
+    Stored { store: s, identity: identity } => ScmCkPut { store: s, identity: identity }
+    LocatorCollision { identity: identity, existing: _, incoming: _ } =>
+      ScmCkPut { store: store, identity: identity }
+  }
+}
+
+fn scm_ck_atom(name: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
+}
+
+fn scm_ck_ref(ordinal: Int) -> RepositoryCommitRef {
+  RepositoryCommitRef { identity: MintedId { ordinal: ordinal } }
+}
+
+fn scm_ck_repository_with_store(store: ObjectStore) -> RepositoryEnvelope {
+  RepositoryEnvelope {
+    store: store,
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+  }
+}
+
+fn scm_ck_minted_or(repo: RepositoryEnvelope, root: ObjectId, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
+  match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
+    RepositoryCommitMinted { repository: minted, reference: _ } => minted
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
+    RepositoryCommitMintParentMissing { parent: _ } => repo
+    RepositoryCommitMintRootMissing { root: _ } => repo
+  }
+}
+
+// A repository with two commits, the second stating the first as its parent, and BOTH root objects
+// present in the store.
+fn scm_ck_two_commit_repository() -> RepositoryEnvelope {
+  let first = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^alpha))
+  let second = scm_ck_put(store: first.store, n: scm_ck_atom(name: ^beta))
+  let first_commit = scm_ck_minted_or(
+    repo: scm_ck_repository_with_store(store: second.store),
+    root: first.identity,
+    message: "first",
+    parent: none,
+  )
+  scm_ck_minted_or(
+    repo: first_commit,
+    root: second.identity,
+    message: "second",
+    parent: Present { value: scm_ck_ref(ordinal: 0) },
+  )
+}
+
+test fn scm_ck_checking_out_a_commit_positions_the_repository_at_it() -> Bool {
+  let repo = scm_ck_two_commit_repository()
+  match checkout_repository_at(repo: repo, reference: scm_ck_ref(ordinal: 1)) {
+    RepositoryCheckedOut { repository: r, program: _ } =>
+      match r.checked_out {
+        Absent => false
+        Present { value: selected } => selected == scm_ck_ref(ordinal: 1)
+      }
+    CheckoutReferenceUnresolved { reference: _ } => false
+    CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
+  }
+}
+
+// THE ARGUMENT IS NOT MUTATED. A verb that edited its input in place would make "check out, then
+// compare against where we were" impossible, and every caller would need a copy it did not ask for.
+test fn scm_ck_checkout_leaves_its_argument_unpositioned() -> Bool {
+  let repo = scm_ck_two_commit_repository()
+  match checkout_repository_at(repo: repo, reference: scm_ck_ref(ordinal: 1)) {
+    RepositoryCheckedOut { repository: _, program: _ } =>
+      match repo.checked_out {
+        Absent => true
+        Present { value: _ } => false
+      }
+    CheckoutReferenceUnresolved { reference: _ } => false
+    CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
+  }
+}
+
+// A REFERENCE NAMING NO COMMIT IS THE CALLER'S FACT. It asserts the arm AND the reference, not merely
+// that something refused: a checkout that refused everything would satisfy a bare refusal claim, and
+// the positive control above is what stops that reading.
+test fn scm_ck_a_reference_naming_no_commit_is_unresolved() -> Bool {
+  match checkout_repository_at(repo: scm_ck_two_commit_repository(), reference: scm_ck_ref(ordinal: 7)) {
+    CheckoutReferenceUnresolved { reference: r } => r == scm_ck_ref(ordinal: 7)
+    RepositoryCheckedOut { repository: _, program: _ } => false
+    CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
+  }
+}
+
+// A repository whose commit names a root the store does not hold: the commit exists, the program
+// does not.
+fn scm_ck_lost_object_repository() -> RepositoryEnvelope {
+  let present = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^alpha))
+  let absent = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^gamma))
+  let minted = scm_ck_minted_or(
+    repo: scm_ck_repository_with_store(store: absent.store),
+    root: absent.identity,
+    message: "lost",
+    parent: none,
+  )
+  RepositoryEnvelope {
+    store: present.store,
+    commits: minted.commits,
+    commit_allocator: minted.commit_allocator,
+    checked_out: none,
+  }
+}
+
+// A LOST OBJECT IS THE STORE'S FACT, NOT THE CALLER'S, and this is the claim that keeps the two
+// refusals from being collapsed. The reference resolves perfectly -- the commit is right there in
+// the log -- and the failure is that the repository has lost an object it needs. Reporting "no such
+// commit" here would tell a user their commit does not exist while it sits in front of them.
+test fn scm_ck_a_lost_object_is_the_stores_fact_not_the_callers() -> Bool {
+  match checkout_repository_at(repo: scm_ck_lost_object_repository(), reference: scm_ck_ref(ordinal: 0)) {
+    CheckoutProgramUnreconstructable { reference: r, cause: cause } =>
+      r == scm_ck_ref(ordinal: 0)
+        && match cause {
+             MissingObject { identity: _ } => true
+           }
+    CheckoutReferenceUnresolved { reference: _ } => false
+    RepositoryCheckedOut { repository: _, program: _ } => false
+  }
+}
+
+// Both commits are constructed through the mint while the parent is present. The envelope is a
+// separate, unsealed carrier, so retaining only the child is still authorable and demonstrates the
+// precise boundary of the construction wall: the mint admits one commit; it does not seal every
+// later assembly of a commit list.
+fn scm_ck_truncated_history_repository() -> RepositoryEnvelope {
+  let parent = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^parent))
+  let child = scm_ck_put(store: parent.store, n: scm_ck_atom(name: ^child))
+  let with_parent = scm_ck_minted_or(
+    repo: scm_ck_repository_with_store(store: child.store),
+    root: parent.identity,
+    message: "parent",
+    parent: none,
+  )
+  let with_child = scm_ck_minted_or(
+    repo: with_parent,
+    root: child.identity,
+    message: "child",
+    parent: Present { value: scm_ck_ref(ordinal: 0) },
+  )
+  match commit_at_reference(commits: with_child.commits, reference: scm_ck_ref(ordinal: 1)) {
+    Absent => with_child
+    Present { value: child_commit } =>
+      RepositoryEnvelope {
+        store: with_child.store,
+        commits: [child_commit],
+        commit_allocator: with_child.commit_allocator,
+        checked_out: none,
+      }
+  }
+}
+
+// Checkout reconstructs the selected commit's root closure, not its ancestry graph. Losing a parent
+// must not cost access to a program whose own closure remains complete.
+test fn scm_ck_a_commit_with_a_missing_parent_still_checks_out() -> Bool {
+  match checkout_repository_at(
+    repo: scm_ck_truncated_history_repository(),
+    reference: scm_ck_ref(ordinal: 1),
+  ) {
+    RepositoryCheckedOut { repository: _, program: _ } => true
+    CheckoutReferenceUnresolved { reference: _ } => false
+    CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
+  }
+}
+
+// The positive control proves that the same fixture's history really is truncated; otherwise the
+// checkout claim above could pass without demonstrating checkout's independence from ancestry.
+test fn scm_ck_that_same_commit_has_a_broken_ancestry() -> Bool {
+  let repo = scm_ck_truncated_history_repository()
+  match ancestry_walk(
+    start: scm_ck_ref(ordinal: 1),
+    history: repository_history(commits: repo.commits),
+  ) {
+    AncestryBrokenAt { commit: at, missing_parent: missing } =>
+      at == scm_ck_ref(ordinal: 1) && missing == scm_ck_ref(ordinal: 0)
+    AncestryTraced { chain: _ } => false
+    AncestryStartNotInHistory { start: _ } => false
+    AncestryRevisitsACommit { detected_from: _ } => false
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// A selection names a ROW, not a root (review 56230)
+// ------------------------------------------------------------------------------------------------
+
+// TWO COMMITS, ONE ROOT, DIFFERENT MESSAGES. This is legal and gunbc.scm.log has its own witness for
+// it -- two_commits_sharing_a_root_still_get_distinct_references -- so a root is NOT a unique key
+// into the commit list.
+fn scm_ck_shared_root_repository() -> RepositoryEnvelope {
+  let only = scm_ck_put(store: empty_store(), n: scm_ck_atom(name: ^shared))
+  let first = scm_ck_minted_or(
+    repo: scm_ck_repository_with_store(store: only.store),
+    root: only.identity,
+    message: "FIRST",
+    parent: none,
+  )
+  scm_ck_minted_or(repo: first, root: only.identity, message: "SECOND", parent: none)
+}
+
+// THE DEFECT REVIEW 56230 FOUND, ASSERTED END TO END. Measured before the repair, this returned
+// FALSE: the selection stored the commit's ROOT, every reader resolved a root to the FIRST matching
+// row, and a user who checked out the second commit was told by `status` that they were on the
+// first. Nothing refused -- the wrong answer was reported as an ordinary success.
+//
+// It asserts through STATUS rather than through the envelope field, because the field being right is
+// not the claim; the claim is that the user is told which commit they are on.
+test fn scm_ck_checking_out_the_second_of_two_shared_root_commits_reports_its_own_message() -> Bool {
+  match checkout_repository_at(repo: scm_ck_shared_root_repository(), reference: scm_ck_ref(ordinal: 1)) {
+    RepositoryCheckedOut { repository: r, program: _ } =>
+      match repository_status(
+        envelope: r,
+        pending: Proposal { requirements: [], dependencies: [] },
+      ) {
+        RepositoryStatus { checkout: co, commit_count: _, staged: _ } =>
+          match co {
+            CheckedOutCommit { root: _, message: m } => m == "SECOND"
+            NothingCheckedOut => false
+            CheckedOutCommitMissing { reference: _ } => false
+          }
+      }
+    CheckoutReferenceUnresolved { reference: _ } => false
+    CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL, and it is what stops the claim above from being satisfied by a reader that
+// always returns the LAST row instead of always the first. Checking out the first identity must report
+// FIRST -- so the two together pin the selection to the row named, not to an end of the list.
+test fn scm_ck_checking_out_the_first_of_two_shared_root_commits_reports_its_own_message() -> Bool {
+  match checkout_repository_at(repo: scm_ck_shared_root_repository(), reference: scm_ck_ref(ordinal: 0)) {
+    RepositoryCheckedOut { repository: r, program: _ } =>
+      match repository_status(
+        envelope: r,
+        pending: Proposal { requirements: [], dependencies: [] },
+      ) {
+        RepositoryStatus { checkout: co, commit_count: _, staged: _ } =>
+          match co {
+            CheckedOutCommit { root: _, message: m } => m == "FIRST"
+            NothingCheckedOut => false
+            CheckedOutCommitMissing { reference: _ } => false
+          }
+      }
+    CheckoutReferenceUnresolved { reference: _ } => false
+    CheckoutProgramUnreconstructable { reference: _, cause: _ } => false
+  }
+}
