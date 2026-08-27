@@ -2403,6 +2403,42 @@ thread_local! {
 // not reported" — DESIGN's empty-observation narrow, ⊥-as-answer conflated with ⊥-as-ignorance.
 // One end-of-run receipt carrying BOTH numbers is the same information at 1/N the volume, and
 // it is the first form in which the ratio is readable at all.
+thread_local! {
+    /// CPU spent, on this thread, FILLING shared memoized artifacts during the current claim.
+    ///
+    /// WHY THIS QUANTITY EXISTS AT ALL, and it is an attribution fact rather than a performance
+    /// one: a memoized compile is consumed by every claim that names the same source, but its
+    /// cost lands entirely on whichever claim happened to reach it FIRST. That makes a
+    /// merge-blocking per-claim ceiling a function of EXECUTION ORDER rather than of the tree —
+    /// the same claim is over or under the line depending on who got there first. The floor
+    /// already refuses that accounting for its larger shared artifacts: the three
+    /// `[floor-phase]` warm builds report `provenance=built-by-preparation` and are billed to
+    /// preparation, never to a claim. This is that same rule at a smaller grain (DESIGN §2 — one
+    /// concept, every scale), which is why it reuses `SharedBuildProvenance` rather than minting
+    /// an exemption beside it.
+    ///
+    /// IT EXEMPTS NOTHING. The cost is measured, accumulated, reported per claim and attributed
+    /// to the shared artifact; it stops being CHARGED to the first payer and does not stop being
+    /// COUNTED. A cost that vanished here would be the absorbing fallback (§5) wearing an
+    /// accounting label — the deficit's frequency zeroed by construction — so the receipt carries
+    /// marginal and fill as two columns whose sum is the claim's whole measured cost.
+    static SHARED_ARTIFACT_FILL_CPU_NANOS: std::cell::Cell<u128> =
+        const { std::cell::Cell::new(0) };
+}
+
+/// Accumulate CPU spent filling a shared memoized artifact. Called ONLY from a memo MISS path,
+/// and only under the floor guard — outside it there is no memo, so there is no shared artifact
+/// and nothing to attribute.
+fn record_shared_artifact_fill_cpu(nanos: u128) {
+    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
+}
+
+/// Read the running total for this thread. The claim loop samples it either side of one claim;
+/// the difference is that claim's fill.
+pub fn shared_artifact_fill_cpu_nanos() -> u128 {
+    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
+}
+
 static COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 static COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES: std::sync::atomic::AtomicU64 =
@@ -2484,7 +2520,14 @@ pub fn compile_dag_rust_emit_check(
         return hit;
     }
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    // A MISS FILLS A SHARED ARTIFACT. Measured on the same thread clock the claim loop enforces
+    // against, so the two quantities cannot drift apart, and recorded rather than subtracted here
+    // — the claim loop does the split, this only says how much of the cost was a fill.
+    let fill_started = v1_interpreter::thread_cpu_nanos();
     let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    record_shared_artifact_fill_cpu(
+        v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
+    );
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict));
     verdict
 }
@@ -19893,11 +19936,39 @@ pub fn run_claim_measured(
     }
     let started = std::time::Instant::now();
     let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();
+    let fill_before_nanos = shared_artifact_fill_cpu_nanos();
     let outcome = run_claim(ctx, function);
     // CPU consumed by THIS (witness-eval) thread — the budget metric, so the completion-side
     // check matches the cooperative stride-poll and neither fires on cold-I/O or contention
     // wall time. wall_nanos stays the measurement/receipt basis (unchanged).
-    let cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
+    let measured_cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
+    // SHARED-ARTIFACT FILL IS NOT THIS CLAIM'S MARGINAL COST (operator-line ruling, 2026-08-27).
+    // Whatever this claim spent filling a memo is consumed by every later claim naming the same
+    // source — one of them measured at literally 0ms in the same run because this one paid — so
+    // charging it here makes a merge-blocking ceiling a function of EXECUTION ORDER rather than of
+    // the tree. The floor already bills its three `[floor-phase]` warm builds to preparation with
+    // `provenance=built-by-preparation` for exactly this reason; this is that rule at memo grain.
+    //
+    // THE COST IS SPLIT, NEVER DROPPED: `fill_cpu_nanos` is reported per claim and the two halves
+    // sum to `measured_cpu_nanos`. A runaway compile cannot hide behind "it was a miss", because
+    // the fill is still counted, still attributed and still visible in the receipt.
+    let fill_cpu_nanos = shared_artifact_fill_cpu_nanos().saturating_sub(fill_before_nanos);
+    let cpu_nanos = measured_cpu_nanos.saturating_sub(fill_cpu_nanos);
+    if fill_cpu_nanos > 0 {
+        // REPORTED, NOT ABSORBED. Printed on its own line, per claim, whenever a fill happened,
+        // so the quantity the ceiling stops charging is visible at the same grain it was measured
+        // — the difference between attributing a cost and losing one. `triggered_by` is this
+        // claim, which is precisely what `SharedBuildProvenance::AlreadyWarmOnEntry` records for
+        // the larger shared builds: every later claim reading this artifact reads it warm, and
+        // this line names who paid.
+        eprintln!(
+            "[floor-shared-fill] claim={function} marginal_cpu_ms={} fill_cpu_ms={} \
+             measured_cpu_ms={} provenance=filled-shared-artifact triggered_by={function}",
+            cpu_nanos / 1_000_000,
+            fill_cpu_nanos / 1_000_000,
+            measured_cpu_nanos / 1_000_000,
+        );
+    }
     let wall_nanos = started.elapsed().as_nanos();
     ctx.clear_eval_deadline();
     ctx.clear_wall_deadline();
