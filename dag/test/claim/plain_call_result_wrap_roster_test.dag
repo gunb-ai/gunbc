@@ -26,6 +26,13 @@ module test.claim.plain_call_result_wrap_roster_test
 // from the position it does lower. No single constant satisfies all three, and
 // no disabled mechanism satisfies the last two.
 //
+// MEASURED IN BOTH DIRECTIONS, by swapping only the emitter mirror on one tree and
+// re-emitting the same fixture. Pre-fix the plain call renders `Rc::new(skip(xs.clone(), 1))`
+// against a declared `-> Rc<Vec<i64>>` and row one FAILS while rows two and three PASS;
+// repaired it renders `skip(xs.clone(), 1)` and all three PASS. At closure grain the same swap
+// removes `error[E0308]: expected Vector<Rc<Token>>, found Rc<Vector<Rc<Token>>>` from the
+// 01_tokenize closure's rustc population and changes nothing else in it.
+//
 // SCOPE, stated so the rows are not read as wider: this is the PLAIN-CALL half
 // of the wrapping-level class. A roster row that misdeclares wraps_result
 // against its own template is still writable and these rows do not see it; that
