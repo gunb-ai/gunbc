@@ -364,50 +364,77 @@ fn represented_fan_count_for_header(
   }
 }
 
-// THE COUNT IS A LOWER BOUND WHEN ANY HEADER IS UNOBSERVED, and the caller is told which. An
-// unobserved header contributing 0 to a plain Int would report a machine as having fewer fans
-// than it does, with nothing distinguishing that from a machine that really has fewer.
+// THE TOTAL CARRIES ITS WEAKEST PROVENANCE. The per-header standing was made honest one commit
+// ago and then this aggregate threw that away: driven_fan_count_value turned an ASSEMBLY
+// EXPECTATION into an ordinary numeric contribution, the sum came back as InstalledFanCountExact,
+// and the witness asserted srv1 has exactly six installed fans -- on a machine where FAN1's two
+// are specified by a cooler datasheet and nobody has opened the case.
+//
+//   the assembly is specified to contain two fans
+//     -> the machine is reported to contain exactly two installed fans there
+//
+// That is the provenance collapse this module exists to prevent, committed at the aggregate after
+// being closed at the element. A total is only exact when every contribution is observed; mixing
+// observed with derived produces a MIXED standing that names which headers were which, so a
+// consumer can decide for itself whether a datasheet is good enough for what it is doing.
 type InstalledFanCountStanding
-  = InstalledFanCountExact { count: Int }
-  | InstalledFanCountPartial { observed_lower_bound: Int, unobserved_headers: List<NonEmptyStr> }
+  = InstalledFanCountObservedExact { count: Int }
+  | InstalledFanCountMixed {
+      observed_count: Int
+      assembly_expected_additional: Int
+      assembly_derived_headers: List<NonEmptyStr>
+      unobserved_headers: List<NonEmptyStr>
+    }
 
-fn driven_fan_count_value(standing: DrivenFanCountStanding) -> Int? {
-  match standing {
-    DrivenFanCountObserved { count } => Present { value: count }
-    DrivenFanCountDerivedFromAssembly { expected_count, specification } =>
-      Present { value: expected_count }
-    DrivenFanCountUnobserved => none
-  }
-}
-
-fn installed_fan_count_standing(wiring: HostFanWiring) -> InstalledFanCountStanding {
-  let unobserved = map(
+fn headers_with_driven_standing(
+  wiring: HostFanWiring,
+  want_derived: Bool,
+) -> List<NonEmptyStr> {
+  map(
     filter(
       wiring.headers,
       binding =>
         match binding.driven_fan_count {
-          DrivenFanCountUnobserved => true
-          other => false
+          DrivenFanCountDerivedFromAssembly { expected_count, specification } => want_derived
+          DrivenFanCountUnobserved => !want_derived
+          DrivenFanCountObserved { count } => false
         },
     ),
     binding => binding.header,
   )
-  let total = fold(
+}
+
+fn installed_fan_count_standing(wiring: HostFanWiring) -> InstalledFanCountStanding {
+  let derived_headers = headers_with_driven_standing(wiring: wiring, want_derived: true)
+  let unobserved_headers = headers_with_driven_standing(wiring: wiring, want_derived: false)
+  let observed_count = fold(
     wiring.headers,
     init: 0,
     f: (acc, binding) =>
-      match driven_fan_count_value(standing: binding.driven_fan_count) {
-        Present { value } => acc + value
-        none => acc
+      match binding.driven_fan_count {
+        DrivenFanCountObserved { count } => acc + count
+        other => acc
       },
   )
-  if unobserved.length() > 0 {
-    InstalledFanCountPartial {
-      observed_lower_bound: total,
-      unobserved_headers: unobserved,
-    }
+  let derived_count = fold(
+    wiring.headers,
+    init: 0,
+    f: (acc, binding) =>
+      match binding.driven_fan_count {
+        DrivenFanCountDerivedFromAssembly { expected_count, specification } =>
+          acc + expected_count
+        other => acc
+      },
+  )
+  if derived_headers.length() == 0 && unobserved_headers.length() == 0 {
+    InstalledFanCountObservedExact { count: observed_count }
   } else {
-    InstalledFanCountExact { count: total }
+    InstalledFanCountMixed {
+      observed_count: observed_count,
+      assembly_expected_additional: derived_count,
+      assembly_derived_headers: derived_headers,
+      unobserved_headers: unobserved_headers,
+    }
   }
 }
 

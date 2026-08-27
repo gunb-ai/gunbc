@@ -32,7 +32,11 @@ import gunbc.bmc_intent {
 import gunbc.bmc_fan_alignment_standing { HostBmcFanAlignmentStanding }
 import gunbc.fleet_fan_tach_expectation {
   expected_tach_headers,
-  host_fan_tach_expectation,
+  HostFanTachExpectationAbsent,
+  HostFanTachExpectationDuplicate,
+  HostFanTachExpectationEstablished,
+  HostFanTachExpectationHeaderDuplicated,
+  host_fan_tach_expectation_admission,
 }
 import gunbc.bmc_fan_projection {
   BmcFanConfigReadbackSubject,
@@ -122,6 +126,8 @@ type FanPolicySuitabilityRefusalCause
   = FanPolicyFirmwareMustConvergeBeforeRealizer
   | FanPolicyInstalledTachTopologyDiffersFromIntent
   | FanPolicyTachExpectationAbsentForHost
+  | FanPolicyTachExpectationDuplicateForHost
+  | FanPolicyTachExpectationHeaderDuplicated
   | FanPolicyProjectionCapabilityRefused {
       cause: BmcFanProjectionApplyRefusalCause,
     }
@@ -178,6 +184,10 @@ fn bmc_fan_policy_suitability_refusal_reason(
       "bmc fan projection installed-tach topology differs from this host's declared tach expectation"
     FanPolicyTachExpectationAbsentForHost =>
       "bmc fan apply refused: no fan tach expectation is declared for this host, so which headers must report is unknown"
+    FanPolicyTachExpectationDuplicateForHost =>
+      "bmc fan apply refused: this host carries more than one fan tach expectation, so which headers must report is decided by authoring order"
+    FanPolicyTachExpectationHeaderDuplicated =>
+      "bmc fan apply refused: this host's fan tach expectation authors one header twice, so the required list is a broken row rather than a topology"
     FanPolicyProjectionCapabilityRefused { cause: cause } =>
       match cause {
         BmcFanProjectionAlignmentStandingAbsent =>
@@ -408,12 +418,20 @@ fn bmc_fan_policy_apply_suitability(
       cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
     }
   } else {
-    match host_fan_tach_expectation(host: host) {
-      none =>
+    match host_fan_tach_expectation_admission(host: host) {
+      HostFanTachExpectationAbsent =>
         FanPolicySuitabilityRefused {
           cause: FanPolicyTachExpectationAbsentForHost,
         }
-      Present { value: expectation } =>
+      HostFanTachExpectationDuplicate { count } =>
+        FanPolicySuitabilityRefused {
+          cause: FanPolicyTachExpectationDuplicateForHost,
+        }
+      HostFanTachExpectationHeaderDuplicated { header } =>
+        FanPolicySuitabilityRefused {
+          cause: FanPolicyTachExpectationHeaderDuplicated,
+        }
+      HostFanTachExpectationEstablished { expectation } =>
     if projection.required_tach_inputs != expected_tach_headers(expectation: expectation) {
       FanPolicySuitabilityRefused {
         cause: FanPolicyInstalledTachTopologyDiffersFromIntent,

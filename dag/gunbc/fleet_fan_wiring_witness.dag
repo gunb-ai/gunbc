@@ -4,7 +4,15 @@ import std.types { Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.fleet_fan_tach_expectation {
   expected_tach_headers,
-  host_fan_tach_expectation,
+  HostFanTachExpectationAbsent,
+  HostFanTachExpectationDuplicate,
+  HostFanTachExpectationEstablished,
+  HostFanTachExpectationHeaderDuplicated,
+  host_fan_tach_expectation_admission,
+  tach_expectation_admission_over,
+  tach_not_expected,
+  chassis_tach_expected,
+  HostFanTachExpectation,
   srv1_fan_tach_expectation,
   srv3_fan_tach_expectation,
   srv4_fan_tach_expectation,
@@ -31,8 +39,8 @@ import gunbc.fleet_fan_wiring {
   DrivenFanCountUnobserved,
   FanCatalogSelectionAdmitted,
   FanCatalogSelectionRefusedModelUnobserved,
-  InstalledFanCountExact,
-  InstalledFanCountPartial,
+  InstalledFanCountMixed,
+  InstalledFanCountObservedExact,
   RepresentedFanCountObserved,
   RepresentedFanCountUnobserved,
   HeaderAbsentFromWiring,
@@ -108,8 +116,17 @@ fn tach_suppressed_header_is_actuated_but_unobserved() -> Bool {
   control.length() == 5
     && tach == 4
     && match installed_fan_count_standing(wiring: srv1_splitter_variant) {
-      InstalledFanCountExact { count } => count == 6
-      InstalledFanCountPartial { observed_lower_bound, unobserved_headers } => false
+      InstalledFanCountMixed {
+        observed_count,
+        assembly_expected_additional,
+        assembly_derived_headers,
+        unobserved_headers,
+      } =>
+        observed_count == 4
+          && assembly_expected_additional == 2
+          && assembly_derived_headers.length() == 1
+          && unobserved_headers.length() == 0
+      InstalledFanCountObservedExact { count } => false
     }
 }
 
@@ -182,20 +199,70 @@ fn per_header_coverage_states_stay_separate() -> Bool {
   absent && not_carried && unobserved_path && duplicated
 }
 
-// AN UNOBSERVED DRIVEN COUNT MAKES THE MACHINE TOTAL A LOWER BOUND THAT SAYS SO. Contributing 0
-// silently would report a machine as having fewer fans than it does, with nothing separating that
-// from a machine that really has fewer.
-fn unobserved_driven_count_makes_the_total_partial() -> Bool {
-  let srv1_exact = match installed_fan_count_standing(wiring: srv1_fan_wiring) {
-    InstalledFanCountExact { count } => count == 6
-    InstalledFanCountPartial { observed_lower_bound, unobserved_headers } => false
+// EVERY HEADER OBSERVED, so the exact arm is reachable rather than a variant nothing can produce.
+// srv3's own total is MIXED as well -- its FAN1 is the Dynatron cooler and equally assembly-derived
+// -- which I got wrong on the first pass and the witness caught: I had written srv3 as the exact
+// control on the assumption that only the Noctua hosts carried a derived count.
+data srv3_chassis_headers_only: HostFanWiring = HostFanWiring {
+  host: srv3_fan_wiring.host,
+  headers: filter(srv3_fan_wiring.headers, binding => binding.header != "FAN1"),
+}
+
+// THE TOTAL CARRIES ITS WEAKEST PROVENANCE, and srv1 is the case that proves it. Its six fans are
+// four observed chassis parts plus TWO SPECIFIED BY A COOLER DATASHEET on a machine nobody has
+// opened, so the honest answer is not 6 -- it is 4 observed, 2 expected, and here is the header
+// that made it so. An earlier form of this conjunct asserted exactly 6 and was the aggregate half
+// of the provenance collapse the per-header standings had just closed.
+fn the_total_carries_its_weakest_provenance() -> Bool {
+  let srv1_is_mixed = match installed_fan_count_standing(wiring: srv1_fan_wiring) {
+    InstalledFanCountMixed {
+      observed_count,
+      assembly_expected_additional,
+      assembly_derived_headers,
+      unobserved_headers,
+    } =>
+      observed_count == 4
+        && assembly_expected_additional == 2
+        && assembly_derived_headers.length() == 1
+        && unobserved_headers.length() == 0
+    InstalledFanCountObservedExact { count } => false
   }
-  let partial = match installed_fan_count_standing(wiring: srv1_wiring_with_unobserved_driven_count) {
-    InstalledFanCountPartial { observed_lower_bound, unobserved_headers } =>
-      observed_lower_bound == 4 && unobserved_headers.length() == 1
-    InstalledFanCountExact { count } => false
+  let srv3_is_mixed_too = match installed_fan_count_standing(wiring: srv3_fan_wiring) {
+    InstalledFanCountMixed {
+      observed_count,
+      assembly_expected_additional,
+      assembly_derived_headers,
+      unobserved_headers,
+    } =>
+      observed_count == 3 && assembly_expected_additional == 1
+    InstalledFanCountObservedExact { count } => false
   }
-  srv1_exact && partial
+  let chassis_only_is_exact = match installed_fan_count_standing(
+    wiring: srv3_chassis_headers_only,
+  ) {
+    InstalledFanCountObservedExact { count } => count == 3
+    InstalledFanCountMixed {
+      observed_count,
+      assembly_expected_additional,
+      assembly_derived_headers,
+      unobserved_headers,
+    } => false
+  }
+  let unobserved_is_named = match installed_fan_count_standing(
+    wiring: srv1_wiring_with_unobserved_driven_count,
+  ) {
+    InstalledFanCountMixed {
+      observed_count,
+      assembly_expected_additional,
+      assembly_derived_headers,
+      unobserved_headers,
+    } =>
+      observed_count == 4
+        && assembly_expected_additional == 0
+        && unobserved_headers.length() == 1
+    InstalledFanCountObservedExact { count } => false
+  }
+  srv1_is_mixed && srv3_is_mixed_too && chassis_only_is_exact && unobserved_is_named
 }
 
 // AN UNKNOWN MODEL MUST NOT COST A CONTROL ENDPOINT. Every chassis fan on srv3 stands at
@@ -447,9 +514,9 @@ fn required_tach_is_per_host_not_fleet_wide() -> Bool {
 // requirement permanently satisfied for every machine nobody has modelled -- monitoring switched
 // off by a lookup miss, and silently.
 fn unmodelled_host_has_no_tach_expectation() -> Bool {
-  match host_fan_tach_expectation(host: srv3_fan_wiring.host) {
-    Present { value } => true
-    none => false
+  match host_fan_tach_expectation_admission(host: srv3_fan_wiring.host) {
+    HostFanTachExpectationEstablished { expectation } => true
+    other => false
   }
 }
 
@@ -483,6 +550,57 @@ data srv1_wiring_with_unobserved_driven_count: HostFanWiring = HostFanWiring {
   ),
 }
 
+// THE TACH LOOKUP REFUSES A DUPLICATE ROSTER AND A DUPLICATED HEADER, not just an absent host.
+// The first cut was a first-match fold whose annotation claimed it "refuses rather than guessing"
+// -- true of ABSENT and false of DUPLICATE, which is the case the sentence was not thinking about.
+// It is the identical defect already closed in the alignment roster, and it is load-bearing:
+// bmc_fan_policy_apply_suitability reads this before admitting a projection, so two srv3 rows
+// would decide which headers must report by which was typed first.
+fn tach_expectation_refuses_both_broken_rosters() -> Bool {
+  let duplicated_row: List<HostFanTachExpectation> = [
+    srv3_fan_tach_expectation,
+    srv3_fan_tach_expectation,
+  ]
+  let duplicate = match tach_expectation_admission_over(
+    rows: duplicated_row,
+    host: srv3_fan_tach_expectation.host,
+  ) {
+    HostFanTachExpectationDuplicate { count } => count == 2
+    other => false
+  }
+  let duplicated_header: List<HostFanTachExpectation> = [
+    HostFanTachExpectation {
+      host: srv3_fan_tach_expectation.host,
+      headers: [
+        chassis_tach_expected(header: "FAN3"),
+        chassis_tach_expected(header: "FAN3"),
+      ],
+    },
+  ]
+  let header_dup = match tach_expectation_admission_over(
+    rows: duplicated_header,
+    host: srv3_fan_tach_expectation.host,
+  ) {
+    HostFanTachExpectationHeaderDuplicated { header } => header == "FAN3"
+    other => false
+  }
+  let absent = match tach_expectation_admission_over(
+    rows: [],
+    host: srv3_fan_tach_expectation.host,
+  ) {
+    HostFanTachExpectationAbsent => true
+    other => false
+  }
+  let established = match tach_expectation_admission_over(
+    rows: [srv3_fan_tach_expectation],
+    host: srv3_fan_tach_expectation.host,
+  ) {
+    HostFanTachExpectationEstablished { expectation } => true
+    other => false
+  }
+  duplicate && header_dup && absent && established
+}
+
 fn fan_wiring_witness() -> ProcessExit {
   if srv3_srv4_differ_by_identity_not_count()
     && unobserved_tach_is_not_an_expected_readback()
@@ -492,7 +610,8 @@ fn fan_wiring_witness() -> ProcessExit {
     && coverage_refuses_both_directions()
     && all_hosts_cover()
     && per_header_coverage_states_stay_separate()
-    && unobserved_driven_count_makes_the_total_partial()
+    && the_total_carries_its_weakest_provenance()
+    && tach_expectation_refuses_both_broken_rosters()
     && required_tach_is_per_host_not_fleet_wide()
     && unmodelled_host_has_no_tach_expectation()
     && label_evidence_gates_physical_inventory()
