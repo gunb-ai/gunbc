@@ -30,10 +30,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the identity of a PROGRAM where the walk needs the identity of a RECORD.
 fn ancestry_witness_ref(name: String) -> RepositoryCommitRef {
   RepositoryCommitRef { identity: MintedId {
-    ordinal: if name == "c0" { 0 }
-      else if name == "c1" { 1 }
-      else if name == "c2" { 2 }
-      else if name == "c3" { 3 }
+    ordinal: if name == "c0" || name == "r0" { 0 }
+      else if name == "c1" || name == "r1" { 1 }
+      else if name == "c2" || name == "r2" { 2 }
+      else if name == "c3" || name == "r3" { 3 }
       else { 99 },
   } }
 }
