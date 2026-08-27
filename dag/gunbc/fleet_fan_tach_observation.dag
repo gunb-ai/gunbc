@@ -1,0 +1,150 @@
+module gunbc.fleet_fan_tach_observation
+
+import std.types { Int, List, NonEmptyStr }
+import std.measure { rpm }
+import product.placement_supply { HostIdentity }
+import product.fan_tach { FanTachEndpointIdentity, FanTachWindow }
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
+
+// A WINDOW PER ENDPOINT, NOT A READING, AND MEASUREMENT FORCED IT.
+//
+// An earlier revision of this module recorded ONE value per endpoint and recorded srv1's FAN4 and
+// FAN5 as flatly unavailable. Both halves were wrong, and the second was wrong in the direction
+// that costs money: those fans SPIN.
+//
+// Twenty samples per endpoint on the 4U pair, 2026-08-26, via Redfish. The finding is that a zero
+// read is ORDINARY on this firmware - srv2, which is healthy, reads zero between 1 and 4 times in
+// 20 on every chassis endpoint. So a lone sample saying zero is not evidence of anything, and the
+// single-value carrier could not have said so.
+//
+// What separates srv1's two bad endpoints from the rest is therefore NOT that they read zero. It
+// is the RATE at which they read zero (11/20 and 16/20 against a 1-4/20 baseline) together with
+// the SPEED when they do read (medians 575 and 601 against 958-967 for the same fans on srv2 at
+// the same duty). The low speed is the finding; the dropouts are very likely its consequence,
+// since tach signal quality degrades as RPM falls. Neither fact is representable without the
+// counts and the spread, which is why they are carried rather than summarized away.
+//
+// THIS MODULE STILL REACHES NO CONCLUSION. "Degraded" is a judgement and lives downstream.
+
+data srv1_windows: List<FanTachWindow> = [
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv1, name: "FAN1" },
+    sample_count: 20, zero_count: 0, unavailable_count: 0, rotating_count: 20,
+    minimum: rpm(901), median: rpm(1219), maximum: rpm(1224),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv1, name: "FAN2" },
+    sample_count: 20, zero_count: 1, unavailable_count: 0, rotating_count: 19,
+    minimum: rpm(683), median: rpm(938), maximum: rpm(959),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv1, name: "FAN3" },
+    sample_count: 20, zero_count: 1, unavailable_count: 0, rotating_count: 19,
+    minimum: rpm(685), median: rpm(946), maximum: rpm(952),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv1, name: "FAN4" },
+    sample_count: 20, zero_count: 11, unavailable_count: 0, rotating_count: 9,
+    minimum: rpm(466), median: rpm(575), maximum: rpm(581),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv1, name: "FAN5" },
+    sample_count: 20, zero_count: 16, unavailable_count: 0, rotating_count: 4,
+    minimum: rpm(567), median: rpm(601), maximum: rpm(604),
+  },
+]
+
+// srv2 IS THE CONTROL, and it is the reason the srv1 rows above can be read at all: identical
+// chassis, identical cooler, identical firmware, same duty. Its dropout counts establish the
+// baseline that makes srv1/FAN4 and srv1/FAN5 stand out, and its medians establish the speed
+// those two should be reaching.
+data srv2_windows: List<FanTachWindow> = [
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv2, name: "FAN1" },
+    sample_count: 20, zero_count: 0, unavailable_count: 0, rotating_count: 20,
+    minimum: rpm(905), median: rpm(1209), maximum: rpm(1219),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv2, name: "FAN2" },
+    sample_count: 20, zero_count: 2, unavailable_count: 0, rotating_count: 18,
+    minimum: rpm(687), median: rpm(917), maximum: rpm(922),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv2, name: "FAN3" },
+    sample_count: 20, zero_count: 2, unavailable_count: 0, rotating_count: 18,
+    minimum: rpm(671), median: rpm(895), maximum: rpm(903),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv2, name: "FAN4" },
+    sample_count: 20, zero_count: 4, unavailable_count: 0, rotating_count: 16,
+    minimum: rpm(694), median: rpm(958), maximum: rpm(965),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv2, name: "FAN5" },
+    sample_count: 20, zero_count: 3, unavailable_count: 0, rotating_count: 17,
+    minimum: rpm(697), median: rpm(967), maximum: rpm(990),
+  },
+]
+
+// srv3/srv4 - 2U. FAN2 on srv3 and FAN5 on srv4 publish NO VALUE at all, which is a different
+// fact from reading zero: nothing is wired to them, so the BMC has no sensor to report.
+data srv3_windows: List<FanTachWindow> = [
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv3, name: "FAN1" },
+    sample_count: 20, zero_count: 0, unavailable_count: 0, rotating_count: 20,
+    minimum: rpm(5351), median: rpm(6033), maximum: rpm(9343),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv3, name: "FAN2" },
+    sample_count: 20, zero_count: 0, unavailable_count: 20, rotating_count: 0,
+    minimum: rpm(0), median: rpm(0), maximum: rpm(0),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv3, name: "FAN3" },
+    sample_count: 20, zero_count: 0, unavailable_count: 0, rotating_count: 20,
+    minimum: rpm(1583), median: rpm(2428), maximum: rpm(3029),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv3, name: "FAN4" },
+    sample_count: 20, zero_count: 0, unavailable_count: 0, rotating_count: 20,
+    minimum: rpm(1040), median: rpm(1605), maximum: rpm(1972),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv3, name: "FAN5" },
+    sample_count: 20, zero_count: 0, unavailable_count: 0, rotating_count: 20,
+    minimum: rpm(1549), median: rpm(2383), maximum: rpm(2959),
+  },
+]
+
+data srv4_windows: List<FanTachWindow> = [
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv4, name: "FAN1" },
+    sample_count: 20, zero_count: 0, unavailable_count: 0, rotating_count: 20,
+    minimum: rpm(5314), median: rpm(5975), maximum: rpm(9343),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv4, name: "FAN2" },
+    sample_count: 20, zero_count: 0, unavailable_count: 0, rotating_count: 20,
+    minimum: rpm(1563), median: rpm(2399), maximum: rpm(2622),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv4, name: "FAN3" },
+    sample_count: 20, zero_count: 0, unavailable_count: 0, rotating_count: 20,
+    minimum: rpm(1547), median: rpm(2376), maximum: rpm(2602),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv4, name: "FAN4" },
+    sample_count: 20, zero_count: 0, unavailable_count: 0, rotating_count: 20,
+    minimum: rpm(1555), median: rpm(2394), maximum: rpm(2620),
+  },
+  FanTachWindow {
+    endpoint: FanTachEndpointIdentity { host: operator_host_srv4, name: "FAN5" },
+    sample_count: 20, zero_count: 0, unavailable_count: 20, rotating_count: 0,
+    minimum: rpm(0), median: rpm(0), maximum: rpm(0),
+  },
+]

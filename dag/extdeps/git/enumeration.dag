@@ -1,0 +1,225 @@
+module extdeps.git.enumeration
+
+import std.types { String, List, Bool, Int }
+import std.string_type { string_is_lexicographically_before }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+
+// The typed reading of git.Core.ForEachRefIn's wire, kept in extdeps because the output GRAMMAR is
+// git's fact and not any consumer's. A caller that decoded this itself would own a second reading of
+// one upstream format, and the second reading is the one that drifts.
+//
+// symref is empty for an ordinary ref. That is git's own spelling -- %(symref) expands to nothing
+// when the ref is not symbolic -- so the emptiness is DATA rather than an absence, and it is carried
+// as the String git produced instead of being folded into an Optional. Folding it would make the
+// decoder answer a question the wire did not ask, and would lose the difference between "git said
+// this ref is not symbolic" and "the field was missing", which are different framings and have
+// different remedies.
+type GitRefIdentity {
+  refname: String
+  objectname: GitObjectId
+  symref: String
+}
+
+// Three arms and no fourth, because the three failures have different owners. ReadRefused is git
+// declining to answer and carries the exit code and stderr that say why -- the caller's remedy is
+// about the repository. Undecodable is git having answered in a shape this decoder does not accept,
+// and it is LOCATED: the record index and the raw record, so the refusal names the specific bytes
+// rather than reporting that something somewhere was wrong. A single malformed record refuses the
+// WHOLE observation rather than being skipped, because a partial ref set is indistinguishable from a
+// smaller repository, and a consumer comparing two enumerations would read the dropped record as a
+// deleted ref (DESIGN section 5 -- no fabricated plausible output).
+type GitRefSetObservation
+  = GitRefSetObserved { refs: List<GitRefIdentity> }
+  | GitRefSetReadRefused { exit_code: Int, stderr: String }
+  | GitRefSetUndecodable { record_index: Int, raw_record: String, reason: String }
+
+type GitRefDecodeState {
+  observation: GitRefSetObservation
+  record_index: Int
+  previous_refname: String?
+}
+
+fn git_ref_set_undecodable(state: GitRefDecodeState, record: String, reason: String) -> GitRefDecodeState {
+  GitRefDecodeState {
+    observation: GitRefSetUndecodable {
+      record_index: state.record_index,
+      raw_record: record,
+      reason: reason,
+    },
+    record_index: state.record_index + 1,
+    previous_refname: state.previous_refname,
+  }
+}
+
+fn git_ref_decode_admit(state: GitRefDecodeState, refs: List<GitRefIdentity>, identity: GitRefIdentity) -> GitRefDecodeState {
+  GitRefDecodeState {
+    observation: GitRefSetObserved { refs: Cons { head: identity, tail: refs } },
+    record_index: state.record_index + 1,
+    previous_refname: Present { value: identity.refname },
+  }
+}
+
+// THE DECODER VALIDATES THE ORDER AND DOES NOT IMPOSE IT, and that is the load-bearing choice in
+// this file rather than a stylistic one. git.Core.ForEachRefIn pins --sort=refname in its transport.
+// A decoder that SORTED its rows would make that pin decorative: deleting --sort=refname from the
+// argv would leave every test in this lane green, because the decoder would have quietly repaired
+// the very property the flag exists to provide. That is the permanently-green check DESIGN section
+// 4b names as worse than absent, since it would be cited as coverage for a flag nothing tests.
+//
+// Requiring STRICTLY increasing refnames instead makes the flag falsifiable: remove it and the
+// corpus order git falls back to reds here. Strict rather than non-decreasing because refnames are
+// unique in a repository, so an equal adjacent pair is a duplicate ref and not a tie -- and a
+// duplicate is exactly what a set-identity consumer must not silently absorb.
+fn git_ref_decode_ordered_admit(
+  state: GitRefDecodeState,
+  refs: List<GitRefIdentity>,
+  record: String,
+  identity: GitRefIdentity,
+) -> GitRefDecodeState {
+  match state.previous_refname {
+    Absent => git_ref_decode_admit(state: state, refs: refs, identity: identity)
+    Present { value: previous } =>
+      if string_is_lexicographically_before(left: previous, right: identity.refname) {
+        git_ref_decode_admit(state: state, refs: refs, identity: identity)
+      } else {
+        git_ref_set_undecodable(
+          state: state,
+          record: record,
+          reason: concat(
+            concat("ref names are not strictly increasing: ", previous),
+            concat(" is not before ", identity.refname),
+          ),
+        )
+      }
+  }
+}
+
+// Field access after the arity check above has already established there are exactly three. The
+// Absent arm is therefore unreachable through this decoder's own path and answers with the empty
+// string rather than refusing again -- a second refusal here would be a check whose RED no input can
+// author, which DESIGN section 4b names as decoration rather than a wall.
+fn git_ref_field_at(fields: List<String>, index: Int) -> String {
+  match fields.skip(n: index).first() {
+    Present { value: field } => field
+    Absent => ""
+  }
+}
+
+fn git_ref_decode_fields(
+  state: GitRefDecodeState,
+  refs: List<GitRefIdentity>,
+  record: String,
+  fields: List<String>,
+) -> GitRefDecodeState {
+  if count(fields) != 3 {
+    git_ref_set_undecodable(
+      state: state,
+      record: record,
+      reason: "expected exactly three NUL-separated fields: refname, objectname, symref",
+    )
+  } else {
+    let refname = git_ref_field_at(fields: fields, index: 0)
+    let object_text = git_ref_field_at(fields: fields, index: 1)
+    let symref = git_ref_field_at(fields: fields, index: 2)
+    if refname == "" {
+      git_ref_set_undecodable(state: state, record: record, reason: "empty ref name")
+    } else {
+      match git_object_id_from_untagged_hex(hex: object_text) {
+        Absent =>
+          git_ref_set_undecodable(
+            state: state,
+            record: record,
+            reason: concat("object id is not lowercase hex of a git object width: ", object_text),
+          )
+        Present { value: oid } =>
+          git_ref_decode_ordered_admit(
+            state: state,
+            refs: refs,
+            record: record,
+            identity: GitRefIdentity { refname: refname, objectname: oid, symref: symref },
+          )
+      }
+    }
+  }
+}
+
+fn git_ref_decode_step(state: GitRefDecodeState, record: String) -> GitRefDecodeState {
+  match state.observation {
+    GitRefSetReadRefused { exit_code: _, stderr: _ } => state
+    GitRefSetUndecodable { record_index: _, raw_record: _, reason: _ } => state
+    GitRefSetObserved { refs: refs } =>
+      if record == "" {
+        git_ref_set_undecodable(
+          state: state,
+          record: record,
+          reason: "empty record: NUL framing is truncated or a record separator is doubled",
+        )
+      } else {
+        git_ref_decode_fields(
+          state: state,
+          refs: refs,
+          record: record,
+          fields: split(s: record, delimiter: "\0"),
+        )
+      }
+  }
+}
+
+// THE EXIT CODE IS CONSULTED FIRST AND THE PAYLOAD IS NOT READ ON A REFUSAL. git declining to answer
+// and git answering with no refs are different states that would otherwise render identically: a
+// non-repository path exits nonzero with empty stdout, and an empty ref namespace exits zero with
+// empty stdout, so a decoder that folded the payload first would report the observed-empty set for
+// both. That is the execution-provenance conflation DESIGN records -- a count of zero and an
+// unreached read must not inhabit one carrier.
+//
+// ONE TRAILING EMPTY RECORD IS DROPPED, AND ONLY ONE. git terminates its last record with the record
+// separator, so splitting always yields a final empty element; that one is framing rather than data.
+// Any FURTHER empty record is truncated framing and refuses in the step above, which is why the drop
+// is exactly one rather than a filter over all empties -- filtering would silently absorb the
+// malformed case this decoder exists to catch.
+fn git_ref_set_records(raw: String) -> List<String> {
+  let records = split(s: raw, delimiter: "\n")
+  match records.last() {
+    Present { value: final_record } =>
+      if final_record == "" {
+        records.take(n: count(records) - 1)
+      } else {
+        records
+      }
+    Absent => records
+  }
+}
+
+// The fold accumulates by cons and therefore holds refs in reverse, so the accepted arm is turned
+// exactly once here. DESIGN section 6 bare-minimum-cost: a tail-append inside the step would be a
+// quadratic fold shape, which is always fixed regardless of the realized number of refs. The two
+// refusal arms carry no list and pass through unchanged.
+fn git_ref_set_observation_in_order(observation: GitRefSetObservation) -> GitRefSetObservation {
+  match observation {
+    GitRefSetObserved { refs: refs } => GitRefSetObserved { refs: reverse(refs) }
+    GitRefSetReadRefused { exit_code: exit_code, stderr: stderr } =>
+      GitRefSetReadRefused { exit_code: exit_code, stderr: stderr }
+    GitRefSetUndecodable { record_index: record_index, raw_record: raw_record, reason: reason } =>
+      GitRefSetUndecodable { record_index: record_index, raw_record: raw_record, reason: reason }
+  }
+}
+
+fn git_ref_set_observation_of(
+  raw: String,
+  exit_code: Int,
+  stderr: String,
+) -> GitRefSetObservation {
+  if exit_code != 0 {
+    GitRefSetReadRefused { exit_code: exit_code, stderr: stderr }
+  } else {
+    git_ref_set_observation_in_order(observation: fold(
+      git_ref_set_records(raw: raw),
+      init: GitRefDecodeState {
+        observation: GitRefSetObserved { refs: [] },
+        record_index: 0,
+        previous_refname: none,
+      },
+      f: (state, record) => git_ref_decode_step(state: state, record: record),
+    ).observation)
+  }
+}

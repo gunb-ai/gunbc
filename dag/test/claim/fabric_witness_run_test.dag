@@ -139,12 +139,19 @@ fn fungible(e: OfferFungibility) -> Bool {
 // helper that only accepted the exact arm would make the floor's own duration
 // (EstimatedGrantDuration, see fabric_witness_run.dag) permanently ineligible
 // by construction, which is exactly the fusion this suite exists to keep out.
+// QuoteNotPriceableWithoutDuration answers false here, and it is worth saying why rather than
+// letting the arm read as a fourth refusal. It is not "this demand cannot pay"; it is "the
+// screen could not be run", which is a different fact with a different remedy -- a measurement
+// rather than a bigger budget. A Bool cannot carry that distinction, so what this helper
+// promises is narrower than its name: NOT known-affordable. Callers that need the distinction
+// match the coproduct, which is why the two witnesses below do.
 fn affordable(a: DemandOfferAffordability) -> Bool {
   match a {
     Affordable => true
     AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => true
     QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
     QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
+    QuoteNotPriceableWithoutDuration { obligation: _ } => false
   }
 }
 
@@ -232,6 +239,7 @@ test fn quote_above_the_maximum_buy_order_refuses() -> Bool {
     Affordable => false
     AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => false
     QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
+    QuoteNotPriceableWithoutDuration { obligation: _ } => false
   }
 }
 
@@ -251,6 +259,7 @@ test fn foreign_currency_quote_refuses_distinctly() -> Bool {
     Affordable => false
     AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => false
     QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
+    QuoteNotPriceableWithoutDuration { obligation: _ } => false
   }
 }
 
