@@ -1,0 +1,82 @@
+module test.claim.generic_lambda_parameter_binding_witness
+
+import std.types { String, Bool, Int }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+
+// A LAMBDA PARAMETER WHOSE DECLARED TYPE IS A TYPE VARIABLE MUST BIND THAT TYPE VARIABLE.
+//
+// THE DEFECT THIS PINS. A lambda argument contributes nothing to a call's generic
+// substitution -- the argument fold skips it -- yet its own parameter types are read OUT of
+// that substitution. So a lambda saw only what the arguments to its LEFT had bound, and a
+// type variable bound by an argument to its RIGHT, or by a sibling field of the record
+// literal CONTAINING it, was not there yet. The parameter fell to a nameless type variable
+// and every method call on it refused. A second, independent defect sat under the record
+// form: instantiating a generic record's fields read each type ARGUMENT with resolved_type,
+// which answers the empty error_type for a node carrying no inferred type -- which is every
+// authored type argument -- so the substitution replaced the type parameter with nothing and
+// a callable field's parameter node was erased wholesale.
+//
+// WHY THE CENSUS AND NOT A GREP. Both defects were invisible to every check the repository
+// runs: the compile reported the receiver as 'Primitive()' at a call site the author never
+// wrote a type for, so nothing in the source names the defect and no textual search finds
+// it. These sources go through the real acceptance path.
+//
+// THE CONTROL IS THE LOAD-BEARING ROW. Three greens alone would be satisfied by a harness
+// that stopped observing, and -- worse here -- by a compiler that stopped judging method
+// existence at all. probe_generic_lambda_absent_method calls a method that genuinely does
+// not exist on the parameter's bound type, and asserts BOTH that MethodNotFound fires AND
+// that MethodExistenceUndecided does not. That pair is what witnesses the binding rather
+// than assuming it: MethodNotFound is only reachable when the receiver's type IS
+// established, so a regression that unbinds the parameter turns this row from
+// MethodNotFound into MethodExistenceUndecided and both halves of the assertion fail.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+// NOT-RUNNABLE IS NOT ZERO. A census that could not run has observed nothing, and reporting
+// that as "no diagnostics" would let a broken harness satisfy every green above while making
+// the control unsatisfiable. 0 - 1 is neither the 0 a green asserts nor the positive count
+// the control asserts, so a harness that stops working fails in both directions.
+fn blocking_count_for(source: String, wanted: String) -> Int {
+  match census_blocking_count_for_class(census: census_of(source: source), wanted: wanted) {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+data record_field_lambda_source: String = "module probe_generic_record_lambda_field\nimport std.types { Int, List }\ntype Sink<R> {\n  emit: fn(R) -> Int\n  seed: R\n}\nfn use_sink<R>(s: Sink<R>) -> Int {\n  s.emit(s.seed)\n}\nfn asks() -> Int {\n  use_sink(s: Sink { emit: xs => xs |> count, seed: [1, 2, 3] })\n}\n"
+
+data lambda_before_binder_source: String = "module probe_generic_lambda_before_binder\nimport std.types { Int, List }\nfn apply_to<R>(f: fn(R) -> Int, v: R) -> Int {\n  f(v)\n}\nfn asks() -> Int {\n  apply_to(f: xs => xs |> count, v: [1, 2, 3])\n}\n"
+
+data lambda_field_access_source: String = "module probe_generic_lambda_field_access\nimport std.types { Int }\ntype Point {\n  px: Int\n}\nfn apply_to<R>(f: fn(R) -> Int, v: R) -> Int {\n  f(v)\n}\nfn asks() -> Int {\n  apply_to(f: p => p.px, v: Point { px: 7 })\n}\n"
+
+data lambda_absent_method_source: String = "module probe_generic_lambda_absent_method\nimport std.types { Int, List }\nfn apply_to<R>(f: fn(R) -> Int, v: R) -> Int {\n  f(v)\n}\nfn asks() -> Int {\n  apply_to(f: xs => xs |> to_upper, v: [1, 2, 3])\n}\n"
+
+test fn a_lambda_field_of_a_generic_record_binds_the_type_its_sibling_field_determines() -> Bool {
+  blocking_count_for(source: record_field_lambda_source, wanted: "MethodExistenceUndecided") == 0
+    && blocking_count_for(source: record_field_lambda_source, wanted: "ReceiverTypeUnestablished") == 0
+    && blocking_count_for(source: record_field_lambda_source, wanted: "MethodNotFound") == 0
+}
+
+test fn a_lambda_argument_binds_a_type_variable_a_later_argument_determines() -> Bool {
+  blocking_count_for(source: lambda_before_binder_source, wanted: "MethodExistenceUndecided") == 0
+    && blocking_count_for(source: lambda_before_binder_source, wanted: "ReceiverTypeUnestablished") == 0
+    && blocking_count_for(source: lambda_before_binder_source, wanted: "MethodNotFound") == 0
+}
+
+// THE FIELD-ACCESS FORM IS THE LEGIBLE ONE, and it is a different judgment from the two
+// above rather than a third spelling of them: the method rows report a receiver with no
+// surface, this one reported "no field 'px' on type 'R'" -- the type variable reaching an
+// author-facing message by name, which is the clearest statement that nothing had bound it.
+// It is carried as InternalError because that is the class an inference_error mints.
+test fn a_lambda_parameter_bound_to_a_type_variable_can_reach_its_fields() -> Bool {
+  blocking_count_for(source: lambda_field_access_source, wanted: "InternalError") == 0
+}
+
+test fn a_method_absent_from_the_bound_type_still_refuses_and_refuses_as_absent() -> Bool {
+  blocking_count_for(source: lambda_absent_method_source, wanted: "MethodNotFound") >= 1
+    && blocking_count_for(source: lambda_absent_method_source, wanted: "MethodExistenceUndecided") == 0
+}
