@@ -5,10 +5,10 @@ data kotlin_extended_fn_source: String = "fun choose(x: Int): Int { val y: Int =
 fn kotlin_parse_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^kotlin_parse_bool_true } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^kotlin_parse_bool_false } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
   }
 }

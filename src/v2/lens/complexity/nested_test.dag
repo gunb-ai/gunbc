@@ -1,5 +1,6 @@
 module v2.test.lens_complexity.nested
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.complexity {
   ComplexityBound,
   composite_complexity_variables,
@@ -33,7 +34,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.nat { Zero }
 import v2.std.logic { Bool }
@@ -50,7 +50,7 @@ type LensComplexityClaim {
 data nested_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^nested_body_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data nested_body: Node = Node {
@@ -58,7 +58,7 @@ data nested_body: Node = Node {
   children: [
     Edge { label: Positional, target: nested_body_leaf }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data nested_inner: Node = Node {
@@ -66,7 +66,7 @@ data nested_inner: Node = Node {
   children: [
     Edge { label: Positional, target: nested_body }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data nested_input: Node = Node {
@@ -74,7 +74,7 @@ data nested_input: Node = Node {
   children: [
     Edge { label: Positional, target: nested_inner }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data nested_claim: LensComplexityClaim = LensComplexityClaim {

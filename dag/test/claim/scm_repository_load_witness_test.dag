@@ -39,21 +39,21 @@ data scm_rl_unknown_format_path: String = "dag/test/fixture/scm_repository_load/
 // UNDER THE CHECKOUT ROOT AND NEVER CREATED. See the header: the location is the claim.
 data scm_rl_absent_path: String = "dag/test/fixture/scm_repository_load/this_file_is_never_created.json"
 
-fn scm_rl_a_well_formed_document_loads() -> Bool {
+test fn scm_rl_a_well_formed_document_loads() -> Bool {
   match load_repository(path: scm_rl_empty_repository_path) {
     RepositoryLoaded { path: p, envelope: _ } => p == scm_rl_empty_repository_path
     _ => false
   }
 }
 
-fn scm_rl_an_absent_file_is_unreadable_not_empty() -> Bool {
+test fn scm_rl_an_absent_file_is_unreadable_not_empty() -> Bool {
   match load_repository(path: scm_rl_absent_path) {
     RepositoryFileUnreadable { path: p, error: _ } => p == scm_rl_absent_path
     _ => false
   }
 }
 
-fn scm_rl_a_truncated_document_is_unparseable() -> Bool {
+test fn scm_rl_a_truncated_document_is_unparseable() -> Bool {
   match load_repository(path: scm_rl_malformed_document_path) {
     RepositoryDocumentUnparseable { path: p, gap: _ } => p == scm_rl_malformed_document_path
     _ => false
@@ -63,7 +63,7 @@ fn scm_rl_a_truncated_document_is_unparseable() -> Bool {
 // THE DISCRIMINATING ONE. A document that PARSES cleanly and is still not a repository must reach
 // the decode arm and carry the schema's own refusal -- not the parse arm, whose remedy is "these
 // bytes are damaged" rather than "this is a repository of a version I do not know".
-fn scm_rl_a_parseable_non_repository_is_refused_by_schema() -> Bool {
+test fn scm_rl_a_parseable_non_repository_is_refused_by_schema() -> Bool {
   match load_repository(path: scm_rl_unknown_format_path) {
     RepositoryDocumentRefused { path: p, cause: c } =>
       p == scm_rl_unknown_format_path &&
@@ -75,7 +75,7 @@ fn scm_rl_a_parseable_non_repository_is_refused_by_schema() -> Bool {
   }
 }
 
-fn scm_repository_load_keystone_holds() -> Bool {
+test fn scm_repository_load_keystone_holds() -> Bool {
   scm_rl_a_well_formed_document_loads() &&
     scm_rl_an_absent_file_is_unreadable_not_empty() &&
     scm_rl_a_truncated_document_is_unparseable() &&

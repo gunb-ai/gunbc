@@ -62,7 +62,7 @@ import std.realization_reconcile {
   ReadObserved, Grounds, DoesNotGround,
   reconcile_grounded
 }
-import v2.std.algebra { fold_list, list_snoc_item, list_append }
+import v2.std.algebra { fold_list, list_snoc_item, list_append, list_map }
 import extdeps.shell
 import extdeps.shell { posix_command_v_check_argv, shell_test_is_executable_argv }
 import extdeps.shell.exec

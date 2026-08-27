@@ -5,7 +5,7 @@ module v2.test.manual.infer_emit_compile_anchor
 data anchor_stub_empty_conj: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data anchor_stub_target_model: TargetModel = TargetModel {

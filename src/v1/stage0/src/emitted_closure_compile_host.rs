@@ -50,6 +50,7 @@ use crate::v1_compiler_stage0_crates::{
 };
 
 const REQUIRED_EMIT_COMPILE_ENTRIES_DATA_NAME: &str = "required_emit_compile_entries";
+const PROBE_ROOT_DIR_NAME: &str = "gunbc-emit-compile";
 
 /// The crate name the emitted closure is compiled under — DERIVED PER ENTRY, not shared.
 ///
@@ -165,30 +166,171 @@ pub fn cargo_verdict_stderr_tail(verdict: &CargoVerdict) -> &str {
     }
 }
 
-/// WHICH FILE THE FAULT WENT INTO, carried rather than inferred.
+/// WHICH FILE THE FAULT WENT INTO -- AND IT IS THE ENTRY'S OWN EMITTED MODULE, BY CONSTRUCTION.
 ///
-/// A closure member is the stronger subject -- it establishes that the cargo verdict reaches
-/// past the entry's own bytes into the closure the entry pulled in, which is the property
-/// DESIGN's row turns on. `EntryModule` is the honest fallback for a closure whose only member
-/// is the entry, and naming it means a reader can tell the weaker measurement from the stronger
-/// one instead of assuming the stronger.
-#[derive(Debug, Clone)]
-pub enum MutationSubject {
-    ClosureMember { rust_module: String },
-    EntryModule { rust_module: String },
-}
+/// THIS TYPE USED TO OFFER A CHOICE, AND THE CHOICE WAS THE DEFECT. The selector took the first
+/// declared module that was not the entry, which is a SHARED-CORE member in every closure that
+/// has one. Measured over the whole roster at the landing of the phase, 8 of 8 entries mutated a
+/// shared member -- 7 x `std_error_primitives` and 1 x `v1_rt`, the emitted runtime, which is in
+/// every closure. Every arm was honestly `Discriminated`; there was no missing arm to notice.
+/// The verdict established `cargo ran and refused when the shared core was broken`, and never
+/// `THIS entry's own closure is what was compiled` -- total at the level examined, blind one
+/// level down.
+///
+/// WHY THE ENTRY'S OWN MODULE IS THE ONLY SUBJECT WORTH THE FAULT. It is the one member NOTHING
+/// ELSE REFERENCES: the other members are its dependencies, and a dependency does not import the
+/// root. So it is exactly the file a faulty emission could DROP while the crate still compiled.
+/// A partial drop that breaks a reference is already caught by the baseline; the uncaught case is
+/// a REFERENCE-CLOSED drop, and the entry's own leaf is the canonical one. Mutating a shared core
+/// member cannot distinguish that case, because the shared member is reached whether or not the
+/// entry's own bytes are in the tree at all.
+///
+/// SO THE CARRIER HOLDS ONE THING AND HAS NO SPELLING FOR THE OTHER. `mutation_subject` is the
+/// only constructor and it derives the module from the ENTRY, so `a shared member carried the
+/// fault` is unwritable here rather than merely unselected -- construction over validation, and
+/// there is no fallback arm to accept the bad case (DESIGN 5). Its absence is a typed refusal
+/// naming the entry (`MutationSubjectRefusal`), never a silent substitution.
+///
+/// THE PRIVACY BOUNDARY IS NAMED, BECAUSE RUST'S IS MODULE-SCOPED AND NOT FUNCTION-SCOPED. A
+/// private field on a struct declared beside its constructor is a wall against OTHER modules and
+/// mere convention within this one -- the sole-constructor finding this repository already
+/// records, which is that such a wall governs WHO constructs and says nothing inside the
+/// declaring module. So the carrier and its one constructor live in the submodule below and
+/// everything else in this file is OUTSIDE that boundary: `MutationSubject { rust_module: ... }`
+/// written anywhere else here does not compile, rather than compiling and being discouraged by a
+/// comment. That is the difference between structurally impossible and review diligence, and it
+/// is one `mod` block.
+pub use entry_own_subject::{mutation_subject, subject_rust_module, MutationSubject};
 
-pub fn mutation_subject_rust_module(subject: &MutationSubject) -> &str {
-    match subject {
-        MutationSubject::ClosureMember { rust_module } => rust_module.as_str(),
-        MutationSubject::EntryModule { rust_module } => rust_module.as_str(),
+mod entry_own_subject {
+    use super::MutationSubjectRefusal;
+    use std::path::Path;
+
+    #[derive(Debug, Clone)]
+    pub struct MutationSubject {
+        /// PRIVATE, and the module wrapping it is what makes that mean something: the only route
+        /// to a value of this type from anywhere in the file is `mutation_subject`, which derives
+        /// the name from the ENTRY and cannot be handed any other module.
+        rust_module: String,
+    }
+
+    /// A FREE FUNCTION AND NOT AN `impl` METHOD, and the reason is a receipt rather than taste.
+    /// `std.decl_ref` offers `WholeDeclaration` or `NamedField` and neither names a method on an
+    /// impl block, so a method is UNCITABLE: it cannot appear in this file's seed-growth roster,
+    /// and the roster's own census would then be silently short by exactly the items it cannot
+    /// spell. `gunbc.emitted_closure_compile_seed_growth` states that this file adds ZERO
+    /// uncitable items, and an `impl` here would have made that receipt false while the census
+    /// still reported a clean total. Inside the privacy boundary it reads the private field for
+    /// the same reason the constructor does, so nothing is given up by not being a method.
+    pub fn subject_rust_module(subject: &MutationSubject) -> &str {
+        subject.rust_module.as_str()
+    }
+
+    /// THE FAULT GOES INTO THE ENTRY'S OWN EMITTED MODULE, OR NOWHERE.
+    ///
+    /// There is no member-preferring arm and no fallback: the module name is DERIVED from the
+    /// entry, so the selector has nothing to select. What it decides is only whether that one
+    /// module is present, and absence is returned as a typed refusal naming the entry rather than
+    /// substituted for. The substitution is what this function used to do, and it is what made
+    /// every verdict on the roster a statement about the shared core (see `MutationSubject`).
+    pub fn mutation_subject(
+        crate_dir: &Path,
+        entry_module: &str,
+    ) -> Result<MutationSubject, MutationSubjectRefusal> {
+        let lib_rs = crate_dir.join("src/lib.rs");
+        let declared = match super::closure_modules(&lib_rs) {
+            Ok(modules) => modules,
+            Err(detail) => {
+                return Err(MutationSubjectRefusal::ClosureManifestUnreadable {
+                    lib_rs: lib_rs.display().to_string(),
+                    detail,
+                })
+            }
+        };
+        // DECLARED AND WRITTEN ARE TWO FACTS AND BOTH ARE REQUIRED. A `pub mod` line with no file
+        // behind it does not compile, and a file no `pub mod` line reaches is not in the closure
+        // at all -- so checking only one of them would admit a subject that is not actually part
+        // of what cargo compiled, and the fault would then prove nothing about the closure.
+        if !declared.iter().any(|m| m == entry_module) {
+            return Err(MutationSubjectRefusal::EntryModuleNotDeclared {
+                entry_module: entry_module.to_string(),
+                declared,
+            });
+        }
+        let path = crate_dir.join(format!("src/{entry_module}.rs"));
+        if !path.is_file() {
+            return Err(MutationSubjectRefusal::EntryModuleFileMissing {
+                entry_module: entry_module.to_string(),
+                path: path.display().to_string(),
+            });
+        }
+        Ok(MutationSubject {
+            rust_module: entry_module.to_string(),
+        })
     }
 }
 
-pub fn mutation_subject_name(subject: &MutationSubject) -> &'static str {
-    match subject {
-        MutationSubject::ClosureMember { .. } => "ClosureMember",
-        MutationSubject::EntryModule { .. } => "EntryModule",
+pub fn mutation_subject_rust_module(subject: &MutationSubject) -> &str {
+    entry_own_subject::subject_rust_module(subject)
+}
+
+/// The SUBJECT KIND, printed rather than inferred. There is one kind and the log still says it,
+/// so a reader of a receipt line never has to know this file to know what was mutated -- and if
+/// a second kind is ever admitted, every receipt already carries the field that distinguishes it.
+pub fn mutation_subject_name(_subject: &MutationSubject) -> &'static str {
+    "EntryOwnModule"
+}
+
+/// WHY THE ENTRY'S OWN MODULE WAS NOT AVAILABLE TO CARRY THE FAULT.
+///
+/// Three causes with three different owners, kept apart rather than collapsed into one string:
+/// an unreadable manifest is a probe-crate defect, a module the manifest never declares is an
+/// EMISSION defect (the closure did not carry its own root), and a declared module with no file
+/// is a WRITE defect. Collapsing them would send a reader looking in the wrong place, which is
+/// the state-space conflation DESIGN names.
+///
+/// MEASURED AS REACHABLE-BUT-EMPTY, WHICH IS A HEALTHY QUIET GUARD AND NOT A DECORATION: all 8
+/// rostered entries emit their own module as its own `.rs`, so no arm here fires today. The
+/// mechanism that produces it plainly exists -- a dropped or renamed root is what this phase is
+/// for -- and a fixture authors every arm directly, so its RED is authorable (DESIGN 4b).
+#[derive(Debug, Clone)]
+pub enum MutationSubjectRefusal {
+    ClosureManifestUnreadable {
+        lib_rs: String,
+        detail: String,
+    },
+    EntryModuleNotDeclared {
+        entry_module: String,
+        declared: Vec<String>,
+    },
+    EntryModuleFileMissing {
+        entry_module: String,
+        path: String,
+    },
+}
+
+pub fn mutation_subject_refusal_summary(refusal: &MutationSubjectRefusal) -> String {
+    match refusal {
+        MutationSubjectRefusal::ClosureManifestUnreadable { lib_rs, detail } => format!(
+            "EntryModuleAbsent/ClosureManifestUnreadable lib_rs={lib_rs} detail={detail} — the \
+             emitted crate's own module list could not be read, so the entry's own module can \
+             neither be found nor ruled out; nothing else may carry the fault in its place"
+        ),
+        MutationSubjectRefusal::EntryModuleNotDeclared {
+            entry_module,
+            declared,
+        } => format!(
+            "EntryModuleAbsent/EntryModuleNotDeclared entry_module={entry_module} \
+             declared=[{}] — the emitted closure does not declare the entry's OWN module. That \
+             is the reference-closed drop this phase exists to catch: the crate compiles because \
+             every remaining member is a dependency of the missing root. Mutating a member \
+             instead would report Discriminated over exactly the tree that is broken",
+            declared.join(",")
+        ),
+        MutationSubjectRefusal::EntryModuleFileMissing { entry_module, path } => format!(
+            "EntryModuleAbsent/EntryModuleFileMissing entry_module={entry_module} path={path} — \
+             the closure declares the entry's own module and no file was written for it"
+        ),
     }
 }
 
@@ -205,6 +347,12 @@ pub enum MutationVerdict {
     /// The fault went in and cargo still compiled the tree. THE INSTRUMENT IS NOT MEASURING
     /// WHAT IT CLAIMS TO.
     NotDiscriminating { detail: String },
+    /// THE ENTRY'S OWN EMITTED MODULE WAS NOT THERE TO CARRY THE FAULT, and no other module
+    /// stood in for it. Its own arm rather than a `NotAttempted` reason string, because this is
+    /// not `the tree had nowhere to put a fault` -- it is a POSITIVE FINDING ABOUT THE EMISSION,
+    /// with a different owner and a different repair, and it is the exact case a silent fallback
+    /// to a shared member would have reported as `Discriminated`.
+    SubjectRefused { refusal: MutationSubjectRefusal },
     /// The fault produced a red, and the restore did not return the tree to the state it
     /// started in -- either the bytes differ, or the restored tree does not compile. The red is
     /// then unattributable: it may be residue rather than the fault.
@@ -227,6 +375,12 @@ pub fn mutation_verdict_summary(verdict: &MutationVerdict) -> String {
             format!("NotDiscriminating detail={detail}")
         }
         MutationVerdict::RestoreFailed { detail } => format!("RestoreFailed detail={detail}"),
+        MutationVerdict::SubjectRefused { refusal } => {
+            format!(
+                "SubjectRefused {}",
+                mutation_subject_refusal_summary(refusal)
+            )
+        }
         MutationVerdict::Discriminated { subject, red_line } => format!(
             "Discriminated subject={} module={} red={red_line}",
             mutation_subject_name(subject),
@@ -385,34 +539,56 @@ fn probe_manifest(workspace: &Path, entry: &str) -> String {
 /// rather than gates.
 ///
 /// `RUNNER_TEMP` is created and torn down per job and owned by the process that needs it, so two
-/// tenants no longer name one path. It changes nothing the shared target directory buys: the
-/// entries of ONE run still share `workspace/target`, and per-entry package names still separate
-/// their fingerprints within it.
-fn probe_root() -> PathBuf {
-    let base = std::env::var("RUNNER_TEMP")
-        .ok()
+/// tenants no longer name one path. Therefore its ABSENCE IS A REFUSAL, not permission to inspect
+/// or write the host-shared system temp directory and hope this particular runner happens to make
+/// it safe. It changes nothing the shared target directory buys: the entries of ONE run still
+/// share `workspace/target`, and per-entry package names still separate their fingerprints within
+/// it.
+///
+/// This refusal governs `required_ci_probe_root_from_runner_temp` and its environment-reading
+/// wrapper `required_ci_emit_compile_probe_root`; `local_emit_compile_probe_root` deliberately
+/// remains the standalone mode's explicit system-temp selection.
+fn required_ci_probe_root_from_runner_temp(
+    runner_temp: Option<&std::ffi::OsStr>,
+) -> Result<PathBuf, String> {
+    let base = runner_temp
         .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-    base.join("gunbc-emit-compile")
+        .ok_or_else(|| {
+            "RUNNER_TEMP is unset or empty; the required emit-compile phase refuses rather than \
+             falling back to a host-shared temp directory"
+                .to_string()
+        })?;
+    Ok(PathBuf::from(base).join(PROBE_ROOT_DIR_NAME))
 }
 
-fn probe_crate_dir(entry: &str) -> PathBuf {
+pub fn required_ci_emit_compile_probe_root() -> Result<PathBuf, String> {
+    required_ci_probe_root_from_runner_temp(std::env::var_os("RUNNER_TEMP").as_deref())
+}
+
+pub fn local_emit_compile_probe_root() -> PathBuf {
+    std::env::temp_dir().join(PROBE_ROOT_DIR_NAME)
+}
+
+fn probe_crate_dir(probe_root: &Path, entry: &str) -> PathBuf {
     let slug: String = entry
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect();
-    probe_root().join(slug)
+    probe_root.join(slug)
 }
 
 /// Write the emitted Rust files plus a manifest, and return the crate directory.
-fn write_probe_crate(run: &CompileRun, entry: &str) -> Result<(PathBuf, usize), String> {
+fn write_probe_crate(
+    run: &CompileRun,
+    probe_root: &Path,
+    entry: &str,
+) -> Result<(PathBuf, usize), String> {
     let emission = run
         .emissions
         .iter()
         .find(|emission| emission.target_name == "rust")
         .ok_or_else(|| "the emission carries no rust target".to_string())?;
-    let dir = probe_crate_dir(entry);
+    let dir = probe_crate_dir(probe_root, entry);
     // A STALE TREE IS NOT A SUBJECT. The previous run's bytes under the same slug would let a
     // module deleted from the closure keep compiling, so the directory is removed rather than
     // written over.
@@ -492,11 +668,15 @@ fn run_cargo(crate_dir: &Path, workspace: &Path) -> CargoVerdict {
 }
 
 /// The rust module basenames the emitted `lib.rs` declares, in its own order.
-fn closure_modules(lib_rs: &Path) -> Vec<String> {
-    let Ok(content) = std::fs::read_to_string(lib_rs) else {
-        return Vec::new();
-    };
-    content
+///
+/// AN UNREADABLE MANIFEST IS RETURNED, NOT RENDERED AS AN EMPTY CLOSURE. The empty vector reads
+/// identically to `this crate declares no modules`, and a caller asking whether the entry's own
+/// module is declared would then answer `no` for a crate it never managed to read -- the
+/// execution-provenance loss DESIGN names, in the one place it would misattribute an emission
+/// defect to a filesystem one.
+fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
+    let content = std::fs::read_to_string(lib_rs).map_err(|e| e.to_string())?;
+    Ok(content
         .lines()
         .filter_map(|line| {
             line.trim()
@@ -504,27 +684,7 @@ fn closure_modules(lib_rs: &Path) -> Vec<String> {
                 .and_then(|rest| rest.strip_suffix(';'))
                 .map(|m| m.trim().to_string())
         })
-        .collect()
-}
-
-/// Pick the file the fault goes into: a closure member other than the entry where one exists,
-/// the entry itself otherwise.
-fn mutation_subject(crate_dir: &Path, entry_module: &str) -> Option<MutationSubject> {
-    let modules = closure_modules(&crate_dir.join("src/lib.rs"));
-    if let Some(member) = modules
-        .iter()
-        .find(|m| m.as_str() != entry_module && crate_dir.join(format!("src/{m}.rs")).is_file())
-    {
-        return Some(MutationSubject::ClosureMember {
-            rust_module: member.clone(),
-        });
-    }
-    if crate_dir.join(format!("src/{entry_module}.rs")).is_file() {
-        return Some(MutationSubject::EntryModule {
-            rust_module: entry_module.to_string(),
-        });
-    }
-    None
+        .collect())
 }
 
 /// THE DISCRIMINATING RED, ESTABLISHED BY MUTATION AND RESTORED BEFORE THE PHASE REPORTS.
@@ -538,13 +698,12 @@ fn establish_discriminating_red(
     workspace: &Path,
     entry_module: &str,
 ) -> MutationVerdict {
-    let Some(subject) = mutation_subject(crate_dir, entry_module) else {
-        return MutationVerdict::NotAttempted {
-            reason: format!(
-                "no writable emitted module under {} to carry the fault",
-                crate_dir.display()
-            ),
-        };
+    // NO FALLBACK ARM. A closure missing its own entry module is the finding, not an obstacle to
+    // route around -- substituting any other member here would hand the phase a `Discriminated`
+    // verdict computed over precisely the tree that is broken.
+    let subject = match mutation_subject(crate_dir, entry_module) {
+        Ok(subject) => subject,
+        Err(refusal) => return MutationVerdict::SubjectRefused { refusal },
     };
     let path = crate_dir.join(format!("src/{}.rs", mutation_subject_rust_module(&subject)));
     let original = match std::fs::read_to_string(&path) {
@@ -695,7 +854,11 @@ fn entry_rust_module(entry: &str, workspace: &Path) -> Result<String, String> {
 }
 
 /// One entry, end to end.
-pub fn run_emit_compile_entry(source_roots: &[String], entry: &str) -> EmitCompileOutcome {
+pub fn run_emit_compile_entry(
+    source_roots: &[String],
+    probe_root: &Path,
+    entry: &str,
+) -> EmitCompileOutcome {
     // PROGRESS IS REPORTED AS THE STAGE IS ENTERED, NOT WHEN THE ENTRY FINISHES.
     //
     // This is not decoration. Every stage below is a long host effect -- a whole-index emission,
@@ -733,7 +896,7 @@ pub fn run_emit_compile_entry(source_roots: &[String], entry: &str) -> EmitCompi
         CompileDisposition::Completed { .. } => {}
     }
 
-    let (crate_dir, emitted_files) = match write_probe_crate(&run, entry) {
+    let (crate_dir, emitted_files) = match write_probe_crate(&run, probe_root, entry) {
         Ok(pair) => pair,
         Err(cause) => {
             return EmitCompileOutcome::CrateNotWritten {
@@ -945,6 +1108,7 @@ pub fn retain_not_selected_identities(
 pub fn emit_compile_report(
     outcomes: &[EmitCompileOutcome],
     source_roots: &[String],
+    probe_root: &Path,
     prefix: &str,
 ) -> (Vec<String>, Option<String>) {
     let selection = emit_compile_selection(source_roots);
@@ -964,8 +1128,9 @@ pub fn emit_compile_report(
     // per-job temp while the retention file was still being written to the host-shared `/tmp`,
     // where it hit the same `EACCES` the reroot existed to escape. Two homes for one fact is the
     // §3 violation, and the tell was visible in the phase's own log as two different paths in
-    // adjacent lines. `probe_root()` is the authority; nothing else composes this name.
-    let retained_dir = probe_root().to_string_lossy().to_string();
+    // adjacent lines. The caller-selected `probe_root` is the authority for this run; nothing
+    // below the mode boundary chooses another root.
+    let retained_dir = probe_root.to_string_lossy().to_string();
     let retention_error = match retain_not_selected_identities(&selection, &retained_dir) {
         Ok(path) => {
             lines.push(format!(
@@ -994,9 +1159,8 @@ pub fn emit_compile_report(
 /// written for the wider case. Under a per-job `RUNNER_TEMP` root two CONCURRENT runs cannot
 /// collide by construction — there is no path they both name — so the lock is no longer the
 /// mechanism preventing interleaving in CI. What it still catches is a previous attempt in THIS
-/// job that died mid-flight, and a local run started beside another when the root falls back to a
-/// shared temp dir. Both are cases where the tree's state is unestablished, which is the thing
-/// worth refusing on.
+/// job that died mid-flight, or two invocations explicitly given the same runner temp. Both are
+/// cases where the tree's state is unestablished, which is the thing worth refusing on.
 ///
 /// The arms deliberately share one probe root and one cargo target directory — that is what makes
 /// the baseline warm and the restore comparable. It also means two runs interleave: one run's
@@ -1018,9 +1182,7 @@ pub fn emit_compile_report(
 fn acquire_probe_root_lock(root: &Path) -> Result<PathBuf, String> {
     std::fs::create_dir_all(root).map_err(|e| {
         format!(
-            "could not create the probe root {} ({e}) — the root is derived from RUNNER_TEMP \
-             when set and the system temp dir otherwise; a host-shared temp dir on a \
-             self-hosted runner can already hold this path owned by another tenant",
+            "could not create the caller-selected probe root {} ({e})",
             root.display()
         )
     })?;
@@ -1045,9 +1207,7 @@ fn acquire_probe_root_lock(root: &Path) -> Result<PathBuf, String> {
         // reader hunting a concurrent run on a runner that had none.
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => Err(format!(
             "the probe root {} is not writable by this process ({e}) — this is NOT a concurrent \
-             run; the root itself is wrong. It is derived from RUNNER_TEMP when set and the \
-             system temp dir otherwise, and a host-shared temp dir on a self-hosted runner can \
-             already hold this path owned by another tenant.",
+             run; the caller-selected root itself is wrong.",
             root.display()
         )),
         Err(e) => Err(format!("could not take {}: {e}", lock.display())),
@@ -1056,6 +1216,7 @@ fn acquire_probe_root_lock(root: &Path) -> Result<PathBuf, String> {
 
 pub fn run_required_emit_compile(
     source_roots: &[String],
+    probe_root: &Path,
 ) -> Result<Vec<EmitCompileOutcome>, String> {
     let entries = required_emit_compile_entries();
     if entries.is_empty() {
@@ -1065,7 +1226,7 @@ pub fn run_required_emit_compile(
         );
     }
     // See `acquire_probe_root_lock`: a second concurrent run refuses rather than interleaving.
-    let lock = acquire_probe_root_lock(&probe_root())?;
+    let lock = acquire_probe_root_lock(probe_root)?;
     // A FAILED RESTORE ENDS THE RUN, and it is not merely reported per entry.
     //
     // WHY IT IS TERMINAL RATHER THAN A FINDING SIBLINGS CONTINUE PAST, which is the shape every
@@ -1081,7 +1242,7 @@ pub fn run_required_emit_compile(
     // than a green whose restore arm was never established.
     let mut outcomes = Vec::new();
     for entry in &entries {
-        let outcome = run_emit_compile_entry(source_roots, entry);
+        let outcome = run_emit_compile_entry(source_roots, probe_root, entry);
         let terminal = matches!(
             &outcome,
             EmitCompileOutcome::Measured {
@@ -1119,7 +1280,8 @@ pub fn run_required_emit_compile(
 /// ITSELF: `establish_discriminating_red` runs on every required run, and a mutation that fails
 /// to go red stops the line. What these add is the discrimination the in-run arm cannot perform
 /// on itself -- that a non-`Discriminated` mutation is a FAILURE rather than a note, and that
-/// the fault prefers a closure member over the entry.
+/// the fault targets the ENTRY'S OWN emitted module, with its absence refused rather than
+/// substituted for.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1150,36 +1312,122 @@ mod tests {
         assert!(!manifest.contains("[lib]"));
     }
 
-    /// A closure member is preferred over the entry, because it is the stronger subject.
-    #[test]
-    fn mutation_prefers_a_closure_member_over_the_entry() {
-        let dir = std::env::temp_dir().join(format!("emit_compile_subject_{}", std::process::id()));
+    /// One emitted crate on disk, authored by the caller, so each test states the shape it means.
+    fn probe_tree(tag: &str, lib_rs: &str, files: &[&str]) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "emit_compile_{tag}_{}_{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src")).expect("src");
-        std::fs::write(
-            dir.join("src/lib.rs"),
-            "pub mod std_logic;\npub mod v2_std_node;\n",
-        )
-        .expect("lib");
-        std::fs::write(dir.join("src/std_logic.rs"), "// member\n").expect("member");
-        std::fs::write(dir.join("src/v2_std_node.rs"), "// entry\n").expect("entry");
-        let subject = mutation_subject(&dir, "v2_std_node").expect("a subject");
-        assert!(matches!(subject, MutationSubject::ClosureMember { .. }));
+        std::fs::write(dir.join("src/lib.rs"), lib_rs).expect("lib");
+        for file in files {
+            std::fs::write(dir.join(format!("src/{file}.rs")), "// emitted\n").expect("member");
+        }
+        dir
+    }
+
+    /// THE SUBJECT IS THE ENTRY'S OWN MODULE EVEN WHEN A SHARED MEMBER IS DECLARED FIRST.
+    ///
+    /// This is the measured shape of 7 of the 8 rostered entries: a shared-core member first, the
+    /// entry second-to-last, the emitted runtime last. The old selector took the first member that
+    /// was not the entry and therefore mutated `std_error_primitives` here -- a verdict about the
+    /// shared core wearing this entry's name.
+    #[test]
+    fn the_subject_is_the_entry_own_module_past_a_leading_shared_member() {
+        let dir = probe_tree(
+            "shared_first",
+            "pub mod std_error_primitives;\npub mod v2_std_node;\npub mod v1_rt;\n",
+            &["std_error_primitives", "v2_std_node", "v1_rt"],
+        );
+        let subject = mutation_subject(&dir, "v2_std_node").expect("the entry's own module");
+        assert_eq!(mutation_subject_rust_module(&subject), "v2_std_node");
+        assert_eq!(mutation_subject_name(&subject), "EntryOwnModule");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// AND WHEN IT IS DECLARED FIRST, which is the other measured shape (2 of 8: `std_abi`,
+    /// `std_logic`). Stated as its own case because ORDER IS NOT THE MECHANISM in either
+    /// direction: the tempting repair -- mutate the LAST module -- picks `v1_rt`, the emitted
+    /// runtime, in all 8, which is strictly more shared than what it replaced.
+    #[test]
+    fn the_subject_is_the_entry_own_module_when_it_is_declared_first() {
+        let dir = probe_tree(
+            "entry_first",
+            "pub mod std_logic;\npub mod v1_rt;\n",
+            &["std_logic", "v1_rt"],
+        );
+        let subject = mutation_subject(&dir, "std_logic").expect("the entry's own module");
         assert_eq!(mutation_subject_rust_module(&subject), "std_logic");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// A closure whose only member is the entry falls back to the entry AND SAYS SO, so the
-    /// weaker measurement is legible as the weaker one.
+    /// THE ABSENT ENTRY MODULE REFUSES AND NAMES THE ENTRY -- IT DOES NOT FALL BACK.
+    ///
+    /// This is the whole point of the change, and it is the case a fallback would have reported
+    /// as `Discriminated`: the closure has lost its own root and still compiles, because every
+    /// remaining member is a dependency of the missing root and nothing references it back.
     #[test]
-    fn mutation_falls_back_to_the_entry_and_names_it() {
-        let dir = std::env::temp_dir().join(format!("emit_compile_solo_{}", std::process::id()));
+    fn an_entry_module_missing_from_the_closure_refuses_rather_than_substituting() {
+        let dir = probe_tree(
+            "entry_dropped",
+            "pub mod std_error_primitives;\npub mod v1_rt;\n",
+            &["std_error_primitives", "v1_rt"],
+        );
+        let refusal = mutation_subject(&dir, "v2_std_node").expect_err("no substitution");
+        match &refusal {
+            MutationSubjectRefusal::EntryModuleNotDeclared {
+                entry_module,
+                declared,
+            } => {
+                assert_eq!(entry_module, "v2_std_node");
+                assert_eq!(declared, &["std_error_primitives", "v1_rt"]);
+            }
+            other => panic!("wrong refusal: {other:?}"),
+        }
+        let summary = mutation_subject_refusal_summary(&refusal);
+        assert!(summary.contains("v2_std_node"), "{summary}");
+        // The members that WERE available are named, so a reader can see what a fallback would
+        // have chosen and that nothing chose it.
+        assert!(summary.contains("std_error_primitives"), "{summary}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// DECLARED AND WRITTEN ARE TWO FACTS. A `pub mod` line with no file behind it is a write
+    /// defect, not an emission one, and it gets its own refusal for that reason.
+    #[test]
+    fn an_entry_module_declared_without_a_file_refuses_as_a_write_defect() {
+        let dir = probe_tree(
+            "entry_unwritten",
+            "pub mod v2_std_node;\npub mod v1_rt;\n",
+            &["v1_rt"],
+        );
+        let refusal = mutation_subject(&dir, "v2_std_node").expect_err("no substitution");
+        assert!(matches!(
+            refusal,
+            MutationSubjectRefusal::EntryModuleFileMissing { .. }
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// AN UNREADABLE MANIFEST IS NOT AN EMPTY CLOSURE. Rendering it as one would report the
+    /// EMISSION arm -- `the entry's own module is not declared` -- for a crate nobody managed to
+    /// read, sending the reader to the emitter over a filesystem fault.
+    #[test]
+    fn an_unreadable_closure_manifest_refuses_on_its_own_cause() {
+        let dir = std::env::temp_dir().join(format!(
+            "emit_compile_no_manifest_{}_{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src")).expect("src");
-        std::fs::write(dir.join("src/lib.rs"), "pub mod v2_std_node;\n").expect("lib");
-        std::fs::write(dir.join("src/v2_std_node.rs"), "// entry\n").expect("entry");
-        let subject = mutation_subject(&dir, "v2_std_node").expect("a subject");
-        assert!(matches!(subject, MutationSubject::EntryModule { .. }));
+        let refusal = mutation_subject(&dir, "v2_std_node").expect_err("no manifest, no subject");
+        assert!(matches!(
+            refusal,
+            MutationSubjectRefusal::ClosureManifestUnreadable { .. }
+        ));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1216,12 +1464,35 @@ mod tests {
         // The needle is ASSEMBLED rather than written, because a literal one appears in this
         // file the moment it is written down -- the test would then count itself and report two
         // spellings where there is one. Caught by the test failing on its own text.
-        let needle = format!("join({:?})", "gunbc-emit-compile");
+        let dir_name = format!("{}{}", "gunbc-emit-", "compile");
+        let needle = format!("{dir_name:?}");
         let compositions = src.matches(needle.as_str()).count();
         assert_eq!(
             compositions, 1,
-            "the probe root directory name must be composed only by probe_root(); a second \
-             spelling silently keeps the old root when the authority moves"
+            "the probe root directory name must have one authority; a second spelling silently \
+             keeps the old name when the authority moves"
+        );
+    }
+
+    /// A REQUIRED PATH DOES NOT PROBE THE HOST-SHARED FALLBACK.
+    ///
+    /// The safety property is that `RUNNER_TEMP` identifies a per-job directory. Falling back to
+    /// the system temp directory and then checking whether today's path is writable makes safety
+    /// an accidental property of the runner's current filesystem state. The missing and empty
+    /// arms therefore refuse before a path exists to inspect.
+    #[test]
+    fn the_probe_root_does_not_exist_without_runner_temp() {
+        for absent in [None, Some(std::ffi::OsStr::new(""))] {
+            let refusal = required_ci_probe_root_from_runner_temp(absent)
+                .expect_err("an absent runner temp must not produce a fallback path");
+            assert!(refusal.contains("RUNNER_TEMP is unset or empty"));
+            assert!(refusal.contains("refuses rather than falling back"));
+        }
+
+        assert_eq!(
+            required_ci_probe_root_from_runner_temp(Some(std::ffi::OsStr::new("/runner/job")))
+                .expect("a declared runner temp owns the probe root"),
+            PathBuf::from("/runner/job/gunbc-emit-compile")
         );
     }
 
@@ -1272,6 +1543,15 @@ mod tests {
             MutationVerdict::RestoreFailed {
                 detail: "d".to_string(),
             },
+            // THE REFUSAL IS A PHASE FAILURE, not a note beside a green baseline. A closure that
+            // lost its own entry module is exactly the emission defect this phase exists to
+            // catch, so an entry reaching this arm must never be reported as measured.
+            MutationVerdict::SubjectRefused {
+                refusal: MutationSubjectRefusal::EntryModuleNotDeclared {
+                    entry_module: "v2_std_node".to_string(),
+                    declared: vec!["v1_rt".to_string()],
+                },
+            },
         ] {
             let outcome = EmitCompileOutcome::Measured {
                 entry: "e.dag".to_string(),
@@ -1286,18 +1566,27 @@ mod tests {
                 emit_compile_outcome_summary(&outcome)
             );
         }
+        // THE SUBJECT IS OBTAINED THE ONLY WAY IT CAN BE: through `mutation_subject`, over a
+        // real tree. An earlier revision of this test wrote `MutationSubject { rust_module: .. }`
+        // directly, and moving the carrier behind a privacy boundary turned that line into a
+        // COMPILE ERROR (`E0451: field rust_module is private`) rather than a comment nobody
+        // reads. That refusal is the executed evidence that the wall is structural inside this
+        // file and not merely conventional -- Rust privacy is module-scoped, so a private field
+        // declared beside its constructor would have left this literal compiling.
+        let dir = probe_tree("passing_subject", "pub mod std_logic;\n", &["std_logic"]);
+        let subject = mutation_subject(&dir, "std_logic").expect("the entry's own module");
         let discriminated = EmitCompileOutcome::Measured {
             entry: "e.dag".to_string(),
             crate_dir: "/tmp/x".to_string(),
             emitted_files: 1,
             baseline: green,
             mutation: MutationVerdict::Discriminated {
-                subject: MutationSubject::ClosureMember {
-                    rust_module: "std_logic".to_string(),
-                },
+                subject,
                 red_line: "error[E0308]".to_string(),
             },
         };
         assert!(emit_compile_outcome_passed(&discriminated));
+        assert!(emit_compile_outcome_summary(&discriminated).contains("subject=EntryOwnModule"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -9,6 +9,7 @@ import std.measure { byte_size_count }
 import product.placement_supply { HostIdentity }
 import product.fabric.sanitation { CellId }
 import gunbc.ownership { Ownership, Owned }
+import gunbc.fabric_cell_subject { FabricCellSlotScope, fabric_cell_subject_ownership }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal }
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,
@@ -175,8 +176,16 @@ fn fabric_cell_member_value_eq(a: FabricCellMember, b: FabricCellMember) -> Bool
 // is Owned by construction and the field was a writable restatement of a fact the identity already
 // settles. If ownership ever depends on provenance, that provenance is separately admitted
 // evidence, not a field the observed side fills in.
+// ROUTED THROUGH THE SUBJECT PROJECTION RATHER THAN ANSWERING Owned DIRECTLY, AND THE CHANGE IS
+// STRUCTURAL RATHER THAN A DIFFERENT ANSWER. This function previously returned Present { value:
+// Owned } without reading `member` at all -- a constant function, total over its input by not
+// inspecting it. Every member of THIS family is still Owned, so no classification moves; what moves
+// is that the classification is now DERIVED from a match that a new subject kind makes
+// non-exhaustive. Under the prior shape a host-scoped subject would have inherited Owned silently,
+// with no arm to add and nothing failing to compile -- and for /opt/fabric-cells, shared by every
+// cell on the machine, inheriting teardown eligibility is the dangerous direction.
 fn fabric_cell_member_ownership(member: FabricCellMember) -> Optional<Ownership> {
-  Present { value: Owned }
+  Present { value: fabric_cell_subject_ownership(subject: FabricCellSlotScope { slot: member.slot }) }
 }
 
 // THE BOUNDARY'S DESIRED STATE CONSUMES THE EXISTING SLOT AUTHORITY RATHER THAN RE-SPELLING IT, so

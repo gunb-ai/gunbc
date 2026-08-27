@@ -79,7 +79,10 @@ pub fn dag_collect_pack_slots(
 
 pub fn json_quote(s: String) -> String {
     v1_rt::concat(
-        v1_rt::concat("\"".to_string(), escape_json_string(s.clone())),
+        v1_rt::concat(
+            "\"".to_string(),
+            crate::v1_compiler_emit_core_support::escape_json_string(s.clone()),
+        ),
         "\"".to_string(),
     )
 }
@@ -304,7 +307,7 @@ pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<Err
         } else {
             "".to_string()
         };
-        make_error_node(
+        crate::v1_std_core::make_error_node(
             Rc::new(CompilerDiagnostic::InternalError {
                 message: v1_rt::concat(
                     v1_rt::concat(

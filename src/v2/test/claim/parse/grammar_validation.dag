@@ -1,5 +1,6 @@
 module v2.test.parse.grammar_validation
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.compilers.lexing { Token }
 import v2.std.grammar {
   StampClass,
@@ -29,7 +30,7 @@ import v2.std.witness { Holds, Violates }
 import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, invariant_port_locus }
 import std.algebra { Cons, Empty }
 import v2.std.collection { List }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.logic { Bool }
 import v2.std.verification {
   ManualAnchorAbsent,
@@ -44,10 +45,10 @@ import v2.std.verification {
 fn validation_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_true } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_false } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
   }
 }

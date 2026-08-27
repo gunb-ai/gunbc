@@ -7,7 +7,7 @@ data unused_parameters_root: Node = Node {
   children: [
     Edge { label: Named { name: ^unused_parameters_edge_symbol }, target: unused_parameters_child }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data unused_parameters_dependency: DependencyView = DependencyView {
