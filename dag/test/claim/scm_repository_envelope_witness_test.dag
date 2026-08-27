@@ -9,6 +9,7 @@ module test.claim.scm_repository_envelope_witness
 // commit id, not on bytes and not on a stored field, because there is no stored field to assert on.
 
 import std.types { Bool, Int, List, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, JsonObject, JsonArray, JsonNull,
@@ -51,6 +52,22 @@ import gunbc.scm.repository_envelope {
   unresolved_commit_parent,
   commit_at_reference,
 }
+
+// THESE WITNESSES WERE DISCOVERED AND NEVER RUN, AND THIS DECLARATION IS WHAT CHANGES THAT.
+// A module that declares no `live_tree_disposition` resolves to ReadsLiveTree by the floor's
+// fail-closed default -- v2.workflow.floor_discovery_producer answers `Absent =>
+// EntryLiveTreeResolved { disposition: ReadsLiveTree }` -- and a ReadsLiveTree site is DECLINED
+// before the fold, counted in `declined_live` and never executed. This module carried no such
+// declaration, so all of its witnesses sat in that arm while reading as coverage: discovered,
+// counted, asserting nothing. Thirteen sibling gunbc.scm witness modules declare it; this one did
+// not, and the omission predates the ancestry work rather than arriving with it.
+//
+// SubstrateInputsOnly IS A TRUE STATEMENT ABOUT THIS MODULE, not the convenient one. Its entire
+// import surface is std.types, the json emit/parse grammars, v2.std.node and three gunbc.scm
+// carriers; nothing here opens a file, shells out, or reads the tree. Declaring it is what makes
+// the 37 claims below into executed evidence rather than specification.
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn scm_env_atom(identity: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
