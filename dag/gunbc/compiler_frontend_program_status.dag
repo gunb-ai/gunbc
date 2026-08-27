@@ -30,6 +30,11 @@ import gunbc.compiler_frontend_program_interlock {
 import gunbc.cli_dispatch_surface { gunbc_cli_emitter_gap }
 import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
+import v2.workflow.legacy_baseline_capture {
+  CaptureAvailable,
+  CaptureBlocked,
+  legacy_baseline_capture_capability,
+}
 
 // WHY THIS IS A SEPARATE MODULE FROM THE INTERLOCK IT READS. The interlock carries a RELATION --
 // which milestone precedes which -- and that relation is a closed, pure fact with no dependency on
@@ -329,9 +334,17 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
         cause: needs(i: NamespaceWaveAdmissionWall)
       }
     NamespaceBaselineObservationComplete =>
-      NotDerivable {
-        why: "v2.workflow.legacy_binding_observation can ADMIT a complete legacy observation, but whether one has been TAKEN over an exact base is a run fact and no carrier holds it. Derivable once an admitted CompleteLegacyObservation is persisted against a named base commit." as NonEmptyStr,
-        cause: needs(i: PersistedLegacyBaselineObservation)
+      match legacy_baseline_capture_capability() {
+        CaptureBlocked { phase: _, cause: _ } =>
+          NotDerivable {
+            why: "v2.workflow.legacy_baseline_capture can PROVE a binding observation was taken during the materialization of a named commit -- head, worktree and subject are checked in order and refuse before promotion -- but its accepted arm is unreachable while R_X(B) has no admission envelope. A complete BINDING observation must not stand in for a complete REPAIR observation. Derivable once the repair census carries an independent denominator and a capture can complete." as NonEmptyStr,
+            cause: needs(i: PersistedLegacyBaselineObservation)
+          }
+        CaptureAvailable =>
+          NotDerivable {
+            why: "a capture can now complete, but no capture has been taken against the current pre-cut base. Any movement of that base invalidates a prior enrolment, so this is asked per base rather than accumulated." as NonEmptyStr,
+            cause: needs(i: PersistedLegacyBaselineObservation)
+          }
       }
     NamespaceFirstSemanticWave =>
       NotDerivable {

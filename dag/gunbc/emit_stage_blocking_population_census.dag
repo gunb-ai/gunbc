@@ -234,10 +234,10 @@ fn census_population_bound(r: CensusReading) -> PopulationBound {
           }
         CompileExited { code: _ } =>
           match g {
-            NoGateFired => BoundedAbove { count: count(bs) }
-            WorkflowParameterDefaultGate => LowerBoundOnly { count: count(bs), masking_gate: g }
-            AnonymousRecordLiteralGate => LowerBoundOnly { count: count(bs), masking_gate: g }
-            EmitStoppedOnUpstreamCauses => LowerBoundOnly { count: count(bs), masking_gate: g }
+            NoGateFired => BoundedAbove { count: count(emit_produced_sites(sites: bs)) }
+            WorkflowParameterDefaultGate => LowerBoundOnly { count: count(emit_produced_sites(sites: bs)), masking_gate: g }
+            AnonymousRecordLiteralGate => LowerBoundOnly { count: count(emit_produced_sites(sites: bs)), masking_gate: g }
+            EmitStoppedOnUpstreamCauses => LowerBoundOnly { count: count(emit_produced_sites(sites: bs)), masking_gate: g }
           }
       }
   }
