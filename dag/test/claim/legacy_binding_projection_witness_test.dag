@@ -233,7 +233,7 @@ test fn a_total_set_of_carry_decisions_emits_one_entry_per_occurrence() -> Bool 
       ProjectionDecisionMissing { occurrences: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false
       ProjectionDecisionForeign { occurrences: _ } => false
-      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionInsertionCauseLost { scopes: _ } => false
       ProjectionCandidateNotInsertion { occurrences: _ } => false
       ProjectionTargetRepeated { occurrences: _ } => false
       ProjectionDroppedOccurrence { occurrences: _ } => false
@@ -264,7 +264,7 @@ test fn each_emitted_entry_addresses_its_own_side_of_the_projection() -> Bool {
       ProjectionDecisionMissing { occurrences: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false
       ProjectionDecisionForeign { occurrences: _ } => false
-      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionInsertionCauseLost { scopes: _ } => false
       ProjectionCandidateNotInsertion { occurrences: _ } => false
       ProjectionTargetRepeated { occurrences: _ } => false
       ProjectionDroppedOccurrence { occurrences: _ } => false
@@ -287,7 +287,7 @@ test fn an_occurrence_with_no_carry_decision_refuses() -> Bool {
       ProvenanceEmitted { provenance: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false
       ProjectionDecisionForeign { occurrences: _ } => false
-      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionInsertionCauseLost { scopes: _ } => false
       ProjectionCandidateNotInsertion { occurrences: _ } => false
       ProjectionTargetRepeated { occurrences: _ } => false
       ProjectionDroppedOccurrence { occurrences: _ } => false
@@ -312,7 +312,7 @@ test fn an_occurrence_decided_twice_refuses_as_a_fork() -> Bool {
       ProvenanceEmitted { provenance: _ } => false
       ProjectionDecisionMissing { occurrences: _ } => false
       ProjectionDecisionForeign { occurrences: _ } => false
-      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionInsertionCauseLost { scopes: _ } => false
       ProjectionCandidateNotInsertion { occurrences: _ } => false
       ProjectionTargetRepeated { occurrences: _ } => false
       ProjectionDroppedOccurrence { occurrences: _ } => false
@@ -336,7 +336,7 @@ test fn a_decision_about_a_non_base_occurrence_refuses() -> Bool {
       ProvenanceEmitted { provenance: _ } => false
       ProjectionDecisionMissing { occurrences: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false
-      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionInsertionCauseLost { scopes: _ } => false
       ProjectionCandidateNotInsertion { occurrences: _ } => false
       ProjectionTargetRepeated { occurrences: _ } => false
       ProjectionDroppedOccurrence { occurrences: _ } => false
@@ -365,7 +365,7 @@ test fn a_created_node_that_never_stated_its_cause_refuses_and_is_counted_not_lo
     EmitFixtureTransportRefused => false
     EmitAdmissionRefused => false
     EmissionComputed { emission: e } => match e {
-      ProjectionInsertionCauseLost { scope: _, insertions: n } => n == 1
+      ProjectionInsertionCauseLost { scopes: sc } => (sc |> count) == 1 && (sc |> any(s => s.digest == legacy_subject_identity(subject: lbp_projected_subject()).digest))
       ProjectionCandidateNotInsertion { occurrences: _ } => false
       ProjectionTargetRepeated { occurrences: _ } => false
       ProvenanceEmitted { provenance: _ } => false
@@ -395,7 +395,7 @@ test fn a_dropped_occurrence_refuses_at_the_emitter_rather_than_downstream() -> 
       ProjectionDecisionMissing { occurrences: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false
       ProjectionDecisionForeign { occurrences: _ } => false
-      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionInsertionCauseLost { scopes: _ } => false
       ProjectionCandidateNotInsertion { occurrences: _ } => false
       ProjectionTargetRepeated { occurrences: _ } => false
     }
@@ -420,7 +420,7 @@ test fn a_declared_drop_and_an_undeclared_omission_are_different_refusals() -> B
       ProjectionDecisionMissing { occurrences: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false
       ProjectionDecisionForeign { occurrences: _ } => false
-      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionInsertionCauseLost { scopes: _ } => false
       ProjectionCandidateNotInsertion { occurrences: _ } => false
       ProjectionTargetRepeated { occurrences: _ } => false
     }
@@ -437,7 +437,7 @@ test fn a_declared_drop_and_an_undeclared_omission_are_different_refusals() -> B
       ProvenanceEmitted { provenance: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false
       ProjectionDecisionForeign { occurrences: _ } => false
-      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionInsertionCauseLost { scopes: _ } => false
       ProjectionCandidateNotInsertion { occurrences: _ } => false
       ProjectionTargetRepeated { occurrences: _ } => false
       ProjectionDroppedOccurrence { occurrences: _ } => false
@@ -473,7 +473,7 @@ test fn a_created_node_with_a_cause_emits_an_insertion_addressed_across_both_sub
       ProjectionDecisionMissing { occurrences: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false
       ProjectionDecisionForeign { occurrences: _ } => false
-      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionInsertionCauseLost { scopes: _ } => false
       ProjectionCandidateNotInsertion { occurrences: _ } => false
       ProjectionTargetRepeated { occurrences: _ } => false
       ProjectionDroppedOccurrence { occurrences: _ } => false
@@ -501,7 +501,7 @@ test fn a_carried_forward_node_declared_as_an_insertion_refuses_as_malformed_inp
       ProjectionDecisionMissing { occurrences: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false
       ProjectionDecisionForeign { occurrences: _ } => false
-      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionInsertionCauseLost { scopes: _ } => false
       ProjectionTargetRepeated { occurrences: _ } => false
       ProjectionDroppedOccurrence { occurrences: _ } => false
     }
@@ -527,7 +527,7 @@ test fn two_carry_decisions_claiming_one_target_refuse_at_the_producer() -> Bool
       ProjectionDecisionMissing { occurrences: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false
       ProjectionDecisionForeign { occurrences: _ } => false
-      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionInsertionCauseLost { scopes: _ } => false
       ProjectionCandidateNotInsertion { occurrences: _ } => false
       ProjectionDroppedOccurrence { occurrences: _ } => false
     }
@@ -554,7 +554,7 @@ test fn an_insertion_claiming_a_carried_target_refuses() -> Bool {
       ProjectionDecisionMissing { occurrences: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false
       ProjectionDecisionForeign { occurrences: _ } => false
-      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionInsertionCauseLost { scopes: _ } => false
       ProjectionCandidateNotInsertion { occurrences: _ } => false
       ProjectionDroppedOccurrence { occurrences: _ } => false
     }
@@ -582,7 +582,7 @@ test fn three_claims_on_one_target_report_one_offending_occurrence() -> Bool {
       ProjectionDecisionMissing { occurrences: _ } => false
       ProjectionDecisionForked { occurrences: _ } => false
       ProjectionDecisionForeign { occurrences: _ } => false
-      ProjectionInsertionCauseLost { scope: _, insertions: _ } => false
+      ProjectionInsertionCauseLost { scopes: _ } => false
       ProjectionCandidateNotInsertion { occurrences: _ } => false
       ProjectionDroppedOccurrence { occurrences: _ } => false
     }
