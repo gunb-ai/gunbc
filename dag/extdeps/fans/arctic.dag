@@ -1,0 +1,88 @@
+module extdeps.fans.arctic
+
+import std.types { List }
+import std.measure { millimeter, percent, rpm }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.fans.types {
+  FanCatalogRow,
+  FanSpeedRangePublished,
+  FanStopsBelowPwm,
+  FluidDynamicBearing,
+}
+import extdeps.vendor.arctic { arctic }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.arctic.de/en/P8-PWM-PST/ACFAN00150A"
+  }
+}
+
+// THE PUBLISHED FIGURES ARE A SPEED RANGE AND NOTHING ELSE, AND THAT IS THE WHOLE ROW.
+//
+// The listing gives 200-3000 rpm, 4-pin PWM, 12 V, 1.08 W, an 80 x 80 x 25 mm frame, and a noise
+// figure of 0.3 SONES. Two duty points are therefore authorable - the bottom and the top of the
+// controllable range - and neither carries a sound pressure level.
+//
+// 0.3 SONES IS NOT A dBA ANCHOR AND IS DELIBERATELY NOT CONVERTED. Sone is a loudness scale and
+// dBA is a sound pressure level; the mapping between them is psychoacoustic, depends on the
+// spectrum, and inverting it for a single broadband figure requires assumptions the vendor did not
+// publish. Writing tenths_dba(...) here from 0.3 sone would manufacture an anchor - a number that
+// looks like a measurement, is not one, and would then feed the acoustic law as though a vendor had
+// printed it. This lane already made that mistake once in the opposite direction (treating a sone
+// figure as an available dBA anchor) and was corrected in review, which is why the refusal is
+// recorded here rather than left as an omission a later author would try to helpfully fill in.
+//
+// The consequence is visible and intended: fan_acoustic_evidence returns
+// FanAcousticUnderdetermined at published_level_count 0. This fan cannot ground an acoustic law,
+// and the model says so instead of guessing.
+//
+// THE RANGE IS CARRIED AS A RANGE. An earlier revision of this row spelled 200-3000 rpm as two
+// FanPublishedOperatingPoint rows at percent(0) and percent(100). ARCTIC publishes no duty
+// pairing at all, so both duties were invented, and fan_max_speed then read 3000 rpm through a
+// fabricated row - a correct number reached by a route that had manufactured its own premise.
+// Caught in review; the carrier now has no duty field on this arm, so the invention has nowhere
+// to go.
+//
+// THE PAGE ALSO REFUTES THE INVENTED ROW DIRECTLY. The full string is "200-3000 rpm (0 rpm below
+// 5 % PWM)", so at percent(0) this fan reads 0 rpm and not 200 - the fabricated point was not
+// merely unpublished, it was wrong, and the stop behavior is now carried as its own fact.
+// THE MODEL IS "P8 PWM PST", NOT THE PACKAGE AND NOT THE CO VARIANT. The purchase is a five-pack,
+// whose own identifier names a shipment rather than a part; the fan inside it is one model and that
+// is what a header carries. "P8 PWM PST CO" is a separate ARCTIC product with a different bearing
+// intended for continuous operation, and the base name does not imply it - so binding a header to
+// this row asserts the base part specifically.
+//
+// THE BEARING IS PUBLISHED AND AN EARLIER REVISION OF THIS ROW SAID IT WAS NOT. The manufacturer
+// page prints "Fluid Dynamic Bearing" for the ordinary P8 PWM PST; this row previously carried
+// FanBearingUnpublished on the reasoning that only the CO variant's bearing was stated. That was a
+// FABRICATED ABSENCE - the same class as a fabricated value and harder to see, because a missing
+// fact reads as conservatism rather than as a claim. It asserts "the vendor did not say", which is
+// checkable and was false. Caught in review, verified against the cited page.
+data arctic_p8_pwm_pst_catalog: FanCatalogRow = FanCatalogRow {
+  model: "P8 PWM PST",
+  manufacturer: arctic,
+  frame_size: millimeter(80),
+  bearing: FluidDynamicBearing,
+  pwm_controlled: true,
+  published_points: [],
+  published_speed_range: FanSpeedRangePublished {
+    nonzero_minimum: rpm(200),
+    maximum: rpm(3000),
+  },
+  published_stop_behavior: FanStopsBelowPwm { threshold: percent(5) },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.fans.arctic",
+      decl_name: "arctic_p8_pwm_pst_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

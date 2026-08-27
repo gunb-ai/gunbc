@@ -107,7 +107,6 @@ fn bmc_fan_curve_effectively_reaches_full_duty_before(
 type BmcFanPolicyIntent {
   durability: StateDurabilityIntent
   curve: BmcFanCurve
-  required_tach_inputs: List<NonEmptyStr>
   acoustic_policy: BmcFanAcousticPolicy
   thermal_guard: BmcFanThermalGuard
   processor_thermal_limits: ProcessorThermalLimits
@@ -202,7 +201,6 @@ data fleet_bmc_valid_state: BmcControlPlaneIntent = BmcControlPlaneIntent {
   fan_policy: BmcFanPolicyIntent {
     durability: fleet_bmc_fan_durability_intent,
     curve: fleet_quiet_temp_soc_fan_curve,
-    required_tach_inputs: ["FAN1", "FAN2", "FAN3", "FAN4"],
     acoustic_policy: fleet_fan_acoustic_policy,
     thermal_guard: fleet_fan_thermal_guard,
     processor_thermal_limits: ampere_altra_max_m12830_thermal_limits,
