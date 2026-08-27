@@ -345,16 +345,3 @@ fn legacy_subject_identity(subject: LegacyBindingObservationSubject) -> Fnv1a64S
     right: content_hash_combine_structural(left: policy, right: populations)
   )
 }
-
-// AN OCCURRENCE ID IS LAWFUL AS AN IDENTITY INSIDE ONE SUBJECT AND UNLAWFUL ACROSS TWO, so a
-// reference that travels between subjects carries the scope it was minted in.
-//
-// The allocator is a monotone counter consumed in traversal order, so an ordinal names an
-// occurrence exactly within the compile that allocated it. Pairing it with the subject's content
-// address does not derive the occurrence's identity -- the parser minted that -- it SCOPES THE
-// ALLOCATOR DOMAIN, which is applicability rather than identity. That distinction is what makes an
-// indexable relation admissible where a cross-compile key is not.
-type SubjectOccurrenceRef {
-  subject_identity: Fnv1a64Structural
-  occurrence: OccurrenceId
-}

@@ -27,15 +27,21 @@ import extdeps.github.actions { Step, RunStep }
 import v2.workflow.ci_workflow_run_emit {
   ci_toolchain_home_isolation_script,
   ci_pin_rustup_default_script,
-  ci_hostile_legacy_writer_discriminator_script,
 }
 import v2.std.optional { Present }
+import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script }
 
-fn hostile_legacy_writer_discriminator_step() -> Step {
+fn toolchain_home_interference_probe_step() -> Step {
   RunStep {
     name: Present { value: "Discriminate private homes from a hostile legacy writer" },
     id: none,
-    run: ci_hostile_legacy_writer_discriminator_script(),
+    run: gunbc_run_step_script(
+      source_roots: ["dag", "src/v2"],
+      entry: "dag/gunbc/toolchain_home_interference_probe.dag",
+      function: "toolchain_home_interference_probe_wet",
+      claim_run: false,
+      receipt_rel: none,
+    ),
     shell: none,
     env: none,
     working_directory: none,

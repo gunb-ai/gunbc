@@ -57,6 +57,7 @@ pub enum EvalBuiltinArm {
     FreeCallObservedMonotonicNanos,
     FreeCallHashCombine,
     FreeCallFilesystemRead,
+    FreeCallToolchainHomeInterferenceProbe,
     FreeCallEmitHostRunTransport,
     FreeCallEmitHostRunTransportCached,
     FreeCallEmitHostNativeCacheEvict,
@@ -188,6 +189,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "observed_monotonic_nanos" => Some(EvalBuiltinArm::FreeCallObservedMonotonicNanos),
         "hash_combine" => Some(EvalBuiltinArm::FreeCallHashCombine),
         "filesystem_read" => Some(EvalBuiltinArm::FreeCallFilesystemRead),
+        "toolchain_home_interference_probe" => Some(EvalBuiltinArm::FreeCallToolchainHomeInterferenceProbe),
         "emit_host_run_transport" => Some(EvalBuiltinArm::FreeCallEmitHostRunTransport),
         "emit_host_run_transport_cached" => Some(EvalBuiltinArm::FreeCallEmitHostRunTransportCached),
         "emit_host_native_cache_evict" => Some(EvalBuiltinArm::FreeCallEmitHostNativeCacheEvict),
@@ -317,6 +319,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.observed_monotonic_nanos") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObservedMonotonicNanos };
     ("free_call.hash_combine") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallHashCombine };
     ("free_call.filesystem_read") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallFilesystemRead };
+    ("free_call.toolchain_home_interference_probe") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallToolchainHomeInterferenceProbe };
     ("free_call.emit_host_run_transport") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallEmitHostRunTransport };
     ("free_call.emit_host_run_transport_cached") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallEmitHostRunTransportCached };
     ("free_call.emit_host_native_cache_evict") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallEmitHostNativeCacheEvict };
