@@ -808,11 +808,23 @@ fn census_entry_emission(entry: String) -> OpaqueRealizationCensus {
           "--dependency-pool-index", "primary-precedence"
         ]
       )
-      census_emitted_tree(
-        provenance: provenance,
-        src_dir: concat(out_dir.path, "/src"),
-        emit_detail: concat("emitter exit_code=", concat(to_string(value: emit.exit_code), concat("; stderr: ", emit.stderr)))
-      )
+      let emit_detail = concat("emitter exit_code=", concat(to_string(value: emit.exit_code), concat("; stderr: ", emit.stderr)))
+      if !emit.success {
+        OpaqueCensusUnestablished {
+          provenance: provenance,
+          stage: OpaqueCensusStageEmit,
+          cause: concat(
+            "the emitter exited unsuccessfully, so whatever .rs files reached the output directory are a PARTIAL emission and not a subject; a census taken over them would report a population from a run that did not finish. ",
+            emit_detail
+          )
+        }
+      } else {
+        census_emitted_tree(
+          provenance: provenance,
+          src_dir: concat(out_dir.path, "/src"),
+          emit_detail: emit_detail
+        )
+      }
     }
   }
 }
@@ -838,103 +850,76 @@ fn disposition_row(d: UseSiteDisposition) -> String {
   }
 }
 
-fn disposition_is_bypass_rebound(d: UseSiteDisposition) -> Bool {
+type DispositionTally {
+  bypass_rebound: Int
+  bypass_currently_compatible: Int
+  preserved: Int
+  no_occurrence: Int
+}
+
+fn empty_disposition_tally() -> DispositionTally {
+  DispositionTally { bypass_rebound: 0, bypass_currently_compatible: 0, preserved: 0, no_occurrence: 0 }
+}
+
+fn disposition_tally_row(acc: DispositionTally, d: UseSiteDisposition) -> DispositionTally {
   match d {
+    ProviderDeclarationPreserved { consumer_file: _, declaring_file: _, name: _ } =>
+      DispositionTally {
+        bypass_rebound: acc.bypass_rebound,
+        bypass_currently_compatible: acc.bypass_currently_compatible,
+        preserved: acc.preserved + 1,
+        no_occurrence: acc.no_occurrence
+      }
+    NoConsumerOccurrence { consumer_file: _, declaring_file: _, name: _, realization: _ } =>
+      DispositionTally {
+        bypass_rebound: acc.bypass_rebound,
+        bypass_currently_compatible: acc.bypass_currently_compatible,
+        preserved: acc.preserved,
+        no_occurrence: acc.no_occurrence + 1
+      }
     ProviderInterfaceBypass { consumer_file: _, declaring_file: _, name: _, realization: _, manifestation: m } =>
       match m {
-        ReboundToDifferentTargetDeclaration { rebound_to: _ } => true
-        CurrentlyCompatible => false
+        ReboundToDifferentTargetDeclaration { rebound_to: _ } =>
+          DispositionTally {
+            bypass_rebound: acc.bypass_rebound + 1,
+            bypass_currently_compatible: acc.bypass_currently_compatible,
+            preserved: acc.preserved,
+            no_occurrence: acc.no_occurrence
+          }
+        CurrentlyCompatible =>
+          DispositionTally {
+            bypass_rebound: acc.bypass_rebound,
+            bypass_currently_compatible: acc.bypass_currently_compatible + 1,
+            preserved: acc.preserved,
+            no_occurrence: acc.no_occurrence
+          }
       }
-    ProviderDeclarationPreserved { consumer_file: _, declaring_file: _, name: _ } => false
-    NoConsumerOccurrence { consumer_file: _, declaring_file: _, name: _, realization: _ } => false
   }
 }
 
-fn disposition_is_bypass_compatible(d: UseSiteDisposition) -> Bool {
-  match d {
-    ProviderInterfaceBypass { consumer_file: _, declaring_file: _, name: _, realization: _, manifestation: m } =>
-      match m {
-        CurrentlyCompatible => true
-        ReboundToDifferentTargetDeclaration { rebound_to: _ } => false
-      }
-    ProviderDeclarationPreserved { consumer_file: _, declaring_file: _, name: _ } => false
-    NoConsumerOccurrence { consumer_file: _, declaring_file: _, name: _, realization: _ } => false
-  }
+fn disposition_tally(dispositions: List<UseSiteDisposition>) -> DispositionTally {
+  fold(dispositions, init: empty_disposition_tally(), f: (acc, d) => disposition_tally_row(acc: acc, d: d))
 }
 
-fn disposition_is_preserved(d: UseSiteDisposition) -> Bool {
-  match d {
-    ProviderDeclarationPreserved { consumer_file: _, declaring_file: _, name: _ } => true
-    ProviderInterfaceBypass { consumer_file: _, declaring_file: _, name: _, realization: _, manifestation: _ } => false
-    NoConsumerOccurrence { consumer_file: _, declaring_file: _, name: _, realization: _ } => false
-  }
-}
-
-fn disposition_is_no_occurrence(d: UseSiteDisposition) -> Bool {
-  match d {
-    NoConsumerOccurrence { consumer_file: _, declaring_file: _, name: _, realization: _ } => true
-    ProviderDeclarationPreserved { consumer_file: _, declaring_file: _, name: _ } => false
-    ProviderInterfaceBypass { consumer_file: _, declaring_file: _, name: _, realization: _, manifestation: _ } => false
-  }
-}
-
-fn standing_text(s: DeclarationBodyStanding) -> String {
-  match s {
-    DeclaredOpaque => "opaque"
-    DeclaredWithBody => "has-body"
-    DeclarationSourceUnresolved { attempted: a } => concat("source-unresolved(", concat(a, ")"))
-  }
-}
-
-fn opaque_subject_row_text(r: OpaqueSubjectRow) -> String {
-  join([r.declaring_file, r.name, r.source_module, standing_text(s: r.standing)], "\t")
-}
-
-fn subject_preserved_count(dispositions: List<UseSiteDisposition>, key: String) -> Int {
-  dispositions
-    |> filter(d => disposition_subject_key(d: d) == key && disposition_is_preserved(d: d))
-    |> count
-}
-
-fn subject_bypassed_count(dispositions: List<UseSiteDisposition>, key: String) -> Int {
-  dispositions
-    |> filter(d => disposition_subject_key(d: d) == key
-        && (disposition_is_bypass_rebound(d: d) || disposition_is_bypass_compatible(d: d)))
-    |> count
-}
-
-fn subject_consistency_of(preserved: Int, bypassed: Int) -> SubjectConsistency {
-  if preserved > 0 && bypassed > 0 {
-    SubjectDispositionSplit { preserved: preserved, bypassed: bypassed }
-  } else if preserved > 0 {
-    SubjectUniformlyPreserved { preserved: preserved }
-  } else if bypassed > 0 {
-    SubjectUniformlyBypassed { bypassed: bypassed }
-  } else {
-    SubjectHasNoOccurrences
-  }
-}
-
-fn subject_consistency_rows(dispositions: List<UseSiteDisposition>, claims: List<RealizationClaim>) -> List<SubjectConsistencyRow> {
+fn subject_disposition_tally(dispositions: List<UseSiteDisposition>, key: String) -> DispositionTally {
   fold(
-    claims,
-    init: [],
-    f: (acc, claim) =>
-      let key = realization_claim_key(declaring_file: claim.declaring_file, name: claim.name)
-      if acc |> any(r => realization_claim_key(declaring_file: r.declaring_file, name: r.name) == key) {
-        acc
-      } else {
-        let preserved = subject_preserved_count(dispositions: dispositions, key: key)
-        let bypassed = subject_bypassed_count(dispositions: dispositions, key: key)
-        if preserved == 0 && bypassed == 0 {
-          acc
-        } else {
-          list_push(acc, SubjectConsistencyRow {
-            declaring_file: claim.declaring_file,
-            name: claim.name,
-            consistency: subject_consistency_of(preserved: preserved, bypassed: bypassed)
-          })
-        }
+    dispositions,
+    init: empty_disposition_tally(),
+    f: (acc, d) =>
+      if disposition_subject_key(d: d) == key { disposition_tally_row(acc: acc, d: d) } else { acc }
+  )
+}
+
+fn split_subject_count(rows: List<SubjectConsistencyRow>) -> Int {
+  fold(
+    rows,
+    init: 0,
+    f: (acc, r) =>
+      match r.consistency {
+        SubjectDispositionSplit { preserved: _, bypassed: _ } => acc + 1
+        SubjectUniformlyPreserved { preserved: _ } => acc
+        SubjectUniformlyBypassed { bypassed: _ } => acc
+        SubjectHasNoOccurrences => acc
       }
   )
 }
@@ -951,15 +936,6 @@ fn subject_consistency_text(c: SubjectConsistency) -> String {
 
 fn subject_consistency_row_text(r: SubjectConsistencyRow) -> String {
   join([r.declaring_file, r.name, subject_consistency_text(c: r.consistency)], "\t")
-}
-
-fn subject_is_split(r: SubjectConsistencyRow) -> Bool {
-  match r.consistency {
-    SubjectDispositionSplit { preserved: _, bypassed: _ } => true
-    SubjectUniformlyPreserved { preserved: _ } => false
-    SubjectUniformlyBypassed { bypassed: _ } => false
-    SubjectHasNoOccurrences => false
-  }
 }
 
 fn reference_realization_policy_standing() -> ReferenceRealizationPolicyStanding {
@@ -985,15 +961,16 @@ fn census_report_text(c: OpaqueRealizationCensus) -> String {
         ""
       ], "\n")
     OpaqueCensusTaken { provenance: pv, emitted_file_count: n, dispositions: ds, subject_consistency: cons, opaque_subjects: subs } =>
+      let tally = disposition_tally(dispositions: ds)
       join([
         "opaque-realization-census TAKEN",
         concat("provenance\t", tree_provenance_text(p: pv)),
         concat("emitted_files\t", to_string(value: n)),
-        concat("bypass_rebound\t", to_string(value: filter(ds, d => disposition_is_bypass_rebound(d: d)) |> count)),
-        concat("bypass_currently_compatible\t", to_string(value: filter(ds, d => disposition_is_bypass_compatible(d: d)) |> count)),
-        concat("provider_declaration_preserved\t", to_string(value: filter(ds, d => disposition_is_preserved(d: d)) |> count)),
-        concat("no_consumer_occurrence\t", to_string(value: filter(ds, d => disposition_is_no_occurrence(d: d)) |> count)),
-        concat("subjects_with_split_disposition\t", to_string(value: filter(cons, r => subject_is_split(r: r)) |> count)),
+        concat("bypass_rebound\t", to_string(value: tally.bypass_rebound)),
+        concat("bypass_currently_compatible\t", to_string(value: tally.bypass_currently_compatible)),
+        concat("provider_declaration_preserved\t", to_string(value: tally.preserved)),
+        concat("no_consumer_occurrence\t", to_string(value: tally.no_occurrence)),
+        concat("subjects_with_split_disposition\t", to_string(value: split_subject_count(rows: cons))),
         concat("reference_realization_policy\t", policy_standing_text(p: reference_realization_policy_standing())),
         "",
         "# disposition\tconsumer\tdeclaring\tname\trealization\tmanifestation",
@@ -1009,26 +986,23 @@ fn census_report_text(c: OpaqueRealizationCensus) -> String {
   }
 }
 
-fn census_completed(c: OpaqueRealizationCensus) -> Bool {
-  match c {
-    OpaqueCensusTaken { provenance: _, emitted_file_count: _, dispositions: _, subject_consistency: _, opaque_subjects: _ } => true
-    OpaqueCensusUnestablished { provenance: _, stage: _, cause: _ } => false
-  }
-}
-
 fn write_census(c: OpaqueRealizationCensus, report: String) -> ProcessExit {
   let write = Filesystem.Write(path: report, content: census_report_text(c: c))
   if !write.success {
     exit_failure(reason: concat("could not write the report to ", report))
-  } else if census_completed(c: c) {
-    ExitSuccess
   } else {
-    exit_failure(
-      reason: concat(
-        "the census did not reach a readable emitted artifact; the report at ",
-        concat(report, " names the stage that refused")
-      )
-    )
+    match c {
+      OpaqueCensusTaken { provenance: _, emitted_file_count: _, dispositions: _, subject_consistency: _, opaque_subjects: _ } =>
+        ExitSuccess
+      OpaqueCensusUnestablished { provenance: _, stage: st, cause: _ } =>
+        exit_failure(
+          reason: join([
+            "the census did not reach a readable emitted artifact; it refused at stage",
+            census_stage_text(stage: st),
+            concat("and the report at ", concat(report, " carries the cause"))
+          ], " ")
+        )
+    }
   }
 }
 
