@@ -106,7 +106,8 @@ use std::rc::Rc;
 use crate::v1_rt::VecCompat;
 use crate::v1_std_core::{
     authored_name_at, expr_literal_string_optional, import_is_all, import_specific_names_at,
-    module_imports, module_items, Connective, ExprData, NewlineIndex, Node, SourceSpan,
+    module_imports, module_items, Connective, ExprData, InferredNode, MatchPattern, NewlineIndex,
+    Node, SourceSpan,
 };
 
 /// A span COPIED OUT of the parse tree rather than referenced into it.
@@ -584,6 +585,67 @@ fn collect_reference_occurrences(
         }
         if let Some(t) = node.type_annotation.as_ref() {
             collect_reference_occurrences(t, source_indices, in_declaration, false, out);
+        }
+
+        // AUTHORED CHANNEL ONE: THE VARIANT-PATTERN CONSTRUCTOR NAME.
+        //
+        // A pattern head is a reference the seven-slot walk above cannot reach even in principle,
+        // because it is a raw `String` on `MatchPattern` rather than a `Node`. So a module whose
+        // only use of an imported coproduct is naming its variants in match arms contributed
+        // NOTHING to `referenced`, and the gate concluded no name here resolved into the target.
+        //
+        // ONLY `name`. NOT `parent_enum`, and that exclusion is the whole care in this block:
+        // v1.02_parse writes `parent_enum: none` at parse time and INFERENCE fills it in later, so
+        // collecting it would mint a membership fact out of a compiler consequence rather than out
+        // of authored source -- the precise failure the operator ruling forbids, arriving through
+        // the one field of this enum that looks like an authored name and is not.
+        //
+        // NOT `field_bindings` either. Those are BINDERS -- they declare names, they do not
+        // reference them -- and the recursion below would otherwise report a pattern's own bound
+        // variables as references into whatever module happens to spell them the same way.
+        if let Some(pattern) = node.match_pattern.as_ref() {
+            if let MatchPattern::VariantPattern { name, .. } = &**pattern {
+                if !name.is_empty() {
+                    out.insert((in_declaration.to_string(), name.clone()));
+                }
+            }
+        }
+
+        // AUTHORED CHANNEL TWO: THE DECLARED TYPE PARKED IN `inferred`.
+        //
+        // `v1.02_parse` `field_to_child_node` stores a field's DECLARED TYPE as
+        // `inferred: Present { Resolved { node: <the authored type expression> } }`. The type is a
+        // perfectly ordinary Node carrying an authored name; it is simply parked in the one slot
+        // whose contract says "derived, not authored", so every authored-name reader correctly
+        // declines to look and the reference vanishes.
+        //
+        // THIS IS A PROJECTION OF ONE AUTHORED CHANNEL, NOT A WALK OF INFERENCE OUTPUT, and the
+        // distinction is the operator ruling's entire content. Walking inferred generally would
+        // mint membership from resolved semantic graphs -- fabricated facts that look exactly like
+        // real ones and are far harder to falsify. What makes the projection exact HERE is a
+        // property of WHEN this index is built: it is derived in the parse phase, BEFORE inference
+        // runs, so the only things any `inferred` slot can contain are the ones the PARSER put
+        // there. Measured, all six such sites in v1.02_parse: the field type above, a type alias's
+        // right-hand side, a `Callable` return type, an optional return annotation, and two that
+        // hold a leaf node of the declaration's OWN name. Every one is authored syntax.
+        //
+        // THAT IS A STATEMENT ABOUT THIS TREE AND NOT A LICENCE TO WIDEN. On a post-inference tree
+        // the same recursion would be the forbidden shape, so this reader's correctness is bound to
+        // its position in the pipeline. A consumer that moves it after inference must revisit this
+        // block rather than inherit it.
+        if let Some(inferred) = node.inferred.as_ref() {
+            if let InferredNode::Resolved {
+                node: declared_type,
+            } = &**inferred
+            {
+                collect_reference_occurrences(
+                    declared_type,
+                    source_indices,
+                    in_declaration,
+                    false,
+                    out,
+                );
+            }
         }
     })
 }
