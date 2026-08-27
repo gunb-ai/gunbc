@@ -1680,7 +1680,13 @@ test fn witness_request_scope_is_its_arm() -> Bool {
 }
 
 // THE SCOPE ROW IS THE ONLY THING SEPARATING THE TWO BASELINES, WHICH IS PRECISELY WHY IT MUST BE
-// IN THE TEXT. Give the full-host request empty families and it renders no timer, cap, spark or
+// IN THE TEXT.
+//
+// AN EARLIER REVISION OF THIS LAW ASSERTED LESS THAN ITS NAME CLAIMED, which is the reason the
+// remainder is now compared rather than counted. It checked equal line counts, one expected scope
+// row in each, and the shared host row -- so a mutation that CHANGED a non-scope row, or swapped
+// one for another, preserved every assertion and the law stayed green. "Only" was in the name and
+// not in the check. The remainder comparison is what makes the name true. Give the full-host request empty families and it renders no timer, cap, spark or
 // slot rows -- exactly what the fabric-only request renders, because it has no such fields. So
 // without the scope row the two texts would be byte-identical and the two subjects would collide:
 // an apply could admit a fabric-only plan against a full-host re-observation. This law asserts the
@@ -1705,12 +1711,21 @@ test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
     }),
     separator: "\n",
   )
-  list_length(items: full_lines) == list_length(items: fabric_lines)
-    && list_length(items: filter(fabric_lines, l => l == "scope:fabric-execution-cells-only")) == 1
-    && list_length(items: filter(fabric_lines, l => l == "scope:full-host")) == 0
+  join(filter(full_lines, l => !line_is_a_scope_row(l: l)), "\n")
+    == join(filter(fabric_lines, l => !line_is_a_scope_row(l: l)), "\n")
+    && list_length(items: filter(full_lines, l => line_is_a_scope_row(l: l))) == 1
+    && list_length(items: filter(fabric_lines, l => line_is_a_scope_row(l: l))) == 1
     && list_length(items: filter(full_lines, l => l == "scope:full-host")) == 1
+    && list_length(items: filter(fabric_lines, l => l == "scope:fabric-execution-cells-only")) == 1
     && list_length(items: filter(full_lines, l => l == "host:srv3")) == 1
-    && list_length(items: filter(fabric_lines, l => l == "host:srv3")) == 1
+}
+
+// THE SCOPE ROWS ARE NORMALISED AWAY BY THIS PREDICATE RATHER THAN BY MATCHING TWO LITERALS AT
+// EACH SITE, so a third scope's row cannot be left behind in the remainder and read as an ordinary
+// difference. It is a helper over the wire spelling authority rather than a second spelling of it.
+fn line_is_a_scope_row(l: String) -> Bool {
+  l == fleet_converge_scope_wire(scope: FullHost)
+    || l == fleet_converge_scope_wire(scope: FabricExecutionCellsOnly)
 }
 
 fn scope_is_full_host(s: FleetConvergeScope) -> Bool {
