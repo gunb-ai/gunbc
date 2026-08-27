@@ -1,6 +1,6 @@
 module gunbc.witness_floor_workflow
 
-import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import gunbc.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
 }
@@ -1320,17 +1320,11 @@ fn required_lanes_aggregate_script_outcome() -> String? {
   match bash_fold_serialize_program(
     stmts: required_lanes_gate_stmts(
       build_var: required_lanes_gate_build_var,
-      build_result_expression: required_lane_result_expression(job_id: build_lane_job_id),
       floor_var: required_lanes_gate_floor_var,
-      floor_result_expression: required_lane_result_expression(job_id: floor_lane_job_id),
       pull_request_var: required_lanes_gate_pull_request_var,
-      pull_request_expression: required_lanes_pull_request_expression(),
       event_name_var: required_lanes_gate_event_name_var,
-      event_name_expression: required_lanes_event_name_expression(),
       measured_head_var: required_lanes_gate_measured_head_var,
-      measured_head_expression: required_lanes_measured_head_expression(),
       run_id_var: required_lanes_gate_run_id_var,
-      run_id_expression: required_lanes_run_id_expression(),
       standing_var: required_lanes_gate_standing_var,
       verdict_var: required_lanes_gate_verdict_var,
       mechanism_var: required_lanes_gate_mechanism_var,
@@ -1368,13 +1362,33 @@ fn required_lanes_aggregate_script() -> String {
   }
 }
 
+// THE SUBJECT VALUES ARE BOUND AS ENVIRONMENT, WHICH IS THE ONLY PLACE AN EXPRESSION AND A
+// SHELL PROGRAM MAY MEET.
+//
+// A `${{ }}` expression is substituted into the workflow document before any shell exists, so
+// it has to reach the emitted yaml verbatim. A yaml scalar does that -- `emit_inline_scalar_text`
+// renders an expression unquoted and unescaped -- while a bash literal word cannot, because
+// quoting it is exactly what the bash serializer is for. `gunbc.required_lanes_gate` therefore
+// takes variable NAMES only and reads them as shell variables; the expressions live here, one
+// row per variable, joined to the gate by the same declarations the gate is handed.
+fn required_lanes_aggregate_step_env() -> List<YamlKeyValue> {
+  [
+    kv(key: required_lanes_gate_build_var, value: yaml_string(s: required_lane_result_expression(job_id: build_lane_job_id))),
+    kv(key: required_lanes_gate_floor_var, value: yaml_string(s: required_lane_result_expression(job_id: floor_lane_job_id))),
+    kv(key: required_lanes_gate_pull_request_var, value: yaml_string(s: required_lanes_pull_request_expression())),
+    kv(key: required_lanes_gate_event_name_var, value: yaml_string(s: required_lanes_event_name_expression())),
+    kv(key: required_lanes_gate_measured_head_var, value: yaml_string(s: required_lanes_measured_head_expression())),
+    kv(key: required_lanes_gate_run_id_var, value: yaml_string(s: required_lanes_run_id_expression()))
+  ]
+}
+
 fn required_lanes_aggregate_step() -> Step {
   RunStep {
     name: Present { value: "Both required lanes must have succeeded" },
     id: none,
     run: required_lanes_aggregate_script(),
     shell: none,
-    env: none,
+    env: Present { value: required_lanes_aggregate_step_env() },
     working_directory: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,

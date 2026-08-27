@@ -100,6 +100,8 @@ type ExpressionSpellings {
   eq_op: String
   interp_open: String
   interp_close: String
+  index_open: String
+  index_close: String
 }
 
 data default_expression_spellings: ExpressionSpellings = {
@@ -113,10 +115,60 @@ data default_expression_spellings: ExpressionSpellings = {
   eq_op: " == ",
   interp_open: "${{ ",
   interp_close: " }}",
+  index_open: "['",
+  index_close: "']",
+}
+
+// A PATH SEGMENT IS NOT ALWAYS DEREFERENCEABLE WITH A DOT, AND THE UPSTREAM GRAMMAR IS WHERE
+// THAT FACT LIVES.
+//
+// The cited authority (docs.github.com expressions, this module's anchor) admits two forms for
+// reaching a property: dot notation, and index notation `['name']`. They are not stylistic
+// alternatives. `-` is the SUBTRACTION OPERATOR in this expression language, so a dot
+// dereference of a name containing one does not name a property at all -- `needs.a-b.result`
+// parses as arithmetic over three undefined operands and evaluates to the empty string.
+//
+// WHY THIS IS MODELED HERE RATHER THAN AT THE ONE CALL SITE THAT NEEDED IT. The rule is a fact
+// about the upstream language, so a consumer that hand-spelled `['...']` for its own case would
+// be a second account of the grammar (DESIGN 3), and every later consumer would rediscover the
+// same defect. Choosing the form from the segment makes the invalid rendering unspellable by a
+// caller instead of something callers must remember (DESIGN 5, construction over validation).
+//
+// THE FAILURE IT PREVENTS IS NOT A NOISY ONE. An empty dereference yields an empty string, which
+// downstream shell then compares against `success` -- so the mis-rendered form does not refuse,
+// it silently answers "not success" on EVERY run including all-green ones. A gate whose only
+// reachable state is red carries exactly as much information as one that can never go red.
+fn dot_safe_code_point(c: Int) -> Bool {
+  (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c == 95)
+}
+
+fn dot_safe_leading_code_point(c: Int) -> Bool {
+  (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c == 95)
+}
+
+// A LEADING DIGIT IS REFUSED SEPARATELY FROM THE REST, because the upstream rule is not one
+// alphabet: `needs.0a.result` is not a property dereference even though every character in `0a`
+// is individually dot-safe. Folding the two checks into one alphabet would admit it.
+fn path_segment_is_dot_safe(segment: String) -> Bool {
+  match segment.chars().first() {
+    Absent => false
+    Present { value: lead } =>
+      dot_safe_leading_code_point(c: lead)
+        && all(segment.chars(), c => dot_safe_code_point(c: c))
+  }
+}
+
+fn render_path_segment_with(segment: String, sp: ExpressionSpellings) -> String {
+  if path_segment_is_dot_safe(segment: segment) {
+    concat(sp.path_sep, segment)
+  } else {
+    join([sp.index_open, segment, sp.index_close], "")
+  }
 }
 
 fn join_path_with(path: List<String>, sp: ExpressionSpellings) -> String {
-  join(path, sp.path_sep)
+  fold(path, init: "", f: (acc, segment) =>
+    concat(acc, render_path_segment_with(segment: segment, sp: sp)))
 }
 
 fn serialize_args_with(args: List<Expression>, sp: ExpressionSpellings) -> String {
@@ -126,7 +178,7 @@ fn serialize_args_with(args: List<Expression>, sp: ExpressionSpellings) -> Strin
 fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) -> String {
   match expression {
     ContextAccess { context: c, path: p } =>
-      join([context_name(context: c), join_path_with(path: p, sp: sp)], sp.path_sep)
+      concat(context_name(context: c), join_path_with(path: p, sp: sp))
     FunctionCall { function: f, args: a } =>
       join([function_name(function: f), sp.call_open, serialize_args_with(args: a, sp: sp), sp.call_close], "")
     StringLiteral { value: v } =>
@@ -258,8 +310,19 @@ fn parse_function_call_atom(s: String, sp: ExpressionSpellings) -> Expression? {
   }
 }
 
+// THE PARSE READS THE SAME TWO FORMS THE SERIALIZER WRITES, which is what keeps this module one
+// grammar read in both directions (DESIGN 4) rather than an emitter with a narrower reader
+// beside it. Index segments are normalized back to the dot form before splitting, so
+// `needs['a-b'].result` and `needs.a_b.result` both yield an ordinary segment list and a
+// serialize-then-ingest round trip returns the identical value.
+//
+// WHAT THE NORMALIZATION DOES NOT ADMIT, named rather than left to be discovered: a segment
+// whose own text contains the path separator or the index delimiters. No such segment can be
+// produced by the serializer above, so the round trip is total over what this module writes;
+// a hand-authored expression carrying one is outside what this reader claims.
 fn parse_context_access_atom(s: String, sp: ExpressionSpellings) -> Expression? {
-  let segs = split(s: s, delimiter: sp.path_sep)
+  let dotted = replace(replace(s, sp.index_open, sp.path_sep), sp.index_close, "")
+  let segs = split(s: dotted, delimiter: sp.path_sep)
   match context_from_name(name: segs.first()) {
     Absent => none
     Present { value: ctx } => Present { value: ContextAccess { context: ctx, path: segs.skip(n: 1) } }

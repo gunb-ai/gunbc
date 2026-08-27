@@ -40,6 +40,39 @@ test fn witness_roundtrip_template() -> Bool {
   }
 }
 
+// A HYPHENATED SEGMENT IS NOT A DOT DEREFERENCE, AND THIS IS THE ROW THAT SAYS SO.
+//
+// `-` is the subtraction operator in this expression language, so `needs.a-b.result` does not
+// reach a property: it parses as arithmetic over three undefined operands and renders empty.
+// The cited grammar's answer is index notation, and the serializer chooses it from the segment
+// rather than from the caller.
+//
+// THE RED IS AUTHORABLE AND SHARP: make `render_path_segment_with` always take the dot arm and
+// this row goes red on the rendering, while every other row in this file stays green -- their
+// segments (`os`, `arch`, `event`, `number`) are all dot-safe, so nothing else here can see the
+// distinction. That is the same read-path gap the job-id rows had.
+fn hyphenated_expr() -> Expression {
+  ContextAccess { context: Needs, path: ["required-witnesses-build", "result"] }
+}
+
+test fn witness_hyphenated_segment_renders_as_index_not_dot() -> Bool {
+  serialize_expression(expression: hyphenated_expr()) == "needs['required-witnesses-build'].result"
+}
+
+test fn witness_roundtrip_hyphenated_segment() -> Bool {
+  match ingest_expression(src: serialize_expression(expression: hyphenated_expr())) {
+    Present { value: v } => v == hyphenated_expr()
+    Absent => false
+  }
+}
+
+// A DOT-SAFE SEGMENT MUST STILL TAKE THE DOT ARM. Without this the index form could be applied
+// unconditionally -- which would also round-trip, and would silently rewrite every existing
+// expression in the tree.
+test fn witness_dot_safe_segment_keeps_dot_form() -> Bool {
+  serialize_expression(expression: ContextAccess { context: Runner, path: ["os"] }) == "runner.os"
+}
+
 fn override_spellings(path_sep: String, or_op: String) -> ExpressionSpellings {
   ExpressionSpellings {
     path_sep: path_sep,
@@ -52,6 +85,8 @@ fn override_spellings(path_sep: String, or_op: String) -> ExpressionSpellings {
     eq_op: default_expression_spellings.eq_op,
     interp_open: default_expression_spellings.interp_open,
     interp_close: default_expression_spellings.interp_close,
+    index_open: default_expression_spellings.index_open,
+    index_close: default_expression_spellings.index_close,
   }
 }
 
