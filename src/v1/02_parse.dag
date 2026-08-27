@@ -1162,18 +1162,6 @@ fn occurrence_ancestors_push(
   concat(ancestors, Cons { head: occurrence, tail: Empty })
 }
 
-fn occurrence_index_contains(
-  entries: List<OccurrenceIndexEntry>,
-  occurrence: OccurrenceId
-) -> Bool {
-  fold(
-    entries,
-    init: false,
-    f: (found, entry) =>
-      found || entry.projection.occurrence.value == occurrence.value
-  )
-}
-
 fn occurrence_allocator_after_index(
   alloc: OccurrenceIdAllocator,
   entries: List<OccurrenceIndexEntry>
@@ -1187,6 +1175,100 @@ fn occurrence_allocator_after_index(
       } else {
         current
       }
+  )
+}
+
+fn occurrence_allocator_after_identity(
+  alloc: OccurrenceIdAllocator,
+  identity: NodeOccurrenceIdentity
+) -> OccurrenceIdAllocator {
+  match identity {
+    OccurrenceMinted { id: id } =>
+      if alloc.next_id <= id.value {
+        OccurrenceIdAllocator { next_id: id.value + 1 }
+      } else {
+        alloc
+      }
+    OccurrenceProjected { id: id, caused_by: _ } =>
+      if alloc.next_id <= id.value {
+        OccurrenceIdAllocator { next_id: id.value + 1 }
+      } else {
+        alloc
+      }
+    OccurrenceSynthetic => alloc
+  }
+}
+
+fn occurrence_allocator_after_node_list(
+  alloc: OccurrenceIdAllocator,
+  nodes: List<Node>
+) -> OccurrenceIdAllocator {
+  fold(nodes, init: alloc, f: (current, node) => occurrence_allocator_after_node(alloc: current, node: node))
+}
+
+fn occurrence_allocator_after_optional_node(
+  alloc: OccurrenceIdAllocator,
+  node: Node?
+) -> OccurrenceIdAllocator {
+  match node {
+    Present { value: value } => occurrence_allocator_after_node(alloc: alloc, node: value)
+    Absent => alloc
+  }
+}
+
+fn occurrence_allocator_after_inferred_node(
+  alloc: OccurrenceIdAllocator,
+  inferred: InferredNode?
+) -> OccurrenceIdAllocator {
+  match inferred {
+    Present { value: Resolved { node: node } } => occurrence_allocator_after_node(alloc: alloc, node: node)
+    Present { value: CompilerError { message: _, span: _ } } => alloc
+    Present { value: TypeVariable { id: _ } } => alloc
+    Absent => alloc
+  }
+}
+
+fn occurrence_allocator_after_match_pattern(
+  alloc: OccurrenceIdAllocator,
+  pattern: MatchPattern?
+) -> OccurrenceIdAllocator {
+  match pattern {
+    Present { value: Bind { declaration: declaration } } => occurrence_allocator_after_node(alloc: alloc, node: declaration)
+    Present { value: VariantPattern { name: _, parent_enum: _, field_bindings: bindings } } => occurrence_allocator_after_node_list(alloc: alloc, nodes: bindings)
+    Present { value: LitPattern { value: _ } } => alloc
+    Present { value: Wildcard } => alloc
+    Absent => alloc
+  }
+}
+
+fn occurrence_allocator_after_node(
+  alloc: OccurrenceIdAllocator,
+  node: Node
+) -> OccurrenceIdAllocator {
+  let current = occurrence_allocator_after_identity(alloc: alloc, identity: node.occurrence_identity)
+  let current = occurrence_allocator_after_node_list(alloc: current, nodes: node.children)
+  let current = occurrence_allocator_after_node_list(alloc: current, nodes: node.params)
+  let current = occurrence_allocator_after_node_list(alloc: current, nodes: node.uses)
+  let current = occurrence_allocator_after_node_list(alloc: current, nodes: node.properties)
+  let current = occurrence_allocator_after_optional_node(alloc: current, node: node.body)
+  let current = occurrence_allocator_after_optional_node(alloc: current, node: node.transport)
+  let current = occurrence_allocator_after_optional_node(alloc: current, node: node.type_annotation)
+  let current = occurrence_allocator_after_inferred_node(alloc: current, inferred: node.inferred)
+  occurrence_allocator_after_match_pattern(alloc: current, pattern: node.match_pattern)
+}
+
+fn parse_context_after_node(ctx: ParseContext, node: Node) -> ParseContext {
+  parse_context_with_occurrence_state(
+    ctx: ctx,
+    occurrence_allocator: Present {
+      value: occurrence_allocator_after_node(
+        alloc: parse_context_occurrence_allocator(ctx: ctx),
+        node: node
+      ),
+    },
+    occurrence_index: ctx.occurrence_index,
+    declaration_occurrences: ctx.declaration_occurrences,
+    reference_occurrences: ctx.reference_occurrences
   )
 }
 
@@ -1512,27 +1594,23 @@ fn stamp_parsed_node(
   )
   let indexed_ctx = match occurrence {
     Present { value: id } => {
-      if occurrence_index_contains(entries: parse_context_occurrence_index(ctx: ctx).entries, occurrence: id) {
-        ctx
-      } else {
-        let containment = OccurrenceContainmentPath { ancestors: ancestors, terminal: id }
-        let with_index = parse_context_with_occurrence_state(
-          ctx: ctx,
-          occurrence_allocator: ctx.occurrence_allocator,
-          occurrence_index: Present { value: OccurrenceIndex {
-            entries: list_push(
-              parse_context_occurrence_index(ctx: ctx).entries,
-              OccurrenceIndexEntry {
-                projection: OccurrenceProjection { occurrence: id, authored_name: node.name, diagnostic_span: node.span },
-                containment: containment,
-              }
-            ),
-          } },
-          declaration_occurrences: ctx.declaration_occurrences,
-          reference_occurrences: ctx.reference_occurrences
-        )
-        parse_context_record_occurrence(ctx: with_index, role: effective_role, occurrence: id, containment: containment, diagnostic_span: node.span)
-      }
+      let containment = OccurrenceContainmentPath { ancestors: ancestors, terminal: id }
+      let with_index = parse_context_with_occurrence_state(
+        ctx: ctx,
+        occurrence_allocator: ctx.occurrence_allocator,
+        occurrence_index: Present { value: OccurrenceIndex {
+          entries: list_push(
+            parse_context_occurrence_index(ctx: ctx).entries,
+            OccurrenceIndexEntry {
+              projection: OccurrenceProjection { occurrence: id, authored_name: node.name, diagnostic_span: node.span },
+              containment: containment,
+            }
+          ),
+        } },
+        declaration_occurrences: ctx.declaration_occurrences,
+        reference_occurrences: ctx.reference_occurrences
+      )
+      parse_context_record_occurrence(ctx: with_index, role: effective_role, occurrence: id, containment: containment, diagnostic_span: node.span)
     }
     Absent => ctx
   }
@@ -1812,7 +1890,7 @@ fn parse_imports_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) ->
   if tok_is_keyword(tok: token_stream_first(stream: tokens), kw: "import") {
     let r = parse_import(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return ImportsResult { imports: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_imports_acc(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.import))
+    parse_imports_acc(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.import), acc: list_push(acc, r.import))
   } else {
     ImportsResult { imports: acc, tokens: tokens, ctx: ctx, err: none }
   }
@@ -1829,7 +1907,7 @@ fn parse_items_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>) -> I
   } else {
     let r = parse_item(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return ItemsResult { items: acc, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    parse_items_acc(tokens: r.tokens, ctx: r.ctx, acc: list_push(acc, r.item))
+    parse_items_acc(tokens: r.tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.item), acc: list_push(acc, r.item))
   }
 }
 

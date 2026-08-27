@@ -2602,20 +2602,6 @@ pub fn occurrence_ancestors_push(
     )
 }
 
-pub fn occurrence_index_contains(
-    entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
-    occurrence: OccurrenceId,
-) -> bool {
-    entries
-        .iter()
-        .cloned()
-        .fold(false, |found: bool, entry: Rc<OccurrenceIndexEntry>| {
-            (found
-                || (entry.projection.clone().occurrence.clone().value.clone()
-                    == occurrence.value.clone()))
-        })
-}
-
 pub fn occurrence_allocator_after_index(
     alloc: OccurrenceIdAllocator,
     entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
@@ -2633,6 +2619,124 @@ pub fn occurrence_allocator_after_index(
                 current.clone()
             }
         },
+    )
+}
+
+pub fn occurrence_allocator_after_identity(
+    alloc: OccurrenceIdAllocator,
+    identity: Rc<NodeOccurrenceIdentity>,
+) -> OccurrenceIdAllocator {
+    match (*identity.clone()).clone() {
+        NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => {
+            if (alloc.next_id.clone() <= id.value.clone()) {
+                OccurrenceIdAllocator {
+                    next_id: (id.value.clone() + 1),
+                }
+            } else {
+                alloc
+            }
+        }
+        NodeOccurrenceIdentity::OccurrenceProjected { id, .. } => {
+            if (alloc.next_id.clone() <= id.value.clone()) {
+                OccurrenceIdAllocator {
+                    next_id: (id.value.clone() + 1),
+                }
+            } else {
+                alloc
+            }
+        }
+        NodeOccurrenceIdentity::OccurrenceSynthetic => alloc,
+    }
+}
+
+pub fn occurrence_allocator_after_node_list(
+    alloc: OccurrenceIdAllocator,
+    nodes: Rc<Vec<Rc<Node>>>,
+) -> OccurrenceIdAllocator {
+    nodes.iter().cloned().fold(
+        alloc.clone(),
+        |current: OccurrenceIdAllocator, node: Rc<Node>| {
+            occurrence_allocator_after_node(current, node.clone())
+        },
+    )
+}
+
+pub fn occurrence_allocator_after_optional_node(
+    alloc: OccurrenceIdAllocator,
+    node: Option<Rc<Node>>,
+) -> OccurrenceIdAllocator {
+    match node.clone() {
+        Some(value) => occurrence_allocator_after_node(alloc.clone(), value.clone()),
+        None => alloc.clone(),
+    }
+}
+
+pub fn occurrence_allocator_after_inferred_node(
+    alloc: OccurrenceIdAllocator,
+    inferred: Option<Rc<InferredNode>>,
+) -> OccurrenceIdAllocator {
+    match inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: node, .. }) => {
+            occurrence_allocator_after_node(alloc.clone(), node.clone())
+        }
+        Some(InferredNode::CompilerError { .. }) => alloc.clone(),
+        Some(InferredNode::TypeVariable { id: _, .. }) => alloc.clone(),
+        None => alloc.clone(),
+    }
+}
+
+pub fn occurrence_allocator_after_match_pattern(
+    alloc: OccurrenceIdAllocator,
+    pattern: Option<Rc<MatchPattern>>,
+) -> OccurrenceIdAllocator {
+    match pattern.clone().as_deref().cloned() {
+        Some(MatchPattern::Bind {
+            declaration: declaration,
+            ..
+        }) => occurrence_allocator_after_node(alloc.clone(), declaration.clone()),
+        Some(MatchPattern::VariantPattern {
+            field_bindings: bindings,
+            ..
+        }) => occurrence_allocator_after_node_list(alloc.clone(), bindings.clone()),
+        Some(MatchPattern::LitPattern { value: _, .. }) => alloc.clone(),
+        Some(MatchPattern::Wildcard) => alloc.clone(),
+        None => alloc.clone(),
+    }
+}
+
+pub fn occurrence_allocator_after_node(
+    alloc: OccurrenceIdAllocator,
+    node: Rc<Node>,
+) -> OccurrenceIdAllocator {
+    {
+        let current =
+            occurrence_allocator_after_identity(alloc.clone(), node.occurrence_identity.clone());
+        let current = occurrence_allocator_after_node_list(current.clone(), node.children.clone());
+        let current = occurrence_allocator_after_node_list(current.clone(), node.params.clone());
+        let current = occurrence_allocator_after_node_list(current.clone(), node.uses.clone());
+        let current =
+            occurrence_allocator_after_node_list(current.clone(), node.properties.clone());
+        let current = occurrence_allocator_after_optional_node(current.clone(), node.body.clone());
+        let current =
+            occurrence_allocator_after_optional_node(current.clone(), node.transport.clone());
+        let current =
+            occurrence_allocator_after_optional_node(current.clone(), node.type_annotation.clone());
+        let current =
+            occurrence_allocator_after_inferred_node(current.clone(), node.inferred.clone());
+        occurrence_allocator_after_match_pattern(current.clone(), node.match_pattern.clone())
+    }
+}
+
+pub fn parse_context_after_node(ctx: Rc<ParseContext>, node: Rc<Node>) -> Rc<ParseContext> {
+    parse_context_with_occurrence_state(
+        ctx.clone(),
+        Some(occurrence_allocator_after_node(
+            parse_context_occurrence_allocator(ctx.clone()),
+            node.clone(),
+        )),
+        ctx.occurrence_index.clone(),
+        ctx.declaration_occurrences.clone(),
+        ctx.reference_occurrences.clone(),
     )
 }
 
@@ -3018,45 +3122,36 @@ pub fn stamp_parsed_node(
         let effective_role = parsed_occurrence_role_for_node(node.clone(), role.clone());
         let indexed_ctx = match occurrence.clone() {
             Some(id) => {
-                if occurrence_index_contains(
-                    parse_context_occurrence_index(ctx.clone()).entries.clone(),
+                let containment = Rc::new(OccurrenceContainmentPath {
+                    ancestors: ancestors.clone(),
+                    terminal: id.clone(),
+                });
+                let with_index = parse_context_with_occurrence_state(
+                    ctx.clone(),
+                    ctx.occurrence_allocator.clone(),
+                    Some(Rc::new(OccurrenceIndex {
+                        entries: v1_rt::rc_list_push(
+                            parse_context_occurrence_index(ctx.clone()).entries.clone(),
+                            Rc::new(OccurrenceIndexEntry {
+                                projection: Rc::new(OccurrenceProjection {
+                                    occurrence: id.clone(),
+                                    authored_name: node.name.clone(),
+                                    diagnostic_span: node.span.clone(),
+                                }),
+                                containment: containment.clone(),
+                            }),
+                        ),
+                    })),
+                    ctx.declaration_occurrences.clone(),
+                    ctx.reference_occurrences.clone(),
+                );
+                parse_context_record_occurrence(
+                    with_index.clone(),
+                    effective_role.clone(),
                     id.clone(),
-                ) {
-                    ctx.clone()
-                } else {
-                    {
-                        let containment = Rc::new(OccurrenceContainmentPath {
-                            ancestors: ancestors.clone(),
-                            terminal: id.clone(),
-                        });
-                        let with_index = parse_context_with_occurrence_state(
-                            ctx.clone(),
-                            ctx.occurrence_allocator.clone(),
-                            Some(Rc::new(OccurrenceIndex {
-                                entries: v1_rt::rc_list_push(
-                                    parse_context_occurrence_index(ctx.clone()).entries.clone(),
-                                    Rc::new(OccurrenceIndexEntry {
-                                        projection: Rc::new(OccurrenceProjection {
-                                            occurrence: id.clone(),
-                                            authored_name: node.name.clone(),
-                                            diagnostic_span: node.span.clone(),
-                                        }),
-                                        containment: containment.clone(),
-                                    }),
-                                ),
-                            })),
-                            ctx.declaration_occurrences.clone(),
-                            ctx.reference_occurrences.clone(),
-                        );
-                        parse_context_record_occurrence(
-                            with_index.clone(),
-                            effective_role.clone(),
-                            id.clone(),
-                            containment.clone(),
-                            node.span.clone(),
-                        )
-                    }
-                }
+                    containment.clone(),
+                    node.span.clone(),
+                )
             }
             None => ctx.clone(),
         };
@@ -3457,7 +3552,7 @@ pub fn parse_imports_acc(
             }
             {
                 let __tco_0 = r.tokens.clone();
-                let __tco_1 = r.ctx.clone();
+                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.import.clone());
                 let __tco_2 = v1_rt::rc_list_push(acc, r.import.clone());
                 tokens = __tco_0;
                 ctx = __tco_1;
@@ -3505,7 +3600,7 @@ pub fn parse_items_acc(
             }
             {
                 let __tco_0 = r.tokens.clone();
-                let __tco_1 = r.ctx.clone();
+                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.item.clone());
                 let __tco_2 = v1_rt::rc_list_push(acc, r.item.clone());
                 tokens = __tco_0;
                 ctx = __tco_1;
