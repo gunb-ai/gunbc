@@ -34,3 +34,39 @@ pub fn emitted_population_manifest_line_separator() -> String {
     }
     CACHED.with(|c: &String| c.clone())
 }
+
+pub fn emitted_export_surface_manifest_basename() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "emitted_export_surface.rs".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn emitted_export_surface_manifest_field_separator() -> String {
+    thread_local! {
+        static CACHED: String = {
+            " ".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn emitted_export_surface_reexport_tag() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "reexport".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn emitted_export_surface_declaration_tag() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "decl".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}

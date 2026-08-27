@@ -30,6 +30,8 @@ pub use crate::gunbc_cli_dispatch_surface::{
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
 pub use crate::gunbc_stage0_emitted_population_manifest::{
+    emitted_export_surface_declaration_tag, emitted_export_surface_manifest_basename,
+    emitted_export_surface_manifest_field_separator, emitted_export_surface_reexport_tag,
     emitted_population_manifest_basename, emitted_population_manifest_line_prefix,
     emitted_population_manifest_line_separator,
 };
@@ -5425,10 +5427,10 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let export_sets = build_module_export_sets(typed.modules.clone());
         let module_index = build_module_index(typed.modules.clone());
         let unlisted_type_names_by_module = group_unlisted_type_names(typed.diagnostics.clone());
-        let module_files = Rc::new({
+        let module_parts = Rc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
-                __result.push(emit_module_full(
+                __result.push(emit_module_parts(
                     tm.clone(),
                     registry.clone(),
                     emit_info.clone(),
@@ -5449,6 +5451,13 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                         None => Rc::new(vec![]),
                     },
                 ));
+            }
+            __result
+        });
+        let module_files = Rc::new({
+            let mut __result = Vec::new();
+            for part in module_parts.iter().cloned() {
+                __result.push(part.file.clone());
             }
             __result
         });
@@ -5551,15 +5560,25 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             dry_run_file.clone(),
         );
         let lib_file = emit_lib_rs_from_files(all_mod_files.clone(), has_pipeline.clone());
+        let export_surface_manifest = emit_emitted_export_surface_manifest(Rc::new({
+            let mut __result = Vec::new();
+            for part in module_parts.iter().cloned() {
+                __result.push(part.surface.clone());
+            }
+            __result
+        }));
         let emitted_files = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    Rc::new(vec![cargo.clone(), lib_file.clone(), main_file.clone()]),
-                    all_mod_files.clone(),
+                    v1_rt::concat(
+                        Rc::new(vec![cargo.clone(), lib_file.clone(), main_file.clone()]),
+                        all_mod_files.clone(),
+                    ),
+                    compiler_tests_file.clone(),
                 ),
-                compiler_tests_file.clone(),
+                test_files.clone(),
             ),
-            test_files.clone(),
+            Rc::new(vec![export_surface_manifest.clone()]),
         );
         let population_manifest = emit_emitted_population_manifest(emitted_files.clone());
         let files = v1_rt::concat(
@@ -5620,6 +5639,86 @@ pub fn emit_emitted_population_manifest(files: Rc<Vec<Rc<TextFile>>>) -> Rc<Text
             ),
         })
     }
+}
+
+pub fn emit_emitted_export_surface_manifest(
+    surfaces: Rc<Vec<Rc<EmittedModuleExportSurface>>>,
+) -> Rc<TextFile> {
+    {
+        let lines = Rc::new({
+            let mut __sorted: Vec<_> = Rc::new({
+                let mut __result = Vec::new();
+                for surface in surfaces.iter().cloned() {
+                    __result.extend(
+                        (*Rc::new(vec![
+                            emitted_export_surface_row(
+                                surface.clone(),
+                                emitted_export_surface_reexport_tag(),
+                                surface.reexports.clone(),
+                            ),
+                            emitted_export_surface_row(
+                                surface.clone(),
+                                emitted_export_surface_declaration_tag(),
+                                surface.declarations.clone(),
+                            ),
+                        ]))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            .collect();
+            __sorted.sort_by(|a: &String, b: &String| {
+                let __ka = (|line: String| line.clone())(a.clone());
+                let __kb = (|line: String| line.clone())(b.clone());
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            __sorted
+        });
+        Rc::new(TextFile {
+            path: v1_rt::concat(
+                rust_source_root(),
+                emitted_export_surface_manifest_basename(),
+            ),
+            content: v1_rt::concat(
+                lines
+                    .clone()
+                    .join(&emitted_population_manifest_line_separator()),
+                emitted_population_manifest_line_separator(),
+            ),
+        })
+    }
+}
+
+pub fn emitted_export_surface_row(
+    surface: Rc<EmittedModuleExportSurface>,
+    tag: String,
+    members: Rc<Vec<String>>,
+) -> String {
+    v1_rt::concat(
+        emitted_population_manifest_line_prefix(),
+        v1_rt::concat(
+            Rc::new(vec![
+                surface.source_module.clone(),
+                surface.target_filename.clone(),
+                tag.clone(),
+            ]),
+            Rc::new({
+                let mut __sorted: Vec<_> =
+                    unique_strings(members.clone()).iter().cloned().collect();
+                __sorted.sort_by(|a: &String, b: &String| {
+                    let __ka = (|name: String| name.clone())(a.clone());
+                    let __kb = (|name: String| name.clone())(b.clone());
+                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                __sorted
+            }),
+        )
+        .join(&emitted_export_surface_manifest_field_separator()),
+    )
 }
 
 pub fn emit_v2_rt_module() -> Rc<TextFile> {
@@ -8035,7 +8134,21 @@ pub fn reference_derived_use_lines(
     }
 }
 
-pub fn emit_module_full(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EmittedModuleExportSurface {
+    pub source_module: String,
+    pub target_filename: String,
+    pub reexports: Rc<Vec<String>>,
+    pub declarations: Rc<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EmittedModuleParts {
+    pub file: Rc<TextFile>,
+    pub surface: Rc<EmittedModuleExportSurface>,
+}
+
+pub fn emit_module_parts(
     typed_module: Rc<TypedModule>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -8046,7 +8159,7 @@ pub fn emit_module_full(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
     unlisted_type_names: Rc<Vec<String>>,
-) -> Rc<TextFile> {
+) -> Rc<EmittedModuleParts> {
     {
         let m = typed_module.module.clone();
         let scope = module_emit_scope(typed_module.clone());
@@ -8402,14 +8515,96 @@ pub fn emit_module_full(
             "".to_string()
         };
         let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n".to_string(), "// Source module: ".to_string()), authored_name(scope.type_env.clone(), m.clone())), "\n\n".to_string()), module_attrs.clone()), prelude.clone()), imports_section.clone()), svc_imports_str.clone()), local_uses_str.clone()), "\n\n".to_string()), coproduct_wire_contract_validation_section.clone()), items_str.clone()), phantom_section.clone()), "\n".to_string());
-        Rc::new(TextFile {
-            path: v1_rt::concat(
-                v1_rt::concat(rust_source_root(), filename.clone()),
-                rust_source_ext(),
+        let reexport_lines = v1_rt::concat(
+            v1_rt::concat(
+                Rc::new(
+                    prelude
+                        .clone()
+                        .split(&"\n".to_string())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                ),
+                Rc::new(
+                    merged_imports
+                        .clone()
+                        .split(&"\n".to_string())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                ),
             ),
-            content: content.clone(),
+            extern_svc_imports.clone(),
+        );
+        let reexports = unique_strings(Rc::new({
+            let mut __result = Vec::new();
+            for l in Rc::new({
+                let mut __result = Vec::new();
+                for l in reexport_lines.iter().cloned() {
+                    if v1_rt::starts_with(
+                        v1_rt::trim(l.clone()),
+                        v1_rt::concat(rust_visibility_prefix(), "use ".to_string()),
+                    ) {
+                        __result.push(l);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.extend((*imported_names_in_use_line(l.clone())).iter().cloned());
+            }
+            __result
+        }));
+        Rc::new(EmittedModuleParts {
+            file: Rc::new(TextFile {
+                path: v1_rt::concat(
+                    v1_rt::concat(rust_source_root(), filename.clone()),
+                    rust_source_ext(),
+                ),
+                content: content.clone(),
+            }),
+            surface: Rc::new(EmittedModuleExportSurface {
+                source_module: authored_name(scope.type_env.clone(), m.clone()),
+                target_filename: filename.clone(),
+                reexports: reexports.clone(),
+                declarations: Rc::new({
+                    let mut __result = Vec::new();
+                    for item in typed_module.items.clone().iter().cloned() {
+                        __result.push(authored_name(scope.type_env.clone(), item.clone()));
+                    }
+                    __result
+                }),
+            }),
         })
     }
+}
+
+pub fn emit_module_full(
+    typed_module: Rc<TypedModule>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Rc<BTreeSet<String>>,
+    svc_module_map: Rc<HashMap<String, String>>,
+    data_items: Rc<HashMap<String, Rc<Node>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    module_index: Rc<ModuleIndex>,
+    unlisted_type_names: Rc<Vec<String>>,
+) -> Rc<TextFile> {
+    emit_module_parts(
+        typed_module.clone(),
+        registry.clone(),
+        emit_info.clone(),
+        shared_types.clone(),
+        svc_module_map.clone(),
+        data_items.clone(),
+        export_sets.clone(),
+        typed_modules.clone(),
+        module_index.clone(),
+        unlisted_type_names.clone(),
+    )
+    .file
+    .clone()
 }
 
 pub fn emit_import_name(n: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {

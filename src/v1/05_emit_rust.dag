@@ -66,7 +66,11 @@ import std.measure { millisecond_count }
 import gunbc.stage0_emitted_population_manifest {
   emitted_population_manifest_basename,
   emitted_population_manifest_line_prefix,
-  emitted_population_manifest_line_separator
+  emitted_population_manifest_line_separator,
+  emitted_export_surface_manifest_basename,
+  emitted_export_surface_manifest_field_separator,
+  emitted_export_surface_reexport_tag,
+  emitted_export_surface_declaration_tag
 }
 import v1.compiler.languages {
   scaffold_for_target, serialization_for_target,
@@ -2596,7 +2600,8 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let export_sets = build_module_export_sets(modules: typed.modules)
   let module_index = build_module_index(modules: typed.modules)
   let unlisted_type_names_by_module = group_unlisted_type_names(diags: typed.diagnostics)
-  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index, unlisted_type_names: match map_get(unlisted_type_names_by_module, authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)) { Present { value: v } => v  Absent => [] }))
+  let module_parts = typed.modules |> map(tm => emit_module_parts(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index, unlisted_type_names: match map_get(unlisted_type_names_by_module, authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)) { Present { value: v } => v  Absent => [] }))
+  let module_files = module_parts |> map(part => part.file)
   let test_files = typed.modules
     |> map(tm => emit_test_file(
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
@@ -2629,7 +2634,8 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   }
   let all_mod_files = concat(module_files, v2_std_text_stub, v2_std_integer_stub, [rt_file], dry_run_file)
   let lib_file = emit_lib_rs_from_files(all_module_files: all_mod_files, has_compiler_tests: has_pipeline)
-  let emitted_files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
+  let export_surface_manifest = emit_emitted_export_surface_manifest(surfaces: module_parts |> map(part => part.surface))
+  let emitted_files = concat(concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files), [export_surface_manifest])
   let population_manifest = emit_emitted_population_manifest(files: emitted_files)
   let files = concat(emitted_files, [population_manifest])
   EmitResult { files: files, diagnostics: [] }
@@ -2672,6 +2678,60 @@ fn emit_emitted_population_manifest(files: List<TextFile>) -> TextFile {
       emitted_population_manifest_line_separator
     )
   }
+}
+
+// THE EMITTER DECLARES WHAT EACH MODULE EXPORTS, beside the population manifest and in the same
+// channel, for the same reason and against the same failure. The population manifest closed "which
+// files did this emit produce"; this closes "and what does each of them offer", which is a distinct
+// fact with a distinct consumer -- a seed installs ONE artifact per module, so a module whose
+// linkage surface depends on which entry requested it is not installable, and answering that needs
+// the export set rather than the path set.
+//
+// TWO ROWS PER MODULE, ALWAYS, even when a member list is empty. A grammar that omitted the empty
+// row would render DECLARED EMPTY and NOT OBSERVED identically, which is the empty-observation
+// narrow: an observation that could not express the fact, read as the verdict that the fact is
+// absent. The consuming census refuses on exactly that distinction, so the artifact must carry it.
+//
+// SORTED BY LINE, so the artifact is a function of the surface set and not of module traversal
+// order -- a second emit over the same input yields identical bytes, which is what lets it sit in
+// the compared population without becoming a spurious regen diff.
+fn emit_emitted_export_surface_manifest(surfaces: List<EmittedModuleExportSurface>) -> TextFile {
+  let lines = surfaces
+    |> flat_map(surface => [
+      emitted_export_surface_row(surface: surface, tag: emitted_export_surface_reexport_tag, members: surface.reexports),
+      emitted_export_surface_row(surface: surface, tag: emitted_export_surface_declaration_tag, members: surface.declarations)
+    ])
+    |> sort_by(line => line)
+  TextFile {
+    path: concat(rust_source_root(), emitted_export_surface_manifest_basename),
+    content: concat(
+      lines |> join(separator: emitted_population_manifest_line_separator),
+      emitted_population_manifest_line_separator
+    )
+  }
+}
+
+// THE ROW IS KEYED ON THE AUTHORED MODULE NAME AND CARRIES THE TARGET FILENAME BESIDE IT.
+//
+// Both, because they are two facts and the second does not determine the first.
+// `module_to_filename` is `split(".") |> join("_")`, which is MANY-TO-ONE: `a.b_c` and `a_b.c`
+// both render `a_b_c`. A consumer joining on the filename would merge two genuinely distinct
+// modules into one row and report the merge as a module offering two linkage surfaces -- a false
+// positive indistinguishable from the real finding, which is the one failure a wall like this
+// cannot afford. Measured on the live corpus the day this landed: 4080 authored modules, 4080
+// distinct filenames, zero collisions -- and 3456 of those names carry an underscore, so today's
+// zero is an accident of segment placement rather than a property of the mapping.
+//
+// So the authored name is the IDENTITY and the filename is the LOCATOR. Publishing only the
+// locator would force every consumer to invert a non-injective map; publishing only the identity
+// would force it to re-apply that map to find the file. Both are cheap here and neither is
+// recoverable from the other.
+fn emitted_export_surface_row(surface: EmittedModuleExportSurface, tag: String, members: List<String>) -> String {
+  concat(
+    emitted_population_manifest_line_prefix,
+    concat([surface.source_module, surface.target_filename, tag], unique_strings(items: members) |> sort_by(name => name))
+      |> join(separator: emitted_export_surface_manifest_field_separator)
+  )
 }
 
 fn emit_v2_rt_module() -> TextFile {
@@ -3542,7 +3602,80 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
   }
 }
 
-fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, unlisted_type_names: List<String>) -> TextFile {
+// AN OBSERVATION OF THIS EMISSION. NOT THE MODULE'S CONTRACT, AND THE NAME SAYS SO ON PURPOSE.
+//
+// The emitter is the only party that can state the surface IT PRODUCED without parsing anything,
+// and that is exactly the strength this carrier has and the limit it has. KNOWING WHAT YOU DID IS
+// NOT OWNING WHAT YOU OUGHT TO DO. A producer that both chooses a surface and reports its own
+// choice is self-consistent by construction -- the emitter omits X, the receipt says X was
+// omitted, the bytes omit X, and all three agree -- which proves FIDELITY and says nothing about
+// CORRECTNESS. A conformance check built on this carrier alone would have no authorable red.
+//
+// So this is one half of a join that does not exist yet. The other half is the DECLARED surface --
+// what a module is supposed to expose, owned by a semantic authority and not by any renderer --
+// and the refusal that matters compares the two: declared contains X, this emission omitted X,
+// refuse. Nothing here may be given a name that reads as normative (`canonical`, `contract`,
+// `declared`), because a downstream reader who mistakes this receipt for the authority loses that
+// seam at the naming layer, and it is the seam the whole construction rests on.
+//
+// AND THE DERIVATION RUNS IN THE DIRECTION IT DOES ON PURPOSE: THE RECEIPT IS READ OFF THE
+// RENDERED LINES, NOT COMPUTED BEFORE THEM.
+//
+// Computing the surface first and rendering from it would look tidier and would be wrong for this
+// carrier, because the join it feeds asks what the emitted artifact ACTUALLY EXPOSES rather than
+// what the emitter INTENDED to expose. Those two differ exactly when rendering is where the defect
+// is -- and a receipt computed ahead of rendering would agree with a declared surface while the
+// bytes disagreed with both, so the join would report clean and the renderer would be exempt from
+// the one check being built around it. Deriving from the rendered line list keeps a rendering
+// defect visible to the join. It is not a redundant inverse either: it applies the emitter's own
+// in-memory inverse to its own line list, never a parse of an emitted file.
+//
+// ONE DECISION, TWO PROJECTIONS -- WHICH IS THE WHOLE POINT OF THIS TYPE EXISTING.
+//
+// The emitter decides a module's export surface in order to RENDER it: `emit_specific_import_block`
+// and the reference-derived use-line synthesis settle which names cross the module boundary, the
+// result is joined into text, and the set itself was then dropped on the floor. Every consumer
+// that wanted it afterwards had to recover it from the emitted `.rs` by parsing Rust -- the class
+// gunbc#8690 deleted, and the one `gunbc.stage0_emitted_population_manifest` rules against for this
+// channel by name.
+//
+// So the surface is published FROM THE RENDERED LINES, not re-derived beside them. `reexports` is
+// read off the very line list that becomes the file's import section, by the same
+// `imported_names_in_use_line` the emitter ALREADY uses one screen up to compute
+// `already_imported_names` from its own rendered lines. That reuse is the load-bearing part: a
+// second walk over the same inputs would agree today and fork later, and the census downstream
+// would then be measuring the reconstruction rather than the artifact. There is one membership
+// authority here and both the text and the manifest are projections of it.
+//
+// `declarations` is the module's authored top-level item list in rendering order -- the same list
+// handed to `emit_typed_item`, so a name appears here exactly when the emitter rendered a
+// declaration for it. It is deliberately NOT a claim about the emitted Rust symbols: one item can
+// render several (an enum and its variant payload structs), and asserting a symbol set the emitter
+// did not hand back would be fabrication. The honest fact is the declaration set, which is also the
+// vocabulary the consuming census states its own specimen in.
+//
+// AND `declarations` CANNOT DISCRIMINATE, WHICH IS STATED HERE SO IT IS NEVER CITED AS COVERAGE.
+// Authored declarations come from the module's own source, which no closure touches, so for a
+// provider module the declaration set is entry-invariant BY CONSTRUCTION -- it can never differ
+// between two entries and therefore can never be the thing that catches an entry-conditioned
+// surface. All of the discriminating power is in `reexports`. Measured on the specimen that
+// motivated the consumer: 164 declarations under both entries, 11 reexports under one and 10 under
+// the other. Publishing richer declaration data would refine the half that structurally cannot
+// vary, which is why this side stays at the honest grain and says so; the consuming carrier
+// records the same scope, so the two ends cannot later be cited against each other.
+type EmittedModuleExportSurface {
+  source_module: String
+  target_filename: String
+  reexports: List<String>
+  declarations: List<String>
+}
+
+type EmittedModuleParts {
+  file: TextFile
+  surface: EmittedModuleExportSurface
+}
+
+fn emit_module_parts(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, unlisted_type_names: List<String>) -> EmittedModuleParts {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
@@ -3653,7 +3786,28 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     "// Source module: ", authored_name(env: scope.type_env, node: m), "\n\n",
     module_attrs, prelude, imports_section, svc_imports_str, local_uses_str, "\n\n",
     coproduct_wire_contract_validation_section, items_str, phantom_section, "\n")
-  TextFile { path: concat(rust_source_root(), filename, rust_source_ext()), content: content }
+  let reexport_lines = concat(
+    concat(prelude |> split(delimiter: "\n"), merged_imports |> split(delimiter: "\n")),
+    extern_svc_imports
+  )
+  let reexports = unique_strings(items: reexport_lines
+    |> filter(l => starts_with(s: trim(l), prefix: concat(rust_visibility_prefix(), "use ")))
+    |> flat_map(l => imported_names_in_use_line(line: l)))
+  EmittedModuleParts {
+    file: TextFile { path: concat(rust_source_root(), filename, rust_source_ext()), content: content },
+    surface: EmittedModuleExportSurface {
+      source_module: authored_name(env: scope.type_env, node: m),
+      target_filename: filename,
+      reexports: reexports,
+      declarations: typed_module.items |> map(item => authored_name(env: scope.type_env, node: item))
+    }
+  }
+}
+
+// The file-only view, for callers that emit one module and have no manifest to publish into.
+// It is a projection of `emit_module_parts` rather than a second emit path: there is one renderer.
+fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, unlisted_type_names: List<String>) -> TextFile {
+  emit_module_parts(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, unlisted_type_names: unlisted_type_names).file
 }
 
 fn emit_import_name(n: String, registry: Map<String, ItemInfo>) -> String {

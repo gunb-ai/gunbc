@@ -1,0 +1,216 @@
+module gunbc.stage0_emitted_export_surface_observation
+
+import gunbc.stage0_emitted_population_manifest {
+  emitted_export_surface_declaration_tag,
+  emitted_export_surface_manifest_field_separator,
+  emitted_export_surface_reexport_tag,
+  emitted_population_manifest_line_prefix,
+  emitted_population_manifest_line_separator
+}
+import std.types { String }
+import v2.std.algebra { fold_list, length, list_head, HeadAbsent, HeadFound, list_map, list_snoc_item, skip }
+import v2.std.collection { List }
+
+// THE READ IS THE STRUCTURAL INVERSE OF THE WRITE, NOT A SECOND PARSER.
+//
+// `v1.compiler.emit_rust` `emit_emitted_export_surface_manifest` renders one row per (module, row
+// kind) as `line_prefix ++ source_module ++ FS ++ target_filename ++ FS ++ tag ++ (FS ++ member)*`, joined by the line
+// separator. This recovers them by splitting on that separator, stripping that prefix, and
+// splitting the payload on that field separator -- reading every literal from the same authority
+// the writer reads (`gunbc.stage0_emitted_population_manifest`). No Rust grammar is involved
+// anywhere: the artifact is a `.rs` only so that the regen comparison covers it, which is the
+// same trade the population manifest beside it already made and documents.
+//
+// EVERYTHING HERE IS AN OBSERVATION AND NOTHING HERE IS AN AUTHORITY. The rows recovered below
+// say what ONE EMISSION produced; they do not say what a module is supposed to expose. The two
+// are different facts with different owners, and a reader that treated this as the contract would
+// make the emitter the judge of its own output -- self-consistent, and unable to be wrong.
+//
+// This module answers WHAT A MODULE OFFERS. The population manifest's reader answers WHICH FILES
+// EXIST. They are deliberately separate readers over separate artifacts because they are separate
+// facts with separate consumers, not two questions about one table.
+
+// The row kind, as a closed coproduct rather than the tag string it was written as.
+//
+// The tag is the WIRE spelling and belongs to the grammar; the kind is what a consumer reasons
+// about. Keeping the string would push the grammar's vocabulary into every downstream match and
+// make an unrecognized tag indistinguishable from a recognized one until someone compared it by
+// hand.
+type ExportSurfaceRowKind
+  = ReexportRow
+  | DeclarationRow
+
+// One module's declaration of one axis of its export surface.
+//
+// `members` may be empty, and an empty list here means DECLARED EMPTY -- the emitter rendered
+// this row and the set is genuinely empty. It never means "not observed": a module the artifact
+// does not mention has no row at all, which is a different and separately representable state.
+// That distinction is the whole reason the writer emits both rows for every module unconditionally.
+// `source_module` is the AUTHORED dotted name and is the identity; `target_filename` is the Rust
+// module file and is the locator. Both are carried because `module_to_filename` is many-to-one
+// (`a.b_c` and `a_b.c` both render `a_b_c`), so joining on the filename would merge two distinct
+// modules into one row -- and a consumer refusing on that merge would be reporting a false
+// positive it could not distinguish from a real one.
+type EmittedExportSurfaceRow {
+  source_module: String
+  target_filename: String
+  kind: ExportSurfaceRowKind
+  members: List<String>
+}
+
+// WHETHER THE ARTIFACT WAS READ AT ALL IS A DIFFERENT QUESTION FROM WHAT IT SAID.
+//
+// A bare `List<EmittedExportSurfaceRow>` cannot distinguish "the emit declared no surfaces" from
+// "this was not pointed at the surface manifest" from "a row was malformed and dropped", and all
+// three would render as the empty list -- the empty-observation narrow, where an observation that
+// could not express its subject is read as the verdict that the subject is absent. Each refusal
+// carries its own detail so the remedy is decidable from the value.
+type ExportSurfaceObservation
+  = ExportSurfaceObserved { rows: List<EmittedExportSurfaceRow> }
+  | ExportSurfaceUnobserved { detail: String }
+
+type ExportSurfaceRowParse
+  = ExportSurfaceRowParsed { row: EmittedExportSurfaceRow }
+  | ExportSurfaceRowRefused { detail: String }
+
+fn export_surface_row_kind_for_tag(tag: String) -> ExportSurfaceRowKindLookup {
+  if tag == emitted_export_surface_reexport_tag {
+    ExportSurfaceRowKindFound { kind: ReexportRow }
+  } else if tag == emitted_export_surface_declaration_tag {
+    ExportSurfaceRowKindFound { kind: DeclarationRow }
+  } else {
+    ExportSurfaceRowKindUnknown
+  }
+}
+
+type ExportSurfaceRowKindLookup
+  = ExportSurfaceRowKindFound { kind: ExportSurfaceRowKind }
+  | ExportSurfaceRowKindUnknown
+
+// AN UNRECOGNIZED TAG REFUSES; IT IS NOT SKIPPED.
+//
+// Every row in this artifact is emitter-produced and carries one of the two declared tags by
+// construction, so a third tag is evidence that the reader and the writer disagree about the
+// grammar -- exactly the drift this channel exists to make impossible. Dropping it would widen
+// the reader to accept a stranger's file quietly and report a partial surface as a complete one,
+// which is a narrow rather than a widen and therefore silently uncovered rather than merely
+// expensive.
+fn export_surface_row_from_payload(payload: String) -> ExportSurfaceRowParse {
+  let fields = split(s: payload, delimiter: emitted_export_surface_manifest_field_separator)
+  if length(xs: fields) < 3 {
+    ExportSurfaceRowRefused {
+      detail: concat("export-surface row carries fewer than three fields: ", payload)
+    }
+  } else {
+    let source_module = field_at(fields: fields, index: 0)
+    let target_filename = field_at(fields: fields, index: 1)
+    let tag = field_at(fields: fields, index: 2)
+    match export_surface_row_kind_for_tag(tag: tag) {
+      ExportSurfaceRowKindUnknown =>
+        ExportSurfaceRowRefused {
+          detail: concat(concat("export-surface row carries an unrecognized kind tag ", tag), concat(": ", payload))
+        }
+      ExportSurfaceRowKindFound { kind: kind } =>
+        ExportSurfaceRowParsed {
+          row: EmittedExportSurfaceRow {
+            source_module: source_module,
+            target_filename: target_filename,
+            kind: kind,
+            members: skip(xs: fields, n: 3)
+          }
+        }
+    }
+  }
+}
+
+// Positional field access, total by returning the empty string past the end.
+//
+// It is only ever called after the arity check above, so the past-the-end arm is unreachable from
+// this module's own call sites; it exists because the function must be total, not as a fallback
+// anyone relies on.
+fn field_at(fields: List<String>, index: Int) -> String {
+  match list_head(xs: skip(xs: fields, n: index)) {
+    HeadFound { value: field } => field
+    HeadAbsent => ""
+  }
+}
+
+fn export_surface_payloads(content: String) -> List<String> {
+  let prefix_length = string_length(s: emitted_population_manifest_line_prefix)
+  let lines = split(s: content, delimiter: emitted_population_manifest_line_separator)
+  list_map(
+    xs: filter(
+      xs: lines,
+      predicate: fn(line) {
+        starts_with(s: line, prefix: emitted_population_manifest_line_prefix)
+      }
+    ),
+    f: fn(line) { substring(s: line, start: prefix_length, end: string_length(s: line)) }
+  )
+}
+
+type ExportSurfaceRowAccumulator
+  = ExportSurfaceRowsSoFar { rows: List<EmittedExportSurfaceRow> }
+  | ExportSurfaceRowsRefused { detail: String }
+
+// A SINGLE MALFORMED ROW REFUSES THE WHOLE OBSERVATION, and the first refusal is the one reported.
+//
+// The alternative -- keep the good rows and note the bad ones -- would hand a consumer a surface
+// set that is complete-looking and short, and the consuming census's own coverage check would
+// then read the missing module as agreement. A partial read of this artifact is not a degraded
+// answer, it is a wrong one.
+fn export_surface_rows(content: String) -> ExportSurfaceRowAccumulator {
+  fold_list(
+    xs: export_surface_payloads(content: content),
+    empty: ExportSurfaceRowsSoFar { rows: [] },
+    cons: fn(acc, payload) {
+      match acc {
+        ExportSurfaceRowsRefused { detail: detail } => ExportSurfaceRowsRefused { detail: detail }
+        ExportSurfaceRowsSoFar { rows: rows } =>
+          match export_surface_row_from_payload(payload: payload) {
+            ExportSurfaceRowRefused { detail: detail } => ExportSurfaceRowsRefused { detail: detail }
+            ExportSurfaceRowParsed { row: row } =>
+              ExportSurfaceRowsSoFar { rows: list_snoc_item(xs: rows, item: row) }
+          }
+      }
+    }
+  )
+}
+
+// THE OBSERVATION, WITH ITS TWO IGNORANCE STATES REFUSED BEFORE ANY SURFACE IS REPORTED.
+//
+// An artifact carrying no prefixed rows is not an emit that exported nothing -- it is not this
+// artifact, and reporting an empty surface set for it would be the fabricated plausible output
+// the manifest channel exists to end.
+fn observe_emitted_export_surface(content: String) -> ExportSurfaceObservation {
+  match export_surface_rows(content: content) {
+    ExportSurfaceRowsRefused { detail: detail } =>
+      ExportSurfaceUnobserved { detail: detail }
+    ExportSurfaceRowsSoFar { rows: rows } =>
+      if length(xs: rows) == 0 {
+        ExportSurfaceUnobserved {
+          detail: "the content carried no declared export-surface rows -- it is not the emitted export-surface manifest"
+        }
+      } else {
+        ExportSurfaceObserved { rows: rows }
+      }
+  }
+}
+
+// The linkage surface specifically: the reexport rows, which are the axis that varies under
+// closure and the only axis that can. Declarations come from the module's own source, which no
+// closure touches, so a `decl` row is entry-invariant by construction -- it is evidence and
+// context beside a refusal, never the thing that discriminates one.
+//
+// IT TAKES ROWS, NOT AN OBSERVATION, AND THAT IS THE POINT. Given the observation it would have
+// to answer something for the unobserved arm, and the only available answer -- the empty list --
+// would say "this emit reexports nothing" about a read that never happened. Taking rows makes the
+// caller match first, so the ignorance state cannot reach this function to be flattened by it.
+fn reexport_rows(rows: List<EmittedExportSurfaceRow>) -> List<EmittedExportSurfaceRow> {
+  filter(xs: rows, predicate: fn(row) {
+    match row.kind {
+      ReexportRow => true
+      DeclarationRow => false
+    }
+  })
+}

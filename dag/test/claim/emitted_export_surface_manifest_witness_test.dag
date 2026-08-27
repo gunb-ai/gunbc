@@ -1,0 +1,157 @@
+module test.claim.emitted_export_surface_manifest_witness
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// THE READ IS THE STRUCTURAL INVERSE OF THE WRITE, AND THIS IS WHERE THAT IS PROVEN BY EXECUTION.
+//
+// The manifest content here is BUILT WITH THE WRITER'S OWN GRAMMAR ROWS -- the same prefix,
+// separator, field separator and tags `v1.compiler.emit_rust` renders with -- rather than typed
+// out as a golden string. A golden string would pass while the two ends disagreed, because it
+// would be a third spelling of the grammar and would drift with neither. Composing the fixture
+// from the authority means a change to the grammar moves the writer, the reader and this witness
+// together, and a change to only one of them fails here.
+//
+// FIXTURE-BACKED, NOT LIVE-TREE, and the reason is the one DESIGN gives for the census beside it:
+// the refusals below must stay authorable forever. A witness that could only go red by finding a
+// malformed row in the committed artifact would be permanently green by construction the moment
+// the emitter is correct -- which is always, since the emitter writes both ends -- and would then
+// be cited as coverage for a reader nothing had ever exercised.
+
+fn row(source_module: String, target_filename: String, tag: String, members: List<String>) -> String {
+  concat(
+    gunbc.stage0_emitted_population_manifest.emitted_population_manifest_line_prefix,
+    concat([source_module, target_filename, tag], members)
+      |> join(separator: gunbc.stage0_emitted_population_manifest.emitted_export_surface_manifest_field_separator)
+  )
+}
+
+fn manifest(rows: List<String>) -> String {
+  concat(
+    rows |> join(separator: gunbc.stage0_emitted_population_manifest.emitted_population_manifest_line_separator),
+    gunbc.stage0_emitted_population_manifest.emitted_population_manifest_line_separator
+  )
+}
+
+fn two_module_manifest() -> String {
+  manifest(rows: [
+    row(source_module: "v2.std.node", target_filename: "v2_std_node", tag: gunbc.stage0_emitted_population_manifest.emitted_export_surface_reexport_tag, members: ["Cardinality", "Symbol"]),
+    row(source_module: "v2.std.node", target_filename: "v2_std_node", tag: gunbc.stage0_emitted_population_manifest.emitted_export_surface_declaration_tag, members: ["Behavior", "Edge", "Node"]),
+    row(source_module: "std.logic", target_filename: "std_logic", tag: gunbc.stage0_emitted_population_manifest.emitted_export_surface_reexport_tag, members: []),
+    row(source_module: "std.logic", target_filename: "std_logic", tag: gunbc.stage0_emitted_population_manifest.emitted_export_surface_declaration_tag, members: ["Bool"])
+  ])
+}
+
+fn observed_rows(content: String) -> List<gunbc.stage0_emitted_export_surface_observation.EmittedExportSurfaceRow> {
+  match gunbc.stage0_emitted_export_surface_observation.observe_emitted_export_surface(content: content) {
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => []
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: rows } => rows
+  }
+}
+
+// The round trip: four authored rows go in, four rows come back, and the fields land where the
+// grammar says they land. Asserted on the CONTENT of a specific row rather than on the count
+// alone, because a count survives a reader that puts every field one position off.
+fn witness_rows_round_trip() -> Bool {
+  let rows = observed_rows(content: two_module_manifest())
+  v2.std.algebra.length(xs: rows) == 4
+    && v2.std.algebra.any(xs: rows, predicate: r =>
+      r.source_module == "v2.std.node"
+        && r.target_filename == "v2_std_node"
+        && match r.kind {
+          gunbc.stage0_emitted_export_surface_observation.ReexportRow => true
+          gunbc.stage0_emitted_export_surface_observation.DeclarationRow => false
+        }
+        && v2.std.algebra.length(xs: r.members) == 2)
+}
+
+// DECLARED EMPTY IS NOT NOT-OBSERVED, and this is the witness that keeps the two apart.
+//
+// `std.logic` declares an EMPTY reexport row. It must come back as a present row carrying zero
+// members -- not as a missing row, and not as an absent observation. If the writer ever stopped
+// emitting empty rows, or the reader ever dropped them, a consumer's coverage check would read the
+// missing module as agreement, which is the fail-open the consuming census exists to refuse.
+fn witness_declared_empty_row_survives_the_round_trip() -> Bool {
+  let rows = observed_rows(content: two_module_manifest())
+  v2.std.algebra.any(xs: rows, predicate: r =>
+    r.source_module == "std.logic"
+      && match r.kind {
+        gunbc.stage0_emitted_export_surface_observation.ReexportRow => true
+        gunbc.stage0_emitted_export_surface_observation.DeclarationRow => false
+      }
+      && v2.std.algebra.length(xs: r.members) == 0)
+}
+
+// The linkage surface is the half that can vary; the declaration half cannot. This asserts the
+// projection selects exactly the reexport rows, so a consumer asking for the linkage surface never
+// silently receives declarations mixed in with it.
+fn witness_reexport_projection_selects_only_reexport_rows() -> Bool {
+  let rows = observed_rows(content: two_module_manifest())
+  v2.std.algebra.length(xs: gunbc.stage0_emitted_export_surface_observation.reexport_rows(rows: rows)) == 2
+}
+
+// RED 1: AN UNRECOGNIZED TAG REFUSES RATHER THAN BEING SKIPPED.
+//
+// A reader that dropped the row would report a partial surface as a complete one -- a narrow, not
+// a widen, and therefore silently uncovered. This is the discriminating input: it is well-formed
+// in every respect except the tag, so a green here could only mean the tag is not being checked.
+fn witness_unknown_tag_refuses() -> Bool {
+  match gunbc.stage0_emitted_export_surface_observation.observe_emitted_export_surface(
+    content: manifest(rows: [
+      row(source_module: "v2.std.node", target_filename: "v2_std_node", tag: "reexports", members: ["Symbol"])
+    ])
+  ) {
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => false
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => true
+  }
+}
+
+// RED 2: A ROW SHORT OF ITS THREE FIXED FIELDS REFUSES.
+//
+// The members are variadic and may be absent; the identity, the locator and the kind are not.
+fn witness_row_missing_fixed_fields_refuses() -> Bool {
+  match gunbc.stage0_emitted_export_surface_observation.observe_emitted_export_surface(
+    content: manifest(rows: [
+      concat(
+        gunbc.stage0_emitted_population_manifest.emitted_population_manifest_line_prefix,
+        "v2.std.node v2_std_node"
+      )
+    ])
+  ) {
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => false
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => true
+  }
+}
+
+// RED 3: CONTENT THAT IS NOT THIS ARTIFACT IS UNOBSERVED, NOT AN EMPTY SURFACE SET.
+//
+// Reporting "this emit exported nothing" for a file the reader was never pointed at is the
+// fabricated plausible output the whole manifest channel exists to end.
+fn witness_content_without_rows_is_unobserved() -> Bool {
+  match gunbc.stage0_emitted_export_surface_observation.observe_emitted_export_surface(
+    content: "fn main() {}\n"
+  ) {
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => false
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => true
+  }
+}
+
+// POSITIVE CONTROL FOR THE THREE REDS ABOVE: the same reader, over well-formed content, observes.
+// Without it the three refusals are equally satisfied by a reader that refuses everything.
+fn witness_well_formed_manifest_is_observed() -> Bool {
+  match gunbc.stage0_emitted_export_surface_observation.observe_emitted_export_surface(
+    content: two_module_manifest()
+  ) {
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => true
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => false
+  }
+}
+
+test fn emitted_export_surface_manifest_witnesses() -> Bool {
+  witness_rows_round_trip()
+    && witness_declared_empty_row_survives_the_round_trip()
+    && witness_reexport_projection_selects_only_reexport_rows()
+    && witness_unknown_tag_refuses()
+    && witness_row_missing_fixed_fields_refuses()
+    && witness_content_without_rows_is_unobserved()
+    && witness_well_formed_manifest_is_observed()
+}

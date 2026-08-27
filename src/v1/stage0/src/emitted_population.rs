@@ -1,5 +1,6 @@
 // Cargo.toml
 // src/compiler_tests.rs
+// src/emitted_export_surface.rs
 // src/emitted_population.rs
 // src/extdeps_cargo.rs
 // src/extdeps_cargo_version.rs

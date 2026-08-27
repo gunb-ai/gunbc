@@ -50,3 +50,56 @@ data emitted_population_manifest_basename: String = "emitted_population.rs"
 data emitted_population_manifest_line_prefix: String = "// "
 
 data emitted_population_manifest_line_separator: String = "\n"
+
+// THE SECOND ARTIFACT IN THIS CHANNEL: THE EXPORT SURFACE THE EMITTER DECIDED PER MODULE.
+//
+// The population manifest above answers WHICH FILES the emit produced. It does not answer what
+// any of them EXPORTS, and that is a different fact with a different consumer: a seed installs
+// one artifact per module, so a module whose linkage surface depends on which entry requested
+// it is not installable, and deciding that requires the export set rather than the path set.
+//
+// The emitter already DECIDES that set -- `v1.compiler.emit_rust` `emit_module_parts` holds the
+// module's rendered `pub use` lines and its authored declaration list as values, one step before
+// it joins them into text -- and until now it discarded it. Every consumer that wanted it had to
+// go back to the emitted `.rs` and parse Rust, which is the class gunbc#8690 deleted and which
+// the paragraph above rules against for this channel by name.
+//
+// SAME PREFIX, SAME SEPARATOR, SAME REASONING. This artifact reuses the two rows above rather
+// than spelling its own, because "a line is `// ` ++ payload, joined by newline" is one fact and
+// a second spelling of it would be the nicknaming failure this module was created to end. Only
+// the basename and the field grammar are new, and they are new because they are genuinely new
+// facts. The `.rs` extension is load-bearing for the same measured reason and dissolves under the
+// same condition as the population manifest's.
+data emitted_export_surface_manifest_basename: String = "emitted_export_surface.rs"
+
+// Within one line the fields are separated by a single space, which is total for this payload by
+// construction rather than by convention: every field is a Rust module filename or a Rust
+// identifier, and neither can contain a space.
+//
+// A row is `source_module ++ FS ++ target_filename ++ FS ++ tag ++ (FS ++ member)*`, so splitting
+// on the separator yields the module identity, its file locator, the row kind, and the members
+// with no further grammar. One grammar read in both directions (DESIGN 4): the emitter joins, the
+// reader splits, and there is no second parser.
+//
+// THE IDENTITY AND THE LOCATOR ARE BOTH CARRIED because neither determines the other.
+// `module_to_filename` is `split(".") |> join("_")` and is many-to-one -- `a.b_c` and `a_b.c` both
+// render `a_b_c` -- so a consumer joining on the filename would merge two distinct modules into
+// one row and refuse on the merge, a false positive it could not tell from a real finding.
+data emitted_export_surface_manifest_field_separator: String = " "
+
+// TWO ROW KINDS, AND EVERY MODULE CARRIES BOTH EVEN WHEN THE MEMBER LIST IS EMPTY.
+//
+// That is not padding. A consumer asking "does this module reexport anything" must be able to
+// distinguish DECLARED EMPTY from NOT OBSERVED, and a grammar that omits empty rows renders those
+// two states identically -- the empty-observation narrow DESIGN names, where an observation that
+// could not express a fact is read as the verdict that the fact is absent. An always-present row
+// makes absence mean absence.
+//
+// `reexport` is the LINKAGE SURFACE: the names this module's emitted `pub use` lines re-export,
+// which is what varies under closure and what a seed cannot install two of. `decl` is the
+// module's own authored top-level declarations, in the emitter's rendering order, which is the
+// content-identity axis beside it: two observations may agree on declarations and disagree on
+// linkage, and that pair is exactly the distinction the consuming census is built on.
+data emitted_export_surface_reexport_tag: String = "reexport"
+
+data emitted_export_surface_declaration_tag: String = "decl"
