@@ -8,6 +8,7 @@ use self::DataRefResolution::*;
 use self::DataReferenceUnresolvableCause::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::ParamDefaultResolution::*;
+use self::ReferenceDerivedCandidateDisposition::*;
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 pub use crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits;
 pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
@@ -5289,7 +5290,22 @@ pub fn merged_module_source_indices(
     )
 }
 
-pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EmitRustContext {
+    pub emit_info: Rc<EmitGraphInfo>,
+    pub registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub data_items: Rc<HashMap<String, Rc<Node>>>,
+    pub workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
+    pub workflow_default_diags: Rc<Vec<Rc<ErrorNode>>>,
+    pub anonymous_record_diags: Rc<Vec<Rc<ErrorNode>>>,
+    pub svc_module_map: Rc<HashMap<String, String>>,
+    pub test_projections: Rc<Vec<Rc<TestProjection>>>,
+    pub export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    pub module_index: Rc<ModuleIndex>,
+    pub unlisted_type_names_by_module: Rc<HashMap<String, Rc<Vec<String>>>>,
+}
+
+pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> {
     {
         let base_info = build_emit_graph_info(typed.modules.clone());
         let ownership = build_ownership_results(typed.modules.clone());
@@ -5337,7 +5353,6 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             fn_type_env: base_info.fn_type_env.clone(),
             fn_return_type: None,
         });
-        let shared_types = emit_info.shared_types.clone();
         let registry = merge_item_registries(
             typed.item_registry.clone(),
             build_qualified_item_registry(typed.modules.clone()),
@@ -5349,12 +5364,6 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             emit_info.read_only_params_index.clone(),
         );
         let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone());
-        if ((workflow_default_diags.clone().len() as i64) > 0) {
-            return Rc::new(EmitResult {
-                files: Rc::new(vec![]),
-                diagnostics: workflow_default_diags.clone(),
-            });
-        }
         let anonymous_record_diags = Rc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
@@ -5384,12 +5393,6 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             }
             __result
         });
-        if ((anonymous_record_diags.clone().len() as i64) > 0) {
-            return Rc::new(EmitResult {
-                files: Rc::new(vec![]),
-                diagnostics: anonymous_record_diags.clone(),
-            });
-        }
         let svc_module_map = typed.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
             |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
@@ -5425,30 +5428,90 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let export_sets = build_module_export_sets(typed.modules.clone());
         let module_index = build_module_index(typed.modules.clone());
         let unlisted_type_names_by_module = group_unlisted_type_names(typed.diagnostics.clone());
+        Rc::new(EmitRustContext {
+            emit_info: emit_info.clone(),
+            registry: registry.clone(),
+            data_items: data_items.clone(),
+            workflow_funcs: workflow_funcs.clone(),
+            workflow_default_diags: workflow_default_diags.clone(),
+            anonymous_record_diags: anonymous_record_diags.clone(),
+            svc_module_map: svc_module_map.clone(),
+            test_projections: test_projections.clone(),
+            export_sets: export_sets.clone(),
+            module_index: module_index.clone(),
+            unlisted_type_names_by_module: unlisted_type_names_by_module.clone(),
+        })
+    }
+}
+
+pub fn emit_rust_reference_derived_rows(
+    typed: Rc<ResolvedGraph>,
+) -> Rc<Vec<Rc<ReferenceDerivedCandidateRow>>> {
+    {
+        let ctx = build_emit_rust_context(typed.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*emit_module_full_with_dispositions(
+                        tm.clone(),
+                        ctx.clone(),
+                        typed.modules.clone(),
+                    )
+                    .reference_rows
+                    .clone())
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
+pub fn emit_rust_reference_derived_census(typed: Rc<ResolvedGraph>) -> ReferenceDerivedCensus {
+    reference_derived_census(emit_rust_reference_derived_rows(typed.clone()))
+}
+
+pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
+    {
+        let ctx = build_emit_rust_context(typed.clone());
+        let emit_info = ctx.emit_info.clone();
+        let registry = ctx.registry.clone();
+        let data_items = ctx.data_items.clone();
+        let svc_module_map = ctx.svc_module_map.clone();
+        let export_sets = ctx.export_sets.clone();
+        let module_index = ctx.module_index.clone();
+        let unlisted_type_names_by_module = ctx.unlisted_type_names_by_module.clone();
+        let shared_types = emit_info.shared_types.clone();
+        let workflow_funcs = ctx.workflow_funcs.clone();
+        let workflow_default_diags = ctx.workflow_default_diags.clone();
+        if ((workflow_default_diags.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: workflow_default_diags.clone(),
+            });
+        }
+        let anonymous_record_diags = ctx.anonymous_record_diags.clone();
+        if ((anonymous_record_diags.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: anonymous_record_diags.clone(),
+            });
+        }
+        let test_projections = ctx.test_projections.clone();
         let module_files = Rc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
-                __result.push(emit_module_full(
-                    tm.clone(),
-                    registry.clone(),
-                    emit_info.clone(),
-                    shared_types.clone(),
-                    svc_module_map.clone(),
-                    data_items.clone(),
-                    export_sets.clone(),
-                    typed.modules.clone(),
-                    module_index.clone(),
-                    match v1_rt::map_get(
-                        &unlisted_type_names_by_module,
-                        authored_name_at(
-                            tm.type_env.clone().source_indices.clone(),
-                            tm.module.clone(),
-                        ),
-                    ) {
-                        Some(v) => v.clone(),
-                        None => Rc::new(vec![]),
-                    },
-                ));
+                __result.push(
+                    emit_module_full_with_dispositions(
+                        tm.clone(),
+                        ctx.clone(),
+                        typed.modules.clone(),
+                    )
+                    .file
+                    .clone(),
+                );
             }
             __result
         });
@@ -5949,6 +6012,8 @@ pub fn emit_module(
             module_index.clone(),
             Rc::new(vec![]),
         )
+        .file
+        .clone()
     }
 }
 
@@ -7676,7 +7741,190 @@ pub fn collect_item_realized_surface_names(
     }
 }
 
-pub fn reference_derived_use_lines(
+pub fn reference_derived_census_rung_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "DECLARED RUNG, AND IT IS MITIGATABLE. The per-candidate decision below is now a four-armed typed disposition and the population is COUNTED, at (module, name, disposition), by reference_derived_census over the rows every Rust emit already produces. It is NOT SURFACED during an ordinary build: emit_module_full carries the rows out beside the file, emit_rust_reference_derived_census projects them, and no compile prints them, no gate reads them and no diagnostic is raised. That is DELIBERATE AND TEMPORARY, and the reason is sequencing rather than comfort. Making the value-position case loud -- withdrawing the emitter's silent synthesis, or promoting the reference to a refusal beside UnlistedImportUse -- is a DESIGN 4b rung change that must declare a BOUNDED POPULATION, and that population is exactly what this census exists to measure. Counting first is the precondition for the promotion, not caution about it.\n\nWHAT IS STILL SILENT, stated so this row is not read as a climb it is not. A value-position cross-module reference with no import produces no diagnostic of any kind: the resolver declines to refuse it, the emitter synthesizes the use-line the author did not write, and the author is never told. NOTHING HERE CHANGES THAT. The emitted bytes are identical by construction -- the use-lines are the survived arm of the same decision the census counts, so there is no second copy of the decision to drift from -- and the deficit's frequency is now observable instead of zero.\n\nEVERY COUNT THIS CENSUS REPORTS IS A LOWER BOUND. The denominator is the candidates that REACH the decision; a name already provided by an authored import, the prelude, a carrier use-line or the module's own declarations is filtered before it, as is a kernel type and any name no attestation admitted as a candidate at all. So registry_absent and export_proof_failed are at-least counts of the references that reach emission with no use-line, never the whole of that population, and the gap between the two is itself unmeasured. A consumer quoting a figure says 'at least N' and names emit_rust_reference_derived_census as its producer; a transcribed number with no named producer is unreachable from the thing that owns it and rots without anyone touching either end.\n\nNO EXECUTING CONSUMER FOR THE EVIDENCE YET, AND NO PRODUCER FOR A CORPUS FIGURE EITHER. THIS IS THE HONEST HALF OF THE ROW AND IT HAS TWO PARTS. FIRST, THE EVIDENCE. The discriminating probes live in v1.tests.claim.reference_derived_disposition_census_witness_test -- five rows, four naming the decision's four arms and one pinning the census to being a projection of retained rows. Their RED is authorable at the fixture boundary and all five pass when run directly on 2026-08-27. They are NOT run by CI: gunbc.ci_layer_roots records that the scoped witness batch was deleted with the 2026-08-15 floor cut and that every entry under src/v1/tests/claim has no executing consumer, since ordinary discovery's roots are dag plus src/v2 and could not resolve an import of v1.compiler.emit_rust in any case. Direct execution is evidence the assertions HOLD, never evidence that CI runs them, and conflating those two is rung inflation.\n\nNEXT-RUNG TRIGGERS, TWO, INDEPENDENT. (1) For the class: the value-position case joins the fail-closed wall -- the resolver refusing an unlisted value use, or emitting the use-line intent directly -- at which point this census, the synthesis pass it counts and this row retire together. (2) For the evidence: one prepared subject spanning dag, src/v1 and src/v2, the restoration gunbc.ci_layer_roots already names for the deleted batch, at which point the witness above executes and that paragraph deletes.\n\nSECOND, AND SEPARATELY: THE CENSUS HAS NO EXECUTABLE ROUTE TO A CORPUS FIGURE, so this row deliberately quotes NO number. emit_rust_reference_derived_census is the projection, but reaching it needs a resolved graph, and the only .dag route to one is a nested compile that the interpreter refuses -- compile_to_resolved over an authored source vector errors with NoSuchField Node.ident during the nested pipeline, measured 2026-08-27 on three subjects. That is why the two nested-compile instruments the corpus already has (gunbc.compile_diagnostic_census, tools.multi_module_compile_fixture) both route through a host builtin. A CLI or builtin surface that hands the census a graph is capability growth in a frozen seed and is not taken here. THIRD NEXT-RUNG TRIGGER, therefore: a nested-compile builtin returning the resolved graph -- the shape tools.multi_module_compile_fixture already has, widened to carry these rows -- at which point a figure becomes producible and this paragraph is replaced by the producer's name. Until then the population is COUNTABLE BY CONSTRUCTION AND UNCOUNTED IN FACT, and saying otherwise would be the rung inflation this row exists to avoid.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ReferenceDerivedCandidateDisposition {
+    CandidateSurvived { provider_module: String },
+    CandidateOwnModule,
+    CandidateRegistryAbsent,
+    CandidateExportProofFailed { provider_module: String },
+}
+impl ReferenceDerivedCandidateDisposition {
+    pub fn provider_module(&self) -> String {
+        match self {
+            ReferenceDerivedCandidateDisposition::CandidateSurvived {
+                provider_module: __val,
+                ..
+            } => __val.clone(),
+            ReferenceDerivedCandidateDisposition::CandidateOwnModule => {
+                panic!("no provider_module on unit variant")
+            }
+            ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
+                panic!("no provider_module on unit variant")
+            }
+            ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+                provider_module: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ReferenceDerivedCandidateRow {
+    pub module_name: String,
+    pub name: String,
+    pub disposition: Rc<ReferenceDerivedCandidateDisposition>,
+}
+
+pub fn reference_derived_candidate_disposition(
+    name: String,
+    this_module_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<ReferenceDerivedCandidateDisposition> {
+    match v1_rt::map_get(&registry, name.clone()) {
+        Some(info) => {
+            if (info.module_name.clone() == this_module_name.clone()) {
+                Rc::new(ReferenceDerivedCandidateDisposition::CandidateOwnModule)
+            } else {
+                if provider_proven_exports_symbol(
+                    name.clone(),
+                    info.module_name.clone(),
+                    export_sets.clone(),
+                    typed_modules.clone(),
+                    source_indices.clone(),
+                    module_index.clone(),
+                ) {
+                    Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
+                        provider_module: info.module_name.clone(),
+                    })
+                } else {
+                    Rc::new(
+                        ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+                            provider_module: info.module_name.clone(),
+                        },
+                    )
+                }
+            }
+        }
+        None => Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
+    }
+}
+
+pub fn reference_derived_candidate_survived(
+    disposition: Rc<ReferenceDerivedCandidateDisposition>,
+) -> bool {
+    match (*disposition.clone()).clone() {
+        ReferenceDerivedCandidateDisposition::CandidateSurvived {
+            provider_module: _, ..
+        } => true,
+        _ => false,
+    }
+}
+
+pub fn reference_derived_disposition_name(
+    disposition: Rc<ReferenceDerivedCandidateDisposition>,
+) -> String {
+    match (*disposition.clone()).clone() {
+        ReferenceDerivedCandidateDisposition::CandidateSurvived {
+            provider_module: _, ..
+        } => "survived".to_string(),
+        ReferenceDerivedCandidateDisposition::CandidateOwnModule => "own-module".to_string(),
+        ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
+            "registry-absent".to_string()
+        }
+        ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+            provider_module: _,
+            ..
+        } => "export-proof-failed".to_string(),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ReferenceDerivedCensus {
+    pub candidates: i64,
+    pub survived: i64,
+    pub own_module: i64,
+    pub registry_absent: i64,
+    pub export_proof_failed: i64,
+}
+
+pub fn reference_derived_census(
+    rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
+) -> ReferenceDerivedCensus {
+    ReferenceDerivedCensus {
+        candidates: (rows.clone().len() as i64),
+        survived: (Rc::new({
+            let mut __result = Vec::new();
+            for r in rows.iter().cloned() {
+                if (reference_derived_disposition_name(r.disposition.clone())
+                    == "survived".to_string())
+                {
+                    __result.push(r);
+                }
+            }
+            __result
+        })
+        .len() as i64),
+        own_module: (Rc::new({
+            let mut __result = Vec::new();
+            for r in rows.iter().cloned() {
+                if (reference_derived_disposition_name(r.disposition.clone())
+                    == "own-module".to_string())
+                {
+                    __result.push(r);
+                }
+            }
+            __result
+        })
+        .len() as i64),
+        registry_absent: (Rc::new({
+            let mut __result = Vec::new();
+            for r in rows.iter().cloned() {
+                if (reference_derived_disposition_name(r.disposition.clone())
+                    == "registry-absent".to_string())
+                {
+                    __result.push(r);
+                }
+            }
+            __result
+        })
+        .len() as i64),
+        export_proof_failed: (Rc::new({
+            let mut __result = Vec::new();
+            for r in rows.iter().cloned() {
+                if (reference_derived_disposition_name(r.disposition.clone())
+                    == "export-proof-failed".to_string())
+                {
+                    __result.push(r);
+                }
+            }
+            __result
+        })
+        .len() as i64),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ReferenceDerivedUseLinePlan {
+    pub lines: Rc<Vec<String>>,
+    pub rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
+}
+
+pub fn reference_derived_use_line_plan(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
     this_module_name: String,
@@ -7690,7 +7938,7 @@ pub fn reference_derived_use_lines(
     module_index: Rc<ModuleIndex>,
     shared_types: Rc<BTreeSet<String>>,
     emitted_source: String,
-) -> Rc<Vec<String>> {
+) -> Rc<ReferenceDerivedUseLinePlan> {
     {
         let module_source = match Rc::new({
             let mut __result = Vec::new();
@@ -7870,7 +8118,7 @@ pub fn reference_derived_use_lines(
                 v1_rt::rc_map_insert(acc, nm.clone(), true)
             },
         );
-        let unlisted = Rc::new({
+        let rows = Rc::new({
             let mut __result = Vec::new();
             for name in candidates.iter().cloned() {
                 __result.extend(
@@ -7879,29 +8127,41 @@ pub fn reference_derived_use_lines(
                     {
                         Rc::new(vec![])
                     } else {
-                        match v1_rt::map_get(&registry, name.clone()) {
-                            Some(info) => {
-                                if ((info.module_name.clone() != this_module_name.clone())
-                                    && provider_proven_exports_symbol(
-                                        name.clone(),
-                                        info.module_name.clone(),
-                                        export_sets.clone(),
-                                        typed_modules.clone(),
-                                        source_indices.clone(),
-                                        module_index.clone(),
-                                    ))
-                                {
-                                    Rc::new(vec![name.clone()])
-                                } else {
-                                    Rc::new(vec![])
-                                }
-                            }
-                            None => Rc::new(vec![]),
-                        }
+                        Rc::new(vec![Rc::new(ReferenceDerivedCandidateRow {
+                            module_name: this_module_name.clone(),
+                            name: name.clone(),
+                            disposition: reference_derived_candidate_disposition(
+                                name.clone(),
+                                this_module_name.clone(),
+                                registry.clone(),
+                                export_sets.clone(),
+                                typed_modules.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                            ),
+                        })])
                     })
                     .iter()
                     .cloned(),
                 );
+            }
+            __result
+        });
+        let unlisted = Rc::new({
+            let mut __result = Vec::new();
+            for r in Rc::new({
+                let mut __result = Vec::new();
+                for r in rows.iter().cloned() {
+                    if reference_derived_candidate_survived(r.disposition.clone()) {
+                        __result.push(r);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(r.name.clone());
             }
             __result
         });
@@ -7919,7 +8179,7 @@ pub fn reference_derived_use_lines(
             }
             __result
         }));
-        Rc::new({
+        let lines = Rc::new({
             let mut __result = Vec::new();
             for provider in providers.iter().cloned() {
                 __result.extend(
@@ -8031,8 +8291,81 @@ pub fn reference_derived_use_lines(
                 );
             }
             __result
+        });
+        Rc::new(ReferenceDerivedUseLinePlan {
+            lines: lines.clone(),
+            rows: rows.clone(),
         })
     }
+}
+
+pub fn reference_derived_use_lines(
+    items: Rc<Vec<Rc<Node>>>,
+    unlisted_type_names: Rc<Vec<String>>,
+    this_module_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    local_type_names: Rc<Vec<String>>,
+    already_imported_names: Rc<Vec<String>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+    shared_types: Rc<BTreeSet<String>>,
+    emitted_source: String,
+) -> Rc<Vec<String>> {
+    {
+        let plan = reference_derived_use_line_plan(
+            items.clone(),
+            unlisted_type_names.clone(),
+            this_module_name.clone(),
+            registry.clone(),
+            emit_info.clone(),
+            local_type_names.clone(),
+            already_imported_names.clone(),
+            export_sets.clone(),
+            typed_modules.clone(),
+            source_indices.clone(),
+            module_index.clone(),
+            shared_types.clone(),
+            emitted_source.clone(),
+        );
+        plan.lines.clone()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleEmission {
+    pub file: Rc<TextFile>,
+    pub reference_rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
+}
+
+pub fn emit_module_full_with_dispositions(
+    typed_module: Rc<TypedModule>,
+    ctx: Rc<EmitRustContext>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<ModuleEmission> {
+    emit_module_full(
+        typed_module.clone(),
+        ctx.registry.clone(),
+        ctx.emit_info.clone(),
+        ctx.emit_info.clone().shared_types.clone(),
+        ctx.svc_module_map.clone(),
+        ctx.data_items.clone(),
+        ctx.export_sets.clone(),
+        typed_modules.clone(),
+        ctx.module_index.clone(),
+        match v1_rt::map_get(
+            &ctx.unlisted_type_names_by_module.clone(),
+            authored_name_at(
+                typed_module.type_env.clone().source_indices.clone(),
+                typed_module.module.clone(),
+            ),
+        ) {
+            Some(v) => v.clone(),
+            None => Rc::new(vec![]),
+        },
+    )
 }
 
 pub fn emit_module_full(
@@ -8046,7 +8379,7 @@ pub fn emit_module_full(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
     unlisted_type_names: Rc<Vec<String>>,
-) -> Rc<TextFile> {
+) -> Rc<ModuleEmission> {
     {
         let m = typed_module.module.clone();
         let scope = module_emit_scope(typed_module.clone());
@@ -8224,7 +8557,7 @@ pub fn emit_module_full(
                 __result
             }),
         );
-        let reference_use_lines = reference_derived_use_lines(
+        let reference_plan = reference_derived_use_line_plan(
             typed_module.items.clone(),
             unlisted_type_names.clone(),
             authored_name(scope.type_env.clone(), m.clone()),
@@ -8239,6 +8572,7 @@ pub fn emit_module_full(
             shared_types.clone(),
             items_str.clone(),
         );
+        let reference_use_lines = reference_plan.lines.clone();
         let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
             v1_rt::concat(dag_import_lines.clone(), carrier_import_lines.clone()),
             reference_use_lines.clone(),
@@ -8402,12 +8736,15 @@ pub fn emit_module_full(
             "".to_string()
         };
         let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n".to_string(), "// Source module: ".to_string()), authored_name(scope.type_env.clone(), m.clone())), "\n\n".to_string()), module_attrs.clone()), prelude.clone()), imports_section.clone()), svc_imports_str.clone()), local_uses_str.clone()), "\n\n".to_string()), coproduct_wire_contract_validation_section.clone()), items_str.clone()), phantom_section.clone()), "\n".to_string());
-        Rc::new(TextFile {
-            path: v1_rt::concat(
-                v1_rt::concat(rust_source_root(), filename.clone()),
-                rust_source_ext(),
-            ),
-            content: content.clone(),
+        Rc::new(ModuleEmission {
+            file: Rc::new(TextFile {
+                path: v1_rt::concat(
+                    v1_rt::concat(rust_source_root(), filename.clone()),
+                    rust_source_ext(),
+                ),
+                content: content.clone(),
+            }),
+            reference_rows: reference_plan.rows.clone(),
         })
     }
 }
