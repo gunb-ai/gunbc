@@ -31,7 +31,9 @@ use v1_compiler::cli_run::declaration_index::{
     corpus_findings, index_findings, index_get, index_population, planted_control_findings_against,
     DeclarationIndex, DeclarationIntegrityKind, ModuleDeclarationRecord,
 };
-use v1_compiler::cli_run::run_dag_parse_sweep;
+use v1_compiler::cli_run::{
+    compile_dag_multi_module_fixture, run_dag_parse_sweep, MultiModuleCompileFixtureOutcome,
+};
 
 /// A scratch tree of our own, cleaned on the way IN so a run is deterministic whatever the
 /// previous one left behind.
@@ -517,6 +519,39 @@ fn cited_authority_without_an_import_edge_is_named_until_an_edge_reaches_it() {
 }
 
 #[test]
+fn retained_authorities_partition_by_a_call_to_the_cited_declaration() {
+    let dir = scratch_root("cited_authority_call_partition");
+    author(
+        &dir,
+        "invoked.dag",
+        "module probe.invoked\n\nfn probe_call() -> Bool { true }\n",
+    );
+    author(
+        &dir,
+        "data_only.dag",
+        "module probe.data_only\n\ndata authority: Bool = true\n",
+    );
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data called_ref: DeclarationRef = DeclarationRef { module_path: \"probe.invoked\", decl_name: \"probe_call\", field: WholeDeclaration }\n\n\
+         data data_ref: DeclarationRef = DeclarationRef { module_path: \"probe.data_only\", decl_name: \"authority\", field: WholeDeclaration }\n\n\
+         fn invokes() -> Bool { probe_call() }\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    let population = index_population(&sweep.index);
+    assert_eq!(
+        population.cited_and_called_without_import_edges,
+        vec!["probe.invoked"]
+    );
+    assert_eq!(
+        population.cited_not_called_without_import_edges,
+        vec!["probe.data_only"]
+    );
+}
+
+#[test]
 fn fixture_citation_does_not_claim_authority_reachability() {
     let dir = scratch_root("fixture_citation_reachability");
     author(&dir, "authority.dag", AUTHORITY);
@@ -533,6 +568,35 @@ fn fixture_citation_does_not_claim_authority_reachability() {
         index_population(&sweep.index).cited_authorities_without_import_edges,
         Vec::<String>::new(),
         "fixture text is evidence input, not a claim that its target is a live authority"
+    );
+}
+
+// The live credentials defect is intentionally NOT this control: another change may repair it,
+// which must not make the evidence permanently green. These two caller-authored modules keep the
+// compiler's refusing and accepting directions under the fixture's control.
+#[test]
+fn orphan_entry_compile_has_a_controlled_red_and_clean_control() {
+    let bad = compile_dag_multi_module_fixture(
+        &["probe_bad.dag".to_string()],
+        &["module probe.bad\n\nfn broken() -> Bool { missing_value }\n".to_string()],
+        "probe_bad.dag",
+    );
+    assert!(
+        matches!(bad, MultiModuleCompileFixtureOutcome::CompileRefused { .. }),
+        "the controlled orphan with an undefined value must refuse, got {bad:?}"
+    );
+
+    let clean = compile_dag_multi_module_fixture(
+        &["probe_clean.dag".to_string()],
+        &["module probe.clean\n\ndata okay: Bool = true\n".to_string()],
+        "probe_clean.dag",
+    );
+    assert!(
+        matches!(
+            clean,
+            MultiModuleCompileFixtureOutcome::CompileCompleted { .. }
+        ),
+        "the controlled clean orphan must compile, got {clean:?}"
     );
 }
 

@@ -64,7 +64,9 @@ fn main() -> ExitCode {
             eprintln!(
                 "v1_src_dag_parse: {} file(s) parse-clean; declarations modules={} \
                  declared={} import_members={} citations={} debt={} in_fixtures={} outside_index={} kernel_named={} \
-                 lens_modules={} cited_authorities_without_import_edges={} retained={:?}",
+                 lens_modules={} cited_authorities_without_import_edges={} retained={:?} \
+                 cited_and_called={} called_retained={:?} cited_not_called={} not_called_retained={:?} \
+                 outside_dag_v2_entry_roots={} outside_entry_retained={:?}",
                 sweep.parse_clean,
                 population.modules,
                 population.declarations,
@@ -77,6 +79,12 @@ fn main() -> ExitCode {
                 population.lens_modules,
                 population.cited_authorities_without_import_edges.len(),
                 population.cited_authorities_without_import_edges,
+                population.cited_and_called_without_import_edges.len(),
+                population.cited_and_called_without_import_edges,
+                population.cited_not_called_without_import_edges.len(),
+                population.cited_not_called_without_import_edges,
+                population.cited_authorities_outside_dag_v2_entry_roots.len(),
+                population.cited_authorities_outside_dag_v2_entry_roots,
             );
             for finding in &findings {
                 eprintln!(
