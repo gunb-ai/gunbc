@@ -93,6 +93,27 @@ fn census_run_peak_bytes(r: CensusRun) -> ByteSize {
   rusage_maxrss_bytes(obs: r.peak_resident)
 }
 
+// THE INVOCATION IS DERIVED FROM THE RUN, NOT WRITTEN BESIDE IT. The command that produced a
+// reading is a function of the reading's own fields -- which root was primary, which was pooled,
+// which target was rendered -- so a reader re-derives it from the row rather than trusting a
+// sentence in a comment. A `//` annotation cannot be read by any Accepted program (DESIGN section
+// 4c), so an invocation carried only in prose is unreachable from the fact it produced; this is the
+// same reason the citation rule names a symbol rather than a position.
+//
+// WHAT IT IS NOT: an actuator. Nothing here executes it, and the argv is deliberately not minted as
+// an extdeps.exec.command ArgvCommand -- that carrier's mint gates who may CONSTRUCT a runnable
+// command, and a receipt that never runs anything has no business holding one. This renders the
+// invocation for a person to re-run; that is the whole of its job.
+fn census_run_invocation(r: CensusRun) -> List<String> {
+  [
+    "gunbc", "compile",
+    "--source-root", r.primary_root as String,
+    "--source-root", r.dependency_pool_root as String,
+    "--target", r.render_target as String,
+    "--output-dir", "<a fresh directory>"
+  ]
+}
+
 // ONE BLOCKING SITE, CITED BY SYMBOL. DESIGN section 3 rules that a citation names the module and
 // the declaration, never a file offset: a diagnostic outlives the line it was reported on, and a
 // position rots without anyone touching either end. The compiler's own located span is what a
