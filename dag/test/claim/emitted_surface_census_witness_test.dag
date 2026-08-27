@@ -30,6 +30,7 @@ fn observation(entry: v2.std.node.Symbol, surface: v2.std.node.Symbol) -> v2.com
 fn provider_row_with_two_surfaces() -> v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
   v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
     product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
+    cause: v2.compiler.self_host.emitted_surface_census.Unattributed,
     source_module: "v2.std.node",
     target_filename: ^v2_std_node,
     observations: [
@@ -42,6 +43,7 @@ fn provider_row_with_two_surfaces() -> v2.compiler.self_host.emitted_surface_cen
 fn provider_row_with_one_surface() -> v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
   v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
     product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
+    cause: v2.compiler.self_host.emitted_surface_census.Unattributed,
     source_module: "v2.std.node",
     target_filename: ^v2_std_node,
     observations: [
@@ -55,6 +57,7 @@ fn provider_row_with_one_surface() -> v2.compiler.self_host.emitted_surface_cens
 fn crate_root_row_with_two_surfaces() -> v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
   v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
     product: v2.compiler.self_host.emitted_surface_census.CrateRoot,
+    cause: v2.compiler.self_host.emitted_surface_census.Unattributed,
     source_module: "lib",
     target_filename: ^lib_rs,
     observations: [
@@ -86,6 +89,7 @@ fn witness_single_observation_is_admitted() -> Bool {
   v2.compiler.self_host.emitted_surface_census.row_admissible(
     row: v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
       product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
+      cause: v2.compiler.self_host.emitted_surface_census.Unattributed,
       source_module: "v2.std.node",
       target_filename: ^v2_std_node,
       observations: [observation(entry: ^entry_integer, surface: ^surface_agreed)]
@@ -161,6 +165,7 @@ fn witness_partially_observed_module_is_refused() -> Bool {
       rows: [
         v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
           product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
+          cause: v2.compiler.self_host.emitted_surface_census.Unattributed,
           source_module: "v2.std.node",
           target_filename: ^v2_std_node,
           observations: [observation(entry: ^entry_integer, surface: ^surface_agreed)]
@@ -186,6 +191,7 @@ fn witness_duplicated_sample_entry_is_refused() -> Bool {
       rows: [
         v2.compiler.self_host.emitted_surface_census.SurfaceCensusRow {
           product: v2.compiler.self_host.emitted_surface_census.ProviderModule,
+          cause: v2.compiler.self_host.emitted_surface_census.Unattributed,
           source_module: "v2.std.node",
           target_filename: ^v2_std_node,
           observations: [observation(entry: ^entry_integer, surface: ^surface_agreed)]

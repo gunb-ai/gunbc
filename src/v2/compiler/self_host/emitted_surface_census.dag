@@ -123,8 +123,64 @@ type ObservedExportEnvelope {
   members: List<Symbol>
 }
 
+// WHY A VARIANCE VARIES, CARRIED AS A TYPED ARM WITH AN IGNORANCE MEMBER.
+//
+// A census that reports only THAT a module varies cannot tell anyone whether the obstruction is one
+// mechanism or five, and that is the question an incremental-emit decision turns on: emission
+// proportional to what changed is not well-defined while a module's bytes are a function of its
+// closure rather than of itself.
+//
+// Unattributed is the FAIL-CLOSED DEFAULT and the only member an observation builder can author.
+// Classification is a judgement made by reading two emitted trees, not a fact an observation
+// carries, so a builder that guessed would be fabricating. An unclassified variance therefore
+// renders as a FINDING rather than as an absence, and the carrier stays honest when the next
+// variance matches none of the classified members.
+type ClosureVarianceCause
+  = ClosureMembership
+  | EmittedPopulationManifest
+  | FabricatedReexport
+  | CollapsedTypeArgument
+  | Unattributed
+
+// THE FOUR CLASSIFIED MEMBERS COME FROM ONE HAND CLASSIFICATION, AND ITS SAMPLING FRAME IS STATED
+// HERE BECAUSE A HAND TABLE WITHOUT ITS FRAME IS WHAT GETS QUOTED AS A CORPUS RESULT LATER.
+//
+// FRAME: three entries -- v2.std.node_query, v2.std.integer, v2.std.coercion -- forming a TOTAL
+// CONTAINMENT CHAIN (node_query subset integer subset coercion), 46 shared modules. A chain CANNOT
+// exhibit incomparable-closure effects, so any count of those from this sample is non-discriminating
+// rather than zero. shared_types is closure-scoped and is not enumerated by this sample at all.
+//
+// WHAT IT FOUND: 4 modules varied by content, 2 by linkage surface. The 4 decompose as two
+// LEGITIMATE and two DEFECTS, and the two defects share ONE ROOT with two faces.
+//   lib.rs                ClosureMembership          the pub-mod list IS closure membership
+//   emitted_population.rs EmittedPopulationManifest  declaring what this emit produced is its job
+//   v2_std_node.rs        FabricatedReexport         a foreign Cardinality reexport synthesized
+//   v2_std_collection.rs  CollapsedTypeArgument      map_get's return type erased to unit
+//
+// THE ROOT BOTH DEFECTS SHARE: a bare name owned by more than one declaration, resolved through a
+// map folded over the TRANSITIVE closure, where the constructor-binding authority rules ownership a
+// PER-FILE fact. Presence of a second claimant flips the answer. Cardinality is a type and a
+// variant of Connective; Optional is a type and a variant of both Cardinality and a grammar
+// expression. One face fabricates a public reexport, the other erases a type argument.
+//
+// THE COLLAPSE'S FIRING CONDITION AND ITS OPEN QUESTION, left checkable rather than as
+// "unmeasured". The collapse fires when the SECOND claimant is ABSENT and does not fire when it is
+// present. So the closure that would turn a latent fabrication into an executed one is:
+//
+//     contains a caller of v2.std.collection map_get
+//     AND does not contain the second Optional claimant transitively
+//
+// Three real callers exist -- v2.lens.affected_set, v2.compiler.03_name_resolve and
+// v2.std.compilers.cli_surface -- and none of the three closures in the frame above reaches any of
+// them, which is why the collapsed function had ZERO callers when measured and compiled clean. In
+// such a closure the outcome is a type error (loud) unless the caller's own types collapsed
+// consistently, in which case it compiles and is silently wrong. That case has not been
+// constructed. What the zero-caller measurement bounds is the HARM, not the defect: a fabricated
+// signature is fabricated plausible output whether or not anyone calls it.
+
 type SurfaceCensusRow {
   product: ProductKind
+  cause: ClosureVarianceCause
   source_module: String
   target_filename: Symbol
   observations: List<EmittedMemberIdentity>
