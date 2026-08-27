@@ -87,16 +87,21 @@ module test.claim.declared_type_kernel_inhabitance_witness_test
 // the admitting arm, which is where an unfollowable alias already landed, never to a fabricated
 // verdict.
 //
-// WHAT THE ALIAS SECTION DOES NOT CLOSE, stated rather than implied covered. A bare kernel value at
-// a CONTAINER-typed field -- `subject: List<KOuter>` with `subject: 5` -- is still admitted, aliased
-// or not. It is named here because it was measured while closing the alias axis and would otherwise
-// look like a hole in it; it is NOT one. The discriminating control is `type KAliasList = List<KOuter>`
-// against a bare `List<KOuter>` at the same position: BOTH admit, before and after the repair, so
-// the alias is not the variable. What is unjudged there is a kernel at a CONTAINER, which this
-// relation deliberately does not decide -- `declared_type_kernel_inhabitance_mismatch_at_element`
-// owns one level of element peeling, and a bare scalar where the container itself is declared is
-// neither that shape nor an alias one. Following the alias reaches the container and stops, which is
-// the correct place for this relation to stop.
+// WHAT THE ALIAS SECTION DOES NOT CLOSE, stated rather than implied covered, AND NARROWED BY A LATER
+// MEASUREMENT SO IT IS NOT READ WIDER THAN IT IS. At the RECORD-FIELD position, a bare `5` at a
+// container-typed field -- `subject: List<KOuter>` -- is still admitted, aliased or not. The
+// discriminating control is `type KAliasList = List<KOuter>` against a bare `List<KOuter>` at that
+// same position: BOTH admit, before and after the repair, so the alias is not the variable there.
+//
+// IT DOES NOT FOLLOW THAT CONTAINERS ARE UNJUDGED EVERYWHERE, and an earlier revision of this note
+// invited that reading. At the DIRECT-CALL ARGUMENT position a String at `type OneArg = List<Int>`
+// REFUSES on this branch, as does one at `type TwoArg = Map<String, Int>`. So the container shape is
+// judged at one position and not at the other.
+//
+// TWO VARIABLES DIFFER BETWEEN THOSE TWO MEASUREMENTS -- the position (record field vs direct-call
+// argument) AND the produced value (`5` vs a String) -- so which of them is decisive is NOT
+// established here, and this note does not guess. What is established: the admitting case is a bare
+// kernel at a container-typed RECORD FIELD, and it is not an alias defect.
 //
 // dissolve-on: none. Per DESIGN section 4b(4) the evidence stays enrolled when the class climbs --
 // deleting it would recreate specification-without-execution one rung up.

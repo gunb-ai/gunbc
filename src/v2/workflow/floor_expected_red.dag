@@ -525,9 +525,39 @@ fn floor_expected_red_chunk_13() -> List<String> {
 // per-witness cost line. When it lands, BOTH rows here go green -- and this roster's self-emptying arm
 // reds the build and names them for removal, at which point they become permanent regression
 // controls under DESIGN 4b(4) rather than being deleted. The flip is EXPECTED and is not a
+// THE MECHANICAL HALF OF THAT TRIGGER HAS FIRED (2026-08-27, gunbc#9464), AND ONLY THAT HALF, SO
+// ONE ROW LEAVES AND ONE STAYS. `v1.compiler.infer` kernel_value_declared_type_mismatch now FOLLOWS
+// what a declared name references: an alias binds to a bare nominal reference carrying the target's
+// `name` and no children, the judgment read the reference and never what it named, and it now
+// re-enters itself at the referenced name. The five-probe table above was RE-MEASURED on that branch,
+// one String argument at every one, and it no longer discriminates -- every row refuses:
+//
+//   Int                                      kernel primitive   REFUSED   (unchanged)
+//   Nat = CommutativeSemiring<Magnitude>     1-arg application  REFUSED   (was admitted)
+//   OneArg  = List<Int>                      1-arg application  REFUSED   (was admitted)
+//   TwoArg  = Map<String, Int>               2-arg application  REFUSED   (was admitted)
+//   Closed  = ZzA | ZzB { v: Int }           coproduct          REFUSED   (unchanged)
+//
+// So "a kernel value is admitted at ANY type application" is no longer true of this corpus, and
+// w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused PASSES. Per DESIGN 4b(4) it is
+// REMOVED FROM THIS ROSTER AND KEPT AS A WITNESS -- a probe that greens when its wall lands becomes a
+// permanent regression control, it does not retire.
+//
+// WHY THE SIBLING ROW STAYS RED AND THIS IS NOT A PARTIAL CLEANUP. w_kernel_numeric_at_the_peano_nat
+// _is_refused is `kernel 5` at the Peano Nat, which the table above already recorded as
+// accepted/accepted/no change -- it is admitted by declared_realizes_as_kernel_numeric, an arm that
+// runs AHEAD of this predicate in declared_type_inhabitance and never reaches it. So it is untouched
+// by construction, not missed. It is the MODEL half of the trigger stated above -- the
+// expected-type-directed literal introduction judgment -- and that half is NOT built. This row and
+// its dissolution obligation for declared_realizes_as_kernel_numeric stand unchanged.
+//
+// THE PROSE ABOVE PREDICTED BOTH ROWS WOULD GO GREEN TOGETHER. That prediction was wrong in a way
+// worth leaving on the record rather than editing out: it read the two halves of its own trigger as
+// one event. The mechanical repair and the literal-introduction model are independent, and only the
+// first is a predicate repair.
 // regression; it is the dissolution event.
 fn floor_expected_red_chunk_14() -> List<String> {
-  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_kernel_numeric_at_the_peano_nat_is_refused", tail: Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused", tail: Empty {} } }
+  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_kernel_numeric_at_the_peano_nat_is_refused", tail: Empty {} }
 }
 
 // THE LIST-ELEMENT ARM OF THE DIRECT-CALL INHABITANCE WITNESS. It asserts that a wrong element
