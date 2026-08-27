@@ -21,9 +21,9 @@ import product.fabric.supply {
   Affordable, AffordableUnderEstimate,
   QuoteExceedsMaximumBuyOrder, QuoteCurrencyMismatch,
   QuoteNotPriceableWithoutDuration,
-  QuotedTotal, QuotedTotalDerived, QuotedTotalNeedsDuration,
+  QuotedTotalDerived, QuotedTotalNeedsDuration,
   offer_affordability_for, offer_quoted_total_for_grant,
-  billed_seconds, grant_duration_bound_seconds,
+  billed_seconds,
 }
 
 // WHICH DEMAND WINS SCARCE CAPACITY. THE MIRROR OF SUPPLY SELECTION, AND THE
