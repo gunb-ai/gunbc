@@ -18,7 +18,7 @@ env:
   GUNBC_REQUIRED_FLOOR_DISPOSITION: required_floor_disposition.tsv
   GUNBC_LONG_HOME_STORAGE_AGREEMENT: long_home_storage_agreement.tsv
 jobs:
-  build:
+  required-witnesses-build:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
     steps:
@@ -71,7 +71,7 @@ jobs:
           cd "$ROOT"
           'target/release/claim_executor' '--required-ci' '--source-root' 'dag' '--source-root' 'src/v2' '--required-lane' 'build'
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
-  floor:
+  required-witnesses-floor:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 180
     steps:
@@ -155,14 +155,14 @@ jobs:
         if: "!cancelled()"
   witnesses:
     runs-on: [self-hosted, linux, arm64]
-    needs: [build, floor]
+    needs: [required-witnesses-build, required-witnesses-floor]
     timeout-minutes: 5
     if: always()
     steps:
       - name: Both required lanes must have succeeded
         run: |
-          BUILD='${{ needs.build.result }}'
-          FLOOR='${{ needs.floor.result }}'
+          BUILD='${{ needs.required-witnesses-build.result }}'
+          FLOOR='${{ needs.required-witnesses-floor.result }}'
           PULL_REQUEST='${{ github.event.pull_request.number }}'
           EVENT_NAME='${{ github.event_name }}'
           MEASURED_HEAD='${{ github.event.pull_request.head.sha }}'
