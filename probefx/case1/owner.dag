@@ -1,0 +1,3 @@
+module zqxalpha.owner
+
+type ZqxProbeColor = ZqxProbeRed | ZqxProbeBlue
