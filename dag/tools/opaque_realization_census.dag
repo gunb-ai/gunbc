@@ -700,13 +700,33 @@ fn emitted_tree_read_then(acc: EmittedTreeRead, path: String) -> EmittedTreeRead
   }
 }
 
+// THE SUBJECT DIRECTORY IS CHECKED BEFORE IT IS LISTED, AND THE REASON IS A PROPERTY OF THE
+// TRANSPORT RATHER THAN CAUTION. shell.Find.FilesByNameSorted runs `find "$1" ... | sort`, and a
+// pipeline's exit status is its LAST command's -- `sort` succeeds whatever `find` did. So a missing
+// or unreadable directory comes back success=true with empty stdout, indistinguishable from a
+// directory that genuinely holds no .rs file. An arm keyed on that success flag would therefore be
+// permanently green: not a weak wall but a decoration, which DESIGN section 4b rates worse than
+// absent because it would be cited as coverage. shell.Test.IsDirectory is a separate process with
+// its own status, so the refusal below has a RED anyone can author by naming a path that is not
+// there -- and that RED is executed.
+//
+// WHAT THIS STILL DOES NOT COVER, named rather than left for a reader to assume away: a find that
+// fails PARTWAY -- an unreadable subdirectory, say -- emits the entries it did reach and still exits
+// through `sort`, so a truncated listing is not detectable at this transport at all. The file-read
+// refusal below catches an unreadable file that IS listed; it cannot catch a file that was never
+// listed. Closing that needs a listing operation whose own status survives, which is a change to
+// extdeps.shell and another module's authority.
 fn read_emitted_tree(src_dir: String) -> EmittedTreeRead {
-  let found = shell.Find.FilesByNameSorted(root: src_dir, name_glob: "*.rs" as NonEmptyStr)
-  if !found.success {
+  let dir = shell.Test.IsDirectory(path: src_dir)
+  if !dir.is_directory {
     EmittedTreeUnreadable {
-      cause: concat("the emitted src directory could not be listed: ", found.stderr)
+      cause: concat(
+        "the subject is not a readable directory, so nothing was listed and no population could be taken: ",
+        src_dir
+      )
     }
   } else {
+    let found = shell.Find.FilesByNameSorted(root: src_dir, name_glob: "*.rs" as NonEmptyStr)
     fold(
       filter(split(s: found.stdout, delimiter: "\n"), p => p != ""),
       init: EmittedTreeFiles { files: [] },
