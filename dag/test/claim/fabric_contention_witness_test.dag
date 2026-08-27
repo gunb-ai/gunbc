@@ -41,7 +41,7 @@ import product.fabric.contention {
   ContentionRefusal, DemandsIndistinguishable, DuplicateCandidateIdentity,
   CandidatesJudgedAgainstDifferentOffers, OrderingContingentOnUnreadOpportunityCost,
   admit_demand_for_offer, select_demand_for_offer,
-  admitted_surplus, admitted_billed_occupancy, admitted_identity,
+  admitted_buyer_headroom, admitted_billed_occupancy, admitted_identity,
 }
 
 fn c_offer(key: NonEmptyStr, quote: OfferQuote, quantum: Second) -> SupplierOffer<NonEmptyStr> {
@@ -160,9 +160,9 @@ fn field_against(offer: SupplierOffer<NonEmptyStr>) -> List<AdmittedDemand<NonEm
 // SCORED ON THE DEMAND ALONE.
 //
 // Two bidders, two suppliers, one rate structure each. On continuous owned
-// capacity the short job is billed the 90 seconds it uses (surplus 200-90=110)
+// capacity the short job is billed the 90 seconds it uses (headroom 200-90=110)
 // and the long job the 300 it uses (400-300=100), so the SHORT job wins. On the
-// hourly supplier both are billed one whole hour at 100 (surplus 100 and 300),
+// hourly supplier both are billed one whole hour at 100 (headroom 100 and 300),
 // so the LONG job wins. The same two demands rank in OPPOSITE orders against
 // two offers.
 //
@@ -180,18 +180,18 @@ test fn the_same_two_bidders_rank_oppositely_on_continuous_and_hourly_supply() -
     == "demand-long"
 }
 
-// THE SURPLUS IS THE DERIVED MARGIN, NOT THE POSTED PRICE. The long job posts
+// THE HEADROOM IS DERIVED AGAINST THIS OFFER, NOT READ OFF THE POSTED BID. The long job posts
 // the HIGHER reservation price on both suppliers and wins on only one of them,
 // so the ordering cannot be reading the bid alone. This pins the arithmetic
 // that separates them rather than only the verdict, because a verdict alone
 // would still be produced by a fold that compared the wrong two numbers.
-test fn surplus_is_reservation_minus_the_projected_bill_for_this_offer() -> Bool {
+test fn buyer_headroom_is_the_ceiling_minus_the_projected_bill_for_this_offer() -> Bool {
   match field_against(offer: continuous_offer()) {
     Cons { head: s, tail: rest } =>
       match rest {
         Cons { head: l, tail: _ } =>
-          money_amount_micro_count(m: admitted_surplus(a: s)) == 110
-            && money_amount_micro_count(m: admitted_surplus(a: l)) == 100
+          money_amount_micro_count(m: admitted_buyer_headroom(a: s)) == 110
+            && money_amount_micro_count(m: admitted_buyer_headroom(a: l)) == 100
             && second_count(s: admitted_billed_occupancy(a: s)) == 90
             && second_count(s: admitted_billed_occupancy(a: l)) == 300
         Empty {} => false
@@ -266,8 +266,8 @@ test fn a_larger_total_margin_loses_to_a_larger_margin_per_billed_second() -> Bo
     Cons { head: q, tail: rest } =>
       match rest {
         Cons { head: r, tail: _ } =>
-          money_amount_micro_count(m: admitted_surplus(a: q)) == 110
-            && money_amount_micro_count(m: admitted_surplus(a: r)) == 200
+          money_amount_micro_count(m: admitted_buyer_headroom(a: q)) == 110
+            && money_amount_micro_count(m: admitted_buyer_headroom(a: r)) == 200
             && match contend(offer: continuous_offer(), candidates: concat(quick, slow)) {
                  ContentionRefused { refusal: rf } =>
                    match rf {
@@ -348,8 +348,8 @@ test fn a_free_offer_is_still_ranked_by_bid_per_second_not_by_bid() -> Bool {
     Cons { head: q, tail: rest } =>
       match rest {
         Cons { head: r, tail: _ } =>
-          money_amount_micro_count(m: admitted_surplus(a: q)) == 200
-            && money_amount_micro_count(m: admitted_surplus(a: r)) == 500
+          money_amount_micro_count(m: admitted_buyer_headroom(a: q)) == 200
+            && money_amount_micro_count(m: admitted_buyer_headroom(a: r)) == 500
             && second_count(s: admitted_billed_occupancy(a: q)) == 90
             && second_count(s: admitted_billed_occupancy(a: r)) == 300
             && match contend(offer: paid_through_offer(), candidates: concat(quick, slow)) {
@@ -505,7 +505,7 @@ test fn clearing_the_grant_ceiling_is_not_clearing_the_buyers_own_price() -> Boo
   }
 }
 
-// MARGINS DERIVED AGAINST A DIFFERENT OFFER REFUSE. A surplus is a fact about a
+// HEADROOM DERIVED AGAINST A DIFFERENT OFFER REFUSES. Headroom is a fact about a
 // pair, so a field mixing candidates judged against two suppliers holds values
 // that are each individually true and are not comparable. The mint records the
 // offer it judged, which is what gives this check something to check.

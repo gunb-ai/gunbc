@@ -53,12 +53,51 @@ import product.fabric.supply {
 // gunbc.fabric_capacity_class_gap makes for refusing to put a capacity class on
 // the supplier's own offer.
 //
-// So the ranking key is a DERIVATION over facts both sides already state: what
-// the buyer will pay at most (reservation_price) against what serving them from
-// this offer will actually cost (offer_quoted_total_for_grant). The margin is
-// the arbitrage this business is, in the operator's own framing -- connecting
-// the highest bidders to the cheapest opportunities -- and it is a fact about a
-// PAIR, never a property of the demand alone.
+// So the ranking key is a DERIVATION over facts both sides already state: the
+// buyer's ceiling (reservation_price) against the supplier's ask for this grant
+// (offer_quoted_total_for_grant). It is a fact about a PAIR, never a property
+// of the demand alone.
+//
+// IT IS BUYER HEADROOM, AND CALLING IT THE FABRIC'S MARGIN WAS AN OVERCLAIM.
+// An earlier revision of this note said the difference "is the arbitrage this
+// business is". Review 56530 caught that, and it is right: reservation_price is
+// the MOST a buyer will pay, and nothing in this model establishes that the
+// buyer is charged it. product.fabric.demand's own header is explicit that
+// three monetary facts stay separate -- the liability RESERVED, the cost used
+// to COMPARE, and the amount SETTLED -- and warns that conflating them is the
+// defect the note exists to prevent. There is no settlement rule anywhere in
+// the fabric, so what the buyer actually pays is unmodeled, and a quantity
+// described as revenue while no rule produces it is exactly that conflation.
+//
+// The quantity itself is not invented. It is the difference of two modeled
+// facts and it means one specific thing: how much room there is between what
+// this offer asks and what this buyer would tolerate. That is what it is now
+// named, and every claim about what the fabric earns is withdrawn from this
+// module.
+//
+// WHY THIS IS NAMED AND NOT REFUSED, WHERE THE OPPORTUNITY COST IS REFUSED --
+// and the difference is the whole reason the two are treated differently.
+// A missing fact forces a refusal when it can CHANGE THE ORDERING. The
+// opportunity-cost fact does: whether a freed remainder is resellable decides
+// between the rate ordering and the total ordering, so a fold that guessed
+// would emit a winner it knows may be wrong, and that case refuses.
+//
+// A settlement rule does not, under either rule anyone has proposed. If the
+// buyer pays the ASK, the fabric's own take is the same whichever admissible
+// buyer wins, so it is indifferent on revenue and ranking by headroom allocates
+// to the buyer who values the capacity most. If the buyer pays their
+// RESERVATION PRICE, headroom IS the fabric's take and ranking by it maximises
+// revenue directly. Under one the ordering is optimal, under the other the
+// fabric is indifferent between orderings -- so no settlement rule anyone has
+// named makes headroom-ranking the WRONG order. Refusing on a fact that cannot
+// change the answer would be the purity trap rather than fail-closed: unbounded
+// work priced in elegance, refusing every field forever while the deficit it
+// names moves nothing.
+//
+// NEXT-RUNG TRIGGER: a settlement authority stating what a winning buyer is
+// charged. When it lands, this ranking is re-derived from the charge rather
+// than from the ceiling, and this note retires -- not because headroom was
+// wrong, but because the fabric will finally be able to say what it earns.
 //
 // THAT PAIRING IS THE POINT, AND IT IS WHY THE MARGIN IS NOT PRECOMPUTED ON THE
 // DEMAND. Billing mode decides what a bidder is worth. A ninety-second job
@@ -97,7 +136,7 @@ import product.fabric.supply {
 // one whenever the billed durations match, which is why a suite that only
 // exercised equal-duration bidders would not have caught it.
 type DemandSelectionPolicy =
-  | HighestMarginPerBilledSecondForOneOffer
+  | HighestBuyerHeadroomPerBilledSecondForOneOffer
 
 // A DECLARED CONTINGENCY: WHAT THIS COMPARATOR DOES WHEN THE QUOTE IS ZERO, AND
 // WHY THAT ANSWER IS NOT UNCONDITIONALLY RIGHT.
@@ -157,12 +196,12 @@ type DemandSelectionPolicy =
 // which options deserve consideration. One grant of scarce capacity goes to
 // exactly one demand, and a Pareto front of two is not a winner -- picking from
 // it would put the real decision below the spine where nothing names it. What
-// is borrowed is the ORIENTATION vocabulary: the sense in which more surplus is
-// better is stated once, in std.pareto's AxisGoal, rather than re-coined here.
+// is borrowed is the ORIENTATION vocabulary: the sense in which more headroom
+// is better is stated once, in std.pareto's AxisGoal, rather than re-coined here.
 // THE RATES ARE COMPARED BY CROSS-MULTIPLICATION, NEVER BY DIVIDING FIRST.
 //
-// margin_a / billed_a against margin_b / billed_b is decided exactly by
-// margin_a * billed_b against margin_b * billed_a. Dividing first would round,
+// headroom_a / billed_a against headroom_b / billed_b is decided exactly by
+// headroom_a * billed_b against headroom_b * billed_a. Dividing first would round,
 // and rounding here does not merely blur a close call: two genuinely different
 // rates that round to the same integer become a TIE, which this module reports
 // as a refusal, so the arithmetic shortcut would manufacture unresolvable
@@ -170,23 +209,23 @@ type DemandSelectionPolicy =
 // round in the wrong direction for the fabric -- integer division floors, so
 // the cheaper-per-second bidder is the one whose advantage disappears.
 fn rate_ordering(
-  margin_a: MoneyAmountMicro, billed_a: Second,
-  margin_b: MoneyAmountMicro, billed_b: Second,
+  headroom_a: MoneyAmountMicro, billed_a: Second,
+  headroom_b: MoneyAmountMicro, billed_b: Second,
 ) -> Ordering {
-  let left = money_amount_micro_count(m: margin_a) * second_count(s: billed_b)
-  let right = money_amount_micro_count(m: margin_b) * second_count(s: billed_a)
+  let left = money_amount_micro_count(m: headroom_a) * second_count(s: billed_b)
+  let right = money_amount_micro_count(m: headroom_b) * second_count(s: billed_a)
   if left < right { Less } else if left > right { Greater } else { Equal }
 }
 
-fn margin_rate_comparison(
-  margin_a: MoneyAmountMicro, billed_a: Second,
-  margin_b: MoneyAmountMicro, billed_b: Second,
+fn headroom_rate_comparison(
+  headroom_a: MoneyAmountMicro, billed_a: Second,
+  headroom_b: MoneyAmountMicro, billed_b: Second,
 ) -> AxisComparison {
   axis_comparison(
     goal: HigherIsBetter,
     value_order: rate_ordering(
-      margin_a: margin_a, billed_a: billed_a,
-      margin_b: margin_b, billed_b: billed_b,
+      headroom_a: headroom_a, billed_a: billed_a,
+      headroom_b: headroom_b, billed_b: billed_b,
     ),
   )
 }
@@ -314,11 +353,11 @@ data occupancy_basis_bounded_lattice: BoundedLattice<OccupancyBasis> = {
 // buyer will pay at all, and nothing consulted it before this module: a demand
 // could be "affordable" under a generous per-grant ceiling while the quote sat
 // above the price the buyer actually named. Enforcing it here is also what
-// makes the surplus REPRESENTABLE -- reservation minus projected is a
+// makes the headroom REPRESENTABLE -- reservation minus projected is a
 // MoneyAmountMicro over Nat, so a pair that would produce a negative margin has
 // no admitted form rather than an underflowing one.
 //
-// THE OFFER IDENTITY TRAVELS ON THE RECORD because a surplus is a fact about a
+// THE OFFER IDENTITY TRAVELS ON THE RECORD because headroom is a fact about a
 // pair. Without it a caller could contend for offer B with margins honestly
 // derived against cheaper offer A and every value would be individually true;
 // select_demand_for_offer refuses a field whose members do not all name the
@@ -334,7 +373,7 @@ type AdmittedDemand<P> sole_constructor {
   demand: Demand<P>
   offer: FabricIdentity<P, OfferKey>
   projected_total: MoneyAmountMicro
-  surplus: MoneyAmountMicro
+  buyer_headroom: MoneyAmountMicro
   billed_occupancy: Second
   occupancy_basis: OccupancyBasis
   affordability: DemandOfferAffordability
@@ -434,7 +473,7 @@ fn admit_priced_pair<P>(
         demand: demand,
         offer: offer.id,
         projected_total: projected,
-        surplus: money_amount_micro(
+        buyer_headroom: money_amount_micro(
           count: money_amount_micro_count(m: reservation) - money_amount_micro_count(m: projected),
         ),
         billed_occupancy: occupancy,
@@ -449,8 +488,8 @@ fn admitted_demand<P>(a: AdmittedDemand<P>) -> Demand<P> {
   a.demand
 }
 
-fn admitted_surplus<P>(a: AdmittedDemand<P>) -> MoneyAmountMicro {
-  a.surplus
+fn admitted_buyer_headroom<P>(a: AdmittedDemand<P>) -> MoneyAmountMicro {
+  a.buyer_headroom
 }
 
 fn admitted_billed_occupancy<P>(a: AdmittedDemand<P>) -> Second {
@@ -490,9 +529,9 @@ type DemandPrecedence
   | TiedUnderPolicy
 
 fn compare_admitted<P>(left: AdmittedDemand<P>, right: AdmittedDemand<P>) -> DemandPrecedence {
-  match margin_rate_comparison(
-    margin_a: left.surplus, billed_a: left.billed_occupancy,
-    margin_b: right.surplus, billed_b: right.billed_occupancy,
+  match headroom_rate_comparison(
+    headroom_a: left.buyer_headroom, billed_a: left.billed_occupancy,
+    headroom_b: right.buyer_headroom, billed_b: right.billed_occupancy,
   ) {
     Better => LeftPrecedes
     Worse => RightPrecedes
@@ -598,13 +637,13 @@ fn duplicated_candidates<P>(
 // and UNREAD arms. When it lands, this refusal becomes a decision -- resell the
 // remainder and prefer the rate, or let it lapse and prefer the total -- and
 // the arm retires into an answer rather than being deleted.
-fn candidates_with_greater_total_margin<P>(
+fn candidates_with_greater_total_headroom<P>(
   winner: AdmittedDemand<P>,
   field: List<AdmittedDemand<P>>,
 ) -> List<FabricIdentity<P, DemandKey>> {
   field
-    |> filter(c => money_amount_micro_count(m: c.surplus)
-                     > money_amount_micro_count(m: winner.surplus))
+    |> filter(c => money_amount_micro_count(m: c.buyer_headroom)
+                     > money_amount_micro_count(m: winner.buyer_headroom))
     |> map(c => admitted_identity(a: c))
 }
 
@@ -694,7 +733,7 @@ fn select_from_field<P>(field: List<AdmittedDemand<P>>) -> ContentionOutcome<P> 
           },
         }
       } else {
-        match candidates_with_greater_total_margin(winner: leader, field: field) {
+        match candidates_with_greater_total_headroom(winner: leader, field: field) {
           Cons { head: h, tail: t } =>
             ContentionRefused {
               refusal: OrderingContingentOnUnreadOpportunityCost {
