@@ -34,7 +34,7 @@ import v2.extdeps.languages.bash_build {
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_stmts_semi }
 import v2.std.node { Node }
 import v2.std.diagnostic { Accepted, Rejected, None }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.cell_converge {
   FabricCellMember,
   FabricCellAddressDisposition,
   AddressPresent,
@@ -62,7 +62,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_resource_address_wire,
   fabric_cell_desired_members,
 }
-import gunbc.fabric_cell_observation_admission {
+import gunbc.fabric.cell_observation_admission {
   FabricCellObservationDecision,
   FabricCellObservationOutcome,
   fabric_cell_observation_outcome,
@@ -1845,7 +1845,7 @@ fn fabric_cell_apply_lines(
   observed_fabric_cells: FabricCellObservationDecision,
 ) -> List<String> {
   concat(
-    ["# fabric-cell membership (gunbc.fabric_cell_converge) — resolved at plan time; no host effect is emitted by this cut"],
+    ["# fabric-cell membership (gunbc.fabric.cell_converge) — resolved at plan time; no host effect is emitted by this cut"],
     map(
       fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
       l => concat("# ", l),

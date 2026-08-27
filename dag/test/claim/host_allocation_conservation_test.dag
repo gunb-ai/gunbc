@@ -42,7 +42,7 @@ import gunbc.runner_slot_allocation {
   DiskWidthUnconstrained,
   DiskAdmitsWidth,
 }
-import gunbc.fabric_control_plane_charge {
+import gunbc.fabric.control_plane_charge {
   host_fabric_control_plane_claim,
   ControlPlaneNotPlaced,
   ControlPlaneClaimResolved,

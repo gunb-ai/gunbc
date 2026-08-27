@@ -20,7 +20,7 @@ import gunbc.host_layout {
   CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
   gunbc_compile_pool_placement,
 }
-import gunbc.fabric_control_plane_charge {
+import gunbc.fabric.control_plane_charge {
   HostFabricControlPlaneClaim,
   ControlPlaneNotPlaced,
   ControlPlaneClaimResolved,

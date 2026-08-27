@@ -1,7 +1,7 @@
 module test.claim.fabric_capacity_class_gap_witness_test
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
-import gunbc.fabric_capacity_class_gap {
+import gunbc.fabric.capacity_class_gap {
   CapacityClassEvidence, NoClassCarrierAnywhere, PlausibleCarrierIsUntyped,
   ProtectionHasNoReachAcrossSeam,
   CapacityClassRemedy, ClassOnWorkShape, ClassOnSupplierOffer, ClassEncodedInTrustDomain,

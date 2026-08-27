@@ -1,4 +1,4 @@
-module gunbc.fabric_capacity_class_gap
+module gunbc.fabric.capacity_class_gap
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -12,7 +12,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // so nothing refuses it.
 //
 // WHAT MAKES THIS A FINDING RATHER THAN A PREFERENCE is that the protection appears to exist and
-// does not reach. gunbc.fabric_control_plane_charge is real, host-parametric, and CHARGED: on the
+// does not reach. gunbc.fabric.control_plane_charge is real, host-parametric, and CHARGED: on the
 // owned fleet a control-plane resident is SUBTRACTED from what a host can commit, which is exactly
 // why control capacity never becomes offerable there. That mechanism is host-budget arithmetic and
 // it lives entirely on the fleet side. An Offer is a product-side record. Nothing joins them.
@@ -77,7 +77,7 @@ data plausible_carrier_is_untyped: CapacityClassEvidence = PlausibleCarrierIsUnt
 
 // MEASUREMENT THREE. The protection exists and has zero reach into the layer that would need it.
 data protection_has_no_reach: CapacityClassEvidence = ProtectionHasNoReachAcrossSeam {
-  protection: decl_ref(module_path: "gunbc.fabric_control_plane_charge", decl_name: "host_fabric_control_plane_claim"),
+  protection: decl_ref(module_path: "gunbc.fabric.control_plane_charge", decl_name: "host_fabric_control_plane_claim"),
   protection_consumers: [
     decl_ref(module_path: "gunbc.ci_runner_placement", decl_name: "ci_runner_placement_authority"),
     decl_ref(module_path: "gunbc.fleet_host_budget", decl_name: "fleet_host_budget_authority"),

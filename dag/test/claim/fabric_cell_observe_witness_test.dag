@@ -5,7 +5,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import product.placement_supply { HostIdentity }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.cell_converge {
   FabricCellResourceAddress,
   FabricCellRootAddress,
   FabricCellAttemptRootAddress,
@@ -30,7 +30,7 @@ import gunbc.fabric_cell_converge {
   StandingExplicitlyAbsent,
   StandingBlocked,
 }
-import gunbc.fabric_cell_observation_admission {
+import gunbc.fabric.cell_observation_admission {
   fabric_cell_observation_outcome,
   FabricCellObservationDecision,
   FabricCellObservationAdmitted,
@@ -38,7 +38,7 @@ import gunbc.fabric_cell_observation_admission {
   FabricCellObservationNotApplicable,
   admit_fabric_cell_probe,
 }
-import gunbc.fabric_cell_observe {
+import gunbc.fabric.cell_observe {
   FabricCellNamespaceProbe,
   NamespaceEnumerated,
   NamespaceEnumerationRefused,
@@ -846,7 +846,7 @@ test fn witness_observer_unconsumed_probe_refuses_the_population() -> Bool {
 
 // LAW 32 -- THE MINT IS THE ONLY ROUTE, AND IT DISCRIMINATES. This row once compared the joined
 // helper against a hand-assembled population to prove they agreed; that comparison is no longer
-// authorable, because the hand-assembled route does not exist -- gunbc.fabric_cell_converge no
+// authorable, because the hand-assembled route does not exist -- gunbc.fabric.cell_converge no
 // longer exports a population constructor and the mint takes one probe. So what remains to assert
 // is the part that was ever load-bearing: the same mint refuses the host holding a foreign artifact
 // and admits the converged one, from probes that differ only in that artifact.

@@ -3,7 +3,7 @@ module test.claim.fabric_cell_evidence_algebra_witness
 import std.types { Bool, String, Int, NonEmptyStr, list_length }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.cell_converge {
   FabricCellMember,
   FabricCellAddressObservation,
   AddressObserved,

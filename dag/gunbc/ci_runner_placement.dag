@@ -31,7 +31,7 @@ import gunbc.fleet_host_budget {
   compile_pool_bytes_for,
   gunbc_compile_pool_placement,
 }
-import gunbc.fabric_control_plane_charge {
+import gunbc.fabric.control_plane_charge {
   host_fabric_control_plane_claim_under,
   fabric_control_plane_placement,
   FabricControlPlanePlacement,

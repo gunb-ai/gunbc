@@ -44,7 +44,7 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command, required_ci_lane_build }
+import gunbc.fabric.witness_run { witnesses_lane_run_command, build_lane_run_command, required_ci_lane_build }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { required_lanes_gate_stmts }
 import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
@@ -131,7 +131,7 @@ data witness_floor_workflow_job_id: String = "witnesses"
 // the check it publishes is not required and is not meant to be -- `witnesses` answers for it.
 data floor_lane_job_id: String = "floor"
 
-// THE BUILD LANE'S JOB ID, and it is the lane word from `gunbc.fabric_witness_run` rather than
+// THE BUILD LANE'S JOB ID, and it is the lane word from `gunbc.fabric.witness_run` rather than
 // a second name for the same thing. The job id is what GitHub publishes as the check name and
 // what a required-status-check rule names; spelling it differently from the lane the job passes
 // to the binary would be the §3 fork, and it would fail in the quiet direction -- a check name
@@ -384,7 +384,7 @@ fn witness_floor_build_step(build_script: String) -> Step {
 // capabilities keep their standalone entry points
 // (`--required-regen-fixed-point`, `--behavioral-receipt-*`); what ended is their enrolment.
 //
-// THE FLOOR STEP'S COMMAND IS NOT BUILT HERE. It is `gunbc.fabric_witness_run`
+// THE FLOOR STEP'S COMMAND IS NOT BUILT HERE. It is `gunbc.fabric.witness_run`
 // `floor_run_command`, the same ArgvCommand the fabric authorizes, rendered for this transport
 // by `extdeps.exec.command` `shell_command_render`. An earlier revision built the invocation a
 // SECOND time -- its own binary path, its own --required-floor, its own --source-root spelling,

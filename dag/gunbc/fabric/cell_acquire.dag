@@ -1,4 +1,4 @@
-module gunbc.fabric_cell_acquire
+module gunbc.fabric.cell_acquire
 
 import std.types { String, List, Bool, NonEmptyStr }
 import std.algebra { trim }
@@ -18,7 +18,7 @@ import extdeps.systemd {
   CPUWeight,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.cell_converge {
   FabricCellResourceAddress,
   FabricCellRootAddress,
   FabricCellAttemptRootAddress,
@@ -34,7 +34,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_boundary_state_digest_of,
   fabric_cell_boundary_address_digest_of,
 }
-import gunbc.fabric_cell_observe {
+import gunbc.fabric.cell_observe {
   FabricCellHostProbe,
   FabricCellNamespaceProbeEntry,
   FabricCellAddressProbeEntry,
@@ -56,7 +56,7 @@ data fabric_cell_acquire_authority_disposition: Disposition = SingleAuthority
 data fabric_cell_slice_unit_pattern: NonEmptyStr = "fabric-cell-*.slice" as NonEmptyStr
 
 // THIS MODULE IS THE HOST-EFFECT HALF THE PURE OBSERVER WAS SPLIT AWAY FROM, and it is a
-// realization handler bound to that observer's shape rather than a second observer. gunbc.fabric_cell_observe
+// realization handler bound to that observer's shape rather than a second observer. gunbc.fabric.cell_observe
 // owns what a probe RESULT means; this module owns how a probe result is ACQUIRED, and the only
 // thing it may produce is a `FabricCellHostProbe` -- a value, not a verdict. Nothing here decides
 // whether a cell is converged, absent or refused: those are consequences the pure half derives, and
@@ -610,7 +610,7 @@ fn fabric_cell_acquisition_address_entries(
 // values no host is carrying. The observer then saw an address absent from its namespace with a
 // state supplied, refused it as a contradiction, and the cell could never be planned -- the exact
 // "first real observation of an unprovisioned host blocked instead of planning" failure
-// gunbc.fabric_cell_observe records in its own header. A success exit is not evidence that a unit
+// gunbc.fabric.cell_observe records in its own header. A success exit is not evidence that a unit
 // exists, so the enumeration decides whether to ask at all.
 
 data fabric_cell_attempt_root_entry_name: String = "attempts"

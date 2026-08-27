@@ -6,7 +6,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import std.measure { byte_size_count }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.cell_converge {
   FabricCellRootAddress,
   FabricCellAttemptRootAddress,
   FabricCellResourceBoundaryAddress,
@@ -16,7 +16,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_slice_name,
 }
 import extdeps.systemd { MemoryMax, TasksMax }
-import gunbc.fabric_cell_observe {
+import gunbc.fabric.cell_observe {
   FabricCellNamespaceProbe,
   NamespaceEnumerated,
   NamespaceObservedAbsent,
@@ -25,7 +25,7 @@ import gunbc.fabric_cell_observe {
   AddressStateRead,
   AddressStateReadRefused,
 }
-import gunbc.fabric_cell_acquire {
+import gunbc.fabric.cell_acquire {
   FabricCellDirectoryObservation,
   FifoKind,
   CharacterDeviceKind,
@@ -68,7 +68,7 @@ import gunbc.fabric_cell_acquire {
 }
 
 // ROUTED, BECAUSE AN UNROUTED WITNESS IS DISCOVERED AND NEVER RUN. Every row here is over the PURE
-// projections of gunbc.fabric_cell_acquire; the host effects in that module are unreachable from a
+// projections of gunbc.fabric.cell_acquire; the host effects in that module are unreachable from a
 // hermetic fixture by construction, and that is the boundary rather than a gap -- a mocked
 // directory listing would assert this file's laws against authored data instead of against the
 // projection, which is the vacuous pass DESIGN section 4b rules worse than absent.

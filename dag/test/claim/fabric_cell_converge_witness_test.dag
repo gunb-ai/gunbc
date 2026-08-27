@@ -6,7 +6,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.fabric_cell_observation_admission {
+import gunbc.fabric.cell_observation_admission {
   fabric_cell_observation_outcome,
   FabricCellObservationDecision,
   FabricCellObservationAdmitted,
@@ -14,7 +14,7 @@ import gunbc.fabric_cell_observation_admission {
   FabricCellObservationNotApplicable,
   fabric_cell_observation_unobserved,
 }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.cell_converge {
   fabric_cell_observation_refusal_identity,
   StandingExplicitlyAbsent,
   StandingObservedDrift,
@@ -78,7 +78,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THESE ROWS ARE READBACK-LEVEL LAWS, SO THEY ARE STATED OVER THE CLASSIFICATION KERNEL. There is
 // no longer any route from a hand-built readback to a plan-admissible observation -- the mint lives
-// in gunbc.fabric_cell_observation_admission and takes one probe -- and that is the point rather
+// in gunbc.fabric.cell_observation_admission and takes one probe -- and that is the point rather
 // than an obstacle: a fixture may still hand the kernel any roster and any readback it likes, and
 // what it cannot do is present the result as something the planner accepts. Every row below that
 // once asked "does this population refuse" now asks the kernel directly, which is where the fact it

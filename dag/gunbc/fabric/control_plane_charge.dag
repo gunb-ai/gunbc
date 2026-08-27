@@ -1,4 +1,4 @@
-module gunbc.fabric_control_plane_charge
+module gunbc.fabric.control_plane_charge
 
 import std.types { String, NonEmptyStr, Bool, Int }
 import std.measure { ByteSize, byte_size, byte_size_count }

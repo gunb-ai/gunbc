@@ -72,7 +72,7 @@ import gunbc.guarantee_rung_drop {
   stall_is_below_ceiling,
   stall_is_permanent,
 }
-import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.fabric.cell_observation_admission { fabric_cell_observation_unobserved }
 
 // THE DISCRIMINATING RED FOR THE DEFECT THIS LANE WAS DISPATCHED FOR. The emitted apply.sh carried
 // daemon-reload and disable and nothing else -- enable count 0, start count 0 -- so convergence

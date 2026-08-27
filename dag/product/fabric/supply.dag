@@ -152,7 +152,7 @@ type SupplySelectionPolicy =
 
 // FUNGIBILITY IS THE FABRIC'S QUESTION, NOT A CONSUMER'S.
 //
-// This fold arrived here from gunbc.fabric_witness_run, where it had been
+// This fold arrived here from gunbc.fabric.witness_run, where it had been
 // written as authorize_floor_run with a FloorRunRefusal coproduct. Nothing in
 // it was ever about the floor: comparing a Work's requirements against an
 // SupplierOffer's capabilities is provider-neutral, and work.dag's own header already

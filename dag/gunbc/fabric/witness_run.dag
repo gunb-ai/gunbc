@@ -1,4 +1,4 @@
-module gunbc.fabric_witness_run
+module gunbc.fabric.witness_run
 
 import std.types { NonEmptyStr }
 import std.currency { CurrencyCode, Usd }

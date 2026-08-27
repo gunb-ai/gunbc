@@ -109,7 +109,7 @@ type RunnerSlotAddSequence
 // THE FABRIC SLOT HAS NO PROVISIONING SEQUENCE, HERE OR ANYWHERE, AND THIS ANNOTATION SAID
 // OTHERWISE. A previous revision claimed the fabric slot's own provisioning sequence "now exists",
 // described the two families as "siblings with disjoint step enums", and named
-// gunbc.fabric_cell_converge fabric_cell_provision_sequence_for as the sequence selector. That
+// gunbc.fabric.cell_converge fabric_cell_provision_sequence_for as the sequence selector. That
 // symbol does not exist and never did: the PR that wrote this sentence deleted the
 // FabricCellProvisionStep vocabulary in the same diff and replaced it with a membership model, so
 // the annotation described the shape the work started from rather than the shape it landed in.
@@ -117,7 +117,7 @@ type RunnerSlotAddSequence
 // load-bearing, and because a fabricated symbol in a citation is the exact defect DESIGN section 3
 // makes symbolic citation decidable in order to catch (found by side-chat review, not by any gate).
 //
-// WHAT gunbc.fabric_cell_converge ACTUALLY MODELS: the fabric family's DESIRED AND OBSERVED
+// WHAT gunbc.fabric.cell_converge ACTUALLY MODELS: the fabric family's DESIRED AND OBSERVED
 // SUBSTRATE MEMBERSHIP -- resource-addressed members, a typed population, and a verdict over the
 // two. Its host-effect realization is absent, which the plan family states as its own typed arm
 // rather than by silence. So there is no fabric step vocabulary to be a sibling of, and no fabric
@@ -165,7 +165,7 @@ fn runner_slot_add_sequence_for(host: HostIdentity, slot_index: Nat) -> RunnerSl
           GitHubRunnerAddSequence { steps: runner_slot_add_steps_ordered() }
         SlotServesFabricExecution =>
           FabricSlotHasNoGitHubAddSequence {
-            reason: "fabric execution slot: the GitHub runner add sequence does not apply to it, and refusing is not the same as having nothing to say. gunbc.fabric_cell_converge now models the fabric family's DESIRED AND OBSERVED SUBSTRATE MEMBERSHIP; its host-effect realization remains absent, so there is no provisioning sequence to name and no fabric success arm belongs in this GitHub lifecycle. What is refused here is the FILTERED SUBSEQUENCE: this sequence fetches an actions-runner release, verifies its arch digest and starts an actions-runner unit, so the GitHub steps minus the GitHub-specific ones would provision a slot that downloads GitHub's runner in order never to run GitHub's runner"
+            reason: "fabric execution slot: the GitHub runner add sequence does not apply to it, and refusing is not the same as having nothing to say. gunbc.fabric.cell_converge now models the fabric family's DESIRED AND OBSERVED SUBSTRATE MEMBERSHIP; its host-effect realization remains absent, so there is no provisioning sequence to name and no fabric success arm belongs in this GitHub lifecycle. What is refused here is the FILTERED SUBSEQUENCE: this sequence fetches an actions-runner release, verifies its arch digest and starts an actions-runner unit, so the GitHub steps minus the GitHub-specific ones would provision a slot that downloads GitHub's runner in order never to run GitHub's runner"
           }
       }
   }

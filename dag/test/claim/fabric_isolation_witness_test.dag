@@ -10,7 +10,7 @@ import product.fabric.isolation {
   shared_kernel_sandbox_profile, dedicated_kernel_sandbox_profile,
   current_runner_slot_profile, tenant_workload_isolation_requirement,
 }
-import gunbc.fabric_witness_run { floor_isolation_requirement }
+import gunbc.fabric.witness_run { floor_isolation_requirement }
 
 // A SHARED-KERNEL SANDBOX CANNOT SATISFY A DEDICATED-KERNEL REQUIREMENT, AND THE REFUSAL NAMES
 // EXACTLY THAT ONE GUARANTEE.

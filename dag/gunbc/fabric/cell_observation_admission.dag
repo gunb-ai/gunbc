@@ -1,9 +1,9 @@
-module gunbc.fabric_cell_observation_admission
+module gunbc.fabric.cell_observation_admission
 
 import std.types { String, List, Bool, list_length }
 import std.disposition { Disposition, SingleAuthority }
 import product.placement_supply { HostIdentity }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.cell_converge {
   FabricCellMember,
   FabricCellObservedMembers,
   FabricCellObservationRefusal,
@@ -22,15 +22,15 @@ import gunbc.fabric_cell_converge {
   fabric_cell_desired_state_digest,
   fabric_cell_canonical_refusals,
 }
-import gunbc.fabric_cell_observe {
+import gunbc.fabric.cell_observe {
   FabricCellHostProbe,
   fabric_cell_observe,
   fabric_cell_projection_refusals,
 }
 
 // THE ONE PLACE A PLAN-ADMISSIBLE OBSERVATION IS MINTED, AND IT SITS HERE BECAUSE NEITHER UPSTREAM
-// MODULE CAN HOLD IT. gunbc.fabric_cell_converge owns desired state and the pure classification
-// kernel; gunbc.fabric_cell_observe owns probe interpretation and imports it. The join needs BOTH,
+// MODULE CAN HOLD IT. gunbc.fabric.cell_converge owns desired state and the pure classification
+// kernel; gunbc.fabric.cell_observe owns probe interpretation and imports it. The join needs BOTH,
 // so homing it upstream forced the guarantee into a layer that cannot know the proposition it would
 // be guaranteeing -- converge cannot name a projection, so its constructor had to accept a readback
 // and a caller-authored refusal list, two independently writable halves. This module is the first
@@ -112,7 +112,7 @@ fn fabric_cell_observation_outcome(decision: FabricCellObservationDecision) -> F
 // mint's own reasoning, not a second route, not exported". THAT ANNOTATION WAS FALSE AND A PROBE
 // PROVED IT: a scratch module in another namespace imported the name, called it with a hand-built
 // readback and a literal empty discovered list, and the row PASSED. So the recut had deleted the
-// two-writable-halves constructor from gunbc.fabric_cell_converge and I had rebuilt it one module
+// two-writable-halves constructor from gunbc.fabric.cell_converge and I had rebuilt it one module
 // downstream, inside the very file whose job is to make that shape unreachable.
 //
 // There is no module-private modifier to reach for here, so the construction move is to have no

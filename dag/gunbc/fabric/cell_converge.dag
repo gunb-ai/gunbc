@@ -1,4 +1,4 @@
-module gunbc.fabric_cell_converge
+module gunbc.fabric.cell_converge
 
 import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
 import std.nat { Nat }

@@ -15,12 +15,12 @@ import gunbc.membership_reconcile { MemberRemoved }
 import gunbc.host_axis_caps { CapMember }
 import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
-import gunbc.fabric_cell_observation_admission {
+import gunbc.fabric.cell_observation_admission {
   FabricCellObservationDecision,
   admit_fabric_cell_probe,
   fabric_cell_observation_unobserved,
 }
-import gunbc.fabric_cell_observe {
+import gunbc.fabric.cell_observe {
   FabricCellHostProbe,
   FabricCellNamespaceProbeEntry,
   FabricCellAddressProbeEntry,
@@ -32,7 +32,7 @@ import gunbc.fabric_cell_observe {
   AddressStateRead,
   AddressStateReadRefused,
 }
-import gunbc.fabric_cell_converge {
+import gunbc.fabric.cell_converge {
   StandingExplicitlyAbsent,
   StandingObservedDrift,
   StandingSatisfied,
