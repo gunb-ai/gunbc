@@ -95,7 +95,7 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
                   fold(fields, init: false, f: fn(has_opts, field) {
                     has_opts || (field.key == "options" && match field.value {
                       YamlSequence { elements: opts } =>
-                        length(opts) == 8
+                        length(opts) == 9
                           && any(opts, o => match o { YamlString { value } => value == "plan"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "apply"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "spark_linger"  _ => false })
@@ -104,6 +104,7 @@ fn mode_input_has_choice_options(v: YamlValue) -> Bool {
                           && any(opts, o => match o { YamlString { value } => value == "spark_grants"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "spark_durability"  _ => false })
                           && any(opts, o => match o { YamlString { value } => value == "session_demand_observe"  _ => false })
+                          && any(opts, o => match o { YamlString { value } => value == "dashboard_deploy"  _ => false })
                       YamlNull => false
                       YamlBool { value: _ } => false
                       YamlInt { lexeme: _ } => false
@@ -142,11 +143,22 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
   entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
 }
 
+// THE COUNT IS KEPT BESIDE THE NAMES DELIBERATELY, and it moved from 2 to 3 because a
+// `dashboard-deploy` job was added -- not because the check was in the way. Naming each job without
+// pinning the total would let a fourth job appear unobserved; pinning the total without naming them
+// would pass for any three jobs at all. Together they are an exact partition, which is the identity
+// join DESIGN section 5 asks for rather than a count standing in for one.
+//
+// BOTH DEPLOYING JOBS NEED `build`, and that is the property this witness is really about: the
+// release binaries are produced once and consumed by everything that installs them, so a job that
+// mutates a host without that edge would be installing whatever happened to be lying around.
 test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
-  fleet_converge_workflow.jobs.length() == 2
+  fleet_converge_workflow.jobs.length() == 3
     && fleet_converge_workflow.jobs[0].id == "build"
     && fleet_converge_workflow.jobs[1].id == "fleet-converge"
     && fleet_converge_workflow.jobs[1].needs == ["build"]
+    && fleet_converge_workflow.jobs[2].id == "dashboard-deploy"
+    && fleet_converge_workflow.jobs[2].needs == ["build"]
 }
 
 fn expected_fleet_converge_yml_content() -> String {
