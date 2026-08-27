@@ -39,12 +39,20 @@ test fn witness_wif_binding_perturbation_reddens() -> Bool {
     && !operator_bindings_are_user_principal_accessor_only(bindings: [poisoned_wif])
 }
 
-test fn witness_credential_flow_binds_auth_pattern_authorities() -> Bool {
-  tailscale_acl_credential_flow_uses_auth_patterns()
-    && tailscale_acl_gcp_secret_credential_authority.decl_name == "gcp_secret_credential"
-    && tailscale_acl_adc_refresh_credential_authority.decl_name == "gcp_oauth_access_token_via_adc_refresh"
-    && tailscale_acl_optional_impersonation_authority.module_path == "gunbc.auth.optional_impersonation"
-    && tailscale_acl_optional_impersonation_authority.decl_name == "optional_impersonation"
+// The five string comparisons this witness used to carry are DELETED rather than rehomed, and
+// the distinction matters under §4b(4). A climb keeps the discriminating RED that proves the
+// higher rung is real. There was no discriminating RED here to keep: every clause compared a
+// `DeclarationRef` row's literal field against the same literal, so the assertion was green by
+// construction and could only be reddened by editing the row it read. It was a decoration, not
+// evidence, and it was worse than absent because its name claimed the credential flow bound the
+// auth-pattern authorities while nothing bound them. The binding is now an import edge in
+// `gunbc.tailscale_acl_phase2_credential`, enforced by the compiler.
+//
+// What survives is the clause that was never a tautology: the operator strategy is the
+// ADC-refresh arm of a closed coproduct and not the gcloud-CLI arm. Its RED is authorable by
+// changing the strategy, so it stays enrolled.
+test fn witness_operator_credential_strategy_is_adc_refresh() -> Bool {
+  tailscale_acl_operator_strategy_is_adc_refresh()
     && match tailscale_acl_operator_adc_strategy {
       AdcRefresh { adc_path: _ } => true
       _ => false
