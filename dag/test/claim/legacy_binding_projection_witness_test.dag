@@ -353,12 +353,17 @@ test fn a_decision_about_a_non_base_occurrence_refuses() -> Bool {
 // keeping them apart is the whole content: an insertion that derives, a created node that never
 // said what it was created FOR, and a node that is not a created node at all.
 //
+// THE NAME CHANGED WITH THE PAYLOAD. It read `..._is_counted_not_located`, which was true while the
+// refusal carried a scope and a count; the arm now carries the authored span too, so the name
+// asserted an absence the change had just closed -- the same additive-invalidation shape this file
+// keeps finding, this time in my own test name one commit after fixing it in someone else's.
+//
 // THE OLD REFUSAL DID NOT RETIRE, IT NARROWED. Its population was every declared insertion; it is
 // now exactly the cause-lost one, and that arm is still an executing red -- which is what §4b asks
 // of evidence when a class climbs: the production machinery that refused the whole population is
 // gone, the discriminating RED that proved the refusal executed stays enrolled. Deleting it because
 // the capability arrived would have recreated specification-without-execution one rung up.
-test fn a_created_node_that_never_stated_its_cause_refuses_and_is_counted_not_located() -> Bool {
+test fn a_created_node_that_never_stated_its_cause_refuses_carrying_its_scope_and_authored_span() -> Bool {
   match lbp_emit(
     expected_base: [10],
     decisions: [lbp_carry(base: 10, projected: 11)],
