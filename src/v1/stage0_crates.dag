@@ -10,6 +10,7 @@ import gunbc.stage0_crate_partition_generated {
   GeneratedEmitCoreCrate,
   GeneratedFoundationCrate,
   GeneratedLayeredCoreCrate,
+  GeneratedPartitionCrateKind,
   GeneratedPartitionCrateRow,
   generated_partition_crate_rows
 }
@@ -316,12 +317,23 @@ fn stage0_partition_row_dependencies_outcome(
   }
 }
 
-fn stage0_partition_row_features(row: GeneratedPartitionCrateRow) -> List<CargoFeature> {
-  match row.kind {
+// THE FEATURE SET IS A FUNCTION OF THE CRATE KIND, and nothing else about a row decides it.
+// Stated at that grain because a second consumer exists that is NOT a partition crate: the
+// emitted-closure compile phase builds a per-entry probe crate outside the repository, and it
+// needs the foundation kind's feature set because the emitted v1_rt.rs gates on it. Asking that
+// consumer to hand over a GeneratedPartitionCrateRow would make it fabricate a row -- blank
+// crate_dir, empty module list -- whose only true field is the one being read, and the fabricated
+// row would ASSERT the probe is a generated partition crate, which it is not.
+fn stage0_features_for_crate_kind(kind: GeneratedPartitionCrateKind) -> List<CargoFeature> {
+  match kind {
     GeneratedFoundationCrate => [CargoFeature { name: "text_lookup_work_counter", dependencies: [] }]
     GeneratedLayeredCoreCrate => []
     GeneratedEmitCoreCrate => []
   }
+}
+
+fn stage0_partition_row_features(row: GeneratedPartitionCrateRow) -> List<CargoFeature> {
+  stage0_features_for_crate_kind(kind: row.kind)
 }
 
 fn stage0_partition_row_to_spec_outcome(

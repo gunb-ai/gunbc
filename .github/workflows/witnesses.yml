@@ -66,7 +66,7 @@ jobs:
           rustup toolchain list || echo "rustup toolchain list: no answer"
           rustup default || echo "rustup default: no answer"
         if: "!cancelled()"
-      - name: "Required CI: build lane (regen, v2 emission)"
+      - name: "Required CI: build lane (phases named by the run, not by this label)"
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           cd "$ROOT"
