@@ -600,13 +600,25 @@ fn unresolved_commit_parent(commits: List<RepositoryCommit>) -> RepositoryCommit
 // count and grows without bound, so this is not a "small n" the rule excuses -- DESIGN section 6 fixes
 // a proven cost shape regardless of realized n, and the realized n here is the one that keeps growing.
 //
-// ALL THREE FACTORS DISSOLVE ON THE SAME TRIGGER, which is why this is declared rather than partly
+// THIS IS A DECLARED COST DEFECT, NOT AN ACCEPTED COST. The distinction is the whole point of writing
+// it down: nothing here argues the shape is fine, and no later reader may cite this annotation as
+// having settled it. It is O(n^3) realized in the ORDINARY case -- not quadratic, and not "cubic in
+// the worst case", because the healthy acyclic repository IS the worst case.
+//
+// ALL THREE FACTORS DISSOLVE ON THE SAME TRIGGER, which is why it is declared rather than partly
 // repaired: the lookup is linear because the carrier is a list, and the all-starts fold cannot skip a
-// start already proven acyclic without a visited set. Both want the same keyed representation, and
-// keying is deferred to one cut over the whole reference vocabulary rather than taken piecemeal here
-// -- converting this one site would relocate the fork instead of removing it. Until that lands the
-// shape stands declared and wrong-by-design, on a persistence boundary crossed once per write.
-// Corrected after external review measured the nesting; the original figure was authored here.
+// start already proven acyclic without a visited set. Both want the same keyed representation.
+//
+// TRIGGER: the reference-vocabulary keying cut -- one cut over the whole vocabulary, taking history
+// steps, `checked_out` and the reference lookups together. Converting this one site instead would
+// relocate the positional-carrier fork rather than remove it, which is the objection that deferred
+// `checked_out`; a leaf conversion is not a smaller version of this repair, it is a different and
+// worse one. Ruled B by the lane owner after independently deriving the nesting, with that cut named
+// as the next SCM work item dispatched once this stack lands.
+//
+// It runs on ENCODE AND DECODE -- every write and every read, not once per write as an earlier
+// revision of this annotation said. Corrected after external review measured the nesting; both the
+// original exponent and that frequency were authored here.
 // KEYED ON THE ROW, NOT THE PROGRAM. The previous form folded for the first row whose ROOT matched,
 // so on a history containing a revert it answered with the wrong record's ancestry -- and answered
 // confidently, since a first match is a successful lookup. Resolving through commit_at_reference
