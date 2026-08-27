@@ -28,7 +28,7 @@ import gunbc.discovery_census {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedLiveTree,
+  Planned, DeclinedLongModule, DeclinedLiveTree, DeclinedCostDebt,
   required_floor_site_disposition,
 }
 import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
@@ -197,6 +197,7 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
     DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
     Planned => false
     DeclinedLiveTree => false
+    DeclinedCostDebt => false
   }
 }
 
@@ -211,6 +212,7 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedLiveTree => false
+    DeclinedCostDebt => false
   }
 }
 
@@ -222,6 +224,7 @@ test fn w_live_tree_site_declines_when_no_home_matched() -> Bool {
     DeclinedLiveTree => true
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedCostDebt => false
   }
 }
 
@@ -238,8 +241,40 @@ test fn w_counts_partition_the_offered_population() -> Bool {
     && (counts.planned == 2)
     && (counts.declined_long_module == 1)
     && (counts.declined_live_tree == 2)
+    && (counts.declined_cost_debt == 0)
     && (counts.offered ==
-        counts.planned + counts.declined_long_module + counts.declined_live_tree)
+        counts.planned + counts.declined_long_module + counts.declined_live_tree
+          + counts.declined_cost_debt)
+}
+
+// THE SITE FUNCTION NEVER RETURNS `DeclinedCostDebt`, AND THAT IS A CLAIM ABOUT WHERE THE
+// DECISION LIVES RATHER THAN A RESTATEMENT OF THE MATCHES ABOVE.
+//
+// Cost debt is CLAIM-GRAIN -- it is a membership test over a qualified identity -- while this
+// function takes only module-grain inputs. So the arm exists in the coproduct and is
+// unreachable from here BY CONSTRUCTION, and the caller applies it only to a site this function
+// already answered `Planned` for. That ordering is load-bearing: it is what makes a roster line
+// over an already-declined site surface as a STALE row to delete rather than as a withhold
+// indistinguishable from a real one.
+//
+// THE RED IS AUTHORABLE, which is what keeps this from being the permanently-green decoration
+// DESIGN section 4b names: a future edit that threads an identity into this function and
+// returns the cost-debt arm from it reds here, and that edit is exactly the one that would
+// silently re-order the precedence.
+test fn w_site_disposition_never_answers_cost_debt() -> Bool {
+  let long_home = match required_floor_site_disposition(
+    module_path: "test.claim.long.slow_witness",
+    reads_live_tree: SubstrateInputsOnly {}
+  ) { DeclinedCostDebt => false  Planned => true  DeclinedLongModule { matched_prefix: _ } => true  DeclinedLiveTree => true }
+  let live_tree = match required_floor_site_disposition(
+    module_path: "test.claim.reads_tree_witness",
+    reads_live_tree: ReadsLiveTree {}
+  ) { DeclinedCostDebt => false  Planned => true  DeclinedLongModule { matched_prefix: _ } => true  DeclinedLiveTree => true }
+  let ordinary = match required_floor_site_disposition(
+    module_path: "test.claim.ordinary_witness",
+    reads_live_tree: SubstrateInputsOnly {}
+  ) { DeclinedCostDebt => false  Planned => true  DeclinedLongModule { matched_prefix: _ } => true  DeclinedLiveTree => true }
+  long_home && live_tree && ordinary
 }
 
 // EVERY DISCOVERED SITE GETS A ROW, DECLINED OR NOT. A census that dropped the declines would

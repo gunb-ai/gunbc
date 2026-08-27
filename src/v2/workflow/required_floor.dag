@@ -80,6 +80,7 @@ type RequiredFloorDisposition =
     Planned
   | DeclinedLongModule { matched_prefix: String }
   | DeclinedLiveTree
+  | DeclinedCostDebt
 
 // ROSTER GROWTH IS BUDGET-BOUND AT THIS ADMISSION AUTHORITY.
 //
@@ -306,6 +307,28 @@ fn first_module_prefix_match(module_path: String, prefixes: List<String>) -> Mod
   }
 }
 
+// THE THIRD DECLINE ARRIVED (2026-08-27), AND WITH IT THE COLLISION THE ORDER ABOVE WAS KEPT
+// FOR. `DeclinedCostDebt` is claim-grain -- it is a membership test over
+// `v2.workflow.floor_cost_debt` on a qualified identity -- while the two declines above are
+// module-grain, so a single site CAN legitimately satisfy a cost-debt decline and a long-home or
+// live-tree decline at once. That is exactly the subject the next-rung trigger above named as
+// owed, and it is now authorable.
+//
+// COST DEBT IS ORDERED LAST, DELIBERATELY. A row that already declines for a home reason does
+// not execute for that reason, so a cost-debt row over it withholds nothing that was going to
+// run -- and reporting it as `DeclinedCostDebt` would tell a reader to make it cheaper when the
+// correct remedy is to delete the roster line. Ordering it last means such a row keeps its home
+// decline, never enters the cost-debt reverse join, and is reported as a STALE roster row by
+// `v1_compiler.cli_run` -- which blocks, and whose diagnostic says to delete the line. The order
+// is therefore load-bearing in a way the previous two-decline order never was: swapping it would
+// silently convert a stale roster row into a permanent, plausible-looking withhold.
+//
+// THIS FUNCTION TAKES ONLY THE MODULE-GRAIN INPUTS AND STAYS THAT WAY. The cost-debt decision is
+// applied by the caller, which holds the identity; folding a `qualified_identity` parameter in
+// here would make every module-grain caller invent one. The ORDER is what this function owns and
+// the order is what the caller must not re-author -- so the caller applies cost debt only to a
+// site this function already answered `Planned` for, which is the same precedence expressed at
+// the only grain each half can see.
 fn required_floor_site_disposition(
   module_path: String,
   reads_live_tree: LiveTreeDisposition,
