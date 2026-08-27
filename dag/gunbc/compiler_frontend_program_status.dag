@@ -333,17 +333,6 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
         why: "the wave-admission wall does not exist yet, so there is nothing to cite. gunbc.compiler_frontend_program_interlock records the admission partition as prose precisely because a partition with no consumer is a guess. Derivable once the wall exists and classifies deltas, at which point its unadjudicated-delta population is this milestone's own." as NonEmptyStr,
         cause: needs(i: NamespaceWaveAdmissionWall)
       }
-    // DEFINITIONAL WHERE A RECORD EXISTS, AND HONESTLY UNANSWERABLE WHERE NONE DOES. The milestone is
-    // the interlock's own label -- "a content-addressed, past-tense record of what the legacy
-    // resolver ACTUALLY SELECTED over one exact base" -- so the population that answers it is the
-    // persisted-baseline roster, not a proxy for it.
-    //
-    // THE ABSENT CASE STILL RETURNS NotDerivable WITH THE SAME CAUSE, and that is the admission test
-    // above being obeyed rather than a leftover. An empty roster is not evidence that the baseline is
-    // clear; `standing_from_evidence` reads an empty outstanding list as Clear, so folding the absent
-    // case through it would tick this milestone precisely because nobody had taken the observation.
-    // What changed is that the arm is now a FUNCTION of a population instead of a constant: a
-    // persisted row makes it derive, and its absence keeps the same typed cause.
     NamespaceBaselineObservationComplete =>
       match legacy_baseline_capture_capability() {
         CaptureBlocked { phase: _, cause: _ } =>
