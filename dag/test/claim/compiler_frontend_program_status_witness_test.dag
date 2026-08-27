@@ -4,6 +4,7 @@ import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.witness_admission { DiscoverySelection, NoConsumer }
 import gunbc.compiler_frontend_program_interlock {
+  milestone_prerequisites,
   SelfHostWholeCorpusPopulationDerived,
   SelfHostRatchetObservationEnrolled,
   SelfHostEmitterProducesEveryRetainedArtifact,
@@ -51,6 +52,8 @@ import gunbc.compiler_frontend_program_status {
   ClassOutstanding,
   ClassNotDerivable,
   StandingRow,
+  Underivability,
+  DerivableOnlyViaPrerequisites,
   StartabilityClass,
   ClassStartable,
   ClassBlockedKnownOnly,
@@ -220,10 +223,20 @@ test fn a_standing_agrees_only_when_its_class_matches_its_population() -> Bool {
     && !standing_agrees_with_population(s: Outstanding { evidence: empty_evidence }, expected: [])
 }
 
-// AND IT REFUSES NotDerivable, which is the row the previous guard closed and the only one it did.
+// AND IT REFUSES NotDerivable -- AUTHORED, because the previous cut of this control was itself the
+// defect it was written to close. It read milestone_status(SelfHostSuccessorPromotionAdmitted),
+// a LIVE milestone that happens to be NotDerivable today; when successor promotion legitimately
+// clears, the helper correctly answers that Clear{[]} agrees with [], the negation reds, and the
+// closing move is to swap in a different live subject. The control for eliminating a live-state
+// oracle was a live-state oracle. Constructed directly, the row is a property of the predicate and
+// no program state can move it.
 test fn a_not_derivable_standing_never_agrees() -> Bool {
   !standing_agrees_with_population(
-    s: milestone_status(m: SelfHostSuccessorPromotionAdmitted), expected: [])
+    s: NotDerivable { why: "fixture" as NonEmptyStr, cause: DerivableOnlyViaPrerequisites },
+    expected: [])
+    && !standing_agrees_with_population(
+         s: NotDerivable { why: "fixture" as NonEmptyStr, cause: DerivableOnlyViaPrerequisites },
+         expected: ["m"])
 }
 
 test fn the_ratchet_observation_milestone_is_wired_to_its_fold() -> Bool {
@@ -239,15 +252,65 @@ test fn the_ratchet_observation_fold_answers_both_ways() -> Bool {
     && count(ratchet_observation_outstanding(cadence: NoConsumer)) == 1
 }
 
-// STARTABILITY IS FAIL-CLOSED. NamespaceFirstSemanticWave depends on SelfHostRatchetGateEnrolled,
-// which is NotDerivable, so its startability must be NotDerivable -- never BlockedOnPrerequisites,
-// which would report a missing instrument as ordinary pending work, and never Startable.
-test fn an_unanswerable_prerequisite_makes_startability_unanswerable() -> Bool {
-  match milestone_startability(m: NamespaceFirstSemanticWave) {
-    StartablePrerequisitesClear => false
-    BlockedOnPrerequisites { blocking: _ } => false
-    StartabilityNotDerivable { unanswerable, blocking: _ } => count(unanswerable) > 0
+// STARTABILITY IS CHECKED AS A WIRING RELATION OVER EVERY MILESTONE, replacing two arms that each
+// pinned today's graph. The first asserted that NamespaceFirstSemanticWave's startability is
+// unanswerable -- true today, red the day its prerequisites become answerable, which is the whole
+// point of the program. The second asserted a named trio and the literal three, and its own red
+// during the S4a rewire plant was the proof: S4a becoming Clear removes a known blocker, and
+// LEGITIMATE S4a enrolment produces exactly the same transition. That second red was not
+// corroboration of the plant, it was the arm snapshotting the present graph.
+//
+// Neither claim needed a live subject. The classifier's four states are already authored at fixture
+// grain through startability_from_populations; what those arms were reaching for is the WIRING --
+// that milestone_startability's answer for each milestone follows from its direct prerequisites'
+// standings. Stated over the WHOLE roster and derived independently by folding
+// milestone_prerequisites and classifying each one, it holds as the program moves, covers all
+// fourteen instead of four, and reds if the classifier stops consulting the graph.
+//
+// The re-derivation deliberately walks milestone_prerequisites + standing_class rather than calling
+// prerequisite_names_by_class, so a defect inside the carrier's own partition helper is visible
+// here rather than cancelling on both sides.
+fn expected_startability(m: ProgramMilestone) -> Startability {
+  let prereqs = milestone_prerequisites(m: m)
+  startability_from_populations(
+    unanswerable: prereqs
+      |> filter(p => standing_class_label(c: standing_class(s: milestone_status(m: p))) == standing_class_label(c: ClassNotDerivable))
+      |> map(p => milestone_label(m: p)),
+    blocking: prereqs
+      |> filter(p => standing_class_label(c: standing_class(s: milestone_status(m: p))) == standing_class_label(c: ClassOutstanding))
+      |> map(p => milestone_label(m: p)))
+}
+
+fn startability_unanswerable_members(s: Startability) -> List<String> {
+  match s {
+    StartablePrerequisitesClear => []
+    BlockedOnPrerequisites { blocking: _ } => []
+    StartabilityNotDerivable { unanswerable, blocking: _ } => unanswerable
   }
+}
+
+fn startability_blocking_members(s: Startability) -> List<String> {
+  match s {
+    StartablePrerequisitesClear => []
+    BlockedOnPrerequisites { blocking } => blocking
+    StartabilityNotDerivable { unanswerable: _, blocking } => blocking
+  }
+}
+
+fn startability_matches(a: Startability, b: Startability) -> Bool {
+  startability_class_label(c: startability_class(s: a))
+      == startability_class_label(c: startability_class(s: b))
+    && count(startability_unanswerable_members(s: a)) == count(startability_unanswerable_members(s: b))
+    && all(startability_unanswerable_members(s: b),
+         x => any(startability_unanswerable_members(s: a), y => y == x))
+    && count(startability_blocking_members(s: a)) == count(startability_blocking_members(s: b))
+    && all(startability_blocking_members(s: b),
+         x => any(startability_blocking_members(s: a), y => y == x))
+}
+
+test fn every_milestone_startability_agrees_with_its_prerequisite_standings() -> Bool {
+  all(program_milestones,
+    m => startability_matches(a: milestone_startability(m: m), b: expected_startability(m: m)))
 }
 
 // THE POSITIVE CONTROL FOR THE SAME FOLD: a milestone with no prerequisites is startable, so the
@@ -508,17 +571,13 @@ test fn a_mixed_prerequisite_set_preserves_both_identities() -> Bool {
   }
 }
 
-// THE LIVE MIXED POPULATION IS THREE, AND THEY ARE NAMED. This is the identity join over the live
-// graph for the class above: each of these three has a prerequisite that is OUTSTANDING and known,
-// beside one that is unanswerable. It reds if any of them silently loses its blocker again, which a
-// partition-law arm alone cannot see -- the sum stays 14 either way.
-test fn the_three_live_mixed_milestones_each_keep_a_known_blocker() -> Bool {
-  all([SelfHostRatchetGateEnrolled, SelfHostSuccessorPromotionAdmitted, SelfHostSeedRetirement],
-    m => match milestone_startability(m: m) {
-      StartablePrerequisitesClear => false
-      BlockedOnPrerequisites { blocking: _ } => false
-      StartabilityNotDerivable { unanswerable, blocking } =>
-        count(unanswerable) > 0 && count(blocking) > 0
-    })
-    && program_standing_census().blocked_and_not_fully_derivable == 3
-}
+// THE NAMED-TRIO ARM WAS DELETED HERE, and its own red during a plant is what condemned it. It
+// asserted three specific mixed milestones plus the literal three. When the S4a rewire plant ran,
+// this arm went red beside the real wiring control and I reported that as corroboration -- the
+// graph relation working. It was not. S4a becoming Clear removes a known blocker, and LEGITIMATE
+// S4a enrolment produces exactly the same transition, so the arm was snapshotting the present graph
+// and I had read its snapshot behaviour as evidence of correctness.
+//
+// Everything it was reaching for is now carried by every_milestone_startability_agrees_with_its_
+// prerequisite_standings above, which states the same relation over all fourteen milestones instead
+// of three names and a literal, and moves with the program instead of pinning it.
