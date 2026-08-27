@@ -1,6 +1,6 @@
 module test.claim.guarantee_rung_drop_witness_test
 
-import std.types { String, List, Bool }
+import std.types { String, List, Bool, Int }
 import gunbc.guarantee_rung_drop {
   GuaranteeRungDrop, GuaranteeRung,
   OutsideTheLadder, Mitigatable, MechanicallyPreventable,
@@ -12,6 +12,8 @@ import gunbc.guarantee_rung_drop {
   StructurallyGuaranteed, StructurallyImpossible,
   guarantee_rung_index, stall_is_below_ceiling, stall_is_permanent, stall_report_message,
   next_rung_trigger_enforcement_stall,
+  all_guarantee_stalls, every_stall_is_below_its_ceiling, every_stall_names_a_trigger,
+  heterogeneous_child_list_stall, stall_roster_size,
 }
 import tools.ci_gates { source_root_ingest_gate_rung_drop }
 
@@ -131,4 +133,59 @@ test fn stall_report_names_subject_and_trigger() -> Bool {
     && contains_text(haystack: live, needle: "climbable now but unbuilt")
     && !contains_text(haystack: live, needle: "control.stall.subject")
     && !contains_text(haystack: ctl, needle: "DESIGN section 4b(2)")
+}
+
+// THE ROSTER FOLD IS WHAT MAKES EVERY ROW LOAD-BEARING, and it is the repair for a defect this
+// file had since it was written: it exercised ONE stall by name, so every other row in the carrier
+// was consumed by nothing. Found in review of the third row and true of the first two all along.
+//
+// EACH ARM CARRIES ITS OWN DISCRIMINATOR rather than trusting the live roster to be interesting.
+// A fold that ignored its argument, or an && that collapsed to a constant, agrees with the live
+// roster and is caught by the control list beside it -- which is the same reason the control drop
+// at the top of this file exists.
+data stall_at_its_ceiling: GuaranteeStall = GuaranteeStall {
+  subject: "control.stall.at.ceiling",
+  current: StructurallyImpossible,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["control.member"] },
+  next_rung_trigger: "control trigger"
+}
+
+data stall_missing_its_trigger: GuaranteeStall = GuaranteeStall {
+  subject: "control.stall.no.trigger",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["control.member"] },
+  next_rung_trigger: ""
+}
+
+// THE LIVE ROSTER PASSES AND A ROSTER CARRYING AN ARRIVED CLASS DOES NOT. A row whose current
+// equals its ceiling is not a stall -- it describes work that is finished, and any consumer
+// reading it as outstanding reads a false claim.
+test fn every_live_stall_is_below_its_ceiling() -> Bool {
+  every_stall_is_below_its_ceiling(ss: all_guarantee_stalls)
+    && !every_stall_is_below_its_ceiling(ss: [stall_at_its_ceiling])
+}
+
+// SECTION 4b(2), MADE DECIDABLE: a class below its ceiling must name its next-rung trigger, so
+// that "cannot climb further" stays separable from "unbuilt". An empty trigger is the untracked
+// stall the clause forbids, and it reds here instead of surviving review.
+test fn every_live_stall_names_a_next_rung_trigger() -> Bool {
+  every_stall_names_a_trigger(ss: all_guarantee_stalls)
+    && !every_stall_names_a_trigger(ss: [stall_missing_its_trigger])
+}
+
+// THE ROSTER IS NOT EMPTY, and this arm is the one that stops the two folds above from being
+// satisfiable by DELETION. Both return TRUE on an empty list -- correctly, since the obligation is
+// universally quantified -- so a roster that lost its rows would satisfy every other assertion in
+// this file while observing nothing. That is the vacuous green DESIGN section 4b names: permanently
+// passing, carrying no information, and cited as coverage. Asserting the SIZE is what makes the
+// quantifier's domain load-bearing; asserting a property of one named row would not, because a row
+// can be well-formed and absent from the roster at the same time.
+test fn the_stall_roster_is_not_empty() -> Bool {
+  stall_roster_size(ss: all_guarantee_stalls) > 0
+    && stall_roster_size(ss: []) == 0
+    && every_stall_is_below_its_ceiling(ss: [])
 }
