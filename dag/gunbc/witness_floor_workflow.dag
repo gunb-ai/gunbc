@@ -190,8 +190,9 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // WHAT "FULL COMPILE" DOES AND DOES NOT MEAN, named here because the 2026-08-25 split puts a
 // job called `build` beside a phase called `v2-emission` and the pair invites exactly one wrong
 // inference. The v2 emission phase compiles a `.dag` ENTRY TO RUST SOURCE and stops before
-// cargo; this step cargo-builds exactly the two bins named below, because they are the two the
-// jobs run. NEITHER COMPILES THE REST OF THE RUST WORKSPACE. A declared `[[bin]]` outside this
+// cargo; the emit-compile phase beside it takes that source the rest of the way and cargo-builds
+// it, over its own bounded entry roster and never over the corpus; this step cargo-builds
+// exactly the two bins named below, because they are the two the jobs run. NEITHER COMPILES THE REST OF THE RUST WORKSPACE. A declared `[[bin]]` outside this
 // list is not built by any required phase, so a hand-authored Rust bin can fall behind a
 // generated struct and sit on main indefinitely -- which is not hypothetical: measured
 // 2026-08-25, `infer_semantics_witness` fails to compile on main with six `E0063`s against
@@ -370,9 +371,12 @@ fn witness_floor_build_step(build_script: String) -> Step {
 // phase -- and a phase that could not run reports SKIPPED as its own state, never as silence
 // and never as a pass.
 //
-// THE ROSTER IS FOUR PHASES ACROSS TWO LANES. The paragraph below records the 2026-08-21 cut
-// to three; #9035 then added v2-emission, and the 2026-08-25 split partitioned the four into
-// `build` (regen, v2-emission) and `witnesses` (parse, floor). The cut phases that paragraph
+// THE ROSTER IS READ FROM THE RUN, NOT FROM THIS COMMENT. Each lane announces every phase --
+// one `phase <name>` line for the phases it owns and one `ROUTED to lane <other>` line for the
+// phases it does not -- so one job's log names the whole roster. The paragraph below records the
+// 2026-08-21 cut to three; #9035 then added v2-emission, and the 2026-08-25 split partitioned
+// the roster into `build` (regen, v2-emission, partition-crates, emit-compile) and `witnesses`
+// (parse, floor). A count transcribed here has already gone stale twice. The cut phases that paragraph
 // enumerates stay cut -- neither the addition nor the split restored any of them.
 //
 // THE ROSTER WAS THREE PHASES, NOT FOUR (operator ruling, 2026-08-21): the src/v1 .dag parse
