@@ -130,7 +130,7 @@ fn distinct_source_modules(observations: List<EntryObservation>) -> List<String>
     empty: no_source_modules(),
     cons: fn(acc, eo) {
       fold_list(
-        xs: reexport_rows(rows: observed_rows(entry_observation: eo)),
+        xs: observed_rows(entry_observation: eo),
         empty: acc,
         cons: fn(inner, row) {
           if contains(xs: inner, item: row.source_module, eq: fn(a, b) { a == b }) {
@@ -151,29 +151,72 @@ fn distinct_source_modules(observations: List<EntryObservation>) -> List<String>
 // census's coverage check is for: it refuses a module the sample did not observe under every entry
 // rather than letting the missing observation read as agreement. The ignorance state -- an entry
 // whose manifest could not be READ -- is refused earlier, before any row is built.
+// PRESENCE UNDER AN ENTRY IS DERIVED FROM ANY ROW, AND THE LINKAGE SURFACE IS ALLOWED TO BE EMPTY.
+//
+// The distinction this preserves is the one an earlier revision destroyed. Minting an observation
+// per REEXPORT row made "this entry emitted the module and it reexports nothing" and "this entry did
+// not emit the module" the same state -- both produced no observation -- so a module carrying only
+// declaration rows was absent from the census, and a module absent from the census cannot disagree
+// with anything. That is the empty-observation narrow: not-emitted is IGNORANCE and reexports-nothing
+// is an ANSWER, and the census must be able to tell them apart or its silence is uninformative.
+//
+// So presence is asked of the manifest as a whole -- any row naming the module under that entry --
+// while the surface is asked only of the reexport rows. A module emitted with an empty surface is now
+// OBSERVED with an empty surface, which agrees with another empty one (correctly admitted) and
+// disagrees with a non-empty one (correctly refused). Neither outcome was reachable before.
+//
+// It also mints ONE observation per (module, entry) rather than one per row. Two rows for one module
+// under one entry would otherwise become two observations that the variance check compares against
+// each other, so a purely intra-entry artifact of how the manifest was written could be read as a
+// surface that varies BETWEEN entries.
+fn module_rows_under_entry(eo: EntryObservation, source_module: String) -> List<EmittedExportSurfaceRow> {
+  rows_for_module(rows: observed_rows(entry_observation: eo), source_module: source_module)
+}
+
+fn module_present_under_entry(eo: EntryObservation, source_module: String) -> Bool {
+  match module_rows_under_entry(eo: eo, source_module: source_module) {
+    Empty => false
+    Cons { head: _, tail: _ } => true
+  }
+}
+
+fn reexport_members_under_entry(eo: EntryObservation, source_module: String) -> List<String> {
+  fold_list(
+    xs: rows_for_module(rows: reexport_rows(rows: observed_rows(entry_observation: eo)), source_module: source_module),
+    empty: no_members(),
+    cons: fn(inner, row) { concat_lists(a: inner, b: row.members) }
+  )
+}
+
+fn target_filename_under_entry(eo: EntryObservation, source_module: String) -> String {
+  fold_list(
+    xs: module_rows_under_entry(eo: eo, source_module: source_module),
+    empty: "",
+    cons: fn(inner, row) { row.target_filename }
+  )
+}
+
 fn observations_of_module(observations: List<EntryObservation>, source_module: String, vintage: String) -> List<EmittedMemberIdentity> {
   fold_list(
     xs: observations,
     empty: no_member_identities(),
     cons: fn(acc, eo) {
-      fold_list(
-        xs: rows_for_module(rows: reexport_rows(rows: observed_rows(entry_observation: eo)), source_module: source_module),
-        empty: acc,
-        cons: fn(inner, row) {
-          list_snoc_item(
-            xs: inner,
-            item: EmittedMemberIdentity {
-              entry: eo.entry,
-              source_module: row.source_module,
-              target_filename: row.target_filename,
-              member_digest: surface_digest_of_members(members: declared_members_for(observations: observations, entry: eo.entry, source_module: source_module)),
-              linkage_surface_digest: surface_digest_of_members(members: row.members),
-              instrument_vintage: vintage,
-              members: row.members
-            }
-          )
-        }
-      )
+      if module_present_under_entry(eo: eo, source_module: source_module) {
+        list_snoc_item(
+          xs: acc,
+          item: EmittedMemberIdentity {
+            entry: eo.entry,
+            source_module: source_module,
+            target_filename: target_filename_under_entry(eo: eo, source_module: source_module),
+            member_digest: surface_digest_of_members(members: declared_members_for(observations: observations, entry: eo.entry, source_module: source_module)),
+            linkage_surface_digest: surface_digest_of_members(members: reexport_members_under_entry(eo: eo, source_module: source_module)),
+            instrument_vintage: vintage,
+            members: reexport_members_under_entry(eo: eo, source_module: source_module)
+          }
+        )
+      } else {
+        acc
+      }
     }
   )
 }
@@ -212,7 +255,7 @@ fn target_filename_for(observations: List<EntryObservation>, source_module: Stri
     empty: "",
     cons: fn(acc, eo) {
       fold_list(
-        xs: rows_for_module(rows: reexport_rows(rows: observed_rows(entry_observation: eo)), source_module: source_module),
+        xs: module_rows_under_entry(eo: eo, source_module: source_module),
         empty: acc,
         cons: fn(inner, row) { row.target_filename }
       )

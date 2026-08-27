@@ -83,6 +83,23 @@ fn build(observations: List<v2.compiler.self_host.emitted_surface_join.EntryObse
 // the whole build. If it contributed zero rows instead, the module it should have covered would be
 // observed under one entry, would have nothing to disagree with, and would be ADMITTED as clean --
 // a failed read rendering as agreement.
+
+// A MODULE THE MANIFEST MENTIONS ONLY THROUGH DECLARATION ROWS.
+//
+// This is the shape that used to be invisible. Discovery folded over reexport rows alone, so a
+// module with no reexport row under any entry never became a census row at all -- and a module that
+// is not in the census cannot disagree with anything.
+fn entry_declarations_only(entry: String) -> v2.compiler.self_host.emitted_surface_join.EntryObservation {
+  v2.compiler.self_host.emitted_surface_join.EntryObservation {
+    entry: entry,
+    observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved {
+      rows: [
+        declaration_row(source_module: "v2.std.node", members: ["Node", "Edge"])
+      ]
+    }
+  }
+}
+
 test fn witness_unreadable_entry_refuses_the_build() -> Bool {
   match build(observations: [entry_with_cardinality(), entry_unreadable()]) {
     v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => true
@@ -125,9 +142,61 @@ test fn witness_agreed_surfaces_are_admitted_after_join() -> Bool {
   }
 }
 
+// THE DENOMINATOR WITNESS, AND IT ASSERTS A POPULATION RATHER THAN A VERDICT ON PURPOSE.
+//
+// A module reexporting nothing under either entry is not a violation -- an empty surface agrees with
+// an empty surface, so ADMITTING is the correct answer and it was the answer before this fix too.
+// What was wrong was the SCOPE of that admission: the module was never censused, so "no module
+// carries more than one linkage surface" ranged over reexport-bearing modules while reading as though
+// it ranged over all of them. No verdict flips here, which is exactly why the assertion is on the
+// census's row population and not on Accepted/Rejected -- a witness watching the verdict would have
+// stayed green through the defect and through its repair alike.
+//
+// RED BEFORE THE FIX: discovery folded reexport rows only, so this census had ZERO rows.
+test fn witness_declaration_only_module_enters_the_census() -> Bool {
+  match build(observations: [entry_declarations_only(entry: "a.dag"), entry_declarations_only(entry: "b.dag")]) {
+    v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
+    v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: census } =>
+      v2.std.algebra.length(xs: census.rows) == 1
+  }
+}
+
+// The verdict beside the population, stated separately because they are different claims: a module
+// with an empty surface under every entry is ADMITTED. Together with the row count above, this says
+// the module is now judged and found clean, rather than never judged.
+test fn witness_declaration_only_module_is_admitted() -> Bool {
+  match build(observations: [entry_declarations_only(entry: "a.dag"), entry_declarations_only(entry: "b.dag")]) {
+    v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
+    v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: census } =>
+      match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(census: census) {
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
+        v2.std.diagnostic.Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+// AN EMPTY SURFACE AGAINST A NON-EMPTY ONE IS REFUSED. This one refused before the fix as well, by a
+// different route -- the module was discovered from the reexport-bearing entry and then failed the
+// coverage check because the other entry produced no observation. It is kept because the ROUTE is now
+// the variance check over a genuinely empty surface, and a witness that only covered the old route
+// would go quiet the moment the new one took over.
+test fn witness_empty_surface_against_nonempty_is_refused() -> Bool {
+  match build(observations: [entry_with_cardinality(), entry_declarations_only(entry: "src/v2/std/node.dag")]) {
+    v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
+    v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: census } =>
+      match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(census: census) {
+        v2.std.diagnostic.Rejected { diagnostics: _ } => true
+        v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}
+
 test fn emitted_surface_join_witnesses() -> Bool {
   witness_unreadable_entry_refuses_the_build()
     && witness_readable_entries_build()
     && witness_divergent_surfaces_are_refused_after_join()
     && witness_agreed_surfaces_are_admitted_after_join()
+    && witness_declaration_only_module_enters_the_census()
+    && witness_declaration_only_module_is_admitted()
+    && witness_empty_surface_against_nonempty_is_refused()
 }
