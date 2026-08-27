@@ -1,0 +1,159 @@
+module gunbc.required_ci_host_verdict_census
+
+import std.types { List, String, Bool }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// Census of the seven phases selected by claim_executor's RequiredCiPhase roster.  The subject is
+// deliberately the DECIDING boundary, not whether Rust appears anywhere in a phase: reading a
+// file, invoking cargo, or rendering a carrier is realization; interpreting a carrier and then
+// independently deciding whether CI stops is a second authority for the carrier's judgment.
+//
+// This is a model-before-implement receipt.  It adds no Rust ratchet and does not copy these rows
+// into a template.  Each ReDecidesCarrier row is a root-cut obligation: the host must transport the
+// carrier's terminal standing to CI unchanged.  Each CarrierAbsent row first needs the named model;
+// replacing it with a host-vs-carrier equality test would preserve both authorities and fail the
+// cut.  RealizesCarrier is retained as the negative population so "host Rust exists" cannot be
+// mistaken for the defect being counted.
+//
+// CEILING. Phase existence and lane ownership are themselves host facts: RequiredCiPhase, its
+// exhaustive lane match, and REQUIRED_CI_PHASES have no substrate authority.  Therefore this is an
+// authored census inside a host-owned frame, not a completeness proof.  A newly added Rust phase
+// does not appear here by construction.  The next-rung trigger at the bottom cuts that root; a
+// count pinned to today's list would merely turn this limitation into measure() == measure().
+
+type RequiredCiLane = BuildLane | WitnessesLane
+
+type HostVerdictRelation
+  = ReDecidesCarrier {
+      carrier: DeclarationRef,
+      host_decision: String,
+      root_cut: DissolutionCondition
+    }
+  | CarrierAbsent {
+      missing_fact: String,
+      nearest_model: DeclarationRef,
+      model_before_cut: DissolutionCondition
+    }
+  | RealizesCarrier {
+      carrier: DeclarationRef,
+      host_effect_only: String
+    }
+
+type RequiredCiHostVerdictRow {
+  phase: String
+  lane: RequiredCiLane
+  host_site: String
+  relation: HostVerdictRelation
+}
+
+fn cut(phase: String, carrier: String) -> DissolutionCondition {
+  unbound_dissolution(description: concat(
+    "dissolve-on: required-CI phase ",
+    concat(phase, concat(" transports the terminal standing of ", concat(carrier, " to CI without recomputing pass/fail in host Rust; the Rust phase verdict fold is deleted, not compared against the carrier")))
+  ))
+}
+
+data required_ci_host_verdict_rows: List<RequiredCiHostVerdictRow> = [
+  {
+    phase: "parse",
+    lane: WitnessesLane,
+    host_site: "v1_compiler.cli_run run_dag_parse_sweep plus claim_executor RequiredCiPhase::Parse",
+    relation: CarrierAbsent {
+      missing_fact: "one typed terminal outcome for the authored-module parse population; today Rust owns both population adjudication and the phase failure",
+      nearest_model: decl_ref(module_path: "v2.compiler.parse", decl_name: "parse_module"),
+      model_before_cut: unbound_dissolution(description: "dissolve-on: a substrate parse-sweep outcome binds the exact authored-module population to every per-module parse result, including zero population and incomplete acquisition, before the RequiredCiPhase::Parse Rust fold is removed")
+    }
+  },
+  {
+    phase: "namespace-wave-admission",
+    lane: WitnessesLane,
+    host_site: "v1_compiler.cli_run.namespace_wave_admission run_required_wave_admission plus claim_executor report_wave_admission_outcome",
+    relation: ReDecidesCarrier {
+      carrier: decl_ref(module_path: "gunbc.namespace_wave_admission", decl_name: "namespace_wave_admission_bindings"),
+      host_decision: "Rust reconstructs the disposition vocabulary over its private DeclarationIndex and then maps the resulting outcome into phase_failures",
+      root_cut: cut(phase: "namespace-wave-admission", carrier: "gunbc.namespace_wave_admission namespace_wave_admission_bindings")
+    }
+  },
+  {
+    phase: "regen",
+    lane: BuildLane,
+    host_site: "v1_compiler.required_regen_host run_required_regen plus claim_executor RequiredCiPhase::Regen",
+    relation: ReDecidesCarrier {
+      carrier: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run"),
+      host_decision: "the host mirrors the ordering and decides failure from its own failures vector after the carrier has already decided the required regeneration outcome",
+      root_cut: cut(phase: "regen", carrier: "v2.workflow.required_regen required_regen_run")
+    }
+  },
+  {
+    phase: "v2-emission",
+    lane: BuildLane,
+    host_site: "v1_compiler.cli_run run_required_v2_emission plus claim_executor RequiredCiPhase::V2Emission",
+    relation: RealizesCarrier {
+      carrier: decl_ref(module_path: "v2.compiler.00_compile", decl_name: "compile"),
+      host_effect_only: "the host supplies source acquisition and emission transport, then preserves the compiler's Completed, Refused, and NotExecuted distinction; the remaining defect is roster authority, not a second semantic compiler verdict"
+    }
+  },
+  {
+    phase: "emit-compile",
+    lane: BuildLane,
+    host_site: "v1_compiler.emitted_closure_compile_host run_required_emit_compile plus claim_executor RequiredCiPhase::EmitCompile",
+    relation: CarrierAbsent {
+      missing_fact: "one terminal substrate outcome joining baseline compile, mutation-established red, byte-exact restore, and restored green; ci_layer_roots owns the subjects but does not decide that conjunction",
+      nearest_model: decl_ref(module_path: "gunbc.ci_layer_roots", decl_name: "required_emit_compile_entries"),
+      model_before_cut: unbound_dissolution(description: "dissolve-on: a terminal emitted-closure compile evidence carrier owns the four-part baseline/mutation/restore/restored judgment before the host implementation is reduced to transport")
+    }
+  },
+  {
+    phase: "partition-crates",
+    lane: BuildLane,
+    host_site: "v1_compiler.cli_run run_partition_crate_boundary plus claim_executor RequiredCiPhase::PartitionCrates",
+    relation: CarrierAbsent {
+      missing_fact: "one terminal outcome joining partition derivation, committed-byte comparison, and crate compilation; rust_crate_partition owns the derivation but does not decide the latter two observations",
+      nearest_model: decl_ref(module_path: "v2.workflow.rust_crate_partition", decl_name: "stage0_partition_crate_rows"),
+      model_before_cut: unbound_dissolution(description: "dissolve-on: a terminal partition-boundary verification carrier joins the modeled partition to observed committed bytes and compilation before the host implementation is reduced to transport")
+    }
+  },
+  {
+    phase: "floor",
+    lane: WitnessesLane,
+    host_site: "v1_compiler.cli_run run_required_floor plus claim_executor RequiredCiPhase::Floor",
+    relation: ReDecidesCarrier {
+      carrier: decl_ref(module_path: "v2.workflow.required_floor", decl_name: "floor_run_blocks"),
+      host_decision: "the carrier distinguishes evaluated assertion, route gap, safety interruption, and preparation refusal, but the host fold independently reduces its execution records to the phase exit verdict",
+      root_cut: cut(phase: "floor", carrier: "v2.workflow.required_floor floor_run_blocks")
+    }
+  }
+]
+
+fn required_ci_redecision_phases() -> List<String> {
+  required_ci_host_verdict_rows
+    |> filter(row => match row.relation {
+      ReDecidesCarrier { carrier: _, host_decision: _, root_cut: _ } => true
+      CarrierAbsent { missing_fact: _, nearest_model: _, model_before_cut: _ } => false
+      RealizesCarrier { carrier: _, host_effect_only: _ } => false
+    })
+    |> map(row => row.phase)
+}
+
+fn required_ci_carrier_absent_phases() -> List<String> {
+  required_ci_host_verdict_rows
+    |> filter(row => match row.relation {
+      CarrierAbsent { missing_fact: _, nearest_model: _, model_before_cut: _ } => true
+      ReDecidesCarrier { carrier: _, host_decision: _, root_cut: _ } => false
+      RealizesCarrier { carrier: _, host_effect_only: _ } => false
+    })
+    |> map(row => row.phase)
+}
+
+fn required_ci_realization_only_phases() -> List<String> {
+  required_ci_host_verdict_rows
+    |> filter(row => match row.relation {
+      RealizesCarrier { carrier: _, host_effect_only: _ } => true
+      ReDecidesCarrier { carrier: _, host_decision: _, root_cut: _ } => false
+      CarrierAbsent { missing_fact: _, nearest_model: _, model_before_cut: _ } => false
+    })
+    |> map(row => row.phase)
+}
+
+data required_ci_phase_roster_next_rung: DissolutionCondition = unbound_dissolution(description: "dissolve-on: workflow emission consumes one substrate RequiredCiPhase roster carrying phase identity, lane ownership and terminal carrier; claim_executor's RequiredCiPhase enum, lane match and REQUIRED_CI_PHASES list delete atomically. This census is quarry after that cut, never the roster copied into Rust or a host/carrier parity ratchet.")
