@@ -1,6 +1,5 @@
 module v2.test.claim.sql_create_table_fold
 
-import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.formats.sql {
   SqlColumnConstraints,
   SqlColumnDefaultAbsent,

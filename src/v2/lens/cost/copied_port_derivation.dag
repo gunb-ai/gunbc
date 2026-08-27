@@ -1,6 +1,5 @@
 module v2.lens.cost.copied_port_derivation
 
-import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
 import v2.lens.cost {
   LinearCost,

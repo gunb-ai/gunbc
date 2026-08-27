@@ -106,7 +106,7 @@ data node_source_symbol_note: String = "The dag surface grammar stamps a caret-l
 // the same question; only OccurrenceSynthetic has nothing to ask with. Special-casing the
 // projected arm to Absent would answer "no source symbol" for a cause the index may well have
 // recorded, which is a fabricated verdict rather than a fail-closed one.
-fn node_source_symbol_of_occurrence(occ_id: OccurrenceId, span_index: SpanIndex, source_text: String) -> Optional<Symbol> {
+fn node_source_symbol_of_occurrence(occ_id: std.occurrence_identity.OccurrenceId, span_index: SpanIndex, source_text: String) -> Optional<Symbol> {
   match span_index_resolve_textual_locus(index: span_index, id: occ_id) {
     Violates { diagnostic: _ } => Absent
     Holds { value: locus } =>

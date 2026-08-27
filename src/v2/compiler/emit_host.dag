@@ -1,6 +1,5 @@
 module v2.compiler.emit_host
 
-import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import v2.compiler.emit { emit }

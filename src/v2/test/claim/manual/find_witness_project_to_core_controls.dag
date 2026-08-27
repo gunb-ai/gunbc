@@ -85,7 +85,7 @@ fn surface_only_node(surface: Symbol) -> Node {
     children: [
       Edge {
         label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
-        target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: v2.std.node.OccurrenceSynthetic }
+        target: Node { kind: TypeNode { connective: Atom { identity: surface } }, children: [], occurrence_id: std.occurrence_identity.OccurrenceSynthetic }
       }
     ],
     occurrence_id: OccurrenceSynthetic
