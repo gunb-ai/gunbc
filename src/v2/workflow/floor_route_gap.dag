@@ -775,8 +775,31 @@ fn floor_route_gap_chunk_04() -> List<String> {
       tail: Empty {} } } } } } } } } } } } } } } } }
 }
 
+// REPOSITORY CONVERGENCE WET EVIDENCE EXECUTES ON ITS OWN REAL-SHELL LANE, not through the
+// hermetic floor. Required-floor run 33139889388 executed all seven identities and observed the
+// same typed Run route gap for each: shell.Test.IsExecutable has no mock_response and therefore
+// refuses before a subprocess can reach the deterministic scratch repositories. Enrollment records
+// that measured boundary; it does not treat the separate WET execution receipt as a hermetic route.
+fn floor_route_gap_chunk_05() -> List<String> {
+  Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.already_at_candidate_repairs_a_stale_index",
+      tail: Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.cas_race_is_observed_after_fetch",
+      tail: Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree",
+      tail: Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.reset_refusal_after_successful_cas_is_nonzero",
+      tail: Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.undecodable_worktree_roster_refuses_before_mutation",
+      tail: Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.unreadable_head_refuses_before_fetch_or_mutation",
+      tail: Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.wrong_primary_standing_refuses_from_gits_roster",
+      tail: Empty {} } } } } } } }
+}
+
 fn floor_route_gap_chunks() -> List<List<String>> {
-  Cons { head: floor_route_gap_chunk_00(), tail: Cons { head: floor_route_gap_chunk_01(), tail: Cons { head: floor_route_gap_chunk_02(), tail: Cons { head: floor_route_gap_chunk_03(), tail: Cons { head: floor_route_gap_chunk_04(), tail: Empty {} } } } } }
+  Cons { head: floor_route_gap_chunk_00(), tail: Cons { head: floor_route_gap_chunk_01(), tail: Cons { head: floor_route_gap_chunk_02(), tail: Cons { head: floor_route_gap_chunk_03(), tail: Cons { head: floor_route_gap_chunk_04(), tail: Cons { head: floor_route_gap_chunk_05(), tail: Empty {} } } } } } }
 }
 
 fn floor_route_gap_roster() -> List<String> {
