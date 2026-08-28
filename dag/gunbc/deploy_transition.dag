@@ -127,12 +127,48 @@ type TransitionRecord {
   repo_root: String
   base_ref: String
   candidate: String
-  phase: String
+  phase: TransitionPhase
 }
 
-data transition_phase_in_force: String = "in-force"
+// THE PHASE IS A COPRODUCT, NOT A VALIDATED STRING. An earlier revision carried it as a `String` with
+// two `data` rows for the admitted spellings and a check in the decoder, which is validation standing
+// exactly where construction was available: it concedes that a record with a nonsense phase is
+// WRITABLE, and every consumer then depends on the decoder having been the only way in. It is also a
+// hand-rolled sum discriminator over a closed two-member vocabulary, which is what a coproduct is.
+//
+// The strings survive at the WIRE boundary and only there, because the record is serialized as JSON
+// and JSON has no coproducts. `transition_phase_wire` and `transition_phase_of_wire` are that one
+// boundary read in both directions, so a spelling no longer denotes a phase anywhere inside the
+// model -- an invalid phase has no constructor rather than being refused by a check.
+type TransitionPhase
+  = TransitionInForce
+  | TransitionPartialLeft
 
-data transition_phase_partial: String = "partial-transition-left"
+fn transition_phase_wire(phase: TransitionPhase) -> String {
+  match phase {
+    TransitionInForce => "in-force"
+    TransitionPartialLeft => "partial-transition-left"
+  }
+}
+
+fn transition_phase_of_wire(text: String) -> TransitionPhase? {
+  if text == transition_phase_wire(phase: TransitionInForce) {
+    Present { value: TransitionInForce }
+  } else {
+    if text == transition_phase_wire(phase: TransitionPartialLeft) {
+      Present { value: TransitionPartialLeft }
+    } else {
+      none
+    }
+  }
+}
+
+fn transition_phase_is_partial(phase: TransitionPhase) -> Bool {
+  match phase {
+    TransitionInForce => false
+    TransitionPartialLeft => true
+  }
+}
 
 // THE GUARD IS THE PROOF, AND IT HAS EXACTLY ONE MINT. `sole_constructor` means no other module can
 // write this record, so an operation that takes a `TransitionGuard` parameter cannot be called
@@ -151,7 +187,7 @@ type TransitionGuard sole_constructor {
   holder: TransitionActor
 }
 
-fn transition_guard_record(guard: TransitionGuard, phase: String) -> TransitionRecord {
+fn transition_guard_record(guard: TransitionGuard, phase: TransitionPhase) -> TransitionRecord {
   TransitionRecord {
     actor: guard.holder.actor,
     invocation: guard.holder.invocation,
@@ -170,7 +206,7 @@ fn transition_record_json(record: TransitionRecord) -> String {
     json_kv(key: "repo_root", value: json_string(s: record.repo_root)),
     json_kv(key: "base_ref", value: json_string(s: record.base_ref)),
     json_kv(key: "candidate", value: json_string(s: record.candidate)),
-    json_kv(key: "phase", value: json_string(s: record.phase)),
+    json_kv(key: "phase", value: json_string(s: transition_phase_wire(phase: record.phase))),
   ]))
 }
 
@@ -257,26 +293,26 @@ fn transition_record_from_document(document: JsonValue) -> TransitionRecordDecod
                                   cause: transition_record_missing_field_cause(key: "phase"),
                                 }
                               Present { value: phase } =>
-                                if phase != transition_phase_in_force
-                                  && phase != transition_phase_partial {
-                                  TransitionRecordUndecodable {
-                                    cause: join([
-                                      "gunbc.deploy_transition: record phase ",
-                                      phase,
-                                      " is outside the declared vocabulary",
-                                    ], ""),
-                                  }
-                                } else {
-                                  TransitionRecordDecoded {
-                                    record: TransitionRecord {
-                                      actor: actor,
-                                      invocation: invocation,
-                                      repo_root: repo_root,
-                                      base_ref: base_ref,
-                                      candidate: candidate,
-                                      phase: phase,
-                                    },
-                                  }
+                                match transition_phase_of_wire(text: phase) {
+                                  Absent =>
+                                    TransitionRecordUndecodable {
+                                      cause: join([
+                                        "gunbc.deploy_transition: record phase ",
+                                        phase,
+                                        " is outside the declared vocabulary",
+                                      ], ""),
+                                    }
+                                  Present { value: decoded_phase } =>
+                                    TransitionRecordDecoded {
+                                      record: TransitionRecord {
+                                        actor: actor,
+                                        invocation: invocation,
+                                        repo_root: repo_root,
+                                        base_ref: base_ref,
+                                        candidate: candidate,
+                                        phase: decoded_phase,
+                                      },
+                                    }
                                 }
                             }
                         }
@@ -453,7 +489,7 @@ fn acquire_transition_lease(
     repo_root: subject.repo_root,
     base_ref: subject.base_ref,
     candidate: subject.candidate,
-    phase: transition_phase_in_force,
+    phase: TransitionInForce,
   }
   let created = Filesystem.WriteOwnerOnly(
     path: path,
@@ -504,7 +540,7 @@ fn set_transition_inhibition(guard: TransitionGuard) -> TransitionActuation {
   let created = Filesystem.WriteOwnerOnly(
     path: path,
     content: transition_record_json(
-      record: transition_guard_record(guard: guard, phase: transition_phase_in_force),
+      record: transition_guard_record(guard: guard, phase: TransitionInForce),
     ),
   )
   if !created.success {
@@ -523,7 +559,7 @@ fn set_transition_inhibition(guard: TransitionGuard) -> TransitionActuation {
       TransitionFilePresent { record: back } =>
         if transition_record_same_subject(
           a: back,
-          b: transition_guard_record(guard: guard, phase: transition_phase_in_force),
+          b: transition_guard_record(guard: guard, phase: TransitionInForce),
         ) {
           TransitionActuationCompleted { detail: path }
         } else {
@@ -578,7 +614,7 @@ fn set_inhibition_refusal_cause(
         " at candidate ",
         prior.candidate,
         " (",
-        prior.phase,
+        transition_phase_wire(phase: prior.phase),
         "); it must be resolved through the clearance path, never overwritten",
       ], "")
     TransitionFileIndeterminate { cause: why } =>
@@ -610,7 +646,7 @@ fn mark_transition_partial(guard: TransitionGuard, detail: String) -> Transition
   let written = Filesystem.Write(
     path: path,
     content: transition_record_json(
-      record: transition_guard_record(guard: guard, phase: transition_phase_partial),
+      record: transition_guard_record(guard: guard, phase: TransitionPartialLeft),
     ),
   )
   if written.success {
@@ -663,7 +699,7 @@ fn actuation_admission(standing: ActuationStanding) -> ActuationAdmission {
       ActuationRefused {
         reason: join([
           "deployment transition ",
-          r.phase,
+          transition_phase_wire(phase: r.phase),
           " on ",
           r.repo_root,
           " to candidate ",
@@ -720,7 +756,7 @@ fn residue_disposition(evidence: ResidueEvidence) -> ResidueDisposition {
       ], ""),
     }
   } else {
-    if evidence.record.phase == transition_phase_partial {
+    if transition_phase_is_partial(phase: evidence.record.phase) {
       ResiduePartialDeclared {
         candidate: evidence.record.candidate,
         observed_head: evidence.observed_head,
@@ -850,7 +886,7 @@ fn transition_record_same_subject(a: TransitionRecord, b: TransitionRecord) -> B
 
 fn clearance_expected_record(basis: ClearanceBasis) -> TransitionRecord {
   match basis {
-    ClearedByHolder(guard) => transition_guard_record(guard: guard, phase: transition_phase_in_force)
+    ClearedByHolder(guard) => transition_guard_record(guard: guard, phase: TransitionInForce)
     ClearedByEvidence { expected: r, disposition: _ } => r
     ClearedByAbandonment(abandonment) => abandonment.record
   }

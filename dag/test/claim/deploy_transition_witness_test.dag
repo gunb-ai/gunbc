@@ -61,8 +61,11 @@ import gunbc.deploy_transition {
   residue_disposition,
   mint_transition_abandonment,
   clearance_admission,
-  transition_phase_in_force,
-  transition_phase_partial,
+  TransitionPhase,
+  TransitionInForce,
+  TransitionPartialLeft,
+  transition_phase_wire,
+  transition_phase_of_wire,
 }
 
 fn subject() -> TransitionSubject {
@@ -85,7 +88,7 @@ fn in_force_record() -> TransitionRecord {
     repo_root: "/opt/gunbc/gunbc",
     base_ref: "refs/remotes/origin/main",
     candidate: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    phase: transition_phase_in_force,
+    phase: TransitionInForce,
   }
 }
 
@@ -96,7 +99,7 @@ fn partial_record() -> TransitionRecord {
     repo_root: "/opt/gunbc/gunbc",
     base_ref: "refs/remotes/origin/main",
     candidate: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    phase: transition_phase_partial,
+    phase: TransitionPartialLeft,
   }
 }
 
@@ -262,7 +265,7 @@ test fn a_written_record_decodes_back_to_the_same_fields() -> Bool {
         && r.repo_root == "/opt/gunbc/gunbc"
         && r.base_ref == "refs/remotes/origin/main"
         && r.candidate == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        && r.phase == transition_phase_in_force
+        && r.phase == TransitionInForce
   }
 }
 
@@ -270,7 +273,7 @@ test fn the_partial_phase_survives_the_round_trip_distinctly() -> Bool {
   match transition_record_decode(text: transition_record_json(record: partial_record())) {
     TransitionRecordUndecodable { cause: _ } => false
     TransitionRecordDecoded { record: r } =>
-      r.phase == transition_phase_partial && r.phase != transition_phase_in_force
+      r.phase == TransitionPartialLeft && r.phase != TransitionInForce
   }
 }
 
@@ -618,7 +621,7 @@ fn newer_record() -> TransitionRecord {
     repo_root: "/opt/gunbc/gunbc",
     base_ref: "refs/remotes/origin/main",
     candidate: "cccccccccccccccccccccccccccccccccccccccc",
-    phase: transition_phase_in_force,
+    phase: TransitionInForce,
   }
 }
 
@@ -691,4 +694,27 @@ test fn a_vanished_or_unreadable_marker_refuses_the_clearance() -> Bool {
 test fn subject_identity_is_the_transition_and_not_its_phase() -> Bool {
   transition_record_same_subject(a: in_force_record(), b: partial_record())
     && !transition_record_same_subject(a: in_force_record(), b: newer_record())
+}
+
+// THE PHASE VOCABULARY IS A COPRODUCT AND THE SPELLINGS LIVE ONLY AT THE WIRE. An earlier revision
+// carried the phase as a validated `String`, which conceded that a record with a nonsense phase was
+// writable and made every consumer depend on the decoder having been the only way in. The round trip
+// is the oracle for the boundary; the refusal is the oracle for everything outside the vocabulary.
+test fn the_phase_round_trips_through_its_wire_spelling_and_refuses_anything_else() -> Bool {
+  match transition_phase_of_wire(text: transition_phase_wire(phase: TransitionInForce)) {
+    Absent => false
+    Present { value: a } =>
+      match transition_phase_of_wire(text: transition_phase_wire(phase: TransitionPartialLeft)) {
+        Absent => false
+        Present { value: b } =>
+          a == TransitionInForce
+            && b == TransitionPartialLeft
+            && transition_phase_wire(phase: TransitionInForce)
+              != transition_phase_wire(phase: TransitionPartialLeft)
+            && match transition_phase_of_wire(text: "in force") {
+              Absent => true
+              Present { value: _ } => false
+            }
+      }
+  }
 }
