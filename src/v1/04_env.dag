@@ -1,5 +1,7 @@
 module v1.compiler.infer_env
 
+import std.occurrence_identity { OccurrenceSynthetic }
+
 import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
@@ -725,7 +727,7 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
       } else {
         let qname = concat(mp, ".", name)
         Node {
-          name: qname, span: n.span, ident_span: Present { value: kernel_span(name: qname) },
+          occurrence_identity: OccurrenceSynthetic, name: qname, span: n.span, ident_span: Present { value: kernel_span(name: qname) },
           children: qualified_children, connective: n.connective, params: n.params,
           inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses,
           body: n.body, transport: n.transport, properties: n.properties,
@@ -740,7 +742,7 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
 
 fn node_with_children(n: Node, children: List<Node>) -> Node {
   Node {
-    name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
+    occurrence_identity: OccurrenceSynthetic, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
     children: children, connective: n.connective, params: n.params,
     inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses,
     body: n.body, transport: n.transport, properties: n.properties,
@@ -752,7 +754,7 @@ fn node_with_children(n: Node, children: List<Node>) -> Node {
 
 fn node_with_inferred(n: Node, inferred: InferredNode?) -> Node {
   Node {
-    name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
+    occurrence_identity: OccurrenceSynthetic, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
     children: n.children, connective: n.connective, params: n.params,
     inferred: inferred, return_cardinality: n.return_cardinality, uses: n.uses,
     body: n.body, transport: n.transport, properties: n.properties,
@@ -1068,7 +1070,7 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
   fold(tp_names, init: env, f: (e, tp_name) =>
     let tp_binding = TypeBinding {
       name: tp_name,
-      resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
       provenance: SubValueUnknown
     }
     TypeEnv { module_path: e.module_path,

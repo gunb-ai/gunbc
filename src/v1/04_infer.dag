@@ -1,4 +1,6 @@
 module v1.compiler.infer
+
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, kernel_type_set, is_kernel_type }
 import std.content_hash {
   ContentHash,
@@ -494,7 +496,7 @@ fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Set<String
 
 fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> Node {
   Node {
-    name: name, span: span, ident_span: ident_span, children: [],
+    occurrence_identity: OccurrenceSynthetic, name: name, span: span, ident_span: ident_span, children: [],
     connective: NoConnective, params: [],
     inferred: Present { value: Resolved { node: nominal_leaf_type(name: name) } },
     return_cardinality: Required,
@@ -553,11 +555,11 @@ fn ok_infer(texpr: Node) -> InferResult {
 }
 
 fn semantic_expr_error_node(message: String, span: SourceSpan) -> Node {
-  make_expr_error_node(kind: SemanticExprError, message: message, span: span)
+  make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: message, span: span)
 }
 
 fn internal_expr_error_node(message: String, span: SourceSpan) -> Node {
-  make_expr_error_node(kind: InternalExprError, message: message, span: span)
+  make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: message, span: span)
 }
 
 fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
@@ -1340,7 +1342,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                   let template_fields = decl.children
                   Present { value: template_fields |> map(sf =>
                     Node {
-                      name: sf.name, span: sf.span, ident_span: sf.ident_span,
+                      occurrence_identity: OccurrenceSynthetic, name: sf.name, span: sf.span, ident_span: sf.ident_span,
                       children: sf.children, connective: sf.connective, params: sf.params,
                       inferred: Present { value: Resolved { node: substitute_generics(n: field_substitution_carrier(sf: sf, source_indices: scope.type_env.source_indices), subst: subst, source_indices: scope.type_env.source_indices) } },
                       return_cardinality: sf.return_cardinality, uses: sf.uses, body: sf.body,
@@ -4184,7 +4186,7 @@ fn optional_cast_diags(
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -4241,7 +4243,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       let annotated_bindings = bindings |> map(binding =>
         let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), module_name: scope.module_name, source_indices: scope.type_env.source_indices)
         let field_subject = lookup_result_subject(result: field_lookup)
-        make_field_binding_node(field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), binding: annotate_pattern_parent_enums(pattern: field_binding_pattern(n: binding), scrutinee_subject: field_subject, scope: scope), span: binding.span, name_span: node_name_span(n: binding))
+        make_field_binding_node(occurrence_identity: binding.occurrence_identity, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), binding: annotate_pattern_parent_enums(pattern: field_binding_pattern(n: binding), scrutinee_subject: field_subject, scope: scope), span: binding.span, name_span: node_name_span(n: binding))
       )
       match inferred_parent {
         Present { value: parent_name } =>
@@ -4417,7 +4419,7 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
     match init_arg {
       Present { value: ia } =>
         let init_result = infer_expr(texpr: arg_value(n: ia), scope: scope, expected: expected)
-        Present { value: ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: ia, source_indices: scope.type_env.source_indices), value: init_result.typed, span: ia.span, name_span: ia.span), diagnostics: init_result.diagnostics } }
+        Present { value: ArgInferResult { typed_arg: make_arg_node(occurrence_identity: ia.occurrence_identity, name: arg_name_at(n: ia, source_indices: scope.type_env.source_indices), value: init_result.typed, span: ia.span, name_span: ia.span), diagnostics: init_result.diagnostics } }
       Absent => none
     }
   } else { none }
@@ -4453,11 +4455,11 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
       }
     } else if is_fold && fold_info != none {
       let fold_params = [
-        make_param_node(name: "acc", type_expr: fold_acc_type, default_value: none, span: no_span(), name_span: no_span()),
-        make_param_node(name: "elem", type_expr: element_type, default_value: none, span: no_span(), name_span: no_span())
+        make_param_node(occurrence_identity: OccurrenceSynthetic, name: "acc", type_expr: fold_acc_type, default_value: none, span: no_span(), name_span: no_span()),
+        make_param_node(occurrence_identity: OccurrenceSynthetic, name: "elem", type_expr: element_type, default_value: none, span: no_span(), name_span: no_span())
       ]
       let fold_callable = Node {
-        name: "", span: no_span(), ident_span: none, children: [],
+        occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [],
         connective: NoConnective, params: fold_params, inferred: none,
         return_cardinality: Required, uses: [], body: none, transport: none,
         properties: [], type_annotation: none, is_self_recursive: false,
@@ -4481,7 +4483,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         lambda_param_provenance: prov_map
       }
       let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Present { value: fold_callable })
-      ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
+      ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
     } else {
       let nf_lam_value = arg_value(n: a)
       let nf_prov_map = match elem_provenance {
@@ -4507,14 +4509,14 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         ContractUnavailable =>
           let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
           let contract_diag = categorized_error(message: "no declared argument contract is available for this method call; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
-          ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
+          ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
         ContractKnown { types: declared_types } =>
           match declared_types |> skip(idx) |> first {
             Present { value: declared_type } => infer_arg_with_element_type(arg: a, element_type: declared_type, scope: nf_scope)
             Absent =>
               let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
               let contract_diag = categorized_error(message: "no declared argument contract is available at this parameter position; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
-              ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
+              ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
           }
       }
     }
@@ -4582,7 +4584,7 @@ fn infer_call_arguments_generic_pass(call_args: List<Node>, value_params: List<N
       unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
     }
     ArgGenericFoldState {
-      results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
+      results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
       subst: next_subst
     }
   )
@@ -4602,7 +4604,7 @@ fn empty_override_map() -> Map<String, Node> {
 
 fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope) -> ArgInferResult {
   let ar = infer_expr(texpr: arg_value(n: arg), scope: scope, expected: Present { value: element_type })
-  ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
+  ArgInferResult { typed_arg: make_arg_node(occurrence_identity: arg.occurrence_identity, name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
 }
 
 fn binding_is_namespace_root_nominal(binding: TypeBinding) -> Bool {
@@ -4641,7 +4643,7 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
                 env: scope.type_env,
                 excluded: empty_map()
               )
-              Present { value: ok_infer(texpr: make_named_expr_node(
+              Present { value: ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                 name: spine.dotted,
                 expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
                 children: [],
@@ -4665,7 +4667,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
       let span = texpr.span
-      ok_infer(texpr: make_expr_node(expr_data: ExprLiteral { value: lit }, children: [], inferred: Present { value: Resolved { node: infer_literal_node(lit: lit) } }, span: span))
+      ok_infer(texpr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprLiteral { value: lit }, children: [], inferred: Present { value: Resolved { node: infer_literal_node(lit: lit) } }, span: span))
 
     ExprError { kind: kind, message: message } =>
       let span = texpr.span
@@ -4675,7 +4677,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         _ => []
       }
       InferResult {
-        typed: make_expr_error_node(kind: kind, message: message, span: span),
+        typed: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: kind, message: message, span: span),
         diagnostics: diagnostics
       }
 
@@ -4692,6 +4694,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             Present { value: scope_enum } =>
               InferResult {
                 typed: make_named_expr_node(
+                  occurrence_identity: texpr.occurrence_identity,
                   name: name,
                   expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
                   children: [],
@@ -4703,7 +4706,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               }
             Absent =>
               let binding_kind = infer_var_binding_kind(scope: scope, name: name)
-              ok_infer(texpr: make_named_expr_node(
+              ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                 name: name,
                 expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
                 children: [],
@@ -4717,7 +4720,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             FuncSigResolved { sig: fsig, declared: fsig_declared } =>
                   match (fsig.params |> count) == 0 {
                     true =>
-                      ok_infer(texpr: make_named_expr_node(
+                      ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                         name: name,
                         expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_declaration_call_target(declared: fsig_declared) } }, descent_evidence: none },
                         children: [],
@@ -4726,7 +4729,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                         name_span: span
                       ))
                     false =>
-                      ok_infer(texpr: make_named_expr_node(
+                      ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                         name: name,
                         expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
                         children: [],
@@ -4745,6 +4748,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     Present { value: scope_enum } =>
                       InferResult {
                         typed: make_named_expr_node(
+                          occurrence_identity: texpr.occurrence_identity,
                           name: name,
                           expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
                           children: [],
@@ -4756,7 +4760,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       }
                     Absent =>
                       let binding_kind = infer_var_binding_kind(scope: scope, name: name)
-                      ok_infer(texpr: make_named_expr_node(
+                      ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                         name: name,
                         expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
                         children: [],
@@ -4771,6 +4775,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     Present { value: exp_enum } =>
                       InferResult {
                         typed: make_named_expr_node(
+                          occurrence_identity: texpr.occurrence_identity,
                           name: name,
                           expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
                           children: [],
@@ -4785,7 +4790,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                       if (var_ambiguity_cands |> count) > 0 {
                         ambiguous_reference_refusal(name: name, candidates: var_ambiguity_cands, span: span, scope: scope)
                       } else {
-                      let err_texpr = make_named_expr_node(
+                      let err_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                         name: name,
                         expr_data: ExprVar { binding_kind: none },
                         children: [],
@@ -4829,7 +4834,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let resolved_base_is_error = if resolved_base.inferred != none { is_compiler_error(inferred: resolved_base.inferred.value) } else { false }
       if resolved_base_is_error {
         InferResult {
-          typed: make_expr_error_node(kind: SemanticExprError, message: "error type cascade", span: span),
+          typed: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: "error type cascade", span: span),
           diagnostics: concat(base_diags, resolved_base_diags)
         }
       } else {
@@ -4842,7 +4847,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             Present { value: s } => Present { value: s }
             Absent => field_summary_for_type(base_type: resolved_base, env: scope.type_env, field: field_name)
           }
-          let fa_texpr = make_named_expr_node(
+          let fa_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
             name: field_name,
             expr_data: ExprFieldAccess { summary: field_summary },
             children: [base_typed],
@@ -4857,7 +4862,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent =>
           let base_is_type_var = is_deferred_field_access_base(n: resolved_base, env: scope.type_env)
           if base_is_type_var {
-            let fa_texpr = make_named_expr_node(
+            let fa_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: field_name,
               expr_data: ExprFieldAccess { summary: Present { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
               children: [base_typed],
@@ -4872,7 +4877,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           } else {
             match check_service_field_access_node(base_type: base_rt, field: field_name, service_registry: scope.service_registry, source_indices: scope.type_env.source_indices) {
               Present { value: svc_type } =>
-                let fa_texpr = make_named_expr_node(
+                let fa_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                   name: field_name,
                   expr_data: ExprFieldAccess { summary: Present { value: FieldSummary { access_style: StoredField, value_shape: PlainValue } } },
                   children: [base_typed],
@@ -4886,7 +4891,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 }
               Absent =>
                 let error_message = concat("no field '", field_name, "' on type '", authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_base), "'")
-                let fa_texpr = make_expr_error_node(kind: SemanticExprError, message: error_message, span: span)
+                let fa_texpr = make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: error_message, span: span)
                 InferResult {
                   typed: fa_texpr,
                   diagnostics: concat(concat(base_diags, resolved_base_diags), [inference_error(
@@ -4941,7 +4946,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
             let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, arg_contract: MethodUnresolved, scope: scope)
             concat(
-              [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
+              [ArgInferResult { typed_arg: make_arg_node(occurrence_identity: first_arg.occurrence_identity, name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
               remaining_results
             )
           Absent =>
@@ -5011,7 +5016,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           scope: scope
         )
         InferResult {
-          typed: make_named_expr_node(
+          typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
             name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
             children: typed_arg_nodes,
             inferred: Present { value: Resolved { node: resolved_type } },
@@ -5090,7 +5095,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
           let final_receiver = if returns_receiver_self && is_fully_resolved(n: bridge_result_type, source_indices: scope.type_env.source_indices) && !is_fully_resolved(n: first_arg_type, source_indices: scope.type_env.source_indices) {
             Node {
-              name: receiver.name, span: receiver.span, ident_span: receiver.ident_span,
+              occurrence_identity: OccurrenceSynthetic, name: receiver.name, span: receiver.span, ident_span: receiver.ident_span,
               children: bridge_result_type.children,
               connective: receiver.connective, params: receiver.params,
               inferred: Present { value: Resolved { node: bridge_result_type } },
@@ -5101,9 +5106,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               match_pattern: receiver.match_pattern, expr_data: receiver.expr_data
             }
           } else { receiver }
-          let remaining_arg_nodes = remaining |> map(ta => make_arg_node(name: arg_name_at(n: ta, source_indices: scope.type_env.source_indices), value: arg_value(n: ta), span: span, name_span: span))
+          let remaining_arg_nodes = remaining |> map(ta => make_arg_node(occurrence_identity: ta.occurrence_identity, name: arg_name_at(n: ta, source_indices: scope.type_env.source_indices), value: arg_value(n: ta), span: span, name_span: span))
           InferResult {
-            typed: make_named_expr_node(
+            typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: func_name, expr_data: ExprMethodCall { method_semantics: method_resolution.semantics },
               children: concat([final_receiver], remaining_arg_nodes),
               inferred: Present { value: Resolved { node: bridge_result_type } },
@@ -5118,7 +5123,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             Present { value: exp } =>
               if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) {
                 InferResult {
-                  typed: make_named_expr_node(
+                  typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                     name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: exp } },
@@ -5132,7 +5137,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 match bare_m {
                   Present { value: map_t } =>
                     InferResult {
-                      typed: make_named_expr_node(
+                      typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                         name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: map_t } },
@@ -5143,7 +5148,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     }
                   Absent =>
                     InferResult {
-                      typed: make_named_expr_node(
+                      typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                         name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
@@ -5158,7 +5163,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               match bare_m {
                 Present { value: map_t } =>
                   InferResult {
-                    typed: make_named_expr_node(
+                    typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                       name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: map_t } },
@@ -5169,7 +5174,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
                 Absent =>
                   InferResult {
-                    typed: make_named_expr_node(
+                    typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                       name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
@@ -5186,7 +5191,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             Present { value: exp } =>
               if node_is_set_collection(n: exp, source_indices: scope.type_env.source_indices) {
                 InferResult {
-                  typed: make_named_expr_node(
+                  typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                     name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: exp } },
@@ -5200,7 +5205,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 match bare_s {
                   Present { value: set_t } =>
                     InferResult {
-                      typed: make_named_expr_node(
+                      typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                         name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: set_t } },
@@ -5211,7 +5216,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     }
                   Absent =>
                     InferResult {
-                      typed: make_named_expr_node(
+                      typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                         name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
@@ -5226,7 +5231,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               match bare_s {
                 Present { value: set_t } =>
                   InferResult {
-                    typed: make_named_expr_node(
+                    typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                       name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: set_t } },
@@ -5237,7 +5242,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
                 Absent =>
                   InferResult {
-                    typed: make_named_expr_node(
+                    typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                       name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
@@ -5257,7 +5262,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }
           }
           InferResult {
-            typed: make_named_expr_node(
+            typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: func_name, expr_data: ExprCall { call_semantics: call_semantics, descent_evidence: none },
               children: typed_arg_nodes,
               inferred: Present { value: Resolved { node: bt } },
@@ -5283,7 +5288,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               _ => error_type
             }
             InferResult {
-              typed: make_named_expr_node(
+              typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                 name: func_name, expr_data: ExprCall { call_semantics: Present { value: if callee_is_body_binding { FunctionValueCallSemantics } else { PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } } }, descent_evidence: none },
                 children: typed_arg_nodes,
                 inferred: Present { value: Resolved { node: resolved_type } },
@@ -5293,7 +5298,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               diagnostics: arg_diags
             }
           } else {
-          match infer_variant_constructor_call(func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
+          match infer_variant_constructor_call(occurrence_identity: texpr.occurrence_identity, func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
             Present { value: ctor_result } => ctor_result
             Absent =>
               let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
@@ -5328,7 +5333,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 }
               }
               InferResult {
-                typed: make_named_expr_node(
+                typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                   name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                   children: typed_arg_nodes,
                   inferred: Present { value: Resolved { node: resolved_type } },
@@ -5360,7 +5365,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Absent => none
                 Present { value: _ } =>
                   Present { value: infer_expr(
-                    texpr: make_named_expr_node(
+                    texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                       name: dotted,
                       expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: CallableTargetUndetermined } }, descent_evidence: none },
                       children: mc_args,
@@ -5437,7 +5442,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let mc_template_diags = method_tv_mc.diagnostics
       let method_semantics = if method_resolution.semantics != none { method_resolution.semantics } else { Present { value: PlainMethodSemantics } }
       let typed_mc_arg_nodes = typed_mc_args
-      let mc_texpr = make_named_expr_node(
+      let mc_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
         name: method_name, expr_data: ExprMethodCall { method_semantics: method_semantics },
         children: concat([recv_typed], typed_mc_arg_nodes),
         inferred: Present { value: Resolved { node: result_type } },
@@ -5482,7 +5487,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         }
         let guard_diags = if guard_result != none { guard_unwrapped.diagnostics } else { [] }
         ArmInferResult {
-          typed_arm: make_arm_node(
+          typed_arm: make_arm_node(occurrence_identity: arm_node.occurrence_identity,
             pattern: typed_pattern,
             guard: if guard_result != none { Present { value: guard_unwrapped.typed } } else { none },
             body: body_typed,
@@ -5529,7 +5534,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             }
             let guard_diags = if guard_result != none { guard_unwrapped.diagnostics } else { [] }
             ArmInferResult {
-              typed_arm: make_arm_node(
+              typed_arm: make_arm_node(occurrence_identity: arm_node.occurrence_identity,
                 pattern: typed_pattern,
                 guard: if guard_result != none { Present { value: guard_unwrapped.typed } } else { none },
                 body: body_typed,
@@ -5565,7 +5570,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         PatternDynamic { span: _ } => []
         PatternLookupBlocked => []
       }
-      let match_texpr = make_expr_node(expr_data: ExprMatch, children: concat([scrut_typed], typed_arms), inferred: Present { value: Resolved { node: result_type } }, span: span)
+      let match_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprMatch, children: concat([scrut_typed], typed_arms), inferred: Present { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: match_texpr,
         diagnostics: concat(scrut_diags, arm_diags, empty_arms_diags, exhaustiveness_diags)
@@ -5618,13 +5623,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               module_name: scope.module_name
             )]
           }
-          let if_texpr = make_expr_node(expr_data: ExprIf, children: [cond_typed, then_typed, else_typed], inferred: Present { value: Resolved { node: unified } }, span: span)
+          let if_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprIf, children: [cond_typed, then_typed, else_typed], inferred: Present { value: Resolved { node: unified } }, span: span)
           InferResult {
             typed: if_texpr,
             diagnostics: concat(cond_diags, then_diags, else_diags, branch_diags)
           }
         Absent =>
-          let if_texpr2 = make_expr_node(expr_data: ExprIf, children: [cond_typed, then_typed], inferred: Present { value: Resolved { node: unit_type } }, span: span)
+          let if_texpr2 = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprIf, children: [cond_typed, then_typed], inferred: Present { value: Resolved { node: unit_type } }, span: span)
           InferResult {
             typed: if_texpr2,
             diagnostics: concat(cond_diags, then_diags)
@@ -5663,7 +5668,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       } else { [] }
       let val_diags = concat(val_result.diagnostics, val_annotation_diags)
       if body_expr == none {
-        let let_texpr = make_named_expr_node(name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Present { value: Resolved { node: val_type } }, span: span, name_span: node_name_span(n: texpr))
+        let let_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: let_name, expr_data: ExprLet, children: [val_typed], inferred: Present { value: Resolved { node: val_type } }, span: span, name_span: node_name_span(n: texpr))
         InferResult {
           typed: let_texpr,
           diagnostics: val_diags
@@ -5673,7 +5678,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         let body_result = infer_expr(texpr: body_expr.value, scope: extended, expected: expected)
         let body_typed = body_result.typed
         let body_diags = body_result.diagnostics
-        let let_texpr2 = make_named_expr_node(name: let_name, expr_data: ExprLet, children: [val_typed, body_typed], inferred: body_typed.inferred, span: span, name_span: node_name_span(n: texpr))
+        let let_texpr2 = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: let_name, expr_data: ExprLet, children: [val_typed, body_typed], inferred: body_typed.inferred, span: span, name_span: node_name_span(n: texpr))
         InferResult {
           typed: let_texpr2,
           diagnostics: concat(val_diags, body_diags)
@@ -5683,7 +5688,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
     ExprRecordLit { parent_enum: _ } =>
       let span = texpr.span
       let field_inits = texpr.children
-      infer_record_lit(type_name: record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected)
+      infer_record_lit(occurrence_identity: texpr.occurrence_identity, type_name: record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected)
 
     ExprListLit =>
       let span = texpr.span
@@ -5743,7 +5748,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         }
       } else { [] }
       let list_k = list_kernel_ty_from_element(element: elem_type_node)
-      let ll_texpr = make_expr_node(expr_data: ExprListLit, children: typed_elements, inferred: Present { value: Resolved { node: list_k.ty } }, span: span)
+      let ll_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprListLit, children: typed_elements, inferred: Present { value: Resolved { node: list_k.ty } }, span: span)
       InferResult {
         typed: ll_texpr,
         diagnostics: concat(concat(elem_diags, empty_list_diags), list_k.miss_diags)
@@ -5760,7 +5765,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
       let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices)
-      let bo_texpr = make_expr_node(expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
+      let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
         diagnostics: concat(left_diags, right_diags)
@@ -5776,7 +5781,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Not => bool_type
         Neg => resolved_type(n: operand_typed)
       }
-      let uo_texpr = make_expr_node(expr_data: ExprUnaryOp { op: op }, children: [operand_typed], inferred: Present { value: Resolved { node: result_type } }, span: span)
+      let uo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprUnaryOp { op: op }, children: [operand_typed], inferred: Present { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: uo_texpr,
         diagnostics: operand_diags
@@ -5857,7 +5862,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           Absent => none
         }
         Node {
-          name: pn.name, ident: pn.ident, span: pn.span, ident_span: pn.ident_span, children: pn.children,
+          occurrence_identity: OccurrenceSynthetic, name: pn.name, ident: pn.ident, span: pn.span, ident_span: pn.ident_span, children: pn.children,
           connective: pn.connective, params: pn.params, inferred: param_type,
           return_cardinality: pn.return_cardinality, uses: pn.uses, body: pn.body,
           transport: pn.transport, properties: pn.properties, type_annotation: pn.type_annotation,
@@ -5865,7 +5870,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           match_pattern: pn.match_pattern, expr_data: pn.expr_data
         }
       )
-      let lam_texpr = make_expr_node(
+      let lam_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity,
         expr_data: ExprLambda,
         children: concat([body_typed], typed_param_nodes),
         inferred: body_typed.inferred,
@@ -5885,7 +5890,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             match part_node.children |> first {
               Present { value: inner } =>
                 let r = infer_expr(texpr: inner, scope: scope, expected: none)
-                make_interp_part_node(expr: r.typed, span: part_node.span)
+                make_interp_part_node(occurrence_identity: part_node.occurrence_identity, expr: r.typed, span: part_node.span)
               Absent => part_node
             }
         }
@@ -5902,7 +5907,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             }
         }
       )
-      let si_texpr = make_expr_node(expr_data: ExprStringInterp, children: typed_part_nodes, inferred: Present { value: Resolved { node: string_type } }, span: span)
+      let si_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprStringInterp, children: typed_part_nodes, inferred: Present { value: Resolved { node: string_type } }, span: span)
       InferResult {
         typed: si_texpr,
         diagnostics: interp_diags
@@ -5917,13 +5922,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           typed_stmts: [], diag_chunks: [],
           last_type: unit_type, expected: expected
         )
-        let blk_texpr = make_expr_node(expr_data: ExprBlock, children: state.typed_stmts, inferred: Present { value: Resolved { node: state.last_type } }, span: span)
+        let blk_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBlock, children: state.typed_stmts, inferred: Present { value: Resolved { node: state.last_type } }, span: span)
         InferResult {
           typed: blk_texpr,
           diagnostics: flat_map(state.diag_chunks, c => c)
         }
       } else {
-        ok_infer(texpr: make_expr_node(expr_data: ExprBlock, children: [], inferred: Present { value: Resolved { node: unit_type } }, span: span))
+        ok_infer(texpr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBlock, children: [], inferred: Present { value: Resolved { node: unit_type } }, span: span))
       }
 
     ExprCast =>
@@ -5955,7 +5960,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         module_name: scope.module_name,
         type_env: scope.type_env
       )
-      let cast_texpr = make_expr_node(expr_data: ExprCast, children: [inner_typed, target_type], inferred: Present { value: Resolved { node: target_type } }, span: span)
+      let cast_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprCast, children: [inner_typed, target_type], inferred: Present { value: Resolved { node: target_type } }, span: span)
       InferResult {
         typed: cast_texpr,
         diagnostics: concat(concat(concat(concat(inner_diags, cast_diags), cast_optional_diags), cast_sole_ctor_diags), cast_refinement_diags)
@@ -5975,7 +5980,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let body_result = infer_expr(texpr: body_expr, scope: body_scope, expected: none)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
-      let fe_texpr = make_named_expr_node(name: variable, expr_data: ExprForEach, children: [coll_typed, body_typed], inferred: body_typed.inferred, span: span, name_span: node_name_span(n: texpr))
+      let fe_texpr = make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: variable, expr_data: ExprForEach, children: [coll_typed, body_typed], inferred: body_typed.inferred, span: span, name_span: node_name_span(n: texpr))
       InferResult {
         typed: fe_texpr,
         diagnostics: concat(coll_diags, body_diags)
@@ -6018,7 +6023,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: checked } => checked.diagnostics
         Absent => []
       }
-      let idx_texpr = make_expr_node(expr_data: ExprIndex, children: [base_typed, index_typed], inferred: idx_inferred, span: span)
+      let idx_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprIndex, children: [base_typed, index_typed], inferred: idx_inferred, span: span)
       InferResult {
         typed: idx_texpr,
         diagnostics: concat(base_diags, index_diags, index_access_diags)
@@ -6074,7 +6079,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: checked } => checked.diagnostics
         Absent => []
       }
-      let slc_texpr = make_expr_node(expr_data: ExprSlice, children: [base_typed, start_typed, end_typed], inferred: slc_inferred, span: span)
+      let slc_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprSlice, children: [base_typed, start_typed, end_typed], inferred: slc_inferred, span: span)
       InferResult {
         typed: slc_texpr,
         diagnostics: concat(base_diags, start_diags, end_diags, slice_access_diags)
@@ -6084,7 +6089,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let span = texpr.span
       let inner_expr = return_value(texpr: texpr)
       let inner_result = infer_expr(texpr: inner_expr, scope: scope, expected: expected)
-      let ret_texpr = make_expr_node(expr_data: ExprReturn, children: [inner_result.typed], inferred: inner_result.typed.inferred, span: span)
+      let ret_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprReturn, children: [inner_result.typed], inferred: inner_result.typed.inferred, span: span)
       InferResult {
         typed: ret_texpr,
         diagnostics: inner_result.diagnostics
@@ -6093,7 +6098,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
     _ =>
       let span = texpr.span
       InferResult {
-        typed: make_expr_error_node(kind: InternalExprError, message: "unhandled expression variant in infer_expr", span: span),
+        typed: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "unhandled expression variant in infer_expr", span: span),
         diagnostics: [inference_error(
           message: "unhandled expression variant in infer_expr",
           span: span,
@@ -6103,7 +6108,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
   }
 }
 
-fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult? {
+fn infer_variant_constructor_call(occurrence_identity: NodeOccurrenceIdentity, func_name: String, call_args: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult? {
   match lookup_variant_parent_enum(scope: scope, name: func_name) {
     Absent => none
     Present { value: parent_enum } =>
@@ -6128,13 +6133,14 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
                           } }
                         Absent =>
                           let payload_expr = arg_value(n: arg)
-                          let payload_init = make_field_init_node(
+                          let payload_init = make_field_init_node(occurrence_identity: arg.occurrence_identity,
                             name: "0",
                             value: payload_expr,
                             span: payload_expr.span,
                             name_span: kernel_span(name: "0")
                           )
                           Present { value: infer_record_lit(
+                            occurrence_identity: occurrence_identity,
                             type_name: Present { value: func_name },
                             field_inits: [payload_init],
                             span: span,
@@ -6469,7 +6475,7 @@ fn map_literal_expected_keyed_node(type_name: String?, expected: Node?, scope: I
   }
 }
 
-fn infer_map_literal(map_node: Node, field_inits: List<Node>, span: SourceSpan, scope: InferScope) -> InferResult {
+fn infer_map_literal(occurrence_identity: NodeOccurrenceIdentity, map_node: Node, field_inits: List<Node>, span: SourceSpan, scope: InferScope) -> InferResult {
   let value_expected = match map_node.children |> skip(n: 1) |> first {
     Present { value: v } => Present { value: v }
     Absent => none
@@ -6477,7 +6483,7 @@ fn infer_map_literal(map_node: Node, field_inits: List<Node>, span: SourceSpan, 
   let fi_results = field_inits |> map(fi =>
     let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: value_expected)
     FieldInferResult {
-      typed_field: make_field_init_node(
+      typed_field: make_field_init_node(occurrence_identity: fi.occurrence_identity,
         name: field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices),
         value: ar.typed,
         span: fi.span,
@@ -6488,7 +6494,7 @@ fn infer_map_literal(map_node: Node, field_inits: List<Node>, span: SourceSpan, 
     }
   )
   InferResult {
-    typed: make_expr_node(
+    typed: make_expr_node(occurrence_identity: occurrence_identity,
       expr_data: ExprRecordLit { parent_enum: none },
       children: fi_results |> map(fir => fir.typed_field),
       inferred: Present { value: Resolved { node: map_node } },
@@ -6498,12 +6504,13 @@ fn infer_map_literal(map_node: Node, field_inits: List<Node>, span: SourceSpan, 
   }
 }
 
-fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
+fn infer_record_lit(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   match map_literal_expected_keyed_node(type_name: type_name, expected: expected, scope: scope) {
     Present { value: map_node } =>
-      infer_map_literal(map_node: map_node, field_inits: field_inits, span: span, scope: scope)
+      infer_map_literal(occurrence_identity: occurrence_identity, map_node: map_node, field_inits: field_inits, span: span, scope: scope)
     Absent =>
       infer_record_lit_structural(
+        occurrence_identity: occurrence_identity,
         type_name: type_name,
         field_inits: field_inits,
         span: span,
@@ -6514,7 +6521,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   }
 }
 
-fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
+fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let instantiated_struct_fields = record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope)
   let expected_struct_fields = if instantiated_struct_fields == none {
     record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope)
@@ -6729,7 +6736,7 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
       Absent => []
     }
     FieldInferResult {
-      typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
+      typed_field: make_field_init_node(occurrence_identity: fi.occurrence_identity, name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
       diagnostics: concat(concat(concat(ar_diags, field_type_diags), unknown_field_diags), bare_none_field_construction_diags(
         fi: fi,
@@ -6745,20 +6752,20 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
   if type_name == none {
     let child_nodes = fi_infer_results |> map(fir =>
       Node {
-        name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices), span: fir.typed_field.span, ident_span: fir.typed_field.ident_span,
+        occurrence_identity: OccurrenceSynthetic, name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices), span: fir.typed_field.span, ident_span: fir.typed_field.ident_span,
         children: [], connective: NoConnective,
                params: [], inferred: fir.infer_result.typed.inferred, return_cardinality: Required, uses: [],
         body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
     )
     let anon_node = Node {
-      name: "", span: no_span(), ident_span: none,
+      occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none,
       children: child_nodes, connective: Conj,
            params: [], inferred: none, return_cardinality: Required, uses: [],
       body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
     }
     let typed_field_nodes = typed_fields
-    let texpr = make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Present { value: Resolved { node: anon_node } }, span: span)
+    let texpr = make_expr_node(occurrence_identity: occurrence_identity, expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Present { value: Resolved { node: anon_node } }, span: span)
     InferResult {
       typed: texpr,
       diagnostics: concat(fi_diags, alias_struct_diags)
@@ -6825,7 +6832,7 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
     let sole_ctor_diags = sole_constructor_construction_diags(type_name: type_name.value, span: span, scope: scope)
     let typed_field_nodes2 = typed_fields
     let rl_name = match type_name { Present { value: tn_val } => tn_val  Absent => "" }
-    let texpr = make_named_expr_node(
+    let texpr = make_named_expr_node(occurrence_identity: occurrence_identity,
       name: rl_name,
       expr_data: ExprRecordLit { parent_enum: local_variant_parent },
       children: typed_field_nodes2,
@@ -7839,15 +7846,15 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                 per_field_vars: ctx.per_field_vars,
                 body_locals: ctx.body_locals
               }
-              make_arg_node(name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: lambda_ctx), span: child.span, name_span: child.span)
+              make_arg_node(occurrence_identity: child.occurrence_identity, name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: lambda_ctx), span: child.span, name_span: child.span)
             } else {
-              make_arg_node(name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: ctx), span: child.span, name_span: child.span)
+              make_arg_node(occurrence_identity: child.occurrence_identity, name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: ctx), span: child.span, name_span: child.span)
             }
-          _ => make_arg_node(name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: ctx), span: child.span, name_span: child.span)
+          _ => make_arg_node(occurrence_identity: child.occurrence_identity, name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: ctx), span: child.span, name_span: child.span)
         }
       )
       Node {
-        name: body.name, span: body.span, ident_span: body.ident_span,
+        occurrence_identity: OccurrenceSynthetic, name: body.name, span: body.span, ident_span: body.ident_span,
         children: annotated_children, connective: body.connective, params: body.params,
         inferred: body.inferred, return_cardinality: body.return_cardinality,
         uses: body.uses, body: body.body, transport: body.transport,
@@ -8034,10 +8041,10 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         } else { ctx }
         }
         let annotated_body = annotate_descent(body: arm_body(n: arm_node), ctx: descent_ctx_shadowing_names(ctx: arm_ctx, names: descent_pattern_bound_names(pattern: arm_pattern(n: arm_node))))
-        make_arm_node(pattern: arm_pattern(n: arm_node), guard: arm_guard(n: arm_node), body: annotated_body, span: arm_node.span)
+        make_arm_node(occurrence_identity: arm_node.occurrence_identity, pattern: arm_pattern(n: arm_node), guard: arm_guard(n: arm_node), body: annotated_body, span: arm_node.span)
       )
       Node {
-        name: body.name, span: body.span, ident_span: body.ident_span,
+        occurrence_identity: OccurrenceSynthetic, name: body.name, span: body.span, ident_span: body.ident_span,
         children: concat([annotated_scrut], annotated_arms),
         connective: body.connective, params: body.params,
         inferred: body.inferred, return_cardinality: body.return_cardinality,
@@ -8092,7 +8099,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         Absent => [annotated_value]
       }
       Node {
-        name: body.name, span: body.span, ident_span: body.ident_span,
+        occurrence_identity: OccurrenceSynthetic, name: body.name, span: body.span, ident_span: body.ident_span,
         children: annotated_children, connective: body.connective, params: body.params,
         inferred: body.inferred, return_cardinality: body.return_cardinality,
         uses: body.uses, body: body.body, transport: body.transport,
@@ -8148,7 +8155,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         BlockAnnotateAcc { ctx: next_ctx, children: concat(acc.children, [annotated]) }
       )
       Node {
-        name: body.name, span: body.span, ident_span: body.ident_span,
+        occurrence_identity: OccurrenceSynthetic, name: body.name, span: body.span, ident_span: body.ident_span,
         children: threaded.children, connective: body.connective, params: body.params,
         inferred: body.inferred, return_cardinality: body.return_cardinality,
         uses: body.uses, body: body.body, transport: body.transport,
@@ -8254,13 +8261,13 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           let arg_val = arg_value(n: arg_node)
           let is_lambda = match arg_val.expr_data { ExprLambda => true  _ => false }
           if is_lambda {
-            make_arg_node(name: match arg_name_at(n: arg_node, source_indices: ctx.type_env.source_indices) { Present { value: n } => Present { value: n }  Absent => none }, value: annotate_descent(body: arg_val, ctx: inner_ctx), span: arg_node.span, name_span: arg_node.span)
+            make_arg_node(occurrence_identity: arg_node.occurrence_identity, name: match arg_name_at(n: arg_node, source_indices: ctx.type_env.source_indices) { Present { value: n } => Present { value: n }  Absent => none }, value: annotate_descent(body: arg_val, ctx: inner_ctx), span: arg_node.span, name_span: arg_node.span)
           } else {
-            make_arg_node(name: match arg_name_at(n: arg_node, source_indices: ctx.type_env.source_indices) { Present { value: n } => Present { value: n }  Absent => none }, value: annotate_descent(body: arg_val, ctx: ctx), span: arg_node.span, name_span: arg_node.span)
+            make_arg_node(occurrence_identity: arg_node.occurrence_identity, name: match arg_name_at(n: arg_node, source_indices: ctx.type_env.source_indices) { Present { value: n } => Present { value: n }  Absent => none }, value: annotate_descent(body: arg_val, ctx: ctx), span: arg_node.span, name_span: arg_node.span)
           }
         )
         Node {
-          name: body.name, span: body.span, ident_span: body.ident_span,
+          occurrence_identity: OccurrenceSynthetic, name: body.name, span: body.span, ident_span: body.ident_span,
           children: concat([annotated_receiver], annotated_args),
           connective: body.connective, params: body.params,
           inferred: body.inferred, return_cardinality: body.return_cardinality,
@@ -8307,7 +8314,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let annotated_coll = annotate_descent(body: coll, ctx: ctx)
       let annotated_body = annotate_descent(body: fe_body, ctx: inner_ctx)
       Node {
-        name: body.name, span: body.span, ident_span: body.ident_span,
+        occurrence_identity: OccurrenceSynthetic, name: body.name, span: body.span, ident_span: body.ident_span,
         children: [annotated_coll, annotated_body], connective: body.connective, params: body.params,
         inferred: body.inferred, return_cardinality: body.return_cardinality,
         uses: body.uses, body: body.body, transport: body.transport,
@@ -9022,7 +9029,7 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
     let val_result = infer_expr(texpr: val, scope: scope, expected: none)
     PropertyInferenceResult {
       prop: Node {
-        name: p.name, span: p.span, ident_span: p.ident_span,
+        occurrence_identity: OccurrenceSynthetic, name: p.name, span: p.span, ident_span: p.ident_span,
         children: [val_result.typed], connective: p.connective,
         params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
         uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
@@ -9131,7 +9138,7 @@ fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> Infe
         let val_result = infer_expr(texpr: val, scope: scope, expected: none)
         PropertyInferenceResult {
           prop: Node {
-            name: p.name, span: p.span, ident_span: p.ident_span,
+            occurrence_identity: OccurrenceSynthetic, name: p.name, span: p.span, ident_span: p.ident_span,
             children: [val_result.typed], connective: p.connective,
             params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
             uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
@@ -9170,7 +9177,7 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
       let prop_result = infer_property_values(props: t.properties, scope: scope)
       InferTransportResult {
         transport: Present { value: Node {
-          name: t.name, span: t.span, ident_span: t.ident_span,
+          occurrence_identity: OccurrenceSynthetic, name: t.name, span: t.span, ident_span: t.ident_span,
           children: t.children, connective: t.connective,
           params: t.params, inferred: t.inferred, return_cardinality: t.return_cardinality,
           uses: t.uses, body: t.body, transport: t.transport, properties: prop_result.props,
@@ -9197,7 +9204,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   if item.connective != NoConnective && item.transport == none {
     TypedItemResult {
       item: Node {
-        name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: Present { value: Resolved { node: unit_type } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -9241,7 +9248,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     } else { body_typed }
     TypedItemResult {
       item: Node {
-        name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: item.uses, body: Present { value: annotated_body },
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -9276,7 +9283,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     )
     TypedItemResult {
       item: Node {
-        name: item.name, span: item.span, ident_span: item.ident_span, children: [], params: [],
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], params: [],
         inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: Present { value: body_typed },
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -9298,7 +9305,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let inferred_ret = if item.type_annotation != none { Present { value: Resolved { node: item.type_annotation.value } } } else { val_typed.inferred }
     TypedItemResult {
       item: Node {
-        name: item.name, span: item.span, ident_span: item.ident_span, children: [], params: [],
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], params: [],
         inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: [], body: Present { value: val_typed },
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -9310,7 +9317,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   else if item.params |> count > 0 && item.body == none {
     TypedItemResult {
       item: Node {
-        name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: if item.inferred != none { item.inferred } else { Present { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -9322,7 +9329,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   else {
     TypedItemResult {
       item: Node {
-        name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: if item.inferred != none { item.inferred } else { Present { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -9522,7 +9529,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
       n
     } else {
       Node {
-        name: n.name, span: n.span, ident_span: n.ident_span,
+        occurrence_identity: OccurrenceSynthetic, name: n.name, span: n.span, ident_span: n.ident_span,
         children: new_children,
         connective: n.connective,
         params: new_params,
@@ -9839,7 +9846,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
   let has_structure = item.connective != NoConnective
   if has_structure {
     let type_node = Node {
-      name: item.name, span: item.span, ident_span: item.ident_span, children: item.children,
+      occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children,
       connective: item.connective, params: item.params, inferred: none,
       return_cardinality: item.return_cardinality,
       uses: [], body: none, transport: none, properties: item.properties,
@@ -9848,7 +9855,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown } }
   } else if item.body != none && item.transport == none {
     let fn_node = Node {
-      name: item.name, span: item.span, ident_span: item.ident_span, children: [],
+      occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
       uses: [], body: none, transport: none, properties: item.properties,
@@ -9857,7 +9864,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown } }
   } else if item.inferred != none && item.params |> count == 0 && item.body == none {
     let alias_node = Node {
-      name: item.name, span: item.span, ident_span: item.ident_span, children: [],
+      occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: [], inferred: item.inferred,
       return_cardinality: item.return_cardinality,
       uses: [], body: none, transport: none, properties: [],
@@ -9869,7 +9876,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown } }
   } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
     let bare_node = Node {
-      name: item.name, span: item.span, ident_span: item.ident_span, children: [],
+      occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
       uses: [], body: none, transport: none, properties: [],
@@ -10688,20 +10695,20 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     init: empty_map(),
     f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding {
       name: name,
-      resolved: Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
       provenance: SubValueUnknown
     })
   )
   let unit_span = kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
-    resolved: Node { name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
     provenance: SubValueUnknown
   })
-  let present_value_field = Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let present_variant = Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
 
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
@@ -10869,12 +10876,12 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel_bindings = fold(
     map_keys(kernel_type_set),
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, provenance: SubValueUnknown })
+    f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, provenance: SubValueUnknown })
   )
-  let present_value_field = Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let present_variant = Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index() }
 
@@ -10893,10 +10900,10 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let has_structure = item.connective != NoConnective
     if has_structure {
-      let type_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let type_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
-      let alias_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let alias_node = Node { occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown })
     } else if item.transport == none && item.children |> count > 0 {
       let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
@@ -11541,7 +11548,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let reannotated_items = map(typed_items, item =>
     if item.is_self_recursive && item.body != none {
       Node {
-        name: item.name, span: item.span, ident_span: item.ident_span,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span,
         children: item.children, params: item.params,
         inferred: item.inferred, return_cardinality: item.return_cardinality,
         uses: item.uses,
@@ -11564,7 +11571,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     cycle_set_str: env_cache.cycle_set_str,
     variant_locals: ctx.variant_locals
   }
-  let typed_base = module_node(name: resolved_module_name, imports: module_imports(n: resolved.module), items: ctx.resolved_items, span: resolved.module.span)
+  let typed_base = module_node(occurrence_identity: OccurrenceSynthetic, name: resolved_module_name, imports: module_imports(n: resolved.module), items: ctx.resolved_items, span: resolved.module.span)
   let typed_module = with(typed_base, { ident_span: resolved.module.ident_span })
 
   TypecheckModuleResult {
@@ -12134,20 +12141,20 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
     init: empty_map(),
     f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding {
       name: name,
-      resolved: Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
       provenance: SubValueUnknown
     })
   )
   let unit_span = kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
-    resolved: Node { name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
     provenance: SubValueUnknown
   })
-  let present_value_field = Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let present_variant = Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)

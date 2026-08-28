@@ -1,0 +1,69 @@
+module test.claim.required_record_field_omission_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import tools.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+  fixture_rows_of_class,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data required_record_field_omission_witness_note: String = "Construction control for the v1 NodeOccurrenceIdentity carrier. The negative and positive manifests differ only in whether the required `occurrence_identity` field is supplied. The negative reaches the isolated v1-to-Rust compiler and observes exactly one blocking MissingField row naming occurrence_identity; FixtureInstrumentRefused cannot impersonate that refusal. The positive reaches Rust emission with no diagnostics and a nonempty artifact population. Both measured arms carry nonempty source and compiler digests, binding the receipt to the ordered manifest and running transform. This instrument does not assert interpreter behavior or any non-Rust render target."
+
+fn required_record_field_fixture(source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("required_field/entry.dag", source)],
+    entry: "required_field/entry.dag",
+  })
+}
+
+fn required_record_field_omission_run() -> MultiModuleCompileFixtureOutcome {
+  required_record_field_fixture(
+    source: "module required_field.entry\ntype Pair { occurrence_identity: Int, label: String }\ndata pair: Pair = Pair { label: \"red\" }\n"
+  )
+}
+
+fn required_record_fields_supplied_run() -> MultiModuleCompileFixtureOutcome {
+  required_record_field_fixture(
+    source: "module required_field.entry\ntype Pair { occurrence_identity: Int, label: String }\ndata pair: Pair = Pair { occurrence_identity: 1, label: \"green\" }\n"
+  )
+}
+
+test fn omitted_required_record_field_refuses() -> Bool {
+  match required_record_field_omission_run() {
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: source_digest, compiler_digest: compiler_digest } =>
+      let blocking = fixture_blocking_rows(rows)
+      let missing = fixture_rows_of_class(rows, "MissingField")
+      match first(missing) {
+        Present { value: row } =>
+          count(blocking) == 1
+            && count(missing) == 1
+            && row.subject_name == "occurrence_identity"
+            && row.count == 1
+            && count(source_digest as String) > 0
+            && count(compiler_digest as String) > 0
+        Absent => false
+      }
+    FixtureCompileCompleted { module_count: _, emitted_files: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
+
+test fn complete_required_record_literal_accepts() -> Bool {
+  match required_record_fields_supplied_run() {
+    FixtureCompileCompleted { module_count: _, emitted_files: files, diagnostics: rows, source_digest: source_digest, compiler_digest: compiler_digest } =>
+      count(rows) == 0
+        && count(files) > 0
+        && count(source_digest as String) > 0
+        && count(compiler_digest as String) > 0
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
+  }
+}
