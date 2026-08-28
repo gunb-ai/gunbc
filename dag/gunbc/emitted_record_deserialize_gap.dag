@@ -99,7 +99,25 @@ data emitted_record_deserialize_gap_evidence: List<EmittedRecordDeserializeEvide
 // class's next-rung trigger, exactly as DESIGN 4b prescribes, and not a permanent ceiling.
 data emitted_record_deserialize_gap_rung: String = "mitigatable"
 
-data emitted_record_deserialize_gap_next_rung_trigger: String = "THE CAPABILITY: emitting a candidate .dag module to Rust and compiling it IN ISOLATION FROM THE SEED, so a shape the emitter cannot support is refusable as its own red without stopping the required build. An entry point that emits and compiles one module is NOT sufficient on its own unless it can carry a module the seed does not import. When that exists, this row's minimal shape is enrolled as the discriminating red and the row becomes mechanically preventable."
+// THE PREMISE BEHIND THE TRIGGER WAS MEASURED, AFTER AN EARLIER REVISION ASSERTED IT.
+//
+// That revision refused the artifact form on the ground that "every rostered emit-compile entry is
+// a seed-closure entry", so adding one could never carry a module the seed does not import. THAT
+// PREMISE IS FALSE, and it was false when written. Computing the transitive IMPORT closure from
+// every module under src/v1 over src/v1 + dag -- the most generous seeding available, so an OUTSIDE
+// answer is robust -- three of the eight rostered entries are OUTSIDE it: gunbc.ci_layer_roots,
+// gunbc.scm.load_standing and std.abi. A second and independent instrument agrees exactly: those
+// three are the three with no committed mirror under src/v1/stage0/src, while extdeps.uri and
+// std.logic are inside and have one.
+//
+// So the phase ALREADY compiles modules the seed does not import, and isolation from the seed is
+// not the missing capability. An over-strong refusal is not the safe direction to err in: it is the
+// mirror of the DESIGN 4b(3) failure -- a trigger that cannot be satisfied while the capability is
+// alive, failing as quietly as one satisfied while it is dead, because a row that never retires
+// reads as diligence.
+data emitted_record_deserialize_gap_roster_closure_measurement: String = "Measured 2026-08-28 on this branch: of the eight entries in gunbc.ci_layer_roots required_emit_compile_entries, three -- gunbc.ci_layer_roots, gunbc.scm.load_standing, std.abi -- are outside the transitive import closure from src/v1 over src/v1 + dag, corroborated by their having no committed mirror under src/v1/stage0/src. The emit-compile phase therefore compiles non-seed modules already."
+
+data emitted_record_deserialize_gap_next_rung_trigger: String = "THE CAPABILITY: a route that compiles a module WHICH MUST FAIL TO COMPILE and asserts the failure -- an expected-red arm for emitted-crate compilation. Isolation from the seed is NOT the missing piece and this trigger no longer claims it is: the emit-compile phase already compiles three rostered entries the seed does not import. What is missing is that every route we have treats a compile failure as a line stop, so authoring this shape anywhere reachable makes a gate permanently red rather than producing an enrolled red. Adding a rostered entry is therefore still NOT sufficient -- not because the entry would be a seed module, but because a rostered entry carrying the shape breaks the required build instead of asserting it. When an expected-red compile arm exists, this row's minimal shape is enrolled as its discriminating red and the class becomes mechanically preventable."
 
 // The predicate is deliberately narrow: it says the finding is carried with its codes and its
 // shape, never that the gap is closed. A row asserting closure would be satisfied by editing this
