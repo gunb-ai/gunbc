@@ -72,12 +72,20 @@ data minimal_reproducing_shape: EmittedRecordDeserializeEvidence = AuthoredShape
 // argument pair, so a caller cannot pair one subject's module path with another subject's
 // admissions. A producer whose halves were not both functions of one key would have no such
 // argument available and would be splitting a row that must not be split.
+// WHY THIS CITATION NAMES THE EXPORT IT DOES, AND NOT THE OTHER HALF OF THE SPLIT.
+//
+// The sibling export that returns the compiled module path does not exist on main; it lands with
+// gunbc#9554. A DeclarationRef naming it would be a forward reference, and the declaration index
+// resolves every authored citation on every required run, so it would refuse -- correctly. The
+// cited export is real in both trees and is the half the split was taken FROM, so the citation
+// resolves today and stays true after that PR lands. The sibling is named in prose above, where
+// nothing can mistake a description for a resolvable symbol.
 data workaround_in_this_repository: EmittedRecordDeserializeEvidence = WorkaroundInUse {
   producer: decl_ref(
     module_path: "v1.gunbc.namespace_reference_derived_closure_production_observations",
-    decl_name: "namespace_structural_observation_admissions",
+    decl_name: "namespace_structural_binding_observations_a_through_d",
   ),
-  shape: "two exports, each a pure function of the same (file, source) pair, joined by the caller",
+  shape: "the cited export is split from a sibling that returns the compiled module path -- two exports, each a pure function of the same (file, source) pair, joined by the caller, where the obvious single row would have carried both",
   what_it_costs: "the pairing is an argument-identity argument rather than a type-level one; a producer without a shared key has no equivalent and is blocked",
 }
 
