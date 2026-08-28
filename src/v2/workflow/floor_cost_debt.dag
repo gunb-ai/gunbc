@@ -210,9 +210,12 @@ import v2.std.text { String }
 //
 // THAT IS NARROWER THAN AN EARLIER REVISION OF THIS FILE CLAIMED, AND THE DIFFERENCE IS MEASURED.
 // It read "moves nothing to anyone and the population cannot regenerate itself". The second half
-// is FALSE and the run that installed this roster proved it: withholding 266 rows left 16 others
-// tripping the same conjuncts, and 9 of them measured UNDER the ceiling on main -- one at 98ms,
-// one at 1ms, one at 0ms. A witness that cost 1ms did not become expensive. It INHERITED A BILL.
+// is FALSE and the run that installed this roster proved it: withholding the 266 rows THE ROSTER
+// HELD AT THAT RUN left 16 others tripping the same conjuncts, and 9 of them measured UNDER the
+// ceiling on main -- one at 98ms, one at 1ms, one at 0ms. A witness that cost 1ms did not become
+// expensive. It INHERITED A BILL. (266 is the roster size AT THAT MEASUREMENT and does not track
+// the current size, which the header states. A historical measurement keeps the denominator it
+// was taken against; updating it to today's figure would silently restate what was measured.)
 //
 // THE MECHANISM, AND IT IS NOT THE BRACKETED FILL -- a first hypothesis said it was, and the same
 // run refutes that. Shared work is paid INSIDE execution by whichever claim reaches it first, so
@@ -406,7 +409,7 @@ fn floor_cost_debt_roster() -> List<String> {
 
 // ── THE DECLARED RUNG DROP (DESIGN §4b(3)) ────────────────────────────────────────────────
 //
-// WHAT IS LOST, AT THE HONEST GRAIN: 266 witnesses stop executing. Not "run less often", not
+// WHAT IS LOST, AT THE HONEST GRAIN: every witness this roster names stops executing. Not "run less often", not
 // "run elsewhere" -- they run NOWHERE, and every property each one asserts is unguarded from the
 // moment this lands. It is ~2.1% of the fold's 12936 identities.
 //
@@ -415,8 +418,13 @@ fn floor_cost_debt_roster() -> List<String> {
 // TEMPORARY RUNG: outside the ladder. A withheld row is not MITIGATED, because nothing is
 // attempted; no weaker check stands behind it and review diligence cannot read it.
 //
-// BOUNDED POPULATION: the 266 identities enumerated above, measured on main runs 33141550579 and 33145062452 and on no
-// other. Bounded in the strong sense §4b(3) asks for -- the universe is discovered by the floor's
+// BOUNDED POPULATION: the identities enumerated above -- exactly the roster `floor_cost_debt_roster`
+// returns, measured on main runs 33141550579 and 33145062452 and on no other. NO NUMERAL IS
+// CARRIED HERE. This clause said "the 266 identities" until review 57254, and it had gone stale
+// against the header two enrolments earlier -- one population, two hand-transcribed counts,
+// disagreeing. §4b(3) asks for a BOUNDED population, and a roster function is bounded by being
+// finite and enumerable; a transcribed size is not what makes it so, and it rots on every
+// enrolment. The size is stated once in the header and derived from the function everywhere else. Bounded in the strong sense §4b(3) asks for -- the universe is discovered by the floor's
 // own terminal ledger rather than authored, membership is at identity grain, and the roster is
 // SHRINK-ONLY: the two-way stale join refuses the run when an enrolled identity no longer
 // corresponds to a discovered site, so a row cannot be quietly retained after its subject moves,
@@ -432,7 +440,7 @@ fn floor_cost_debt_roster() -> List<String> {
 // not a measurement on a tree without the fill bracket, and NOT raising the ceiling, which would
 // retire the row by moving the line rather than by restoring anything.
 //
-// THE PROBLEM: A WITHHELD ROW IS NEVER MEASURED. Until this lands, these 266 could be priced
+// THE PROBLEM: A WITHHELD ROW IS NEVER MEASURED. Until this lands, these rows could be priced
 // because main executed them; once it lands, main declines them, and the required floor's cost
 // receipt -- the instrument every figure above was read from -- stops containing them. So the
 // trigger as stated cannot be satisfied by any run this repository currently performs. That is
@@ -591,7 +599,7 @@ fn floor_cost_debt_roster() -> List<String> {
 // above -- the logs cannot answer it.
 //
 // WHAT WOULD MAKE THIS DROP DISHONEST: reporting the roster as a cost-management success. It is
-// not. It is 266 assertions that no longer run, carried because the alternative was a floor that
+// not. It is that many assertions no longer running, carried because the alternative was a floor that
 // cannot green, and the correct end state is an EMPTY roster reached by making the work cheap --
 // never this file stabilising at a comfortable size.
 

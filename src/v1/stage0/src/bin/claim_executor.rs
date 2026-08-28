@@ -1685,9 +1685,17 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     }
     // STALE WITHHOLDS ARE NAMED INDIVIDUALLY; WITHHELD ROWS ARE NOT. The stale population
     // blocks and every member is a line to delete, so each one is printed. The withheld
-    // population is 217 rows at the restoration and printing it per-row would bury every other
-    // diagnostic in the run — it is counted in the summary above and enumerated in full in
+    // population is large enough that printing it per-row would bury every other diagnostic in
+    // the run — it is counted in the summary above and enumerated in full in
     // `v2.workflow.floor_cost_debt`, which is the authority a reader should be sent to anyway.
+    //
+    // NO SIZE IS STATED HERE, DELIBERATELY. This comment carried a numeral until review 57254,
+    // and it had gone stale against the roster it described — two hand-transcribed counts for one
+    // population, disagreeing at the two points a reader is most likely to trust. That is the
+    // failure DESIGN's "name the instrument, never transcribe its output" rule exists to prevent,
+    // and the fix is not to re-transcribe the current figure: the roster is a function, its size
+    // is a property of that function, and any numeral here is a second representation that goes
+    // stale the next time a row is enrolled or released. The authority is named instead.
     for stale in &outcome.stale_cost_debt {
         eprintln!("required-floor: STALE-COST-DEBT {stale}");
     }
