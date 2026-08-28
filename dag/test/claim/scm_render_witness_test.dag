@@ -35,7 +35,15 @@ import gunbc.scm.repository_load {
   RepositoryDocumentUnparseable,
   RepositoryDocumentRefused,
 }
-import gunbc.scm.render { scm_status_document, scm_log_document }
+import gunbc.scm.render {
+  scm_status_document,
+  scm_log_document,
+  scm_log_cli_response,
+  scm_status_cli_response,
+}
+import gunbc.cli_wire { CliWireResponse }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.render.terminal { TerminalWriteProjection, TerminalWriteProjected, TerminalWriteRefused }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -141,4 +149,79 @@ test fn one_status_document_serves_two_targets() -> Bool {
   let doc = scm_status_document(result: empty_status_result())
   serialize_document(doc: doc, target: PlainTerminal, cap: plain_cap)
     == serialize_document(doc: doc, target: GithubActions, cap: plain_cap)
+}
+
+// THE RECORD'S WHOLE REASON FOR EXISTING: a refused read still PRINTS and still FAILS.
+//
+// This is the case that decided the carrier shape against two separate entry points. If the bytes
+// and the exit status could be derived from one another, one field would do; they cannot, and this
+// claim is what holds that to execution. A carrier carrying only bytes could not express the
+// nonzero; one carrying only a status could not express the printed diagnostic.
+test fn an_unavailable_repository_prints_a_diagnostic_and_still_exits_failure() -> Bool {
+  let r = scm_log_cli_response(
+    result: ScmReadRepositoryUnavailable {
+      cause: RepositoryFileUnreadable { path: "repo.json", error: "No such file or directory" },
+    },
+    target: PlainTerminal,
+    capability: plain_cap,
+  )
+  let printed = match r.write {
+    TerminalWriteProjected { bytes: b, next: _ } =>
+      b == "cannot read repository at repo.json\n  No such file or directory\n"
+    TerminalWriteRefused { cause: _ } => false
+  }
+  let failed = match r.exit {
+    ExitSuccess => false
+    ExitFailure { code: _, reason: _ } => true
+  }
+  printed && failed
+}
+
+// AN EMPTY REPOSITORY IS AN ANSWER, SO IT EXITS SUCCESS. Same distinction as the rendering claims,
+// carried to the exit code: a caller must be able to tell "no commits" from "no repository".
+test fn an_empty_log_exits_success_because_it_answered() -> Bool {
+  let r = scm_log_cli_response(
+    result: ScmReadAnswered {
+      path: "repo.json",
+      answer: repository_log(envelope: render_witness_empty_repository()),
+    },
+    target: PlainTerminal,
+    capability: plain_cap,
+  )
+  match r.exit {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+// THE TWO FIELDS DISAGREE, AND THAT IS THE POINT. An answered read and a refused read produce
+// DIFFERENT exit statuses while both produce printable bytes -- so neither field is a function of
+// the other, which is the claim that would fail if someone later collapsed the record to one field.
+test fn bytes_and_exit_status_are_independent_facts() -> Bool {
+  let answered = scm_status_cli_response(
+    result: empty_status_result(), target: PlainTerminal, capability: plain_cap,
+  )
+  let refused = scm_status_cli_response(
+    result: ScmReadRepositoryUnavailable {
+      cause: RepositoryFileUnreadable { path: "repo.json", error: "gone" },
+    },
+    target: PlainTerminal,
+    capability: plain_cap,
+  )
+  let both_print = match answered.write {
+    TerminalWriteProjected { bytes: _, next: _ } =>
+      match refused.write {
+        TerminalWriteProjected { bytes: _, next: _ } => true
+        TerminalWriteRefused { cause: _ } => false
+      }
+    TerminalWriteRefused { cause: _ } => false
+  }
+  let exits_differ = match answered.exit {
+    ExitSuccess => match refused.exit {
+      ExitSuccess => false
+      ExitFailure { code: _, reason: _ } => true
+    }
+    ExitFailure { code: _, reason: _ } => false
+  }
+  both_print && exits_differ
 }

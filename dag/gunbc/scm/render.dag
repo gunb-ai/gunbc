@@ -33,6 +33,10 @@ module gunbc.scm.render
 // failure DESIGN section 5 forbids at a user-facing boundary.
 
 import std.types { List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.render { RenderCapability }
+import extdeps.render.surface { RenderTarget }
+import gunbc.cli_wire { CliWireResponse, cli_wire_response }
 import std.render {
   Document,
   Block,
@@ -134,4 +138,49 @@ fn scm_status_document(result: ScmReadResult<RepositoryStatus>) -> Document {
     ScmReadAnswered { path: _, answer: status } =>
       text_lines_document(lines: repository_status_lines(status: status))
   }
+}
+
+// THE EXIT STATUS IS A SEPARATE DECISION FROM THE BYTES, AND THIS IS WHERE IT IS MADE.
+//
+// An unavailable repository still renders a document worth printing -- the located refusal above --
+// and must still exit nonzero, because a script branching on this verb has to be able to tell "the
+// log is empty" from "there is no repository here". That is exactly the pair `CliWireResponse`
+// exists to carry, and it is why the exit status cannot be derived from the rendering.
+//
+// AN EMPTY REPOSITORY EXITS SUCCESS. `NoCommitsYet` is an ANSWER: the read succeeded and the honest
+// report is that there are no commits. Exiting nonzero there would tell a caller the read failed,
+// which is the not-applicable-rendered-as-malformed conflation carried to an exit code -- opposite
+// owners, opposite repairs, one signal.
+fn scm_read_exit<T>(result: ScmReadResult<T>) -> ProcessExit {
+  match result {
+    ScmReadAnswered { path: _, answer: _ } => ExitSuccess
+    ScmReadRepositoryUnavailable { cause: _ } =>
+      exit_failure(reason: "repository unavailable")
+  }
+}
+
+fn scm_log_cli_response(
+  result: ScmReadResult<CommitLog>,
+  target: RenderTarget,
+  capability: RenderCapability
+) -> CliWireResponse {
+  cli_wire_response(
+    doc: scm_log_document(result: result),
+    target: target,
+    capability: capability,
+    exit: scm_read_exit(result: result),
+  )
+}
+
+fn scm_status_cli_response(
+  result: ScmReadResult<RepositoryStatus>,
+  target: RenderTarget,
+  capability: RenderCapability
+) -> CliWireResponse {
+  cli_wire_response(
+    doc: scm_status_document(result: result),
+    target: target,
+    capability: capability,
+    exit: scm_read_exit(result: result),
+  )
 }
