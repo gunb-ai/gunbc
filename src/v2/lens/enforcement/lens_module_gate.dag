@@ -587,7 +587,7 @@ fn lens_module_gate_residue_row(left_module: String, right_module: String) -> Le
   LensModuleGateResidueRow { left_module: left_module, right_module: right_module }
 }
 
-data lens_module_gate_redundancy_key_note: String = "A verdict carrier and remedy classify how an invariant reports and repairs; they do not identify the invariant. Two modules with the same pair can require different edits, so treating that coarse pair as identity produced false redundancy across unrelated lenses. The canonical module authority joins the pair here. Cross-module sharing remains explicit in LensModuleAdmission.HandlerOnKernel instead of being guessed from coincidentally equal reporting metadata."
+data lens_module_gate_redundancy_key_note: String = "A verdict carrier and remedy classify how an invariant reports and repairs; they do not identify the invariant. Two modules with the same pair can require different edits, so treating that coarse pair as identity produced false redundancy across unrelated lenses. The canonical module authority joins the pair here. Cross-module sharing remains explicit in LensModuleAdmission.HandlerOnKernel instead of being guessed from coincidentally equal reporting metadata. The v2.lens.complexity self-pair is intentional: ComplexityDerivedKernel and ComplexityOptimality are two distinct registry entries bound to that one module authority, so lens_module_gate_surfaces produces two same-authority surfaces; the row audits that two-entry collision rather than claiming that one surface duplicates itself."
 
 data lens_module_gate_audit_residue_rows: List<LensModuleGateResidueRow> = [
   lens_module_gate_residue_row(left_module: "v2.lens.complexity", right_module: "v2.lens.complexity"),
