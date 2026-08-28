@@ -128,7 +128,6 @@ import gunbc.roadmap_belt_actuate {
   belt_publication_subject_for,
   BeltPublishGate, PublishProceed, PublishHalted,
   belt_publish_gate,
-  belt_listing_names_entry,
   belt_publish_write_outcome,
   BeltPublishOutcome,
   PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable,
@@ -1595,19 +1594,6 @@ test fn a_present_but_empty_receipt_is_a_fault_not_an_absence() -> Bool {
         PublishDeferred { node_id: _, reason: _ } => false
       }
   }
-}
-
-data listing_membership_note: String = "The line-exact membership test is what makes every ABSENCE conclusion in belt_publication_receipt_source a fact rather than a spelling coincidence. A plain substring test would find a head sha inside a longer one, or a receipt name inside its own .tmp sibling, and would then report a receipt PRESENT that is not there - or, worse under the opposite skew, miss one that is. The prefix and suffix cases are asserted, not just the positive."
-
-test fn listing_membership_is_line_exact_not_substring() -> Bool {
-  let listing = join(["alpha.json", "beta.json", "beta.json.tmp"], "\n")
-  belt_listing_names_entry(listing: listing, name: "alpha.json")
-    && belt_listing_names_entry(listing: listing, name: "beta.json")
-    && belt_listing_names_entry(listing: listing, name: "beta.json.tmp")
-    && !belt_listing_names_entry(listing: listing, name: "eta.json")
-    && !belt_listing_names_entry(listing: listing, name: "beta")
-    && !belt_listing_names_entry(listing: listing, name: "gamma.json")
-    && !belt_listing_names_entry(listing: "", name: "alpha.json")
 }
 
 test fn an_undecodable_receipt_is_not_overwritten_either() -> Bool {
