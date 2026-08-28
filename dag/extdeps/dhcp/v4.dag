@@ -9,7 +9,7 @@ import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { bound_dissolution }
+import std.dissolution { retires_dissolution }
 import std.decl_ref { decl_ref }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -21,11 +21,31 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type MacAddress = NonEmptyStr where brand("MacAddress")
 
+// THE TRIGGER NAMED AN ARTIFACT AND NOT THE CAPABILITY, and it was corrected here rather than
+// allowed to fire. It read bound_dissolution on extdeps.network.mac parse_mac_address -- a
+// DeclarationAppears condition -- so the row dissolved the moment that function existed. The row's
+// own reason says what it is actually for: MacAddress is a branded NonEmptyStr hiding six grounded
+// octets, deep-decompose it. Landing the parser satisfies neither half of that. The brand is still
+// `NonEmptyStr where brand("MacAddress")` and its consumers still write `"..." as MacAddress`, so
+// the artifact trigger would have retired the row with the capability entirely undone -- and that is
+// strictly worse than leaving it open, because an unmet row still ranks for work and a met one does
+// not.
+//
+// It is now retires_dissolution on MacAddress itself: the row ends when the brand is GONE, which is
+// the capability stated in the same words the reason uses. This is the remedy DESIGN section 4b(3)
+// prescribes for exactly this shape -- a trigger must state the capability, and where one names an
+// artifact instead, the artifact retires the row only when its sufficiency is shown. Here it is not
+// sufficient and the correction is to say so in the trigger rather than in prose beside it.
+//
+// FOUND BY REVIEW OF THE PR THAT LANDS THE PARSER, from the opposite direction: the review read the
+// new module as DECLARING this a fast-follow. It declares no such thing -- nothing in that file
+// mentions the consumers at all -- so the approval rested on a statement no file made, which is how
+// an artifact trigger passes review while the capability stays dead.
 data mac_address_anemic_brand_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.dhcp.v4", decl_name: "MacAddress"),
     reason: "MacAddress is a branded NonEmptyStr hiding six grounded octets; deep-decompose to structured MAC carrier (e.g. MacAddress { octets: [UInt8; 6] }) at parse boundary",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")),
+    dissolution: retires_dissolution(ref: decl_ref(module_path: "extdeps.dhcp.v4", decl_name: "MacAddress")),
   )
 ]
 
