@@ -80,6 +80,7 @@
 // src/std_types.rs
 // src/std_unicode_types.rs
 // src/std_witness_admission.rs
+// src/std_workspace_artifact.rs
 // src/v1_compiler_annotation_bind.rs
 // src/v1_compiler_artifact.rs
 // src/v1_compiler_closure_stub_v2_std_integer_rust.rs
