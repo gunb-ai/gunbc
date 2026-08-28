@@ -2545,7 +2545,19 @@ thread_local! {
     /// COUNTED. A cost that vanished here would be the absorbing fallback (§5) wearing an
     /// accounting label — the deficit's frequency zeroed by construction — so the receipt carries
     /// marginal and fill as two columns whose sum is the claim's whole measured cost.
-    static SHARED_ARTIFACT_FILL_CPU_NANOS: std::cell::Cell<u128> =
+    // (the CPU fill cell now lives in `v1_interpreter`; see the delegating fns below)
+
+    /// THE SAME FILL, ON THE OTHER CLOCK. The ruling above is about WHOSE COST A FILL IS, which
+    /// is a fact about attribution and not about which clock measured it — so it applies once to
+    /// every ceiling derived from a claim's elapsed time. It was landed on the CPU ceiling alone,
+    /// and the wall ceiling kept charging the whole fill to the first payer, which is how two
+    /// rows whose own cost is 0ms and 1ms refused a required floor at ~18000ms against a 10000ms
+    /// wall requirement (main run 33145062452, `test.claim.transport_script_wall_compile_red`:
+    /// `[floor-shared-fill]` reported `marginal_cpu_ms=0 fill_cpu_ms=18966` for one of them).
+    /// A one-clock accounting rule is the §3 failure the CPU comment already names — one concept
+    /// with two homes, one of which does not apply it — so this cell exists to close the second
+    /// home rather than to add a policy beside it.
+    static SHARED_ARTIFACT_FILL_WALL_NANOS: std::cell::Cell<u128> =
         const { std::cell::Cell::new(0) };
 
     /// THE SAME FILL, ON THE OTHER CLOCK. The ruling above is about WHOSE COST A FILL IS, which
@@ -2565,8 +2577,21 @@ thread_local! {
 /// Accumulate CPU spent filling a shared memoized artifact. Called ONLY from a memo MISS path,
 /// and only under the floor guard — outside it there is no memo, so there is no shared artifact
 /// and nothing to attribute.
+///
+/// THE CELL MOVED TO `v1_interpreter` AND THIS DELEGATES. The evaluation deadline must net the
+/// same quantity WHILE a claim runs, and the interpreter cannot read a cell owned here, so one
+/// counter now serves both readers rather than two counters drifting apart — which is the exact
+/// defect (one accounting rule, two homes) this line of work exists to close.
 fn record_shared_artifact_fill_cpu(nanos: u128) {
-    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
+    v1_interpreter::record_shared_artifact_fill_cpu_nanos(nanos);
+}
+
+/// Accumulate WALL time spent filling a shared memoized artifact, under the same rule and from
+/// the same miss paths as `record_shared_artifact_fill_cpu`. The two are recorded together at
+/// every call site so a fill can never be counted on one clock and not the other — which is the
+/// state that produced the defect this pair exists to close.
+fn record_shared_artifact_fill_wall(nanos: u128) {
+    SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
 }
 
 /// Accumulate WALL time spent filling a shared memoized artifact, under the same rule and from
@@ -2580,7 +2605,13 @@ fn record_shared_artifact_fill_wall(nanos: u128) {
 /// Read the running total for this thread. The claim loop samples it either side of one claim;
 /// the difference is that claim's fill.
 pub fn shared_artifact_fill_cpu_nanos() -> u128 {
-    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
+    v1_interpreter::shared_artifact_fill_cpu_nanos()
+}
+
+/// Read the running wall-clock total for this thread, sampled either side of one claim exactly
+/// as the CPU total is.
+pub fn shared_artifact_fill_wall_nanos() -> u128 {
+    SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.get())
 }
 
 /// Read the running wall-clock total for this thread, sampled either side of one claim exactly

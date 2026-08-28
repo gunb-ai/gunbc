@@ -2839,7 +2839,7 @@ impl InterpContext {
 
     pub fn arm_eval_deadline(&self, budget_ms: u64) {
         self.eval_deadline
-            .set(Some((thread_cpu_nanos(), budget_ms)));
+            .set(Some((budgeted_cpu_nanos(), budget_ms)));
         self.eval_deadline_stride.set(0);
     }
 
@@ -2851,7 +2851,7 @@ impl InterpContext {
     /// `Some(0)` means already past.
     pub fn eval_deadline_remaining_ms(&self) -> Option<u64> {
         let (baseline, budget_ms) = self.eval_deadline.get()?;
-        let elapsed_ms = (thread_cpu_nanos().saturating_sub(baseline) / 1_000_000) as u64;
+        let elapsed_ms = (budgeted_cpu_nanos().saturating_sub(baseline) / 1_000_000) as u64;
         Some(budget_ms.saturating_sub(elapsed_ms))
     }
 
@@ -2898,7 +2898,7 @@ impl InterpContext {
                 None => requested,
             };
             self.eval_deadline
-                .set(Some((thread_cpu_nanos(), effective)));
+                .set(Some((budgeted_cpu_nanos(), effective)));
             self.eval_deadline_stride.set(0);
         }
         if let Some(requested) = wall_limit_ms {
@@ -3657,6 +3657,163 @@ impl Drop for EvaluationBudgetScope<'_> {
     }
 }
 
+thread_local! {
+    /// CPU SPENT FILLING SHARED MEMOIZED ARTIFACTS ON THIS THREAD, and it lives here rather than
+    /// beside the memos that record it because it now has TWO readers with opposite lifetimes:
+    /// the claim loop, which nets it at completion, and the evaluation deadline, which must net
+    /// it WHILE the claim runs. A counter with two homes is the §3 failure this whole line of
+    /// work exists to close, so there is one cell and `cli_run` delegates to it.
+    static SHARED_ARTIFACT_FILL_CPU_NANOS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+}
+
+/// Accumulate CPU spent filling a shared memoized artifact. Called only from a memo MISS path.
+pub fn record_shared_artifact_fill_cpu_nanos(nanos: u128) {
+    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
+}
+
+/// The running fill total for this thread.
+pub fn shared_artifact_fill_cpu_nanos() -> u128 {
+    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
+}
+
+/// THE CLOCK EVERY CPU BUDGET IS MEASURED ON: thread CPU, less what this thread spent filling
+/// shared artifacts that every later claim naming the same source reads free.
+///
+/// WHY A CLOCK RATHER THAN A BASELINE THREADED THROUGH EACH DEADLINE. Both the arming instant and
+/// the polling instant are read from this one function, so the fill accrued between them cancels
+/// in the subtraction that already exists at every site — no deadline has to carry a second
+/// baseline, and a site that forgets to net cannot arise, because there is nothing to forget.
+///
+/// MONOTONE, which a deadline requires: fill is measured on this same thread clock inside the
+/// miss path, so thread CPU rises by at least as much as fill does over any interval and the
+/// difference never decreases. The saturating subtraction covers only the sampling skew between
+/// the two reads.
+///
+/// WHAT THIS DOES NOT REACH, named rather than left for a reader to discover: the WALL deadline
+/// (`witness_wall_deadline`) is still armed on a raw `Instant` and still charges a fill to
+/// whichever claim paid it. Every interruption in the population this repairs was on the CPU
+/// clock — measured, 44 of 44 `Cpu` on run 33185280160 — so the wall half is a real and currently
+/// unexercised residue, not a fix silently omitted.
+pub fn budgeted_cpu_nanos() -> u128 {
+    thread_cpu_nanos().saturating_sub(shared_artifact_fill_cpu_nanos())
+}
+
+#[cfg(test)]
+mod budgeted_cpu_clock_tests {
+    use super::*;
+
+    /// THE DISCRIMINATING RED FOR THE DEADLINE HALF OF THE FILL-ATTRIBUTION RULING. A claim that
+    /// pays a shared fill must not have that fill counted against its own CPU deadline, because
+    /// every later claim naming the same source reads the artifact free — so charging it makes an
+    /// interrupt a function of discovery order rather than of the row.
+    ///
+    /// ASSERTED AS A DECREASE, NOT AS A RATIO AGAINST MEASURED WORK. An earlier version of this
+    /// test burned CPU in a spin loop, declared the measured cost a fill, and compared the clock's
+    /// advance against `burned / 2`. It failed on the remote runner because `burned` came back
+    /// ZERO — the thread CPU clock did not advance across the loop — which makes the right-hand
+    /// side 0 and the assertion unsatisfiable for an unsigned quantity. The test was measuring the
+    /// runner's clock granularity, not the netting. Recording a KNOWN fill removes the
+    /// measurement from the test entirely: the fill is an input rather than an observation.
+    #[test]
+    fn a_recorded_fill_moves_the_budget_clock_backwards_relative_to_raw_cpu() {
+        const FILL_NANOS: u128 = 1_000_000;
+
+        // SPEND MORE CPU THAN THE FILL BEFORE RECORDING IT, because a fill larger than the thread's
+        // own CPU is a state production cannot reach — a fill is always measured FROM CPU actually
+        // spent inside the miss path, so it is bounded by the raw clock by construction. An earlier
+        // version recorded 1ms of fill against a fresh test thread that had not yet spent 1ms,
+        // saturated the clock to zero, and failed on an input the system cannot produce. That was a
+        // defect in the test's premise, not in the netting.
+        let mut spin = 0u64;
+        let mut rounds = 0u32;
+        while thread_cpu_nanos() < FILL_NANOS * 4 && rounds < 100_000 {
+            for i in 0..100_000u64 {
+                spin = spin.wrapping_add(i);
+            }
+            rounds += 1;
+        }
+        std::hint::black_box(spin);
+        assert!(
+            thread_cpu_nanos() >= FILL_NANOS * 4,
+            "could not accumulate {}ns of thread CPU in {rounds} rounds; the clock is not running \
+             and nothing below would be measuring the netting",
+            FILL_NANOS * 4
+        );
+
+        let budgeted_before = budgeted_cpu_nanos();
+        record_shared_artifact_fill_cpu_nanos(FILL_NANOS);
+        let budgeted_after = budgeted_cpu_nanos();
+
+        // THE DISCRIMINATING ASSERTION. Raw CPU only ever rises, so a budget clock that moved
+        // BACKWARDS across a recorded fill can only have subtracted it. Without the netting the
+        // two clocks move together and this fails.
+        assert!(
+            budgeted_after < budgeted_before,
+            "recording a {FILL_NANOS}ns fill must move the budget clock backwards: \
+             {budgeted_before} -> {budgeted_after}"
+        );
+
+        // AND THE EXACT RELATION, BRACKETED RATHER THAN DIFFERENCED. An earlier version asserted
+        // `budget_drop + raw_advance == FILL`, which is false: those two deltas span different
+        // overlapping intervals, so the CPU elapsed in one does not cancel the CPU elapsed in the
+        // other. Bracketing needs no tolerance and no assumption about clock speed — `budgeted +
+        // fill` IS a raw CPU reading, so it must fall between two raw reads taken either side.
+        let lo = thread_cpu_nanos();
+        let budgeted = budgeted_cpu_nanos();
+        let hi = thread_cpu_nanos();
+        let reconstructed = budgeted + shared_artifact_fill_cpu_nanos();
+        assert!(
+            reconstructed >= lo && reconstructed <= hi,
+            "budgeted + fill ({reconstructed}) must be a raw CPU reading taken between {lo} and {hi}"
+        );
+    }
+
+    /// THE CONTROL THAT KEEPS THE ONE ABOVE HONEST: a clock that simply froze would satisfy
+    /// "fills do not advance it" perfectly and disarm every deadline in the process. So ordinary
+    /// CPU — nothing recorded as a fill — must still move it.
+    ///
+    /// The loop runs until the RAW clock is observed to advance rather than for a fixed count,
+    /// because a fixed count is what made the previous version of this test depend on the
+    /// runner's clock granularity. The cap makes a never-advancing thread CPU clock a loud
+    /// failure rather than a hang.
+    #[test]
+    fn ordinary_work_still_advances_the_budget_clock() {
+        let raw_start = thread_cpu_nanos();
+        let budgeted_start = budgeted_cpu_nanos();
+
+        let mut spin = 0u64;
+        let mut rounds = 0u32;
+        while thread_cpu_nanos() == raw_start && rounds < 10_000 {
+            for i in 0..100_000u64 {
+                spin = spin.wrapping_add(i);
+            }
+            rounds += 1;
+        }
+        std::hint::black_box(spin);
+
+        assert!(
+            thread_cpu_nanos() > raw_start,
+            "the thread CPU clock never advanced across {rounds} rounds of work; the budget \
+             clock cannot be tested against a clock that does not run"
+        );
+        assert!(
+            budgeted_cpu_nanos() > budgeted_start,
+            "ordinary work must advance the budget clock, or every CPU deadline is disarmed"
+        );
+    }
+
+    /// The clock a deadline is armed on must never run backwards, or an armed deadline could
+    /// stop being reachable. Fill is measured on the same thread clock inside the miss path, so
+    /// the difference is monotone; this pins the saturating floor that covers sampling skew.
+    #[test]
+    fn the_budget_clock_never_runs_backwards_even_if_fill_overshoots() {
+        let before = budgeted_cpu_nanos();
+        record_shared_artifact_fill_cpu_nanos(u128::MAX / 2);
+        assert!(budgeted_cpu_nanos() <= before);
+        assert_eq!(budgeted_cpu_nanos(), 0, "saturates rather than wrapping");
+    }
+}
+
 pub fn thread_cpu_nanos() -> u128 {
     #[cfg(unix)]
     {
@@ -3699,7 +3856,7 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         ctx.eval_deadline_stride.set(stride);
         if stride % 4096 == 0 {
             if let Some((cpu_baseline_nanos, budget_ms)) = cpu_armed {
-                let elapsed_nanos = thread_cpu_nanos().saturating_sub(cpu_baseline_nanos);
+                let elapsed_nanos = budgeted_cpu_nanos().saturating_sub(cpu_baseline_nanos);
                 if (elapsed_nanos / 1_000_000) as u64 > budget_ms {
                     return Err(InterpError::EvaluationBudgetExceeded {
                         entry: ctx.budget_entry_or_unnamed(),
