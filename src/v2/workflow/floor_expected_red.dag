@@ -611,8 +611,13 @@ fn floor_expected_red_chunk_18() -> List<String> {
   Empty {}
 }
 
+// Authored by silent-bear-842 in #9093. The duplicate-definition row asserts the missing
+// ingestion wall rather than defending today's silent second-definition binding. It
+// dissolves from this roster when same-name declarations in one module refuse at ingestion,
+// then remains as an ordinary permanent regression control; its green single-definition
+// sibling is deliberately not enrolled.
 fn floor_expected_red_chunk_19() -> List<String> {
-  Cons { head: "test.claim.direct_call_argument_type_witness_test.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: Empty {} }
+  Cons { head: "test.claim.direct_call_argument_type_witness_test.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: Cons { head: "test.claim.duplicate_definition_binding_probe.duplicate_definition_in_one_module_is_refused", tail: Empty {} } }
 }
 
 // FIVE IDENTITIES ENROLLED 2026-08-22, and they arrive by a route this roster has not carried
@@ -808,17 +813,9 @@ fn floor_expected_red_chunks() -> List<List<String>> {
 // closure in v2.test.lens_mock_totality. Keep the historical chunk rows for provenance,
 // but exclude the now-green family from the live expected-red roster.
 //
-// THE THREE compile_accepted_unevaluable_program_control ROWS ARE EXCLUDED FOR THE OPPOSITE
-// REASON. They remain the authored-red identities in chunk 21; only their LIVENESS is false. The file
-// declares ReadsLiveTree, the DeclinedLiveTree arm declines it (declined_live=899 on that run),
-// and the arm's deletion is still unmerged (gunbc#8977, gunbc#8982 both OPEN at the time of
-// writing). A declined identity is never executed, while live expected-red enrolment requires an
-// observed failure, so the filter keeps the identity and temporary execution standing distinct.
-//
-// RESTORATION TRIGGER, and it is a COUPLING someone must honour rather than a note: when either
-// #8977 or #8982 lands and these identities become executable, DELETE these three exclusions in
-// the same change. They are reds, so once they execute while excluded they count as ordinary
-// failures and red the build -- the exclusion must not outlive the decline that motivated it.
+// The three compile_accepted_unevaluable_program_control rows in chunk 21 are live again: run
+// 32721781133 executed all three and observed the enrolled compile-acceptance holes. The former
+// exclusions dissolved with DeclinedLiveTree in the same change, as their coupling required.
 fn floor_expected_red_is_live(name: String) -> Bool {
   !(name == "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_consumer_is_total_holds"
     || name == "v2.test.lens_mock_totality.cron_mock_totality.cron_mock_omitted_member_is_red_holds"
@@ -840,10 +837,7 @@ fn floor_expected_red_is_live(name: String) -> Bool {
     || name == "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_consumer_is_total_holds"
     || name == "v2.test.lens_mock_totality.sec_edgar_mock_totality.sec_edgar_mock_omitted_member_is_red_holds"
     || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds"
-    || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds"
-    || name == "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_extra_argument_must_refuse_at_compile"
-    || name == "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_missing_argument_must_refuse_at_compile"
-    || name == "test.claim.compile_accepted_unevaluable_program_control.primitive_call_with_wrong_argument_type_must_refuse_at_compile")
+    || name == "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds")
 }
 
 fn floor_expected_red_roster() -> List<String> {

@@ -1,12 +1,8 @@
 module gunbc.spark.serving_install_paths
 
 import std.types { String, FilePath, NonEmptyStr }
-import std.content_hash {
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_combine_structural,
-  content_hash_tagged_structural,
-}
+import std.measure { TokenCount }
+import std.content_hash { Fnv1a64Structural }
 import gunbc.spark.serving_runtime_receipt { spark_serving_executor_home }
 import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
 import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
@@ -55,6 +51,7 @@ type SparkServingUserUnitSpec {
   exec_subcommand: NonEmptyStr
   restart: NonEmptyStr
   wanted_by: NonEmptyStr
+  configured_context: TokenCount
 }
 
 // THE MODEL STORE PATHS, derived from the same models root the unit's OLLAMA_MODELS points at, so
@@ -309,7 +306,15 @@ fn spark_serving_user_unit_path() -> FilePath {
   ) as FilePath
 }
 
-fn spark_serving_user_unit_spec(bind_host_port: NonEmptyStr) -> SparkServingUserUnitSpec {
+// `configured_context` is a PARAMETER rather than a literal here for the same reason
+// `bind_host_port` is: it is desired state, and its authority is the occurrence's launch profile
+// (gunbc.spark.serving_desired spark_serving_desired_configured_context). Spelling a number here
+// would make this module a second authority for the window and would put the declared profile back
+// out of the unit's reach -- exactly the defect this change closes.
+fn spark_serving_user_unit_spec(
+  bind_host_port: NonEmptyStr,
+  configured_context: TokenCount,
+) -> SparkServingUserUnitSpec {
   SparkServingUserUnitSpec {
     description: "gunbc Spark serving (Ollama gpt-oss:20b)" as NonEmptyStr,
     after: "network-online.target" as NonEmptyStr,
@@ -322,70 +327,7 @@ fn spark_serving_user_unit_spec(bind_host_port: NonEmptyStr) -> SparkServingUser
     exec_subcommand: "serve" as NonEmptyStr,
     restart: "on-failure" as NonEmptyStr,
     wanted_by: "default.target" as NonEmptyStr,
+    configured_context: configured_context,
   }
 }
 
-fn spark_serving_user_unit_spec_field_hash(
-  tag: NonEmptyStr,
-  value: NonEmptyStr,
-) -> Fnv1a64Structural {
-  content_hash_tagged_structural(
-    tag: tag,
-    payload: content_hash_atom(value: value),
-  )
-}
-
-fn spark_serving_user_unit_spec_structural_hash(spec: SparkServingUserUnitSpec) -> Fnv1a64Structural {
-  content_hash_combine_structural(
-    left: content_hash_combine_structural(
-      left: content_hash_combine_structural(
-        left: spark_serving_user_unit_spec_field_hash(
-          tag: "description" as NonEmptyStr,
-          value: spec.description,
-        ),
-        right: spark_serving_user_unit_spec_field_hash(
-          tag: "after" as NonEmptyStr,
-          value: spec.after,
-        ),
-      ),
-      right: content_hash_combine_structural(
-        left: spark_serving_user_unit_spec_field_hash(
-          tag: "service_type" as NonEmptyStr,
-          value: spec.service_type,
-        ),
-        right: spark_serving_user_unit_spec_field_hash(
-          tag: "bind_host_port" as NonEmptyStr,
-          value: spec.bind_host_port,
-        ),
-      ),
-    ),
-    right: content_hash_combine_structural(
-      left: content_hash_combine_structural(
-        left: spark_serving_user_unit_spec_field_hash(
-          tag: "models_root_rel" as NonEmptyStr,
-          value: spec.models_root_rel as NonEmptyStr,
-        ),
-        right: spark_serving_user_unit_spec_field_hash(
-          tag: "runtime_root_rel" as NonEmptyStr,
-          value: spec.runtime_root_rel as NonEmptyStr,
-        ),
-      ),
-      right: content_hash_combine_structural(
-        left: spark_serving_user_unit_spec_field_hash(
-          tag: "exec_subcommand" as NonEmptyStr,
-          value: spec.exec_subcommand,
-        ),
-        right: content_hash_combine_structural(
-          left: spark_serving_user_unit_spec_field_hash(
-            tag: "restart" as NonEmptyStr,
-            value: spec.restart,
-          ),
-          right: spark_serving_user_unit_spec_field_hash(
-            tag: "wanted_by" as NonEmptyStr,
-            value: spec.wanted_by,
-          ),
-        ),
-      ),
-    ),
-  )
-}
