@@ -14,7 +14,7 @@ import std.types { Bool, Int, String }
 //
 // THE MEASUREMENT THAT JUSTIFIES THE INSTRUMENT (swift-badger-524, by hand across 73 open PRs,
 // 2026-08-27): exactly one live contradiction --
-// `test.claim.duplicate_definition_binding_probe.duplicate_definition_in_one_module_is_refused`,
+// the `duplicate_definition_binding_probe` expected-red identity,
 // net-ADDED by #9569 and net-REMOVED by both #9589 and #9591, the removals because the row now
 // passes. If #9569 lands after either, it re-enrols a passing row and the floor reports a stale
 // quarantine. Merge-order-dependent, invisible from every diff involved.
@@ -75,7 +75,10 @@ fn identity_extraction_rule_text(rule: IdentityExtractionRule) -> String {
     QuotedDottedName { minimum_segments: n } =>
       concat(
         "double-quoted dotted name of at least ",
-        concat(to_string(n), " segments on a changed line")
+        concat(
+          to_string(n),
+          " segments, read from source text with `//` annotation lines excluded (DESIGN 4c: an identity cited in an annotation is a reference, not an enrolment); the merge-target lookup runs this same extraction, with git grep only narrowing which files it reads"
+        )
       )
   }
 }
@@ -184,8 +187,39 @@ fn is_identity_key(candidate: String, rule: IdentityExtractionRule) -> Bool {
   }
 }
 
+// SOURCE ANNOTATIONS ARE NOT PROGRAM DATA, AND THIS READER MUST AGREE WITH THE COMPILER ABOUT THAT
+// (DESIGN 4c). A `//` block is prose the semantic passes never see: an identity CITED in one is a
+// reference, not an enrolment, and this repository cites identities in annotations constantly. A
+// reader that counted them would report a pull request as net-ADDING a key it only WROTE ABOUT, and
+// -- worse, because it never expires -- would answer PRESENT-ON-TARGET for any key any annotation
+// anywhere in the corpus happens to name. Both directions produce a remedy telling an author to
+// rebase a branch that is not stale.
+//
+// The exclusion is applied by the ONE function both readers go through, so the diff side and the
+// merge-target side cannot disagree about what counts.
+fn line_is_annotation(body: String) -> Bool {
+  starts_with(s: body.trim(), prefix: "//")
+}
+
 fn line_identity_keys(line: String, rule: IdentityExtractionRule) -> List<String> {
-  filter(line_quoted_segments(line: line), seg => is_identity_key(candidate: seg, rule: rule))
+  if line_is_annotation(body: line) {
+    []
+  } else {
+    filter(line_quoted_segments(line: line), seg => is_identity_key(candidate: seg, rule: rule))
+  }
+}
+
+// THE SAME EXTRACTION, READ OVER A WHOLE FILE RATHER THAN A DIFF. This is what makes the
+// merge-target answer the SAME question the diff answers -- see `identity_lookup_pattern` for why
+// asking a different one produces a confidently wrong standing.
+fn content_identity_keys(content: String, rule: IdentityExtractionRule) -> List<String> {
+  unique_strings(
+    xs: flat_map(split(s: content, delimiter: "\n"), line => line_identity_keys(line: line, rule: rule))
+  )
+}
+
+fn content_holds_identity(content: String, identity: String, rule: IdentityExtractionRule) -> Bool {
+  filter(content_identity_keys(content: content, rule: rule), key => key == identity).length() > 0
 }
 
 type ChangedIdentities {
@@ -217,13 +251,19 @@ fn diff_line_is_removed(line: String) -> Bool {
   }
 }
 
+// THE MARKER IS STRIPPED BEFORE THE LINE IS READ, because `+  // note` is an annotation and
+// `line_is_annotation` would not see it through the diff's own leading character.
+fn diff_line_body(line: String) -> String {
+  substring(s: line, start: 1, end: line.length())
+}
+
 fn changed_identities(diff: String, rule: IdentityExtractionRule) -> ChangedIdentities {
   let lines = split(s: diff, delimiter: "\n")
   let added_lines = filter(lines, line => diff_line_is_added(line: line))
   let removed_lines = filter(lines, line => diff_line_is_removed(line: line))
   ChangedIdentities {
-    added: flat_map(added_lines, line => line_identity_keys(line: line, rule: rule)),
-    removed: flat_map(removed_lines, line => line_identity_keys(line: line, rule: rule)),
+    added: flat_map(added_lines, line => line_identity_keys(line: diff_line_body(line: line), rule: rule)),
+    removed: flat_map(removed_lines, line => line_identity_keys(line: diff_line_body(line: line), rule: rule)),
     changed_lines: added_lines.length() + removed_lines.length()
   }
 }

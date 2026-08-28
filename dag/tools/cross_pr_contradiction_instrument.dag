@@ -1,6 +1,6 @@
 module tools.cross_pr_contradiction_instrument
 
-import std.types { Bool, GitRef, Int, NonEmptyStr, String }
+import std.types { Bool, FilePath, GitRef, Int, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.git
 import extdeps.git.inspect
@@ -36,7 +36,8 @@ import gunbc.cross_pr_contradiction {
   report_is_complete,
   report_unobserved,
   cross_pr_extraction_rule,
-  identity_lookup_pattern
+  identity_lookup_pattern,
+  content_holds_identity
 }
 
 // THE CROSS-PR CONTRADICTION INSTRUMENT: the observation half.
@@ -274,28 +275,96 @@ fn observe_pull_request(
 // live population -- while the added-key set across every open pull request is hundreds, and the
 // standing is only meaningful for a key that already has an adding side and a deleting side.
 //
-// THE PATTERN IS THE MODEL'S, NOT THIS MODULE'S. Asking the merge target for the bare identity
-// would ask a different question than the extraction answers -- see `identity_lookup_pattern`.
+// THE MERGE TARGET IS ASKED THE SAME QUESTION THE DIFF WAS, AND THE GREP IS ONLY A PREFILTER.
 //
-// git grep's exit code IS the answer here and the three codes are kept apart: 0 is a match, 1 is a
-// revision that genuinely does not contain the pattern, and anything else is a lookup that did not
-// happen. Reading `exit_success` alone would render the third as the second.
+// `git grep` answers "some file at this revision contains these bytes", which is not the question.
+// The question is "does the canonical extraction, run over this revision, yield this key" -- and
+// the two differ in exactly the ways that produce a confidently wrong standing: a fixed-string
+// match is parity-blind, and it cannot tell a quoted enrolment from an identity CITED IN A `//`
+// ANNOTATION, which DESIGN 4c says is prose no semantic pass sees and which this repository writes
+// constantly. An annotation naming an identity would otherwise make the merge target answer PRESENT
+// for it permanently, and the derived remedy would tell a future author to rebase a branch that is
+// not stale.
+//
+// So the grep narrows the corpus to candidate FILES and the extraction decides. A revision whose
+// only occurrences are annotations or straddles answers ABSENT, which is the correct answer and the
+// one the cheap lookup could not give. The cost is bounded by construction: this runs per
+// CONTRADICTION key -- single digits on the live population -- not per added key.
+//
+// git grep's exit code IS the answer for the prefilter and the three codes are kept apart: 0 is a
+// candidate, 1 is a revision that genuinely does not contain the bytes, and anything else is a
+// lookup that did not happen. Reading `exit_success` alone would render the third as the second.
+fn grep_hit_paths(base: String, raw: String) -> List<String> {
+  map(
+    filter(split(s: raw, delimiter: "\n"), line => starts_with(s: line, prefix: concat(base, ":"))),
+    line => substring(s: line, start: base.length() + 1, end: line.length())
+  )
+}
+
+type MainPresenceScan {
+  decided: Bool
+  present: Bool
+  detail: String
+}
+
+fn main_presence_scan_step(
+  acc: MainPresenceScan,
+  base: String,
+  extraction: IdentityExtractionRule,
+  identity: String,
+  path: String
+) -> MainPresenceScan {
+  if acc.present || !acc.decided {
+    acc
+  } else {
+    let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
+    if !shown.success {
+      MainPresenceScan {
+        decided: false,
+        present: false,
+        detail: concat(concat("could not read ", path), concat(" at ", concat(base, concat(": ", shown.stderr))))
+      }
+    } else {
+      MainPresenceScan {
+        decided: true,
+        present: content_holds_identity(content: shown.content, identity: identity, rule: extraction),
+        detail: ""
+      }
+    }
+  }
+}
+
 fn observe_main_presence(base: String, extraction: IdentityExtractionRule, identity: String) -> MainPresence {
   let found = git.Inspect.GrepFixedAtRevision(
     pattern: identity_lookup_pattern(identity: identity, rule: extraction),
     ref: base as GitRef
   )
-  if found.exit_code == 0 {
-    PresentOnMain
+  if found.exit_code == 1 {
+    AbsentFromMain
   } else {
-    if found.exit_code == 1 {
-      AbsentFromMain
-    } else {
+    if found.exit_code != 0 {
       MainPresenceUnobserved {
         detail: concat(
           concat("git grep at ", base),
           concat(" exited ", concat(to_string(found.exit_code), concat(": ", found.stderr)))
         )
+      }
+    } else {
+      let scanned = fold(
+        grep_hit_paths(base: base, raw: found.paths),
+        init: MainPresenceScan { decided: true, present: false, detail: "" },
+        f: (acc, path) => main_presence_scan_step(
+          acc: acc,
+          base: base,
+          extraction: extraction,
+          identity: identity,
+          path: path
+        )
+      )
+      if !scanned.decided {
+        MainPresenceUnobserved { detail: scanned.detail }
+      } else {
+        if scanned.present { PresentOnMain } else { AbsentFromMain }
       }
     }
   }

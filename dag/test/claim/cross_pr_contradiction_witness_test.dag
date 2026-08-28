@@ -41,6 +41,10 @@ import gunbc.cross_pr_contradiction {
   StandingUndecided,
   contradiction_standing,
   contradiction_standing_text,
+  line_is_annotation,
+  content_identity_keys,
+  content_holds_identity,
+  diff_line_body,
   contradiction_remedy,
   contradiction_remedy_text,
   ContradictionRemedy,
@@ -73,12 +77,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // contradiction, and must still be REPORTED as NetBoth so the evidence for the verdict survives.
 // It goes red the moment the predicate is relaxed back to `both directions present`.
 
-data pr_9569_diff: String = "--- a/src/v2/workflow/floor_expected_red.dag\n+++ b/src/v2/workflow/floor_expected_red.dag\n+  Cons { head: \"test.claim.duplicate_definition_binding_probe.duplicate_definition_in_one_module_is_refused\", tail: Empty {} }\n"
+data adding_side_diff: String = "--- a/src/v2/workflow/floor_expected_red.dag\n+++ b/src/v2/workflow/floor_expected_red.dag\n+  Cons { head: \"test.fixture.contradiction_alpha.some_claim_holds\", tail: Empty {} }\n"
 
-data pr_9589_diff: String = "--- a/src/v2/workflow/floor_expected_red.dag\n+++ b/src/v2/workflow/floor_expected_red.dag\n-  Cons { head: \"test.claim.duplicate_definition_binding_probe.duplicate_definition_in_one_module_is_refused\", tail: Empty {} }\n"
+data deleting_side_diff: String = "--- a/src/v2/workflow/floor_expected_red.dag\n+++ b/src/v2/workflow/floor_expected_red.dag\n-  Cons { head: \"test.fixture.contradiction_alpha.some_claim_holds\", tail: Empty {} }\n"
 
 // One pull request, one key, both directions: the line moved between two chunks.
-data pr_moved_line_diff: String = "--- a/src/v2/workflow/floor_expected_red.dag\n+++ b/src/v2/workflow/floor_expected_red.dag\n-  Cons { head: \"test.claim.moved.row_that_only_moved\", tail: Empty {} }\n+  Cons { head: \"test.claim.moved.row_that_only_moved\", tail: Empty {} }\n"
+data moved_line_diff: String = "--- a/src/v2/workflow/floor_expected_red.dag\n+++ b/src/v2/workflow/floor_expected_red.dag\n-  Cons { head: \"test.fixture.contradiction_beta.row_that_only_moved\", tail: Empty {} }\n+  Cons { head: \"test.fixture.contradiction_beta.row_that_only_moved\", tail: Empty {} }\n"
 
 fn observation_of(pull_number: Int, diff: String) -> PrDiffObservation {
   PrDiffRead {
@@ -96,10 +100,10 @@ fn observation_of(pull_number: Int, diff: String) -> PrDiffObservation {
 // halves: no contradiction is reported, AND the pull request is still visible on the key as
 // NetBoth. Asserting only the first would pass equally over a detector that dropped the row.
 test fn single_pr_moving_a_line_is_not_a_contradiction() -> Bool {
-  let observations = [observation_of(pull_number: 9999, diff: pr_moved_line_diff)]
+  let observations = [observation_of(pull_number: 9999, diff: moved_line_diff)]
   let directions = pr_identity_directions(
     pull_number: 9999,
-    changed: changed_identities(diff: pr_moved_line_diff, rule: cross_pr_extraction_rule)
+    changed: changed_identities(diff: moved_line_diff, rule: cross_pr_extraction_rule)
   )
   cross_pr_contradictions(observations: observations).length() == 0
     && directions.length() == 1
@@ -118,8 +122,8 @@ fn get_direction(directions: List<PrIdentityDirection>) -> NetDirection {
 test fn opposite_net_directions_across_two_prs_contradict() -> Bool {
   let found = cross_pr_contradictions(
     observations: [
-      observation_of(pull_number: 9569, diff: pr_9569_diff),
-      observation_of(pull_number: 9589, diff: pr_9589_diff)
+      observation_of(pull_number: 9569, diff: adding_side_diff),
+      observation_of(pull_number: 9589, diff: deleting_side_diff)
     ]
   )
   found.length() == 1
@@ -131,8 +135,8 @@ test fn opposite_net_directions_across_two_prs_contradict() -> Bool {
 test fn same_net_direction_across_two_prs_does_not_contradict() -> Bool {
   cross_pr_contradictions(
     observations: [
-      observation_of(pull_number: 9589, diff: pr_9589_diff),
-      observation_of(pull_number: 9591, diff: pr_9589_diff)
+      observation_of(pull_number: 9589, diff: deleting_side_diff),
+      observation_of(pull_number: 9591, diff: deleting_side_diff)
     ]
   ).length() == 0
 }
@@ -234,10 +238,10 @@ test fn diff_line_classes_are_assigned_by_the_longest_prefix() -> Bool {
 // THE EXTRACTION RULE IS AN UPPER BOUND AND IT IS STILL NOT A FREE-FOR-ALL: an unquoted mention and
 // a two-segment name are both outside it, and a path is excluded by its separator.
 test fn extraction_keeps_quoted_qualified_names_only() -> Bool {
-  line_identity_keys(line: "+ // see test.claim.foo.bar in prose", rule: cross_pr_extraction_rule).length() == 0
+  line_identity_keys(line: "+ // see test.fixture.lookup.prose_mention in prose", rule: cross_pr_extraction_rule).length() == 0
     && line_identity_keys(line: "+ \"gunbc.only_two\"", rule: cross_pr_extraction_rule).length() == 0
     && line_identity_keys(line: "+ \"dag/gunbc/a.b.c\"", rule: cross_pr_extraction_rule).length() == 0
-    && line_identity_keys(line: "+ \"test.claim.a.b\"", rule: cross_pr_extraction_rule).length() == 1
+    && line_identity_keys(line: "+ \"test.fixture.lookup.probe\"", rule: cross_pr_extraction_rule).length() == 1
 }
 
 test fn net_direction_is_total_over_the_two_observations() -> Bool {
@@ -255,7 +259,7 @@ test fn report_states_its_file_scope_and_extraction_rule() -> Bool {
     report: contradiction_report(
       file_scope: EveryFileInDiff,
       extraction: cross_pr_extraction_rule,
-      observations: [observation_of(pull_number: 9569, diff: pr_9569_diff)],
+      observations: [observation_of(pull_number: 9569, diff: adding_side_diff)],
       presences: []
     )
   )
@@ -265,13 +269,13 @@ test fn report_states_its_file_scope_and_extraction_rule() -> Bool {
 
 fn nine_five_six_nine_against_nine_five_eight_nine() -> List<PrDiffObservation> {
   [
-    observation_of(pull_number: 9569, diff: pr_9569_diff),
-    observation_of(pull_number: 9589, diff: pr_9589_diff)
+    observation_of(pull_number: 9569, diff: adding_side_diff),
+    observation_of(pull_number: 9589, diff: deleting_side_diff)
   ]
 }
 
-fn duplicate_definition_key() -> String {
-  "test.claim.duplicate_definition_binding_probe.duplicate_definition_in_one_module_is_refused"
+fn contradiction_fixture_key() -> String {
+  "test.fixture.contradiction_alpha.some_claim_holds"
 }
 
 fn report_with_presence(presence: MainPresence) -> ContradictionReport {
@@ -279,7 +283,7 @@ fn report_with_presence(presence: MainPresence) -> ContradictionReport {
     file_scope: EveryFileInDiff,
     extraction: cross_pr_extraction_rule,
     observations: nine_five_six_nine_against_nine_five_eight_nine(),
-    presences: [KeyMainPresence { identity: duplicate_definition_key(), presence: presence }]
+    presences: [KeyMainPresence { identity: contradiction_fixture_key(), presence: presence }]
   )
 }
 
@@ -396,10 +400,10 @@ test fn an_undecided_row_recommends_nothing() -> Bool {
 // (review 57265). The delimiters the extraction stripped are put back by the model, so the two
 // cannot drift.
 test fn the_merge_target_lookup_uses_the_extraction_semantics() -> Bool {
-  let pattern = identity_lookup_pattern(identity: "test.claim.a.b", rule: cross_pr_extraction_rule)
-  let quoted_exact = "  Cons { head: \"test.claim.a.b\", tail: Empty {} }"
-  let quoted_longer = "  Cons { head: \"test.claim.a.b_extended\", tail: Empty {} }"
-  let unquoted_prose = "  // see test.claim.a.b for the reason"
+  let pattern = identity_lookup_pattern(identity: "test.fixture.lookup.probe", rule: cross_pr_extraction_rule)
+  let quoted_exact = "  Cons { head: \"test.fixture.lookup.probe\", tail: Empty {} }"
+  let quoted_longer = "  Cons { head: \"test.fixture.lookup.probe_extended\", tail: Empty {} }"
+  let unquoted_prose = "  // see test.fixture.lookup.probe for the reason"
   string_contains(s: quoted_exact, pattern: pattern)
     && !string_contains(s: quoted_longer, pattern: pattern)
     && !string_contains(s: unquoted_prose, pattern: pattern)
@@ -409,7 +413,7 @@ test fn the_merge_target_lookup_uses_the_extraction_semantics() -> Bool {
 // changed line is a key whose lookup pattern that line contains. Asserting the pair is what makes
 // them one authority rather than two spellings that happen to agree today.
 test fn extraction_and_lookup_agree_on_the_same_line() -> Bool {
-  let line = "+  Cons { head: \"test.claim.a.b\", tail: Empty {} }"
+  let line = "+  Cons { head: \"test.fixture.lookup.probe\", tail: Empty {} }"
   let keys = line_identity_keys(line: line, rule: cross_pr_extraction_rule)
   keys.length() == 1
     && match get(xs: keys, index: 0) {
@@ -421,3 +425,67 @@ test fn extraction_and_lookup_agree_on_the_same_line() -> Bool {
            )
        }
 }
+
+// AN IDENTITY CITED IN AN ANNOTATION IS A REFERENCE, NOT AN ENROLMENT, and DESIGN 4c is the reason
+// rather than a convenience: a `//` block is prose no semantic pass sees, so a reader that counted
+// it would report a pull request as net-adding a key it only WROTE ABOUT. The merge-target
+// direction is worse, because it never expires: one annotation anywhere in the corpus would make
+// the presence oracle answer PRESENT for that key forever, and the derived remedy would tell a
+// future author to rebase a branch that is not stale. This repository cites identities in
+// annotations constantly, so the arm is reachable on ordinary source rather than only on a fixture.
+test fn an_identity_cited_in_an_annotation_is_not_a_key() -> Bool {
+  let annotated = "+  // see \"test.fixture.contradiction_alpha.some_claim_holds\" for the reason"
+  let enrolled = "+  Cons { head: \"test.fixture.contradiction_alpha.some_claim_holds\", tail: Empty {} }"
+  changed_identities(diff: concat(annotated, "\n"), rule: cross_pr_extraction_rule).added.length() == 0
+    && changed_identities(diff: concat(enrolled, "\n"), rule: cross_pr_extraction_rule).added.length() == 1
+    && line_is_annotation(body: "  // a note")
+    && !line_is_annotation(body: "  Cons { head: \"a.b.c\" }")
+}
+
+// THE DIFF MARKER IS STRIPPED BEFORE THE ANNOTATION TEST, because `+  // note` is an annotation and
+// the leading `+` would otherwise hide it from the check above.
+test fn the_diff_marker_does_not_hide_an_annotation() -> Bool {
+  line_is_annotation(body: diff_line_body(line: "+  // a note"))
+    && line_is_annotation(body: diff_line_body(line: "-  // a note"))
+    && !line_is_annotation(body: diff_line_body(line: "+  Cons { head: \"a.b.c\" }"))
+}
+
+// THE MERGE-TARGET SIDE READS THE SAME EXTRACTION, NOT THE RAW BYTES. A file whose ONLY occurrence
+// of the key is an annotation does not hold it; the same file with an enrolled row does. `git grep`
+// cannot tell those apart, which is why it is a prefilter and this is the decision.
+test fn merge_target_content_is_read_through_the_extraction() -> Bool {
+  let annotation_only = "module a.b\n// cites \"test.fixture.contradiction_alpha.some_claim_holds\"\n"
+  let enrolled = "module a.b\ndata rows: List<String> = [\"test.fixture.contradiction_alpha.some_claim_holds\"]\n"
+  !content_holds_identity(
+      content: annotation_only,
+      identity: contradiction_fixture_key(),
+      rule: cross_pr_extraction_rule
+    )
+    && content_holds_identity(
+         content: enrolled,
+         identity: contradiction_fixture_key(),
+         rule: cross_pr_extraction_rule
+       )
+    && content_identity_keys(content: annotation_only, rule: cross_pr_extraction_rule).length() == 0
+}
+
+// THE FIXTURES NAME NO REAL IDENTITY, and this witness is what keeps that true. Every quoted key in
+// this file is `test.fixture.*`, which no roster holds and no pull request touches. An earlier cut
+// used the live identity the instrument was built on -- and because a witness fixture is ordinary
+// source, merging it would have put that identity on the merge target PERMANENTLY, so the presence
+// oracle would answer PRESENT for it forever and a future pull request legitimately enrolling it
+// would be told to rebase a branch that is not stale. A self-inflicted false positive that never
+// expires, sitting on the instrument's own headline example.
+test fn the_fixtures_use_synthetic_identities_only() -> Bool {
+  let keys = append(
+    content_identity_keys(content: adding_side_diff, rule: cross_pr_extraction_rule),
+    items: append(
+      content_identity_keys(content: deleting_side_diff, rule: cross_pr_extraction_rule),
+      items: content_identity_keys(content: moved_line_diff, rule: cross_pr_extraction_rule)
+    )
+  )
+  keys.length() > 0
+    && filter(keys, key => starts_with(s: key, prefix: "test.fixture.") == false).length() == 0
+    && filter(keys, key => starts_with(s: key, prefix: "test.fixture.")).length() == keys.length()
+}
+
