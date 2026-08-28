@@ -95,7 +95,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
                 diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<ModuleFilenameOwners>, tm: Rc<TypedModule>| {
-                let module_name = authored_name_at(
+                let module_name = crate::v1_std_core::authored_name_at(
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),
                 );
@@ -109,7 +109,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
                                 owners: acc.owners.clone(),
                                 diagnostics: v1_rt::rc_list_push(
                                     acc.diagnostics.clone(),
-                                    make_error_node(
+                                    crate::v1_std_core::make_error_node(
                                         Rc::new(CompilerDiagnostic::ModuleFilenameCollision {
                                             filename: filename.clone(),
                                             modules: Rc::new(vec![

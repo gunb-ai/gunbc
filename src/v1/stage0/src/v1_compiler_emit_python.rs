@@ -100,7 +100,10 @@ use std::rc::Rc;
 
 pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
-        let filename_collisions = module_filename_collision_diagnostics(typed.clone());
+        let filename_collisions =
+            crate::v1_compiler_emit_core_support::module_filename_collision_diagnostics(
+                typed.clone(),
+            );
         if ((filename_collisions.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
