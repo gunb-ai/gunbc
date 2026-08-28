@@ -43329,7 +43329,10 @@ mod import_closure_equivalence_tests {
     #[test]
     fn import_closure_live_matches_legacy_bfs_on_floor_gate_entry() {
         let roots = default_source_roots();
-        assert_bfs_matches_import_closure_live("dag/gunbc/instruments/floor_effect_gate_witness.dag", &roots);
+        assert_bfs_matches_import_closure_live(
+            "dag/gunbc/instruments/floor_effect_gate_witness.dag",
+            &roots,
+        );
     }
 
     #[test]
