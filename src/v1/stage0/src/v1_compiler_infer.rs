@@ -194,8 +194,7 @@ use crate::v1_std_core::CompilerDiagnostic::{
     FrontierOccurrenceBudgetExceeded, InternalError, MethodExistenceFrontierAdmitted,
     MethodExistenceUndecided, MethodNotFound, MissingField, OptionalCastNotEliminated,
     ReceiverTypeUnestablished, ServiceConfigReferenceJudgmentDeferred, SoleConstructorViolation,
-    TypeArgumentArityMismatch, TypeMismatch, UnlistedVariantValueUse, UnresolvedType,
-    VariantCollision,
+    TypeMismatch, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -1283,7 +1282,7 @@ pub fn type_mismatch_error(
 pub fn seed_node_traversal_frontier() -> String {
     thread_local! {
         static CACHED: String = {
-            "🟡 dissolve-on: v1_seed_deleted_at_v2_self_host (opened 2026-07-31) — the v1 seed reads and recurses substrate Node storage directly instead of consuming a canonical traversal surface. Recorded as ONE frontier row for the CLASS, because that is the honest grain: the idiom is 16 self-recursive `children |> flat_map` sites on origin/main across 04_emit_info, 04_sigs, 04_infer, 05_emit, 05_emit_rust, compile and complexity (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings), plus 579 direct Node-storage field reads in 04_infer alone. collect_explicit_return_values is the 17th instance and v1.compiler.trait_derive_emit.v1_type_expr_contains_param_name the 18th (codex review 47248), not new classes, and a per-function row would assert separable work that does not exist while 16 identical siblings carried none (codex reviews 45570, 45580, 45666). SIBLING COUNT IS NOT THE JUSTIFICATION and the reviewer is right to reject that reading — precedent is debt, not permission. The justification is that no canonical surface is REACHABLE here: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap; and no shared v1 walker exists to route through, because every v1 collector recurses itself. DESIGN's fold_node line is scoped to the 7 v2 stages. COST OF CLOSING NOW, which is why this is retained rather than accepted: building a v1-local generic traversal for one call site adds another shape without removing any of the existing ones, and migrating all 18 is a seed-wide refactor of the stage that IS the traversal — against a seed whose declared endpoint is deletion. DISSOLVES WHEN the v1 seed is deleted at v2 self-host, at which point every row in this class goes with it; the same trigger compiler_diagnostic_seed_projection_note carries for the hand-Rust arms, because it is the same seed and the same endpoint.".to_string()
+            "🟡 dissolve-on: v1_seed_deleted_at_v2_self_host (opened 2026-07-31) — the v1 seed reads and recurses substrate Node storage directly instead of consuming a canonical traversal surface. Recorded as ONE frontier row for the CLASS, because that is the honest grain: the idiom is every self-recursive `children |> flat_map` site across the seed's stages (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings), plus the direct Node-storage field reads inside them. BOTH POPULATIONS ARE NAMED BY THEIR INSTRUMENT RATHER THAN TRANSCRIBED, and this row is the receipt for why: it previously carried a site count across a module list, and both halves were wrong. It also carried a direct-Node-storage-field-read count for 04_infer alone, a figure no recipe in this corpus reproduces; a plausible reconstruction disagrees with it by a wide margin, which establishes the number is stale WITHOUT establishing what the right one is. NO SUPERSEDED FIGURE IS RESTATED HERE, and the omission is the point: a wrong number quoted as history is still a number in a live authority, it decays the same way, and it gets cited as though this row had measured it. The before-and-after lives in the PR that made the correction. That asymmetry is exactly why the repair is DELETION rather than an update: replacing a stale number with one my own instrument produced would swap an uncheckable figure for a checkable-looking wrong one, which is worse, because it would then be cited as verified. Re-derive the site population by grepping the literal idiom under src/v1 -- the grep is LEXICAL while `self-recursive` is SEMANTIC, so it bounds the literal-occurrence population and the recursion property is read off the sites, never off the count; the field-read population has no agreed instrument and is therefore stated as a shape and not a count. THE STALENESS WAS FOUND IN THIS ROW ONLY AFTER THE SIBLING row explicit_return_conformance_note was repaired for the identical claim -- one sentence fixed while the same assertion stood untouched a few lines away, which is the document-wide-correction failure and the reason a figure must be grepped as a CLAIM rather than edited as a SENTENCE. collect_explicit_return_values and v1.compiler.trait_derive_emit.v1_type_expr_contains_param_name are further instances of that same idiom (codex review 47248), not new classes — stated without ordinals deliberately, because the ordinals they previously carried were positions in a count that has since been measured wrong, and an ordinal is a transcribed measurement wearing the costume of a structural fact, and a per-function row would assert separable work that does not exist while every identical sibling carried none (codex reviews 45570, 45580, 45666). SIBLING COUNT IS NOT THE JUSTIFICATION and the reviewer is right to reject that reading — precedent is debt, not permission. The justification is that no canonical surface is REACHABLE here: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap; and no shared v1 walker exists to route through, because every v1 collector recurses itself. DESIGN's fold_node line is scoped to the 7 v2 stages. COST OF CLOSING NOW, which is why this is retained rather than accepted: building a v1-local generic traversal for one call site adds another shape without removing any of the existing ones, and migrating the whole population is a seed-wide refactor of the stage that IS the traversal — against a seed whose declared endpoint is deletion. DISSOLVES WHEN the v1 seed is deleted at v2 self-host, at which point every row in this class goes with it; the same trigger compiler_diagnostic_seed_projection_note carries for the hand-Rust arms, because it is the same seed and the same endpoint.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1344,7 +1343,7 @@ pub fn explicit_return_conformance_diags(
 pub fn explicit_return_conformance_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom — 16 such sites on origin/main across 04_emit_info, 04_sigs, 04_infer, 05_emit, 05_emit_rust, compile and complexity (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings) — and there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is the 17th instance of a 16-instance idiom, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a 17th shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's.".to_string()
+            "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings). THE POPULATION IS NAMED BY ITS INSTRUMENT AND NOT TRANSCRIBED: grep the literal idiom under src/v1 to re-derive it, and note the grep is LEXICAL while `self-recursive` and `only traversal idiom` are SEMANTIC properties — so it bounds the literal-occurrence population, and the recursion claim is read off the sites rather than off the count. This clause previously carried a site count and a module list, and both were wrong. NO SUPERSEDED FIGURE IS RESTATED HERE, not even as history: a wrong number quoted inside the sentence announcing its removal is still a number in a live authority, it decays exactly as the original did, and it gets cited as though this row had measured it. The before-and-after belongs in the PR that made the correction. Nothing edited this note; the tree moved underneath it, which is the decay mode §3 gives for a positional citation and the reason the 2026-08-24 ruling forbids transcribing an instrument's output. The argument never needed the number: what makes this the seed's idiom rather than a new shape is that EVERY collector recurses itself, and that is true at whatever the instrument measures next — a clause whose force depends on a figure it cannot keep current was overstating its own evidence. And there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is one more instance of an idiom the seed uses everywhere rather than a new shape beside it, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -10326,124 +10325,51 @@ pub fn alias_chain_generic_decl(env: Rc<TypeEnv>, carrier: Rc<Node>, target: Rc<
     }
 }
 
-pub fn alias_chain_type_arg_arity_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "WHY THIS SEAM REFUSES INSTEAD OF SUBSTITUTING WHAT FITS (DESIGN sec 5, the absorbing fallback; sec 4b floor band 'applications bind in exact bijection'). alias_chain_type_arg_subst folded the DECLARED parameters against the SUPPLIED type arguments positionally and absorbed every disagreement in both directions at once: with fewer arguments than parameters the fold's Absent arm left the surplus parameters unsubstituted, so the expanded record kept type-variable fields and field access on it was judged against a hole; with more arguments than parameters the surplus arguments were simply never read. Neither state produced a diagnostic, so `Alias<Int>` and `Alias<Int, String>` against a one-parameter Alias compiled identically -- correct and incorrect indistinguishable at the floor band. One of the three call sites did notice: expand_alias_chain_for_field_access computed `dropped_args` at its recursion seam and widened `lossy`, which is the absorbing fallback in its purest form -- the failure arm stood the field-presence wall DOWN rather than refusing, so the deficit's frequency was zero by construction and nothing ranked it for repair. The other two call sites (alias_chain_target_after_args, and the record branch's re-substitution over an unresolved-parameter field) did not check at all. The repair is construction before validation: the subst is now Optional and has NO spelling for a partial map, so a mismatch cannot be handed downstream by any caller; and alias_chain_arity_diagnostics states the refusal ONCE, typed and located, at the seam that owns both the declaration and the application. SCOPE, stated rather than implied: the refused population is exactly the state `dropped_args` already computed -- both counts nonzero and unequal -- so this wall adds no refusal to a shape the code was not already treating as wrong, and a zero-parameter declaration or a zero-argument use is untouched. Container spellings are excluded because their arity has its own authority (container_expected_arity) and its own diagnostic. AND THE CARRIER MUST BE A USE-SITE LEAF, which is the qualification the first cut of this wall omitted and CI refused it for -- correctly, and the refusal is recorded here rather than quietly patched out. alias_chain_carrier answers the authored node only when it is NoConnective and named; otherwise it answers structural_from_expanded_type, whose children are the record's FIELDS or the coproduct's VARIANTS, not type arguments at all. Reading those as arguments made the check compare a declaration's field count against its parameter count, so `type Medium<R> { carried: R  fidelity: DecodeFidelity }` reported 'two type arguments supplied, one type parameter declared' at its own declaration -- 2460 diagnostics over 154 sites and 65 type names across dag/ and src/v2/, none of them a use site and none of them wrong source. The predicate therefore requires connective == NoConnective, which is exactly the branch where children ARE the applied arguments, and is the same position the deleted dropped_args occupied. WHY THIS WAS NOT CAUGHT BEFORE PUSHING: the corpus control was run with a compiler built BEFORE the change, so it exercised nothing and its zero was a fact about the old binary. A control that cannot flip is not a control.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn alias_chain_type_arg_arity_mismatch(
-    carrier: Rc<Node>,
-    decl: Rc<Node>,
-    type_args: Rc<Vec<Rc<Node>>>,
-) -> bool {
-    {
-        let declared = (decl.params.clone().len() as i64);
-        let supplied = (type_args.clone().len() as i64);
-        ((((carrier.connective.clone() == Connective::NoConnective) && (declared.clone() > 0))
-            && (supplied.clone() > 0))
-            && (declared.clone() != supplied.clone()))
-    }
-}
-
 pub fn alias_chain_type_arg_subst(
     env: Rc<TypeEnv>,
     carrier: Rc<Node>,
     target: Rc<Node>,
     type_args: Rc<Vec<Rc<Node>>>,
-) -> Option<Rc<HashMap<String, Rc<Node>>>> {
+) -> Rc<HashMap<String, Rc<Node>>> {
     {
         let decl = alias_chain_generic_decl(env.clone(), carrier.clone(), target.clone());
-        if alias_chain_type_arg_arity_mismatch(carrier.clone(), decl.clone(), type_args.clone()) {
-            None
-        } else {
-            Some(
-                Rc::new(
-                    decl.params
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(i, v)| (i as i64, v))
-                        .collect::<Vec<_>>(),
-                )
+        Rc::new(
+            decl.params
+                .clone()
                 .iter()
                 .cloned()
-                .fold(
-                    v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                    |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
-                        let slot = crate::v1_std_core::generic_param_name_at(
-                            pair.1.clone(),
-                            env.source_indices.clone(),
-                        );
-                        match type_args
-                            .clone()
-                            .iter()
-                            .cloned()
-                            .skip(pair.0.clone() as usize)
-                            .next()
-                        {
-                            Some(arg) => v1_rt::rc_map_insert(
-                                acc.clone(),
-                                slot.clone(),
-                                crate::v1_compiler_infer_lookup::resolve_scrutinee_type_node(
-                                    env.clone(),
-                                    arg.clone(),
-                                ),
-                            ),
-                            None => acc.clone(),
-                        }
-                    },
-                ),
-            )
-        }
-    }
-}
-
-pub fn alias_chain_arity_diagnostics(
-    carrier: Rc<Node>,
-    carrier_name: String,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    {
-        let type_args = carrier.children.clone();
-        if (((carrier_name.clone() == "".to_string()) || ((type_args.clone().len() as i64) == 0))
-            || crate::std_types::is_container_type(carrier_name.clone()))
-        {
-            Rc::new(vec![])
-        } else {
-            match crate::v1_compiler_infer_env::lookup_type_by_name(
-                env.clone(),
-                carrier_name.clone(),
-            ) {
-                Some(target) => {
-                    let decl =
-                        alias_chain_generic_decl(env.clone(), carrier.clone(), target.clone());
-                    if alias_chain_type_arg_arity_mismatch(
-                        carrier.clone(),
-                        decl.clone(),
-                        type_args.clone(),
-                    ) {
-                        Rc::new(vec![crate::v1_std_core::make_error_node(
-                            Rc::new(CompilerDiagnostic::TypeArgumentArityMismatch {
-                                type_name: carrier_name.clone(),
-                                supplied: (type_args.clone().len() as i64),
-                                declared: (decl.params.clone().len() as i64),
-                                span: carrier.span.clone(),
-                            }),
-                            module_name.clone(),
-                        )])
-                    } else {
-                        Rc::new(vec![])
-                    }
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
+                let slot = crate::v1_std_core::generic_param_name_at(
+                    pair.1.clone(),
+                    env.source_indices.clone(),
+                );
+                match type_args
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(pair.0.clone() as usize)
+                    .next()
+                {
+                    Some(arg) => v1_rt::rc_map_insert(
+                        acc.clone(),
+                        slot.clone(),
+                        crate::v1_compiler_infer_lookup::resolve_scrutinee_type_node(
+                            env.clone(),
+                            arg.clone(),
+                        ),
+                    ),
+                    None => acc.clone(),
                 }
-                None => Rc::new(vec![]),
-            }
-        }
+            },
+        )
     }
 }
 
@@ -10459,36 +10385,28 @@ pub fn alias_chain_target_after_args(
         } else {
             {
                 let decl = alias_chain_generic_decl(env.clone(), carrier.clone(), target.clone());
-                match alias_chain_type_arg_subst(
+                let subst = alias_chain_type_arg_subst(
                     env.clone(),
                     carrier.clone(),
                     target.clone(),
                     type_args.clone(),
-                ) {
-                    None => target.clone(),
-                    Some(subst) => {
-                        let is_parameterized_alias = (((decl.inferred.clone() != None)
-                            && ((decl.children.clone().len() as i64) == 0))
-                            && (decl.connective.clone() == Connective::NoConnective));
-                        if is_parameterized_alias.clone() {
-                            match decl.inferred.clone().as_deref().cloned() {
-                                Some(InferredNode::Resolved {
-                                    node: alias_body, ..
-                                }) => substitute_generics(
-                                    alias_body.clone(),
-                                    subst.clone(),
-                                    env.source_indices.clone(),
-                                ),
-                                _ => target.clone(),
-                            }
-                        } else {
-                            substitute_generics(
-                                decl.clone(),
-                                subst.clone(),
-                                env.source_indices.clone(),
-                            )
-                        }
+                );
+                let is_parameterized_alias = (((decl.inferred.clone() != None)
+                    && ((decl.children.clone().len() as i64) == 0))
+                    && (decl.connective.clone() == Connective::NoConnective));
+                if is_parameterized_alias.clone() {
+                    match decl.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved {
+                            node: alias_body, ..
+                        }) => substitute_generics(
+                            alias_body.clone(),
+                            subst.clone(),
+                            env.source_indices.clone(),
+                        ),
+                        _ => target.clone(),
                     }
+                } else {
+                    substitute_generics(decl.clone(), subst.clone(), env.source_indices.clone())
                 }
             }
         }
@@ -10507,7 +10425,9 @@ pub fn expand_alias_chain_for_field_access(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,
+    origin_name: String,
     seen: Rc<HashMap<String, bool>>,
+    lossy: bool,
 ) -> Rc<NodeResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let peel_result = if needs_alias_field_expansion(n.clone(), env.clone()) {
@@ -10525,15 +10445,6 @@ pub fn expand_alias_chain_for_field_access(
         } else {
             crate::v1_std_core::authored_name_at(env.source_indices.clone(), carrier.clone())
         };
-        let own_diags = v1_rt::concat(
-            peel_result.diagnostics.clone(),
-            alias_chain_arity_diagnostics(
-                carrier.clone(),
-                carrier_name.clone(),
-                env.clone(),
-                module_name.clone(),
-            ),
-        );
         let structural = structural_from_expanded_type(
             crate::v1_compiler_infer_lookup::resolve_scrutinee_type_node(
                 env.clone(),
@@ -10553,28 +10464,39 @@ pub fn expand_alias_chain_for_field_access(
                             env.clone(),
                             carrier_name.clone(),
                         ) {
-                            Some(target) => match alias_chain_type_arg_subst(
-                                env.clone(),
-                                carrier.clone(),
-                                target.clone(),
-                                carrier.children.clone(),
-                            ) {
-                                Some(subst) => substitute_generics(
+                            Some(target) => {
+                                let subst = alias_chain_type_arg_subst(
+                                    env.clone(),
+                                    carrier.clone(),
+                                    target.clone(),
+                                    carrier.children.clone(),
+                                );
+                                substitute_generics(
                                     structural.clone(),
                                     subst.clone(),
                                     env.source_indices.clone(),
-                                ),
-                                None => structural.clone(),
-                            },
+                                )
+                            }
                             None => structural.clone(),
                         }
                     } else {
                         structural.clone()
                     };
-                Rc::new(NodeResolveResult {
-                    resolved: resolved_record.clone(),
-                    diagnostics: own_diags.clone(),
-                })
+                let fail_closed = (lossy.clone()
+                    && record_has_unresolved_param_field(resolved_record.clone(), env.clone()));
+                if fail_closed.clone() {
+                    Rc::new(NodeResolveResult {
+                        resolved: crate::v1_compiler_infer_types::nominal_type_ref(
+                            origin_name.clone(),
+                        ),
+                        diagnostics: peel_result.diagnostics.clone(),
+                    })
+                } else {
+                    Rc::new(NodeResolveResult {
+                        resolved: resolved_record.clone(),
+                        diagnostics: peel_result.diagnostics.clone(),
+                    })
+                }
             }
         } else {
             {
@@ -10587,14 +10509,16 @@ pub fn expand_alias_chain_for_field_access(
                             crate::v1_std_core::with_required_cardinality(structural.clone()),
                             env.clone(),
                             module_name.clone(),
+                            origin_name.clone(),
                             seen.clone(),
+                            lossy.clone(),
                         );
                         Rc::new(NodeResolveResult {
                             resolved: crate::v1_std_core::with_optional_cardinality(
                                 expanded_inner.resolved.clone(),
                             ),
                             diagnostics: v1_rt::concat(
-                                own_diags.clone(),
+                                peel_result.diagnostics.clone(),
                                 expanded_inner.diagnostics.clone(),
                             ),
                         })
@@ -10609,7 +10533,7 @@ pub fn expand_alias_chain_for_field_access(
                         if stop.clone() {
                             Rc::new(NodeResolveResult {
                                 resolved: structural.clone(),
-                                diagnostics: own_diags.clone(),
+                                diagnostics: peel_result.diagnostics.clone(),
                             })
                         } else {
                             match crate::v1_compiler_infer_env::lookup_type_by_name(
@@ -10620,7 +10544,19 @@ pub fn expand_alias_chain_for_field_access(
                                     let next_seen =
                                         v1_rt::rc_map_insert(seen.clone(), next_name.clone(), true);
                                     let type_arg_count = (carrier.children.clone().len() as i64);
-                                    let next_n = if (type_arg_count.clone() > 0) {
+                                    let decl = alias_chain_generic_decl(
+                                        env.clone(),
+                                        carrier.clone(),
+                                        target.clone(),
+                                    );
+                                    let param_count = (decl.params.clone().len() as i64);
+                                    let dropped_args = (((type_arg_count.clone() > 0)
+                                        && (param_count.clone() > 0))
+                                        && (param_count.clone() != type_arg_count.clone()));
+                                    let next_lossy = (lossy.clone() || dropped_args.clone());
+                                    let next_n = if ((type_arg_count.clone() > 0)
+                                        && !dropped_args.clone())
+                                    {
                                         alias_chain_target_after_args(
                                             target.clone(),
                                             carrier.clone(),
@@ -10633,19 +10569,21 @@ pub fn expand_alias_chain_for_field_access(
                                         next_n.clone(),
                                         env.clone(),
                                         module_name.clone(),
+                                        origin_name.clone(),
                                         next_seen.clone(),
+                                        next_lossy.clone(),
                                     );
                                     Rc::new(NodeResolveResult {
                                         resolved: expanded_next.resolved.clone(),
                                         diagnostics: v1_rt::concat(
-                                            own_diags.clone(),
+                                            peel_result.diagnostics.clone(),
                                             expanded_next.diagnostics.clone(),
                                         ),
                                     })
                                 }
                                 None => Rc::new(NodeResolveResult {
                                     resolved: structural.clone(),
-                                    diagnostics: own_diags.clone(),
+                                    diagnostics: peel_result.diagnostics.clone(),
                                 }),
                             }
                         }
@@ -10668,12 +10606,18 @@ pub fn expand_type_for_field_access_with_seen(
             diagnostics: Rc::new(vec![]),
         })
     } else {
-        expand_alias_chain_for_field_access(
-            n.clone(),
-            env.clone(),
-            module_name.clone(),
-            seen.clone(),
-        )
+        {
+            let origin_name =
+                crate::v1_std_core::authored_name_at(env.source_indices.clone(), n.clone());
+            expand_alias_chain_for_field_access(
+                n.clone(),
+                env.clone(),
+                module_name.clone(),
+                origin_name.clone(),
+                seen.clone(),
+                false,
+            )
+        }
     }
 }
 
