@@ -31,8 +31,10 @@ import gunbc.legacy_binding_tap_coverage {
 // borrowed_census_decl, does not: BorrowedCensusDecl carries { owner_module_path, node }, so the
 // owning module survives while the declaration NAME does not, and the outcome alone cannot say which
 // declaration was found. Two remedies, not one: an erased target is repaired by WIDENING AN OUTCOME,
-// an absent occurrence by THREADING AN INPUT, and folding them into a single not-tappable bucket
-// would send both to whichever repair the shared label suggested.
+// an absent occurrence by THREADING AN INPUT, and the standing carries them as TWO OVERLAPPING
+// counts rather than one not-tappable bucket -- five sites owe occurrence threading, one
+// additionally owes target retention, and a single bucket would have reported the same number for
+// two opposite repairs.
 //
 // THIS ROSTER WAS RE-DERIVED BEFORE IT LANDED, AND THAT IS THE MORE USEFUL HALF OF THE ENTRY. It was
 // first read at 9fc2c531d5f2 and recorded all three FuncSigLookup sites as COMPUTED-THEN-ERASED:

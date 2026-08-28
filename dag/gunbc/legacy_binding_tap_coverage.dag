@@ -98,7 +98,8 @@ type TapCoverageStanding
   = LegacyBindingTapCoverageObserved {
       surveyed_sites: Int
       tappable_now: Int
-      requiring_identity_threading: Int
+      requiring_occurrence_identity_threading: Int
+      requiring_target_identity_retention: Int
       answering_no_authored_reference: Int
       refusal_count: Int
     }
@@ -148,8 +149,24 @@ fn site_is_tappable_now(o: DecisionSiteObservation) -> Bool {
     && target_identity_is_exact(t: o.target_identity)
 }
 
-fn site_requires_identity_threading(o: DecisionSiteObservation) -> Bool {
-  site_answers_an_authored_reference(o: o) && !site_is_tappable_now(o: o)
+// THE TWO REMEDY COUNTS ARE SEPARATE AND THEY OVERLAP, and this is a correction rather than an
+// elaboration. A single not-tappable count was authored here first, defined as answers-a-reference
+// AND NOT tappable -- which, because tappable is a conjunction over two axes, reported the same
+// number for a site missing its occurrence identity and a site whose target was erased. Those need
+// OPPOSITE repairs: one threads an INPUT into the decision site, the other widens an OUTCOME to
+// retain what the site already selected. This module's own note says exactly that, and then the
+// derived count collapsed it -- the census contradicting itself in the one place a reader takes the
+// number from rather than the prose.
+//
+// THE AXES ARE INDEPENDENT, SO THE COUNTS DO NOT PARTITION THE POPULATION. A site deficient on both
+// inhabits both counts, and that is correct rather than double-counting: it owes both repairs. A
+// partition would force it into one, which is the collapse again in a tidier shape.
+fn site_requires_occurrence_identity_threading(o: DecisionSiteObservation) -> Bool {
+  site_answers_an_authored_reference(o: o) && !occurrence_identity_is_exact(a: o.occurrence_identity)
+}
+
+fn site_requires_target_identity_retention(o: DecisionSiteObservation) -> Bool {
+  site_answers_an_authored_reference(o: o) && !target_identity_is_exact(t: o.target_identity)
 }
 
 fn count_sites(sites: List<DecisionSiteObservation>, p: fn(DecisionSiteObservation) -> Bool) -> Int {
@@ -209,7 +226,8 @@ fn admit_tap_coverage_census(c: TapCoverageCensus) -> TapCoverageStanding {
     true => LegacyBindingTapCoverageObserved {
       surveyed_sites: list_length(items: c.sites),
       tappable_now: count_sites(sites: c.sites, p: site_is_tappable_now),
-      requiring_identity_threading: count_sites(sites: c.sites, p: site_requires_identity_threading),
+      requiring_occurrence_identity_threading: count_sites(sites: c.sites, p: site_requires_occurrence_identity_threading),
+      requiring_target_identity_retention: count_sites(sites: c.sites, p: site_requires_target_identity_retention),
       answering_no_authored_reference: count_sites(sites: c.sites, p: fn(o) { !site_answers_an_authored_reference(o: o) }),
       refusal_count: list_length(items: c.refusals),
     }

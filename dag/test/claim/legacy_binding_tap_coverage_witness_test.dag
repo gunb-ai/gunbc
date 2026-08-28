@@ -18,7 +18,7 @@ import gunbc.legacy_binding_tap_coverage_census {
   tap_coverage_census, tap_coverage_standing, tap_coverage_sites, tap_coverage_refusals,
 }
 
-data legacy_binding_tap_coverage_witness_note: String = "THE DERIVATION AND THE MEASURED ROSTER. The mechanism half matters more than usual here because the standing's three counts are DERIVED from two axes rather than stored: tappable, requiring-threading and answers-nothing are computed at read time from occurrence identity and target identity, so nothing can transcribe a verdict that disagrees with the facts beside it. A suite that only executed the production roster would leave that derivation untested in exactly the direction that matters -- a site becoming tappable, or ceasing to be, without the count moving.\n\nTHE FOUR-CORNER CONTROL IS THE LOAD-BEARING ONE. Tappable requires BOTH halves at the SAME site, and either half alone is worthless: an exact target with no occurrence identity cannot be attributed to the reference that asked for it, and an exact occurrence with an erased target records that something was selected without recording what. Three of the four corners must therefore be non-tappable, and a conjunction written as a disjunction passes every single-axis test."
+data legacy_binding_tap_coverage_witness_note: String = "THE DERIVATION AND THE MEASURED ROSTER. The mechanism half matters more than usual here because the standing's four counts are DERIVED from two axes rather than stored: tappable, the two REMEDY counts and answers-nothing are computed at read time from occurrence identity and target identity, so nothing can transcribe a verdict that disagrees with the facts beside it. A suite that only executed the production roster would leave that derivation untested in exactly the direction that matters -- a site becoming tappable, or ceasing to be, without the count moving.\n\nTHE FOUR-CORNER CONTROL IS THE LOAD-BEARING ONE. Tappable requires BOTH halves at the SAME site, and either half alone is worthless: an exact target with no occurrence identity cannot be attributed to the reference that asked for it, and an exact occurrence with an erased target records that something was selected without recording what. Three of the four corners must therefore be non-tappable, and a conjunction written as a disjunction passes every single-axis test.\n\nTHE REMEDY COUNTS ARE ASSERTED SEPARATELY AND THEY OVERLAP. This suite first asserted ONE not-tappable count of three over those same corners, which permanently ratified a conflation the census exists to refuse: an occurrence-exact site whose target was erased owes OUTCOME WIDENING, not occurrence threading. Two counts of two read the same corners correctly, and they deliberately do not sum to the non-tappable total -- a site deficient on both axes owes both repairs, so forcing a partition would be the same collapse in a tidier shape."
 
 fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
 
@@ -57,12 +57,21 @@ fn census_of(sites: List<DecisionSiteObservation>) -> TapCoverageCensus {
   }
 }
 
-fn observed_counts(s: TapCoverageStanding, surveyed: Int, tappable: Int, threading: Int, nothing: Int) -> Bool {
+fn observed_counts(
+  s: TapCoverageStanding,
+  surveyed: Int,
+  tappable: Int,
+  occurrence_threading: Int,
+  target_retention: Int,
+  nothing: Int,
+) -> Bool {
   match s {
     LegacyBindingTapCoverageObserved {
-      surveyed_sites: sv, tappable_now: t, requiring_identity_threading: th,
+      surveyed_sites: sv, tappable_now: t,
+      requiring_occurrence_identity_threading: occ,
+      requiring_target_identity_retention: tgt,
       answering_no_authored_reference: n, refusal_count: _,
-    } => sv == surveyed && t == tappable && th == threading && n == nothing
+    } => sv == surveyed && t == tappable && occ == occurrence_threading && tgt == target_retention && n == nothing
     LegacyBindingTapCoverageRefused { causes: _ } => false
   }
 }
@@ -70,7 +79,9 @@ fn observed_counts(s: TapCoverageStanding, surveyed: Int, tappable: Int, threadi
 fn causes_of(s: TapCoverageStanding) -> List<TapCoverageRefusalCause> {
   match s {
     LegacyBindingTapCoverageObserved {
-      surveyed_sites: _, tappable_now: _, requiring_identity_threading: _,
+      surveyed_sites: _, tappable_now: _,
+      requiring_occurrence_identity_threading: _,
+      requiring_target_identity_retention: _,
       answering_no_authored_reference: _, refusal_count: _,
     } => []
     LegacyBindingTapCoverageRefused { causes: cs } => cs
@@ -102,6 +113,14 @@ fn is_revision_mismatch(c: TapCoverageRefusalCause) -> Bool {
 // ---------------------------------------------------------------------------
 // 1. THE FOUR CORNERS. Tappable is a CONJUNCTION over two axes at one site, and a conjunction
 //    mistakenly written as a disjunction passes every test that varies one axis at a time.
+//
+//    AND THE TWO REMEDY COUNTS ARE ASSERTED SEPARATELY HERE BECAUSE THIS SUITE ONCE RATIFIED THEIR
+//    COLLAPSE. It first asserted a single not-tappable count of THREE over these same four corners,
+//    which permanently encoded the occurrence-exact/target-erased corner as owing occurrence
+//    threading -- a repair that site does not need. Two overlapping counts of two are the same four
+//    corners read correctly: each deficient corner owes the repair its own axis names, and the
+//    both-deficient corner owes both. The counts therefore do NOT sum to the non-tappable total,
+//    and a test asserting that they did would be re-imposing the partition that caused the defect.
 // ---------------------------------------------------------------------------
 
 test fn only_the_corner_with_both_halves_is_tappable() -> Bool {
@@ -109,12 +128,14 @@ test fn only_the_corner_with_both_halves_is_tappable() -> Bool {
   let occurrence_only = probe(name: "occ", occurrence: OccurrenceIdentityExact, target: erased_target(), families: [BareCallableReference])
   let target_only = probe(name: "tgt", occurrence: absent_occurrence(), target: exact_target(), families: [BareCallableReference])
   let neither = probe(name: "neither", occurrence: absent_occurrence(), target: erased_target(), families: [BareCallableReference])
-  observed_counts(s: admit_tap_coverage_census(c: census_of(sites: [both, occurrence_only, target_only, neither])),
-    surveyed: 4, tappable: 1, threading: 3, nothing: 0)
+  observed_counts(
+    s: admit_tap_coverage_census(c: census_of(sites: [both, occurrence_only, target_only, neither])),
+    surveyed: 4, tappable: 1, occurrence_threading: 2, target_retention: 2, nothing: 0,
+  )
 }
 
 // A SITE THAT ANSWERS NO AUTHORED REFERENCE IS NOT A GAP. It is out of the denominator, and folding
-// it into requiring-threading would inflate the price of the tap with work nobody needs done.
+// it into either remedy count would inflate the price of the tap with work nobody needs done.
 test fn a_site_answering_no_authored_reference_is_neither_tappable_nor_owed_threading() -> Bool {
   let out = probe(
     name: "out_of_scope",
@@ -122,7 +143,7 @@ test fn a_site_answering_no_authored_reference_is_neither_tappable_nor_owed_thre
     target: TargetIdentityNotComputed { reason: nes(s: "fixture") },
     families: [AnswersNoAuthoredReference { reason: nes(s: "fixture") }],
   )
-  observed_counts(s: admit_tap_coverage_census(c: census_of(sites: [out])), surveyed: 1, tappable: 0, threading: 0, nothing: 1)
+  observed_counts(s: admit_tap_coverage_census(c: census_of(sites: [out])), surveyed: 1, tappable: 0, occurrence_threading: 0, target_retention: 0, nothing: 1)
 }
 
 // A site answering SEVERAL families, one of which is out of scope, is still in the denominator:
@@ -134,7 +155,7 @@ test fn a_mixed_family_site_stays_in_the_denominator() -> Bool {
     target: exact_target(),
     families: [AnswersNoAuthoredReference { reason: nes(s: "fixture") }, ConstructorReference],
   )
-  observed_counts(s: admit_tap_coverage_census(c: census_of(sites: [mixed])), surveyed: 1, tappable: 1, threading: 0, nothing: 0)
+  observed_counts(s: admit_tap_coverage_census(c: census_of(sites: [mixed])), surveyed: 1, tappable: 1, occurrence_threading: 0, target_retention: 0, nothing: 0)
 }
 
 // ---------------------------------------------------------------------------
@@ -177,7 +198,7 @@ test fn an_empty_census_refuses() -> Bool {
 // THE PRICING RESULT. Zero tappable is the whole finding, and it is asserted alongside the surveyed
 // total so that deleting the roster cannot produce the same zero.
 test fn no_surveyed_callable_site_is_tappable_today() -> Bool {
-  observed_counts(s: tap_coverage_standing(), surveyed: 5, tappable: 0, threading: 5, nothing: 0)
+  observed_counts(s: tap_coverage_standing(), surveyed: 5, tappable: 0, occurrence_threading: 5, target_retention: 1, nothing: 0)
 }
 
 test fn the_roster_is_bound_to_the_revision_it_was_read_at() -> Bool {
