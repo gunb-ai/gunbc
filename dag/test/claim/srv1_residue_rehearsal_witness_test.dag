@@ -10,6 +10,8 @@ import extdeps.git.enumeration { git_ref_set_observation_of }
 import extdeps.git.worktree_enumeration { git_worktree_set_observation_of }
 import gunbc.live_deploy.repository_convergence {
   RepositoryState,
+  GitTextObserved,
+  RepositoryCoherenceObserved,
   GitUntrackedObserved,
   ConvergenceCompleted,
   repository_convergence_verdict,
@@ -32,7 +34,7 @@ test fn captured_primary_is_detached() -> Bool {
 // The primary has no branch arm in the real capture. This fixture differs from an attached primary
 // exactly at that checkout arm and proves the convergence fold treats the branch obligation as not
 // applicable: the transition completes without inventing a branch that must move to the candidate.
-fn detached_state(head: String, reflog: String) -> RepositoryState {
+fn detached_state(head: String, reflog: String, index_tree: String) -> RepositoryState {
   RepositoryState {
     refs: git_ref_set_observation_of(
       raw: concat(concat("refs/remotes/origin/main\0", head), "\0\n"),
@@ -44,9 +46,14 @@ fn detached_state(head: String, reflog: String) -> RepositoryState {
       exit_code: 0,
       stderr: "",
     ),
-    head: head,
-    reflog: reflog,
+    head: GitTextObserved { text: head },
+    reflog: GitTextObserved { text: reflog },
     untracked: GitUntrackedObserved { paths: "" },
+    coherence: RepositoryCoherenceObserved {
+      index_tree: index_tree,
+      candidate_tree: "candidate-tree",
+      tracked_paths: "",
+    },
   }
 }
 
@@ -54,14 +61,14 @@ test fn detached_primary_has_no_primary_branch_obligation() -> Bool {
   let old = "1111111111111111111111111111111111111111"
   let candidate = "2222222222222222222222222222222222222222"
   let outcome = repository_convergence_verdict(
-    before: detached_state(head: old, reflog: "old-reflog"),
+    before: detached_state(head: old, reflog: "old-reflog", index_tree: "old-tree"),
     after: detached_state(
       head: candidate,
       reflog: concat(candidate, " HEAD@{0} reset: moving to candidate\nold-reflog"),
+      index_tree: "candidate-tree",
     ),
     candidate: candidate,
     base_ref: "refs/remotes/origin/main",
-    primary_path: "/opt/gunbc/gunbc",
   )
   match outcome {
     ConvergenceCompleted { candidate: c, refs_preserved: _, worktrees_preserved: _ } => c == candidate

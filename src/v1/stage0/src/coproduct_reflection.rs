@@ -844,7 +844,7 @@ fn marshal_skeleton(
 // SCAFFOLD (§7 hand-Rust shrink-to-zero): G2 live-read skeleton marshal expansion
 // (`marshal_string_literal_atom`, `hoist_call_arg_string_literal_edges`, callee atoms on
 // `ExprCall`) — see `v2.std.fn_index::fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger`.
-// Host SOURCE half for P1 G2 call-reachability (docs/plans/live-read-witness-classification-design.md §9 P1 / §14).
+// Host SOURCE half for P1 G2 call-reachability (live-read-witness-classification-design (plan doc deleted 2026-08-28) §9 P1 / §14).
 // Dissolves when fn-arrow body projection is a modeled substrate fold (same #5364 corridor as
 // `eval_fn_arrow_decl_facts_live`) rather than hand-Rust marshal in this module.
 fn marshal_string_literal_atom(ctx: &InterpContext, node: &Rc<Node>) -> Option<Value> {
@@ -909,7 +909,7 @@ fn marshal_generic(
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
     } else if matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. }) && !name.is_empty() {
         // G2 live-read call reachability: callee atoms make cross-fn carrier chains
-        // visible in the fn-arrow skeleton (docs/plans/live-read-witness-classification-design.md P1).
+        // visible in the fn-arrow skeleton (live-read-witness-classification-design (plan doc deleted 2026-08-28) P1).
         edges.push(edge_positional(ctx, atom_identity_node(ctx, &name)));
     } else if !name.is_empty() {
         if let ExprData::ExprVar { binding_kind } = node.expr_data.as_ref() {
@@ -1614,7 +1614,7 @@ fn nullary_coproduct_variant_value(
 
 // DESIGN section 7 seed-retained repair. This bridge retires with
 // `coproduct_reflection` under ROADMAP "Drain the hand-maintained v1 product
-// queue" (`dag/gunbc/v1_deletion_plan.dag` milestone `^hand_queue_drain`).
+// queue" (`dag/gunbc/v1/v1_deletion_plan.dag` milestone `^hand_queue_drain`).
 // Checkable receipt: the imported-named-coproduct generic-wrapper witness must
 // resolve, while the wrong-A/context-B and payload-bearing controls must refuse.
 struct TypedNullaryCoproductWitness {

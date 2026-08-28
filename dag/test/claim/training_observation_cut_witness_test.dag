@@ -1,0 +1,284 @@
+module test.claim.training_observation_cut_witness
+
+import product.training.observation_cut {
+  TrainingRunReadbackCut, SweepStarted, TerminalsEnumerated, OutputsEnumerated,
+  ManifestsEnumerated, CheckpointsEnumerated,
+  begin_sweep, enumerate_terminals, enumerate_outputs, enumerate_manifests,
+  enumerate_checkpoints, enumerate_processes_and_seal,
+  CrossAxisTemporalRelation, ObservedInOrder, ObservedOutOfOrder,
+  CrossAxisTemporalRelationUnobserved,
+  cross_axis_relation, output_enumeration_follows_terminal,
+  execution_enumeration_follows_terminal,
+}
+import product.training.readback {
+  TrainingRunSubject, subject_of_desired, TrainingReadbackAxis,
+  ExecutionReadbackAxis, CheckpointReadbackAxis, TerminalReadbackAxis,
+  OutputReadbackAxis, EffectiveManifestReadbackAxis,
+}
+import product.training.resolution {
+  AxisResolution, AxisResolved, ResolvedAxis,
+  TrainingResolution, TrainingResolved, TrainingResolutionRefused,
+  TrainingResolutionObservations,
+  DropoutPermille, DropoutPermilleAdmitted, DropoutPermilleOutOfRange, dropout_permille,
+  Bf16, NoPacking, MaskPromptTokens,
+  TrainingRunDesired, TrainingRunDesiredAdmitted, TrainingRunDesiredRefused,
+  resolve_training, training_work_for, admit_training_run_desired,
+}
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.envelope { ResourceEnvelope }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
+import product.fabric.identity {
+  FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, fabric_identity_eq,
+}
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.currency { Usd }
+import std.measure { money_amount_micro, hardware_thread_count }
+import std.nat { Nat }
+import std.types { NonEmptyStr, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn h(s: NonEmptyStr) -> ContentHash {
+  content_hash_of_value(value: s)
+}
+
+fn ax<T>(v: T) -> AxisResolution<T> {
+  AxisResolved { resolved: ResolvedAxis { value: v, receipt: "obs-graph" } }
+}
+
+fn dp(n: Nat) -> DropoutPermille? {
+  match dropout_permille(permille: n) {
+    DropoutPermilleAdmitted { value: v } => Present { value: v }
+    DropoutPermilleOutOfRange { offered: _ } => none
+  }
+}
+
+data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
+  shape: Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+    envelope: ResourceEnvelope { cpu: none, gpu: none, memory: none, storage: none, network: none },
+  },
+  capabilities: "linux-arm64",
+  trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
+}
+
+fn fixture_observations(d: DropoutPermille) -> TrainingResolutionObservations {
+  TrainingResolutionObservations {
+    base_artifact: ax(v: h(s: "base-A")),
+    dataset_manifest: ax(v: h(s: "dataset-1")),
+    tokenizer: ax(v: h(s: "tok-1")),
+    chat_template: ax(v: h(s: "tmpl-1")),
+    trainer_closure: ax(v: h(s: "trainer-1")),
+    target_modules: ax(v: h(s: "qkv")),
+    optimizer_config: ax(v: h(s: "adamw-1")),
+    scheduler_config: ax(v: h(s: "cosine-1")),
+    learning_rate_schedule: ax(v: h(s: "lr-1")),
+    rank: ax(v: 16),
+    scaling: ax(v: 32),
+    dropout_permille: ax(v: d),
+    sequence_length: ax(v: 4096),
+    packing: ax(v: NoPacking),
+    loss_mask: ax(v: MaskPromptTokens),
+    mixture: ax(v: h(s: "mix-1")),
+    micro_batch: ax(v: 2),
+    gradient_accumulation: ax(v: 8),
+    numeric_format: ax(v: Bf16),
+    seed: ax(v: 7),
+    data_order_seed: ax(v: 99),
+    checkpoint_format: ax(v: h(s: "ckpt-v1")),
+    output_contract: ax(v: h(s: "adapter-out")),
+  }
+}
+
+fn demand_for(work_key: NonEmptyStr) -> Demand<NonEmptyStr> {
+  Demand {
+    id: FabricIdentity { principal: "brian", key: "demand-1" },
+    work: FabricIdentity { principal: "gunbai", key: work_key },
+    origin: "gunbc.observation.training-graph",
+    submitted_at: "2026-08-28T00:00:00Z",
+    admission: AdmissionTerms {
+      deadline: none,
+      buy: BuyTerms {
+        budget_account: "training",
+        currency: Usd,
+        reservation_price: money_amount_micro(count: 1),
+        maximum_buy_order: money_amount_micro(count: 1000),
+      },
+    },
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: false,
+      step_reuse_permitted: true,
+    },
+  }
+}
+
+fn subject_from(demand_key: NonEmptyStr, dropout: Nat) -> TrainingRunSubject<NonEmptyStr>? {
+  match dp(n: dropout) {
+    none => none
+    Present { value: d } =>
+      match resolve_training(observations: fixture_observations(d: d), requirements: fixture_requirements) {
+        TrainingResolutionRefused { axis: _, cause: _ } => none
+        TrainingResolved { resolved: r } => {
+          let k = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+          let dm = Demand {
+            id: FabricIdentity { principal: "brian", key: demand_key },
+            work: FabricIdentity { principal: "gunbai", key: k as NonEmptyStr },
+            origin: "gunbc.observation.training-cut",
+            submitted_at: "2026-08-28T00:00:00Z",
+            admission: AdmissionTerms {
+              deadline: none,
+              buy: BuyTerms {
+                budget_account: "training",
+                currency: Usd,
+                reservation_price: money_amount_micro(count: 1),
+                maximum_buy_order: money_amount_micro(count: 1000),
+              },
+            },
+            satisfaction: SatisfactionRequirement {
+              terminal_receipt_may_satisfy: true,
+              new_attempt_required: false,
+              step_reuse_permitted: true,
+            },
+          }
+          match admit_training_run_desired(demand: dm, resolved: r) {
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => none
+            TrainingRunDesiredAdmitted { desired: dd } => Present { value: subject_of_desired(desired: dd) }
+          }
+        }
+      }
+  }
+}
+
+fn other_run_subject() -> TrainingRunSubject<NonEmptyStr>? {
+  subject_from(demand_key: "demand-OTHER", dropout: 60)
+}
+
+fn subject_fixture() -> TrainingRunSubject<NonEmptyStr>? {
+  match dp(n: 50) {
+    none => none
+    Present { value: d } =>
+      match resolve_training(observations: fixture_observations(d: d), requirements: fixture_requirements) {
+        TrainingResolutionRefused { axis: _, cause: _ } => none
+        TrainingResolved { resolved: r } => {
+          let k = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+          match admit_training_run_desired(demand: demand_for(work_key: k as NonEmptyStr), resolved: r) {
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => none
+            TrainingRunDesiredAdmitted { desired: dd } => Present { value: subject_of_desired(desired: dd) }
+          }
+        }
+      }
+  }
+}
+
+
+fn full_sweep(s: TrainingRunSubject<NonEmptyStr>) -> TrainingRunReadbackCut<NonEmptyStr> {
+  enumerate_processes_and_seal(
+    prior: enumerate_checkpoints(
+      prior: enumerate_manifests(
+        prior: enumerate_outputs(
+          prior: enumerate_terminals(started: begin_sweep(subject: s), receipt: "obs.term"),
+          receipt: "obs.out",
+        ),
+        receipt: "obs.manifest",
+      ),
+      receipt: "obs.ckpt",
+    ),
+    receipt: "obs.proc",
+    composition: "obs.composition",
+  )
+}
+
+fn relation_name(r: CrossAxisTemporalRelation) -> NonEmptyStr {
+  match r {
+    ObservedInOrder { earlier: _, later: _ } => "in-order"
+    ObservedOutOfOrder { earlier: _, later: _ } => "out-of-order"
+    CrossAxisTemporalRelationUnobserved { reason: _ } => "unobserved"
+  }
+}
+
+// WITHOUT A CUT THE ANSWER IS NEITHER YES NOR NO. This is the whole point of the third value: a
+// missing sweep must not read as evidence that two reads were unordered, because a reconciler would
+// take that as licence to ignore a conflict it cannot actually rule out.
+test fn with_no_cut_the_relation_is_unobserved_not_negative() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } => {
+      let r = output_enumeration_follows_terminal(cut: none, subject: s)
+      relation_name(r: r) == "unobserved" && relation_name(r: r) != "out-of-order"
+    }
+  }
+}
+
+// A SWEEP LICENSES THE TWO CONCLUSIONS IT WAS BUILT TO LICENSE. Outputs are enumerated after
+// terminals, and processes after everything -- so an empty output population beside a success, and
+// a process still running beside a terminal, are both interpretable rather than ambiguous.
+test fn a_completed_sweep_orders_outputs_and_processes_after_terminals() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } => {
+      let cut = full_sweep(s: s)
+      relation_name(r: output_enumeration_follows_terminal(cut: Present { value: cut }, subject: s)) == "in-order"
+        && relation_name(r: execution_enumeration_follows_terminal(cut: Present { value: cut }, subject: s)) == "in-order"
+    }
+  }
+}
+
+// THE ORDER IS READ OFF THE TRAVERSED SEQUENCE, so the reverse pair must come back out-of-order. A
+// comparison that answered "in-order" for every pair would pass the witness above and establish
+// nothing; this is what makes that one load-bearing.
+test fn the_reverse_pair_is_reported_out_of_order() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } =>
+      relation_name(
+        r: cross_axis_relation(
+          cut: Present { value: full_sweep(s: s) },
+          subject: s,
+          earlier: ExecutionReadbackAxis,
+          later: TerminalReadbackAxis,
+        ),
+      ) == "out-of-order"
+  }
+}
+
+// A CUT FROM ANOTHER RUN LICENSES NOTHING. It is well-formed, its sweep really happened, and its
+// ordering is real -- for a different run. Borrowing it to order this run's reads is the
+// authority-substitution failure: every half checks out and only the relation between them is
+// invented.
+test fn a_cut_belonging_to_another_run_does_not_order_this_ones_reads() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } =>
+      match other_run_subject() {
+        none => false
+        Present { value: foreign } =>
+          relation_name(r: output_enumeration_follows_terminal(cut: Present { value: full_sweep(s: foreign) }, subject: s))
+            == "unobserved"
+          && relation_name(r: output_enumeration_follows_terminal(cut: Present { value: full_sweep(s: s) }, subject: s))
+            == "in-order"
+      }
+  }
+}
+
+// THE SWEPT SEQUENCE IS THE LADDER'S OUTPUT, not a table someone maintained beside it. Every axis
+// appears exactly once and in the order the stage functions ran, which is the property that makes
+// axis_precedes an observation rather than a convention.
+test fn the_cut_records_every_axis_exactly_once_in_stage_order() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } => {
+      let swept = full_sweep(s: s).swept
+      swept.length() == 5
+        && relation_name(
+             r: cross_axis_relation(cut: Present { value: full_sweep(s: s) }, subject: s, earlier: TerminalReadbackAxis, later: CheckpointReadbackAxis),
+           ) == "in-order"
+        && relation_name(
+             r: cross_axis_relation(cut: Present { value: full_sweep(s: s) }, subject: s, earlier: CheckpointReadbackAxis, later: ExecutionReadbackAxis),
+           ) == "in-order"
+    }
+  }
+}

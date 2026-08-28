@@ -51,7 +51,7 @@ data declared_subject_note: String = "roadmap_belt_actuate's three probes (belt_
 
 test fn fully_declared_effects_emit_no_frontier_receipt_holds() -> Bool {
   let stderr = run_entry_capturing_stderr(
-    entry: "dag/test/claim/roadmap_belt_actuate_witness_test.dag",
+    entry: "dag/test/claim/roadmap/roadmap_belt_actuate_witness_test.dag",
     function: "witness_exec_ok_runs_echo"
   )
   !string_contains(s: stderr, pattern: frontier_marker)

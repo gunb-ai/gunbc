@@ -22,8 +22,8 @@ fn fixture_modules() -> List<ModuleDeclarationFact> {
   [
     ModuleDeclarationFact { module: "v2.std.symbol_index", path: "src/v2/std/symbol_index.dag" },
     ModuleDeclarationFact { module: "v2.compiler.resolve", path: "src/v2/compiler/03_resolve.dag" },
-    ModuleDeclarationFact { module: "gunbc.roadmap_authority", path: "dag/gunbc/roadmap_authority.dag" },
-    ModuleDeclarationFact { module: "gunbc.v1_maintenance_standing", path: "dag/gunbc/v1_maintenance_standing.dag" },
+    ModuleDeclarationFact { module: "gunbc.roadmap_authority", path: "dag/gunbc/roadmap/roadmap_authority.dag" },
+    ModuleDeclarationFact { module: "gunbc.v1_maintenance_standing", path: "dag/gunbc/v1/v1_maintenance_standing.dag" },
   ]
 }
 
@@ -44,7 +44,7 @@ fn intact_facts() -> List<DeclFact> {
     fixture_fact(
       qualified_name: "gunbc.v1_maintenance_standing.v1_seed_standing",
       name: "v1_seed_standing",
-      path: "dag/gunbc/v1_maintenance_standing.dag",
+      path: "dag/gunbc/v1/v1_maintenance_standing.dag",
     ),
   ]
 }

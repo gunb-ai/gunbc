@@ -147,7 +147,7 @@ service github.CliPulls {
         "--repo", "{repo}",
         "--state", "open",
         "--limit", "1000",
-        "--json", "number,title,url,headRefName,headRefOid,isDraft,state",
+        "--json", "number,title,url,headRefName,headRefOid,isDraft,state,changedFiles",
       ]
     }
   }
