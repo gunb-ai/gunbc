@@ -11,7 +11,9 @@ import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
 import gunbc.fleet_runner_connectivity {
   OrganizationRunnerRosterEvidence,
   RosterObserved,
+  RosterObservedPartial,
   RosterReadUnavailable,
+  partial_roster_unseen_reason,
   runner_slot_connectivity_verdict_for_incarnation,
   materialized_width_for_host,
   local_incarnations_for_host,
@@ -162,12 +164,25 @@ fn accumulate_decoded_registration(
   }
 }
 
+// A POPULATION BUILT FROM A PREFIX IS AN UNDER-COUNT, and this module already names why that is the
+// dangerous direction: "a dropped member is an under-count that reads as a converged host". Unlike
+// the per-slot verdict, there is no sub-question a prefix answers correctly here -- the whole point
+// of the fold is to enumerate everything GitHub holds for this host, so a truncated read refuses.
 fn observed_github_slot_identities(
   host: HostIdentity,
   roster: OrganizationRunnerRosterEvidence,
 ) -> ObservedGitHubSlotPopulation {
   match roster {
     RosterReadUnavailable { reason: r } => GitHubSlotPopulationUnreadable { reason: r }
+    RosterObservedPartial {
+      observed_on: _,
+      registrations: _,
+      observed_count: seen,
+      authority_total: total,
+    } =>
+      GitHubSlotPopulationUnreadable {
+        reason: partial_roster_unseen_reason(observed_count: seen, authority_total: total)
+      }
     RosterObserved { observed_on: _, registrations: regs } =>
       fold(
         regs,
@@ -264,12 +279,23 @@ fn accumulate_connectivity_action(
   }
 }
 
+// A TRUNCATED ROSTER STILL PLANS REPAIRS, AND THAT IS THE POINT. Refusing here would replace a
+// fail-open with a fail-shut that stops reconciliation on every host the read DID cover. Slots
+// inside the prefix are still planned normally; slots the read never reached answer
+// SlotConnectivityUnknown at runner_slot_connectivity_verdict_for_incarnation, which yields no
+// replace action -- so the false restart is cut at the verdict rather than by widening here.
 fn connectivity_actions_for_observed(
   roster: OrganizationRunnerRosterEvidence,
   observed: List<RunnerSlotIdentity>,
 ) -> ConnectivityActionsOutcome {
   match roster {
     RosterReadUnavailable { reason: r } => ConnectivityActionsRosterUnavailable { reason: r }
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } =>
+      fold(
+        observed,
+        init: ConnectivityActionsPlanned { actions: [] },
+        f: (acc, slot) => accumulate_connectivity_action(roster: roster, acc: acc, slot: slot)
+      )
     RosterObserved { observed_on: _, registrations: _ } =>
       fold(
         observed,

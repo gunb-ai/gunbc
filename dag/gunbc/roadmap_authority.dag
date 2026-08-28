@@ -280,7 +280,14 @@ fn v1_rust_source_observation_execution_contract() -> WorkItemExecutionContract 
   )
 }
 
-data namespace_structural_observations_execution_contract_note: String = "RETRACTED INTERIM (2026-08-04, operator ruling via loyal-ram-550): the prior ordinary_compile_structural_closing_contract_holds predicate checked only scenario-variant presence and could green four StructuralBindingProductionRefused observations — worse than no binding. namespace-structural-observations returns ExecutionContractUnspecified until a factual carrier with ordinary-compile subject provenance and semantic closure (assess_reference_binding_observation authority, not variant counting) lands. STALE CITATION CORRECTED (2026-08-18, dead-witness-tree triage): the cited fixture had no executing consumer since v1_claim_scoped_witness_batch was deleted 2026-08-15 (gunbc.ci_layer_roots v1_claim_scoped_witness_batch_deleted_note), and its own body was white-box (matched ReferenceBindingObservation variant shapes directly rather than compile outcomes), so it did not survive the dead-witness-tree triage — retired, receipt at gunbc.ci_layer_roots v1_dead_witness_tree_triage_receipt. There is currently NO executing fixture evidence for this contract; it awaits the same factual carrier this note already names."
+data namespace_structural_observations_execution_contract_note: String = "BOUND (this change). The retracted interim below is answered rather than merely quoted: the closing validation now consumes admissions PRODUCED BY AN ORDINARY COMPILE OF ONE FILE and reaches its verdict through assess_reference_binding_observation, never through variant counting. Four StructuralBindingProductionRefused observations green nothing -- a production refusal assesses to ReferenceDerivedClosureRefused, which the set difference keeps in the frontier.\n\nWHAT THE BINDING ADDS BEYOND THE FOUR CAPABILITIES, and it is the half the retraction named as missing: SUBJECT PROVENANCE. Every admission carries the module path the parse itself declared, and the check refuses unless all of them name the one declared subject. Four admissions from four hand-built sources satisfy the capabilities and fail this check, which is exactly the difference between the row as written and the fixture suite that preceded it.\n\nWHAT THE VALIDATION EXECUTES: gunbc.namespace_structural_observations_production reaches the v1 parser walk through one hermetic host bridge (declared and enrolled seed growth, gunbc.namespace_structural_observation_bridge_seed_growth), so the witness declares SubstrateInputsOnly truthfully, runs in the required floor, and is not a member of the DeclinedLiveTree arm. Its four red controls are single-edit mutants of the one subject, each refusing exactly the capability whose rule the edit broke.\n\nRETRACTED INTERIM (2026-08-04, operator ruling via loyal-ram-550), kept because it is what this binding had to satisfy: the prior ordinary_compile_structural_closing_contract_holds predicate checked only scenario-variant presence and could green four StructuralBindingProductionRefused observations -- worse than no binding. STALE CITATION CORRECTED (2026-08-18, dead-witness-tree triage): the fixture it cited had no executing consumer since v1_claim_scoped_witness_batch was deleted 2026-08-15 and did not survive the triage; receipt at gunbc.ci_layer_roots v1_dead_witness_tree_triage_receipt."
+
+fn namespace_structural_observations_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/namespace_structural_observations_acceptance_test.dag" as FilePath,
+    function: "namespace_structural_observations_closing_contract_holds_on_one_ordinary_compiled_file" as NonEmptyStr,
+  )
+}
 
 data namespace_reference_derived_closure_execution_contract_note: String = "THE SIX-ARM CLOSING DISCRIMINATOR for namespace-reference-derived-closure. The validation is deliberately RED while its production admission seam carries a typed unavailable row for every clause: the closed capability population is the node's own red control, and missing capabilities are a derived set difference, so duplicate evidence cannot hide an unexecuted clause and zero work cannot verify as complete. Clauses (a-d) wait on #7515's structural candidate producer, (e) waits on its reference-derived dependency projection, and (f) waits on the projection's pool-membership-independence wall. The paired fixture suite executes the merged P1 kernel for the first four clauses and proves every clause rejects its planted wrong output, but the bound acceptance witness imports none of those fixtures; it can green only when the gated node supplies production observations. It is enrolled QuarantineProbeExpectRed until that transition."
 
@@ -693,7 +700,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The decision function plus worked none/one/many examples actually run, with the malformed-population and wrong-role refusals executing."
       )
     ),
-    active_sized(
+    with_execution(active_sized(
       identity: "rn_7QF3M2KDX8VNAT6JWZR0PC5HY",
       id: "namespace-structural-observations",
       owner: "namespace",
@@ -709,7 +716,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "Names answered by another file, and working out what a file depends on — both belong to the next row. Does not change the check that closes the parent row, and does not stand in for the cases it does not cover.",
         handback: "One ordinary compiled file producing all four observations, each case shown failing on its own, and the closing check written and bound."
       )
-    ),
+    ), namespace_structural_observations_execution_contract()),
     active_sized(
       identity: "rn_4LT9SBW1EGKM3XQPZ7DVNC02J",
       id: "namespace-cross-file-provenance",

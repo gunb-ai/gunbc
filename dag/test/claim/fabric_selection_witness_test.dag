@@ -13,6 +13,7 @@ import std.currency { Usd }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.work {
   Shape, HardRequirements, ExecutionRequirements, CapabilityManifestRef, TrustDomainRef,
+  CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,
 }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
@@ -72,6 +73,7 @@ fn t_shape(threads: HardwareThreadCount) -> Shape {
 
 fn t_requirements() -> ExecutionRequirements {
   ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
     shape: t_shape(threads: hardware_thread_count(count: 8)),
     capabilities: t_caps(),
     trust_domain: t_trust(),

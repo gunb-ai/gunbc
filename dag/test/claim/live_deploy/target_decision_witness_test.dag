@@ -1,0 +1,238 @@
+module test.claim.live_deploy.target_decision_witness
+
+import std.types { Bool, CommitSha, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
+import gunbc.systemctl_is_active_read {
+  UnitIsActiveCapture,
+  UnitIsActiveCaptured,
+  UnitIsActiveCaptureRefused,
+}
+import gunbc.running_release_identity {
+  RunningReleaseIdentity,
+  RunningReleaseIdentified,
+  RunningReleaseUnidentified,
+  RunningReleaseObservation,
+  ReleaseRevisionAbsent,
+  ReleaseRevisionMalformed,
+}
+import gunbc.roadmap_site_surface_types { HealthzBodyRead, HealthzProbeRefused }
+import gunbc.live_deploy.revision {
+  DeployRevisionRelation,
+  SameRevision,
+  DeployedIsAncestor,
+  CandidateIsAncestor,
+  UnrelatedHistories,
+  RelationUnverifiable,
+}
+import gunbc.live_deploy.target_decision {
+  DeployTargetPredecessor,
+  NoRunningRelease,
+  RunningRelease,
+  PredecessorUnobservable,
+  UnitPredecessorStep,
+  PredecessorSettled,
+  ProbeRunningProcess,
+  DeployTargetInput,
+  TargetIdle,
+  TargetRelated,
+  TargetUnreadable,
+  DeployTargetDecision,
+  DeployTargetProceed,
+  DeployTargetTerminalNoOp,
+  DeployTargetRefused,
+  decide_deploy_target,
+  deploy_target_step_from_unit_state,
+  deploy_target_predecessor_from_healthz,
+  deploy_target_predecessor_from_identity,
+  deploy_target_proceeds,
+  deploy_target_terminal_success,
+  deploy_target_refuses,
+  deploy_target_decision_line,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data running_hex: String = "8a472fff9e9000600e33cc3559ecfad4ba55e3a3"
+data candidate_hex: String = "1111111111111111111111111111111111111111"
+
+fn candidate() -> CommitSha {
+  candidate_hex as CommitSha
+}
+
+fn related(relation: DeployRevisionRelation) -> DeployTargetDecision {
+  decide_deploy_target(
+    input: TargetRelated { running: running_hex as CommitSha, relation: relation },
+    candidate: candidate(),
+  )
+}
+
+fn exactly_one_disposition(decision: DeployTargetDecision) -> Bool {
+  let p = deploy_target_proceeds(decision: decision)
+  let t = deploy_target_terminal_success(decision: decision)
+  let r = deploy_target_refuses(decision: decision)
+  (p && !t && !r) || (!p && t && !r) || (!p && !t && r)
+}
+
+// THE THREE DISPOSITIONS ARE A PARTITION OF THE DECISION, asserted rather than trusted: every arm
+// lands in exactly one, so a fourth arm added later cannot silently inherit whichever disposition a
+// consumer happened to test first.
+test fn witness_every_decision_lands_in_exactly_one_disposition() -> Bool {
+  [
+    related(relation: DeployedIsAncestor),
+    related(relation: SameRevision),
+    related(relation: CandidateIsAncestor),
+    related(relation: UnrelatedHistories),
+    related(relation: RelationUnverifiable { cause: "probe died" as NonEmptyStr }),
+    decide_deploy_target(input: TargetIdle { unit_state: "inactive" as NonEmptyStr }, candidate: candidate()),
+    decide_deploy_target(input: TargetUnreadable { cause: "no answer" }, candidate: candidate()),
+  ] |> all(d => exactly_one_disposition(decision: d))
+}
+
+// THE FORWARD DEPLOY PROCEEDS. This is the ordinary case and it must not become collateral of the
+// wall.
+test fn witness_a_forward_deploy_proceeds() -> Bool {
+  deploy_target_proceeds(decision: related(relation: DeployedIsAncestor))
+}
+
+// THE DISCRIMINATING RED FOR THE WHOLE MODULE: before this wall existed the deploy applied
+// unconditionally, so a candidate that is an ANCESTOR of what is running -- an older run finishing
+// second -- rsynced its older tree and greened. It must now mutate nothing and still succeed.
+test fn witness_a_superseded_candidate_is_a_terminal_no_op_and_never_proceeds() -> Bool {
+  let d = related(relation: CandidateIsAncestor)
+  deploy_target_terminal_success(decision: d)
+    && !deploy_target_proceeds(decision: d)
+    && !deploy_target_refuses(decision: d)
+}
+
+// UNRELATED HISTORIES AND AN UNANSWERABLE PROBE ARE THE ONLY REDS, and neither may proceed.
+test fn witness_unrelated_and_unverifiable_refuse_without_mutating() -> Bool {
+  let unrelated = related(relation: UnrelatedHistories)
+  let unverifiable = related(relation: RelationUnverifiable { cause: "bad object" as NonEmptyStr })
+  deploy_target_refuses(decision: unrelated)
+    && !deploy_target_proceeds(decision: unrelated)
+    && deploy_target_refuses(decision: unverifiable)
+    && !deploy_target_proceeds(decision: unverifiable)
+    && string_contains(s: deploy_target_decision_line(decision: unverifiable), pattern: "bad object")
+}
+
+// SAME REVISION PROCEEDS, WHICH IS THIS CONSUMER'S ONE DIVERGENCE FROM
+// gunbc.live_deploy.revision deploy_revision_terminal_success. The witness pins it so the divergence
+// is a subject a change can fail on rather than a sentence in an annotation: flipping this arm to a
+// no-op would convert an operator re-running the deploy to repair a damaged host into a silent
+// success that changed nothing.
+test fn witness_an_identical_revision_re_converges_rather_than_skipping() -> Bool {
+  let d = related(relation: SameRevision)
+  deploy_target_proceeds(decision: d) && !deploy_target_terminal_success(decision: d)
+}
+
+// AN IDLE UNIT IS A POSITIVE STATE, NOT A DEGRADED READ. Nothing is serving, so there is no release
+// to move backward from and the deploy is unconditionally forward.
+test fn witness_an_idle_unit_admits_the_deploy_and_names_the_state_it_saw() -> Bool {
+  let d = decide_deploy_target(
+    input: TargetIdle { unit_state: "failed" as NonEmptyStr },
+    candidate: candidate(),
+  )
+  deploy_target_proceeds(decision: d)
+    && string_contains(s: deploy_target_decision_line(decision: d), pattern: "failed")
+}
+
+// THE ARM THAT WOULD HAVE BEEN DANGEROUS. An ACTIVE unit whose health probe did not answer must NOT
+// be read as an idle target: a refused probe cannot distinguish a down service from a broken
+// credential, and admitting on it would license an unordered production deploy.
+test fn witness_an_active_unit_with_an_unanswered_probe_refuses_rather_than_reading_as_idle() -> Bool {
+  match deploy_target_predecessor_from_healthz(read: HealthzProbeRefused { probe_error: "curl exit 7" }) {
+    PredecessorUnobservable { cause: c } => string_contains(s: c, pattern: "curl exit 7")
+    NoRunningRelease { unit_state: _ } => false
+    RunningRelease { revision: _ } => false
+  }
+}
+
+// THE MIGRATION ARM REFUSES. A process that predates the identity channel is serving something this
+// system cannot name, which is not a synthetic predecessor and not an advance.
+test fn witness_an_active_unit_stating_no_identity_refuses() -> Bool {
+  match deploy_target_predecessor_from_identity(
+    identity: RunningReleaseUnidentified { cause: ReleaseRevisionAbsent },
+  ) {
+    PredecessorUnobservable { cause: _ } => true
+    NoRunningRelease { unit_state: _ } => false
+    RunningRelease { revision: _ } => false
+  }
+}
+
+// A MALFORMED IDENTITY IS NOT AN ABSENT ONE, and the refusal must carry which it was so the remedy
+// is locatable.
+test fn witness_a_malformed_identity_refuses_and_names_the_text_it_read() -> Bool {
+  match deploy_target_predecessor_from_identity(
+    identity: RunningReleaseUnidentified { cause: ReleaseRevisionMalformed { text: "main" } },
+  ) {
+    PredecessorUnobservable { cause: c } => string_contains(s: c, pattern: "main")
+    NoRunningRelease { unit_state: _ } => false
+    RunningRelease { revision: _ } => false
+  }
+}
+
+fn identified(hex: String) -> RunningReleaseIdentity {
+  RunningReleaseIdentified {
+    observation: RunningReleaseObservation {
+      revision: hex as CommitSha,
+      surface_bundle_identity: Fnv1a64Structural {
+        digest: "0123456789abcdef" as Fnv1a64StructuralDigestHex,
+      },
+    },
+  }
+}
+
+test fn witness_a_readable_identity_becomes_the_predecessor_revision() -> Bool {
+  match deploy_target_predecessor_from_identity(identity: identified(hex: running_hex)) {
+    RunningRelease { revision: r } => (r as String) == running_hex
+    NoRunningRelease { unit_state: _ } => false
+    PredecessorUnobservable { cause: _ } => false
+  }
+}
+
+// THE UNIT READ GATES THE PROBE, AND THE STEP TYPE IS WHAT MAKES THAT TRUE RATHER THAN THE PROSE.
+// An inactive unit settles without a probe; a refused is-active settles as unreadable; only an
+// active unit asks for one.
+test fn witness_only_an_active_unit_asks_for_a_health_probe() -> Bool {
+  let inactive = match deploy_target_step_from_unit_state(
+    capture: UnitIsActiveCaptured { state: "inactive" as NonEmptyStr, active: false },
+  ) {
+    PredecessorSettled { predecessor: p } =>
+      match p {
+        NoRunningRelease { unit_state: s } => (s as String) == "inactive"
+        RunningRelease { revision: _ } => false
+        PredecessorUnobservable { cause: _ } => false
+      }
+    ProbeRunningProcess => false
+  }
+  let active = match deploy_target_step_from_unit_state(
+    capture: UnitIsActiveCaptured { state: "active" as NonEmptyStr, active: true },
+  ) {
+    ProbeRunningProcess => true
+    PredecessorSettled { predecessor: _ } => false
+  }
+  let refused = match deploy_target_step_from_unit_state(
+    capture: UnitIsActiveCaptureRefused { reason: "ssh closed" },
+  ) {
+    PredecessorSettled { predecessor: p } =>
+      match p {
+        PredecessorUnobservable { cause: c } => string_contains(s: c, pattern: "ssh closed")
+        NoRunningRelease { unit_state: _ } => false
+        RunningRelease { revision: _ } => false
+      }
+    ProbeRunningProcess => false
+  }
+  inactive && active && refused
+}
+
+// EVERY ARM RENDERS DISTINCTLY, so an operator reading the receipt can tell a no-op from a refusal
+// from an advance without inspecting the exit status.
+test fn witness_every_decision_arm_renders_a_distinct_label() -> Bool {
+  let advance = deploy_target_decision_line(decision: related(relation: DeployedIsAncestor))
+  let noop = deploy_target_decision_line(decision: related(relation: CandidateIsAncestor))
+  let refused = deploy_target_decision_line(decision: related(relation: UnrelatedHistories))
+  advance != noop && advance != refused && noop != refused
+    && string_contains(s: noop, pattern: running_hex)
+    && string_contains(s: noop, pattern: candidate_hex)
+}
