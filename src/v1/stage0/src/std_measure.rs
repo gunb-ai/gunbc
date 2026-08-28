@@ -824,6 +824,29 @@ pub fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
     })
 }
 
+pub fn watt_seconds_per_kilowatt_hour() -> Nat {
+    (1000 * seconds_per_hour_count())
+}
+
+pub fn seconds_per_hour_count() -> Nat {
+    (seconds_per_minute() * minutes_per_hour())
+}
+
+pub fn money_per_second_for_continuous_draw(
+    draw: Watt,
+    tariff: MoneyPerKilowattHour,
+) -> MoneyPerSecond {
+    Rc::new(MoneyRate {
+        amount: measure_scale_fraction_ceil(
+            tariff.amount.clone(),
+            watt_count(draw.clone()),
+            watt_seconds_per_kilowatt_hour(),
+        ),
+        currency: tariff.currency.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
 pub fn billing_month_as_hour_count() -> Nat {
     730
 }
