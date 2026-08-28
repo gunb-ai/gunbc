@@ -2559,19 +2559,6 @@ thread_local! {
     /// home rather than to add a policy beside it.
     static SHARED_ARTIFACT_FILL_WALL_NANOS: std::cell::Cell<u128> =
         const { std::cell::Cell::new(0) };
-
-    /// THE SAME FILL, ON THE OTHER CLOCK. The ruling above is about WHOSE COST A FILL IS, which
-    /// is a fact about attribution and not about which clock measured it — so it applies once to
-    /// every ceiling derived from a claim's elapsed time. It was landed on the CPU ceiling alone,
-    /// and the wall ceiling kept charging the whole fill to the first payer, which is how two
-    /// rows whose own cost is 0ms and 1ms refused a required floor at ~18000ms against a 10000ms
-    /// wall requirement (main run 33145062452, `test.claim.transport_script_wall_compile_red`:
-    /// `[floor-shared-fill]` reported `marginal_cpu_ms=0 fill_cpu_ms=18966` for one of them).
-    /// A one-clock accounting rule is the §3 failure the CPU comment already names — one concept
-    /// with two homes, one of which does not apply it — so this cell exists to close the second
-    /// home rather than to add a policy beside it.
-    static SHARED_ARTIFACT_FILL_WALL_NANOS: std::cell::Cell<u128> =
-        const { std::cell::Cell::new(0) };
 }
 
 /// Accumulate CPU spent filling a shared memoized artifact. Called ONLY from a memo MISS path,
@@ -2594,24 +2581,10 @@ fn record_shared_artifact_fill_wall(nanos: u128) {
     SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
 }
 
-/// Accumulate WALL time spent filling a shared memoized artifact, under the same rule and from
-/// the same miss paths as `record_shared_artifact_fill_cpu`. The two are recorded together at
-/// every call site so a fill can never be counted on one clock and not the other — which is the
-/// state that produced the defect this pair exists to close.
-fn record_shared_artifact_fill_wall(nanos: u128) {
-    SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
-}
-
 /// Read the running total for this thread. The claim loop samples it either side of one claim;
 /// the difference is that claim's fill.
 pub fn shared_artifact_fill_cpu_nanos() -> u128 {
     v1_interpreter::shared_artifact_fill_cpu_nanos()
-}
-
-/// Read the running wall-clock total for this thread, sampled either side of one claim exactly
-/// as the CPU total is.
-pub fn shared_artifact_fill_wall_nanos() -> u128 {
-    SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.get())
 }
 
 /// Read the running wall-clock total for this thread, sampled either side of one claim exactly
@@ -4672,7 +4645,7 @@ fn collect_repo_files_under_prefix(
 /// entry selection and duplicate policy (refuse vs. superset). DISSOLVES WHEN lifted to one
 /// parameterized helper (duplicate policy + entry source as arguments).
 ///
-/// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
+/// TERMINAL — owning lane: `affected-set-precompute-pruning (plan doc deleted 2026-08-28)`, whose **Step 5
 /// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side selection
 /// Rust in favour of the `.dag` authority. This fn and
 /// `class_b_import_closure_gate_skip_label_for_ci` are new members of exactly that Rust-parallel
@@ -6057,7 +6030,7 @@ mod shared_cache_collision_guard_tests {
 
 #[cfg(test)]
 mod typed_module_content_key_tests {
-    //! Typed-module content-key RED controls (cross-entry-typed-module-memo-sketch.md
+    //! Typed-module content-key RED controls (cross-entry-typed-module-memo-sketch (deleted)
     //! §1/§3, operator-signed 2026-07-16; PR-α — the store re-key).
     //!
     //! The typed store keys on `std.interface_summary.typed_module_key` — module source
@@ -7254,7 +7227,7 @@ const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
     "tools.dag_compile_clean_scope",
 ];
 
-/// Axis (iv) of the fourth-axis law (`docs/plans/live-read-witness-classification-design.md`
+/// Axis (iv) of the fourth-axis law (`live-read-witness-classification-design (plan doc deleted 2026-08-28)`
 /// §7): does `entry_path`'s import closure reach a declared live-read carrier home, and is
 /// any path touched at all? This is a G1-only (module-closure) mirror of the landed G2
 /// call-reachability lens (`v2.lens.live_read_classification`) — G2's carrier set is always
@@ -7385,7 +7358,7 @@ mod live_read_carrier_home_roster_drift_gate_tests {
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_discovery_skip_before_resolve`):
 // ROADMAP lane `2-provenance-ingest` (gunbc.roadmap_authority / ROADMAP.md;
-// docs/plans/affected-set-precompute-pruning.md Step 4 migrate floor) — host-side
+// affected-set-precompute-pruning (plan doc deleted 2026-08-28) Step 4 migrate floor) — host-side
 // per-entry cold-resolve elision under SelectionApplied before `floor_kernel_would_skip`.
 // Unblock: modeled `floor_kernel_precompute_would_skip` / skip-before-resolve arm on
 // `v2.workflow.affected_set_floor_runner` realizes the same decision in `.dag` (N→1 with
@@ -11564,7 +11537,7 @@ pub fn resolve_entry_graph(
 }
 
 // Process-level (per-thread) resolve store — the S1a increment of the resolver
-// graph-major design (docs/plans/resolver-graph-major-design.md). Within one
+// graph-major design (resolver-graph-major-design (plan doc deleted 2026-08-28)). Within one
 // process the source tree is a fixed snapshot, so a resolved entry graph is a
 // pure fact of (source_roots, entry) — the same purity assumption the walk memo
 // (M1) and typed_module_cache already ship on. Routing every fixed-entry
@@ -11587,7 +11560,7 @@ thread_local! {
     > = RefCell::new(HashMap::new());
 
     // The thread's ONE shared resolve index (union-resolve S1,
-    // docs/plans/resolver-graph-major-design.md §7). Every fixed-entry consumer routed
+    // resolver-graph-major-design (plan doc deleted 2026-08-28) §7). Every fixed-entry consumer routed
     // through resolve_entry_graph_shared (the executor prelude: plan entry + output
     // policy + group syntax, plus the floor runner) resolves against this single
     // MultiEntryIndex, so its parse/typed caches share the union of all those closures:
@@ -12712,7 +12685,7 @@ pub struct MultiEntryIndex {
     /// (`std.interface_summary.typed_module_key`: module source hash ⊕ direct-import
     /// interface hashes ⊕ compiler identity) — never by authored module name. The
     /// content key is the soundness license for eviction (PR-β) and the S2b-ready
-    /// backend shape (cross-entry-typed-module-memo-sketch.md §1, operator-signed
+    /// backend shape (cross-entry-typed-module-memo-sketch (deleted) §1, operator-signed
     /// 2026-07-16); within one process it also makes a same-name/different-file
     /// collision structurally unable to serve the wrong typecheck (the name-keyed
     /// store relied on `module_source_identity` failing loud instead).
@@ -12956,7 +12929,7 @@ pub fn reset_pool_qualified_fill_for_test(index: &MultiEntryIndex) {
 // terms so `measure_worker_private_memory` can stage construction and then
 // attribute retained heap by EXCLUSIVE DROP (clear one term, measure the live-heap
 // release) instead of by shallow shell sizing, which the Rc→Arc spike receipt
-// (`docs/plans/rc-to-arc-share-spike.md` §2.2) records as an under-count that must
+// (`rc-to-arc-share-spike (plan doc deleted 2026-08-28)` §2.2) records as an under-count that must
 // not be summed. Feature-gated and additive: no production path calls these, and
 // none of them changes any semantic behaviour of the index.
 //
@@ -13388,7 +13361,7 @@ fn shared_caches_write<'a>(
 
 /// The typed-module content key for `resolved` — the Rust realization of
 /// `std.interface_summary.typed_module_key` over the live store's inputs
-/// (cross-entry-typed-module-memo-sketch.md §1, operator-signed 2026-07-16):
+/// (cross-entry-typed-module-memo-sketch (deleted) §1, operator-signed 2026-07-16):
 ///
 ///   key = typed_module_key(module_key(source_hash, direct-import interface hashes),
 ///                          compiler identity)
@@ -15011,7 +14984,7 @@ fn emit_floor_drain_group_line(
     );
 }
 
-/// P1 retention-vs-drain cohort receipt (docs/plans/floor-prep-tax-program.md §P1):
+/// P1 retention-vs-drain cohort receipt (floor-prep-tax-program (plan doc deleted 2026-08-28) §P1):
 /// per-entry-group instrumentation distinct from `emit_floor_drain_group_line`'s
 /// cumulative cache-size line — this line prices the per-group wall/resolve/eval
 /// tax the program's diagnosing, plus the typecheck-cache-hit / resolved-graph-hit
@@ -15027,7 +15000,7 @@ fn emit_floor_drain_group_line(
 ///
 /// Scaffold, not a second production floor driver: this instrumentation and its
 /// sole consumer, `p1_cohort_probe`, are diagnostic-only (opt-in, zero effect on
-/// default eviction behavior — see `docs/plans/p1-retention-vs-drain-cohort-receipt.md`).
+/// default eviction behavior — see `p1-retention-vs-drain-cohort-receipt (plan doc deleted 2026-08-28)`).
 /// Dissolve-on: once P1 is banked and no other open lane needs cohort-scoped A/B
 /// retention receipts, delete `emit_p1_cohort_entry_line`/`p1_cohort_receipt_enabled`/
 /// `p1_cohort_cgroup_memory`, `resolved_graph_evictions` on `IndexRetentionSnapshot`,
@@ -17195,7 +17168,7 @@ fn resolved_graph_from_sources_with_index(
 }
 
 /// Collision-honesty check for the shared typed-module cache (union-resolve receipt §6.3,
-/// docs/plans/resolver-graph-major-design.md). The typed cache is keyed by authored module
+/// resolver-graph-major-design (plan doc deleted 2026-08-28)). The typed cache is keyed by authored module
 /// name and reused across every entry that co-resides in one process's shared index, so a
 /// name that maps to two DIFFERENT declaring files is a co-residence surprise: serving one
 /// file's typecheck for the other's would be a §5 fail-open (a divergent resolution passing
@@ -17226,7 +17199,7 @@ fn check_module_source_identity_map(
 }
 
 /// Antichain batches (Kahn levels) over the closure's resolved import edges — the host
-/// realization of the modeled module-node schedule (resolver-graph-major-design.md §7 S2a
+/// realization of the modeled module-node schedule (resolver-graph-major-design (deleted) §7 S2a
 /// move 2: module nodes ride the same scheduler/runner shape as the CI floor,
 /// `v2.workflow.module_resolution_plan` is the model authority). Nodes are the closure's
 /// modules at authored-name grain (the typed-store key); edges are `resolved_imports` rows
@@ -18067,7 +18040,7 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
-    // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
+    // S2a move 2 (resolver-graph-major-design (deleted) §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
     // node-keyed store a dependent's handler reads its imports' results from — once-per-node
     // holds by schedule (a node appears once), not merely by cache lookup. The ResolvedGraph
@@ -18108,7 +18081,7 @@ fn reconcile_with_typed_cache(
     // composed lazily per root in `tree_symbol_index_memo`.
     //
     // Built AFTER the all-cache-hits shortcut (fix axis 2b,
-    // docs/plans/floor-memory-pool-parse-regression-diagnosis.md §9): the shortcut
+    // floor-memory-pool-parse-regression-diagnosis (plan doc deleted 2026-08-28) §9): the shortcut
     // consumes no symbol index, so an all-hits entry — the warm single-process case,
     // and any cold child whose closure fully hits the typed/cross-process caches —
     // must not pay the whole-pool census `pool_qualified_fill` performs. Genuine
@@ -24041,7 +24014,7 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
 // Registered planning artifact: `gunbc.cli_run_witness_admission_scaffold` (review 44487
 // checkable deferral receipt). Witness: `dag/test/claim/cli_run_witness_admission_hand_rust_witness_test.dag`.
 // ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
-// (gunbc.roadmap_authority / ROADMAP.md; docs/plans/module-identity-storage-binding-design.md).
+// (gunbc.roadmap_authority / ROADMAP.md; module-identity-storage-binding-design (plan doc deleted 2026-08-28)).
 // The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms in
 // dag/gunbc/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and the
 // cycle-free leaf src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag.
@@ -27189,7 +27162,7 @@ fn effect_reach_touched_via_path_literals(
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_declared_source_ref_selection_bridge`):
-// Lane: declared-source-ref selection (docs/plans/declared-source-ref-selection-design.md
+// Lane: declared-source-ref selection (declared-source-ref-selection-design (plan doc deleted 2026-08-28)
 // task 5) — host-fed declared-ref touch axis for floor discovery admission until discovery
 // admission consumes `v2.lens.affected_set.declared_source_ref_selection` directly (same
 // dissolution posture as sibling bridges: `.dag` authority via interpreter or emitted host
@@ -27607,7 +27580,7 @@ fn discovery_rows_runtime_dependency_touched_count(
 /// discriminate referenced nodes (`red_node_frontier_fires_for_referenced_data_item`).
 // SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): pre-resolve skip for rows
 // provably outside all three skip axes without loading the resolved graph. Dissolves at
-// Step 5 (`docs/plans/affected-set-precompute-pruning.md`) when the Rust parallel
+// Step 5 (`affected-set-precompute-pruning (plan doc deleted 2026-08-28)`) when the Rust parallel
 // (`NodeFrontierSeeds`, `run_discovery_rows` selection) is deleted and the `.dag`
 // `floor_witness_run_disposition` query owns the same predicate end-to-end.
 fn entry_qualifies_for_skip_without_resolve(
@@ -28372,7 +28345,7 @@ fn run_discovery_corpus_with_options_inner(
         );
     }
     let execution_authority_is_subject = options.execution_authority_source_roots == source_roots;
-    // Union-resolve S1 (resolver-graph-major-design.md §7): ONE index for the whole
+    // Union-resolve S1 (resolver-graph-major-design (deleted) §7): ONE index for the whole
     // process step on the pump thread — prelude-warmed parse/typed caches instead of a
     // private cold build per consumer. S2a increment C (cross-worker-typecheck-share-
     // design.md §4): adaptive worker shards arm ONE process-scoped typed_module_cache
@@ -28630,7 +28603,7 @@ fn run_discovery_corpus_with_options_inner(
             // unit-completion rate.
             // 🟡 dissolve-on: Rc→Arc retires the width gate — sharing the index removes the
             // per-worker front cost, which is the thing that makes width unprofitable. Priced
-            // FIRST by the share spike (docs/plans/cross-worker-typecheck-share-design.md §9
+            // FIRST by the share spike (cross-worker-typecheck-share-design (plan doc deleted 2026-08-28) §9
             // open decision 2), because that design's §7 warns a shared store also INCREASES
             // co-resident retention: the win is a crossover in width, not a given.
             if spawn_target_width <= 1 {
@@ -29008,7 +28981,7 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
 // rollup render there today). Full dissolution: when v2 emit-host owns floor observability — a
 // `.dag` floor-event carrier a witness consumes by execution, the retirement event shared with
 // `phase_profile.rs` (`docs/plans/realization-measurement-loop.md` Phase 0) and the fractal Gantt
-// (`docs/plans/ci-floor-fractal-gantt.md` § dissolution) — this narration collapses into that
+// (`ci-floor-fractal-gantt (plan doc deleted 2026-08-28)` § dissolution) — this narration collapses into that
 // carrier and is deleted. Until then it is counted seed Rust, not a new authority; do not accrete
 // further floor logic here — extend the `.dag` render/observability surface instead.
 
@@ -29899,7 +29872,7 @@ new file mode 100644
 // Stable floor witnesses use deterministic fixture unified diffs (same structured shape as CI
 // git diff parsing) so every checkout executes the proof — not branch-only origin/main...HEAD
 // asserts. Node-frontier axis vs whole-tree InferredTree remains blocked on resolve grounding
-// (ROADMAP 1-affected-set-defork); receipt in docs/plans/affected-set-precompute-pruning.md
+// (ROADMAP 1-affected-set-defork); receipt in affected-set-precompute-pruning (plan doc deleted 2026-08-28)
 // §Step 3 partial. `NodeFrontierSeeds` deleted — production and witnesses use `FloorDiffEdits`.
 
 #[cfg(test)]
@@ -30420,7 +30393,7 @@ mod floor_witness_a_prove {
     }
 }
 
-// Step 3 module-grain PROVE receipt (docs/plans/affected-set-precompute-pruning.md,
+// Step 3 module-grain PROVE receipt (affected-set-precompute-pruning (plan doc deleted 2026-08-28),
 // ROADMAP 1-affected-set-defork). Node-grain (whole-tree `InferredTree`) equivalence stays
 // BLOCKED (unaffordable resolve); this receipt is re-scoped to MODULE grain, using the landed
 // `import_closure_live` authority (#6210/#6231).
@@ -38661,7 +38634,7 @@ pub fn complexity_linearity_wildcard_facts() -> &'static [ComplexityLinearityWil
     &cla_cached_wildcard_facts().facts
 }
 
-// --- Fallback-arm census (W2, docs/plans/fallback-arm-census.md) ---
+// --- Fallback-arm census (W2, fallback-arm-census (plan doc deleted 2026-08-28)) ---
 // Per-arm structural wildcard walk over decl_facts. Classifies each MatchPattern::Wildcard
 // arm into exactly one of: refuses | completes_closed_total | declared_interim |
 // answers_on_open | unknown. Completeness: class counts sum to structural wildcard-arm
@@ -39148,7 +39121,7 @@ pub fn doc_graph_doc_count() -> i64 {
     doc_graph_report(&[]).doc_count as i64
 }
 
-// Live derivation of docs/plans/seed-shrink-census.md §5B ("T2 coverage debt"): that table was a
+// Live derivation of seed-shrink-census (plan doc deleted 2026-08-28) §5B ("T2 coverage debt"): that table was a
 // hand-maintained snapshot of v1 test modules with no floor `*_test.dag` equivalent. This walks
 // `src/v1/tests/src/*.rs` (modules containing `#[test]`) and `corpus_dag_files()` (the same
 // witness-layer-roots roster the floor uses) and diffs them by stem, so the debt roster tracks
@@ -42347,7 +42320,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
 // (measured 2026-07-22: ~33s/module parse + ~5.5s/module tokenize interpreted,
 // ~330 extdeps modules ≈ 3.5h; the modeled corpus witness exists at
 // src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag, offline recipe).
-// Dissolution: witness realization (docs/plans/witness-realization-plan.md) runs
+// Dissolution: witness realization (witness-realization-plan (plan doc deleted 2026-08-28)) runs
 // that parse-grain corpus witness at native speed, then this block and its three
 // builtins (facts_for_qualified_name, live_clean_tree_holds,
 // live_roster_module_count) delete. The shadow-mask and backfill sub-machineries
