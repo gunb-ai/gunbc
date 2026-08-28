@@ -232,7 +232,7 @@ data required_emit_compile_entries: List<String> = [
   "dag/std/measure.dag",
   "dag/std/node.dag",
   "dag/std/content_hash.dag",
-  "dag/std/abi.dag",
+  "dag/extdeps/abi.dag",
   "dag/std/logic.dag"
 ]
 

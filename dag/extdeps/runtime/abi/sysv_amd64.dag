@@ -1,6 +1,6 @@
 module extdeps.runtime.abi.sysv_amd64
 
-import std.abi { ArchitecturalRegister, CallingConvention }
+import extdeps.abi { ArchitecturalRegister, CallingConvention }
 import std.types { Bool, NonEmptyStr, String }
 import std.citation { CitedRepresentationIdentity, RawResponseBody, cited_representation_identity }
 import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef }

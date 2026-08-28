@@ -1,6 +1,15 @@
-module std.acoustic
+module extdeps.units.iec_61672
 
 import std.types { Bool, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "webstore.iec.ch/en/publication/19903"
+  }
+}
 
 // A-WEIGHTED SOUND PRESSURE LEVEL, AND DELIBERATELY NOT A Measure.
 //

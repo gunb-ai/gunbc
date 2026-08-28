@@ -1,6 +1,6 @@
 module extdeps.runtime.abi.aapcs64
 
-import std.abi { ArchitecturalRegister, CallingConvention }
+import extdeps.abi { ArchitecturalRegister, CallingConvention }
 import std.types { Bool }
 
 import extdeps.external_authority { ExternalAuthority }

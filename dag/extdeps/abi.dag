@@ -1,4 +1,4 @@
-module std.abi
+module extdeps.abi
 
 
 type ArchitecturalRegister

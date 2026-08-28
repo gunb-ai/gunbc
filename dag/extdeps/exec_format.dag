@@ -1,4 +1,4 @@
-module std.exec_format
+module extdeps.exec_format
 
 
 type ExecutableFormatFamily
