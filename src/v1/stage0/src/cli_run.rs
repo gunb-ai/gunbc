@@ -2547,8 +2547,7 @@ thread_local! {
     /// COUNTED. A cost that vanished here would be the absorbing fallback (§5) wearing an
     /// accounting label — the deficit's frequency zeroed by construction — so the receipt carries
     /// marginal and fill as two columns whose sum is the claim's whole measured cost.
-    static SHARED_ARTIFACT_FILL_CPU_NANOS: std::cell::Cell<u128> =
-        const { std::cell::Cell::new(0) };
+    // (the CPU fill cell now lives in `v1_interpreter`; see the delegating fns below)
 
     /// THE SAME FILL, ON THE OTHER CLOCK. The ruling above is about WHOSE COST A FILL IS, which
     /// is a fact about attribution and not about which clock measured it — so it applies once to
@@ -2567,8 +2566,13 @@ thread_local! {
 /// Accumulate CPU spent filling a shared memoized artifact. Called ONLY from a memo MISS path,
 /// and only under the floor guard — outside it there is no memo, so there is no shared artifact
 /// and nothing to attribute.
+///
+/// THE CELL MOVED TO `v1_interpreter` AND THIS DELEGATES. The evaluation deadline must net the
+/// same quantity WHILE a claim runs, and the interpreter cannot read a cell owned here, so one
+/// counter now serves both readers rather than two counters drifting apart — which is the exact
+/// defect (one accounting rule, two homes) this line of work exists to close.
 fn record_shared_artifact_fill_cpu(nanos: u128) {
-    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
+    v1_interpreter::record_shared_artifact_fill_cpu_nanos(nanos);
 }
 
 /// Accumulate WALL time spent filling a shared memoized artifact, under the same rule and from
@@ -2582,7 +2586,7 @@ fn record_shared_artifact_fill_wall(nanos: u128) {
 /// Read the running total for this thread. The claim loop samples it either side of one claim;
 /// the difference is that claim's fill.
 pub fn shared_artifact_fill_cpu_nanos() -> u128 {
-    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
+    v1_interpreter::shared_artifact_fill_cpu_nanos()
 }
 
 /// Read the running wall-clock total for this thread, sampled either side of one claim exactly
