@@ -1,6 +1,14 @@
 module gunbc.runner_microvm
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.measure {
+  Mebibyte,
+  HardwareThreadCount,
+  mebibyte,
+  mebibyte_count,
+  hardware_thread_count,
+  hardware_thread_count_value,
+}
 import std.disposition { Disposition, SingleAuthority }
 import product.fabric.isolation {
   IsolationProfile,
@@ -77,13 +85,24 @@ data gunbc_runner_jit_transport: JitCredentialTransport = JitConfigOnReadOnlyDri
   drive_id: "jitcfg",
 }
 
-// WHAT ONE RUNNER VM IS SIZED AT.
+// WHAT ONE RUNNER VM IS SIZED AT, IN GROUNDED MAGNITUDES RATHER THAN BARE INTEGERS.
 //
-// vcpu_count and mem_size_mib are carried through to Firecracker's own field names rather than
-// converted, because a converted value would disagree with what the API accepts.
+// An earlier revision carried these as `Int`, mirroring Firecracker's own field names inward. That
+// is the right shape AT the cited boundary -- extdeps models what the API actually accepts -- and
+// the wrong shape one layer in: a bare Int is a second representation of a magnitude std.measure
+// already owns, and the fabric envelope this VM will eventually answer to already speaks
+// HardwareThreadCount and the Memory measure family. Two spellings of one quantity is the §3
+// failure, and it is exactly what lets a vcpu count be compared against a memory size without
+// anything refusing.
+//
+// THE SCALE IS Mebi RATHER THAN One, DELIBERATELY. Firecracker's field is denominated in MiB, so
+// `Measure<Memory, Mebi, Nat>` grounds it EXACTLY -- same authority as ByteSize, one scale along
+// the axis that authority exists to carry, with no lossy multiply on the way in. Converting to
+// bytes here would restate the unit rather than ground it, and the boundary conversion back to the
+// API's integer is then a single named call instead of an arithmetic assumption.
 type RunnerMicroVmSize {
-  vcpu_count: Int
-  mem_size_mib: Int
+  vcpu_count: HardwareThreadCount
+  memory: Mebibyte
 }
 
 // THE MVP SIZE, DECLARED AS THE MVP SIZE. It is what was booted on srv4 and is NOT a production
@@ -91,8 +110,8 @@ type RunnerMicroVmSize {
 // A production row belongs beside a measured distribution and is deliberately absent until there
 // is one, because a plausible number here would be consumed as though it were measured.
 data runner_microvm_mvp_size: RunnerMicroVmSize = RunnerMicroVmSize {
-  vcpu_count: 4,
-  mem_size_mib: 4096,
+  vcpu_count: hardware_thread_count(count: 4),
+  memory: mebibyte(count: 4096),
 }
 
 // THE ISOLATION A RUNNER MICROVM PROVIDES, WHICH IS THE FABRIC'S VOCABULARY AND NOT A NEW ONE.
@@ -222,8 +241,8 @@ fn runner_microvm_vm_config(
       },
     ],
     machine_config: FirecrackerMachineConfig {
-      vcpu_count: size.vcpu_count,
-      mem_size_mib: size.mem_size_mib,
+      vcpu_count: hardware_thread_count_value(t: size.vcpu_count),
+      mem_size_mib: mebibyte_count(m: size.memory),
     },
   }
 }
