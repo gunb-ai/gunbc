@@ -483,7 +483,7 @@ fn partition_severance_point_count() -> Int {
 // dotted chain whose prefix resolves in the module index, and `binder.field` is spelled exactly like
 // `module.member`. Measured on the live tree: every module path in the corpus begins with one of 16
 // root segments, and the number of sites where a LOCAL BINDER shares one of those roots AND the
-// two-segment path it forms is a real module is ONE -- `tools.readme`, inside dag/tools/readme.dag,
+// two-segment path it forms is a real module is ONE -- `tools.readme`, inside dag/gunbc/instruments/readme.dag,
 // which is a module naming itself rather than a field access. So the rule-2 populations here are not
 // inflated by field accesses today. The guard is not structural: a future parameter named `config`
 // or `std` beside a matching two-segment module would re-open it silently, which is why the number

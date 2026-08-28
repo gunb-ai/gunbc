@@ -12,15 +12,23 @@ type GeneratedArtifactObservation
       committed_content: String,
       extra_validation: Bool
     }
+  | GeneratedArtifactCommittedAbsent {
+      artifact: GeneratedArtifact,
+      path: String,
+      detail: String
+    }
   | GeneratedArtifactObservationRefused {
       artifact: GeneratedArtifact,
       path: String,
       cause: String
     }
 
+data committed_absent_arm_note: String = "ABSENT IS NOT A REFUSAL, AND THE DISTINCTION IS THE WHOLE REASON THIS ARM EXISTS. The producer previously mapped EVERY unsuccessful read to GeneratedArtifactObservationRefused, so `the observation could not be made` and `the observation was made and the file is not there` shared one arm. They have opposite owners: a refusal names an authority to repair and reached NO verdict, while an absence IS a verdict about the repository tree and asks whether the artifact was ever meant to be committed. DESIGN carries the receipt for getting this wrong -- this gate's first red included a markdown file deleted ON PURPOSE, and the regenerate remedy would have silently resurrected it.\n\nIT IS ALSO DISTINCT FROM ExpectedArtifactObservationMissing, which is the adjacent confusion. That finding says the POPULATION has no row for an expected identity -- a completeness defect in the observer. This arm says the observer ran, produced a row, and the row reports the committed path is not on disk. Different execution provenance, different remedy.\n\nTHE ABSENCE IS ESTABLISHED, NOT INFERRED. It is produced only where a directory LISTING succeeded and did not name the entry, never from a read failing -- because a read's success channel is exactly the channel that cannot separate absent from unreadable. `detail` carries the established absence's own rendering (which directory was listed, which name was not in it), so a consumer can say what it did not find rather than only that it found nothing."
+
 fn observation_artifact(o: GeneratedArtifactObservation) -> GeneratedArtifact {
   match o {
     GeneratedArtifactObserved { artifact, path: _, generated_content: _, committed_content: _, extra_validation: _ } => artifact
+    GeneratedArtifactCommittedAbsent { artifact, path: _, detail: _ } => artifact
     GeneratedArtifactObservationRefused { artifact, path: _, cause: _ } => artifact
   }
 }
@@ -28,64 +36,189 @@ fn observation_artifact(o: GeneratedArtifactObservation) -> GeneratedArtifact {
 fn observation_path(o: GeneratedArtifactObservation) -> String {
   match o {
     GeneratedArtifactObserved { artifact: _, path, generated_content: _, committed_content: _, extra_validation: _ } => path
+    GeneratedArtifactCommittedAbsent { artifact: _, path, detail: _ } => path
     GeneratedArtifactObservationRefused { artifact: _, path, cause: _ } => path
   }
 }
 
-data assess_generated_artifact_observation_note: String = "PURE LEAF (DESIGN section 6: do not test that the processor does math well). Reads only the retained receipt fields — no Filesystem, no artifact_generate, and this module cannot import either. Clean iff generation succeeded, the committed read succeeded, the two byte strings are equal, and extra validation holds."
+data generated_artifact_population_findings_note: String = "THE COMPLETE FAILURE POPULATION, AS A PRODUCT RATHER THAN A CHOICE, AND IT IS THE SOLE ASSESSMENT AUTHORITY. The three top-level conditions the population verdict conjoins can fail SIMULTANEOUSLY, so they are FIELDS of one result and not arms of a coproduct: an expected identity can be missing while an unrelated observation is unknown while a third artifact's bytes differ, and any shape that made these alternatives would report one and hide two.\n\nWHAT THIS REPLACES. The module previously answered one question at TWO INCOMPATIBLE GRAINS: assess_generated_artifact_population folded the whole population to a Bool, while first_failing_diagnostic_path returned ONE path -- priority-ordered across the three classes, each class itself a fold guarded by `if acc == \"\"` keeping only its first hit. Two collapses composed, one WITHIN a class and one ACROSS classes, so a tree carrying both a content drift and an unknown observation reported only the drift and the unknown stayed invisible until the drift was repaired and the gate re-run. At the measured ~187s per run that made a required gate an iterative discovery protocol -- run, repair one named artifact, run, discover the next -- while the gate already HELD the complete evidence and discarded all but one identity at the boundary where an operator needs it. The classes are not variants of one fault: a content difference means regenerate, a missing expected observation points at the observer or the population producer, a duplicate points at population construction or identity aliasing, and an unknown observation means a committed artifact no registry row claims. Different owners, different repairs.\n\nWHY THE BOOLEAN IS SAFE HERE. assess_generated_artifact_population survives as a PROJECTION of this carrier, not as a second computation beside it, so there is no fork that could disagree about which population failed. Findings retain GeneratedArtifact IDENTITY and not only a path, which is what the duplicate and unknown arms need -- a path-only roster is weakest exactly where the identity join is the thing that broke. Nothing here rereads or regenerates: every finding is derived from fields the producer already retained, which is what keeps the gate's measured read-only boundary intact."
 
-fn assess_generated_artifact_observation(o: GeneratedArtifactObservation) -> Bool {
+type ExpectedArtifactCardinalityFinding
+  = ExpectedArtifactObservationMissing { artifact: GeneratedArtifact, path: String }
+  | ExpectedArtifactObservationDuplicated { artifact: GeneratedArtifact, path: String, observation_count: Int }
+
+type UnknownArtifactObservationFinding {
+  artifact: GeneratedArtifact
+  path: String
+}
+
+// PROVENANCE IS NOT A COMPARISON RESULT, AND THE SEPARATION IS THE POINT OF THE FIELD.
+//
+// A refused observation means ROSTERED, ASKED, NO VERDICT REACHED. A content difference means
+// ASKED AND ANSWERED, and the answer was wrong. They have different owners and opposite repairs:
+// the first is a defect in the authority or the bridge that could not answer, the second is a
+// hand edit or a stale artifact. Held in one list they render identically to any consumer that
+// reads a COUNT -- and a run reaching no verdict on half the roster while reporting zero drifted
+// is exactly the execution-provenance loss DESIGN names, arriving through the count nobody reads.
+//
+// So the refusal is hoisted into its own field rather than left as a fourth arm beside the
+// comparison results. After this split a provenance finding CANNOT inhabit observation_failures:
+// the collapse is unrepresentable rather than merely discouraged, which is the construction move
+// and the reason to do it in the carrier instead of asking every reader to match.
+
+type UnadjudicatedArtifactFinding {
+  artifact: GeneratedArtifact
+  path: String
+  cause: String
+}
+
+type GeneratedArtifactObservationFinding
+  = GeneratedArtifactContentDiffers { artifact: GeneratedArtifact, path: String }
+  | GeneratedArtifactCommittedArtifactAbsent { artifact: GeneratedArtifact, path: String, detail: String }
+  | GeneratedArtifactExtraValidationFailed { artifact: GeneratedArtifact, path: String }
+
+type GeneratedArtifactPopulationFindings {
+  expected_cardinality: List<ExpectedArtifactCardinalityFinding>
+  unknown_observations: List<UnknownArtifactObservationFinding>
+  unadjudicated: List<UnadjudicatedArtifactFinding>
+  observation_failures: List<GeneratedArtifactObservationFinding>
+}
+
+data observation_findings_note: String = "THE LEAF, DESCENDED. The former assess_generated_artifact_observation collapsed a refusal, a byte difference and a failed extra validation into one `false`; each is its own arm here. ONE OBSERVATION MAY YIELD MORE THAN ONE FINDING -- bytes differing and extra validation failing are independent facts about one artifact -- so this returns a list and never stops at the first, which would reintroduce the within-class collapse this cut removes one level down."
+
+fn observation_findings(o: GeneratedArtifactObservation) -> List<GeneratedArtifactObservationFinding> {
   match o {
-    GeneratedArtifactObservationRefused { artifact: _, path: _, cause: _ } => false
-    GeneratedArtifactObserved { artifact: _, path: _, generated_content, committed_content, extra_validation } =>
-      (generated_content == committed_content) && extra_validation
+    GeneratedArtifactObservationRefused { artifact, path, cause } => []
+    GeneratedArtifactCommittedAbsent { artifact, path, detail } =>
+      [GeneratedArtifactCommittedArtifactAbsent { artifact: artifact, path: path, detail: detail }]
+    GeneratedArtifactObserved { artifact, path, generated_content, committed_content, extra_validation } =>
+      concat(
+        if generated_content == committed_content { [] } else {
+          [GeneratedArtifactContentDiffers { artifact: artifact, path: path }]
+        },
+        if extra_validation { [] } else {
+          [GeneratedArtifactExtraValidationFailed { artifact: artifact, path: path }]
+        }
+      )
   }
 }
 
-data assess_generated_artifact_population_note: String = "PURE GROUP. `expected` is the identity roster (committed_generated_artifacts(), passed in by the caller — this module never calls it); `observations` is the retained receipt population. Passes iff every expected identity is observed EXACTLY ONCE (no missing, no duplicate, no unknown observation outside the expected roster) and every observed receipt's leaf assessment holds. An identity join by artifact_eq, never a bare count equality (DESIGN section 5 oracle-independence ruling) — a population that lost one artifact and duplicated another would count-match while missing the defect."
+fn expected_cardinality_findings(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> List<ExpectedArtifactCardinalityFinding> {
+  fold(expected, init: [], f: fn(acc, e) {
+    let matched = count(filter(observations, o => artifact_eq(a: observation_artifact(o: o), b: e)))
+    if matched == 1 { acc } else {
+      if matched == 0 {
+        concat(acc, [ExpectedArtifactObservationMissing { artifact: e, path: artifact_path(a: e) }])
+      } else {
+        concat(acc, [ExpectedArtifactObservationDuplicated { artifact: e, path: artifact_path(a: e), observation_count: matched }])
+      }
+    }
+  })
+}
+
+fn unknown_observation_findings(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> List<UnknownArtifactObservationFinding> {
+  fold(observations, init: [], f: fn(acc, o) {
+    if any(expected, e => artifact_eq(a: observation_artifact(o: o), b: e)) { acc } else {
+      concat(acc, [UnknownArtifactObservationFinding { artifact: observation_artifact(o: o), path: observation_path(o: o) }])
+    }
+  })
+}
+
+fn unadjudicated_findings(observations: List<GeneratedArtifactObservation>) -> List<UnadjudicatedArtifactFinding> {
+  fold(observations, init: [], f: fn(acc, o) {
+    match o {
+      GeneratedArtifactObservationRefused { artifact, path, cause } =>
+        concat(acc, [UnadjudicatedArtifactFinding { artifact: artifact, path: path, cause: cause }])
+      GeneratedArtifactCommittedAbsent { artifact, path, detail } => acc
+      GeneratedArtifactObserved { artifact, path, generated_content, committed_content, extra_validation } => acc
+    }
+  })
+}
+
+fn observation_failure_findings(observations: List<GeneratedArtifactObservation>) -> List<GeneratedArtifactObservationFinding> {
+  fold(observations, init: [], f: fn(acc, o) { concat(acc, observation_findings(o: o)) })
+}
+
+fn generated_artifact_population_findings(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> GeneratedArtifactPopulationFindings {
+  GeneratedArtifactPopulationFindings {
+    expected_cardinality: expected_cardinality_findings(expected: expected, observations: observations),
+    unknown_observations: unknown_observation_findings(expected: expected, observations: observations),
+    unadjudicated: unadjudicated_findings(observations: observations),
+    observation_failures: observation_failure_findings(observations: observations)
+  }
+}
+
+fn generated_artifact_population_findings_count(f: GeneratedArtifactPopulationFindings) -> Int {
+  (f.expected_cardinality |> count) + (f.unknown_observations |> count) + (f.unadjudicated |> count) + (f.observation_failures |> count)
+}
+
+fn generated_artifact_population_findings_empty(f: GeneratedArtifactPopulationFindings) -> Bool {
+  generated_artifact_population_findings_count(f: f) == 0
+}
+
+data assess_generated_artifact_population_note: String = "THE BOOLEAN PROJECTION, DERIVED. `expected` is the identity roster (committed_generated_artifacts(), passed in by the caller -- this module never calls it); `observations` is the retained receipt population. This is ONE CARRIER WITH A BOOLEAN PROJECTION rather than a second representation: it reads the finding population and asks whether it is empty, so pass/fail cannot disagree with the diagnostic about which population failed. The join underneath is by artifact_eq at identity grain, never a bare count equality (DESIGN section 5 oracle-independence ruling) -- a population that lost one artifact and duplicated another would count-match while missing the defect, which is exactly why Missing and Duplicated are separate arms rather than one ExpectedCardinalityWrong."
 
 fn assess_generated_artifact_population(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> Bool {
-  all(expected, e => count(filter(observations, o => artifact_eq(a: observation_artifact(o: o), b: e))) == 1)
-    && all(observations, o => any(expected, e => artifact_eq(a: observation_artifact(o: o), b: e)))
-    && all(observations, o => assess_generated_artifact_observation(o: o))
+  generated_artifact_population_findings_empty(
+    f: generated_artifact_population_findings(expected: expected, observations: observations)
+  )
 }
 
-data first_failing_observation_path_note: String = "PROJECTION over the retained receipt population — no producer call, no re-invocation of the leaf/group assessment's own inputs. Folds the SAME observations the group check already assessed to name the first one whose leaf assessment failed, or empty when every leaf passed."
-
-fn first_failing_observation_path(observations: List<GeneratedArtifactObservation>) -> String {
-  fold(observations, init: "", f: fn(acc, o) {
-    if acc == "" && !assess_generated_artifact_observation(o: o) { observation_path(o: o) } else { acc }
-  })
+fn expected_cardinality_finding_rendered(f: ExpectedArtifactCardinalityFinding) -> String {
+  match f {
+    ExpectedArtifactObservationMissing { artifact: _, path } =>
+      concat(path, " — expected exactly one observation, found 0 → repair observer or population completeness; the artifact was never adjudicated")
+    ExpectedArtifactObservationDuplicated { artifact: _, path, observation_count: _ } =>
+      concat(path, " — expected exactly one observation, found more than one → repair artifact identity or population construction")
+  }
 }
 
-fn first_missing_expected_path(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
-  fold(expected, init: "", f: fn(acc, e) {
-    if acc == "" && count(filter(observations, o => artifact_eq(a: observation_artifact(o: o), b: e))) != 1 {
-      artifact_path(a: e)
-    } else {
-      acc
-    }
-  })
+fn observation_finding_rendered(f: GeneratedArtifactObservationFinding) -> String {
+  match f {
+    GeneratedArtifactContentDiffers { artifact: _, path } =>
+      concat(path, " — committed content differs from authority → this is a GENERATED projection; do not hand-edit, regenerate via main_wet on dag/gunbc/instruments/generated_artifact_gate.dag")
+    GeneratedArtifactCommittedArtifactAbsent { artifact: _, path, detail } =>
+      concat(
+        concat(concat(path, " — committed artifact is absent: "), detail),
+        " → establish that projection policy requires this artifact BEFORE regenerating it; a deliberate deletion regenerated here is silently reversed"
+      )
+    GeneratedArtifactExtraValidationFailed { artifact: _, path } =>
+      concat(path, " — extra validation failed → repair the generated artifact's structural validity at its authority; regeneration alone will reproduce the same invalid bytes")
+  }
 }
 
-fn first_unknown_observation_path(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
-  fold(observations, init: "", f: fn(acc, o) {
-    if acc == "" && !any(expected, e => artifact_eq(a: observation_artifact(o: o), b: e)) {
-      observation_path(o: o)
-    } else {
-      acc
-    }
-  })
+fn unadjudicated_finding_rendered(f: UnadjudicatedArtifactFinding) -> String {
+  concat(
+    concat(concat(f.path, " — rostered but no verdict reached: "), f.cause),
+    " → repair the named authority, generator or filesystem refusal; NO agreement verdict was reached for this artifact, so it is neither clean nor drifted"
+  )
 }
 
-data first_failing_diagnostic_path_note: String = "The identity-join half of assess_generated_artifact_population can fail with every retained leaf clean (a missing, duplicate, or unknown identity) — a state first_failing_observation_path alone cannot name. This PROJECTION (still no producer call) tries leaf failure first, then a missing expected identity, then an unknown observed identity, so a group failure never surfaces as an empty diagnostic string."
+fn render_section(title: String, lines: List<String>) -> String {
+  if lines |> count == 0 { "" } else {
+    concat(
+      concat("\n", title),
+      fold(lines, init: "", f: fn(acc, l) { concat(concat(acc, "\n  "), l) })
+    )
+  }
+}
 
-fn first_failing_diagnostic_path(expected: List<GeneratedArtifact>, observations: List<GeneratedArtifactObservation>) -> String {
-  match first_failing_observation_path(observations: observations) {
-    "" => match first_missing_expected_path(expected: expected, observations: observations) {
-      "" => first_unknown_observation_path(expected: expected, observations: observations)
-      missing => missing
-    }
-    leaf => leaf
+data generated_artifact_population_findings_rendered_note: String = "RENDERS EVERY NONEMPTY CLASS IN ONE PASS, IN SECTIONS, because the classes carry different remedies and a flat roster would merge three owners into one list. The count prefix is derived from the same carrier the sections are, so a summary that disagrees with the body is unrepresentable rather than merely unlikely."
+
+fn generated_artifact_population_findings_rendered(f: GeneratedArtifactPopulationFindings) -> String {
+  if generated_artifact_population_findings_empty(f: f) { "" } else {
+    concat(
+      concat(
+        concat(to_string(generated_artifact_population_findings_count(f: f)), " findings"),
+        render_section(title: "observation failures:", lines: map(f.observation_failures, x => observation_finding_rendered(f: x)))
+      ),
+      concat(
+        render_section(title: "expected observation cardinality:", lines: map(f.expected_cardinality, x => expected_cardinality_finding_rendered(f: x))),
+        concat(
+          render_section(title: "unknown observations:", lines: map(f.unknown_observations, x => concat(x.path, " — observation identity is not in committed registry → repair the registry/scope disagreement; establish whether this artifact is meant to be committed at all before generating it"))),
+          render_section(title: "unadjudicated:", lines: map(f.unadjudicated, x => unadjudicated_finding_rendered(f: x)))
+        )
+      )
+    )
   }
 }

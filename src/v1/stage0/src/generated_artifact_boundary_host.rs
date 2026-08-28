@@ -46,7 +46,7 @@ const AUTHORITY_ENTRY: &str = "dag/gunbc/generated_artifact_emit.dag";
 /// recently against the partition-crate headers that pointed at the deleted `regen_stage0`.
 pub const GENERATED_ARTIFACT_PRODUCING_COMMAND: &str =
     "gunbc run --source-root dag --source-root src/v2 \
-     --entry dag/tools/generated_artifact_gate.dag --function main_wet";
+     --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet";
 
 /// What the generated-artifact population says about one repo-relative path.
 ///

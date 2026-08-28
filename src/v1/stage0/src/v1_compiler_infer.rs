@@ -3705,6 +3705,8 @@ pub enum InhabitanceUndecidableReason {
 pub enum InhabitanceRefusalReason {
     RefusedPayloadAtParent,
     RefusedKernelAtStructured,
+    RefusedDistinctProductConstructor,
+    RefusedDistinctAppliedTypeArgument,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -3797,7 +3799,18 @@ pub fn declared_type_inhabitance(
                                         reason: InhabitanceRefusalReason::RefusedPayloadAtParent,
                                     })
                                 } else {
-                                    Rc::new(InhabitanceVerdict::Inhabits)
+                                    match nominal_product_inhabitance_refusal(
+                                        declared.clone(),
+                                        produced.clone(),
+                                        scope.clone(),
+                                    ) {
+                                        Some(r) => {
+                                            Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                                reason: r.clone(),
+                                            })
+                                        }
+                                        None => Rc::new(InhabitanceVerdict::Inhabits),
+                                    }
                                 }
                             }
                         }
@@ -3824,6 +3837,267 @@ pub fn declared_realizes_as_kernel_numeric(
             crate::v1_compiler_coercion::decl_file_realizes_natively(
                 crate::v1_compiler_coercion::type_reference_decl_file(declared.clone()),
             )
+        }
+    }
+}
+
+pub fn nominal_product_inhabitance_refusal(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<InhabitanceRefusalReason> {
+    {
+        let declared_head = nominal_product_head_name(declared.clone(), scope.clone());
+        let produced_head = nominal_product_head_name(produced.clone(), scope.clone());
+        if ((declared_head.clone() == "".to_string()) || (produced_head.clone() == "".to_string()))
+        {
+            None
+        } else {
+            if (nominal_product_head_names_agree(
+                declared_head.clone(),
+                produced_head.clone(),
+                scope.clone(),
+            ) == false)
+            {
+                Some(InhabitanceRefusalReason::RefusedDistinctProductConstructor)
+            } else {
+                if applied_type_arguments_conflict(
+                    declared.clone(),
+                    produced.clone(),
+                    scope.clone(),
+                ) {
+                    Some(InhabitanceRefusalReason::RefusedDistinctAppliedTypeArgument)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
+pub fn nominal_product_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        if (((((((name.clone() == "".to_string())
+            || (n.return_cardinality.clone() == Cardinality::CardOptional))
+            || type_node_is_callable(n.clone()))
+            || crate::std_types::is_kernel_type(name.clone()))
+            || (crate::v1_std_core::qualified_last_segment(name.clone())
+                == "Optional".to_string()))
+            || crate::v1_compiler_infer_types::node_is_element_collection(
+                n.clone(),
+                source_indices.clone(),
+            ))
+            || crate::v1_compiler_infer_types::node_is_keyed_collection(
+                n.clone(),
+                source_indices.clone(),
+            ))
+        {
+            "".to_string()
+        } else {
+            match (*expected_type_head_exposure(n.clone(), scope.clone())).clone() {
+                TypeHeadExposure::ExposedTypeHead { ref view, .. }
+                    if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
+                {
+                    let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                        unreachable!()
+                    };
+                    nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
+                }
+                TypeHeadExposure::ExposedTypeHead { ref view, .. }
+                    if matches!(view.as_ref(), TypeHeadView::ProductHead { .. }) =>
+                {
+                    let TypeHeadView::ProductHead {
+                        type_identity: _, ..
+                    } = view.as_ref()
+                    else {
+                        unreachable!()
+                    };
+                    nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
+                }
+                _ => "".to_string(),
+            }
+        }
+    }
+}
+
+pub fn nominal_product_head_name_if_declared_product(
+    name: String,
+    scope: Rc<InferScope>,
+) -> String {
+    match crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), name.clone()) {
+        Some(decl) => {
+            if ((decl.connective.clone() == Connective::Conj)
+                && ((decl.children.clone().len() as i64) > 0))
+            {
+                name.clone()
+            } else {
+                "".to_string()
+            }
+        }
+        None => "".to_string(),
+    }
+}
+
+pub fn nominal_product_head_names_agree(
+    declared_name: String,
+    produced_name: String,
+    scope: Rc<InferScope>,
+) -> bool {
+    (application_type_names_compatible(
+        declared_name.clone(),
+        produced_name.clone(),
+        scope.type_env.clone(),
+        scope.module_name.clone(),
+        scope.type_env.clone().source_indices.clone(),
+    ) || transparent_alias_identity_agrees(
+        scope.type_env.clone().symbol_index.clone(),
+        declared_name.clone(),
+        produced_name.clone(),
+    ))
+}
+
+pub fn applied_type_arguments_conflict(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let declared_args = declared.children.clone();
+        let produced_args = produced.children.clone();
+        if (((declared_args.clone().len() as i64) == 0)
+            || ((declared_args.clone().len() as i64) != (produced_args.clone().len() as i64)))
+        {
+            false
+        } else {
+            applied_type_arguments_conflict_scan(
+                declared_args.clone(),
+                produced_args.clone(),
+                scope.clone(),
+            )
+        }
+    }
+}
+
+pub fn applied_type_arguments_conflict_scan(
+    mut declared_args: Rc<Vec<Rc<Node>>>,
+    mut produced_args: Rc<Vec<Rc<Node>>>,
+    mut scope: Rc<InferScope>,
+) -> bool {
+    loop {
+        match declared_args.clone().first().cloned() {
+            Some(d) => match produced_args.clone().first().cloned() {
+                Some(p) => {
+                    if applied_type_argument_conflicts(d.clone(), p.clone(), scope.clone()) {
+                        break true;
+                    } else {
+                        {
+                            let __tco_0 = Rc::new(
+                                declared_args
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            );
+                            let __tco_1 = Rc::new(
+                                produced_args
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            );
+                            declared_args = __tco_0;
+                            produced_args = __tco_1;
+                            continue;
+                        }
+                    }
+                }
+                None => {
+                    break false;
+                }
+            },
+            None => {
+                break false;
+            }
+        }
+    }
+}
+
+pub fn applied_type_argument_conflicts(
+    declared_arg: Rc<Node>,
+    produced_arg: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        if ((((((declared_arg.return_cardinality.clone() == Cardinality::CardOptional)
+            || (produced_arg.return_cardinality.clone() == Cardinality::CardOptional))
+            || applied_type_argument_is_nested_application(declared_arg.clone(), scope.clone()))
+            || applied_type_argument_is_nested_application(produced_arg.clone(), scope.clone()))
+            || type_node_is_callable(declared_arg.clone()))
+            || type_node_is_callable(produced_arg.clone()))
+        {
+            false
+        } else {
+            {
+                let d = crate::v1_compiler_infer_types::child_type_node(declared_arg.clone());
+                let p = crate::v1_compiler_infer_types::child_type_node(produced_arg.clone());
+                let d_name =
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), d.clone());
+                let p_name =
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), p.clone());
+                if ((applied_type_argument_identity_known(d_name.clone(), scope.clone()) == false)
+                    || (applied_type_argument_identity_known(p_name.clone(), scope.clone())
+                        == false))
+                {
+                    false
+                } else {
+                    (nominal_product_head_names_agree(
+                        d_name.clone(),
+                        p_name.clone(),
+                        scope.clone(),
+                    ) == false)
+                }
+            }
+        }
+    }
+}
+
+pub fn applied_type_argument_is_nested_application(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    match (*exposure_view_for_node(n.clone(), scope.type_env.clone().source_indices.clone()))
+        .clone()
+    {
+        TypeHeadExposure::ExposedTypeHead { ref view, .. }
+            if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
+        {
+            let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                unreachable!()
+            };
+            true
+        }
+        _ => false,
+    }
+}
+
+pub fn applied_type_argument_identity_known(name: String, scope: Rc<InferScope>) -> bool {
+    if (name.clone() == "".to_string()) {
+        false
+    } else {
+        if crate::std_types::is_kernel_type(name.clone()) {
+            true
+        } else {
+            match crate::v1_compiler_infer_env::lookup_type_by_name(
+                scope.type_env.clone(),
+                name.clone(),
+            ) {
+                Some(decl) => {
+                    (((decl.connective.clone() == Connective::Conj)
+                        || (decl.connective.clone() == Connective::Disj))
+                        && ((decl.children.clone().len() as i64) > 0))
+                }
+                None => false,
+            }
         }
     }
 }
@@ -5932,7 +6206,7 @@ pub fn method_pipe_map_keys_values_fallback(
 pub fn method_existence_wall_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline, stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART. It is PER-RECEIVER, not per-name: refuse exactly when kernel_profile_lookup returns a profile for the receiver canonical container kind, because tier0 (lookup_structural_method) has already consulted that profile algebra templates and missed — so reaching this arm with a kernel-profiled receiver PROVES the method is absent from that receiver complete declared surface. This is the same authority tier0 reads, not a second relation minted here (§3). A NAME-GRAIN PREDICATE WAS TRIED AND IS WRONG, and the receipt is worth keeping because it is subtle: gating on membership in a declared method-name roster admits any rostered name on ANY receiver, so List<Int> |> starts_with(..) and List<Int> |> to_upper() compiled clean while the diagnostic claimed the receiver was under-resolved — a fail-open with a message that also LIED about its cause, since Container(List,Primitive(Int)) is fully resolved (codex review 45327, confirmed by execution). Per-receiver closes both: those two now REFUSE. THE ONE MEASURED OBSTACLE TO PER-RECEIVER WAS A REAL §3 FORK, AND IT IS FIXED HERE RATHER THAN WORKED AROUND: free_monoid_scalar_templates omitted count while the interpreter dispatches it natively on strings (the length/count/size arm), so String |> count reached this arm and was admitted only by the fail-open — a hollow green. count is now declared on the String profile, matching the runtime, so it resolves at tier0 and never reaches here. WHAT STAYS UNDECIDED, and why refusing there would fabricate: a receiver with NO kernel profile has no complete declared surface to prove absence against. THE LARGEST MEASURED CLASS WAS NOT UNDECIDABLE AT ALL AND IS NOW DECIDED — a where-refinement alias arrived as Product(NonEmptyStr) only because resolve_method_receiver_type short-circuits on Conj and never peeled to the String base; peeling it (where_refinement_receiver_peel_note) moved 12 corpus sites out of this residue in both directions at once, resolving the correct .length() calls AND making a bogus method on a branded string a hard MethodNotFound. THE LAMBDA-PARAMETER CLASS IS NOW CLOSED IN BOTH ITS HALVES AND ITS ROW IS DELETED. The clause here recorded, correctly, that the seven remaining sites were the LexPatternFold algebra idiom in src/v2/compiler/01_tokenize.dag, whose fields are declared fn(R, R) -> R so the lambda parameter's own declared type IS the type variable — the receivers left_r, right_r, elem_r and open_r, and NOT `apply: fn(s)`, whose parameter is declared String, a LEAF that grounds fine (measured: a non-generic record field holding a callable compiles with 0 blocking, and so does the same receiver type reached through an ANNOTATED fn parameter; the second of those two was measured by the session that found the misattribution and is recorded as theirs). TWO FURTHER DEFECTS HELD THAT HALF OPEN AND BOTH ARE REPAIRED, neither subsuming the other: a lambda argument contributes nothing to a call's generic substitution yet reads its parameter types out of it, so it saw only what arguments to its LEFT had bound — the ExprCall argument fold now runs a second round from the substitution the first ended with; and record_lit_instantiated_fields read each type ARGUMENT through resolved_type, which answers the empty error_type for any node with no inferred type, i.e. every authored type argument, so instantiating a generic record substituted its type parameter to NOTHING and a callable field's parameter node was replaced wholesale by the empty node (repaired to child_type_node, the total read of the same fact; measured with the type argument already CONCRETE, so inference is not part of the question). Measured across the v2 pipeline closure, 175 files: ReceiverTypeUnestablished 7 to 0, and the whole advisory population 1983 to 1892 with no class rising. The evidence stays enrolled rather than retiring with the machinery (DESIGN 4b(4)): test.claim.generic_lambda_parameter_binding_witness carries the three sources that refused plus a control whose method is genuinely absent from the bound type, asserting MethodNotFound fires AND MethodExistenceUndecided does not — a pair reachable only when the parameter IS bound. The StoreObjectFold lambdas in extdeps/git/object_store.dag were the second instance of the class and were RESOLVED earlier, once a generic field's substituted type reached the field expectation and an unestablished return stopped being certified as resolved. What remains genuinely has no surface: a coproduct payload bound by pattern destructuring arriving typed Primitive(ok) (a correct labels |> list_push(label)), a bare type variable, and an Optional whose cardinality is dropped before lookup so the inner product is what arrives. Refusing those would red correct code, which is the mirror image of the fabricated success this wall deletes. A RECEIVER WITH NO AUTHORED NAME AT ALL is not weak evidence about the method — it is no evidence about anything, because the receiver's own type was never established upstream. That is a different judgment failure from 'this receiver has a surface and the method is not on it', so it carries its own diagnostic, ReceiverTypeUnestablished, whose message names that cause instead of implying the method is missing. THE DIAGNOSTIC NAMES THE CAUSE; THE ROSTER BOUNDS THE ADMISSION, and separating those two was a correction. The class was first admitted on the CAUSE alone — any anonymous receiver, non-blocking — on the reasoning that the wall cannot tell an existing method from a nonexistent one when the receiver has no type, so refusing would refuse both. That reasoning is sound about DECIDABILITY and wrong about ADMISSION: it made every future anonymous-receiver call green, including one whose method does not exist, so the exception was unbounded exactly where existence is unknown (codex review 45459). Counting a diagnostic does not stop invalid code reaching the live system. Admission is now gated on the same declared roster as every other unestablished shape, keyed (module, method, Primitive()), so the seven measured occurrences are admitted and a new one anywhere else REFUSES as MethodExistenceUndecided. That is a ratchet that can only shrink, and blocking a new instance of a known deficit is the factory model rather than an inconvenience. Everything that has a name but no surface stays in the same shape-keyed roster. MethodExistenceUndecided carries what is left as a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent) so the frequency stays observable and prioritizable rather than zeroed by construction — and it now means exactly ONE thing, receiver surface not established, rather than doubling as a name-grain escape. Both arms return error_type, never recv_rt, so one located refusal does not cascade downstream. AND THE WALL IS REACHED FROM EVERY ARM, WHICH IT WAS NOT AT FIRST: the decision lived inline in the final else of method_pipe_map_keys_values_fallback, so an unresolved map_keys, sorted_map_keys or map_values whose receiver is not a keyed collection took an EARLIER branch and returned recv_rt with an empty diagnostic list — the identical success-shaped fallback this wall exists to delete, preserved in the two special cases that ran before it (codex review 45430). A wall reachable only from the default arm is not a wall, and prose about the default arm cannot see the two arms in front of it. The decision is now method_existence_decision, held once and called from all three, with the control run against the prior binary rather than reasoned about: List<Int> |> map_keys and |> map_values compile with exit 0 on the pre-routing binary and produce two located MethodNotFound refusals on this one. Positive controls: map/filter/fold/flat_map resolve at tier0 and service ops at tier1, neither reaching this arm. THE UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT, one fixed here and the rest left as promotion triggers that would each let the wall decide a further non-kernel receiver: (1) FIXED — a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup; (2) SPLIT BY MEASUREMENT AND NOW FIXED IN BOTH HALVES - a lambda parameter receiver whose type never propagates from the declared fn type it is bound under is TWO defects, not one, and treating them as one is what kept both open. The half FIXED here is the callable-parameter RESOLUTION hole: resolve_node_bounded dispatches on connective, a callable type node is Arrow carrying its parameter types in params and its return type in inferred with children empty, every arm copied params through verbatim, and Arrow fell into the coproduct arm which walks children - so a callable's parameter and return types were never resolved at all. A LEAF parameter type survived that anyway because a leaf grounds through its own name downstream, which is why the shape stayed invisible for so long; a type APPLICATION did not, because resolve_scrutinee_type_node has an arm for children-with-inferred and an arm for no-children and none for children-present-inferred-absent. An Arrow arm in that same dispatch closes it. THE ARM THAT SEPARATED CAUSE FROM SYMPTOM, and it is the transferable part: the SAME receiver type reached through an ANNOTATED fn parameter compiled with 0 blocking while the callable-field spelling refused, so the defect was the callable-parameter POSITION and not the lambda binding the diagnostic names - a compiler suggestion locates where a failure was DETECTED, never where it was CAUSED. The OTHER half was the generic one and no part of the above touched it: where the parameter's declared type IS the type variable, the variable was never bound, because call_subst accumulates across arguments AFTER each is inferred and unify_record_lit_generics recovers it from the already-typed record literal - too late for the lambda fields inside it. THAT HALF IS NOW CLOSED TOO, and it was itself two defects rather than one: the fold ordering just described, repaired by a second round seeded with the first round's substitution, AND record_lit_instantiated_fields substituting its type parameter to the empty error_type, repaired to the total accessor. Neither alone sufficed - the ordering fix left the record form still refusing, which is how the second was found. The v2.compiler.tokenize frontier row measured zero observed and is DELETED rather than lowered, since the budget is an equality in both directions and a lowered row would leave headroom a reintroduction could slip into; (3) a coproduct payload binding typed as the VARIANT name rather than the field type; (4) an optional receiver whose cardinality is dropped so the inner product reaches lookup in place of Optional own surface. Each is carried as a row in unresolved_method_frontier, keyed on the receiver shape that is the evidence for it, except (2) which is the ReceiverTypeUnestablished cause class above. THE INSTRUMENT WAS WRONG BEFORE THE WALL WAS, and that is the most transferable thing here: this wall was measured with `gunbc run --entry dag/tools/generated_artifact_gate.dag`, which reaches only that gate's import closure, and it reported CLEAN while twelve real sites sat outside it — they surfaced from CI instead. The whole-corpus instrument is `gunbc compile --source-root dag --source-root src/v2 --target dag`, the same compile-clean gate CI runs, and it resolves 1629 sources against 2740 indexed modules. A narrow instrument reporting clean is indistinguishable from a wall that works, which is the §5 specification-without-execution trap wearing the shape of a green run. A FOURTH SHAPE was then found and NOT fixed: a brand alias can also arrive as a plain qualified LEAF (Primitive(std.types.NonEmptyStr)) rather than the refinement Conj the peel walks. Three head-resolution strategies were implemented and measured against it — lookup_type_for on the node, lookup_type_by_name on the qualified name, and on its last segment — none recovered the refinement, so the machinery was DELETED rather than shipped unproven and the site is a declared row. Unproven machinery that decides nothing is worse than a declared row that admits what it cannot decide. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete surface, the count-style forks are unwritable rather than hand-reconciled, and MethodExistenceUndecided is deleted.".to_string()
+            "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline, stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART. It is PER-RECEIVER, not per-name: refuse exactly when kernel_profile_lookup returns a profile for the receiver canonical container kind, because tier0 (lookup_structural_method) has already consulted that profile algebra templates and missed — so reaching this arm with a kernel-profiled receiver PROVES the method is absent from that receiver complete declared surface. This is the same authority tier0 reads, not a second relation minted here (§3). A NAME-GRAIN PREDICATE WAS TRIED AND IS WRONG, and the receipt is worth keeping because it is subtle: gating on membership in a declared method-name roster admits any rostered name on ANY receiver, so List<Int> |> starts_with(..) and List<Int> |> to_upper() compiled clean while the diagnostic claimed the receiver was under-resolved — a fail-open with a message that also LIED about its cause, since Container(List,Primitive(Int)) is fully resolved (codex review 45327, confirmed by execution). Per-receiver closes both: those two now REFUSE. THE ONE MEASURED OBSTACLE TO PER-RECEIVER WAS A REAL §3 FORK, AND IT IS FIXED HERE RATHER THAN WORKED AROUND: free_monoid_scalar_templates omitted count while the interpreter dispatches it natively on strings (the length/count/size arm), so String |> count reached this arm and was admitted only by the fail-open — a hollow green. count is now declared on the String profile, matching the runtime, so it resolves at tier0 and never reaches here. WHAT STAYS UNDECIDED, and why refusing there would fabricate: a receiver with NO kernel profile has no complete declared surface to prove absence against. THE LARGEST MEASURED CLASS WAS NOT UNDECIDABLE AT ALL AND IS NOW DECIDED — a where-refinement alias arrived as Product(NonEmptyStr) only because resolve_method_receiver_type short-circuits on Conj and never peeled to the String base; peeling it (where_refinement_receiver_peel_note) moved 12 corpus sites out of this residue in both directions at once, resolving the correct .length() calls AND making a bogus method on a branded string a hard MethodNotFound. THE LAMBDA-PARAMETER CLASS IS NOW CLOSED IN BOTH ITS HALVES AND ITS ROW IS DELETED. The clause here recorded, correctly, that the seven remaining sites were the LexPatternFold algebra idiom in src/v2/compiler/01_tokenize.dag, whose fields are declared fn(R, R) -> R so the lambda parameter's own declared type IS the type variable — the receivers left_r, right_r, elem_r and open_r, and NOT `apply: fn(s)`, whose parameter is declared String, a LEAF that grounds fine (measured: a non-generic record field holding a callable compiles with 0 blocking, and so does the same receiver type reached through an ANNOTATED fn parameter; the second of those two was measured by the session that found the misattribution and is recorded as theirs). TWO FURTHER DEFECTS HELD THAT HALF OPEN AND BOTH ARE REPAIRED, neither subsuming the other: a lambda argument contributes nothing to a call's generic substitution yet reads its parameter types out of it, so it saw only what arguments to its LEFT had bound — the ExprCall argument fold now runs a second round from the substitution the first ended with; and record_lit_instantiated_fields read each type ARGUMENT through resolved_type, which answers the empty error_type for any node with no inferred type, i.e. every authored type argument, so instantiating a generic record substituted its type parameter to NOTHING and a callable field's parameter node was replaced wholesale by the empty node (repaired to child_type_node, the total read of the same fact; measured with the type argument already CONCRETE, so inference is not part of the question). Measured across the v2 pipeline closure, 175 files: ReceiverTypeUnestablished 7 to 0, and the whole advisory population 1983 to 1892 with no class rising. The evidence stays enrolled rather than retiring with the machinery (DESIGN 4b(4)): test.claim.generic_lambda_parameter_binding_witness carries the three sources that refused plus a control whose method is genuinely absent from the bound type, asserting MethodNotFound fires AND MethodExistenceUndecided does not — a pair reachable only when the parameter IS bound. The StoreObjectFold lambdas in extdeps/git/object_store.dag were the second instance of the class and were RESOLVED earlier, once a generic field's substituted type reached the field expectation and an unestablished return stopped being certified as resolved. What remains genuinely has no surface: a coproduct payload bound by pattern destructuring arriving typed Primitive(ok) (a correct labels |> list_push(label)), a bare type variable, and an Optional whose cardinality is dropped before lookup so the inner product is what arrives. Refusing those would red correct code, which is the mirror image of the fabricated success this wall deletes. A RECEIVER WITH NO AUTHORED NAME AT ALL is not weak evidence about the method — it is no evidence about anything, because the receiver's own type was never established upstream. That is a different judgment failure from 'this receiver has a surface and the method is not on it', so it carries its own diagnostic, ReceiverTypeUnestablished, whose message names that cause instead of implying the method is missing. THE DIAGNOSTIC NAMES THE CAUSE; THE ROSTER BOUNDS THE ADMISSION, and separating those two was a correction. The class was first admitted on the CAUSE alone — any anonymous receiver, non-blocking — on the reasoning that the wall cannot tell an existing method from a nonexistent one when the receiver has no type, so refusing would refuse both. That reasoning is sound about DECIDABILITY and wrong about ADMISSION: it made every future anonymous-receiver call green, including one whose method does not exist, so the exception was unbounded exactly where existence is unknown (codex review 45459). Counting a diagnostic does not stop invalid code reaching the live system. Admission is now gated on the same declared roster as every other unestablished shape, keyed (module, method, Primitive()), so the seven measured occurrences are admitted and a new one anywhere else REFUSES as MethodExistenceUndecided. That is a ratchet that can only shrink, and blocking a new instance of a known deficit is the factory model rather than an inconvenience. Everything that has a name but no surface stays in the same shape-keyed roster. MethodExistenceUndecided carries what is left as a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent) so the frequency stays observable and prioritizable rather than zeroed by construction — and it now means exactly ONE thing, receiver surface not established, rather than doubling as a name-grain escape. Both arms return error_type, never recv_rt, so one located refusal does not cascade downstream. AND THE WALL IS REACHED FROM EVERY ARM, WHICH IT WAS NOT AT FIRST: the decision lived inline in the final else of method_pipe_map_keys_values_fallback, so an unresolved map_keys, sorted_map_keys or map_values whose receiver is not a keyed collection took an EARLIER branch and returned recv_rt with an empty diagnostic list — the identical success-shaped fallback this wall exists to delete, preserved in the two special cases that ran before it (codex review 45430). A wall reachable only from the default arm is not a wall, and prose about the default arm cannot see the two arms in front of it. The decision is now method_existence_decision, held once and called from all three, with the control run against the prior binary rather than reasoned about: List<Int> |> map_keys and |> map_values compile with exit 0 on the pre-routing binary and produce two located MethodNotFound refusals on this one. Positive controls: map/filter/fold/flat_map resolve at tier0 and service ops at tier1, neither reaching this arm. THE UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT, one fixed here and the rest left as promotion triggers that would each let the wall decide a further non-kernel receiver: (1) FIXED — a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup; (2) SPLIT BY MEASUREMENT AND NOW FIXED IN BOTH HALVES - a lambda parameter receiver whose type never propagates from the declared fn type it is bound under is TWO defects, not one, and treating them as one is what kept both open. The half FIXED here is the callable-parameter RESOLUTION hole: resolve_node_bounded dispatches on connective, a callable type node is Arrow carrying its parameter types in params and its return type in inferred with children empty, every arm copied params through verbatim, and Arrow fell into the coproduct arm which walks children - so a callable's parameter and return types were never resolved at all. A LEAF parameter type survived that anyway because a leaf grounds through its own name downstream, which is why the shape stayed invisible for so long; a type APPLICATION did not, because resolve_scrutinee_type_node has an arm for children-with-inferred and an arm for no-children and none for children-present-inferred-absent. An Arrow arm in that same dispatch closes it. THE ARM THAT SEPARATED CAUSE FROM SYMPTOM, and it is the transferable part: the SAME receiver type reached through an ANNOTATED fn parameter compiled with 0 blocking while the callable-field spelling refused, so the defect was the callable-parameter POSITION and not the lambda binding the diagnostic names - a compiler suggestion locates where a failure was DETECTED, never where it was CAUSED. The OTHER half was the generic one and no part of the above touched it: where the parameter's declared type IS the type variable, the variable was never bound, because call_subst accumulates across arguments AFTER each is inferred and unify_record_lit_generics recovers it from the already-typed record literal - too late for the lambda fields inside it. THAT HALF IS NOW CLOSED TOO, and it was itself two defects rather than one: the fold ordering just described, repaired by a second round seeded with the first round's substitution, AND record_lit_instantiated_fields substituting its type parameter to the empty error_type, repaired to the total accessor. Neither alone sufficed - the ordering fix left the record form still refusing, which is how the second was found. The v2.compiler.tokenize frontier row measured zero observed and is DELETED rather than lowered, since the budget is an equality in both directions and a lowered row would leave headroom a reintroduction could slip into; (3) a coproduct payload binding typed as the VARIANT name rather than the field type; (4) an optional receiver whose cardinality is dropped so the inner product reaches lookup in place of Optional own surface. Each is carried as a row in unresolved_method_frontier, keyed on the receiver shape that is the evidence for it, except (2) which is the ReceiverTypeUnestablished cause class above. THE INSTRUMENT WAS WRONG BEFORE THE WALL WAS, and that is the most transferable thing here: this wall was measured with `gunbc run --entry dag/gunbc/instruments/generated_artifact_gate.dag`, which reaches only that gate's import closure, and it reported CLEAN while twelve real sites sat outside it — they surfaced from CI instead. The whole-corpus instrument is `gunbc compile --source-root dag --source-root src/v2 --target dag`, the same compile-clean gate CI runs, and it resolves 1629 sources against 2740 indexed modules. A narrow instrument reporting clean is indistinguishable from a wall that works, which is the §5 specification-without-execution trap wearing the shape of a green run. A FOURTH SHAPE was then found and NOT fixed: a brand alias can also arrive as a plain qualified LEAF (Primitive(std.types.NonEmptyStr)) rather than the refinement Conj the peel walks. Three head-resolution strategies were implemented and measured against it — lookup_type_for on the node, lookup_type_by_name on the qualified name, and on its last segment — none recovered the refinement, so the machinery was DELETED rather than shipped unproven and the site is a declared row. Unproven machinery that decides nothing is worse than a declared row that admits what it cannot decide. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete surface, the count-style forks are unwritable rather than hand-reconciled, and MethodExistenceUndecided is deleted.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -23710,3 +23984,7 @@ pub struct UndecidableProducedIdentityErased;
 pub struct RefusedPayloadAtParent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedKernelAtStructured;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedDistinctProductConstructor;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedDistinctAppliedTypeArgument;

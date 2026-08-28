@@ -9,14 +9,21 @@ import extdeps.git.worktree_enumeration {
 }
 import gunbc.live_deploy.repository_convergence {
   RepositoryState,
+  GitTextObserved,
+  RepositoryCoherenceObservation, RepositoryCoherenceObserved,
+  RepositoryCoherenceUnreadable,
   GitUntrackedObservation, GitUntrackedObserved, GitUntrackedUnreadable,
   ConvergenceUntrackedResidue, ConvergenceResidueUnreadable,
   ConvergencePrimaryBranchNotAtCandidate,
   RepositoryConvergenceOutcome,
   ConvergenceCompleted, ConvergenceAlreadyAtCandidate,
   ConvergencePreStateUnobservable, ConvergencePostStateUnobservable,
-  ConvergenceRefDisappeared, ConvergenceWorktreeDisappeared, ConvergenceWorktreeRebound,
+  ConvergenceRefDisappeared, ConvergenceRefRebound, ConvergenceWorktreeDisappeared, ConvergenceWorktreeRebound,
+  ConvergenceUnexpectedWorktree,
+  ConvergenceUnexpectedRef,
   ConvergenceHeadNotAtCandidate, ConvergenceHeadMovedWithoutReflog,
+  ConvergenceIndexNotAtCandidateTree, ConvergenceTrackedWorktreeNotAtCandidate,
+  ConvergenceCoherenceUnreadable, ConvergenceRepairedAtCandidate,
   ConvergenceBaseRefMoved, ConvergenceBaseRefUpdateRefused,
   base_ref_refusal_from_observation,
   repository_convergence_verdict,
@@ -29,6 +36,7 @@ data dispatch_sha: String = "3333333333333333333333333333333333333333"
 data base_ref: String = "refs/remotes/origin/main"
 data primary: String = "/opt/gunbc/gunbc"
 data linked: String = "/opt/gunbc/dispatch-worktrees/attempt-a"
+data unexpected_linked: String = "/opt/gunbc/dispatch-worktrees/concurrent-attempt"
 
 // FIXTURES ARE BUILT FROM GIT'S OWN WIRE TEXT AND DECODED, not hand-constructed. `GitObjectId` is a
 // sole-constructor validated type -- `git_sha1_object_id` refuses anything that is not lowercase hex
@@ -45,6 +53,10 @@ data linked: String = "/opt/gunbc/dispatch-worktrees/attempt-a"
 // inflation (DESIGN §4b).
 fn ref_record(name: String, oid: String) -> String {
   concat(concat(name, concat("\0", oid)), "\0")
+}
+
+fn symref_record(name: String, oid: String, target: String) -> String {
+  concat(join([name, oid, target], "\0"), "\n")
 }
 
 // RECORDS ARE SUPPLIED IN LEXICOGRAPHIC ORDER because that is what `git for-each-ref` emits and
@@ -112,6 +124,14 @@ fn linked_entry_detached() -> String {
   ])
 }
 
+fn unexpected_linked_entry() -> String {
+  wt_entry(attributes: [
+    concat("worktree ", unexpected_linked),
+    concat("HEAD ", dispatch_sha),
+    "detached",
+  ])
+}
+
 fn worktrees_wire(entries: List<String>) -> GitWorktreeSetObservation {
   git_worktree_set_observation_of(raw: join(entries, ""), exit_code: 0, stderr: "")
 }
@@ -126,9 +146,14 @@ fn state_of(
   RepositoryState {
     refs: refs,
     worktrees: worktrees,
-    head: head,
-    reflog: reflog,
+    head: GitTextObserved { text: head },
+    reflog: GitTextObserved { text: reflog },
     untracked: untracked,
+    coherence: RepositoryCoherenceObserved {
+      index_tree: if head == new_sha { "new-tree" } else { "old-tree" },
+      candidate_tree: "new-tree",
+      tracked_paths: "",
+    },
   }
 }
 
@@ -164,13 +189,108 @@ fn verdict_for(after: RepositoryState) -> RepositoryConvergenceOutcome {
     after: after,
     candidate: new_sha,
     base_ref: base_ref,
-    primary_path: primary,
   )
 }
 
 fn is_completed(o: RepositoryConvergenceOutcome) -> Bool {
   match o {
     ConvergenceCompleted { candidate: _, refs_preserved: _, worktrees_preserved: _ } => true
+    _ => false
+  }
+}
+
+fn clean_after_with_coherence(coherence: RepositoryCoherenceObservation) -> RepositoryState {
+  RepositoryState {
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: GitTextObserved { text: new_sha },
+    reflog: GitTextObserved { text: reflog_after(oid: new_sha) },
+    untracked: clean_tree(),
+    coherence: coherence,
+  }
+}
+
+fn transition_state_with_refs(refs: GitRefSetObservation, head: String, reflog: String) -> RepositoryState {
+  state_of(
+    refs: refs,
+    worktrees: worktrees_wire(entries: [primary_entry(oid: head), linked_entry()]),
+    head: head,
+    reflog: reflog,
+    untracked: clean_tree(),
+  )
+}
+
+test fn a_ref_added_during_transition_refuses() -> Bool {
+  let added_name = "refs/dispatch/added-during-transition"
+  let after = transition_state_with_refs(
+    refs: refs_wire(records: [
+      concat(ref_record(name: added_name, oid: dispatch_sha), "\n"),
+      dispatch_ref_record(),
+      heads_dispatch_record(),
+      heads_main_record(oid: new_sha),
+      base_ref_record(oid: new_sha),
+    ]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+  )
+  match verdict_for(after: after) {
+    ConvergenceUnexpectedRef { refname: r, objectname: o } => r == added_name && o == dispatch_sha
+    _ => false
+  }
+}
+
+test fn a_symref_retargeted_at_the_same_object_refuses() -> Bool {
+  let alias = "refs/alias/release"
+  let before = transition_state_with_refs(
+    refs: refs_wire(records: [
+      symref_record(name: alias, oid: dispatch_sha, target: "refs/heads/dispatch/attempt-a"),
+      dispatch_ref_record(),
+      heads_dispatch_record(),
+      heads_main_record(oid: old_sha),
+      base_ref_record(oid: old_sha),
+    ]),
+    head: old_sha,
+    reflog: "old-reflog",
+  )
+  let after = transition_state_with_refs(
+    refs: refs_wire(records: [
+      symref_record(name: alias, oid: dispatch_sha, target: "refs/dispatch/attempt-a"),
+      dispatch_ref_record(),
+      heads_dispatch_record(),
+      heads_main_record(oid: new_sha),
+      base_ref_record(oid: new_sha),
+    ]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+  )
+  match repository_convergence_verdict(before: before, after: after, candidate: new_sha, base_ref: base_ref) {
+    ConvergenceRefRebound { refname: r, before_object: bo, after_object: ao, before_target: bt, after_target: at } =>
+      r == alias
+        && bo == dispatch_sha
+        && ao == dispatch_sha
+        && bt == "refs/heads/dispatch/attempt-a"
+        && at == "refs/dispatch/attempt-a"
+    _ => false
+  }
+}
+
+test fn post_index_tree_must_equal_candidate_tree() -> Bool {
+  match verdict_for(after: clean_after_with_coherence(coherence: RepositoryCoherenceObserved { index_tree: "old-tree", candidate_tree: "new-tree", tracked_paths: "" })) {
+    ConvergenceIndexNotAtCandidateTree { candidate_tree: c, observed_tree: o } => c == "new-tree" && o == "old-tree"
+    _ => false
+  }
+}
+
+test fn post_tracked_content_must_equal_candidate() -> Bool {
+  match verdict_for(after: clean_after_with_coherence(coherence: RepositoryCoherenceObserved { index_tree: "new-tree", candidate_tree: "new-tree", tracked_paths: "tracked\0" })) {
+    ConvergenceTrackedWorktreeNotAtCandidate { first_path: p } => p == "tracked"
+    _ => false
+  }
+}
+
+test fn unreadable_coherence_never_defaults_clean() -> Bool {
+  match verdict_for(after: clean_after_with_coherence(coherence: RepositoryCoherenceUnreadable { detail: "write-tree refused" })) {
+    ConvergenceCoherenceUnreadable { detail: d } => d == "write-tree refused"
     _ => false
   }
 }
@@ -201,7 +321,8 @@ test fn a_dispatch_ref_that_vanished_refuses() -> Bool {
     untracked: clean_tree(),
   )
   match verdict_for(after: after) {
-    ConvergenceRefDisappeared { refname: r, objectname: _ } => r == dispatch_ref_name
+    ConvergenceRefDisappeared { refname: r, objectname: o } =>
+      r == dispatch_ref_name && o == dispatch_sha
     _ => false
   }
 }
@@ -234,6 +355,23 @@ test fn a_linked_worktree_rebound_to_detached_refuses() -> Bool {
   )
   match verdict_for(after: after) {
     ConvergenceWorktreeRebound { path: p, detail: _ } => p == linked
+    _ => false
+  }
+}
+
+// THE REVERSE PRESERVATION JOIN. Every pre-existing worktree remains byte-for-byte identical, but
+// a concurrent writer registered another linked worktree during convergence. A one-way join over
+// the before roster calls this preservation; the reverse pass identifies the new registration.
+test fn a_linked_worktree_added_during_transition_refuses() -> Bool {
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry(), unexpected_linked_entry()]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+    untracked: clean_tree(),
+  )
+  match verdict_for(after: after) {
+    ConvergenceUnexpectedWorktree { path: p } => p == unexpected_linked
     _ => false
   }
 }
@@ -277,10 +415,33 @@ test fn an_already_converged_repository_is_not_the_reflog_defect() -> Bool {
     after: already,
     candidate: new_sha,
     base_ref: base_ref,
-    primary_path: primary,
   )
   match v {
     ConvergenceAlreadyAtCandidate { candidate: c } => c == new_sha
+    _ => false
+  }
+}
+
+// HEAD and tracked content were already correct, but the base ref was stale. The wet sequence CASes
+// that ref to the candidate, so calling the result "no transition performed" would deny the only
+// mutation that occurred. The fixture differs from the no-op control only in the pre-state base ref.
+test fn an_already_converged_head_with_a_repaired_base_ref_reports_repair() -> Bool {
+  let before = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: old_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: "same-reflog",
+    untracked: clean_tree(),
+  )
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: "same-reflog",
+    untracked: clean_tree(),
+  )
+  match repository_convergence_verdict(before: before, after: after, candidate: new_sha, base_ref: base_ref) {
+    ConvergenceRepairedAtCandidate { candidate: c } => c == new_sha
     _ => false
   }
 }
@@ -306,9 +467,10 @@ test fn an_unreadable_post_state_refuses_rather_than_reporting_preservation() ->
   let after = RepositoryState {
     refs: GitRefSetReadRefused { exit_code: 128, stderr: "not a git repository" },
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
-    head: new_sha,
-    reflog: reflog_after(oid: new_sha),
+    head: GitTextObserved { text: new_sha },
+    reflog: GitTextObserved { text: reflog_after(oid: new_sha) },
     untracked: clean_tree(),
+    coherence: RepositoryCoherenceObserved { index_tree: "new-tree", candidate_tree: "new-tree", tracked_paths: "" },
   }
   match verdict_for(after: after) {
     ConvergencePostStateUnobservable { detail: d } => string_contains(s: d, pattern: "not a git repository")

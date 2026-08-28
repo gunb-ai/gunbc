@@ -1,0 +1,429 @@
+module test.claim.training_checkpoint_witness
+
+import product.training.attempt_graph {
+  TrainingRunAttemptGraph, AttemptGraphAdmission,
+  AttemptGraphAdmitted, AttemptGraphRefused,
+  AttemptGraphRefusal, AttemptWorkOutsideSubject, AttemptRootsInAnotherDemand,
+  AttemptPredecessorAbsent, DuplicateAttemptIdentity, AttemptLineageUnrooted,
+  admit_attempt_graph, graph_admits_attempt,
+}
+import product.training.readback {
+  TrainingRunSubject, subject_of_desired, TrainingCheckpointObservation,
+}
+import product.training.checkpoint {
+  CheckpointComponent, ModelWeights, OptimizerState, SchedulerState, RngState, DataOrderState,
+  CheckpointComponentReceipt, checkpoint_components, checkpoint_component_name,
+  CheckpointPublicationStanding, AtomicallyPublished, PublicationIncomplete, PublicationUnobserved,
+  AdmittedTrainingCheckpoint, CheckpointAdmission, CheckpointAdmitted, CheckpointRefused,
+  CheckpointAdmissionRefusal, CheckpointAttemptOutsideRun, CheckpointComponentMissing,
+  CheckpointComponentDigestMismatch, CheckpointPublicationNotAtomic,
+  CheckpointPublicationStandingUnobserved, CheckpointManifestDiverged,
+  admit_training_checkpoint,
+}
+import product.training.resolution {
+  AxisResolution, AxisResolved, ResolvedAxis,
+  TrainingResolution, TrainingResolved, TrainingResolutionRefused,
+  TrainingResolutionObservations,
+  DropoutPermille, DropoutPermilleAdmitted, DropoutPermilleOutOfRange, dropout_permille,
+  Bf16, NoPacking, MaskPromptTokens,
+  TrainingRunDesired, TrainingRunDesiredAdmitted, TrainingRunDesiredRefused,
+  resolve_training, training_work_for, admit_training_run_desired,
+  resolved_training_manifest, TrainingResolvedManifest,
+}
+import product.fabric.execution {
+  Attempt, ExecutionAttemptLineage,
+  InitialAttempt, InfrastructureRetry, CapabilityEscalation, RequestedReexecution,
+}
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.envelope { ResourceEnvelope }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
+import product.fabric.identity {
+  FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, fabric_identity_eq,
+}
+import std.content_hash { ContentHash, Sha256Digest, content_hash_of_value }
+import extdeps.currency.currency { Usd }
+import std.measure { money_amount_micro, hardware_thread_count }
+import std.integer { PositiveInt }
+import std.nat { Nat }
+import std.types { NonEmptyStr, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn h(s: NonEmptyStr) -> ContentHash {
+  content_hash_of_value(value: s)
+}
+
+fn ax<T>(v: T) -> AxisResolution<T> {
+  AxisResolved { resolved: ResolvedAxis { value: v, receipt: "obs-graph" } }
+}
+
+fn dp(n: Nat) -> DropoutPermille? {
+  match dropout_permille(permille: n) {
+    DropoutPermilleAdmitted { value: v } => Present { value: v }
+    DropoutPermilleOutOfRange { offered: _ } => none
+  }
+}
+
+data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
+  shape: Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+    envelope: ResourceEnvelope { cpu: none, gpu: none, memory: none, storage: none, network: none },
+  },
+  capabilities: "linux-arm64",
+  trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
+}
+
+fn fixture_observations(d: DropoutPermille) -> TrainingResolutionObservations {
+  TrainingResolutionObservations {
+    base_artifact: ax(v: h(s: "base-A")),
+    dataset_manifest: ax(v: h(s: "dataset-1")),
+    tokenizer: ax(v: h(s: "tok-1")),
+    chat_template: ax(v: h(s: "tmpl-1")),
+    trainer_closure: ax(v: h(s: "trainer-1")),
+    target_modules: ax(v: h(s: "qkv")),
+    optimizer_config: ax(v: h(s: "adamw-1")),
+    scheduler_config: ax(v: h(s: "cosine-1")),
+    learning_rate_schedule: ax(v: h(s: "lr-1")),
+    rank: ax(v: 16),
+    scaling: ax(v: 32),
+    dropout_permille: ax(v: d),
+    sequence_length: ax(v: 4096),
+    packing: ax(v: NoPacking),
+    loss_mask: ax(v: MaskPromptTokens),
+    mixture: ax(v: h(s: "mix-1")),
+    micro_batch: ax(v: 2),
+    gradient_accumulation: ax(v: 8),
+    numeric_format: ax(v: Bf16),
+    seed: ax(v: 7),
+    data_order_seed: ax(v: 99),
+    checkpoint_format: ax(v: h(s: "ckpt-v1")),
+    output_contract: ax(v: h(s: "adapter-out")),
+  }
+}
+
+fn demand_for(work_key: NonEmptyStr) -> Demand<NonEmptyStr> {
+  Demand {
+    id: FabricIdentity { principal: "brian", key: "demand-1" },
+    work: FabricIdentity { principal: "gunbai", key: work_key },
+    origin: "gunbc.observation.training-graph",
+    submitted_at: "2026-08-28T00:00:00Z",
+    admission: AdmissionTerms {
+      deadline: none,
+      buy: BuyTerms {
+        budget_account: "training",
+        currency: Usd,
+        reservation_price: money_amount_micro(count: 1),
+        maximum_buy_order: money_amount_micro(count: 1000),
+      },
+    },
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: false,
+      step_reuse_permitted: true,
+    },
+  }
+}
+
+fn subject_fixture() -> TrainingRunSubject<NonEmptyStr>? {
+  match dp(n: 50) {
+    none => none
+    Present { value: d } =>
+      match resolve_training(observations: fixture_observations(d: d), requirements: fixture_requirements) {
+        TrainingResolutionRefused { axis: _, cause: _ } => none
+        TrainingResolved { resolved: r } => {
+          let k = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+          match admit_training_run_desired(demand: demand_for(work_key: k as NonEmptyStr), resolved: r) {
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => none
+            TrainingRunDesiredAdmitted { desired: dd } => Present { value: subject_of_desired(desired: dd) }
+          }
+        }
+      }
+  }
+}
+
+fn attempt_id(k: NonEmptyStr) -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {
+  FabricIdentity { principal: "gunbai", key: k }
+}
+
+fn attempt_of(
+  s: TrainingRunSubject<NonEmptyStr>,
+  k: NonEmptyStr,
+  lineage: ExecutionAttemptLineage<NonEmptyStr>,
+) -> Attempt<NonEmptyStr> {
+  Attempt { id: attempt_id(k: k), work: s.work, lineage: lineage, created_at: "2026-08-28T01:00:00Z" }
+}
+
+fn initial(s: TrainingRunSubject<NonEmptyStr>, k: NonEmptyStr) -> Attempt<NonEmptyStr> {
+  attempt_of(s: s, k: k, lineage: InitialAttempt { initiating_demand: s.demand })
+}
+
+fn retry_of(
+  s: TrainingRunSubject<NonEmptyStr>,
+  k: NonEmptyStr,
+  prior: NonEmptyStr,
+) -> Attempt<NonEmptyStr> {
+  attempt_of(
+    s: s,
+    k: k,
+    lineage: InfrastructureRetry {
+      prior_attempt: attempt_id(k: prior),
+      cause_receipt: "gunbc.observation.loss",
+    },
+  )
+}
+
+fn escalation_of(
+  s: TrainingRunSubject<NonEmptyStr>,
+  k: NonEmptyStr,
+  prior: NonEmptyStr,
+) -> Attempt<NonEmptyStr> {
+  attempt_of(
+    s: s,
+    k: k,
+    lineage: CapabilityEscalation {
+      prior_attempt: attempt_id(k: prior),
+      cause_receipt: "gunbc.observation.exceeded",
+    },
+  )
+}
+
+data digest_hex: NonEmptyStr = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+fn desired_fixture() -> TrainingRunDesired<NonEmptyStr>? {
+  match dp(n: 50) {
+    none => none
+    Present { value: d } =>
+      match resolve_training(observations: fixture_observations(d: d), requirements: fixture_requirements) {
+        TrainingResolutionRefused { axis: _, cause: _ } => none
+        TrainingResolved { resolved: r } => {
+          let k = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+          match admit_training_run_desired(demand: demand_for(work_key: k as NonEmptyStr), resolved: r) {
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => none
+            TrainingRunDesiredAdmitted { desired: dd } => Present { value: dd }
+          }
+        }
+      }
+  }
+}
+
+fn graph_fixture(s: TrainingRunSubject<NonEmptyStr>) -> TrainingRunAttemptGraph<NonEmptyStr>? {
+  match admit_attempt_graph(
+    subject: s,
+    attempts: [
+      Attempt {
+        id: attempt_id(k: "e1"),
+        work: s.work,
+        lineage: InitialAttempt { initiating_demand: s.demand },
+        created_at: "2026-08-28T01:00:00Z",
+      },
+    ],
+  ) {
+    AttemptGraphRefused { first: _, more: _ } => none
+    AttemptGraphAdmitted { graph: g } => Present { value: g }
+  }
+}
+
+fn component(c: CheckpointComponent) -> CheckpointComponentReceipt {
+  CheckpointComponentReceipt {
+    component: c,
+    artifact: Sha256Digest { hex: digest_hex },
+    materialization: "spark://checkpoints/run/step-500",
+    readback: "gunbc.observation.readback",
+  }
+}
+
+fn all_components() -> List<CheckpointComponentReceipt> {
+  checkpoint_components().map(c => component(c: c))
+}
+
+fn observation_at(a: NonEmptyStr) -> TrainingCheckpointObservation<NonEmptyStr> {
+  TrainingCheckpointObservation {
+    attempt: attempt_id(k: a),
+    global_step: 500,
+    artifact: Sha256Digest { hex: digest_hex },
+    receipt: "gunbc.observation.ckpt",
+  }
+}
+
+fn refusal_name(r: CheckpointAdmissionRefusal<NonEmptyStr>) -> NonEmptyStr {
+  match r {
+    CheckpointAttemptOutsideRun { attempt: _ } => "attempt-outside-run"
+    CheckpointComponentMissing { component: c } =>
+      join(["missing:", checkpoint_component_name(c: c)], "")
+    CheckpointComponentDigestMismatch { component: _, observed: _, component_artifact: _ } =>
+      "digest-mismatch"
+    CheckpointPublicationNotAtomic { detail: _ } => "publication-not-atomic"
+    CheckpointPublicationStandingUnobserved { reason: _ } => "publication-unobserved"
+    CheckpointManifestDiverged { coordinate: _ } => "manifest-diverged"
+  }
+}
+
+fn refusal_names(a: CheckpointAdmission<NonEmptyStr>) -> List<NonEmptyStr> {
+  match a {
+    CheckpointAdmitted { checkpoint: _ } => []
+    CheckpointRefused { first: f, more: m } =>
+      [[refusal_name(r: f)], m.map(r => refusal_name(r: r))].flat_map(x => x)
+  }
+}
+
+fn admit_with(
+  attempt_key: NonEmptyStr,
+  components: List<CheckpointComponentReceipt>,
+  standing: CheckpointPublicationStanding,
+  observed_manifest_gradient_accumulation: PositiveInt,
+) -> CheckpointAdmission<NonEmptyStr>? {
+  match desired_fixture() {
+    none => none
+    Present { value: d } =>
+      match graph_fixture(s: subject_of_desired(desired: d)) {
+        none => none
+        Present { value: g } => {
+          let intended = resolved_training_manifest(resolved: d.resolved)
+          let observed = TrainingResolvedManifest {
+            base_artifact: intended.base_artifact,
+            dataset_manifest: intended.dataset_manifest,
+            tokenizer: intended.tokenizer,
+            chat_template: intended.chat_template,
+            trainer_closure: intended.trainer_closure,
+            target_modules: intended.target_modules,
+            optimizer_config: intended.optimizer_config,
+            scheduler_config: intended.scheduler_config,
+            learning_rate_schedule: intended.learning_rate_schedule,
+            rank: intended.rank,
+            scaling: intended.scaling,
+            dropout_permille: intended.dropout_permille,
+            sequence_length: intended.sequence_length,
+            packing: intended.packing,
+            loss_mask: intended.loss_mask,
+            mixture: intended.mixture,
+            micro_batch: intended.micro_batch,
+            gradient_accumulation: observed_manifest_gradient_accumulation,
+            numeric_format: intended.numeric_format,
+            seed: intended.seed,
+            data_order_seed: intended.data_order_seed,
+            checkpoint_format: intended.checkpoint_format,
+            output_contract: intended.output_contract,
+          }
+          Present {
+            value: admit_training_checkpoint(
+              graph: g,
+              observation: observation_at(a: attempt_key),
+              components: components,
+              standing: standing,
+              intended_manifest: intended,
+              observed_manifest: observed,
+            ),
+          }
+        }
+      }
+  }
+}
+
+data atomic: CheckpointPublicationStanding = AtomicallyPublished { receipt: "gunbc.observation.pub" }
+
+// THE POSITIVE CONTROL, and every refusal below is load-bearing only because of it: an admitter
+// that refused everything would satisfy all of them.
+test fn a_complete_atomically_published_checkpoint_on_an_in_graph_attempt_is_admitted() -> Bool {
+  match admit_with(attempt_key: "e1", components: all_components(), standing: atomic, observed_manifest_gradient_accumulation: 8) {
+    none => false
+    Present { value: a } =>
+      match a {
+        CheckpointAdmitted { checkpoint: c } => c.global_step == 500 && c.components.length() == 5
+        CheckpointRefused { first: _, more: _ } => false
+      }
+  }
+}
+
+// THE MOTIVATING FAILURE. A checkpoint holding only model weights is exactly what a torn
+// publication leaves behind, and it is the one a resume must never accept: the run would continue
+// with weights from this step beside an optimizer state from an earlier one and would NOT crash.
+// A check asking "are there components?" passes this input, which is why the roster is closed and
+// the refusal names the component.
+test fn a_checkpoint_holding_only_weights_is_refused_naming_every_absent_component() -> Bool {
+  match admit_with(attempt_key: "e1", components: [component(c: ModelWeights)], standing: atomic, observed_manifest_gradient_accumulation: 8) {
+    none => false
+    Present { value: a } => {
+      let names = refusal_names(a: a)
+      names.length() == 4
+        && names.any(n => n == "missing:optimizer_state")
+        && names.any(n => n == "missing:scheduler_state")
+        && names.any(n => n == "missing:rng_state")
+        && names.any(n => n == "missing:data_order_state")
+        && !names.any(n => n == "missing:model_weights")
+    }
+  }
+}
+
+// NOT-ATOMIC AND NOT-OBSERVED ARE DIFFERENT REFUSALS. One says the writer left a torn checkpoint;
+// the other says nobody looked. Collapsing them either blocks a healthy resume or authorizes a torn
+// one, and they are distinguished here rather than both landing as a generic publication failure.
+test fn incomplete_and_unobserved_publication_do_not_read_as_each_other() -> Bool {
+  match admit_with(
+    attempt_key: "e1",
+    components: all_components(),
+    standing: PublicationIncomplete { detail: "3 of 5 objects visible" },
+    observed_manifest_gradient_accumulation: 8,
+  ) {
+    none => false
+    Present { value: torn } =>
+      match admit_with(
+        attempt_key: "e1",
+        components: all_components(),
+        standing: PublicationUnobserved { reason: "publication probe unscheduled" },
+        observed_manifest_gradient_accumulation: 8,
+      ) {
+        none => false
+        Present { value: unlooked } => {
+          let t = refusal_names(a: torn)
+          let u = refusal_names(a: unlooked)
+          t.any(n => n == "publication-not-atomic")
+            && u.any(n => n == "publication-unobserved")
+            && !t.any(n => n == "publication-unobserved")
+            && !u.any(n => n == "publication-not-atomic")
+        }
+      }
+  }
+}
+
+// A CHECKPOINT FROM ANOTHER RUN IS REFUSED EVEN THOUGH EVERY COMPONENT IS HONEST. Its components
+// read back, its publication is genuinely atomic, its manifest agrees -- and the state belongs to a
+// different computation. Membership is the only thing that separates it from an admissible one.
+test fn a_checkpoint_whose_attempt_is_outside_the_run_graph_is_refused() -> Bool {
+  match admit_with(attempt_key: "e-FOREIGN", components: all_components(), standing: atomic, observed_manifest_gradient_accumulation: 8) {
+    none => false
+    Present { value: a } => refusal_names(a: a).any(n => n == "attempt-outside-run")
+  }
+}
+
+// A CHECKPOINT WRITTEN UNDER A DIFFERENT EFFECTIVE MANIFEST IS NOT RESUMABLE, and the refusal names
+// the coordinate rather than saying the manifests differ. A hash comparison could have produced the
+// second answer and never the first.
+test fn a_checkpoint_written_under_a_diverged_manifest_is_refused() -> Bool {
+  match admit_with(attempt_key: "e1", components: all_components(), standing: atomic, observed_manifest_gradient_accumulation: 16) {
+    none => false
+    Present { value: a } => {
+      let names = refusal_names(a: a)
+      names.length() == 1 && names.any(n => n == "manifest-diverged")
+    }
+  }
+}
+
+// INDEPENDENT DEFECTS ARE ALL REPORTED. A checkpoint missing its RNG state AND diverging on
+// gradient accumulation would otherwise take two attempts to learn about, and the second reason
+// would read as a new defect introduced by fixing the first.
+test fn independent_checkpoint_defects_are_all_reported() -> Bool {
+  let without_rng = checkpoint_components().filter(c => checkpoint_component_name(c: c) != "rng_state").map(c => component(c: c))
+  match admit_with(attempt_key: "e-FOREIGN", components: without_rng, standing: PublicationIncomplete { detail: "torn" }, observed_manifest_gradient_accumulation: 16) {
+    none => false
+    Present { value: a } => {
+      let names = refusal_names(a: a)
+      names.any(n => n == "attempt-outside-run")
+        && names.any(n => n == "missing:rng_state")
+        && names.any(n => n == "publication-not-atomic")
+        && names.any(n => n == "manifest-diverged")
+    }
+  }
+}

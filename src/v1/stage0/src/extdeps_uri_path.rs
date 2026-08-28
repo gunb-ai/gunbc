@@ -4,11 +4,10 @@
 use self::PathSegmentTokensResult::*;
 use self::PathTemplateMatch::*;
 use self::PathTemplateParseResult::*;
+use self::UrlPathToken::*;
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-use crate::std_http_path::UrlPathToken::{LiteralToken, ParamToken};
-pub use crate::std_http_path::{PathParamBinding, PathTemplate, UrlPathToken};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -28,6 +27,96 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
             };
         }
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum UrlPathToken {
+    LiteralToken { text: String },
+    ParamToken { name: String },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PathTemplate {
+    pub tokens: Rc<Vec<Rc<UrlPathToken>>>,
+}
+
+pub fn has_path_params(template: Rc<PathTemplate>) -> bool {
+    {
+        let mut __found = false;
+        for t in template.tokens.clone().iter().cloned() {
+            if match (*t.clone()).clone() {
+                UrlPathToken::ParamToken { .. } => true,
+                UrlPathToken::LiteralToken { .. } => false,
+            } {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn last_path_param(template: Rc<PathTemplate>) -> Option<String> {
+    {
+        let params = Rc::new({
+            let mut __result = Vec::new();
+            for t in template.tokens.clone().iter().cloned() {
+                if match (*t.clone()).clone() {
+                    UrlPathToken::ParamToken { .. } => true,
+                    UrlPathToken::LiteralToken { .. } => false,
+                } {
+                    __result.push(t);
+                }
+            }
+            __result
+        });
+        match params.clone().last().cloned() {
+            Some(tok) => match (*tok.clone()).clone() {
+                UrlPathToken::ParamToken { name: n, .. } => Some(n.clone()),
+                UrlPathToken::LiteralToken { .. } => None,
+            },
+            None => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PathParamBinding {
+    pub name: String,
+    pub value: String,
+}
+
+pub fn path_param_value(params: Rc<Vec<Rc<PathParamBinding>>>, name: String) -> String {
+    params.iter().cloned().fold(
+        "".to_string(),
+        |acc: String, binding: Rc<PathParamBinding>| {
+            if (acc.clone() != "".to_string()) {
+                acc.clone()
+            } else {
+                if (binding.name.clone() == name.clone()) {
+                    binding.value.clone()
+                } else {
+                    acc.clone()
+                }
+            }
+        },
+    )
+}
+
+pub fn render_path_template(
+    template: Rc<PathTemplate>,
+    params: Rc<Vec<Rc<PathParamBinding>>>,
+) -> String {
+    template.tokens.clone().iter().cloned().fold(
+        "".to_string(),
+        |acc: String, tok: Rc<UrlPathToken>| match (*tok.clone()).clone() {
+            UrlPathToken::LiteralToken { text: t, .. } => v1_rt::concat(acc.clone(), t.clone()),
+            UrlPathToken::ParamToken { name: n, .. } => {
+                v1_rt::concat(acc.clone(), path_param_value(params.clone(), n.clone()))
+            }
+        },
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -203,7 +292,7 @@ impl PathTemplateMatch {
 pub fn match_path_template_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "The FORWARD reading of the same PathTemplate rows gunbc.node_http_server_emit.emit_path_template_regex_source reads BACKWARD into a JS regex, and std.http_path.render_path_template reads backward into a rendered path — three directions, one row set, never parallel authorities (DESIGN 4); the binding record is std.http_path.PathParamBinding, the single binding authority (a local duplicate here briefly shadowed it and broke no-import name resolution for test.claim.uri_path_parse_witness — the §3 nickname caught by execution). Parity contract with the emitted regex, kept strict so the two realizations agree on every input: one token = one path segment joined by '/' (LiteralToken == segment text; ParamToken binds any NON-EMPTY segment, the [^/]+ class); the empty template matches exactly the root path '/'; a trailing slash is a mismatch (the regex anchors with $); an interior empty segment ('//') never matches any token (a Literal is never empty by parse construction, a Param requires non-empty). Query strings are stripped before matching, mirroring parse_path_template's own '?' strip.".to_string()
+            "The FORWARD reading of the same PathTemplate rows gunbc.node_http_server_emit.emit_path_template_regex_source reads BACKWARD into a JS regex, and extdeps.uri_path.render_path_template reads backward into a rendered path — three directions, one row set, never parallel authorities (DESIGN 4); the binding record is extdeps.uri_path.PathParamBinding, the single binding authority (a local duplicate here briefly shadowed it and broke no-import name resolution for test.claim.uri_path_parse_witness — the §3 nickname caught by execution). Parity contract with the emitted regex, kept strict so the two realizations agree on every input: one token = one path segment joined by '/' (LiteralToken == segment text; ParamToken binds any NON-EMPTY segment, the [^/]+ class); the empty template matches exactly the root path '/'; a trailing slash is a mismatch (the regex anchors with $); an interior empty segment ('//') never matches any token (a Literal is never empty by parse construction, a Param requires non-empty). Query strings are stripped before matching, mirroring parse_path_template's own '?' strip.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

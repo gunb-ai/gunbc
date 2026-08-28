@@ -1,0 +1,170 @@
+module test.claim.fabric_floor_dispatch_witness
+
+// THE SUBJECT IS THE JOIN, NOT EITHER HALF OF IT.
+//
+// product.fabric.selection's select_supply was already complete and already witnessed; the floor's
+// demand-side authority in gunbc.fabric_witness_run was already modelled. Neither named the other,
+// so eleven of that module's thirteen functions had no production consumer and the fold that would
+// have read them had none either.
+//
+// What is in doubt here is therefore NOT whether ranking works -- fabric_selection_witness_test
+// establishes that against varying observations -- but whether the floor's OWN requirements reach
+// it. A suite that selected some offer for some requirements would restate the neighbour's claim.
+// So every row below turns on a fact that belongs to the floor specifically: its eight threads, its
+// capability ref, its satisfaction requirement.
+
+import std.logic { Bool }
+import std.types { Int, List, NonEmptyStr, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.nat { Nat }
+import extdeps.currency.currency { Usd }
+import std.measure {
+  MoneyAmountMicro, money_amount_micro, MoneyPerSecond, MoneyOnce,
+  Second, second, HardwareThreadCount, hardware_thread_count,
+}
+import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
+import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.demand { SatisfactionRequirement }
+import product.fabric.supply {
+  SupplierOffer, OfferQuote, QuotedPerSecond, ObservedSupply,
+}
+import product.fabric.selection {
+  CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
+  AvailabilityObservation, AvailableIndefinitely,
+  CommitmentState, PayAsYouGo,
+  StartCostObservation, StartCostMeasured,
+  TransitionCostObservation, NoTransitionRequired,
+  OperatingCostObservation, OperatingCostMeasured,
+  OpportunityCostObservation, NoFeasibleAlternativeUse,
+  SupplySelection, OfferSelected, NoAdmissibleOffer,
+}
+import gunbc.fabric_floor_dispatch {
+  floor_demand, floor_supply_selection, floor_selection_selected_offer_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn d_caps() -> CapabilityManifestRef {
+  "gunbc.capabilities.linux-rust-toolchain"
+}
+
+fn d_trust() -> TrustDomainRef {
+  "gunbc.trust.internal-fleet"
+}
+
+fn d_offer(key: OfferKey, threads: HardwareThreadCount) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: "gunbc", key: key },
+    executor: "gunbc",
+    shape: Shape { hard: HardRequirements { threads: threads }, envelope: unstated_envelope() },
+    capabilities: d_caps(),
+    trust_domain: d_trust(),
+    isolation: IsolationProfile { guarantees: [] },
+    quantity_bound: 1,
+    ready_at: "2026-08-27T00:00:00Z",
+    quote: QuotedPerSecond(MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }),
+    billing_quantum: second(count: 0),
+    evidence: ObservedSupply {
+      observed_at: "2026-08-27T00:00:00Z",
+      receipt: "gunbc.observation.fleet-1",
+    },
+  }
+}
+
+// The seal refuses a mismatched pair, so the helper returns a LIST and is empty on refusal --
+// a witness naming one candidate then ranks an empty roster and goes red, rather than quietly
+// proceeding against a candidate it never bound.
+fn d_bound(offer: SupplierOffer<NonEmptyStr>, key: OfferKey) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(
+    offer: offer,
+    dispatch: DispatchInputs {
+      offer: FabricIdentity { principal: "gunbc", key: key },
+      availability: AvailableIndefinitely {
+        delay: second(count: 0),
+        receipt: "gunbc.observation.availability-1",
+      },
+      commitment: PayAsYouGo,
+      start: StartCostMeasured {
+        amount: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd },
+        receipt: "gunbc.observation.start-1",
+      },
+      transition: NoTransitionRequired,
+      operating: OperatingCostMeasured {
+        rate: MoneyPerSecond { amount: money_amount_micro(count: 100), currency: Usd },
+        receipt: "gunbc.observation.power-1",
+      },
+      opportunity: NoFeasibleAlternativeUse,
+    },
+  ) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+  }
+}
+
+fn d_no_delay_valuation() -> MoneyPerSecond {
+  MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }
+}
+
+fn d_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<NonEmptyStr> {
+  floor_supply_selection(
+    candidates: candidates,
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    delay_valuation: d_no_delay_valuation(),
+  )
+}
+
+fn d_considered_count(selection: SupplySelection<NonEmptyStr>) -> Int {
+  match selection {
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: c } => list_length(items: c)
+    NoAdmissibleOffer { considered: c } => list_length(items: c)
+  }
+}
+
+// A sixty-four thread host covers the floor's eight. This is the positive control: without it
+// every refusal row below is satisfied by a fold that selects nothing at all.
+test fn a_host_larger_than_the_floor_is_selected_for_it() -> Bool {
+  floor_selection_selected_offer_count(
+    selection: d_select(candidates: d_bound(offer: d_offer(key: "offer-srv1", threads: hardware_thread_count(count: 64)), key: "offer-srv1")),
+  ) == 1
+}
+
+// THE DISCRIMINATING ROW. Four threads does not cover eight, so the offer is CONSIDERED and not
+// selected. If the floor's own requirements were not reaching select_supply -- if the join passed
+// something weaker, or the caller's rather than the authority's -- this row would select an offer
+// that cannot run the floor, and nothing downstream would refuse it because fungibility already
+// said yes.
+test fn a_host_smaller_than_the_floor_is_considered_and_refused() -> Bool {
+  let selection = d_select(
+    candidates: d_bound(offer: d_offer(key: "offer-small", threads: hardware_thread_count(count: 4)), key: "offer-small"),
+  )
+  floor_selection_selected_offer_count(selection: selection) == 0
+    && d_considered_count(selection: selection) == 1
+}
+
+// NOTHING OFFERED IS NOT THE SAME STATE AS EVERYTHING REFUSED, and the two are told apart by the
+// considered roster rather than by the verdict. Both answer NoAdmissibleOffer; only one of them
+// means a screen rejected something.
+test fn an_empty_roster_selects_nothing_and_considers_nothing() -> Bool {
+  let selection = d_select(candidates: [])
+  floor_selection_selected_offer_count(selection: selection) == 0
+    && d_considered_count(selection: selection) == 0
+}
+
+// The floor's satisfaction requirement is the AUTHORITY's, not the caller's: a terminal receipt
+// may not satisfy it and a new attempt is required. A caller cannot weaken that by construction
+// because floor_demand does not accept it as a parameter.
+test fn the_floor_demand_carries_the_authority_satisfaction_requirement() -> Bool {
+  let d = floor_demand(
+    id: FabricIdentity { principal: "gunbc", key: "demand-floor-1" },
+    work: FabricIdentity { principal: "gunbc", key: "work-floor-1" },
+    origin: "gunbc.observation.pr-1",
+    submitted_at: "2026-08-27T00:00:00Z",
+    account: "fleet-ci",
+    reservation_price: money_amount_micro(count: 500000),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    deadline: none,
+  )
+  !d.satisfaction.terminal_receipt_may_satisfy && d.satisfaction.new_attempt_required
+}

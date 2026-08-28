@@ -1,0 +1,26 @@
+module extdeps.bmc.endpoint
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Baseboard_management_controller"
+  }
+}
+
+// Formerly std.bmc; consolidated into the extdeps BMC home 2026-08-28. A leaf
+// beneath extdeps.bmc.capability so every sibling can import it acyclically.
+// The protocols are cited in their own modules (extdeps.bmc.redfish,
+// extdeps.bmc.ipmi); OpenBmc as an enum arm is the pre-existing nickname debt
+// extdeps.firmware.openbmc.subject already records — not deepened here.
+type BmcProtocol = Redfish | Ipmi
+
+type BmcFirmwareFamily = | OpenBmc
+
+type BmcEndpoint {
+  host: NonEmptyStr
+  protocol: BmcProtocol
+}

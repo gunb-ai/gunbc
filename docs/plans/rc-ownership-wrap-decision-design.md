@@ -11,7 +11,7 @@ Related lanes (orthogonal axes — do not conflate):
 
 ## Problem (§5 construct finding)
 
-Wave 2 `use_site_verdict` behavioral pilot recorded `ssuv_ownership_rc_default_fail_open_finding` in `dag/tools/self_host_use_site_verdict_behavioral_transport.dag`:
+Wave 2 `use_site_verdict` behavioral pilot recorded `ssuv_ownership_rc_default_fail_open_finding` in `dag/gunbc/instruments/self_host_use_site_verdict_behavioral_transport.dag`:
 
 > The Rust emitter silently applies default `Rc<>` wrapping on `Node` / `UseSiteVerdict` / fn params and returns with **no typed ownership refusal** (`target_use_site_ownership_lookup_miss` unwired).
 

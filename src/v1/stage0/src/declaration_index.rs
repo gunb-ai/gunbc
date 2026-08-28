@@ -63,7 +63,11 @@
 //! module: `gunbc.host_effect` `host_effect_apply` from three (`extdeps.github.actions_runner`,
 //! `gunbc.executor_privileged_operation`, `gunbc.runner_slot_provision`), `std.bytes`
 //! `builtin_function_registry` from three, `extdeps.network.mac` `parse_mac_address` from two
-//! (`extdeps.dhcp.v4` and a witness), and four more from two apiece. Every one of those extra
+//! (`extdeps.dhcp.v4` and a witness), and four more from two apiece. (That measurement stands as
+//! taken; the `parse_mac_address` example has since been DISCHARGED rather than falsified — the
+//! module landed, so the witness citations resolve and their rows are deleted, and `extdeps.dhcp.v4`
+//! stopped citing it when its frontier trigger was re-pointed off the artifact and onto the
+//! capability. Noted here so a reader does not grep for a two-site collision that is gone.) Every one of those extra
 //! sites was being suppressed by a row authored about a different module.
 //!
 //! THE ROSTERS ARE RE-DERIVED FROM THAT MEASUREMENT, AND THE FIRST DERIVATION WAS TAKEN OVER THE
@@ -1332,28 +1336,7 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
     (
         "test.claim.annotation_carrier",
         "bound_condition_does_not_fire_on_a_near_miss_ref",
-        "extdeps.network.mac",
-        "parse_mac_address",
-        "",
-    ),
-    (
-        "test.claim.annotation_carrier",
-        "bound_condition_does_not_fire_on_a_near_miss_ref",
         "extdeps.network.max",
-        "parse_mac_address",
-        "",
-    ),
-    (
-        "test.claim.annotation_carrier",
-        "bound_condition_pends_until_its_declaration_appears",
-        "extdeps.network.mac",
-        "parse_mac_address",
-        "",
-    ),
-    (
-        "test.claim.annotation_carrier",
-        "frontier_expiry_fired_row_still_present_reds",
-        "extdeps.network.mac",
         "parse_mac_address",
         "",
     ),
@@ -1362,13 +1345,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "frontier_expiry_fired_trigger_absent_from_rows_is_clean",
         "extdeps.network.mac",
         "already_deleted_frontier_unit",
-        "",
-    ),
-    (
-        "test.claim.annotation_carrier",
-        "unbound_condition_cannot_be_forced_to_fire_by_any_present_decls",
-        "extdeps.network.mac",
-        "parse_mac_address",
         "",
     ),
     (
@@ -1605,13 +1581,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
 ];
 
 const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
-    (
-        "extdeps.dhcp.v4",
-        "mac_address_anemic_brand_frontier_rows",
-        "extdeps.network.mac",
-        "parse_mac_address",
-        "",
-    ),
     (
         "extdeps.docker.container_inspect",
         "container_inspect_error_responses_frontier_rows",

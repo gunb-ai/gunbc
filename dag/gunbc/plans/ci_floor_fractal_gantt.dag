@@ -1,7 +1,7 @@
 module gunbc.plans.ci_floor_fractal_gantt
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
 
@@ -25,7 +25,7 @@ fn ci_floor_fractal_gantt_body() -> List<MarkdownBlock> {
     h3(text: "Top-level fractal Gantt (wall-clock, sequential phases)"),
     CodeBlock { code: "Phase                           Wall        % of total\n─────────────────────────────────────────────────────\ncargo build -p v1-compiler       ~96s        10.4%\nclaim_executor (total)           ~819s       89.2%\n  Batch 1  [compile gate, 1 node]  ~52s       5.7%  (6.3% of executor)\n  Batch 2  [gate witnesses, 5 nodes in 2 groups, parallel]\n                                  ~538s      58.5%  (65.7% of executor)\n  Batch 3  [discovery corpus, 1 node]  ~229s  24.9%  (28.0% of executor)\n─────────────────────────────────────────────────────\nTotal CI wall (build + executor)  ~915s (~15m15s)\n" },
     h3(text: "Batch 1 drill-down (52s)"),
-    p(text: "One SingleClaim in `dag/tools/floor_effect_gate_witness.dag` → `dag_compile_clean_gate_passes`. This gate invokes the .dag compile pass (not cargo). Breakdown not visible without `GUNBC_FLOOR_GANTT=1` on a live run; per-claim timing is now captured in the new ClaimResult fields. Estimated: resolve ~30-40s (heavy closure, ~106 modules), eval ~12-20s (the compile pass itself)."),
+    p(text: "One SingleClaim in `dag/gunbc/instruments/floor_effect_gate_witness.dag` → `dag_compile_clean_gate_passes`. This gate invokes the .dag compile pass (not cargo). Breakdown not visible without `GUNBC_FLOOR_GANTT=1` on a live run; per-claim timing is now captured in the new ClaimResult fields. Estimated: resolve ~30-40s (heavy closure, ~106 modules), eval ~12-20s (the compile pass itself)."),
     h3(text: "Batch 2 drill-down (538s = 9 min — the dominant hot spot)"),
     p(text: "Five gate witnesses in two resolve groups, run in PARALLEL (two OS threads, one per group). Batch wall = max(Group A, Group B). Group B (source_root_ingest_gate.dag) is fast; Group A (floor_effect_gate_witness.dag) dominates."),
     CodeBlock { code: "Group A  floor_effect_gate_witness.dag                [parallel thread]\n  resolve: ~30-40s   (same closure as Batch 1; likely cached after Batch 1)\n  rust_monolith_gate_passes:      ~530s  ← DOMINANT (runs cargo clippy + fmt)\n  emit_host_gate_passes:           runs after rust_monolith (sequential within group)\n  layering_imports_gate_passes:    runs after emit_host\n  extdeps_external_authority_gate_passes:  runs after layering\n  generated_artifact_drift_gate_passes:    last\n\nGroup B  source_root_ingest_gate.dag                   [parallel thread]\n  resolve: ~10-20s\n  source_root_ingest_gate_passes: ~2-5s  (fast; Group B finishes well before A)\n" },
@@ -100,7 +100,7 @@ fn ci_floor_fractal_gantt_body() -> List<MarkdownBlock> {
 }
 
 data ci_floor_fractal_gantt_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "ci-floor-fractal-gantt",
   title: "CI floor fractal Gantt — profiling receipt on #5757 baseline",
   body: ci_floor_fractal_gantt_body(),

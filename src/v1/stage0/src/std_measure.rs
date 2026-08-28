@@ -10,6 +10,8 @@ use self::PositiveMeasureCountBuild::*;
 use self::PositiveMillisecond::*;
 use self::Quantity::*;
 use self::Scale::*;
+pub use crate::extdeps_currency_currency::CurrencyCode;
+use crate::extdeps_currency_currency::CurrencyCode::*;
 pub use crate::extdeps_units_dimensionless::{
     parts_per_ten_thousand_unity_count, percent_unity_hundred_count,
 };
@@ -21,8 +23,6 @@ pub use crate::extdeps_units_iso_80000_3::{
     arcseconds_per_degree_derived, arcseconds_per_turn, cubic_millimetres_per_cubic_metre,
     degrees_per_turn, square_millimetres_per_square_metre,
 };
-pub use crate::std_currency::CurrencyCode;
-use crate::std_currency::CurrencyCode::*;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;

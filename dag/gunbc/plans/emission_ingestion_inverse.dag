@@ -1,7 +1,7 @@
 module gunbc.plans.emission_ingestion_inverse
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
 
@@ -11,11 +11,11 @@ fn emission_ingestion_inverse_body() -> List<MarkdownBlock> {
       p(text: "Plan doc for two roadmap items: the **§0 realization-vocabulary containment guard** (stability-window construction wall) and the **§6 emission=ingestion⁻¹-past-syntax** intent layer (expansion). Both come from one audit, triggered by an anemic CI helper. DESIGN refs: §3 (single authority; transport vs intent), §4 (`emit = serialize_target ∘ translate`, one grammar read both directions; N+M not N×M), §5 (fail-closed; construction over validation), §6 (idea→idea; Medium<R>), §7 (round-trip fixed point)."),
     ]),
     h2(text: "1. Trigger: an anemic CI helper"),
-    p(text: "`dag/tools/build_step.dag`'s `build_verify_echo` hand-authors bash (`echo … >&2`) **and** the GitHub-Actions `::error::` annotation prefix in one function. It fuses three separate medium authorities — the print *verb* (`echo`, bash), the *stream* (`>&2`, bash), and the *annotation format* (`::error::`, GitHub Actions, a medium layered on bash). The intent is simply *\"emit an Error-severity diagnostic.\"* Because the medium is welded in, the code **cannot re-emit to Rust** (no stdout→stderr redirect analog; Rust uses `eprintln!`). It is medium-agnostic intent expressed in a target AST."),
+    p(text: "`dag/gunbc/instruments/build_step.dag`'s `build_verify_echo` hand-authors bash (`echo … >&2`) **and** the GitHub-Actions `::error::` annotation prefix in one function. It fuses three separate medium authorities — the print *verb* (`echo`, bash), the *stream* (`>&2`, bash), and the *annotation format* (`::error::`, GitHub Actions, a medium layered on bash). The intent is simply *\"emit an Error-severity diagnostic.\"* Because the medium is welded in, the code **cannot re-emit to Rust** (no stdout→stderr redirect analog; Rust uses `eprintln!`). It is medium-agnostic intent expressed in a target AST."),
     h2(text: "2. The audit: a bash-only bypass of a half-connected stack"),
     p(text: "Sweep of the corpus found `.dag` consumers that import the bash-AST sidecar `extdeps.languages.bash.program` (`ShellStmt`/`ShellWord`/`serialize_bash`) to express portable intent. **11 importers at authoring time, shrinking to 0 as the bash-sidecar arc migrates them.** The prose list below is *informational* and will rot — re-grep for the live number; it is **not** the lens's enforcement set:"),
     ul(items: [
-      li(text: "`dag/tools/`: `build_step`, `host_prelude`, `dag_compile_clean_transport`, `emit_host_transport`, `extdeps_external_authority_transport` (the last landed via #5418's external-authority arc, after #5445's roster snapshot — the introduction race, reconciled by #5453; `layering_imports_transport` was deleted with the direction rule, operator ruling 2026-07-24)"),
+      li(text: "`dag/gunbc/instruments/`: `build_step`, `host_prelude`, `dag_compile_clean_transport`, `emit_host_transport`, `extdeps_external_authority_transport` (the last landed via #5418's external-authority arc, after #5445's roster snapshot — the introduction race, reconciled by #5453; `layering_imports_transport` was deleted with the direction rule, operator ruling 2026-07-24)"),
       li(text: "`dag/gunbc/`: `ci_yaml_validate`, `ci_spec` (the #5432 build-verification wiring)"),
       li(text: "`src/v2/workflow/`: `compiler_closure_ingest_transport`, `source_root_ingest_transport`"),
     ]),
@@ -116,7 +116,7 @@ fn emission_ingestion_inverse_body() -> List<MarkdownBlock> {
 }
 
 data emission_ingestion_inverse_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "emission-ingestion-inverse",
   title: "Emission = Ingestion⁻¹ — extending the row-driven inverse past syntax to the intent layer",
   body: emission_ingestion_inverse_body(),

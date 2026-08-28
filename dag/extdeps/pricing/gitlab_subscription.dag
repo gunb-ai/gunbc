@@ -1,6 +1,6 @@
 module extdeps.pricing.gitlab_subscription
 
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.measure {
   MoneyPerMinute,
   MoneyPerMonth,

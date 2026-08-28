@@ -2,7 +2,7 @@ module extdeps.fans.noctua
 
 import std.types { List }
 import std.measure { millimeter, percent, rpm }
-import std.acoustic { tenths_dba }
+import extdeps.units.iec_61672 { tenths_dba }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.fans.types {
   FanCatalogRow,

@@ -2957,7 +2957,7 @@ fn behavioral_receipt_plan(source_roots: &[String]) -> Result<ReceiptPlanOutcome
                         eprintln!(
                             "behavioral-receipt: {} ARTIFACT-DRIFT — {repo_rel} does not match \
                              what its authority generates. Regenerate it (main_wet on \
-                             dag/tools/generated_artifact_gate.dag) and commit the result",
+                             dag/gunbc/instruments/generated_artifact_gate.dag) and commit the result",
                             plan.module_path
                         );
                         all_equivalent = false;

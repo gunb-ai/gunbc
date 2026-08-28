@@ -1,0 +1,1010 @@
+module test.claim.training_reconciliation_witness
+
+import product.training.attempt_graph {
+  TrainingRunAttemptGraph, AttemptGraphAdmission,
+  AttemptGraphAdmitted, AttemptGraphRefused,
+  AttemptGraphRefusal, AttemptWorkOutsideSubject, AttemptRootsInAnotherDemand,
+  AttemptPredecessorAbsent, DuplicateAttemptIdentity, AttemptLineageUnrooted,
+  admit_attempt_graph, graph_admits_attempt,
+}
+import product.training.readback {
+  TrainingRunSubject, subject_of_desired, TrainingCheckpointObservation,
+  TrainingRunReadback, TrainingReadbackAxis,
+  ExecutionReadbackAxis, CheckpointReadbackAxis, TerminalReadbackAxis,
+  OutputReadbackAxis, EffectiveManifestReadbackAxis,
+  TrainingPopulationObservation, TrainingPopulationObserved,
+  TrainingPopulationNotAttempted, TrainingPopulationObservationRefused,
+  TrainingProcessObservation, TrainingProcessRunning, TrainingProcessExited,
+  TrainingAttemptTerminalReceipt, TrainingAttemptSucceeded, TrainingAttemptFailed,
+  TrainingOutputArtifactReceipt, TrainingEffectiveManifestReceipt,
+  TrainingSubjectBoundPopulation, TrainingRunReadbackAdmitted, TrainingRunReadbackRefused,
+  bind_training_run_readback,
+}
+import product.training.observation_cut {
+  TrainingRunReadbackCut, begin_sweep, enumerate_terminals, enumerate_outputs,
+  enumerate_manifests, enumerate_checkpoints, enumerate_processes_and_seal,
+}
+import product.training.composition {
+  TrainingRunEvidenceComposition, TrainingRunCompositionAdmission,
+  TrainingRunEvidenceComposed, TrainingRunCompositionRefused,
+  TrainingRunCompositionRefusal, CompositionSubjectMismatch, CompositionReceiptMismatch,
+  CompositionAxisNotAttempted,
+  admit_training_evidence,
+}
+import product.training.reconciliation {
+  TrainingRunReconciliation, TrainingRunDisposition,
+  TrainingRunAlreadyConverged, TrainingRunInProgress, TrainingRunExecutionRequired,
+  TrainingRunRestartAuthorizationRequired, TrainingRunBlocked,
+  TrainingRunBlocker, TrainingObservationNotAttempted, TrainingObservationRefused,
+  TrainingReadbackAttemptOutsideRun, TrainingAttemptTerminalConflict,
+  TrainingAttemptOutputConflict, TrainingEffectiveManifestMismatch,
+  TrainingSucceededWithoutObservedOutput, TrainingProcessTerminalContradiction,
+  TrainingCompletionAmbiguous, TrainingAttemptWithoutExecutionClaim,
+  TrainingRunLaunchPending, TrainingRunLaunchDispatchRequired,
+  reconcile_training_run,
+}
+import product.training.checkpoint {
+  CheckpointComponent, ModelWeights, OptimizerState, SchedulerState, RngState, DataOrderState,
+  CheckpointComponentReceipt, checkpoint_components, checkpoint_component_name,
+  CheckpointPublicationStanding, AtomicallyPublished, PublicationIncomplete, PublicationUnobserved,
+  AdmittedTrainingCheckpoint, CheckpointAdmission, CheckpointAdmitted, CheckpointRefused,
+  CheckpointAdmissionRefusal, CheckpointAttemptOutsideRun, CheckpointComponentMissing,
+  CheckpointComponentDigestMismatch, CheckpointPublicationNotAtomic,
+  CheckpointPublicationStandingUnobserved, CheckpointManifestDiverged,
+  admit_training_checkpoint,
+}
+import product.training.resolution {
+  AxisResolution, AxisResolved, ResolvedAxis,
+  TrainingResolution, TrainingResolved, TrainingResolutionRefused,
+  TrainingResolutionObservations,
+  DropoutPermille, DropoutPermilleAdmitted, DropoutPermilleOutOfRange, dropout_permille,
+  Bf16, NoPacking, MaskPromptTokens,
+  TrainingRunDesired, TrainingRunDesiredAdmitted, TrainingRunDesiredRefused,
+  resolve_training, training_work_for, admit_training_run_desired,
+  resolved_training_manifest, TrainingResolvedManifest,
+}
+import product.fabric.execution {
+  Attempt, ExecutionAttemptLineage,
+  InitialAttempt, InfrastructureRetry, CapabilityEscalation, RequestedReexecution,
+  ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, LeaseIdentity,
+}
+import product.fabric.supply { OfferQuote, QuotedFlatPerGrant }
+import product.training.execution_control {
+  TrainingStartCause, ClaimInitialAttempt, ClaimInfrastructureRetry,
+  TrainingStartTransitionKey, TrainingExecutionClaim, record_claim_dispatch,
+  TrainingStartClaimAdmission, TrainingStartClaimCommitted, TrainingStartClaimAlreadyCommitted,
+  TrainingStartClaimSnapshotStale, TrainingStartClaimRefused, admit_start_claim,
+  TrainingRunExecutionControl, TrainingControlAdmission, TrainingControlAdmitted,
+  TrainingControlRefused, admit_execution_control,
+  TrainingRunConvergenceInput, TrainingConvergenceInputAdmitted,
+  TrainingConvergenceInputSubjectMismatch, admit_convergence_input,
+}
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.envelope { ResourceEnvelope }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
+import product.fabric.identity {
+  FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, fabric_identity_eq,
+}
+import std.content_hash { ContentHash, Sha256Digest, content_hash_of_value }
+import extdeps.currency.currency { Usd }
+import std.measure { MoneyOnce, money_amount_micro, hardware_thread_count }
+import std.integer { PositiveInt }
+import std.nat { Nat }
+import std.types { NonEmptyStr, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn h(s: NonEmptyStr) -> ContentHash {
+  content_hash_of_value(value: s)
+}
+
+fn ax<T>(v: T) -> AxisResolution<T> {
+  AxisResolved { resolved: ResolvedAxis { value: v, receipt: "obs-graph" } }
+}
+
+fn dp(n: Nat) -> DropoutPermille? {
+  match dropout_permille(permille: n) {
+    DropoutPermilleAdmitted { value: v } => Present { value: v }
+    DropoutPermilleOutOfRange { offered: _ } => none
+  }
+}
+
+data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
+  shape: Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+    envelope: ResourceEnvelope { cpu: none, gpu: none, memory: none, storage: none, network: none },
+  },
+  capabilities: "linux-arm64",
+  trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
+}
+
+fn fixture_observations(d: DropoutPermille) -> TrainingResolutionObservations {
+  TrainingResolutionObservations {
+    base_artifact: ax(v: h(s: "base-A")),
+    dataset_manifest: ax(v: h(s: "dataset-1")),
+    tokenizer: ax(v: h(s: "tok-1")),
+    chat_template: ax(v: h(s: "tmpl-1")),
+    trainer_closure: ax(v: h(s: "trainer-1")),
+    target_modules: ax(v: h(s: "qkv")),
+    optimizer_config: ax(v: h(s: "adamw-1")),
+    scheduler_config: ax(v: h(s: "cosine-1")),
+    learning_rate_schedule: ax(v: h(s: "lr-1")),
+    rank: ax(v: 16),
+    scaling: ax(v: 32),
+    dropout_permille: ax(v: d),
+    sequence_length: ax(v: 4096),
+    packing: ax(v: NoPacking),
+    loss_mask: ax(v: MaskPromptTokens),
+    mixture: ax(v: h(s: "mix-1")),
+    micro_batch: ax(v: 2),
+    gradient_accumulation: ax(v: 8),
+    numeric_format: ax(v: Bf16),
+    seed: ax(v: 7),
+    data_order_seed: ax(v: 99),
+    checkpoint_format: ax(v: h(s: "ckpt-v1")),
+    output_contract: ax(v: h(s: "adapter-out")),
+  }
+}
+
+fn demand_for(work_key: NonEmptyStr) -> Demand<NonEmptyStr> {
+  Demand {
+    id: FabricIdentity { principal: "brian", key: "demand-1" },
+    work: FabricIdentity { principal: "gunbai", key: work_key },
+    origin: "gunbc.observation.training-graph",
+    submitted_at: "2026-08-28T00:00:00Z",
+    admission: AdmissionTerms {
+      deadline: none,
+      buy: BuyTerms {
+        budget_account: "training",
+        currency: Usd,
+        reservation_price: money_amount_micro(count: 1),
+        maximum_buy_order: money_amount_micro(count: 1000),
+      },
+    },
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: false,
+      step_reuse_permitted: true,
+    },
+  }
+}
+
+fn subject_fixture() -> TrainingRunSubject<NonEmptyStr>? {
+  match dp(n: 50) {
+    none => none
+    Present { value: d } =>
+      match resolve_training(observations: fixture_observations(d: d), requirements: fixture_requirements) {
+        TrainingResolutionRefused { axis: _, cause: _ } => none
+        TrainingResolved { resolved: r } => {
+          let k = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+          match admit_training_run_desired(demand: demand_for(work_key: k as NonEmptyStr), resolved: r) {
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => none
+            TrainingRunDesiredAdmitted { desired: dd } => Present { value: subject_of_desired(desired: dd) }
+          }
+        }
+      }
+  }
+}
+
+fn attempt_id(k: NonEmptyStr) -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {
+  FabricIdentity { principal: "gunbai", key: k }
+}
+
+fn attempt_of(
+  s: TrainingRunSubject<NonEmptyStr>,
+  k: NonEmptyStr,
+  lineage: ExecutionAttemptLineage<NonEmptyStr>,
+) -> Attempt<NonEmptyStr> {
+  Attempt { id: attempt_id(k: k), work: s.work, lineage: lineage, created_at: "2026-08-28T01:00:00Z" }
+}
+
+fn initial(s: TrainingRunSubject<NonEmptyStr>, k: NonEmptyStr) -> Attempt<NonEmptyStr> {
+  attempt_of(s: s, k: k, lineage: InitialAttempt { initiating_demand: s.demand })
+}
+
+fn retry_of(
+  s: TrainingRunSubject<NonEmptyStr>,
+  k: NonEmptyStr,
+  prior: NonEmptyStr,
+) -> Attempt<NonEmptyStr> {
+  attempt_of(
+    s: s,
+    k: k,
+    lineage: InfrastructureRetry {
+      prior_attempt: attempt_id(k: prior),
+      cause_receipt: "gunbc.observation.loss",
+    },
+  )
+}
+
+fn escalation_of(
+  s: TrainingRunSubject<NonEmptyStr>,
+  k: NonEmptyStr,
+  prior: NonEmptyStr,
+) -> Attempt<NonEmptyStr> {
+  attempt_of(
+    s: s,
+    k: k,
+    lineage: CapabilityEscalation {
+      prior_attempt: attempt_id(k: prior),
+      cause_receipt: "gunbc.observation.exceeded",
+    },
+  )
+}
+
+data digest_a: NonEmptyStr = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data digest_b: NonEmptyStr = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+fn desired_fixture() -> TrainingRunDesired<NonEmptyStr>? {
+  match dp(n: 50) {
+    none => none
+    Present { value: d } =>
+      match resolve_training(observations: fixture_observations(d: d), requirements: fixture_requirements) {
+        TrainingResolutionRefused { axis: _, cause: _ } => none
+        TrainingResolved { resolved: r } => {
+          let k = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+          match admit_training_run_desired(demand: demand_for(work_key: k as NonEmptyStr), resolved: r) {
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => none
+            TrainingRunDesiredAdmitted { desired: dd } => Present { value: dd }
+          }
+        }
+      }
+  }
+}
+
+// TWO ATTEMPTS: an initial one and an infrastructure retry of it. This is the ordinary shape the
+// grain witnesses below depend on -- across these two attempts, a failure then a success is
+// history, not a contradiction.
+fn graph_fixture(s: TrainingRunSubject<NonEmptyStr>) -> TrainingRunAttemptGraph<NonEmptyStr>? {
+  match admit_attempt_graph(
+    subject: s,
+    attempts: [
+      Attempt {
+        id: attempt_id(k: "e1"),
+        work: s.work,
+        lineage: InitialAttempt { initiating_demand: s.demand },
+        created_at: "2026-08-28T01:00:00Z",
+      },
+      Attempt {
+        id: attempt_id(k: "e2"),
+        work: s.work,
+        lineage: InfrastructureRetry {
+          prior_attempt: attempt_id(k: "e1"),
+          cause_receipt: "gunbc.observation.loss",
+        },
+        created_at: "2026-08-28T02:00:00Z",
+      },
+    ],
+  ) {
+    AttemptGraphRefused { first: _, more: _ } => none
+    AttemptGraphAdmitted { graph: g } => Present { value: g }
+  }
+}
+
+fn sweep(s: TrainingRunSubject<NonEmptyStr>) -> TrainingRunReadbackCut<NonEmptyStr> {
+  enumerate_processes_and_seal(
+    prior: enumerate_checkpoints(
+      prior: enumerate_manifests(
+        prior: enumerate_outputs(
+          prior: enumerate_terminals(started: begin_sweep(subject: s), receipt: "obs.term"),
+          receipt: "obs.out",
+        ),
+        receipt: "obs.manifest",
+      ),
+      receipt: "obs.ckpt",
+    ),
+    receipt: "obs.proc",
+    composition: "obs.composition",
+  )
+}
+
+fn observed<T>(members: List<T>, receipt: NonEmptyStr) -> TrainingPopulationObservation<T> {
+  TrainingPopulationObserved { members: members, enumeration_receipt: receipt }
+}
+
+fn succeeded_at(k: NonEmptyStr) -> TrainingAttemptTerminalReceipt<NonEmptyStr> {
+  TrainingAttemptTerminalReceipt {
+    attempt: attempt_id(k: k),
+    standing: TrainingAttemptSucceeded,
+    receipt: "gunbc.observation.term-ok",
+  }
+}
+
+fn failed_at(k: NonEmptyStr) -> TrainingAttemptTerminalReceipt<NonEmptyStr> {
+  TrainingAttemptTerminalReceipt {
+    attempt: attempt_id(k: k),
+    standing: TrainingAttemptFailed { detail: "node evicted" },
+    receipt: "gunbc.observation.term-bad",
+  }
+}
+
+fn output_at(k: NonEmptyStr, hex: NonEmptyStr) -> TrainingOutputArtifactReceipt<NonEmptyStr> {
+  TrainingOutputArtifactReceipt {
+    attempt: attempt_id(k: k),
+    artifact: Sha256Digest { hex: hex },
+    materialization: "spark://checkpoints/adapter",
+    receipt: "gunbc.observation.out",
+  }
+}
+
+fn manifest_at(d: TrainingRunDesired<NonEmptyStr>, k: NonEmptyStr) -> TrainingEffectiveManifestReceipt<NonEmptyStr> {
+  TrainingEffectiveManifestReceipt {
+    attempt: attempt_id(k: k),
+    manifest: resolved_training_manifest(resolved: d.resolved),
+    receipt: "gunbc.observation.manifest",
+  }
+}
+
+fn running_at(k: NonEmptyStr) -> TrainingProcessObservation<NonEmptyStr> {
+  TrainingProcessObservation {
+    attempt: attempt_id(k: k),
+    liveness: TrainingProcessRunning,
+    receipt: "gunbc.observation.proc",
+  }
+}
+
+fn compose(
+  d: TrainingRunDesired<NonEmptyStr>,
+  processes: TrainingPopulationObservation<TrainingProcessObservation<NonEmptyStr>>,
+  terminals: TrainingPopulationObservation<TrainingAttemptTerminalReceipt<NonEmptyStr>>,
+  outputs: TrainingPopulationObservation<TrainingOutputArtifactReceipt<NonEmptyStr>>,
+  manifests: TrainingPopulationObservation<TrainingEffectiveManifestReceipt<NonEmptyStr>>,
+) -> TrainingRunEvidenceComposition<NonEmptyStr>? {
+  let s = subject_of_desired(desired: d)
+  match graph_fixture(s: s) {
+    none => none
+    Present { value: g } =>
+      match bind_training_run_readback(
+        desired: d,
+        execution: TrainingSubjectBoundPopulation { subject: s, observation: processes },
+        checkpoints: TrainingSubjectBoundPopulation {
+          subject: s,
+          observation: observed(members: [], receipt: "obs.ckpt"),
+        },
+        terminals: TrainingSubjectBoundPopulation { subject: s, observation: terminals },
+        outputs: TrainingSubjectBoundPopulation { subject: s, observation: outputs },
+        effective_manifests: TrainingSubjectBoundPopulation { subject: s, observation: manifests },
+      ) {
+        TrainingRunReadbackRefused { first: _, more: _ } => none
+        TrainingRunReadbackAdmitted { readback: rb } =>
+          match admit_training_evidence(desired: d, graph: g, readback: rb, cut: sweep(s: s)) {
+            TrainingRunCompositionRefused { first: _, more: _ } => none
+            TrainingRunEvidenceComposed { composition: c } => Present { value: c }
+          }
+      }
+  }
+}
+
+fn blocker_name(b: TrainingRunBlocker<NonEmptyStr>) -> NonEmptyStr {
+  match b {
+    TrainingObservationNotAttempted { axis: _, obligation: _ } => "not-attempted"
+    TrainingObservationRefused { axis: _, attempt_receipt: _, cause: _ } => "observation-refused"
+    TrainingReadbackAttemptOutsideRun { axis: _, attempt: _ } => "attempt-outside-run"
+    TrainingAttemptTerminalConflict { attempt: _, succeeded: _, failed: _ } => "terminal-conflict"
+    TrainingAttemptOutputConflict { attempt: _, outputs: _ } => "output-conflict"
+    TrainingEffectiveManifestMismatch { attempt: _, first_axis: _, more_axes: _ } => "manifest-mismatch"
+    TrainingSucceededWithoutObservedOutput { attempt: _, terminal: _ } => "success-without-output"
+    TrainingProcessTerminalContradiction { attempt: _, running: _, terminals: _ } => "process-terminal"
+    TrainingCompletionAmbiguous { first: _, more: _ } => "completion-ambiguous"
+    TrainingAttemptWithoutExecutionClaim { attempt: _ } => "attempt-without-claim"
+  }
+}
+
+fn disposition_name(v: TrainingRunDisposition<NonEmptyStr>) -> NonEmptyStr {
+  match v {
+    TrainingRunAlreadyConverged { completion: _ } => "converged"
+    TrainingRunInProgress { running: _ } => "in-progress"
+    TrainingRunExecutionRequired => "execution-required"
+    TrainingRunLaunchDispatchRequired { first: _, more: _ } => "launch-dispatch-required"
+    TrainingRunLaunchPending { first: _, more: _ } => "launch-pending"
+    TrainingRunRestartAuthorizationRequired { failed: _ } => "restart-required"
+    TrainingRunBlocked { first: _, more: _ } => "blocked"
+  }
+}
+
+fn blocker_names(v: TrainingRunDisposition<NonEmptyStr>) -> List<NonEmptyStr> {
+  match v {
+    TrainingRunBlocked { first: f, more: m } =>
+      [[blocker_name(b: f)], m.map(b => blocker_name(b: b))].flat_map(x => x)
+    TrainingRunAlreadyConverged { completion: _ } => []
+    TrainingRunInProgress { running: _ } => []
+    TrainingRunExecutionRequired => []
+    TrainingRunLaunchDispatchRequired { first: _, more: _ } => []
+    TrainingRunLaunchPending { first: _, more: _ } => []
+    TrainingRunRestartAuthorizationRequired { failed: _ } => []
+  }
+}
+
+fn grant_for(
+  s: TrainingRunSubject<NonEmptyStr>,
+  key: NonEmptyStr,
+  attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
+) -> ExecutionGrant<NonEmptyStr> {
+  ExecutionGrant {
+    id: FabricIdentity { principal: "gunbai", key: key },
+    object: FabricGrantObject {
+      offer: FabricIdentity { principal: "gunbai", key: "offer-1" },
+      quote: QuotedFlatPerGrant(MoneyOnce {
+        amount: money_amount_micro(count: 1000),
+        currency: Usd,
+      }),
+    },
+    context: FabricGrantContext {
+      demand: s.demand,
+      work: s.work,
+      attempt: attempt,
+      executor: "spark-1",
+      lease: LeaseIdentity {
+        lease_key: "lease-1",
+        resource_fingerprint: h(s: "slice-1"),
+        generation: 9,
+      },
+      issued_at: "2026-08-28T01:00:00Z",
+      maximum_liability: money_amount_micro(count: 1000000),
+    },
+    evidence: FabricGrantEvidence {
+      fungibility_receipt: "fungibility-1",
+      offer_authority: "offer-authority-1",
+      resource_conservation: "resource-conservation-1",
+      budget_conservation: "budget-conservation-1",
+      principal_authority: "principal-authority-1",
+    },
+    resource_reservations: ["reservation-gpu-1"],
+    money_reservation: "reservation-money-1",
+  }
+}
+
+fn claim_of(
+  a: TrainingStartClaimAdmission<NonEmptyStr>,
+) -> TrainingExecutionClaim<NonEmptyStr>? {
+  match a {
+    TrainingStartClaimCommitted { claim: c } => Present { value: c }
+    TrainingStartClaimAlreadyCommitted { claim: c } => Present { value: c }
+    TrainingStartClaimSnapshotStale { expected_generation: _, observed_generation: _ } => none
+    TrainingStartClaimRefused { cause: _ } => none
+  }
+}
+
+fn claim_for(
+  s: TrainingRunSubject<NonEmptyStr>,
+  existing: List<TrainingExecutionClaim<NonEmptyStr>>,
+  cause: TrainingStartCause<NonEmptyStr>,
+  k: NonEmptyStr,
+) -> TrainingExecutionClaim<NonEmptyStr>? {
+  claim_of(a: admit_start_claim(
+    observed_generation: 4,
+    ledger_generation: 4,
+    existing: existing,
+    transition: TrainingStartTransitionKey { demand: s.demand, work: s.work, cause: cause },
+    attempt: attempt_id(k: k),
+    grant: grant_for(s: s, key: k, attempt: attempt_id(k: k)),
+  ))
+}
+
+// THE CLAIMS THE ORDINARY FIXTURE CARRIES: one per attempt the graph holds, each on its own
+// transition. Without them every witness below would additionally report attempt-without-claim,
+// which is a real blocker and would make the grain assertions unreadable.
+fn both_claims(
+  s: TrainingRunSubject<NonEmptyStr>,
+) -> List<TrainingExecutionClaim<NonEmptyStr>> {
+  match claim_for(s: s, existing: [], cause: ClaimInitialAttempt, k: "e1") {
+    none => []
+    Present { value: c1 } =>
+      match claim_for(
+        s: s,
+        existing: [c1],
+        cause: ClaimInfrastructureRetry {
+          prior_attempt: attempt_id(k: "e1"),
+          cause_receipt: "gunbc.observation.loss",
+        },
+        k: "e2",
+      ) {
+        none => []
+        Present { value: c2 } => [c1, c2]
+      }
+  }
+}
+
+fn join_control(
+  c: TrainingRunEvidenceComposition<NonEmptyStr>,
+  claims: List<TrainingExecutionClaim<NonEmptyStr>>,
+) -> TrainingRunConvergenceInput<NonEmptyStr>? {
+  match admit_execution_control(
+    graph: c.graph,
+    active_claims: claims,
+    ledger_generation: 4,
+    observation: "gunbc.observation.control",
+  ) {
+    TrainingControlRefused { first: _, more: _ } => none
+    TrainingControlAdmitted { control: ctl } =>
+      match admit_convergence_input(evidence: c, control: ctl) {
+        TrainingConvergenceInputSubjectMismatch { evidence_subject: _, control_subject: _ } => none
+        TrainingConvergenceInputAdmitted { input: i } => Present { value: i }
+      }
+  }
+}
+
+// A FIXTURE THAT CANNOT ADMIT ITS CONTROL JOIN REPORTS A BLOCKER NO WITNESS BELOW ASSERTS, so a
+// broken fixture reddens rather than quietly satisfying an assertion about something else.
+fn reconcile_with(
+  c: TrainingRunEvidenceComposition<NonEmptyStr>,
+  claims: List<TrainingExecutionClaim<NonEmptyStr>>,
+) -> TrainingRunDisposition<NonEmptyStr> {
+  match join_control(c: c, claims: claims) {
+    none =>
+      TrainingRunBlocked {
+        first: TrainingObservationNotAttempted {
+          axis: ExecutionReadbackAxis,
+          obligation: "fixture could not admit the control join",
+        },
+        more: [],
+      }
+    Present { value: i } => reconcile_training_run(input: i).disposition
+  }
+}
+
+fn reconcile(c: TrainingRunEvidenceComposition<NonEmptyStr>) -> TrainingRunDisposition<NonEmptyStr> {
+  reconcile_with(c: c, claims: both_claims(s: c.readback.subject))
+}
+
+// THE GRAIN WITNESS, AND THE ONE AN EARLIER REVISION OF THIS MODULE GOT BACKWARDS. Attempt e1
+// failed and attempt e2 succeeded. That is the ordinary local-model-to-Opus escalation history this
+// programme exists to record. Reading it as a contradiction -- which a run-grain fold does -- would
+// refuse exactly the evidence the escalation model is built to keep.
+test fn a_failure_then_a_success_across_two_attempts_is_history_not_a_conflict() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [failed_at(k: "e1"), succeeded_at(k: "e2")], receipt: "obs.term"),
+        outputs: observed(members: [output_at(k: "e2", hex: digest_a)], receipt: "obs.out"),
+        manifests: observed(members: [manifest_at(d: d, k: "e2")], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } => {
+          let v = reconcile(c: c)
+          !blocker_names(v: v).any(n => n == "terminal-conflict") && disposition_name(v: v) == "converged"
+        }
+      }
+  }
+}
+
+// THE SAME EVIDENCE AT ONE ATTEMPT IS A CONTRADICTION. e1 reports both success and failure: one
+// producer emitted two incompatible receipts about one try, and no lineage explains it.
+test fn one_attempt_reporting_success_and_failure_is_a_terminal_conflict() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [failed_at(k: "e1"), succeeded_at(k: "e1")], receipt: "obs.term"),
+        outputs: observed(members: [output_at(k: "e1", hex: digest_a)], receipt: "obs.out"),
+        manifests: observed(members: [manifest_at(d: d, k: "e1")], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } => blocker_names(v: reconcile(c: c)).any(n => n == "terminal-conflict")
+      }
+  }
+}
+
+// TWO ATTEMPTS PRODUCING DIFFERENT ARTIFACTS IS NOT A CONFLICT -- it is two attempts. It becomes
+// completion ambiguity only when BOTH qualify as completions, which is a different fact with a
+// different name, and the fold must not report it as an output conflict.
+test fn different_attempts_with_different_digests_is_not_an_output_conflict() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [succeeded_at(k: "e1"), succeeded_at(k: "e2")], receipt: "obs.term"),
+        outputs: observed(
+          members: [output_at(k: "e1", hex: digest_a), output_at(k: "e2", hex: digest_b)],
+          receipt: "obs.out",
+        ),
+        manifests: observed(
+          members: [manifest_at(d: d, k: "e1"), manifest_at(d: d, k: "e2")],
+          receipt: "obs.manifest",
+        ),
+      ) {
+        none => false
+        Present { value: c } => {
+          let names = blocker_names(v: reconcile(c: c))
+          !names.any(n => n == "output-conflict") && names.any(n => n == "completion-ambiguous")
+        }
+      }
+  }
+}
+
+// ONE ATTEMPT WITH TWO DIFFERENT DIGESTS IS A CONFLICT, because one try produced one artifact and
+// two receipts disagree about which. Same shape as the pair above, one attempt identity apart.
+test fn one_attempt_with_two_digests_is_an_output_conflict() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [succeeded_at(k: "e1")], receipt: "obs.term"),
+        outputs: observed(
+          members: [output_at(k: "e1", hex: digest_a), output_at(k: "e1", hex: digest_b)],
+          receipt: "obs.out",
+        ),
+        manifests: observed(members: [manifest_at(d: d, k: "e1")], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } => blocker_names(v: reconcile(c: c)).any(n => n == "output-conflict")
+      }
+  }
+}
+
+// FIVE SUCCESSFULLY ENUMERATED EMPTY POPULATIONS ARE NOT A CONVERGED RUN. There is no contradiction
+// anywhere in this input, which is exactly why an empty blocker population cannot be the test for
+// convergence: this is a run nobody has started.
+//
+// THE ASSERTION NARROWED WHEN THE CONTROL COMPOSITION LANDED, and the earlier form of this witness
+// is why it is written this way now. It asserted "execution-required" over the ordinary two-attempt
+// fixture, which was true only while the fold could not see whether anything had been claimed.
+// ExecutionRequired now means NOTHING IS COMMITTED AND NOTHING IS RUNNING, so the fixture has to be
+// a run with no attempts and no claims -- otherwise the witness would be asserting that a run with
+// two live claims should have a third trainer started.
+fn empty_graph_composition(
+  d: TrainingRunDesired<NonEmptyStr>,
+) -> TrainingRunEvidenceComposition<NonEmptyStr>? {
+  let s = subject_of_desired(desired: d)
+  match admit_attempt_graph(subject: s, attempts: []) {
+    AttemptGraphRefused { first: _, more: _ } => none
+    AttemptGraphAdmitted { graph: g } =>
+      match bind_training_run_readback(
+        desired: d,
+        execution: TrainingSubjectBoundPopulation {
+          subject: s,
+          observation: observed(members: [], receipt: "obs.proc"),
+        },
+        checkpoints: TrainingSubjectBoundPopulation {
+          subject: s,
+          observation: observed(members: [], receipt: "obs.ckpt"),
+        },
+        terminals: TrainingSubjectBoundPopulation {
+          subject: s,
+          observation: observed(members: [], receipt: "obs.term"),
+        },
+        outputs: TrainingSubjectBoundPopulation {
+          subject: s,
+          observation: observed(members: [], receipt: "obs.out"),
+        },
+        effective_manifests: TrainingSubjectBoundPopulation {
+          subject: s,
+          observation: observed(members: [], receipt: "obs.manifest"),
+        },
+      ) {
+        TrainingRunReadbackRefused { first: _, more: _ } => none
+        TrainingRunReadbackAdmitted { readback: rb } =>
+          match admit_training_evidence(desired: d, graph: g, readback: rb, cut: sweep(s: s)) {
+            TrainingRunCompositionRefused { first: _, more: _ } => none
+            TrainingRunEvidenceComposed { composition: c } => Present { value: c }
+          }
+      }
+  }
+}
+
+test fn no_attempts_and_no_claims_over_empty_populations_requires_execution() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match empty_graph_composition(d: d) {
+        none => false
+        Present { value: c } =>
+          disposition_name(v: reconcile_with(c: c, claims: [])) == "execution-required"
+      }
+  }
+}
+
+// A CUT FROM ANOTHER SWEEP CANNOT ORDER THESE POPULATIONS. The subject matches, the cut is
+// well-formed and its sweep really happened -- and its receipts name enumerations that produced
+// different populations. Without this join, three receipts agreeing about an attempt identity could
+// be collectively about nothing.
+test fn a_cut_naming_another_sweeps_receipts_is_refused_per_axis() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } => {
+      let s = subject_of_desired(desired: d)
+      match graph_fixture(s: s) {
+        none => false
+        Present { value: g } =>
+          match bind_training_run_readback(
+            desired: d,
+            execution: TrainingSubjectBoundPopulation { subject: s, observation: observed(members: [], receipt: "other.proc") },
+            checkpoints: TrainingSubjectBoundPopulation { subject: s, observation: observed(members: [], receipt: "obs.ckpt") },
+            terminals: TrainingSubjectBoundPopulation { subject: s, observation: observed(members: [], receipt: "obs.term") },
+            outputs: TrainingSubjectBoundPopulation { subject: s, observation: observed(members: [], receipt: "other.out") },
+            effective_manifests: TrainingSubjectBoundPopulation { subject: s, observation: observed(members: [], receipt: "obs.manifest") },
+          ) {
+            TrainingRunReadbackRefused { first: _, more: _ } => false
+            TrainingRunReadbackAdmitted { readback: rb } =>
+              match admit_training_evidence(desired: d, graph: g, readback: rb, cut: sweep(s: s)) {
+                TrainingRunEvidenceComposed { composition: _ } => false
+                TrainingRunCompositionRefused { first: f, more: m } => {
+                  let all = [[f], m].flat_map(x => x)
+                  all.length() == 2
+                    && all.all(r =>
+                         match r {
+                           CompositionReceiptMismatch { axis: _, cut_receipt: _, readback_receipt: _ } => true
+                           CompositionSubjectMismatch { what: _, expected: _, observed: _ } => false
+                           CompositionAxisNotAttempted { axis: _ } => false
+                         })
+                }
+              }
+          }
+      }
+    }
+  }
+}
+
+// A CUT CANNOT CLAIM A STAGE THAT NEVER RAN. An axis nobody enumerated cannot have been part of the
+// sweep, so this is a producer reporting work it did not do -- a stronger defect than a receipt
+// mismatch, and it gets its own refusal rather than being folded into one.
+test fn a_cut_over_a_never_attempted_axis_is_refused() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } => {
+      let s = subject_of_desired(desired: d)
+      match graph_fixture(s: s) {
+        none => false
+        Present { value: g } =>
+          match bind_training_run_readback(
+            desired: d,
+            execution: TrainingSubjectBoundPopulation { subject: s, observation: observed(members: [], receipt: "obs.proc") },
+            checkpoints: TrainingSubjectBoundPopulation { subject: s, observation: observed(members: [], receipt: "obs.ckpt") },
+            terminals: TrainingSubjectBoundPopulation { subject: s, observation: observed(members: [], receipt: "obs.term") },
+            outputs: TrainingSubjectBoundPopulation {
+              subject: s,
+              observation: TrainingPopulationNotAttempted { obligation: "output probe unscheduled" },
+            },
+            effective_manifests: TrainingSubjectBoundPopulation { subject: s, observation: observed(members: [], receipt: "obs.manifest") },
+          ) {
+            TrainingRunReadbackRefused { first: _, more: _ } => false
+            TrainingRunReadbackAdmitted { readback: rb } =>
+              match admit_training_evidence(desired: d, graph: g, readback: rb, cut: sweep(s: s)) {
+                TrainingRunEvidenceComposed { composition: _ } => false
+                TrainingRunCompositionRefused { first: f, more: _ } =>
+                  match f {
+                    CompositionAxisNotAttempted { axis: _ } => true
+                    CompositionReceiptMismatch { axis: _, cut_receipt: _, readback_receipt: _ } => false
+                    CompositionSubjectMismatch { what: _, expected: _, observed: _ } => false
+                  }
+              }
+          }
+      }
+    }
+  }
+}
+
+// A RUNNING PROCESS WITH NO TERMINAL IS IN PROGRESS, not a contradiction and not a failure.
+test fn a_running_process_with_no_terminal_is_in_progress() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [running_at(k: "e1")], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } => disposition_name(v: reconcile(c: c)) == "in-progress"
+      }
+  }
+}
+
+// A SUCCEEDED ATTEMPT WITH NO OUTPUT IS A BLOCKER, and it is reportable ONLY because the cut
+// establishes that outputs were enumerated after terminals. Without that ordering this is an
+// earlier read, not a missing artifact -- which is why the composition is the door.
+test fn a_success_with_no_output_under_an_ordered_sweep_is_blocked() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [succeeded_at(k: "e1")], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [manifest_at(d: d, k: "e1")], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } => blocker_names(v: reconcile(c: c)).any(n => n == "success-without-output")
+      }
+  }
+}
+
+// THE POSITIVE CONTROL: one completion candidate, no blockers, converged, and the completion names
+// the attempt that produced it. Without this every refusal above would be satisfied by a fold that
+// blocked unconditionally.
+test fn a_single_clean_completion_converges_and_names_its_attempt() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [succeeded_at(k: "e1")], receipt: "obs.term"),
+        outputs: observed(members: [output_at(k: "e1", hex: digest_a)], receipt: "obs.out"),
+        manifests: observed(members: [manifest_at(d: d, k: "e1")], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } =>
+          match reconcile(c: c) {
+            TrainingRunAlreadyConverged { completion: comp } =>
+              comp.attempt.key == "e1" && comp.output.artifact.hex == digest_a
+            TrainingRunBlocked { first: _, more: _ } => false
+            TrainingRunInProgress { running: _ } => false
+            TrainingRunExecutionRequired => false
+            TrainingRunLaunchDispatchRequired { first: _, more: _ } => false
+            TrainingRunLaunchPending { first: _, more: _ } => false
+            TrainingRunRestartAuthorizationRequired { failed: _ } => false
+          }
+      }
+  }
+}
+
+// AN ATTEMPT THE GRAPH HOLDS WITH NO EXECUTION CLAIM IS A CONTROL-STATE DEFECT, NOT A REASON TO
+// LAUNCH. This is exactly the state a retrospective writer produces -- an attempt recorded after the
+// process started, with nothing durable inhibiting a second launch -- and the previous fold answered
+// it with "execution required", which is an instruction to start another trainer.
+test fn an_attempt_with_no_execution_claim_blocks_rather_than_requiring_execution() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } => {
+          let v = reconcile_with(c: c, claims: [])
+          disposition_name(v: v) == "blocked"
+            && blocker_names(v: v).filter(n => n == "attempt-without-claim").length() == 2
+        }
+      }
+  }
+}
+
+// A COMMITTED CLAIM WITH NO DISPATCH RECEIPT IS NOT A REASON TO START A NEW EXECUTION -- it is a
+// reason to dispatch THE SAME ONE. Folding it into ExecutionRequired is how a controller that died
+// between commitment and launch produces a second attempt on the next pass.
+test fn a_committed_undispatched_claim_asks_for_dispatch_not_a_new_execution() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } =>
+          disposition_name(v: reconcile(c: c)) == "launch-dispatch-required"
+      }
+  }
+}
+
+// A DISPATCHED CLAIM WITH NO OBSERVED PROCESS IS A DIFFERENT STATE WITH A DIFFERENT REMEDY: wait for
+// the observer, do not re-dispatch. One axis apart from the witness above, and the two were one
+// absorbing arm before the control record carried a dispatch receipt.
+test fn a_dispatched_claim_awaiting_a_process_observation_is_launch_pending() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } =>
+          disposition_name(v: reconcile_with(
+            c: c,
+            claims: both_claims(s: c.readback.subject)
+              .map(cl => record_claim_dispatch(claim: cl, dispatch: "gunbc.observation.dispatch")),
+          )) == "launch-pending"
+      }
+  }
+}
+
+// A RUNNING PROCESS STILL OUTRANKS A CLAIM. The claim says a launch was authorized; the process
+// observation says one is running, and confusing the two would let control state inhabit the
+// observed-world arm -- the one thing the readback discipline forbids.
+test fn a_running_process_outranks_a_dispatched_claim() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [running_at(k: "e2")], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } => disposition_name(v: reconcile(c: c)) == "in-progress"
+      }
+  }
+}
+
+fn launch_claim_count(v: TrainingRunDisposition<NonEmptyStr>) -> Nat {
+  match v {
+    TrainingRunLaunchDispatchRequired { first: _, more: m } => m.length() + 1
+    TrainingRunLaunchPending { first: _, more: m } => m.length() + 1
+    TrainingRunAlreadyConverged { completion: _ } => 0
+    TrainingRunInProgress { running: _ } => 0
+    TrainingRunExecutionRequired => 0
+    TrainingRunRestartAuthorizationRequired { failed: _ } => 0
+    TrainingRunBlocked { first: _, more: _ } => 0
+  }
+}
+
+// EVERY UNDISPATCHED CLAIM IS REPORTED, NOT ONLY THE FIRST. Two lawful transitions -- an initial and
+// a retry -- are both awaiting a launch. Reporting one would have a caller dispatch it and read the
+// run as handled, which is the first-wins defect this lane already repaired once in the readback
+// binder. Without this control the disposition witnesses above are satisfied by a fold that drops
+// the tail.
+test fn every_undispatched_claim_is_reported_not_only_the_first() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } => launch_claim_count(v: reconcile(c: c)) == 2
+      }
+  }
+}
+
+// AN UNDISPATCHED CLAIM BESIDE A DISPATCHED ONE ASKS FOR DISPATCH, and reports only the claim that
+// still needs one. Answering "pending" here would wait forever on a launch nobody made.
+test fn an_undispatched_claim_outranks_a_dispatched_one_and_reports_only_itself() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } => {
+          let cs = both_claims(s: c.readback.subject)
+          let mixed =
+            cs.flat_map(cl =>
+              if cl.attempt.key == "e1" {
+                [record_claim_dispatch(claim: cl, dispatch: "gunbc.observation.dispatch")]
+              } else {
+                [cl]
+              })
+          let v = reconcile_with(c: c, claims: mixed)
+          disposition_name(v: v) == "launch-dispatch-required" && launch_claim_count(v: v) == 1
+        }
+      }
+  }
+}

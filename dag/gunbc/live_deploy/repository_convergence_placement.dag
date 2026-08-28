@@ -1,0 +1,775 @@
+module gunbc.live_deploy.repository_convergence_placement
+
+import std.types { String, Bool, NonEmptyStr }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git.object_store {
+  GitObjectFormatSha1,
+  GitObjectIdTextRefusal,
+  GitObjectIdTextWrongLength,
+  GitObjectIdTextNonHexadecimal,
+  GitObjectIdTextNonCanonicalUppercase,
+  GitObjectIdTextDecoded,
+  GitObjectIdTextRefused,
+  git_decode_object_id_text,
+  git_object_id_wire_hex,
+}
+import extdeps.access.posix_effective_principal {
+  EffectivePosixPrincipalRead,
+  EffectivePosixPrincipalObservationResult,
+  EffectivePosixPrincipalObserved,
+  EffectivePosixPrincipalObservationRefused,
+  effective_posix_principal_observation,
+  effective_posix_principal_name,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_kv,
+  json_object,
+  json_string,
+  serialize_json,
+}
+import extdeps.languages.json.parse {
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+  json_document_gap_text,
+  json_object_unique_member,
+  json_string_value_or_empty,
+  parse_json_document,
+}
+import extdeps.systemd.unit_file {
+  ServiceUnitFile,
+  Description,
+  ServiceType,
+  ServiceUser,
+  ServiceGroup,
+  EnvironmentFile,
+  ExecStart,
+  NotInstallable,
+  serialize_systemd_unit_file,
+}
+import extdeps.access.posix_effective_principal_read_op { effective_posix_principal_read }
+import gunbc.host_layout { instance_receipts_dir }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
+import gunbc.live_deploy.repository_convergence { repository_converge_wet }
+
+// THE DEFECT THIS MODULE CLOSES IS A PLACEMENT DEFECT, NOT AN ADJUDICATION ONE.
+//
+// gunbc.live_deploy.repository_convergence is the git-native transition -- import objects, compare
+// and swap the base ref, reset the worktree, read back. It is correct and it is unreachable, because
+// nothing in this repository can say WHERE IT RUNS. The fleet-converge job executes
+// `gunbc run ... --function live_deploy_apply_srv1_wet` as the UNPRIVILEGED CI-RUNNER account, and
+// /opt/gunbc/gunbc is owned by the SERVICE USER. A converge invoked from that process is one
+// principal mutating another principal's repository, which is the arrangement that already failed
+// once by measurement: the first flip deploy (run 29822498755, 2026-07-21) died on bare-rsync
+// EACCES and chgrp EPERM into that exact tree, and the repair was to stop having the runner write it.
+//
+// THE PLACEMENT IS DERIVED FROM THE GRANT ROSTER, NOT CHOSEN FOR TASTE. gunbc.fleet_posix_accounts
+// grants the deploy principal exactly six NOPASSWD commands -- apt-get, install, visudo, systemctl,
+// tailscale, rm. `git` is not among them and neither is any `sudo -u` form, so THERE IS NO PRIMITIVE
+// IN THE ADMITTED SET THAT RUNS AN ARBITRARY COMMAND AS ANOTHER USER. What is granted is `install`
+// and `systemctl`, and a systemd oneshot unit carrying `User=` is what those two compose into. That
+// is not an analogy: gunbc-tree-sync.service is the same construction, installed for the same reason
+// (emit_deploy_principal_note: "the owner writes its own tree"), and it is the existing proof that
+// the route works and that the service user can READ the runner's checkout.
+//
+// SO THE CHOICE WAS MADE BY THE ROSTER. Any other placement -- a helper binary, a sudo widening, an
+// ssh hop back into the host -- requires granting the deploy principal something it does not have,
+// and the grant roster is a fleet authority rather than this lane's to widen.
+
+// WHY THE CORPUS COMES FROM THE RUNNER CHECKOUT AND NOT FROM THE TARGET.
+//
+// The deployed tree is 637 commits behind the admitted revision, which is the condition being
+// repaired, so its checked-out `.dag` corpus PREDATES gunbc.live_deploy.repository_convergence
+// entirely. A unit that ran the target's own corpus would be asking a tree from 2026-08-19 to
+// perform an operation first authored on 2026-08-27. The corpus must therefore come from the
+// workflow revision, and the workflow revision is materialized on the host already: the runner's
+// checkout, whose absolute path the deploy writes into the tree-sync environment file as
+// GUNBC_TREE_SRC.
+//
+// THE BINARY IS THE ADMITTED ONE FOR A DIFFERENT REASON AND IT MUST NOT BE CONFLATED. srv1 carries
+// no Cargo toolchain, so nothing can be built there; the binary the unit executes is the one THIS
+// deploy just installed at spec.service.serve_binary from the runner's build of the same revision.
+// Binary and corpus are two facts that must both come from the workflow revision, and they arrive by
+// two different routes -- one installed, one read in place.
+
+// WHY THE OBJECTS ARE FETCHED FROM THE RUNNER CHECKOUT RATHER THAN FROM `origin`.
+//
+// gunbc.deployed_tree_remote records that srv1's configured remote exists solely so
+// `git ls-remote origin` can answer, that the tree PERFORMS NO FETCH, and that `.git/config` is
+// excluded from the sync because a blanket copy was once found carrying a live Actions
+// extraheader token. So the target holds a public HTTPS URL and no credential, and fetching a bare
+// commit id over that transport depends on the server's upload-pack configuration rather than on
+// anything this repository controls.
+//
+// The runner checkout is a LOCAL repository already holding exactly the admitted revision. Fetching
+// from it needs no network, no credential, and no server-side option, and -- the load-bearing part --
+// it cannot resolve the candidate against a DIFFERENT population than the one the deploy admitted,
+// because it is that population. A fetch from `origin` would reintroduce a second source of truth
+// for the admitted subject at the last step of the transaction.
+//
+// THIS DOES NOT CONTRADICT THAT MODULE'S NO-FETCH RULING, and the distinction is exact: its concern
+// is a fetch REFSPEC written into config, which would make a bare `git fetch origin` clobber
+// refs/remotes/origin/*. The convergence fetches an explicit commit id from an explicit path and
+// writes FETCH_HEAD only; the base ref moves under its own compare-and-swap.
+
+// THE OPERANDS ARE DERIVED, AND THE TWO THAT ARE NOT ARE THE TWO THAT CANNOT BE.
+//
+// repository_converge_wet takes five strings and a caller may hand it any five. Its own header names
+// that as a weakness for primary_path specifically -- "a wrong path exempts the wrong worktree" --
+// and the same exposure runs through repo and base_ref, where a wrong value would converge some
+// other repository or advance some other ref while reporting success about the one asked for.
+//
+// So this module does not take operands. It DERIVES repo, base_ref and primary_path from the
+// deployment spec, which is the authority for where this instance's tree lives. Two values remain
+// arguments because no authoring-time fact determines them: the CANDIDATE, which is the admitted
+// subject of this particular deployment, and the OBJECT SOURCE, which is the path the runner
+// happened to check out on this particular run. Both are rendered into the unit by
+// convergence_unit_doc from the spec and the deploy's own environment file, so the production path
+// never hand-spells either.
+type ConvergencePlacementOperands {
+  repo: String
+  remote: String
+  base_ref: String
+  candidate: String
+  primary_path: String
+}
+
+// THE PRIMARY IS THE REPOSITORY ROOT ITSELF, which is the one case where the caller-supplied
+// primary_path weakness cannot bite: the deployed tree is a normal checkout, so its primary worktree
+// path IS its repository path, and both are read from the same spec field. Deriving the primary from
+// git's own roster is the stronger construction and it belongs to the module that owns the
+// adjudication (extdeps.git.worktree_enumeration already declares the primary/linked split for it);
+// deriving both sides from ONE spec field here removes the disagreement this module could introduce
+// and does not claim to close that one.
+data convergence_base_ref: String = "refs/remotes/origin/main"
+
+type ConvergenceOperandAdmission
+  = ConvergenceOperandsAdmitted { operands: ConvergencePlacementOperands }
+  | ConvergenceOperandsRefused { reason: String }
+
+// A COMMIT ID IS DECODED BY GIT'S OWN AUTHORITY, NEVER SHAPE-CHECKED HERE.
+//
+// Every downstream consumer takes the candidate as a string, so an empty or ABBREVIATED value would
+// reach `git fetch` and `update-ref` as something git may well resolve -- and an abbreviation
+// resolves against whatever is unambiguous in the TARGET's object store today, which is a different
+// population from the one that admitted the revision. The admitted subject is a full object id or it
+// is not the admitted subject.
+//
+// THE CHECK IS NOT WRITTEN HERE BECAUSE IT ALREADY EXISTS. extdeps.git.object_store
+// git_decode_object_id_text is git's cited decoder and it distinguishes exactly the three refusals
+// this operand needs -- wrong length, non-hexadecimal, and non-canonical uppercase -- returning a
+// GitObjectId rather than a string that passed a predicate. A local `is_lowercase_hex` beside it
+// would have been a second authority for one concept (DESIGN section 3), and the weaker one: it
+// would have answered Bool where this answers WHICH WAY the value is not an object id.
+fn candidate_refusal_text(candidate: String, cause: GitObjectIdTextRefusal) -> String {
+  match cause {
+    GitObjectIdTextWrongLength { format: _, observed: n } =>
+      join([
+        "the candidate revision `", candidate, "` is ", to_string(n: n),
+        " characters; a full object id is required, because an abbreviation resolves against the",
+        " TARGET's object store rather than against the population that admitted it",
+      ], "")
+    GitObjectIdTextNonHexadecimal =>
+      join(["the candidate revision `", candidate, "` is not hexadecimal"], "")
+    GitObjectIdTextNonCanonicalUppercase =>
+      join(["the candidate revision `", candidate, "` carries uppercase hex; git's canonical",
+            " spelling is lowercase, and admitting both would let one commit have two names"], "")
+  }
+}
+
+fn convergence_operands_for(
+  spec: DeploymentSpec,
+  candidate: String,
+  object_source: String,
+) -> ConvergenceOperandAdmission {
+  let repo = spec.service.repo_root as String
+  match git_decode_object_id_text(format: GitObjectFormatSha1, text: candidate) {
+    GitObjectIdTextRefused { cause: cause } =>
+      ConvergenceOperandsRefused {
+        reason: candidate_refusal_text(candidate: candidate, cause: cause),
+      }
+    GitObjectIdTextDecoded { oid: oid } =>
+      if trim(s: object_source) == "" {
+        ConvergenceOperandsRefused {
+          reason: "the object source is empty -- GUNBC_TREE_SRC did not reach the unit, so the admitted revision's objects have no route into the target",
+        }
+      } else if !starts_with(s: object_source, prefix: "/") {
+        ConvergenceOperandsRefused {
+          reason: join([
+            "the object source `", object_source, "` is not absolute; the unit runs with a working",
+            " directory of its own, so a relative object source names a path nobody chose",
+          ], ""),
+        }
+      } else {
+        ConvergenceOperandsAdmitted { operands: ConvergencePlacementOperands {
+          repo: repo,
+          remote: object_source,
+          base_ref: convergence_base_ref,
+          candidate: git_object_id_wire_hex(oid: oid) as String,
+          primary_path: repo,
+        } }
+      }
+  }
+}
+
+// THE PRINCIPAL IS OBSERVED, NEVER ASSUMED, AND THE UNOBSERVABLE CASE IS NOT THE ADMITTING ONE.
+//
+// This is the wall the brief asks for: a placement that cannot establish it is running as the right
+// principal must refuse. The three states are genuinely three -- observed-and-correct,
+// observed-and-wrong, and could-not-observe -- and collapsing the third into either of the others is
+// the empty-observation narrow. Wrong tells an operator the unit is misconfigured; unobservable
+// tells them `whoami` did not answer, which is a different repair on a different machine state.
+//
+// IT FIRES ON THE PATH THAT MATTERS. If someone invokes this entry from the fleet-converge job --
+// the exact mistake this module exists to prevent, and the one an author reaching for the shortest
+// route would make -- the observed principal is the CI runner, not the service user, and the
+// transition refuses before a single git command runs.
+type ConvergencePrincipalAdmission
+  = ConvergencePrincipalAdmitted { name: String }
+  | ConvergencePrincipalMismatch { expected: String, observed: String }
+  | ConvergencePrincipalUnobservable { reason: String }
+
+fn convergence_principal_admission(
+  expected: String,
+  result: EffectivePosixPrincipalObservationResult,
+) -> ConvergencePrincipalAdmission {
+  match result {
+    EffectivePosixPrincipalObservationRefused { read: _, reason: why } =>
+      ConvergencePrincipalUnobservable { reason: why }
+    EffectivePosixPrincipalObserved { observation: obs } => {
+      let observed = effective_posix_principal_name(observation: obs) as String
+      if observed == expected {
+        ConvergencePrincipalAdmitted { name: observed }
+      } else {
+        ConvergencePrincipalMismatch { expected: expected, observed: observed }
+      }
+    }
+  }
+}
+
+// WHAT THE OUTER TRANSACTION RECEIVES, AND WHY IT IS NOT AN EXIT CODE.
+//
+// The convergence runs in a DIFFERENT PROCESS from the deploy that ordered it -- that is the whole
+// content of this module -- and `systemctl start` reports whether the unit's control process
+// terminated zero. The deploy therefore learns "the unit failed" and nothing about WHICH of the
+// eleven states the adjudication distinguishes it reached, which would hand a CAS race, an
+// unreadable worktree roster and a wrong principal the same response. So the unit writes a typed
+// receipt and the deploy decodes it.
+//
+// THERE IS NO exit_code FIELD, AND ITS ABSENCE IS DERIVED RATHER THAN ECONOMISED. convergence_exit
+// maps every non-converged outcome to ExitFailure { code: 1 }, so the code is a function of the
+// converged/not distinction the verdict already carries -- storing it would be a second
+// representation of one fact (DESIGN section 2), and a reader who saw both could not be told which
+// one to believe if they ever disagreed.
+type ConvergencePlacementReceipt
+  = PlacementWrongPrincipal { expected: String, observed: String }
+  | PlacementPrincipalUnobservable { reason: String }
+  | PlacementOperandsRefused { reason: String }
+  | PlacementConverged { candidate: String, repo: String }
+  | PlacementConvergenceRefused { candidate: String, repo: String, detail: String }
+
+// THE ONE PREDICATE AN ACTUATOR MAY ASK. Every non-converged arm is false, including the two that
+// never reached git at all: a placement that refused is not a repository that converged, and a
+// caller that treated "we never ran" as "nothing to do" would proceed against the stale tree this
+// whole lane exists to replace.
+fn placement_converged(receipt: ConvergencePlacementReceipt) -> Bool {
+  match receipt {
+    PlacementConverged { candidate: _, repo: _ } => true
+    PlacementWrongPrincipal { expected: _, observed: _ } => false
+    PlacementPrincipalUnobservable { reason: _ } => false
+    PlacementOperandsRefused { reason: _ } => false
+    PlacementConvergenceRefused { candidate: _, repo: _, detail: _ } => false
+  }
+}
+
+fn placement_receipt_verdict(receipt: ConvergencePlacementReceipt) -> String {
+  match receipt {
+    PlacementConverged { candidate: _, repo: _ } => "converged"
+    PlacementWrongPrincipal { expected: _, observed: _ } => "wrong-principal"
+    PlacementPrincipalUnobservable { reason: _ } => "principal-unobservable"
+    PlacementOperandsRefused { reason: _ } => "operands-refused"
+    PlacementConvergenceRefused { candidate: _, repo: _, detail: _ } => "convergence-refused"
+  }
+}
+
+fn placement_receipt_line(receipt: ConvergencePlacementReceipt) -> String {
+  match receipt {
+    PlacementConverged { candidate: c, repo: r } =>
+      join(["repository-convergence CONVERGED repo=", r, " candidate=", c,
+            " -- the service principal performed the transition and the readback agreed"], "")
+    PlacementWrongPrincipal { expected: e, observed: o } =>
+      join(["repository-convergence REFUSED wrong-principal expected=", e, " observed=", o,
+            " -- the convergence was invoked by an account that does not own the deployed",
+            " repository; it must run through the service-user unit, not in the deploy process"], "")
+    PlacementPrincipalUnobservable { reason: why } =>
+      join(["repository-convergence REFUSED principal-unobservable -- ", why,
+            " (an unobserved principal is not an admitted one)"], "")
+    PlacementOperandsRefused { reason: why } =>
+      join(["repository-convergence REFUSED operands -- ", why], "")
+    PlacementConvergenceRefused { candidate: c, repo: r, detail: d } =>
+      join(["repository-convergence REFUSED repo=", r, " candidate=", c, " -- ", d], "")
+  }
+}
+
+// THE RECEIPT IS JSON BECAUSE JSON IS ALREADY MODELLED IN BOTH DIRECTIONS. extdeps.languages.json
+// carries serialize_json and parse_json_document against one cited grammar (RFC 8259), so writing
+// the receipt and reading it back are the same rows read forwards and backwards rather than an
+// emitter and a parser that can drift (DESIGN section 4). A bespoke line format would have been a
+// second grammar with one author and no authority.
+data placement_receipt_schema: String = "gunbc.repository-convergence-placement.v1"
+
+fn placement_receipt_json(receipt: ConvergencePlacementReceipt) -> JsonValue {
+  match receipt {
+    PlacementConverged { candidate: c, repo: r } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: placement_receipt_schema)),
+        json_kv(key: "verdict", value: json_string(s: placement_receipt_verdict(receipt: receipt))),
+        json_kv(key: "candidate", value: json_string(s: c)),
+        json_kv(key: "repo", value: json_string(s: r)),
+      ])
+    PlacementConvergenceRefused { candidate: c, repo: r, detail: d } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: placement_receipt_schema)),
+        json_kv(key: "verdict", value: json_string(s: placement_receipt_verdict(receipt: receipt))),
+        json_kv(key: "candidate", value: json_string(s: c)),
+        json_kv(key: "repo", value: json_string(s: r)),
+        json_kv(key: "detail", value: json_string(s: d)),
+      ])
+    PlacementWrongPrincipal { expected: e, observed: o } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: placement_receipt_schema)),
+        json_kv(key: "verdict", value: json_string(s: placement_receipt_verdict(receipt: receipt))),
+        json_kv(key: "expected", value: json_string(s: e)),
+        json_kv(key: "observed", value: json_string(s: o)),
+      ])
+    PlacementPrincipalUnobservable { reason: why } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: placement_receipt_schema)),
+        json_kv(key: "verdict", value: json_string(s: placement_receipt_verdict(receipt: receipt))),
+        json_kv(key: "reason", value: json_string(s: why)),
+      ])
+    PlacementOperandsRefused { reason: why } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: placement_receipt_schema)),
+        json_kv(key: "verdict", value: json_string(s: placement_receipt_verdict(receipt: receipt))),
+        json_kv(key: "reason", value: json_string(s: why)),
+      ])
+  }
+}
+
+fn placement_receipt_text(receipt: ConvergencePlacementReceipt) -> String {
+  concat(serialize_json(v: placement_receipt_json(receipt: receipt)), "\n")
+}
+
+// A FIELD READ IS A THREE-STATE FACT AND DUPLICATION IS ONE OF THE THREE. RFC 8259 permits an object
+// to name a member twice and does not say which wins, which extdeps.languages.json.parse reports as
+// its own outcome rather than resolving -- specifically so a domain decoder that knows the field is
+// an IDENTITY can refuse. `verdict` is exactly such a field: a document carrying two verdicts must
+// not read as whichever one was written second.
+type ReceiptFieldRead
+  = ReceiptFieldPresent { value: String }
+  | ReceiptFieldUnreadable { key: String, cause: String }
+
+fn receipt_field_read(doc: JsonValue, key: String) -> ReceiptFieldRead {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: found } =>
+      ReceiptFieldPresent { value: json_string_value_or_empty(v: found) }
+    JsonMemberAbsent =>
+      ReceiptFieldUnreadable { key: key, cause: "absent" }
+    JsonMemberDuplicated { count: n } =>
+      ReceiptFieldUnreadable {
+        key: key,
+        cause: join(["named ", to_string(n: n), " times; RFC 8259 does not say which wins, so an",
+                     " identity field carrying more than one value is refused, never resolved"], ""),
+      }
+    JsonMemberNotAnObject =>
+      ReceiptFieldUnreadable { key: key, cause: "the receipt document is not a JSON object" }
+  }
+}
+
+fn receipt_field_or_empty(doc: JsonValue, key: String) -> String {
+  match receipt_field_read(doc: doc, key: key) {
+    ReceiptFieldPresent { value: v } => v
+    ReceiptFieldUnreadable { key: _, cause: _ } => ""
+  }
+}
+
+type ConvergencePlacementReceiptDecode
+  = PlacementReceiptDecoded { receipt: ConvergencePlacementReceipt }
+  | PlacementReceiptUnreadable { cause: String }
+
+// THE DECODE REFUSES ON A VERDICT IT DOES NOT RECOGNISE RATHER THAN DEFAULTING. An unknown verdict
+// means the unit that wrote the file and the deploy that read it are different revisions of this
+// module, and the honest answer to that is a located refusal -- the alternative, folding it into the
+// nearest failure arm, would report a specific cause the document never stated.
+fn placement_receipt_of_document(doc: JsonValue) -> ConvergencePlacementReceiptDecode {
+  match receipt_field_read(doc: doc, key: "schema") {
+    ReceiptFieldUnreadable { key: k, cause: why } =>
+      PlacementReceiptUnreadable { cause: join(["receipt field `", k, "` ", why], "") }
+    ReceiptFieldPresent { value: schema } =>
+      if schema != placement_receipt_schema {
+        PlacementReceiptUnreadable {
+          cause: join(["receipt schema `", schema, "` is not `", placement_receipt_schema,
+                       "`; the writer and the reader are different revisions of this module"], ""),
+        }
+      } else {
+        match receipt_field_read(doc: doc, key: "verdict") {
+          ReceiptFieldUnreadable { key: k, cause: why } =>
+            PlacementReceiptUnreadable { cause: join(["receipt field `", k, "` ", why], "") }
+          ReceiptFieldPresent { value: verdict } =>
+            if verdict == "converged" {
+              PlacementReceiptDecoded { receipt: PlacementConverged {
+                candidate: receipt_field_or_empty(doc: doc, key: "candidate"),
+                repo: receipt_field_or_empty(doc: doc, key: "repo"),
+              } }
+            } else if verdict == "convergence-refused" {
+              PlacementReceiptDecoded { receipt: PlacementConvergenceRefused {
+                candidate: receipt_field_or_empty(doc: doc, key: "candidate"),
+                repo: receipt_field_or_empty(doc: doc, key: "repo"),
+                detail: receipt_field_or_empty(doc: doc, key: "detail"),
+              } }
+            } else if verdict == "wrong-principal" {
+              PlacementReceiptDecoded { receipt: PlacementWrongPrincipal {
+                expected: receipt_field_or_empty(doc: doc, key: "expected"),
+                observed: receipt_field_or_empty(doc: doc, key: "observed"),
+              } }
+            } else if verdict == "principal-unobservable" {
+              PlacementReceiptDecoded { receipt: PlacementPrincipalUnobservable {
+                reason: receipt_field_or_empty(doc: doc, key: "reason"),
+              } }
+            } else if verdict == "operands-refused" {
+              PlacementReceiptDecoded { receipt: PlacementOperandsRefused {
+                reason: receipt_field_or_empty(doc: doc, key: "reason"),
+              } }
+            } else {
+              PlacementReceiptUnreadable {
+                cause: join(["receipt verdict `", verdict, "` is not one this revision writes"], ""),
+              }
+            }
+        }
+      }
+  }
+}
+
+fn decode_placement_receipt(text: String) -> ConvergencePlacementReceiptDecode {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: gap } =>
+      PlacementReceiptUnreadable {
+        cause: join(["the receipt is ", json_document_gap_text(gap: gap)], ""),
+      }
+    JsonDocumentParsed { value: doc } => placement_receipt_of_document(doc: doc)
+  }
+}
+
+// AN ABSENT RECEIPT IS NOT A SILENT PASS, AND IT IS THE STATE MOST LIKELY TO OCCUR. If the unit
+// never started, or died before its write, the deploy finds no file -- and a reader that treated a
+// missing receipt as "nothing to report" would let the transaction continue over a repository
+// nobody converged. So the read failure is its own refusal, and it is not the same refusal as an
+// unreadable one: nothing wrote versus something wrote badly have different repairs.
+fn placement_receipt_read_refusal(path: String, error: String) -> String {
+  join(["no convergence receipt at ", path,
+        " -- the unit did not reach its write, so the transition is UNPERFORMED rather than",
+        " unreported (", error, ")"], "")
+}
+
+// WHERE THE RECEIPT LIVES, AND WHY NOT INSIDE THE REPOSITORY BEING CONVERGED. The obvious home is
+// beside the tree, and it is disqualified by the operation itself: `reset --hard` plus the
+// adjudication's untracked-residue check mean a file written into that repository is either
+// destroyed by the transition or reported by it as residue that refuses the transition. The
+// instance receipts directory is already a deploy-owned member installed with the service user as
+// owner (the belt publishes its tick receipts there), so it is writable by exactly the principal
+// this unit runs as, and it survives the reset because it is outside the worktree.
+fn convergence_receipt_path(instance_root: String) -> String {
+  join([instance_receipts_dir(instance_root: instance_root), "/repository-convergence.json"], "")
+}
+
+// THIS MODULE'S OWN FILE PATH, CARRIED AS DATA BECAUSE THE UNIT MUST NAME IT AS A `--entry`.
+//
+// A source path is a POSITIONAL fact, which DESIGN section 3 admits only where no symbol names the
+// thing -- and no symbol does: `--entry` takes a file, not a module. RESIDUE, named rather than
+// hidden: renaming or moving this file breaks the emitted unit and nothing in the corpus refuses,
+// because the fact that would catch it (module name to source path) is not modelled. That is one
+// row of the same class the declaration index closed for citations, and it dissolves when an entry
+// can be named by its MODULE rather than by its file.
+data convergence_placement_entry_path: String = "dag/gunbc/live_deploy/repository_convergence_placement.dag"
+
+data convergence_placement_entry_function: String = "repository_converge_srv1_owner_wet"
+
+// THE SOURCE-ROOT ROSTER IS THE SAME PAIR EVERY OTHER INVOCATION USES -- `dag` and `src/v2` -- and it
+// is spelled here against the runner checkout rather than against the target, which is the whole
+// point of the placement. Every path in the command is absolute after systemd expands
+// GUNBC_TREE_SRC, so the unit needs no WorkingDirectory: it inherits `/`, and nothing it runs
+// resolves a relative path.
+fn convergence_exec_start(
+  spec: DeploymentSpec,
+  candidate: String,
+  receipt_path: String,
+) -> String {
+  let src = "$\{GUNBC_TREE_SRC\}"
+  join([
+    spec.service.serve_binary as String, " run",
+    " --source-root ", src, "/dag",
+    " --source-root ", src, "/src/v2",
+    " --entry ", src, "/", convergence_placement_entry_path,
+    " --function ", convergence_placement_entry_function,
+    " --arg candidate=", candidate,
+    " --arg object_source=", src,
+    " --arg receipt=", receipt_path,
+  ], "")
+}
+
+// THE UNIT IS THE PLACEMENT. `User=` is the entire mechanism -- it is what makes the repository's
+// OWNER perform the transition -- and `EnvironmentFile=` is what carries the runner checkout path
+// into a process the runner did not fork.
+//
+// THE ENVIRONMENT FILE IS TREE-SYNC'S, DELIBERATELY AND WITH A NAMED CONSEQUENCE. GUNBC_TREE_SRC is
+// one fact -- where the deploy's checkout is -- and it already has one home, written by the deploy
+// at spec.names.tree_sync_env_path. Writing a second file would be a second representation of it
+// (DESIGN section 3). RESIDUE: that file is named for the sync this convergence replaces, so when
+// the binding change deletes the rsync legs the NAME becomes a nickname for a fact whose only
+// remaining consumer is this unit. Renaming it belongs to the change that deletes those legs,
+// because that change owns both ends; doing it here would rename a live production file out from
+// under a unit still using it.
+fn convergence_unit_doc(
+  spec: DeploymentSpec,
+  candidate: String,
+  receipt_path: String,
+) -> String {
+  let user = spec.service.service_user
+  serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [Description {
+      text: "gunbc deployed-repository git-native convergence (service-user principal, admitted binary, runner-checkout corpus)" as NonEmptyStr,
+    }],
+    service: [
+      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceUser { name: user },
+      ServiceGroup { name: user },
+      EnvironmentFile { path: spec.names.tree_sync_env_path },
+      ExecStart {
+        command: convergence_exec_start(
+          spec: spec,
+          candidate: candidate,
+          receipt_path: receipt_path,
+        ) as NonEmptyStr,
+      },
+    ],
+    install: NotInstallable,
+  })
+}
+
+// THE ENTRY POINT THE UNIT INVOKES, AND THE ORDER OF ITS TWO WALLS IS LOAD-BEARING.
+//
+// THE PRINCIPAL IS CHECKED FIRST, ahead of operand derivation, for the reason
+// live_deploy_wet_with_access checks its admission ahead of the candidate observation: a process
+// running as the wrong account is refusable without reference to what it was asked to do, and
+// deriving operands first would make the log read as though the operands were the problem.
+//
+// EVERY ARM WRITES A RECEIPT, INCLUDING THE ONES THAT NEVER TOUCH GIT. A refusal that left no file
+// is indistinguishable from a unit that never started, and those have different repairs -- one is a
+// misconfigured placement, the other a systemd failure. The deploy must be able to tell them apart,
+// so the refusals are REPORTED rather than merely exited.
+func placement_finish(receipt_path: String, receipt: ConvergencePlacementReceipt) -> ProcessExit {
+  let written = Filesystem.Write(
+    path: receipt_path,
+    content: placement_receipt_text(receipt: receipt),
+  )
+  if !written.success {
+    exit_failure(reason: join([
+      "could not write the convergence receipt to ", receipt_path, " (", written.error,
+      ") -- the transition's outcome cannot reach the deploy that ordered it, so it is reported as",
+      " a failure whatever the transition itself did: ", placement_receipt_line(receipt: receipt),
+    ], ""))
+  } else if placement_converged(receipt: receipt) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: placement_receipt_line(receipt: receipt))
+  }
+}
+
+// THE CONVERGENCE'S OWN OUTCOME IS CARRIED VERBATIM, NOT RE-DECODED, AND THAT IS A DECLARED LIMIT.
+//
+// repository_converge_wet returns ProcessExit; its eleven-arm RepositoryConvergenceOutcome is
+// consumed inside it by convergence_exit and does not cross the entry point. So this receipt is
+// TOTAL about the PLACEMENT -- which principal ran, against which operands, and whether the
+// transition converged -- and about the transition's cause it carries the adjudication's own
+// located prose as an opaque payload. It does not branch on that prose, which would be parsing
+// another module's diagnostics.
+//
+// RUNG: mitigatable for the transition cause, mechanically preventable for the placement.
+// NEXT-RUNG TRIGGER for the cause: an outcome-returning sibling of repository_converge_wet, at
+// which point this receipt carries the coproduct instead of the exit. That sibling belongs to the
+// module that owns the adjudication, not here.
+fn placement_receipt_of_convergence(
+  operands: ConvergencePlacementOperands,
+  exit: ProcessExit,
+) -> ConvergencePlacementReceipt {
+  match exit {
+    ExitSuccess =>
+      PlacementConverged { candidate: operands.candidate, repo: operands.repo }
+    ExitFailure { code: _, reason: why } =>
+      PlacementConvergenceRefused {
+        candidate: operands.candidate,
+        repo: operands.repo,
+        detail: why,
+      }
+  }
+}
+
+func placement_converge_with_operands(
+  receipt_path: String,
+  operands: ConvergencePlacementOperands,
+) -> ProcessExit {
+  placement_finish(
+    receipt_path: receipt_path,
+    receipt: placement_receipt_of_convergence(
+      operands: operands,
+      exit: repository_converge_wet(
+        repo: operands.repo,
+        remote: operands.remote,
+        base_ref: operands.base_ref,
+        candidate: operands.candidate,
+        primary_path: operands.primary_path,
+      ),
+    ),
+  )
+}
+
+func placement_converge_admitted(
+  spec: DeploymentSpec,
+  candidate: String,
+  object_source: String,
+  receipt_path: String,
+) -> ProcessExit {
+  match convergence_operands_for(
+    spec: spec,
+    candidate: candidate,
+    object_source: object_source,
+  ) {
+    ConvergenceOperandsRefused { reason: why } =>
+      placement_finish(
+        receipt_path: receipt_path,
+        receipt: PlacementOperandsRefused { reason: why },
+      )
+    ConvergenceOperandsAdmitted { operands: operands } =>
+      placement_converge_with_operands(receipt_path: receipt_path, operands: operands)
+  }
+}
+
+func placement_converge_for_spec(
+  spec: DeploymentSpec,
+  candidate: String,
+  object_source: String,
+  receipt_path: String,
+) -> ProcessExit {
+  match convergence_principal_admission(
+    expected: spec.service.service_user as String,
+    result: effective_posix_principal_observation(
+      outcome: effective_posix_principal_read(read: EffectivePosixPrincipalRead {}),
+    ),
+  ) {
+    ConvergencePrincipalMismatch { expected: e, observed: o } =>
+      placement_finish(
+        receipt_path: receipt_path,
+        receipt: PlacementWrongPrincipal { expected: e, observed: o },
+      )
+    ConvergencePrincipalUnobservable { reason: why } =>
+      placement_finish(
+        receipt_path: receipt_path,
+        receipt: PlacementPrincipalUnobservable { reason: why },
+      )
+    ConvergencePrincipalAdmitted { name: _ } =>
+      placement_converge_admitted(
+        spec: spec,
+        candidate: candidate,
+        object_source: object_source,
+        receipt_path: receipt_path,
+      )
+  }
+}
+
+// THE RECEIPT PATH IS AN ARGUMENT AND IS ALSO DERIVED, WHICH IS NOT A CONTRADICTION. The unit
+// renders it from the spec through convergence_receipt_path, so production never spells it; it
+// remains a parameter so the acceptance matrix can point one execution at a scratch location
+// without a second entry point that differs from the production one in any other way.
+func repository_converge_srv1_owner_wet(
+  candidate: String,
+  object_source: String,
+  receipt: String,
+) -> ProcessExit {
+  let spec = deployment_spec_srv1()
+  if trim(s: receipt) == "" {
+    exit_failure(reason: "--arg receipt=<path> is required -- the transition's outcome is written, not returned, because the deploy that ordered it runs in a different process")
+  } else {
+    placement_converge_for_spec(
+      spec: spec,
+      candidate: candidate,
+      object_source: object_source,
+      receipt_path: receipt,
+    )
+  }
+}
+
+// THE OTHER HALF OF THE READBACK: what the deploy runs after `systemctl start` returns. It is a
+// separate entry point rather than a step inside the apply pipeline because binding it into that
+// pipeline is the integration change this lane does not own.
+type ConvergenceReadback
+  = ConvergenceReadbackDecoded { receipt: ConvergencePlacementReceipt }
+  | ConvergenceReadbackRefused { cause: String }
+
+fn convergence_readback_holds(readback: ConvergenceReadback) -> Bool {
+  match readback {
+    ConvergenceReadbackDecoded { receipt: r } => placement_converged(receipt: r)
+    ConvergenceReadbackRefused { cause: _ } => false
+  }
+}
+
+fn convergence_readback_line(readback: ConvergenceReadback) -> String {
+  match readback {
+    ConvergenceReadbackDecoded { receipt: r } => placement_receipt_line(receipt: r)
+    ConvergenceReadbackRefused { cause: c } =>
+      join(["repository-convergence UNREPORTED -- ", c], "")
+  }
+}
+
+fn convergence_readback_of_text(text: String) -> ConvergenceReadback {
+  match decode_placement_receipt(text: text) {
+    PlacementReceiptDecoded { receipt: r } => ConvergenceReadbackDecoded { receipt: r }
+    PlacementReceiptUnreadable { cause: c } => ConvergenceReadbackRefused { cause: c }
+  }
+}
+
+func read_convergence_receipt(receipt_path: String) -> ConvergenceReadback {
+  let read = Filesystem.Read(path: receipt_path)
+  if !read.success {
+    ConvergenceReadbackRefused {
+      cause: placement_receipt_read_refusal(path: receipt_path, error: read.error),
+    }
+  } else {
+    convergence_readback_of_text(text: read.content)
+  }
+}
+
+// THE READBACK'S ENTRY POINT, WHICH IS WHAT MAKES THE RESULT REACH THE OUTER TRANSACTION. The deploy
+// runs this after `systemctl start` returns, and its ProcessExit is the transaction's answer about
+// the repository -- not systemd's answer about the unit's control process. The two differ in exactly
+// the cases that matter: a unit that started and then refused for a typed reason exits nonzero here
+// with that reason NAMED, and a unit that appeared to succeed while writing no receipt is refused
+// rather than assumed.
+func repository_convergence_readback_wet(receipt: String) -> ProcessExit {
+  if trim(s: receipt) == "" {
+    exit_failure(reason: "--arg receipt=<path> is required -- the readback has no subject without it")
+  } else {
+    let readback = read_convergence_receipt(receipt_path: receipt)
+    if convergence_readback_holds(readback: readback) {
+      ExitSuccess
+    } else {
+      exit_failure(reason: convergence_readback_line(readback: readback))
+    }
+  }
+}

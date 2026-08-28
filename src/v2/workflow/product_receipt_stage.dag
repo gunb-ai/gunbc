@@ -447,7 +447,7 @@ func product_receipt_tail(
         "--out-dir", candidate_dir,
         "--entry-dag", entry,
         "--root", root,
-        "--std-bridge-dir", "dag/tools/self_host_std_bridge_shims"
+        "--std-bridge-dir", "dag/gunbc/instruments/self_host_std_bridge_shims"
       ]
     )
     let assembled_read = Filesystem.Read(path: concat(candidate_dir, "/src/lib.rs"))

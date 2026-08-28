@@ -1,0 +1,255 @@
+module test.claim.fleet_runner_connectivity_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.fleet_runner_connectivity {
+  organization_runner_roster_evidence,
+  runner_slot_connectivity_verdict,
+  runner_slot_connectivity_verdict_for_incarnation,
+  connectivity_verdicts_for_active_incarnations,
+  connectivity_verdict_is_healthy,
+  connectivity_verdict_is_detached,
+  connectivity_verdict_is_orphaned,
+  connectivity_verdict_is_unknown,
+  roster_unavailable_yields_unknown_not_detached,
+  fleet_runner_capacity_width_snapshot,
+  fleet_runner_capacity_width_snapshot_from_roster,
+  fleet_achieved_runner_widths_from_roster,
+  local_runner_slot_incarnations,
+  runner_slot_incarnation,
+  incident_2026_08_06_registrations,
+  RosterObserved,
+  RosterObservedPartial,
+  RosterReadUnavailable,
+  OrganizationRunnerRosterEvidence,
+  organization_runner_roster_from_page,
+  AchievedWidthsObserved,
+  AchievedWidthsUnobserved,
+  SlotConnectivityHealthy,
+  SlotConnectivityDetached,
+  SlotConnectivityOrphaned,
+  SlotConnectivityUnknown,
+  FleetRunnerCapacityWidthSnapshot,
+}
+import extdeps.github.ci_runner {
+  GitHubRunnerOnline,
+  GitHubRunnerOffline,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data acceptance_corpus_note: String = "These rows pin the 2026-08-06 broker-session incident exactly. Fifteen registrations are offline, one is online and busy, and local systemd units stayed active throughout — the wedge shape PR B's repair loop must not misread as detached on a roster API blip."
+
+test fn srv1_01_is_healthy_while_busy() -> Bool {
+  match runner_slot_connectivity_verdict(
+    slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
+  ) {
+    SlotConnectivityHealthy { slot: _, registration_id: id } => id == 1
+    _ => false
+  }
+}
+
+test fn active_offline_registration_is_detached_not_healthy() -> Bool {
+  match runner_slot_connectivity_verdict(
+    slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 2 }
+  ) {
+    SlotConnectivityDetached { slot: _, registration_id: _ } => true
+    _ => false
+  }
+}
+
+test fn active_without_registration_is_orphaned() -> Bool {
+  match runner_slot_connectivity_verdict(
+    slot: RunnerSlotIdentity { host: operator_host_srv2, slot_index: 3 }
+  ) {
+    SlotConnectivityOrphaned { slot: _ } => true
+    _ => false
+  }
+    && match runner_slot_connectivity_verdict(
+      slot: RunnerSlotIdentity { host: operator_host_srv3, slot_index: 3 }
+    ) {
+      SlotConnectivityOrphaned { slot: _ } => true
+      _ => false
+    }
+}
+
+data roster_unavailable_is_unknown_not_detached_note: String = "THE FAIL-CLOSED ROW PR B'S SAFETY DEPENDS ON: a roster read failure must render UNKNOWN on every active slot, never detached. Zero-width achieved fields must stay unobserved rather than fabricated as zero registrations."
+
+test fn roster_unavailable_yields_unknown_on_every_active_slot() -> Bool {
+  let roster = RosterReadUnavailable { reason: "GitHub org runners API returned 503" }
+  roster_unavailable_yields_unknown_not_detached(roster: roster)
+    && all(
+      connectivity_verdicts_for_active_incarnations(roster: roster),
+      v => connectivity_verdict_is_unknown(v: v)
+    )
+}
+
+test fn roster_unavailable_does_not_fabricate_zero_achieved_widths() -> Bool {
+  let snapshot = fleet_runner_capacity_width_snapshot_from_roster(
+    roster: RosterReadUnavailable { reason: "GitHub org runners API returned 503" }
+  )
+  match snapshot.achieved {
+    AchievedWidthsUnobserved { reason: _ } => true
+    AchievedWidthsObserved { registered_width: _, connected_width: _, schedulable_width: _, executing_width: _ } => false
+  }
+}
+
+test fn incident_registered_sixteen_does_not_imply_connected_sixteen() -> Bool {
+  let snapshot = fleet_runner_capacity_width_snapshot()
+  match snapshot.achieved {
+    AchievedWidthsObserved {
+      registered_width: r,
+      connected_width: c,
+      schedulable_width: s,
+      executing_width: e,
+    } => r == 16 && c == 1 && s == 0 && e == 1 && r != c
+    AchievedWidthsUnobserved { reason: _ } => false
+  }
+}
+
+test fn desired_width_stays_twenty_two_while_connected_is_one() -> Bool {
+  let snapshot = fleet_runner_capacity_width_snapshot()
+  snapshot.desired_width == 22
+    && match snapshot.achieved {
+      AchievedWidthsObserved { registered_width: _, connected_width: c, schedulable_width: _, executing_width: _ } =>
+        c == 1
+      AchievedWidthsUnobserved { reason: _ } => false
+    }
+}
+
+test fn materialized_and_unit_active_widths_are_twenty_not_desired() -> Bool {
+  let snapshot = fleet_runner_capacity_width_snapshot()
+  snapshot.materialized_width == 20
+    && snapshot.unit_active_width == 20
+    && snapshot.desired_width > snapshot.materialized_width
+}
+
+test fn detached_count_matches_offline_registrations_on_active_slots() -> Bool {
+  let roster = organization_runner_roster_evidence()
+  let verdicts = connectivity_verdicts_for_active_incarnations(roster: roster)
+  count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_detached(v: v)) == 15
+}
+
+test fn healthy_count_is_one_and_orphaned_count_is_four() -> Bool {
+  let roster = organization_runner_roster_evidence()
+  let verdicts = connectivity_verdicts_for_active_incarnations(roster: roster)
+  count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_healthy(v: v)) == 1
+    && count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_orphaned(v: v)) == 4
+}
+
+test fn local_incarnation_observation_covers_twenty_active_units() -> Bool {
+  local_runner_slot_incarnations().length() == 20
+    && all(
+      local_runner_slot_incarnations(),
+      inc => inc.unit_active
+    )
+}
+
+test fn fleet_runner_connectivity_RED_orphaned_slot_must_not_read_detached() -> Bool {
+  match runner_slot_connectivity_verdict(
+    slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 3 }
+  ) {
+    SlotConnectivityOrphaned { slot: _ } => true
+    SlotConnectivityDetached { slot: _, registration_id: _ } => false
+    _ => false
+  }
+}
+
+fn count_matching(
+  verdicts: List<RunnerSlotConnectivityVerdict>,
+  matched: fn(RunnerSlotConnectivityVerdict) -> Bool,
+) -> Int {
+  fold(
+    verdicts,
+    init: 0,
+    f: (n, v) => if matched(v) { n + 1 } else { n }
+  )
+}
+
+
+// ---------------------------------------------------------------------------
+// TRUNCATED ROSTER: the discriminating pair for the paginated-read repair.
+//
+// The org runners API is paginated. Measured 2026-08-27T21:29Z: total_count 522
+// against a 100-row page. A read that SUCCEEDS is therefore not a read that saw
+// everything, and the defect this pair pins is that a slot missing from a PREFIX
+// was never observed to be missing -- rendering it Orphaned is the empty-observation
+// narrow, and Orphaned is what maps to a restart at
+// gunbc.runner_capacity_plan connectivity_replace_action.
+//
+// THE PAIR IS THE POINT. The RED arm alone would also pass if Orphaned had simply
+// been disabled everywhere, so the complete-roster control is what makes it
+// discriminating rather than merely green.
+
+// BOTH FIXTURES DERIVE THEIR TOTAL FROM THE SPECIMEN, so neither can silently change meaning when
+// a registration row is added. A hand-written total would make "partial" and "complete" facts about
+// a literal someone remembered to update rather than facts about the pair.
+fn truncated_incident_roster() -> OrganizationRunnerRosterEvidence {
+  organization_runner_roster_from_page(
+    observed_on: "2026-08-27" as NonEmptyStr,
+    registrations: incident_2026_08_06_registrations,
+    authority_total: incident_2026_08_06_registrations.length() + 1,
+  )
+}
+
+fn complete_incident_roster() -> OrganizationRunnerRosterEvidence {
+  organization_runner_roster_from_page(
+    observed_on: "2026-08-27" as NonEmptyStr,
+    registrations: incident_2026_08_06_registrations,
+    authority_total: incident_2026_08_06_registrations.length(),
+  )
+}
+
+// NO TRANSCRIBED COUNT. Asserting the specimen list's current length would pin a literal measured
+// from the tree it is testing (DESIGN section 5 on oracles) and would rot the next time a
+// registration row is added. The property under test is the RELATION: a page smaller than the
+// authority's own total is partial, whatever either number happens to be.
+test fn prefix_below_authority_total_is_partial() -> Bool {
+  match truncated_incident_roster() {
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: seen, authority_total: total } =>
+      seen < total
+    _ => false
+  }
+}
+
+test fn page_equal_to_authority_total_is_complete() -> Bool {
+  match complete_incident_roster() {
+    RosterObserved { observed_on: _, registrations: _ } => true
+    _ => false
+  }
+}
+
+// THE RED. Before the repair every unseen slot rendered Orphaned here.
+test fn truncated_roster_never_orphans_an_unseen_slot() -> Bool {
+  all(
+    connectivity_verdicts_for_active_incarnations(roster: truncated_incident_roster()),
+    v => !connectivity_verdict_is_orphaned(v: v)
+  )
+}
+
+// THE POSITIVE CONTROL. The required refusal must SURVIVE the repair: over a roster
+// the authority itself calls complete, a slot with no registration is genuinely gone
+// and must still be Orphaned. If this arm ever goes green-by-absence the RED above
+// has stopped discriminating.
+test fn complete_roster_still_orphans_an_unseen_slot() -> Bool {
+  !all(
+    connectivity_verdicts_for_active_incarnations(roster: complete_incident_roster()),
+    v => !connectivity_verdict_is_orphaned(v: v)
+  )
+}
+
+// PER-QUESTION, NOT PER-ROSTER. A truncated read still answers exactly about every
+// slot INSIDE the prefix; refusing the whole roster would be a widen that stops
+// reconciliation on hosts the read covered perfectly well.
+test fn truncated_roster_still_answers_slots_inside_the_prefix() -> Bool {
+  !all(
+    connectivity_verdicts_for_active_incarnations(roster: truncated_incident_roster()),
+    v => connectivity_verdict_is_unknown(v: v)
+  )
+}
