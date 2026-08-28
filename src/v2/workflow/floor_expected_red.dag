@@ -833,8 +833,8 @@ fn floor_expected_red_chunk_23() -> List<String> {
 //      root and `dag_add_target_model`. Infer accepts; the composition refuses; the reason is the
 //      frontier's own.
 //
-//      AND NO REPAIR TO THE GATE ALONE WOULD GREEN THIS ROW, which is why the trigger below names
-//      a derivation rule rather than a gate change: `inferred_facts_not_derived` returns the
+//      AND NO REPAIR TO THE GATE ALONE WOULD GREEN THIS ROW, which is why a reader must not read
+//      the refusal as locating the work in translate: `inferred_facts_not_derived` returns the
 //      frontier diagnostic on infer's ACCEPTED path, so even an accepting translate would leave
 //      the witness's `d == None` conjunct false. Both conjuncts fail for the one cause.
 //
@@ -849,12 +849,15 @@ fn floor_expected_red_chunk_23() -> List<String> {
 //      the honest repair is a derivation rule for the kinds the slice uses, which is v2
 //      self-host lane work and not a witness edit.
 //
-//   4. REMOVAL TRIGGER, and it is not minted here: it is the one the repository already filed.
-//      `gunbc.guarantee_rung_drop` `self_host_candidate_generation_add_slice_stall` carries this
-//      exact identity as its bounded population, `ClimbableButUnbuilt`, with the trigger
-//      "candidate generation, translation, and self-emission agree on the add slice". This row
-//      is that stall's executing consumer: when the derivation lands the witness passes, stale
-//      quarantine reds the build naming this row, and both delete together.
+//   4. REMOVAL TRIGGER, WHICH IS NOT RESTATED HERE AND DELIBERATELY SO. It is already modeled,
+//      with its population, blocker and trigger text, in `gunbc.guarantee_rung_drop`
+//      `self_host_candidate_generation_add_slice_stall`. Copying those fields into this comment
+//      would fork that authority into a prose second representation that drifts on its own
+//      (DESIGN 2/3, and 4c's rule that an annotation must not restate what a declaration says),
+//      and no `Accepted` program can read a comment, so the copy could never be the thing that
+//      is checked. What this roster owns, and all it states, is the RELATION: this row is that
+//      stall's executing consumer, so when the stall's trigger is met the witness passes, stale
+//      quarantine reds the build naming this row, and the two delete together.
 //
 // HOW IT CAME TO BE RED ON MAIN WITH NO ENROLMENT, because that is a fact about this mechanism
 // and not only about this row. The identity was `DeclinedLiveTree` -- discovered, counted, never
