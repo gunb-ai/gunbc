@@ -713,6 +713,25 @@ test fn an_exact_and_a_remeasurement_registration_sharing_an_id_refuse() -> Bool
     remeasure_registration(identity: "cut-same"),
   ]))
   registry_includes(causes: causes, tag: "duplicate-id", subject: "cut-same")
+    && list_length(items: causes) == 1
+}
+
+// THE COUNT IS THE ASSERTION HERE, and it is enrolled because it was wrong before review caught it:
+// the fold used to re-fire for every occurrence of a duplicated id, so three registrations sharing
+// one identity produced three causes for one defect. `registry_includes` passed either way, which is
+// exactly why a membership-only witness could not see it. One duplicated identity is one defect no
+// matter how many rows carry it, so N rows yield N-1 causes and never N.
+test fn a_duplicated_identity_yields_one_cause_per_extra_row_not_one_per_row() -> Bool {
+  let two = registry_causes(standing: admit_cut_registry(rs: [
+    registration_admitting_cut(identity: "cut-dup", parent: OutermostBoundary),
+    remeasure_registration(identity: "cut-dup"),
+  ]))
+  let three = registry_causes(standing: admit_cut_registry(rs: [
+    registration_admitting_cut(identity: "cut-dup", parent: OutermostBoundary),
+    remeasure_registration(identity: "cut-dup"),
+    remeasure_registration(identity: "cut-dup"),
+  ]))
+  list_length(items: two) == 1 && list_length(items: three) == 2
 }
 
 // DescentParentUnauthored stays truthful while no exact parent exists: it names a boundary and

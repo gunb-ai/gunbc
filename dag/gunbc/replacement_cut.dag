@@ -665,12 +665,6 @@ fn registration_is_exact(r: CutRegistration) -> Bool {
   }
 }
 
-fn registry_id_occurrences(rs: List<CutRegistration>, target: ReplacementCutId) -> Int {
-  fold(rs, init: 0, f: fn(acc, r) {
-    if cut_id_eq(a: registration_identity(r: r), b: target) { acc + 1 } else { acc }
-  })
-}
-
 // Resolution is THREE-WAY on purpose: absent, present-but-only-as-a-survey, present-and-exact.
 // A two-way answer would force the middle case into one of the outer two, and both readings are
 // wrong -- absent understates what is known, exact overstates it.
@@ -696,20 +690,38 @@ fn resolve_parent(rs: List<CutRegistration>, target: ReplacementCutId) -> Parent
   })
 }
 
+fn cut_id_seen(xs: List<ReplacementCutId>, x: ReplacementCutId) -> Bool {
+  fold(xs, init: false, f: fn(acc, item) { acc || cut_id_eq(a: item, b: x) })
+}
+
+type RegistryDupState { seen: List<ReplacementCutId>, causes: List<CutRegistryRefusalCause> }
+
+// ONE CAUSE PER DUPLICATED IDENTITY, not one per occurrence. The seen-list idiom is the same one
+// consumer_duplicate_causes already uses, and matching it is not tidiness: a fold that re-fires for
+// every occurrence emits N causes for one defect, so the moment a count becomes load-bearing -- and
+// DESIGN §5 requires degradations to be COUNTABLE -- the number would report the roster's shape
+// rather than the population of defects.
 fn registry_duplicate_causes(
   acc: List<CutRegistryRefusalCause>,
   rs: List<CutRegistration>,
 ) -> List<CutRegistryRefusalCause> {
-  fold(
+  let end_state = fold(
     rs,
-    init: acc,
-    f: fn(inner, r) {
-      match registry_id_occurrences(rs: rs, target: registration_identity(r: r)) > 1 {
-        true => Cons { head: RegistryDuplicateCutId { identity: registration_identity(r: r) }, tail: inner }
-        false => inner
+    init: RegistryDupState { seen: [], causes: acc },
+    f: fn(state, r) {
+      match cut_id_seen(xs: state.seen, x: registration_identity(r: r)) {
+        true => RegistryDupState {
+          seen: state.seen,
+          causes: Cons { head: RegistryDuplicateCutId { identity: registration_identity(r: r) }, tail: state.causes },
+        }
+        false => RegistryDupState {
+          seen: Cons { head: registration_identity(r: r), tail: state.seen },
+          causes: state.causes,
+        }
       }
     },
   )
+  end_state.causes
 }
 
 fn registry_parent_causes(
