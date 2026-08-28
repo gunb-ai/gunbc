@@ -238,27 +238,52 @@ type PrIdentityDirection {
   direction: NetDirection
 }
 
-fn string_list_holds(xs: List<String>, wanted: String) -> Bool {
-  filter(xs, x => x == wanted).length() > 0
+type UniqueStringFold {
+  seen: Map<String, Bool>
+  out: List<String>
+}
+
+// KEYED MEMBERSHIP, NOT A LINEAR RESCAN. The first cut rescanned the accumulated list on
+// every element, which is the same quadratic shape as the copied accumulator
+// this file already repaired one function down -- and DESIGN's bare-minimum-cost rule is explicit
+// that a proven cost-shape defect is fixed regardless of the realized n, because "n is small here"
+// is not a time-stable fact. First-seen ORDER is preserved deliberately: the report's rows are read
+// by people and diffed between runs, and `map_keys` alone would make row order a property of the
+// map's internals rather than of the input.
+fn unique_string_step(acc: UniqueStringFold, x: String) -> UniqueStringFold {
+  if map_contains_key(acc.seen, x) {
+    acc
+  } else {
+    UniqueStringFold { seen: map_insert(acc.seen, x, true), out: acc.out |> list_push(x) }
+  }
 }
 
 fn unique_strings(xs: List<String>) -> List<String> {
   fold(
     xs,
-    init: [],
-    f: (acc, x) => if string_list_holds(xs: acc, wanted: x) { acc } else { acc |> list_push(x) }
-  )
+    init: UniqueStringFold { seen: empty_map(), out: [] },
+    f: (acc, x) => unique_string_step(acc: acc, x: x)
+  ).out
+}
+
+// THE TWO MEMBERSHIP SETS ARE BUILT ONCE, for the reason `unique_strings` states above: asking a
+// list per key is the quadratic shape again, one level in, and the largest pull request in the live
+// population carries 154 keys against 1274 changed lines.
+fn string_membership(xs: List<String>) -> Map<String, Bool> {
+  fold(xs, init: empty_map(), f: (acc, x) => map_insert(acc, x, true))
 }
 
 fn pr_identity_directions(pull_number: Int, changed: ChangedIdentities) -> List<PrIdentityDirection> {
+  let added = string_membership(xs: changed.added)
+  let removed = string_membership(xs: changed.removed)
   map(
     unique_strings(xs: append(changed.added, items: changed.removed)),
     key => PrIdentityDirection {
       pull_number: pull_number,
       identity: key,
       direction: net_direction(
-        in_added: string_list_holds(xs: changed.added, wanted: key),
-        in_removed: string_list_holds(xs: changed.removed, wanted: key)
+        in_added: map_contains_key(added, key),
+        in_removed: map_contains_key(removed, key)
       )
     }
   )
@@ -421,26 +446,132 @@ fn cross_pr_contradictions(observations: List<PrDiffObservation>) -> List<KeyDir
 }
 
 // ---------------------------------------------------------------------------------------------
+// THE MAIN-RELATIVE FACT, WHICH IS A DIFFERENT FACT FROM THE DIRECTION.
+//
+// A net direction is computed against the pull request's OWN merge base, so `net-ADD` conflates two
+// statements with opposite remedies: ADDS SOMETHING MAIN LACKS, which is a proposal, and ADDS
+// SOMETHING MAIN ALREADY HAS, which is a stale branch re-adding what a newer pull request
+// deliberately removes. The first wants adjudication -- read both lanes, decide who is right. The
+// second wants a REBASE, and one rebase settles every key on that branch at once. Reporting them
+// under one word turns one stale base into N conversations.
+//
+// So the presence of the key on the merge target is carried as its own observed fact, with a third
+// arm for the observation that could not be made. `AbsentFromMain` and `MainPresenceUnobserved` are
+// deliberately different values: a lookup that failed is not evidence of absence, and collapsing
+// them would let an unreadable revision promote every key to "main lacks this".
+type MainPresence
+  = PresentOnMain
+  | AbsentFromMain
+  | MainPresenceUnobserved { detail: String }
+
+type KeyMainPresence {
+  identity: String
+  presence: MainPresence
+}
+
+// WHAT THE STANDING IS, AND WHY THERE IS NO `GenuineDisagreement` ARM.
+//
+// The obvious third arm -- both sides disagreeing with main -- has NO AUTHORABLE INPUT and is
+// therefore not written. Main's state at key grain is binary: either the key is there or it is not.
+// If it is there, the net-ADD proposes what main already carries; if it is not, the net-DELETE
+// removes what main already lacks. One side is always the stale one, so a contradiction under this
+// observation is ALWAYS a staleness signature and the only open question is WHICH SIDE. Minting an
+// arm no input can produce would be a decoration cited as coverage (DESIGN 4b) -- worse than
+// absent, because a reader would take its emptiness as evidence that no genuine disagreements
+// exist rather than as evidence that the arm cannot fire.
+//
+// WHAT THIS DOES NOT ESTABLISH, and the limit is real rather than a hedge. The standing is computed
+// at KEY grain, not at ROW grain: it says the merge target contains this identity somewhere, not
+// that it contains the same roster row in the same file. A pull request that adds a quoted identity
+// in a NEW context, while another removes it from a roster, will read as `AddSideMatchesMain` and
+// the adder is not in fact redundant. The standing names which side to LOOK at first; the file-grain
+// check that settles it is a human reading two diffs.
+type ContradictionStanding
+  = AddSideMatchesMain
+  | DeleteSideMatchesMain
+  | StandingUndecided
+
+fn contradiction_standing(presence: MainPresence) -> ContradictionStanding {
+  match presence {
+    PresentOnMain => AddSideMatchesMain
+    AbsentFromMain => DeleteSideMatchesMain
+    MainPresenceUnobserved { detail: _ } => StandingUndecided
+  }
+}
+
+fn contradiction_standing_text(standing: ContradictionStanding) -> String {
+  match standing {
+    AddSideMatchesMain =>
+      "STALE-BASE(add) — the merge target already carries this key, so the net-add is re-adding what a newer pull request removes on purpose; rebase the adding branch"
+    DeleteSideMatchesMain =>
+      "STALE-BASE(delete) — the merge target already lacks this key, so the net-delete removes what main does not have; rebase the deleting branch"
+    StandingUndecided =>
+      "UNDECIDED — the merge target could not be read for this key, so which side is stale is unknown"
+  }
+}
+
+fn main_presence_for(presences: List<KeyMainPresence>, identity: String) -> MainPresence {
+  match get(xs: filter(presences, p => p.identity == identity), index: 0) {
+    Present { value: found } => found.presence
+    Absent =>
+      MainPresenceUnobserved {
+        detail: "no merge-target lookup was supplied for this key"
+      }
+  }
+}
+
+type ContradictionRow {
+  key: KeyDirections
+  presence: MainPresence
+  standing: ContradictionStanding
+}
+
+fn contradiction_row(key: KeyDirections, presences: List<KeyMainPresence>) -> ContradictionRow {
+  let presence = main_presence_for(presences: presences, identity: key.identity)
+  ContradictionRow {
+    key: key,
+    presence: presence,
+    standing: contradiction_standing(presence: presence)
+  }
+}
+
+fn contradiction_row_is_undecided(row: ContradictionRow) -> Bool {
+  match row.standing {
+    StandingUndecided => true
+    AddSideMatchesMain => false
+    DeleteSideMatchesMain => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // THE REPORT.
 
 type ContradictionReport {
   file_scope: DiffFileScope
   extraction: IdentityExtractionRule
   observations: List<PrDiffObservation>
-  contradictions: List<KeyDirections>
+  contradictions: List<ContradictionRow>
 }
 
 fn contradiction_report(
   file_scope: DiffFileScope,
   extraction: IdentityExtractionRule,
-  observations: List<PrDiffObservation>
+  observations: List<PrDiffObservation>,
+  presences: List<KeyMainPresence>
 ) -> ContradictionReport {
   ContradictionReport {
     file_scope: file_scope,
     extraction: extraction,
     observations: observations,
-    contradictions: cross_pr_contradictions(observations: observations)
+    contradictions: map(
+      cross_pr_contradictions(observations: observations),
+      key => contradiction_row(key: key, presences: presences)
+    )
   }
+}
+
+fn report_undecided(report: ContradictionReport) -> List<ContradictionRow> {
+  filter(report.contradictions, row => contradiction_row_is_undecided(row: row))
 }
 
 fn report_unobserved(report: ContradictionReport) -> List<PrDiffObservation> {
@@ -452,8 +583,11 @@ fn report_unobserved(report: ContradictionReport) -> List<PrDiffObservation> {
 // that the ones it names are all of them. So this is asked and rendered separately from the
 // contradiction list, and the entry point's exit status is bound to THIS rather than to whether
 // anything was found.
+// A CONTRADICTION WHOSE SIDE COULD NOT BE DECIDED IS ALSO AN INCOMPLETE OBSERVATION, and it counts
+// here for the same reason an unread pull request does: the report would otherwise present a row
+// naming no action as if it named one.
 fn report_is_complete(report: ContradictionReport) -> Bool {
-  report_unobserved(report: report).length() == 0
+  report_unobserved(report: report).length() == 0 && report_undecided(report: report).length() == 0
 }
 
 fn int_list_text(xs: List<Int>) -> String {
@@ -462,6 +596,13 @@ fn int_list_text(xs: List<Int>) -> String {
   } else {
     join(map(xs, n => to_string(n)), ",")
   }
+}
+
+fn contradiction_row_text(row: ContradictionRow) -> String {
+  concat(
+    concat(key_directions_row(key: row.key), "\tstanding\t"),
+    contradiction_standing_text(standing: row.standing)
+  )
 }
 
 fn key_directions_row(key: KeyDirections) -> String {
@@ -516,9 +657,10 @@ fn contradiction_report_rows(report: ContradictionReport) -> List<String> {
         concat("extraction\t", identity_extraction_rule_text(rule: report.extraction)),
         concat("pull_requests\t", to_string(report.observations.length())),
         concat("unobserved\t", to_string(report_unobserved(report: report).length())),
+        concat("undecided\t", to_string(report_undecided(report: report).length())),
         concat("contradictions\t", to_string(report.contradictions.length()))
       ],
-      items: map(report.contradictions, key => key_directions_row(key: key))
+      items: map(report.contradictions, row => contradiction_row_text(row: row))
     ),
     items: map(report.observations, o => observation_row(observation: o))
   )

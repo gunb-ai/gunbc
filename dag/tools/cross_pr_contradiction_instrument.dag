@@ -26,6 +26,12 @@ import gunbc.cross_pr_contradiction {
   changed_identities,
   pr_identity_directions,
   contradiction_report,
+  cross_pr_contradictions,
+  KeyMainPresence,
+  MainPresence,
+  PresentOnMain,
+  AbsentFromMain,
+  MainPresenceUnobserved,
   contradiction_report_text,
   report_is_complete,
   report_unobserved,
@@ -262,6 +268,32 @@ fn observe_pull_request(
   }
 }
 
+// THE MERGE TARGET IS ASKED ONLY ABOUT THE KEYS THAT ALREADY CONTRADICT, which is why this is a
+// per-key lookup rather than a corpus index. The contradiction set is small -- single digits on the
+// live population -- while the added-key set across every open pull request is hundreds, and the
+// standing is only meaningful for a key that already has an adding side and a deleting side.
+//
+// git grep's exit code IS the answer here and the three codes are kept apart: 0 is a match, 1 is a
+// revision that genuinely does not contain the pattern, and anything else is a lookup that did not
+// happen. Reading `exit_success` alone would render the third as the second.
+fn observe_main_presence(base: String, identity: String) -> MainPresence {
+  let found = git.Inspect.GrepFixedAtRevision(pattern: identity, ref: base as GitRef)
+  if found.exit_code == 0 {
+    PresentOnMain
+  } else {
+    if found.exit_code == 1 {
+      AbsentFromMain
+    } else {
+      MainPresenceUnobserved {
+        detail: concat(
+          concat("git grep at ", base),
+          concat(" exited ", concat(to_string(found.exit_code), concat(": ", found.stderr)))
+        )
+      }
+    }
+  }
+}
+
 fn scan_open_pull_requests(repo: String, base: String, repository_path: String) -> CrossPrScan {
   let fetched = git.Core.FetchPrune(remote: "origin")
   if !fetched.success {
@@ -277,22 +309,31 @@ fn scan_open_pull_requests(repo: String, base: String, repository_path: String) 
     } else {
       match pull_request_rows(listing: listing.stdout) {
         PullRequestRowsUnreadable { detail: detail } => CrossPrListingUnreadable { detail: detail }
-        PullRequestRowsParsed { rows: rows } =>
+        PullRequestRowsParsed { rows: rows } => {
+          let observations = map(
+            rows,
+            row => observe_pull_request(
+              base: base,
+              repository_path: repository_path,
+              extraction: cross_pr_extraction_rule,
+              row: row
+            )
+          )
           CrossPrScanned {
             report: contradiction_report(
               file_scope: EveryFileInDiff,
               extraction: cross_pr_extraction_rule,
-              observations: map(
-                rows,
-                row => observe_pull_request(
-                  base: base,
-                  repository_path: repository_path,
-                  extraction: cross_pr_extraction_rule,
-                  row: row
-                )
+              observations: observations,
+              presences: map(
+                cross_pr_contradictions(observations: observations),
+                key => KeyMainPresence {
+                  identity: key.identity,
+                  presence: observe_main_presence(base: base, identity: key.identity)
+                }
               )
             )
           }
+        }
       }
     }
   }

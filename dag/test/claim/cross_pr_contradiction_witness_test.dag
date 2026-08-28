@@ -29,7 +29,21 @@ import gunbc.cross_pr_contradiction {
   net_direction_text,
   line_identity_keys,
   cross_pr_contradictions,
+  ContradictionReport,
   contradiction_report,
+  cross_pr_contradictions,
+  KeyMainPresence,
+  PresentOnMain,
+  AbsentFromMain,
+  MainPresenceUnobserved,
+  AddSideMatchesMain,
+  DeleteSideMatchesMain,
+  StandingUndecided,
+  contradiction_standing,
+  ContradictionStanding,
+  ContradictionRow,
+  MainPresence,
+  report_undecided,
   contradiction_report_text,
   report_is_complete,
   report_unobserved,
@@ -123,12 +137,14 @@ test fn unread_pull_request_and_contentless_one_are_different_states() -> Bool {
   let derived = contradiction_report(
     file_scope: EveryFileInDiff,
     extraction: cross_pr_extraction_rule,
-    observations: [PrDiffEmptyDerived { pull_number: 1, head_oid: "oid-1" }]
+    observations: [PrDiffEmptyDerived { pull_number: 1, head_oid: "oid-1" }],
+    presences: []
   )
   let corroborated = contradiction_report(
     file_scope: EveryFileInDiff,
     extraction: cross_pr_extraction_rule,
-    observations: [PrDiffEmptyCorroborated { pull_number: 3, head_oid: "oid-3" }]
+    observations: [PrDiffEmptyCorroborated { pull_number: 3, head_oid: "oid-3" }],
+    presences: []
   )
   let unread = contradiction_report(
     file_scope: EveryFileInDiff,
@@ -138,7 +154,8 @@ test fn unread_pull_request_and_contentless_one_are_different_states() -> Bool {
         pull_number: 2,
         cause: DiffEmptyUnderived { head_oid: "oid-2", forge_changed_files: 4 }
       }
-    ]
+    ],
+    presences: []
   )
   report_is_complete(report: derived)
     && report_is_complete(report: corroborated)
@@ -161,7 +178,8 @@ test fn a_forge_disagreement_over_an_empty_diff_is_not_an_observation() -> Bool 
         pull_number: 7,
         cause: DiffEmptyUnderived { head_oid: "oid-7", forge_changed_files: 12 }
       }
-    ]
+    ],
+    presences: []
   )
   !report_is_complete(report: disagreement)
     && string_contains(
@@ -180,7 +198,8 @@ test fn stale_head_ref_is_unobserved() -> Bool {
         pull_number: 3,
         cause: HeadRefStale { ref_name: "origin/session/x", expected_oid: "aaa", local_oid: "bbb" }
       }
-    ]
+    ],
+    presences: []
   )
   !report_is_complete(report: report) && report_unobserved(report: report).length() == 1
 }
@@ -228,9 +247,100 @@ test fn report_states_its_file_scope_and_extraction_rule() -> Bool {
     report: contradiction_report(
       file_scope: EveryFileInDiff,
       extraction: cross_pr_extraction_rule,
-      observations: [observation_of(pull_number: 9569, diff: pr_9569_diff)]
+      observations: [observation_of(pull_number: 9569, diff: pr_9569_diff)],
+      presences: []
     )
   )
   string_contains(s: text, pattern: "file_scope\tevery file in every diff (unfiltered)")
     && string_contains(s: text, pattern: "extraction\tdouble-quoted dotted name of at least 3 segments")
+}
+
+fn nine_five_six_nine_against_nine_five_eight_nine() -> List<PrDiffObservation> {
+  [
+    observation_of(pull_number: 9569, diff: pr_9569_diff),
+    observation_of(pull_number: 9589, diff: pr_9589_diff)
+  ]
+}
+
+fn duplicate_definition_key() -> String {
+  "test.claim.duplicate_definition_binding_probe.duplicate_definition_in_one_module_is_refused"
+}
+
+fn report_with_presence(presence: MainPresence) -> ContradictionReport {
+  contradiction_report(
+    file_scope: EveryFileInDiff,
+    extraction: cross_pr_extraction_rule,
+    observations: nine_five_six_nine_against_nine_five_eight_nine(),
+    presences: [KeyMainPresence { identity: duplicate_definition_key(), presence: presence }]
+  )
+}
+
+fn only_standing(report: ContradictionReport) -> ContradictionStanding {
+  match get(xs: report.contradictions, index: 0) {
+    Absent => StandingUndecided
+    Present { value: row } => row.standing
+  }
+}
+
+// THE SAME CONTRADICTION, THE SAME TWO PULL REQUESTS, TWO DIFFERENT REMEDIES. The net direction is
+// computed against each branch's own merge base and cannot tell a proposal from a stale re-add; the
+// merge target decides it. Both arms are asserted here because one alone would pass over a standing
+// that always answered the same way.
+test fn the_merge_target_decides_which_side_is_stale() -> Bool {
+  let present = report_with_presence(presence: PresentOnMain)
+  let absent = report_with_presence(presence: AbsentFromMain)
+  match only_standing(report: present) {
+    AddSideMatchesMain => true
+    DeleteSideMatchesMain => false
+    StandingUndecided => false
+  }
+    && match only_standing(report: absent) {
+         DeleteSideMatchesMain => true
+         AddSideMatchesMain => false
+         StandingUndecided => false
+       }
+    && report_is_complete(report: present)
+    && report_is_complete(report: absent)
+}
+
+// A LOOKUP THAT DID NOT HAPPEN IS NOT AN ANSWER, one level in from the empty-diff pair above. A
+// contradiction whose side is undecided names no action, so the report is incomplete and says so
+// rather than presenting the row as if it did.
+test fn an_undecided_standing_makes_the_report_incomplete() -> Bool {
+  let unobserved = report_with_presence(
+    presence: MainPresenceUnobserved { detail: "the merge target could not be read" }
+  )
+  match only_standing(report: unobserved) {
+    StandingUndecided => true
+    AddSideMatchesMain => false
+    DeleteSideMatchesMain => false
+  }
+    && !report_is_complete(report: unobserved)
+    && report_undecided(report: unobserved).length() == 1
+}
+
+// A CONTRADICTION WITH NO LOOKUP SUPPLIED AT ALL FAILS CLOSED, rather than defaulting to either
+// side. This is the arm an instrument reaches when it forgets to ask, and it must not be the arm
+// that quietly reports a remedy.
+test fn a_missing_lookup_is_undecided_not_absent() -> Bool {
+  let no_lookup = contradiction_report(
+    file_scope: EveryFileInDiff,
+    extraction: cross_pr_extraction_rule,
+    observations: nine_five_six_nine_against_nine_five_eight_nine(),
+    presences: []
+  )
+  no_lookup.contradictions.length() == 1
+    && !report_is_complete(report: no_lookup)
+    && string_contains(s: contradiction_report_text(report: no_lookup), pattern: "UNDECIDED")
+}
+
+// THE STANDING TRAVELS ON THE ROW, beside the net-add and net-delete lists that justify it. A
+// reader who gets the identity without the remedy has to re-derive the remedy, and the whole point
+// of the distinction is that it names an action.
+test fn the_report_row_carries_the_standing_beside_the_directions() -> Bool {
+  let text = contradiction_report_text(report: report_with_presence(presence: PresentOnMain))
+  string_contains(s: text, pattern: "net_add\t9569")
+    && string_contains(s: text, pattern: "net_delete\t9589")
+    && string_contains(s: text, pattern: "standing\tSTALE-BASE(add)")
+    && string_contains(s: text, pattern: "undecided\t0")
 }
