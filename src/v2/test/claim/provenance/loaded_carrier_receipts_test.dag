@@ -1,0 +1,293 @@
+module v2.test.claim.provenance.loaded_carrier_receipts
+
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  qualified_name_from_module_node
+}
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.symbol_index {
+  GlobalBareHit,
+  GlobalBareLookupAmbiguous,
+  GlobalBareLookupUnbound,
+  SymbolIndex,
+  empty_symbol_index,
+  symbol_index_global_unique_lookup,
+  symbol_index_lookup
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// MEASURED RECEIPTS ABOUT THE LOADED CARRIER, authored as executing rows rather
+// than prose because every one of them was established by running the compiler
+// and every one is the kind of fact that gets rediscovered expensively.
+//
+// EVERY ROW HERE NAMES ITS TREE AND ITS CONDITIONS, and that is not housekeeping.
+// The subject is INLINE, IMPORT-FREE source assembled through
+// module_roots_from_source_root_ingest, with resolution asked of the SYMBOL INDEX
+// ALONE. That is deliberately NOT how an ordinary main-tree compilation answers a
+// name: resolve_atom consults lookup_chain -- scope frames, then the module
+// bindings build_program_namespace populates from the assembled tree's atoms --
+// and reaches the index ONLY on Absent. So a receipt below that reads as a
+// statement about main would be false, and the first draft of receipt 2 was
+// written that way. A measurement whose tree and conditions are unstated is not a
+// fact about anything.
+//
+// These rows describe the carrier the cross-file-provenance lane has to consume.
+// They are deliberately INDEPENDENT of where resolution provenance ends up being
+// emitted: each states a property of an ordinary loaded compilation, so none of
+// them is invalidated by that decision.
+//
+// TWO OF THE THREE RECORD A DEFECT, AND THEY ARE WRITTEN TO GO RED WHEN IT IS
+// FIXED. They assert the state as measured today, which means the row FAILS on
+// the day the underlying repair lands. That is intended and it is the whole
+// value: the repair's author gets a located, named row telling them what changed
+// and what to re-state, instead of the fact silently ceasing to be true. Each
+// such row carries its inversion instruction. They are ordinary greens today, so
+// no expected-red admission is involved.
+
+data lcr_producer_text: String = "module lcr.producer\ntype CrossFileMarker { x: Int }\nfn producer_anchor() -> Int {\n  1\n}\n"
+
+data lcr_consumer_text: String = "module lcr.consumer\nimport lcr.producer { CrossFileMarker, producer_anchor }\nfn use_it(m: CrossFileMarker) -> Int {\n  producer_anchor()\n}\n"
+
+data lcr_producer_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(dotted: "lcr.producer")
+
+data lcr_consumer_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(dotted: "lcr.consumer")
+
+fn lcr_read(text: String, path: String, unit: Symbol) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: text, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: unit, file_path: path },
+    compilation_unit: unit,
+    source_root: V2Tree
+  }
+}
+
+data lcr_ingest: SourceRootIngest = Cons {
+  head: lcr_read(text: lcr_producer_text, path: "src/v2/test/fixture/provenance/lcr_producer.dag", unit: ^lcr_producer_unit),
+  tail: Cons {
+    head: lcr_read(text: lcr_consumer_text, path: "src/v2/test/fixture/provenance/lcr_consumer.dag", unit: ^lcr_consumer_unit),
+    tail: Empty
+  }
+}
+
+fn lcr_loaded_roots() -> FreeMonoid<NormalizedTree> {
+  match module_roots_from_source_root_ingest(ingest: lcr_ingest, lm: dag_language_model()) {
+    Accepted { value: roots, diagnostics: _ } => roots
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+fn lcr_root_nodes_step(acc: FreeMonoid<Node>, tree: NormalizedTree) -> FreeMonoid<Node> {
+  list_snoc_item(xs: acc, item: tree.root)
+}
+
+fn lcr_root_nodes() -> FreeMonoid<Node> {
+  fold_list(
+    xs: lcr_loaded_roots(),
+    empty: Empty,
+    cons: fn(acc, tree) { lcr_root_nodes_step(acc: acc, tree: tree) }
+  )
+}
+
+fn lcr_index() -> SymbolIndex {
+  symbol_index_fill_module_roots(index: empty_symbol_index(), roots: lcr_root_nodes())
+}
+
+fn lcr_root_named_step(acc: FreeMonoid<Node>, root: Node, wanted: QualifiedName) -> FreeMonoid<Node> {
+  match qualified_name_from_module_node(root: root) {
+    Accepted { value: qn, diagnostics: _ } =>
+      if qn == wanted { list_snoc_item(xs: acc, item: root) } else { acc }
+    Rejected { diagnostics: _ } => acc
+  }
+}
+
+fn lcr_root_named(wanted: QualifiedName) -> FreeMonoid<Node> {
+  fold_list(
+    xs: lcr_root_nodes(),
+    empty: Empty,
+    cons: fn(acc, root) { lcr_root_named_step(acc: acc, root: root, wanted: wanted) }
+  )
+}
+
+fn lcr_indexed(dotted: String) -> Bool {
+  match symbol_index_lookup(index: lcr_index(), qualified_path: qualified_name_from_dotted_string(dotted: dotted)) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn lcr_globally_bound(name: Symbol) -> Bool {
+  match symbol_index_global_unique_lookup(index: lcr_index(), name: name) {
+    GlobalBareHit { node: _, path: _ } => true
+    GlobalBareLookupAmbiguous => false
+    GlobalBareLookupUnbound => false
+  }
+}
+
+// Test-local tree readers. They are deliberately NOT a production authority on
+// "what a reference is" -- they count a named edge and an atom identity, nothing
+// more, and exist only so these receipts can state what the carrier contains.
+fn lcr_named_edge_count(node: Node, wanted: Symbol) -> Int {
+  fold_list(
+    xs: node.children,
+    empty: 0,
+    cons: fn(acc, edge) { lcr_named_edge_count_edge(acc: acc, edge: edge, wanted: wanted) }
+  )
+}
+
+fn lcr_named_edge_count_edge(acc: Int, edge: Edge, wanted: Symbol) -> Int {
+  let here = match edge.label {
+    Named { name: sym } => if sym == wanted { 1 } else { 0 }
+    Positional => 0
+  }
+  acc + here + lcr_named_edge_count(node: edge.target, wanted: wanted)
+}
+
+fn lcr_atom_count(node: Node, wanted: Symbol) -> Int {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      if sym == wanted { 1 } else { 0 }
+    _ =>
+      fold_list(
+        xs: node.children,
+        empty: 0,
+        cons: fn(acc, edge) { lcr_atom_count_edge(acc: acc, edge: edge, wanted: wanted) }
+      )
+  }
+}
+
+fn lcr_atom_count_edge(acc: Int, edge: Edge, wanted: Symbol) -> Int {
+  acc + lcr_atom_count(node: edge.target, wanted: wanted)
+}
+
+fn lcr_named_edges_in(module_qn: QualifiedName, wanted: Symbol) -> Int {
+  fold_list(
+    xs: lcr_root_named(wanted: module_qn),
+    empty: 0,
+    cons: fn(acc, root) { acc + lcr_named_edge_count(node: root, wanted: wanted) }
+  )
+}
+
+fn lcr_atoms_in(module_qn: QualifiedName, wanted: Symbol) -> Int {
+  fold_list(
+    xs: lcr_root_named(wanted: module_qn),
+    empty: 0,
+    cons: fn(acc, root) { acc + lcr_atom_count(node: root, wanted: wanted) }
+  )
+}
+
+// RECEIPT 1 -- A CAPABILITY, and the only row here that is not a defect record.
+// An ordinary loaded compilation is reachable from a SubstrateInputsOnly witness:
+// source TEXT handed to the ordinary front end comes back as real parsed,
+// normalized and grafted module roots, with NO live-tree read anywhere. That
+// matters because the other route to real roots -- the host source-root manifest
+// -- is ReadsLiveTree and is therefore declined by the floor, so a witness that
+// needs a genuine compilation had no executing route before this one.
+test fn a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_holds() -> Bool {
+  length(xs: lcr_root_nodes()) == 2
+}
+
+// RECEIPT 2 -- DEFECT RECORD, ON THE INDEX PATH SPECIFICALLY: a record TYPE
+// declaration never reaches the symbol index, while a fn declaration in the same
+// module does.
+//
+// WHAT THIS IS NOT. It is NOT "record types do not resolve cross-file". On main
+// they demonstrably do: 03_resolve.dag itself imports NormalizedTree,
+// DeclarationRef and Disposition as ordinary cross-file record types, and the
+// required v2-emission phase compiles that closure green. An earlier draft of
+// this row omitted the path and therefore read as a claim about main; it was
+// wrong in the direction that gets someone dispatched at a non-problem.
+//
+// BY WHAT MECHANISM MAIN SUPPLIES THOSE NAMES IS NOT ESTABLISHED HERE, and this
+// row deliberately does not guess. What IS measured is the ordering:
+// resolve_atom asks lookup_chain first and reaches the index only on Absent, so
+// the index is a fallback rather than the primary answer. Two accounts of what
+// fills the primary layer were considered and NEITHER is confirmed -- imports at
+// a scope layer, and bindings harvested from the assembled tree -- and
+// harvest_conj_named_bindings inspects only the DIRECT children of a Conj root,
+// whose children in an assembled program are module spines rather than
+// declarations, which fits neither account cleanly. A third stage may supply
+// them. Establishing that is separate work and no claim about it is made here.
+//
+// WHAT IT IS: on the INDEX path -- inline, import-free source, resolution asked
+// of the index alone -- the type is absent and the fn is present. The asymmetry
+// is the evidence, and it locates the loss BEFORE indexing rather than in the
+// index: the type name appears as a Named EDGE zero times anywhere in the loaded
+// producer root, so symbol_index_fill is correct on the tree it is handed.
+//
+// This is the partial-drop case namespace_graft's own comment names as out of
+// scope ("partial-drop fidelity is the deeper graft repair"). Its dissolution
+// guard cannot see it: that guard fires only when the collected body is EMPTY,
+// and here the fn survived while the type did not.
+//
+// WHETHER THE LOSS ALSO DEFEATS THE BINDING LAYER IS UNMEASURED, and the obvious
+// probe is a NULL INSTRUMENT rather than an answer. Asking
+// namespace_bindings_augment_from_module_atoms of a loaded module root returns
+// zero for the record type AND zero for the fn -- and the fn demonstrably does
+// resolve in a real compilation, so an instrument that reads zero for the working
+// case cannot discriminate the broken one. The cause is structural:
+// harvest_conj_named_bindings inspects only the DIRECT children of a Conj root,
+// and after grafting a loaded root's direct children are the module spine rather
+// than declarations. Measuring the binding layer needs a real assembled-program
+// namespace, not a per-root harvest. So this row stays scoped to what was
+// actually measured; a widening to "no consumer of this tree can resolve it" is
+// plausible from the zero-Named-edge evidence and is NOT claimed here.
+//
+// WHY THE NARROWED CLAIM IS MORE LOAD-BEARING THAN THE BROAD ONE, not less: a
+// tree with no imports has no scope layer to fall back on, so the index is not a
+// fallback there -- it is the ONLY path, and every cross-file type reference goes
+// through it. This measures the namespace cut's TARGET conditions, where a main
+// corner case becomes the ordinary path. Whether it accounts for any of that
+// axis's emission errors is UNRUN and is not claimed here.
+//
+// WHEN THE GRAFT REPAIR LANDS THIS ROW GOES RED. Invert it then -- assert that
+// BOTH declarations are indexed and named -- rather than deleting it, so the
+// repair keeps an executing control.
+test fn a_record_type_declaration_does_not_reach_the_index_while_a_fn_does_holds() -> Bool {
+  let fn_is_indexed = lcr_indexed(dotted: "lcr.producer.producer_anchor")
+  let type_is_not_indexed = lcr_indexed(dotted: "lcr.producer.CrossFileMarker") == false
+  let fn_is_named_once = lcr_named_edges_in(module_qn: lcr_producer_qn, wanted: ^producer_anchor) == 1
+  let type_is_named_never = lcr_named_edges_in(module_qn: lcr_producer_qn, wanted: ^CrossFileMarker) == 0
+  fn_is_indexed && type_is_not_indexed && fn_is_named_once && type_is_named_never
+}
+
+// RECEIPT 3 -- CARRIER SHAPE, measured on the same inline load: function bodies
+// are still TOKEN-LEVEL in the normalized tree, so body references are not nodes
+// there. This one is a property of the normalized carrier itself and does not
+// depend on the index-only condition above.
+//
+// The discriminator is a raw token atom being present in the loaded consumer root
+// while the callee its body names is absent from that same root -- even though
+// the callee IS globally bound in the index built from these very roots. So the
+// absence is not "the name does not exist"; it is "the body has not been lowered
+// into references yet".
+//
+// CONSEQUENCE, and it is why this row is worth executing rather than asserting in
+// prose: ANY derivation of "which names does this module reference" that walks the
+// normalized root cannot see body references at all. It must sit at or after
+// resolution. A walk over this carrier does not fail loudly -- it silently returns
+// grammar machinery and misses the real references, which is the shape of a wrong
+// answer rather than a refusal.
+//
+// WHEN BODY LOWERING MOVES AHEAD OF THIS CARRIER THIS ROW GOES RED. Invert it
+// then -- assert the callee IS present as an atom -- rather than deleting it.
+test fn function_bodies_are_token_level_in_the_normalized_carrier_holds() -> Bool {
+  let a_raw_token_is_present = lcr_atoms_in(module_qn: lcr_consumer_qn, wanted: ^dag_token_lbrace) > 0
+  let the_callee_is_not_a_node = lcr_atoms_in(module_qn: lcr_consumer_qn, wanted: ^producer_anchor) == 0
+  let but_the_callee_is_indexed = lcr_globally_bound(name: ^producer_anchor)
+  a_raw_token_is_present && the_callee_is_not_a_node && but_the_callee_is_indexed
+}
