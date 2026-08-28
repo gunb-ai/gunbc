@@ -1,6 +1,7 @@
 module extdeps.ollama.server_env
 
 import std.types { NonEmptyStr, String }
+import std.measure { TokenCount, token_count_value }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -42,11 +43,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 type OllamaServerEnvVariable
   = OllamaHost
   | OllamaModels
+  | OllamaContextLength
 
 fn ollama_server_env_name(variable: OllamaServerEnvVariable) -> NonEmptyStr {
   match variable {
     OllamaHost => "OLLAMA_HOST" as NonEmptyStr
     OllamaModels => "OLLAMA_MODELS" as NonEmptyStr
+    OllamaContextLength => "OLLAMA_CONTEXT_LENGTH" as NonEmptyStr
   }
 }
 
@@ -66,4 +69,23 @@ fn ollama_host_env_assignment(bind: NonEmptyStr) -> NonEmptyStr {
 // Where the server stores and looks for model blobs.
 fn ollama_models_env_assignment(root: NonEmptyStr) -> NonEmptyStr {
   ollama_server_env_assignment(variable: OllamaModels, value: root)
+}
+
+// The context window the SERVER allocates for a loaded model, in tokens.
+//
+// The server decides what is allocated; the model file only declares what it was trained to
+// support. So a deployment that wants a model's full declared window has to say so, and one that
+// says nothing gets Ollama's own default rather than the model's declaration. Which window a given
+// deployment wants is a deployment fact, so it is a parameter here and never a default -- the same
+// reason `ollama_host_env_assignment` refuses to spell a bind address.
+//
+// This is the CONFIGURED limit, which is not the EFFECTIVE one. What a loaded model actually
+// allocated is a separate observation read back from the running server; a request the host cannot
+// satisfy is resolved by the runtime, not by this assignment, so the two are different facts and
+// must not be collapsed into one.
+fn ollama_context_length_env_assignment(configured_context: TokenCount) -> NonEmptyStr {
+  ollama_server_env_assignment(
+    variable: OllamaContextLength,
+    value: to_string(token_count_value(t: configured_context)) as NonEmptyStr,
+  )
 }

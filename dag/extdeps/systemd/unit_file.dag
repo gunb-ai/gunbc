@@ -1,6 +1,12 @@
 module extdeps.systemd.unit_file
 
 import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.measure { ByteSize, byte_size_count }
+import extdeps.systemd {
+  SystemdUnitProperty,
+  MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight,
+  systemd_unit_property_wire,
+}
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -126,6 +132,7 @@ type SystemdServiceDirective
   | Restart { policy: NonEmptyStr }
   | Environment { assignment: NonEmptyStr }
   | EnvironmentFile { path: NonEmptyStr }
+  | EnvironmentFileIfPresent { path: NonEmptyStr }
   | WorkingDirectory { path: NonEmptyStr }
   | ServiceUser { name: NonEmptyStr }
   | ServiceGroup { name: NonEmptyStr }
@@ -255,6 +262,28 @@ fn systemd_io_scheduling_class_wire(scheduling_class: SystemdIoSchedulingClass) 
 // `Environment=`, not a spelling of it -- one names a file systemd reads, the other carries an
 // assignment inline -- so they are two variants and a consumer cannot reach one meaning the other.
 
+// `EnvironmentFileIfPresent` is systemd's `-` prefix, and it is a SECOND VARIANT rather than a
+// `required: Bool` on the first for the reason this file already applies to `OnBootSec` versus
+// `OnCalendar`: the two forms have different semantics, and fusing them would put the distinction
+// back into a flag. Required means a missing file FAILS THE UNIT; optional means systemd starts it
+// anyway with the assignments unset.
+//
+// THE OPTIONAL FORM IS NOT THE POLICY ESCAPE HATCH DESIGN SECTION 5 FORBIDS, and the distinction is
+// what the file CARRIES rather than which directive spells it. `gunbc.host_disk_reclaim_units`
+// (reclaim_omitted_environment_file_note) drops `EnvironmentFile=-` precisely because that file
+// would carry THRESHOLDS -- host-local values overriding gates this repository owns, one edit from
+// silently relaxing them. A file carrying a CREDENTIAL overrides no gate: its absence does not let
+// anything proceed as though a refusal had not fired, because the consumer probes for the credential
+// and refuses on its own terms.
+//
+// Which form to choose is therefore decided by WHERE THE REFUSAL LIVES, not by which is stricter
+// sounding. Where the consumer adjudicates absence itself, the required form is strictly worse: it
+// converts a typed, located, recorded refusal into a unit that never starts and writes no receipt at
+// all, so a missing credential and a broken binary render identically to every reader downstream.
+// That is the execution-provenance loss this repository names -- an unreached stage rendering as a
+// stage that ran -- bought in exchange for a strictness the consumer was already providing. Where no
+// such consumer exists, the required form is correct and this variant is the wrong one to reach for.
+
 // A TIMER'S DIRECTIVES, which is the section that made the unit-type coproduct below necessary.
 //
 // `TimerUnit` renders as `Unit=` -- the service this timer activates. It is named for what it is
@@ -278,20 +307,145 @@ type SystemdInstallDirective
   = WantedBy { target: NonEmptyStr }
   | RequiredBy { target: NonEmptyStr }
 
-// A [Slice] UNIT'S DIRECTIVES. `MemoryMax=` is the hard ceiling the kernel enforces on the cgroup;
-// `MemoryHigh=` is a throttling watermark the kernel permits to be exceeded. They are two directives
-// with two meanings, so they are two variants rather than one `MemoryLimit { key, value }` -- fusing
-// them would put the difference between a bound and a watermark back into a string, and a consumer
-// comparing an observed limit against a declared one has to know which of the two it read.
+// A [Slice] UNIT'S DIRECTIVES, AND THE KNOB NAME IS NOT MINTED HERE.
 //
-// They are deliberately NOT shared with [Service], even though systemd.resource-control permits both
-// directives in either section. That is this module's established reading, stated at
+// The previous shape was a two-arm coproduct, `SliceMemoryMax { bytes: NonEmptyStr }` and
+// `SliceMemoryHigh { bytes: NonEmptyStr }`, and it had two defects that only show up when a third
+// knob is needed. It spelled `MemoryMax` and `MemoryHigh` a SECOND time -- `extdeps.systemd`
+// `SystemdUnitProperty` already carries both names and `systemd_unit_property_wire` already renders
+// them -- so a boundary needing `MemorySwapMax=`, `TasksMax=` and `CPUWeight=` would have widened
+// that fork from two names to five. And it carried every value as `NonEmptyStr`, so a magnitude the
+// caller was holding as a `ByteSize` was flattened one call before the wire.
+//
+// SO THE KNOB IS THE PROPERTY AND THE VALUE IS A MAGNITUDE, and the record is `sole_constructor` so
+// that pairing is the only one a consumer can obtain. Zero knob names are minted here: the wire
+// spelling has exactly one owner, reached through `property`, and a name added or corrected upstream
+// moves both surfaces at once.
+//
+// WHY THE PROPERTY TYPE IS SAFE HERE WHEN GROUNDING THE DIRECTIVE *COPRODUCT* ON IT WOULD NOT BE.
+// `gunbc.systemd_property_directive_overlap` is the authority on this question and its ruling is
+// that `SystemdUnitProperty` is the SHOW SURFACE: it mixes settable knobs with observations the
+// manager computes, so a directive type that admitted any member would make `MemoryCurrent=`,
+// `ActiveState=` and `MainPID=` writable into a unit file -- reuse bought by making an invalid state
+// representable. What closes that is not a check and not a narrower field type: it is that the only
+// constructors in existence are the mints below, and `sole_constructor` refuses a record literal
+// from any other module. `MemoryCurrent=` has no spelling because nothing produces it.
+//
+// SCOPE OF THAT GUARANTEE, DECLARED RATHER THAN INHERITED (DESIGN section 4b). `sole_constructor`
+// confines cross-module construction on the source-to-`.dag` acceptance path, and DESIGN records by
+// execution that an emitted Rust mirror of such a type is silently forgeable
+// (`extdeps.uri` `UriValidatedScalar`). This record is constructed and rendered entirely inside the
+// `.dag` pipeline -- it is never deserialized, and nothing on the emitted side reconstructs one --
+// so the mint is sufficient FOR THE PATH IT TRAVELS. If a directive ever arrives from outside that
+// path, this paragraph is the notice that the invariant needs a fresh answer rather than an
+// inherited one. Same-module construction also remains possible by design; the confinement is about
+// who else may write the pairing, not about the declaring module disciplining itself.
+//
+// THEY ARE STILL DELIBERATELY NOT SHARED WITH [Service], even though systemd.resource-control
+// permits these directives in either section. That is this module's established reading, stated at
 // `SystemdUnitDirective`: one directive type per section, so a misplaced directive has no
-// representation. Sharing one resource-control type across both sections would buy a little reuse and
-// sell the property the whole module is built on.
-type SystemdSliceDirective
-  = SliceMemoryMax { bytes: NonEmptyStr }
-  | SliceMemoryHigh { bytes: NonEmptyStr }
+// representation. The record is `SystemdSliceDirective` and not a shared resource-control type for
+// exactly that reason -- sharing one across both sections would buy a little reuse and sell the
+// property the whole module is built on.
+type SystemdSliceDirective sole_constructor {
+  property: SystemdUnitProperty
+  value: SystemdDirectiveValue
+}
+
+// THE WRITE-SIDE VALUE, AND IT IS ITS OWN TYPE RATHER THAN THE READ-SIDE ONE.
+//
+// `extdeps.systemd` `SystemdCgroupMemoryLimit` looks like it fits -- bytes, unbounded, absent -- and
+// reusing it would be the same defect as grounding on the show surface, one level down: its third
+// arm exists because a `systemctl show` READBACK can be a string this repository cannot parse, and a
+// value that cannot be parsed is not a value a unit file may assign. The read-side type stays the
+// wider one and the write side gets these arms.
+//
+// `DirectiveUnlimited` renders systemd's own sentinel. It is a variant rather than a magic magnitude
+// because "no ceiling" is not a large number: a consumer comparing a declared ceiling against an
+// observed one must not have to decide which integer means absent.
+//
+// WHAT IS DELIBERATELY NOT MODELED, and it is a residue rather than a closed set left open.
+// systemd.resource-control(5) also admits a K/M/G/T-suffixed byte count and a percentage of
+// installed memory for the memory limits, and a percentage for `TasksMax=`. No producer in this
+// repository emits either form, so arms for them would be constructors with no consumer -- and the
+// suffixed form in particular is a spelling of the same magnitude this type already carries, which
+// is a rendering choice rather than a distinct value. `gunbc.systemd_directive_value_grain` carries
+// the standing obligation for the percentage form, which is the one that genuinely cannot be
+// expressed here.
+// A COUNT AND A WEIGHT ARE TWO ARMS AND NOT ONE `Int`, even though they render identically today.
+// `TasksMax=` is a cardinal -- how many processes -- and `CPUWeight=` is a relative share against
+// every sibling cgroup, an amount of nothing on its own. Fusing them into one integer arm would put
+// that difference into position, which is the same move this module refuses for `RestartSec=` versus
+// `TimeoutStopSec=` above; and the two ranges are unrelated, so a bound modeled later narrows one
+// arm rather than needing to be told which meaning it is narrowing.
+type SystemdDirectiveValue
+  = DirectiveByteCount { bytes: ByteSize }
+  | DirectiveCardinal { count: Int }
+  | DirectiveWeight { weight: Int }
+  | DirectiveUnlimited
+
+fn systemd_directive_value_wire(value: SystemdDirectiveValue) -> String {
+  match value {
+    DirectiveByteCount { bytes: b } => to_string(byte_size_count(b: b))
+    DirectiveCardinal { count: n } => to_string(n)
+    DirectiveWeight { weight: w } => to_string(w)
+    DirectiveUnlimited => systemd_directive_unlimited_wire
+  }
+}
+
+// systemd's sentinel for "no limit", spelled once. `max` is the cgroup v2 kernel interface's word;
+// `infinity` is systemd's, and a unit file is read by systemd rather than by the kernel.
+data systemd_directive_unlimited_wire: String = "infinity"
+
+// THE MINTS, WHICH ARE THE WHOLE ADMISSION SURFACE.
+//
+// One per (knob, value-shape) pair systemd admits, so a caller states which knob it means and hands
+// over a magnitude of the right kind -- and cannot state a knob systemd would reject, nor pair a
+// byte count with a task ceiling. `CPUWeight=` has no unlimited mint because systemd defines no
+// such value for it: the asymmetry is the model rather than an omission.
+fn slice_memory_max(bytes: ByteSize) -> SystemdSliceDirective {
+  SystemdSliceDirective { property: MemoryMax, value: DirectiveByteCount { bytes: bytes } }
+}
+
+fn slice_memory_max_unlimited() -> SystemdSliceDirective {
+  SystemdSliceDirective { property: MemoryMax, value: DirectiveUnlimited }
+}
+
+fn slice_memory_high(bytes: ByteSize) -> SystemdSliceDirective {
+  SystemdSliceDirective { property: MemoryHigh, value: DirectiveByteCount { bytes: bytes } }
+}
+
+fn slice_memory_high_unlimited() -> SystemdSliceDirective {
+  SystemdSliceDirective { property: MemoryHigh, value: DirectiveUnlimited }
+}
+
+fn slice_memory_swap_max(bytes: ByteSize) -> SystemdSliceDirective {
+  SystemdSliceDirective { property: MemorySwapMax, value: DirectiveByteCount { bytes: bytes } }
+}
+
+fn slice_memory_swap_max_unlimited() -> SystemdSliceDirective {
+  SystemdSliceDirective { property: MemorySwapMax, value: DirectiveUnlimited }
+}
+
+// `TasksMax=` IS A CARDINAL AND NOT A MAGNITUDE THIS REPOSITORY HAS A CARRIER FOR. `extdeps.systemd`
+// already declares that gap against its own read-side parse (feature:task-count-measure-carrier),
+// and inventing a `TaskCount` here to avoid a bare `Int` would mint the concept in the consumer
+// rather than beside the parse that needs it too. So the `Int` is the same honest grain the read
+// side carries, and it moves when that carrier lands.
+fn slice_tasks_max(count: Int) -> SystemdSliceDirective {
+  SystemdSliceDirective { property: TasksMax, value: DirectiveCardinal { count: count } }
+}
+
+fn slice_tasks_max_unlimited() -> SystemdSliceDirective {
+  SystemdSliceDirective { property: TasksMax, value: DirectiveUnlimited }
+}
+
+// `CPUWeight=` is a relative share over 1..10000, not an amount of anything -- a bound this mint
+// does not narrow, which is a range left unmodeled and not a value set left open, exactly as
+// `ServiceNice`'s -20..19 above.
+fn slice_cpu_weight(weight: Int) -> SystemdSliceDirective {
+  SystemdSliceDirective { property: CPUWeight, value: DirectiveWeight { weight: weight } }
+}
 
 // The directive names are systemd's, spelled once here. A consumer never writes the literal
 // "ExecStart"; it constructs `ExecStart { command }` and this module decides how that renders.
@@ -314,6 +468,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     Restart { policy: v } => join(["Restart=", v as String], "")
     Environment { assignment: v } => join(["Environment=", v as String], "")
     EnvironmentFile { path: v } => join(["EnvironmentFile=", v as String], "")
+    EnvironmentFileIfPresent { path: v } => join(["EnvironmentFile=-", v as String], "")
     WorkingDirectory { path: v } => join(["WorkingDirectory=", v as String], "")
     ServiceUser { name: v } => join(["User=", v as String], "")
     ServiceGroup { name: v } => join(["Group=", v as String], "")
@@ -344,11 +499,15 @@ fn systemd_timer_directive_line(directive: SystemdTimerDirective) -> String {
   }
 }
 
+// THE LINE HAS NO MATCH LEFT TO GET WRONG. Both halves come from an authority: the knob name from
+// `systemd_unit_property_wire` and the value from `systemd_directive_value_wire`, so a fifth knob is
+// a mint above and no edit here.
 fn systemd_slice_directive_line(directive: SystemdSliceDirective) -> String {
-  match directive {
-    SliceMemoryMax { bytes: v } => join(["MemoryMax=", v as String], "")
-    SliceMemoryHigh { bytes: v } => join(["MemoryHigh=", v as String], "")
-  }
+  join([
+    systemd_unit_property_wire(property: directive.property) as String,
+    "=",
+    systemd_directive_value_wire(value: directive.value),
+  ], "")
 }
 
 fn systemd_install_directive_line(directive: SystemdInstallDirective) -> String {

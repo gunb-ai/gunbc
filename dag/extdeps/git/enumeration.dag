@@ -3,6 +3,14 @@ module extdeps.git.enumeration
 import std.types { String, List, Bool, Int }
 import std.string_type { string_is_lexicographically_before }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.git { git_for_each_ref_external_authority_anchor }
+
+// THE ANCHOR IS A BINDING, NOT A SECOND URI. extdeps.git already declares the for-each-ref
+// documentation as a named authority beside the operation whose wire this module decodes, and a
+// decoder is not a second publisher of that document. The conventional name is what the
+// mandatory-tag corpus wall reads; the locator stays typed once, where the operation is.
+data extdeps_external_authority_anchor: ExternalAuthority = git_for_each_ref_external_authority_anchor
 
 // The typed reading of git.Core.ForEachRefIn's wire, kept in extdeps because the output GRAMMAR is
 // git's fact and not any consumer's. A caller that decoded this itself would own a second reading of
@@ -67,7 +75,16 @@ fn git_ref_decode_admit(state: GitRefDecodeState, refs: List<GitRefIdentity>, id
 // 4b names as worse than absent, since it would be cited as coverage for a flag nothing tests.
 //
 // Requiring STRICTLY increasing refnames instead makes the flag falsifiable: remove it and the
-// corpus order git falls back to reds here. Strict rather than non-decreasing because refnames are
+// corpus order git falls back to reds here.
+//
+// THE COMPARATOR IS NOT THE SAME ONE GIT USED, and that is worth stating where the check lives rather
+// than only where the flag is pinned. git orders refnames BYTEWISE (they are byte strings);
+// string_is_lexicographically_before compares CODE POINTS. The two coincide over well-formed UTF-8
+// because that encoding is order-preserving, so this check does not produce false refusals -- but the
+// agreement is a property of UTF-8, not of either comparator, and swapping this call for a
+// locale-aware one would break it while looking like an improvement. The upstream half of the fact,
+// and the undeclared non-UTF-8 refname boundary, are recorded at
+// extdeps.git git_for_each_ref_external_authority_anchor. Strict rather than non-decreasing because refnames are
 // unique in a repository, so an equal adjacent pair is a duplicate ref and not a tie -- and a
 // duplicate is exactly what a set-identity consumer must not silently absorb.
 fn git_ref_decode_ordered_admit(
