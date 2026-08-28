@@ -29,7 +29,7 @@ import product.fabric.execution { ReservationRef }
 import gunbc.fabric_executor_class {
   ExecutorSanction, CapacityClassAdmission, CapacityClassAdmitted,
   CapacityClassRefused, ExecutorNotClassified,
-  admit_executor_capacity, capacity_admission_is_admitted, capacity_admission_wire,
+  admit_executor_capacity, capacity_admission_wire,
 }
 
 // THE BROKER: SELECTION DECIDES WHICH CELL, THE STORE DECIDES WHETHER WE GET IT.
@@ -103,7 +103,17 @@ fn fabric_reservation_payload(
 // EVERY WAY THIS ENDS, TYPED AND SEPARATE, because they have different remedies.
 //
 // NoCellAdmissible is a market answer: the roster was read and nothing in it met
-// the demand, and `considered` carries why each was rejected. ReservationLost is
+// the demand, and it carries TWO populations because they are two different
+// answers wearing one word. `considered` is the market's own rejection of the
+// offers it was allowed to rank; `refused` is everything removed BEFORE ranking
+// for crossing the capacity-class line, which the market never saw and can say
+// nothing about. Both empty means nothing was offered at all.
+//
+// THE SECOND FIELD IS THE REPAIR OF A SILENT NARROW, NOT AN ADDITION. Admission
+// filtered the roster and dropped its refusals on the floor, so a demand refused
+// entirely on a safety boundary was indistinguishable from a demand nobody
+// offered anything for -- opposite remedies, one symbol, and the annotation here
+// claimed the refusals were counted while nothing counted them. ReservationLost is
 // a race: our selection was fine and another writer committed the slot first, so
 // the remedy is to re-observe and retry. StoreUnavailable is operational: the
 // store could not answer, which says nothing about the cell. AttemptRefused is
@@ -120,7 +130,10 @@ type CellReservation
       generation: Int,
       account: MoneyAccount,
     }
-  | NoCellAdmissible { considered: List<OfferCandidacy<NonEmptyStr>> }
+  | NoCellAdmissible {
+      considered: List<OfferCandidacy<NonEmptyStr>>,
+      refused: List<CapacityClassAdmission>,
+    }
   | BudgetRefused { slot_key: NonEmptyStr, refusal: MoneyRefusal }
   | ReservationLost { slot_key: NonEmptyStr }
   | StoreUnavailable { slot_key: NonEmptyStr, cause: CasUnreadableSlot }
@@ -262,47 +275,54 @@ fn fabric_cell_roster_candidates(roster: List<FabricCellCandidate>) -> List<Cand
 // is never a candidate for customer-executable demand and cannot be chosen by a
 // tie-break, a price, or a later change to the ranking.
 //
-// The refusals are COUNTED rather than silently filtered. A roster that shrinks
-// without saying why is the absorbing fallback in reverse: the demand looks
-// unsatisfiable and nobody can tell whether nothing was offered or everything
-// was refused across a safety line, which have opposite remedies.
-fn admitted_cell_roster(
-  requirements: ExecutionRequirements,
-  sanctions: List<ExecutorSanction>,
-  roster: List<FabricCellCandidate>,
-) -> List<FabricCellCandidate> {
-  fold(
-    roster,
-    init: [],
-    f: (acc, member) =>
-      if capacity_admission_is_admitted(
-           admission: admit_executor_capacity(
-             requirements: requirements,
-             roster: sanctions,
-             executor: member.candidate.offer.executor,
-           )
-         ) { acc + [member] } else { acc },
-  )
-}
+// ONE FOLD, BOTH HALVES, AND THE PREVIOUS SHAPE IS WHY. Admission used to be two
+// folds over one roster -- one keeping the admitted through a Bool predicate,
+// one collecting the refused -- and they could only agree by convention: each
+// re-ran the admission judgement independently, so an edit to either could make
+// a candidate appear in neither half or in both, and nothing would detect it.
+// A partition is ONE decision with two outputs, so the halves cannot disagree
+// (§2 -- the second traversal was a second representation of one judgement).
+//
+// The Bool predicate that selected the admitted half is deleted with it. It
+// collapsed a refused capacity class and an unclassified executor into a single
+// false, which are different problems -- one is an executor asking for work it
+// is not sanctioned for, the other is an executor nobody has classified at all
+// -- and an `if` over that Bool could name no remedy for either.
+type CellAdmissionPartition
+  = CellAdmissionPartition {
+      admitted: List<FabricCellCandidate>,
+      refused: List<CapacityClassAdmission>,
+    }
 
-fn refused_cell_admissions(
+fn partition_cell_roster(
   requirements: ExecutionRequirements,
   sanctions: List<ExecutorSanction>,
   roster: List<FabricCellCandidate>,
-) -> List<CapacityClassAdmission> {
+) -> CellAdmissionPartition {
   fold(
     roster,
-    init: [],
+    init: CellAdmissionPartition { admitted: [], refused: [] },
     f: (acc, member) =>
       match admit_executor_capacity(
         requirements: requirements,
         roster: sanctions,
         executor: member.candidate.offer.executor,
       ) {
-        CapacityClassAdmitted { executor: _, class: _ } => acc
+        CapacityClassAdmitted { executor: _, class: _ } =>
+          CellAdmissionPartition {
+            admitted: acc.admitted + [member],
+            refused: acc.refused,
+          }
         CapacityClassRefused { executor: e, required: r, sanctioned: sd } =>
-          acc + [CapacityClassRefused { executor: e, required: r, sanctioned: sd }]
-        ExecutorNotClassified { executor: e } => acc + [ExecutorNotClassified { executor: e }]
+          CellAdmissionPartition {
+            admitted: acc.admitted,
+            refused: acc.refused + [CapacityClassRefused { executor: e, required: r, sanctioned: sd }],
+          }
+        ExecutorNotClassified { executor: e } =>
+          CellAdmissionPartition {
+            admitted: acc.admitted,
+            refused: acc.refused + [ExecutorNotClassified { executor: e }],
+          }
       },
   )
 }
@@ -369,18 +389,18 @@ fn broker_reserve_for_demand(
   maximum_buy_order: MoneyAmountMicro,
   delay_valuation: MoneyPerSecond,
 ) -> CellReservation {
+  let partition = partition_cell_roster(
+    requirements: floor_execution_requirements(),
+    sanctions: sanctions,
+    roster: roster,
+  )
   match floor_supply_selection(
-    candidates: fabric_cell_roster_candidates(
-      roster: admitted_cell_roster(
-        requirements: floor_execution_requirements(),
-        sanctions: sanctions,
-        roster: roster,
-      ),
-    ),
+    candidates: fabric_cell_roster_candidates(roster: partition.admitted),
     maximum_buy_order: maximum_buy_order,
     delay_valuation: delay_valuation,
   ) {
-    NoAdmissibleOffer { considered: c } => NoCellAdmissible { considered: c }
+    NoAdmissibleOffer { considered: c } =>
+      NoCellAdmissible { considered: c, refused: partition.refused }
     OfferSelected { offer: o, cost: k, basis: _, horizon: _, considered: _ } =>
       reserve_priced_cell(
         root: root,
@@ -435,13 +455,3 @@ fn reserve_priced_cell(
   }
 }
 
-fn cell_reservation_is_held(reservation: CellReservation) -> Bool {
-  match reservation {
-    CellReserved { offer: _, slot_key: _, generation: _, account: _ } => true
-    NoCellAdmissible { considered: _ } => false
-    BudgetRefused { slot_key: _, refusal: _ } => false
-    ReservationLost { slot_key: _ } => false
-    StoreUnavailable { slot_key: _, cause: _ } => false
-    AttemptRefused { slot_key: _, detail: _ } => false
-  }
-}

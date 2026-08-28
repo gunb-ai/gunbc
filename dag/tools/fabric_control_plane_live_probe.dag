@@ -72,6 +72,14 @@ fn cp_probe_slot() -> RunnerSlotIdentity {
 // code, a probe offer declaring 1 thread against the floor's required 8 looked
 // exactly like a correct market refusal, and the fixture defect was invisible.
 //
+// A THIRD STATE JOINS THAT SPLIT for the same reason it exists. 52 is "the
+// roster was not empty and admission removed every member across the
+// capacity-class line" -- read as 50 it would look like nothing was offered,
+// which sends a reader to find capacity when the capacity was there and was
+// correctly refused. It is checked FIRST because a refused roster can leave the
+// market with nothing to consider, so 50 and 52 are both true of that state and
+// only 52 says which happened.
+//
 // A commit returns 100 + its generation so it can never be confused with a
 // refusal code; the four refusals stay distinct because their remedies differ.
 fn cp_probe_code(r: CellReservation) -> Int {
@@ -81,8 +89,8 @@ fn cp_probe_code(r: CellReservation) -> Int {
     BudgetRefused { slot_key: _, refusal: _ } => 6
     StoreUnavailable { slot_key: _, cause: _ } => 3
     AttemptRefused { slot_key: _, detail: _ } => 4
-    NoCellAdmissible { considered: c } =>
-      if c.length() == 0 { 50 } else { 51 }
+    NoCellAdmissible { considered: c, refused: f } =>
+      if f.length() != 0 { 52 } else { if c.length() == 0 { 50 } else { 51 } }
   }
 }
 

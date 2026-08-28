@@ -15,7 +15,7 @@ import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fabric_executor_class {
   ExecutorSanction, ExecutorSanctioned, ExecutorUnclassified,
   CapacityClassAdmission, CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified,
-  admit_executor_capacity, capacity_admission_is_admitted, fleet_cell_sanction,
+  admit_executor_capacity, fleet_cell_sanction,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -94,13 +94,45 @@ test fn two_identical_demands_do_share_an_identity() -> Bool {
   (first as String) == (second as String)
 }
 
+// THE ROWS BELOW NAME AN ARM RATHER THAN ASKING A BOOLEAN. They used to run
+// through a `capacity_admission_is_admitted` predicate that answered false for
+// BOTH a refused class and an unclassified executor -- while the row asserting
+// the unclassified case declared, in its own annotation, that those two states
+// have different remedies and must not be collapsed. The assertion could not
+// see the distinction the annotation was about, so it would have stayed green
+// had a refusal been rewritten as the other cause. These selectors demand the
+// exact arm, so each row goes red on the one substitution that matters.
+fn cc_refused_for_class(a: CapacityClassAdmission) -> Bool {
+  match a {
+    CapacityClassRefused { executor: _, required: _, sanctioned: _ } => true
+    CapacityClassAdmitted { executor: _, class: _ } => false
+    ExecutorNotClassified { executor: _ } => false
+  }
+}
+
+fn cc_unclassified(a: CapacityClassAdmission) -> Bool {
+  match a {
+    ExecutorNotClassified { executor: _ } => true
+    CapacityClassAdmitted { executor: _, class: _ } => false
+    CapacityClassRefused { executor: _, required: _, sanctioned: _ } => false
+  }
+}
+
+fn cc_admitted(a: CapacityClassAdmission) -> Bool {
+  match a {
+    CapacityClassAdmitted { executor: _, class: _ } => true
+    CapacityClassRefused { executor: _, required: _, sanctioned: _ } => false
+    ExecutorNotClassified { executor: _ } => false
+  }
+}
+
 // THE SAFETY WALL ITSELF: control-plane work must not be admitted onto capacity
 // sanctioned for customer execution. This is the state that was representable
 // and unremarked before this cut -- not a failure that was contained, an
 // invalid state with nothing to contain it.
 test fn control_plane_work_is_refused_on_customer_sanctioned_capacity() -> Bool {
-  !capacity_admission_is_admitted(
-    admission: admit_executor_capacity(
+  cc_refused_for_class(
+    a: admit_executor_capacity(
       requirements: cc_requirements(class: ControlPlaneCapacity),
       roster: [ExecutorSanctioned { executor: "spark-01", sanctioned: CustomerExecutableCapacity }],
       executor: "spark-01",
@@ -111,8 +143,8 @@ test fn control_plane_work_is_refused_on_customer_sanctioned_capacity() -> Bool 
 // And the reverse direction, which is the one that actually loses money and
 // trust: customer work must not land on the cells running our control plane.
 test fn customer_work_is_refused_on_control_plane_capacity() -> Bool {
-  !capacity_admission_is_admitted(
-    admission: admit_executor_capacity(
+  cc_refused_for_class(
+    a: admit_executor_capacity(
       requirements: cc_requirements(class: CustomerExecutableCapacity),
       roster: [fleet_cell_sanction(slot: cc_slot())],
       executor: "srv3-06",
@@ -123,8 +155,8 @@ test fn customer_work_is_refused_on_control_plane_capacity() -> Bool {
 // The positive control for both walls. Without it they are satisfied by an
 // admission that refuses everything, which is a fabric that can never run.
 test fn control_plane_work_is_admitted_on_a_fleet_cell() -> Bool {
-  capacity_admission_is_admitted(
-    admission: admit_executor_capacity(
+  cc_admitted(
+    a: admit_executor_capacity(
       requirements: cc_requirements(class: ControlPlaneCapacity),
       roster: [fleet_cell_sanction(slot: cc_slot())],
       executor: "srv3-06",
@@ -138,8 +170,8 @@ test fn control_plane_work_is_admitted_on_a_fleet_cell() -> Bool {
 // sanction nobody authored. The remedy for this refusal is to classify it,
 // which is a thing a person does once and deliberately.
 test fn an_unclassified_executor_is_refused_rather_than_defaulted() -> Bool {
-  !capacity_admission_is_admitted(
-    admission: admit_executor_capacity(
+  cc_unclassified(
+    a: admit_executor_capacity(
       requirements: cc_requirements(class: ControlPlaneCapacity),
       roster: [],
       executor: "srv9-99",

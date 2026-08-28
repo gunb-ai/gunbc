@@ -109,14 +109,6 @@ fn admit_executor_capacity(
   }
 }
 
-fn capacity_admission_is_admitted(admission: CapacityClassAdmission) -> Bool {
-  match admission {
-    CapacityClassAdmitted { executor: _, class: _ } => true
-    CapacityClassRefused { executor: _, required: _, sanctioned: _ } => false
-    ExecutorNotClassified { executor: _ } => false
-  }
-}
-
 fn capacity_admission_wire(admission: CapacityClassAdmission) -> NonEmptyStr {
   match admission {
     CapacityClassAdmitted { executor: e, class: c } =>

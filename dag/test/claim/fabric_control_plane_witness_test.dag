@@ -26,13 +26,18 @@ import product.fabric.selection {
   OpportunityCostObservation, NoFeasibleAlternativeUse,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric_executor_class {
+  ExecutorSanction, ExecutorSanctioned, CustomerExecutableCapacity,
+  CapacityClassAdmission, CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified,
+}
+import gunbc.fabric_floor_dispatch { floor_demand }
 import gunbc.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, ReservationLost,
   StoreUnavailable, AttemptRefused, BudgetRefused, reserve_priced_cell,
   CellCandidateBinding, CellCandidateBound, OfferExecutorIsNotTheCell,
   fabric_cell_allocation_key, fabric_reservation_payload,
-  cell_reservation_is_held, fabric_control_plane_store_root,
-  bind_fabric_cell_candidate,
+  fabric_control_plane_store_root,
+  bind_fabric_cell_candidate, broker_reserve_for_demand, FabricCellCandidate,
 }
 
 // Evidence for the PURE half of the broker. The reserve path performs a host
@@ -64,51 +69,84 @@ test fn the_allocation_key_is_the_slots_own_canonical_spelling() -> Bool {
     && !(key as String).contains("/")
 }
 
-// The positive control. Without it the row below is satisfied by a projection
-// that reports every outcome as unheld, which would be a broker that never
-// reserves anything.
-test fn a_committed_reservation_reports_the_cell_as_held() -> Bool {
-  cell_reservation_is_held(
-    reservation: CellReserved {
-      offer: cp_offer_id(key: "offer-1"),
-      slot_key: "srv3-06",
-      generation: 1,
-      account: cp_account(currency: Usd, ceiling: 1000000),
-    }
+// NOTHING WAS OFFERED AND EVERYTHING WAS REFUSED ARE DIFFERENT ANSWERS, and
+// this pair is what forces the broker to keep them apart. Admission removes an
+// unsanctioned executor from the roster BEFORE the market ranks anything, so
+// without the refused population an unsatisfiable demand and a demand refused
+// entirely on the capacity-class safety line arrive as the same symbol -- and
+// their remedies are opposite: offer more capacity, versus stop asking for
+// capacity you are not sanctioned to use.
+//
+// The two rows differ in exactly one input, the roster, so a broker that filled
+// `refused` from anything other than what admission actually rejected cannot
+// satisfy both. The empty-roster row is the control that excludes a broker
+// which always reports a refusal.
+fn cp_admission_refusals(r: CellReservation) -> List<CapacityClassAdmission> {
+  match r {
+    NoCellAdmissible { considered: _, refused: f } => f
+    CellReserved { offer: _, slot_key: _, generation: _, account: _ } => []
+    BudgetRefused { slot_key: _, refusal: _ } => []
+    ReservationLost { slot_key: _ } => []
+    StoreUnavailable { slot_key: _, cause: _ } => []
+    AttemptRefused { slot_key: _, detail: _ } => []
+  }
+}
+
+fn cp_roster(executor: NonEmptyStr) -> List<FabricCellCandidate> {
+  fold(
+    cp_binds(executor: executor),
+    init: [],
+    f: (acc, b) =>
+      match b {
+        CellCandidateBound { bound: c } => acc + [c]
+        OfferExecutorIsNotTheCell { slot_key: _, executor: _ } => acc
+      },
   )
 }
 
-// THE DISCRIMINATING RED, AND IT GUARDS THE FAIL-OPEN DIRECTION. Every arm that
-// is not a committed reservation must report the cell as NOT held. If a future
-// arm defaulted to held, a caller would proceed to execution on a cell nobody
-// reserved -- which is precisely the invariant the broker exists to enforce, so
-// this row goes red before that can ship. All four are asserted rather than a
-// sample, because the danger is exactly the arm someone forgot.
-test fn no_outcome_other_than_a_commit_reports_the_cell_as_held() -> Bool {
-  !cell_reservation_is_held(reservation: NoCellAdmissible { considered: [] })
-    && !cell_reservation_is_held(reservation: ReservationLost { slot_key: "srv3-06" })
-    && !cell_reservation_is_held(
-         reservation: StoreUnavailable {
-           slot_key: "srv3-06",
-           cause: CasUnreadableReadRefused { detail: "store offline" },
-         }
-       )
-    && !cell_reservation_is_held(
-         reservation: AttemptRefused { slot_key: "srv3-06", detail: "malformed" }
-       )
-    && !cell_reservation_is_held(
-         reservation: BudgetRefused {
-           slot_key: "srv3-06",
-           refusal: LedgerRefused {
-             account: "fleet-ci",
-             refusal: ExceedsAppropriation {
-               requested: money_amount_micro(count: 500),
-               committed: money_amount_micro(count: 0),
-               ceiling: money_amount_micro(count: 1),
-             },
-           },
-         }
-       )
+fn cp_broker(roster: List<FabricCellCandidate>, sanctions: List<ExecutorSanction>) -> CellReservation {
+  broker_reserve_for_demand(
+    root: fabric_control_plane_store_root(),
+    demand: floor_demand(
+      id: cp_demand_id(key: "demand-7"),
+      work: FabricIdentity { principal: "gunbc", key: "work-7" },
+      origin: "gunbc.observation.pr-1",
+      submitted_at: "2026-08-27T00:00:00Z",
+      account: "fleet-ci",
+      reservation_price: money_amount_micro(count: 500000),
+      maximum_buy_order: money_amount_micro(count: 1000000),
+      deadline: none,
+    ),
+    roster: roster,
+    sanctions: sanctions,
+    expected: ExpectSlotAbsent,
+    account: cp_account(currency: Usd, ceiling: 1000000),
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
+  )
+}
+
+test fn an_executor_refused_on_the_capacity_line_is_reported_not_dropped() -> Bool {
+  let refusals = cp_admission_refusals(
+    r: cp_broker(
+      roster: cp_roster(executor: "srv3-06"),
+      sanctions: [ExecutorSanctioned { executor: "srv3-06", sanctioned: CustomerExecutableCapacity }],
+    ),
+  )
+  (refusals |> count) == 1
+    && fold(refusals, init: false, f: (acc, a) => acc || cp_refusal_is_class(a: a))
+}
+
+test fn an_empty_roster_reports_no_admission_refusals_at_all() -> Bool {
+  (cp_admission_refusals(r: cp_broker(roster: [], sanctions: [])) |> count) == 0
+}
+
+fn cp_refusal_is_class(a: CapacityClassAdmission) -> Bool {
+  match a {
+    CapacityClassRefused { executor: _, required: _, sanctioned: _ } => true
+    CapacityClassAdmitted { executor: _, class: _ } => false
+    ExecutorNotClassified { executor: _ } => false
+  }
 }
 
 // The slot's contents must say WHO holds the cell and FOR WHAT, or a reservation
@@ -254,7 +292,7 @@ fn cp_budget_refusal(r: CellReservation) -> List<MoneyRefusal> {
   match r {
     BudgetRefused { slot_key: _, refusal: f } => [f]
     CellReserved { offer: _, slot_key: _, generation: _, account: _ } => []
-    NoCellAdmissible { considered: _ } => []
+    NoCellAdmissible { considered: _, refused: _ } => []
     ReservationLost { slot_key: _ } => []
     StoreUnavailable { slot_key: _, cause: _ } => []
     AttemptRefused { slot_key: _, detail: _ } => []
