@@ -2532,51 +2532,69 @@ fn merged_module_source_indices(modules: List<TypedModule>) -> Map<String, Newli
   modules |> fold(init: empty_map(), f: (acc, m) => map_merge(acc, m.type_env.source_indices))
 }
 
-// THE ORDER OF THE BINDINGS BELOW IS LOAD-BEARING AND IS NOT A TIDY-UP. DO NOT REORDER THEM.
+// A CONTROL OVER A PROBABILISTIC SUBJECT NEEDS A STATED SAMPLE SIZE BEFORE IT CONCLUDES ANYTHING.
+// TWO AGREEING DRAWS ARE NOT DETERMINISM. That is the durable content of this annotation, it is why
+// an earlier revision of it asserted a cause that was never established, and it generalises far past
+// this file -- so it is stated first rather than as a lesson appended to a finding.
 //
-// MEASURED, not reasoned. Factoring this preamble out of emit_rust moved workflow_funcs, the two
-// diagnostic guards and test_projections to AFTER export_sets and module_index, where they had been
-// interleaved before. Nothing about the import decision changed -- same candidates, same survivors,
-// same use-line SET -- and the emitted crate still moved: in a scoped emit of
-// src/v2/compiler/00_compile.dag (175 files, roots dag + src/v2), exactly one file differed,
-// v2_lens_enforcement_vocab.rs, and the whole diff was two `pub use` lines SWAPPED IN ORDER
-// (std_realization_schedule::ScheduleWitnessEntry against v2_std_qualified_name::QualifiedName).
-// Reproduced across three separate builds, against a same-source control that was byte-identical --
-// so the emitter is stable given its source and NOT invariant under this reordering. Restoring the
-// original order restored byte-identity exactly.
+// The receipt for it is immediately below: the same binary compiling the same unchanged corpus six
+// consecutive times produces a differing-file count of 2, 0, 1, 0, 2. A same-source control run
+// TWICE against a flip with roughly those odds agrees about half the time, and agreeing twice was
+// read as "the emitter is deterministic". It is not. The control could not have detected the very
+// thing it was controlling for, and nothing about running it was wrong except that no sample size
+// was stated before it was allowed to conclude.
 //
-// SO EMITTED BYTES DEPEND ON THE EVALUATION ORDER OF INDEPENDENT-LOOKING BINDINGS IN THIS PREAMBLE.
-// That is a latent defect with a bounded, reproducible specimen, and it is RECORDED rather than
-// chased: the suspect is a shared memo or interner upstream of the import-line stream, which nothing
-// here establishes. Its blast radius is every future refactor in this region, each of which will
-// silently move bytes and be diagnosed from scratch by whoever hits it. A reader who "simplifies"
-// these bindings back into a natural grouping will reproduce it.
+// WHAT AN EARLIER REVISION CLAIMED, AND WHAT IS RETRACTED. It said that factoring this preamble --
+// moving workflow_funcs, the two diagnostic guards and test_projections after export_sets and
+// module_index -- moved emitted bytes; that "the emitter is stable given its source and NOT
+// invariant under this reordering"; and that restoring the original order restored byte-identity.
+// The first half of that sentence is FALSE: the emitter is not stable given its source. The rest is
+// UNSUPPORTED, because the mechanism measured below fully explains the observation that was
+// attributed to the reordering, and nothing run at the time distinguished them.
 //
-// THIS ADMITS NO DEBT AND IS NOT A SCAFFOLD, and the distinction decides who has to approve it. The
-// order-dependence is PRE-EXISTING: it is a property of the emitter as it stood before this change,
-// not something introduced here, and no artifact is added that must later be deleted. The ordering
-// kept below IS the ordering that was already there, so what is preserved is the status quo and what
-// is new is only the knowledge that preserving it was necessary. DESIGN's scaffold-admission ruling
-// governs CREATING temporary work -- "a dissolution condition describes how admitted debt ends, it
-// does not authorize creating the debt" -- and there is no debt here to authorize; an earlier
-// revision of this annotation called the kept ordering a "workaround", which invited exactly that
-// reading and is corrected rather than defended. DESIGN's workaround rule is about routing AROUND an
-// obstacle without diagnosing it, and the opposite happened: the line was stopped, the bytes were
-// measured, the cause was located to the preamble, and the original order was restored.
+// THE REORDERING WAS NEVER SHOWN TO MOVE A BYTE. It was also never shown innocent, and those are
+// different claims -- holding them apart is the whole content of this retraction. So: KEEPING THE
+// ORIGINAL BINDING ORDER IS NOT JUSTIFIED BY THE SPECIMEN THAT WAS GIVEN FOR IT. The order below is
+// simply the order that was already there. This annotation is not an argument against regrouping
+// these bindings; it is a record that the question was asked and answered wrongly once, and that any
+// measurement settling it must control for a per-run flip in the two files named below rather than
+// diffing a single pair.
 //
-// THE TRIGGER BELOW IS AN OBLIGATION, NOT A PERMISSION. Section 4b(2) requires a discovered class
-// below its ceiling to name its next-rung trigger so the stall is tracked rather than silent;
-// omitting it would leave a measured defect recorded with no way to tell "cannot climb" from "nobody
-// has". NEXT-RUNG TRIGGER: the order-dependence is located and removed -- the emitter made invariant
-// under permutation of these bindings -- at which point this annotation and the ordering constraint
-// it protects both retire. The discriminating control until then is the one that found it: emit a
-// scoped entry before and after, and diff.
+// WHAT IS ACTUALLY HAPPENING, measured on one binary compiling one unchanged corpus six consecutive
+// times (scoped emit of src/v2/compiler/00_compile.dag, 175 files, roots dag + src/v2):
+//   - the differing-file count VARIES BY RUN: 2, 0, 1, 0, 2 against the first run;
+//   - exactly two files ever differ, v2_lens_enforcement_vocab.rs and v2_std_cross_tree_resolution.rs;
+//   - each has EXACTLY TWO distinct outputs across the six runs;
+//   - sorted lines are IDENTICAL in every differing pair, so this is REORDERING, not value
+//     nondeterminism;
+//   - every changed line is a `pub use` line (2 of 2, and 4 of 4);
+//   - and after rustfmt both files are NORMALIZED-IDENTICAL.
 //
-// THE STRUCTURAL BYTE-IDENTITY ARGUMENT DID NOT COVER THIS, and that is the reusable lesson. "The
-// use-lines ARE the survived arm of the same decision the census counts, so bytes cannot move unless
-// the decision moves" is TRUE, and it is silent about evaluation order, memoisation and interning --
-// everything the refactor touched but the decision did not. A valid argument with an unstated scope
-// passes review precisely because each half checks out. The measured diff is what caught it.
+// So this is the known import-set ordering class: a set or map iterated in nondeterministic order
+// inside use-line synthesis. It was characterised and closed once (#5913, which grounded the
+// variant-owner pick and the import-set ordering in the .dag authority, taking a corpus-x2 churn of
+// 36 files to 0), and measured again on the 03_ingest closure on 2026-08-22 with the same signature.
+// It was reported independently by another lane on main at 38a127bd60, naming THESE TWO FILES, with
+// no contact between the lanes.
+//
+// THE CONSEQUENCE FOR THE GATES, corrected in the direction that matters. The retracted revision
+// warned that an emitter which does not produce the same bytes twice undermines every byte-comparison
+// gate downstream, regen's fixed point included. That is true in general and FALSE OF THIS MECHANISM
+// AGAINST THAT GATE: the emitted artifact is stored as a fixed point of the formatter, so the
+// compared population is normalized, and normalization is precisely what removes pure use-statement
+// reordering -- measured above, not argued. required-regen reported first_generation_equal=true on
+// every run throughout.
+//
+// THE OPEN QUESTION IS NOT "IS THE EMITTER NONDETERMINISTIC", which is answered. It is WHY A SITE
+// GROUNDED IN JUNE IS VARYING AGAIN IN AUGUST -- whether that grounding regressed, never covered this
+// site, or a second mechanism exists. NOTHING HERE EXPLAINS THAT, and this annotation deliberately
+// offers no theory: a correct retraction must not become a second causal story. What it contributes
+// is the localisation -- two named files, pure `pub use` order, two outputs each.
+//
+// A SECOND, OLDER LESSON ALSO STANDS. The structural argument "the use-lines ARE the survived arm of
+// the same decision the census counts, so bytes cannot move unless the decision moves" is TRUE, and
+// silent about evaluation order, memoisation and interning. A valid argument with an unstated scope
+// passes review precisely because each half checks out.
 
 // THE INPUTS EVERY MODULE'S EMISSION IS COMPUTED AGAINST, built once and named once.
 //
@@ -3951,16 +3969,85 @@ type ReferenceDerivedCensus {
   export_proof_failed: Int
 }
 
+// ONE FOLD THAT DISPATCHES ON THE COPRODUCT, so that adding an arm BREAKS THIS FUNCTION rather than
+// being silently uncounted. An earlier cut counted each field with its own filter over the
+// disposition's rendered NAME. That kept the arm-naming honest -- reference_derived_disposition_name
+// carries no wildcard, so a new arm fails to compile there -- and it left the COUNTERS able to
+// compile unchanged while answering for a population they no longer covered: `candidates` would have
+// exceeded the sum of the four counts, and nothing would have said so. In a change whose entire
+// subject is a population that goes uncounted in silence, that is the defect this file exists to
+// close, reintroduced one level up (review 56672).
+//
+// Counting through the match rather than beside it also makes `candidates` the SUM of the arms by
+// construction instead of a second, independently computed total that happens to agree -- so a census
+// whose parts do not add up to its whole is unrepresentable rather than merely unlikely.
 fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> ReferenceDerivedCensus {
-  ReferenceDerivedCensus {
-    candidates: rows |> count,
-    survived: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "survived") |> count,
-    own_module: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "own-module") |> count,
-    variant_delegated_to_parent: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "variant-delegated-to-parent") |> count,
-    variant_parent_unresolved: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "variant-parent-unresolved") |> count,
-    registry_absent: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "registry-absent") |> count,
-    export_proof_failed: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "export-proof-failed") |> count
-  }
+  rows |> fold(
+    init: ReferenceDerivedCensus { candidates: 0, survived: 0, own_module: 0, variant_delegated_to_parent: 0, variant_parent_unresolved: 0, registry_absent: 0, export_proof_failed: 0 },
+    f: (acc, r) =>
+      match r.disposition {
+        CandidateSurvived { provider_module: _ } =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived + 1,
+            own_module: acc.own_module,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent,
+            variant_parent_unresolved: acc.variant_parent_unresolved,
+            registry_absent: acc.registry_absent,
+            export_proof_failed: acc.export_proof_failed
+          }
+        CandidateOwnModule =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived,
+            own_module: acc.own_module + 1,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent,
+            variant_parent_unresolved: acc.variant_parent_unresolved,
+            registry_absent: acc.registry_absent,
+            export_proof_failed: acc.export_proof_failed
+          }
+        CandidateVariantDelegatedToParent { parent_enum: _ } =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived,
+            own_module: acc.own_module,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent + 1,
+            variant_parent_unresolved: acc.variant_parent_unresolved,
+            registry_absent: acc.registry_absent,
+            export_proof_failed: acc.export_proof_failed
+          }
+        CandidateVariantParentUnresolved =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived,
+            own_module: acc.own_module,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent,
+            variant_parent_unresolved: acc.variant_parent_unresolved + 1,
+            registry_absent: acc.registry_absent,
+            export_proof_failed: acc.export_proof_failed
+          }
+        CandidateRegistryAbsent =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived,
+            own_module: acc.own_module,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent,
+            variant_parent_unresolved: acc.variant_parent_unresolved,
+            registry_absent: acc.registry_absent + 1,
+            export_proof_failed: acc.export_proof_failed
+          }
+        CandidateExportProofFailed { provider_module: _ } =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived,
+            own_module: acc.own_module,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent,
+            variant_parent_unresolved: acc.variant_parent_unresolved,
+            registry_absent: acc.registry_absent,
+            export_proof_failed: acc.export_proof_failed + 1
+          }
+      }
+  )
 }
 
 // The use-lines and the decisions that produced them, returned together so that no consumer can read

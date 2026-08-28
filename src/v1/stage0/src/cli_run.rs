@@ -1755,7 +1755,6 @@ struct ModuleBindingManifestRow {
     module_path: String,
     rel_path: String,
     root_variant: String,
-    ident_span: Rc<SourceSpan>,
 }
 
 fn witness_layer_root_spelling(root: &str) -> String {
@@ -1886,7 +1885,6 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
                 module_path: binding.module_path,
                 rel_path: rel,
                 root_variant: root_variants[root_idx].clone(),
-                ident_span: binding.ident_span,
             },
         );
     });
@@ -6454,6 +6452,149 @@ mod compile_clean_via_index_verdict_equivalence {
         );
     }
 
+    /// THE PURITY ORACLE FOR THE SHARED PRIMARY-PRECEDENCE INDEX: cached == cold, BYTE-IDENTICAL.
+    ///
+    /// The change this guards routes `compile_emission`'s primary-precedence arm through the
+    /// process-shared `MultiEntryIndex` instead of a fresh per-call one, so N entries compiled in
+    /// one process now SHARE a parse cache, a typed-module cache, a pool census and an intern
+    /// table. The whole benefit is that the overlapping closure prefix -- most of `dag/std` sits
+    /// in nearly every entry's closure -- reconciles once instead of N times; the whole risk is
+    /// that a shared cache serves one entry's result for another's. DESIGN names the oracle for
+    /// exactly this: byte-identical cached-vs-cold.
+    ///
+    /// THE DISCRIMINATION IS IN THE SECOND ENTRY, not the first. Entry `beta` is compiled twice:
+    /// once COLD (a cleared index, so it re-derives from disk) and once WARM BEHIND `alpha`,
+    /// whose closure shares the `common` module with it -- so the warm arm reads `common` from a
+    /// cache another entry's compile filled. Comparing emitted bytes and diagnostic counts across
+    /// those two arms is what distinguishes a shared cache that is CORRECT from one that merely
+    /// runs. Both arms are asserted to have emitted something first, because two empty file lists
+    /// also compare equal and would green this test over a transaction that never emitted.
+    #[test]
+    fn shared_primary_precedence_index_is_byte_identical_to_cold() {
+        let corpus = Corpus::new(
+            "shared-index-purity",
+            &[
+                (
+                    "common.dag",
+                    "module pur.common\n
+fn shared_double(x: Int) -> Int {\n  x + x\n}\n",
+                ),
+                (
+                    "alpha.dag",
+                    "module pur.alpha\n
+import pur.common { shared_double }\n\nfn alpha_use(x: Int) -> Int {\n  shared_double(x)\n}\n",
+                ),
+                (
+                    "beta.dag",
+                    "module pur.beta\n
+import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_double(x) + 1\n}\n",
+                ),
+            ],
+        );
+        let beta_path = corpus.sources[2].path.clone();
+        let alpha_path = corpus.sources[1].path.clone();
+
+        let emission_of = |run: &super::CompileRun| -> Vec<(String, String)> {
+            run.emissions
+                .iter()
+                .flat_map(|e| e.result.files.iter())
+                .map(|f| (f.path.clone(), f.content.clone()))
+                .collect()
+        };
+
+        // COLD: nothing in this process has compiled anything against these roots.
+        super::reset_process_shared_index_for_test();
+        let cold = super::compile_entry_emission(
+            &corpus.roots,
+            &beta_path,
+            true,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let cold_files = emission_of(&cold);
+        assert!(
+            !cold_files.is_empty(),
+            "the cold arm must actually emit -- two empty file lists compare equal and would \
+             green this oracle over a transaction that never ran; disposition={:?}",
+            cold.disposition
+        );
+
+        // WARM: `alpha` fills the shared caches with `common`'s parse and typecheck first, then
+        // `beta` compiles against an index another entry populated.
+        //
+        // THE SHARING IS ASSERTED, NOT ASSUMED. Purity alone is not evidence for this change:
+        // under the OLD per-call index both arms are cold, the bytes match trivially, and this
+        // test greens over a transaction that shares nothing -- the change-detector shape. So the
+        // index identity is read on both sides of `alpha` and `beta`: `generation` is a
+        // per-process monotone counter minted by `new_multi_entry_index_shell`, so two compiles
+        // reporting the SAME generation is the executed proof that one index served both, and
+        // under the old code it is exactly the assertion that fails.
+        super::reset_process_shared_index_for_test();
+        let _alpha = super::compile_entry_emission(
+            &corpus.roots,
+            &alpha_path,
+            true,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let generation_after_alpha = super::try_process_shared_index_for_pool(&corpus.roots, true)
+            .expect("the shared primary-precedence index exists after alpha compiled")
+            .generation;
+        // WHAT THIS SHARING DOES AND DOES NOT REACH, asserted rather than described, because the
+        // difference is the whole honest scope of this change.
+        //
+        // It reaches the INDEX: source discovery, the module index, the parse cache and the pool
+        // census are now built once per (roots, pool) instead of once per entry.
+        //
+        // It does NOT reach RECONCILE. `compile_emission` calls
+        // `v1_compiler_compile::compile_to_resolved_with_options` directly, whose reconcile is
+        // `reconcile_with_census_extra` over the whole closure -- it never touches this index's
+        // `typed_module_cache`, which is filled only by `reconcile_with_typed_cache` on the
+        // `resolved_graph_from_sources_with_index` route. So the typed cache is EMPTY after a
+        // compile, and this assertion pins that fact so a later reader cannot mistake index
+        // sharing for reconcile sharing. When the reconcile route is unified, this assertion is
+        // the one that fails, which is the correct way for it to be superseded: loudly, at the
+        // line that documents the boundary, rather than by a comment quietly going stale.
+        assert_eq!(
+            super::typed_module_cache_len_for_test(
+                &super::try_process_shared_index_for_pool(&corpus.roots, true).unwrap()
+            ),
+            0,
+            "compile_emission does not reconcile through the shared typed cache -- if this is no \
+             longer 0 the reconcile route was unified and this test's scope note is stale"
+        );
+
+        let warm = super::compile_entry_emission(
+            &corpus.roots,
+            &beta_path,
+            true,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let warm_files = emission_of(&warm);
+        let generation_after_beta = super::try_process_shared_index_for_pool(&corpus.roots, true)
+            .expect("the shared index survives beta's compile")
+            .generation;
+        assert_eq!(
+            generation_after_alpha, generation_after_beta,
+            "both entries must have compiled against ONE index -- a differing generation means \
+             each compile built its own, which is the per-entry cost shape this change removes"
+        );
+
+        assert_eq!(
+            cold_files, warm_files,
+            "emitted bytes must be byte-identical whether `beta`'s closure was reconciled cold or \
+             read from caches `alpha`'s compile filled"
+        );
+        assert_eq!(
+            (cold.blocking_diagnostics, cold.advisory_diagnostics),
+            (warm.blocking_diagnostics, warm.advisory_diagnostics),
+            "diagnostic populations must not depend on which sibling entry warmed the index"
+        );
+        assert_eq!(
+            cold.closure_modules, warm.closure_modules,
+            "the closure the transaction resolved must not depend on cache residency"
+        );
+        super::reset_process_shared_index_for_test();
+    }
+
     #[test]
     fn out_of_closure_annotation_refusal_blocks_scoped_compile_clean() {
         let corpus = Corpus::new(
@@ -8763,9 +8904,16 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // THE PANICKING WRAPPERS SURVIVE for callers whose inputs are already
     // invariant-established; this is the one route that takes a path straight from a CLI
     // argument, so it is the one that must refuse instead.
+    //
+    // BOTH ARMS NOW ROUTE THROUGH THE PROCESS-SHARED INDEX, one slot per pool semantics.
+    // The primary arm previously built a fresh index per call and discarded it, so every cache
+    // it owns -- parse, typed-module, pool census, intern table -- was per-call, and a run
+    // compiling N entries reconciled the shared prefix N times over closures that overlap almost
+    // entirely. See `try_process_shared_index_for_pool` for why that is a §2 cost-shape defect
+    // rather than a budget fact, and for what is NOT changed by the routing.
     let index: Rc<MultiEntryIndex> = if primary_precedence {
-        match try_build_multi_entry_index_primary_precedence(source_roots) {
-            Ok(idx) => Rc::new(idx),
+        match try_process_shared_index_for_pool(source_roots, true) {
+            Ok(idx) => idx,
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
@@ -11385,9 +11533,18 @@ thread_local! {
     // source_roots — a run's roots are fixed, so this is a get-or-build, rebuilt only on
     // the rare roots change. Thread-local by the same Rc-not-Send reason as the store:
     // each shard keeps its own index rather than smuggling Rc across threads.
+    //
+    // TWO SLOTS, ONE PER POOL SEMANTICS, and the pair is what makes the memo safe rather than
+    // merely faster. `primary-precedence` (root[0] wins, later roots fill only absent modules)
+    // and strict are DIFFERENT POOLS over the same roots: serving one where the other was asked
+    // for is a silently divergent resolution, which is the §5 fail-open this cache would
+    // otherwise introduce. So precedence is part of the identity of the slot, not a build flag
+    // applied to a shared one -- a roots-keyed single slot cannot express the distinction and
+    // would answer whichever mode ran first. Each slot keeps the original single-entry,
+    // rebuild-on-roots-change shape, so an index is never held for a pool nobody is asking about.
     #[allow(clippy::type_complexity)]
-    static PROCESS_RESOLVE_INDEX: RefCell<Option<(String, Rc<MultiEntryIndex>)>> =
-        const { RefCell::new(None) };
+    static PROCESS_RESOLVE_INDEX: RefCell<[Option<(String, Rc<MultiEntryIndex>)>; 2]> =
+        const { RefCell::new([None, None]) };
 
     // While loading the materialization-provider authority, cross-process disk hits
     // must not re-enter provider routing (review 44268: bootstrap recursion).
@@ -11468,10 +11625,42 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
 /// discovery must not install a partial index that every later caller in the process would
 /// then read as complete.
 pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntryIndex>, String> {
+    try_process_shared_index_for_pool(source_roots, false)
+}
+
+/// The shared index for `source_roots` under a NAMED POOL SEMANTICS.
+///
+/// WHY THIS EXISTS, and it is a §2 cost-shape repair rather than a new capability. The compile
+/// transaction's two subjects took opposite routes over the same caches: the strict arm resolved
+/// through the process-shared index above -- so a second `--entry` compile in one process is a
+/// cache hit -- while the primary-precedence arm built a FRESH `MultiEntryIndex` per call and
+/// threw it away. Every cache that index owns is per-call under that arm: the parse cache, the
+/// typed-module cache, the pool census, the interned names. So a run that compiles N entries
+/// typechecks the shared prefix N times, and the prefix is nearly the whole closure -- most of
+/// `dag/std` sits in almost every entry's closure. The dominant cost of the emit-compile phase
+/// (`compile.reconcile`) is therefore paid INDEPENDENTLY PER ENTRY over closures that overlap
+/// almost entirely, which is why a per-entry cover cannot reach the corpus at any budget: the
+/// unit of computation was the closure and the unit of fact was the entry.
+///
+/// WHAT CHANGES AND WHAT DOES NOT. Only WHICH index the primary arm reaches; the index's own
+/// semantics are untouched -- it is still built by `try_build_module_index_primary_precedence`
+/// over the same canonicalized roots, so the pool it presents is the same pool. The typed cache
+/// is keyed by authored name and content (`typed_module_content_key`), and the collision-honesty
+/// guard in `reconcile_with_typed_cache` already refuses loudly when one name resolves from two
+/// declaring files across co-resident entries -- which is exactly the co-residence this memo
+/// creates more of, so the wall is upstream of the change rather than owed by it.
+///
+/// PRECEDENCE IS PART OF THE SLOT IDENTITY, never a parameter applied to a shared slot: see the
+/// two-slot note on `PROCESS_RESOLVE_INDEX`.
+pub fn try_process_shared_index_for_pool(
+    source_roots: &[String],
+    primary_precedence: bool,
+) -> Result<Rc<MultiEntryIndex>, String> {
+    let slot = usize::from(primary_precedence);
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
-        s.borrow().as_ref().and_then(|(k, idx)| {
+        s.borrow()[slot].as_ref().and_then(|(k, idx)| {
             if *k == roots_key {
                 Some(idx.clone())
             } else {
@@ -11483,19 +11672,35 @@ pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntry
         return Ok(idx);
     }
     let build_started = std::time::Instant::now();
-    let idx = Rc::new(new_multi_entry_index_shell(
-        try_build_module_index(&roots)?,
-        &roots,
-        None,
-    ));
+    let module_index = if primary_precedence {
+        try_build_module_index_primary_precedence(&roots)?
+    } else {
+        try_build_module_index(&roots)?
+    };
+    let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots, None));
     discovery_phase_totals::add(
         &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
         build_started.elapsed(),
     );
     PROCESS_RESOLVE_INDEX.with(|s| {
-        *s.borrow_mut() = Some((roots_key, idx.clone()));
+        s.borrow_mut()[slot] = Some((roots_key, idx.clone()));
     });
     Ok(idx)
+}
+
+/// Test-only: drop the process-shared index slots so the NEXT compile in this process is COLD.
+///
+/// This exists so `cached == cold` can be asserted by EXECUTION rather than by reading the cache
+/// keys. Without it the two arms of the oracle cannot be distinguished from inside one process:
+/// the second compile is a hit by construction, so a test that ran both arms warm would compare a
+/// value with itself and be green whatever the cache served -- the change-detector shape §5
+/// rejects. Clearing the slot makes the cold arm genuinely re-derive from disk.
+#[cfg(test)]
+pub(crate) fn reset_process_shared_index_for_test() {
+    PROCESS_RESOLVE_INDEX.with(|s| {
+        *s.borrow_mut() = [None, None];
+    });
+    PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
 }
 
 pub fn resolve_entry_graph_shared(
@@ -12572,17 +12777,6 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
         source_roots,
         None,
     )
-}
-
-/// Fallible twin of the above, for the compile transaction. See `try_build_module_index`.
-fn try_build_multi_entry_index_primary_precedence(
-    source_roots: &[String],
-) -> Result<MultiEntryIndex, String> {
-    Ok(new_multi_entry_index_shell(
-        try_build_module_index_primary_precedence(source_roots)?,
-        source_roots,
-        None,
-    ))
 }
 
 pub fn build_multi_entry_index_with_shared_caches(
@@ -32610,7 +32804,24 @@ fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
     }
     if body.is_empty() {
         body.push_str("host_sr_empty");
-    } else if body.as_bytes()[0].is_ascii_digit() {
+    } else if body.as_bytes()[0].is_ascii_digit()
+        || v1_compiler_tokenize::is_keyword_text(body.clone())
+    {
+        // THE THIRD ESCAPE ARM, AND THE CORPUS ALREADY CONTAINED ITS CASE.
+        //
+        // This minted `^{stem}` after escaping non-identifier characters and a leading digit,
+        // and stopped there. A stem that IS a keyword still lexes as a keyword, so `dag/std/
+        // import.dag` emitted `^import` and the manifest failed to parse -- measured, at the
+        // caret: "expected identifier or `(` after `^`, found keyword". Two stems in the tree
+        // reach it today, `dag/std/import.dag` and `dag/extdeps/languages/go/module.dag`.
+        //
+        // The mint promised a valid symbol and returned an unparseable one with no refusal,
+        // which is why nothing caught it: the emitter succeeded, the file was written, and the
+        // only executing consumer is a `long/` `ReadsLiveTree` witness the floor declines.
+        //
+        // The keyword test routes through `v1_compiler_tokenize` `is_keyword_text`, whose set is
+        // derived from the grammar. A literal list here would be a second authority for the
+        // keyword vocabulary (DESIGN §3) and would go stale the next time the grammar gains one.
         body = format!("sr_{body}");
     }
     format!("^{body}")
@@ -33032,9 +33243,8 @@ pub fn emit_module_storage_binding_manifest(
     out.push_str("}\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import std.algebra { Cons, Empty }\n");
-    out.push_str("import v2.std.diagnostic { ByteRange, Textual }\n");
     out.push_str("import v2.std.integer { Int }\n");
-    out.push_str("import v2.std.provenance { FromSource, span_index_empty, span_index_record }\n");
+    out.push_str("import v2.std.provenance { span_index_empty }\n");
     out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
     out.push('\n');
@@ -33091,32 +33301,40 @@ fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, Strin
     ))
 }
 
-/// THE FIELD THIS EMITS IS AN `OccurrenceId`, NOT A `NodeOccurrenceIdentity` ARM.
+/// THE HOST TRANSPORT HAS NO OCCURRENCE IDENTITY TO OFFER, SO IT OFFERS NONE.
 ///
-/// `span_index_record` declares `id: OccurrenceId`, and this generator previously wrapped the
-/// value in `MintedOccurrence { id: ... }` and imported that constructor from `v2.std.node` --
-/// a payload-for-carrier confusion of exactly the class
-/// `dag/test/claim/coproduct_payload_soundness_witness_test.dag` records, pointing the other way.
-/// It stayed invisible because this file is generated: whole-tree compile-clean never sees it,
-/// and the committed manifest stub carries no rows, so the wrapped form was never parsed.
-/// Repaired with the v2 `NodeOccurrenceId` facade cut, which deleted the constructor it named.
+/// This emitted a one-entry `SpanIndex` keyed on an `OccurrenceId` derived from the ident
+/// span's byte offset (`start.max(1)`). `std.occurrence_identity` `occurrence_identity_scope_law`
+/// names `SourceSpan` a FORBIDDEN identity input, and the derivation additionally collided:
+/// offsets 0 and 1 both produced 1.
 ///
-/// The construction stays FULLY QUALIFIED, and the name is correspondingly absent from this
-/// manifest's import list: a bare `OccurrenceId` in a record-literal position has resolved
-/// ambiguously in this overlay's compiled pool before (#7352), and qualifying costs nothing.
-fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> String {
-    let start = span.start.max(0);
-    let end = span.end.max(start);
-    let occurrence_id = start.max(1);
-    format!(
-        "span_index_record(\n  index: span_index_empty(),\n  id: std.occurrence_identity.OccurrenceId {{ value: {occurrence_id} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
-    )
+/// Traced to its consumers, the fabricated id was WRITE-ONLY, which is why it stood. Each row
+/// built its own `span_index_empty()` and recorded exactly one entry, so the collision could not
+/// manifest within a row; `span_index_merge`'s only production caller is `v2.compiler.02_parse`
+/// over parser-ALLOCATED ids, never over this manifest's; `span_index_lookup` has only test
+/// callers; and the one executing consumer, the module-binding supply gate, compares
+/// `(file_path -> module)` and discards the field by pattern in
+/// `v2.compiler.source_authority` `module_storage_binding_file_path`.
+///
+/// So this was not a defect with a victim. It was a forbidden identity input written into a
+/// COMMITTED artifact whose innocence rested entirely on no consumer ever reading it -- the
+/// inverse of correctness by construction (DESIGN §5), and one consumer away from becoming real.
+///
+/// THE LOCUS GOES WITH IT, AND THAT IS THE HONEST TRADE RATHER THAN A LOSS. `SpanIndex.entries`
+/// is a `Map<OccurrenceId, OriginEvent>`, so the `ByteRange` this used to carry is reachable
+/// ONLY under a key. A producer holding a locus but no allocator identity therefore cannot
+/// record the locus without inventing the key -- the carrier makes the honest state
+/// representable only as EMPTY. Emitting empty is that honest state; inventing a key to keep a
+/// byte range no consumer reads is fabricated plausible output. The carrier gap is named here
+/// rather than papered over, and it is what a future locus-carrying transport must close first.
+fn emit_module_binding_span_index() -> String {
+    String::from("span_index_empty()")
 }
 
 fn emit_module_binding_row(row: &ModuleBindingManifestRow) -> Result<String, String> {
     let qn = emit_module_binding_qualified_name(&row.module_path)?;
     let artifact_id = source_root_ingest_artifact_id_for_path(&row.rel_path);
-    let span_index = emit_module_binding_span_index(&row.ident_span, &artifact_id);
+    let span_index = emit_module_binding_span_index();
     Ok(format!(
         "module_storage_parsed_binding(\n  module: {qn},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  span_index: {span_index},\n  source_root: {}\n)",
         dag_manifest_scalar_escape(&row.rel_path)?,
@@ -44378,7 +44596,8 @@ pub struct PreparedRepository {
     pub modules_excluded: usize,
     /// The witness sites preparation found, already folded. NOT the corpus bytes.
     pub witness_files: Vec<InventoryWitnessFile>,
-    /// Admitted sources carrying zero `test fn` decls. See `PreparedSubject::test_decl_free_paths`.
+    /// Admitted sources carrying zero `test` decls (`test fn` or `test data`). See
+    /// `PreparedSubject::test_decl_free_paths`.
     pub test_decl_free_paths: Vec<String>,
 }
 
@@ -44568,7 +44787,11 @@ pub struct PreparedSubject {
     pub sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     pub inventory: Vec<PreparedSourceView>,
     pub witness_files: Vec<InventoryWitnessFile>,
-    /// Admitted sources carrying ZERO `test fn` decls, by repo-relative path.
+    /// Admitted sources carrying ZERO `test` decls — neither `test fn` nor `test data` — by
+    /// repo-relative path. The vocabulary is `floor_discovery_scan_test_decl_names`'s, so this
+    /// population is the wall's own denominator rather than a narrower one that happens to
+    /// agree.
+    ///
     ///
     /// Preparation records the fact and judges nothing with it. Whether a path in here is a
     /// VIOLATION is a policy question owned by `v2.workflow.floor_naming_hygiene`
@@ -44630,16 +44853,27 @@ pub fn assemble_prepared_subject(
         //
         // WHAT IS RECORDED HERE IS A CANDIDATE SET, NOT A VERDICT, and the distinction is the
         // whole reason no second copy of the rule appears in Rust. This records every source
-        // `witness_file_from_source` declined — i.e. carrying no `test fn` — and asks nothing
-        // about suffixes and nothing about `test data`. Both of those questions belong to
-        // `v2.workflow.floor_naming_hygiene` and are put TO it, per candidate, by
-        // `floor_barren_test_sidecars`.
+        // `witness_file_from_source` declined, and asks nothing about suffixes. That question
+        // belongs to `v2.workflow.floor_naming_hygiene` and is put TO it, per candidate, by
+        // `floor_barren_test_sidecars`. Rust can only widen the question, never decide it, so a
+        // Rust/`.dag` disagreement cannot produce a wrong refusal — only a candidate the
+        // authority discards.
         //
-        // THE SET IS DELIBERATELY OVER-INCLUSIVE and that is what makes it sound. A file with
-        // only `test data` rows lands in here, and the `.dag` predicate then answers NOT barren,
-        // because its own scan counts `test data ` as a test decl. Rust can only widen the
-        // question, never decide it, so a Rust/`.dag` disagreement cannot produce a wrong
-        // refusal — only a candidate the authority discards.
+        // AND THE RECORDED SET NOW USES THE RULE'S OWN VOCABULARY BY CONSTRUCTION, rather than by
+        // a second test standing beside it. `test data ` is a test decl to
+        // `floor_discovery_scan_test_decl_names`, which is what `floor_entry_is_barren_test_sidecar`
+        // composes; this loop used to agree with that rule by asking a SEPARATE question here
+        // (`site.is_none() && no line starts with "test data "`) because the roster builder below
+        // could not see `test data` at all. It can now, so `site.is_none()` means exactly
+        // "declares no test decl" in the wall's own vocabulary and the compensating second scan is
+        // deleted rather than left as a third spelling of the same fact (DESIGN §3, and §4b(4):
+        // a climb deletes the lower-rung machinery it obsoletes). A `test data`-only file
+        // therefore no longer reaches this set at all, where before the repair it did and the
+        // `.dag` predicate discarded it.
+        //
+        // The 40 `test data` claims that compensating scan was protecting from a
+        // wall-over-reach are, for the same reason, no longer dropped from the roster: they are
+        // offered, routed and executed like any other claim. See `witness_file_from_source`.
         match witness_file_from_source(module_path, &sf.path, &sf.content) {
             Some(site) => witness_files.push(site),
             None => test_decl_free_paths.push(p.clone()),
@@ -45619,8 +45853,8 @@ pub struct RequiredFloorOutcome {
     pub long_home_storage_agreement: Vec<LongHomeStorageAgreementRow>,
 }
 
-/// A witness site as preparation found it — the file's path, its module, and the `test fn`
-/// names it declares. Produced from bytes preparation had in hand, and retained INSTEAD of
+/// A witness site as preparation found it — the file's path, its module, and the `test fn` /
+/// `test data` names it declares. Produced from bytes preparation had in hand, and retained INSTEAD of
 /// those bytes.
 pub struct InventoryWitnessFile {
     pub path: String,
@@ -45640,12 +45874,39 @@ pub struct InventoryWitnessFile {
 /// every floor run, acquired the repository a second time, and additionally built a
 /// whole-corpus module graph to answer a question about one file at a time.
 ///
-/// `None` means the file declares no `test fn`, which is how a non-witness module is excluded
+/// `None` means the file declares no `test` decl, which is how a non-witness module is excluded
 /// — the predecessor expressed the same rule as `if !functions.is_empty()` after building the
 /// record.
 ///
-/// A `test fn` is recognised at column zero only, which is the same rule the parser applies to
+/// A `test` decl is recognised at column zero only, which is the same rule the parser applies to
 /// a top-level declaration: an indented occurrence is inside a body and is not a declaration.
+///
+/// BOTH `test fn ` AND `test data ` ARE TEST DECLS HERE, and making that true is the whole of
+/// this function's most recent change. What a test decl IS had two answers in one binary:
+/// `v2.workflow.floor_naming_hygiene` `floor_discovery_scan_test_decl_names` — the authority the
+/// `BarrenTestSidecar` wall composes — counts both forms, while this roster builder counted only
+/// `test fn `. A file whose test decls are all `test data ` therefore SATISFIED the wall (its
+/// predicate found decls) and enrolled ZERO claims (this scan found none), which is partial
+/// enrollment made invisible by construction: nothing refuses, nothing runs, and the run's own
+/// `offered = routed + declined_long + declined_live` partition stays exact because the site was
+/// never offered. That is §3's two-authorities-for-one-fact defect with the two halves wired to
+/// opposite sides of the same gate.
+///
+/// The population this closed is exact and was declared before it was repaired (the note at
+/// `floor_entry_is_barren_test_sidecar`): 40 `test data` decls in 15 files over both source
+/// roots — 34 in 13 files carrying no `test fn` at all, 6 in 2 files the floor already enrolled
+/// partially. The second group is the one no wall could ever have caught.
+///
+/// The two SCANNERS are still two scanners, and that residue is unchanged by this: collapsing
+/// them needs the canonical parser to retain the authored `test` marker, which
+/// `v1_compiler_parse.rs` `drop_leading_test_marker` discards, and `test` cannot become a lex
+/// keyword because it is a live module-path segment. What is repaired here is that they no
+/// longer DISAGREE; what remains is that they are separately spelled.
+///
+/// A `test data` claim executes on exactly the same path as a `test fn` one: `run_claim` calls
+/// `run_in_context`, whose `lookup_fn` resolves a `DataItem` as readily as a function node and
+/// evaluates its initializer with no arguments. There is no second execution mechanism here,
+/// which is why the roster is the only thing that had to move.
 fn witness_file_from_source(
     module_path: &str,
     path: &str,
@@ -45653,7 +45914,10 @@ fn witness_file_from_source(
 ) -> Option<InventoryWitnessFile> {
     let mut functions: Vec<String> = Vec::new();
     for line in content.lines() {
-        let Some(rest) = line.strip_prefix("test fn ") else {
+        let Some(rest) = line
+            .strip_prefix("test fn ")
+            .or_else(|| line.strip_prefix("test data "))
+        else {
             continue;
         };
         let name: String = rest
@@ -46084,6 +46348,11 @@ fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result
 /// — does this path claim the sidecar place, and does this file declare a test decl —
 /// are answered by `v2.workflow.floor_naming_hygiene`; Rust supplies facts and decides
 /// nothing.
+///
+/// Preparation records every admitted source with no `test fn` or `test data` decl; this asks
+/// `floor_naming_hygiene`'s own suffix which of them are `*_test.dag` entries — the same
+/// predicate `floor_entry_is_barren_test_sidecar` composes, consumed here because THIS is the
+/// path the required floor takes.
 ///
 ///   1. `floor_entries_requiring_test_sidecar` is asked ONCE for the whole candidate roster.
 ///      It is a pure string question, so the whole list crosses in one call, and it narrows
@@ -46933,7 +47202,8 @@ pub fn run_required_floor(
     if !barren_test_sidecars.is_empty() {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=BarrenTestSidecar count={} — a `*_test.dag` entry must \
-             declare at least one `test fn`; the required floor enrolls nothing from: {}",
+             declare at least one `test fn` or `test data` decl; the required floor enrolls \
+             nothing from: {}",
             barren_test_sidecars.len(),
             barren_test_sidecars.join(", ")
         ));
