@@ -143,16 +143,31 @@ fn adopt_steady_state(installed: ReleaseMarkerAwareness) -> SteadyStateAdoption 
 
 // THE ORDER IS THE SAFETY PROPERTY, so it is a modeled successor relation rather than the order in
 // which a caller happens to write the calls. Every adjacent pair below is one of the requirements
-// this lane exists to hold, and a skipped or reordered step is a refusal with both steps named
-// rather than a run that quietly omitted one.
+// this lane exists to hold, and a skipped or reordered step is a refusal naming both steps rather
+// than a run that quietly omitted one.
 //
-// Read it as the two invariants it encodes. Nothing mutates before the lease is held and the old
-// actuators are quiesced. Nothing is released -- units, then marker, then lease -- until the layer
-// beneath it is in place: units restore only over an aware release, the marker clears only after
-// the units are governed in-process, and the lease releases last so a second transition cannot
-// begin while any of it is outstanding.
+// THE SEQUENCE IS PRINCIPAL -> LEASE -> OPERANDS -> MUTATION (operator ruling, 2026-08-28), and the
+// first arrow is the one an earlier revision of this vocabulary got wrong: it began at
+// `StepLeaseHeld`, which reads as harmless and is not. ACQUISITION IS ITSELF A PRIVILEGED WRITE. A
+// unit that acquires before establishing which principal it runs as creates the lease -- mode 0600,
+// owned by whoever happened to be executing -- and that is precisely the unreadable-marker state
+// this lane spent its existence removing, manufactured by the guard itself. The guard cannot be the
+// thing that produces the hazard it exists to detect, so the principal is admitted first and
+// everything else is downstream of it.
+//
+// The four-phase reading maps onto the seven steps as: PRINCIPAL is `StepPrincipalAdmitted`; LEASE
+// is `StepLeaseHeld`; OPERANDS are `StepExternallyQuiesced` and `StepInhibitionPersisted`, the two
+// preconditions that must stand before anything is written; MUTATION is `StepReleaseInstalled` and
+// the three steps that give the host back. They are one vocabulary at two grains, not two.
+//
+// Read the rest as the two invariants it encodes. Nothing mutates before the principal is known, the
+// lease is held and the old actuators are quiesced. Nothing is released -- units, then marker, then
+// lease -- until the layer beneath it is in place: units restore only over an aware release, the
+// marker clears only after the units are governed in-process, and the lease releases last so a
+// second transition cannot begin while any of it is outstanding.
 type TransitionStep
-  = StepLeaseHeld
+  = StepPrincipalAdmitted
+  | StepLeaseHeld
   | StepExternallyQuiesced
   | StepInhibitionPersisted
   | StepReleaseInstalled
@@ -162,6 +177,7 @@ type TransitionStep
 
 fn transition_step_label(step: TransitionStep) -> String {
   match step {
+    StepPrincipalAdmitted => "principal-admitted"
     StepLeaseHeld => "lease-held"
     StepExternallyQuiesced => "externally-quiesced"
     StepInhibitionPersisted => "inhibition-persisted"
@@ -174,6 +190,7 @@ fn transition_step_label(step: TransitionStep) -> String {
 
 fn transition_step_successor(step: TransitionStep) -> TransitionStep? {
   match step {
+    StepPrincipalAdmitted => Present { value: StepLeaseHeld }
     StepLeaseHeld => Present { value: StepExternallyQuiesced }
     StepExternallyQuiesced => Present { value: StepInhibitionPersisted }
     StepInhibitionPersisted => Present { value: StepReleaseInstalled }
@@ -207,6 +224,8 @@ fn transition_step_advance(from: TransitionStep, to: TransitionStep) -> StepAdmi
 // WHERE A CRASH LEAVES THE HOST, per step, and the property that holds at every one of them: no
 // state below leaves an unguarded actuator over a tree that may be half-converged.
 //
+// After principal-admitted: nothing has been written at all -- no lease, no marker -- so a crash here
+// leaves the host exactly as it was. That is the whole reason this step is first.
 // After lease-held: nothing mutated; the lease file is residue, resolved by the clearance path in
 // gunbc.deploy_transition on evidence. After externally-quiesced: the units are disabled and stay
 // disabled across a reboot, so the dashboard is down -- an outage, and the SAFE side of this

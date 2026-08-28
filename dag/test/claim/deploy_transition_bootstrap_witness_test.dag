@@ -23,6 +23,7 @@ import gunbc.deploy_transition_bootstrap {
   SteadyStateAdopted,
   SteadyStateRefused,
   TransitionStep,
+  StepPrincipalAdmitted,
   StepLeaseHeld,
   StepExternallyQuiesced,
   StepInhibitionPersisted,
@@ -150,7 +151,8 @@ fn advance_ok(from: TransitionStep, to: TransitionStep) -> Bool {
 // THE WHOLE DECLARED ORDER IS ADMITTED, END TO END. This is the positive control for the refusals
 // below: without it, a successor relation that admitted nothing would satisfy every one of them.
 test fn the_declared_sequence_advances_step_by_step() -> Bool {
-  advance_ok(from: StepLeaseHeld, to: StepExternallyQuiesced)
+  advance_ok(from: StepPrincipalAdmitted, to: StepLeaseHeld)
+    && advance_ok(from: StepLeaseHeld, to: StepExternallyQuiesced)
     && advance_ok(from: StepExternallyQuiesced, to: StepInhibitionPersisted)
     && advance_ok(from: StepInhibitionPersisted, to: StepReleaseInstalled)
     && advance_ok(from: StepReleaseInstalled, to: StepSteadyStateAdopted)
@@ -197,4 +199,33 @@ test fn an_out_of_order_step_names_what_was_expected() -> Bool {
     StepAdmitted { step: _ } => false
     StepAfterCompletion { attempted: _ } => false
   }
+}
+
+// ACQUISITION IS ITSELF A PRIVILEGED WRITE, so the principal is admitted BEFORE the lease and not
+// beside it. An earlier revision of this vocabulary began at `StepLeaseHeld`, which reads as harmless
+// and is not: a unit that acquires before establishing which principal it runs as creates the lease
+// as mode 0600 owned by whoever happened to be executing, which is exactly the unreadable-marker
+// state this lane exists to remove -- manufactured by the guard itself. The guard must not be the
+// thing that produces the hazard it detects.
+//
+// Both directions are driven, because an ordering witness that only asserts the refusal would be
+// satisfied by a relation that admits nothing.
+test fn the_principal_is_admitted_before_the_lease_is_acquired() -> Bool {
+  advance_ok(from: StepPrincipalAdmitted, to: StepLeaseHeld)
+    && !advance_ok(from: StepLeaseHeld, to: StepPrincipalAdmitted)
+}
+
+// AND NOTHING SKIPS THE PRINCIPAL. Quiescing, persisting the marker or installing a release straight
+// from the principal step are three different ways of acquiring nothing and mutating anyway; each is
+// refused naming the step that was expected.
+test fn no_step_reaches_past_the_lease_from_the_principal() -> Bool {
+  !advance_ok(from: StepPrincipalAdmitted, to: StepExternallyQuiesced)
+    && !advance_ok(from: StepPrincipalAdmitted, to: StepInhibitionPersisted)
+    && !advance_ok(from: StepPrincipalAdmitted, to: StepReleaseInstalled)
+    && match transition_step_advance(from: StepPrincipalAdmitted, to: StepReleaseInstalled) {
+      StepOutOfOrder { expected: e, attempted: _ } =>
+        e == transition_step_label(step: StepLeaseHeld)
+      StepAdmitted { step: _ } => false
+      StepAfterCompletion { attempted: _ } => false
+    }
 }
