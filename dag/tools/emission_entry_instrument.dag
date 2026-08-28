@@ -393,21 +393,23 @@ fn emission_compile_args(scope: EmissionScope, render_target: EmissionRenderTarg
   }
 }
 
-// ASSEMBLY IS ENTRY-SHAPED TODAY AND SAYS SO RATHER THAN GUESSING. cssl_assemble takes an
-// --entry-dag, and a primary-root scope has no single entry to give it. Fabricating one -- the
-// primary root's own path, say -- would hand the assembler a subject the measurement never named,
-// so this returns the entry only where one exists and the caller refuses otherwise. NEXT-RUNG
-// TRIGGER: an assembler that takes a population rather than an entry, at which point this
-// distinction dissolves into EmissionAssemblyMode.
-type EmissionAssemblyEntry
-  = AssemblyEntry { entry: String }
-  | AssemblyEntryAbsent { why: String }
+// THE ENTRY A SCOPE NAMES, IF IT NAMES ONE -- ONE AUTHORITY WITH TWO CONSUMERS RATHER THAN A
+// PROJECTION PER CALLER. cssl_assemble takes an --entry-dag, and gunbc.emit_subject_clean_frontier
+// joins measurements to its roster on entry identity; both ask the same question and a primary-root
+// scope answers neither. Fabricating an entry -- the primary root's own path, say -- would hand one
+// consumer a subject the measurement never named and the other a false roster match, so the absence
+// is a typed arm and each caller decides what to do with it (DESIGN section 3: one concept, one
+// home). NEXT-RUNG TRIGGER: an assembler that takes a population rather than an entry, at which
+// point the assembly half of this distinction dissolves into EmissionAssemblyMode.
+type EmissionScopeEntry
+  = ScopeEntry { entry: String }
+  | ScopeNamesNoEntry { why: String }
 
-fn emission_assembly_entry(sc: EmissionScope) -> EmissionAssemblyEntry {
+fn emission_scope_entry(sc: EmissionScope) -> EmissionScopeEntry {
   match sc {
-    EntryScope { entry: e } => AssemblyEntry { entry: e }
+    EntryScope { entry: e } => ScopeEntry { entry: e }
     PrimaryRootScope { primary_root: _, dependency_pools: _ } =>
-      AssemblyEntryAbsent {
+      ScopeNamesNoEntry {
         why: "cssl_assemble takes a single --entry-dag and a primary-root scope names a population rather than an entry; assembling one would measure a subject this run never asked for"
       }
   }
@@ -431,8 +433,8 @@ fn measure_cargo_half(
       emitted_files: emitted_files
     }
   } else {
-    match emission_assembly_entry(sc: subject.scope) {
-      AssemblyEntryAbsent { why: w } =>
+    match emission_scope_entry(sc: subject.scope) {
+      ScopeNamesNoEntry { why: w } =>
         EmissionCargoUnreached {
           subject: subject,
           stage: StageAssemble,
@@ -440,7 +442,7 @@ fn measure_cargo_half(
           emit_diagnostics: emit_diagnostics,
           emitted_files: emitted_files
         }
-      AssemblyEntry { entry: assembly_entry } => {
+      ScopeEntry { entry: assembly_entry } => {
     let assemble = gunbc.WitnessBin.Run(
       workdir: root,
       bin_path: cssl_assemble_bin,

@@ -573,16 +573,16 @@ test fn the_render_target_reaches_the_invocation() -> Bool {
 // ASSEMBLY REFUSES RATHER THAN FABRICATING AN ENTRY. cssl_assemble takes one --entry-dag; handing
 // it the primary root would assemble a subject the measurement never named.
 test fn assembly_refuses_a_population_scope_instead_of_inventing_an_entry() -> Bool {
-  match emission_assembly_entry(sc: PrimaryRootScope { primary_root: "src/v2", dependency_pools: [] }) {
-    AssemblyEntry { entry: _ } => false
-    AssemblyEntryAbsent { why: w } => w != ""
+  match emission_scope_entry(sc: PrimaryRootScope { primary_root: "src/v2", dependency_pools: [] }) {
+    ScopeEntry { entry: _ } => false
+    ScopeNamesNoEntry { why: w } => w != ""
   }
 }
 
 test fn assembly_takes_the_entry_when_the_scope_has_one() -> Bool {
-  match emission_assembly_entry(sc: EntryScope { entry: "dag/std/node.dag" }) {
-    AssemblyEntry { entry: e } => e == "dag/std/node.dag"
-    AssemblyEntryAbsent { why: _ } => false
+  match emission_scope_entry(sc: EntryScope { entry: "dag/std/node.dag" }) {
+    ScopeEntry { entry: e } => e == "dag/std/node.dag"
+    ScopeNamesNoEntry { why: _ } => false
   }
 }
 

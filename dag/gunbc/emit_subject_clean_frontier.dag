@@ -778,15 +778,35 @@ fn emit_subject_outcome(m: EmissionMeasurement) -> EmitSubjectOutcome {
   }
 }
 
+// THE ENTRY A SUBJECT NAMES, DESCENDING INTO THE SCOPE RATHER THAN READING A FIELD. The subject
+// carried a `String entry` until 2026-08-28 and now carries an EmissionScope, because an entry
+// string could not say WHICH SOURCE ROOT WAS PRIMARY -- three runs were reported as whole-corpus
+// while measuring 3109 of 4170 sources.
+//
+// THIS FRONTIER IS ENTRY-SHAPED BY CONSTRUCTION: its measurements come from measure_entry_emission,
+// which always produces an EntryScope, so the population arm is a state this fold never receives.
+// It is still handled rather than defaulted, and it returns the SCOPE LABEL, which is prefixed
+// ("primary-root ...") and therefore cannot equal a repository-relative `.dag` path. So a
+// population measurement joins to NOTHING and the lookup answers SubjectReadingAbsent -- the
+// accurate answer for a measurement that is about no entry in the roster -- instead of matching a
+// row it was never about. Returning the raw primary root here would have been exactly that false
+// match, which is why the entry arm returns the bare path and this one does not.
+fn emission_subject_entry_text(s: EmissionMeasurementSubject) -> String {
+  match emission_scope_entry(sc: s.scope) {
+    ScopeEntry { entry: e } => e
+    ScopeNamesNoEntry { why: _ } => emission_scope_label(sc: s.scope)
+  }
+}
+
 // THE ENTRY A MEASUREMENT IS ABOUT, total over the coproduct so a measurement joins to the roster
 // on the identity it already holds. Carrying the pairing in a parallel list beside the measurements
 // would be a second representation of that identity.
 fn emission_measurement_entry(m: EmissionMeasurement) -> String {
   match m {
     EmissionSubjectUnestablished { entry: e, stage: _, cause: _ } => e
-    EmissionUnreached { subject: s, stage: _, cause: _ } => s.entry
-    EmissionEmitRefused { subject: s, exit_code: _, emit_diagnostics: _, emitted_files: _ } => s.entry
-    EmissionCargoUnreached { subject: s, stage: _, cause: _, emit_diagnostics: _, emitted_files: _ } => s.entry
+    EmissionUnreached { subject: s, stage: _, cause: _ } => emission_subject_entry_text(s: s)
+    EmissionEmitRefused { subject: s, exit_code: _, emit_diagnostics: _, emitted_files: _ } => emission_subject_entry_text(s: s)
+    EmissionCargoUnreached { subject: s, stage: _, cause: _, emit_diagnostics: _, emitted_files: _ } => emission_subject_entry_text(s: s)
     EmissionMeasured {
       subject: s,
       emitted_files: _,
@@ -794,7 +814,7 @@ fn emission_measurement_entry(m: EmissionMeasurement) -> String {
       cargo_clean: _,
       cargo_diagnostics: _,
       cargo_lines_scanned: _
-    } => s.entry
+    } => emission_subject_entry_text(s: s)
   }
 }
 
