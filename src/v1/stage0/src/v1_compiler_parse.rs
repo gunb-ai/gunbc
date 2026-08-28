@@ -224,9 +224,12 @@ pub struct ParsedNodeIdentityMint {
 
 pub fn mint_parsed_node_identity(ctx: Rc<ParseContext>) -> Rc<ParsedNodeIdentityMint> {
     {
-        let allocated = alloc_occurrence_id(ctx.occurrence_allocator.clone());
+        let allocated =
+            crate::std_occurrence_identity::alloc_occurrence_id(ctx.occurrence_allocator.clone());
         Rc::new(ParsedNodeIdentityMint {
-            identity: node_occurrence_identity_minted(allocated.id.clone()),
+            identity: crate::std_occurrence_identity::node_occurrence_identity_minted(
+                allocated.id.clone(),
+            ),
             ctx: parse_context_with_occurrence_state(
                 ctx.clone(),
                 allocated.alloc.clone(),
@@ -569,10 +572,10 @@ pub fn parsed_sole_constructor_properties(
             let value_mint = mint_parsed_node_identity(ctx.clone());
             let property_mint = mint_parsed_node_identity(value_mint.ctx.clone());
             Rc::new(ParsedPropertiesResult {
-                properties: Rc::new(vec![make_field_init_node(
+                properties: Rc::new(vec![crate::v1_std_core::make_field_init_node(
                     property_mint.identity.clone(),
                     "sole_constructor".to_string(),
-                    make_expr_node(
+                    crate::v1_std_core::make_expr_node(
                         value_mint.identity.clone(),
                         Rc::new(ExprData::ExprLiteral {
                             value: Rc::new(LiteralValue::LitBool { value: true }),
@@ -582,7 +585,7 @@ pub fn parsed_sole_constructor_properties(
                         span.clone(),
                     ),
                     span.clone(),
-                    no_span(),
+                    crate::v1_std_core::no_span(),
                 )]),
                 ctx: property_mint.ctx.clone(),
             })
@@ -604,10 +607,10 @@ pub fn mint_parsed_bool_property(
         let value_mint = mint_parsed_node_identity(ctx.clone());
         let property_mint = mint_parsed_node_identity(value_mint.ctx.clone());
         Rc::new(ParsedPropertyResult {
-            property: make_field_init_node(
+            property: crate::v1_std_core::make_field_init_node(
                 property_mint.identity.clone(),
                 name.clone(),
-                make_expr_node(
+                crate::v1_std_core::make_expr_node(
                     value_mint.identity.clone(),
                     Rc::new(ExprData::ExprLiteral {
                         value: Rc::new(LiteralValue::LitBool { value: true }),
@@ -635,10 +638,10 @@ pub fn mint_parsed_optional_int_property(
             let value_mint = mint_parsed_node_identity(ctx.clone());
             let property_mint = mint_parsed_node_identity(value_mint.ctx.clone());
             Rc::new(ParsedPropertiesResult {
-                properties: Rc::new(vec![make_field_init_node(
+                properties: Rc::new(vec![crate::v1_std_core::make_field_init_node(
                     property_mint.identity.clone(),
                     name.clone(),
-                    make_expr_node(
+                    crate::v1_std_core::make_expr_node(
                         value_mint.identity.clone(),
                         Rc::new(ExprData::ExprLiteral {
                             value: Rc::new(LiteralValue::LitInt { value: n.clone() }),
@@ -672,10 +675,18 @@ pub fn mint_parsed_string_part_nodes(
                 let minted = mint_parsed_node_identity(ctx.clone());
                 let node = match (*part.clone()).clone() {
                     StringPart::Text { value: text, .. } => {
-                        make_text_part_node(minted.identity.clone(), text.clone(), span.clone())
+                        crate::v1_std_core::make_text_part_node(
+                            minted.identity.clone(),
+                            text.clone(),
+                            span.clone(),
+                        )
                     }
                     StringPart::Interpolation { expr: expr, .. } => {
-                        make_interp_part_node(minted.identity.clone(), expr.clone(), span.clone())
+                        crate::v1_std_core::make_interp_part_node(
+                            minted.identity.clone(),
+                            expr.clone(),
+                            span.clone(),
+                        )
                     }
                 };
                 {
@@ -918,7 +929,7 @@ pub struct BindingsResult {
 }
 
 pub fn parse_recovery_expr(span: Rc<SourceSpan>, message: String) -> Rc<Node> {
-    make_expr_error_node(
+    crate::v1_std_core::make_expr_error_node(
         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         ExprErrorKind::ParseRecoveryError,
         message.clone(),
@@ -927,7 +938,10 @@ pub fn parse_recovery_expr(span: Rc<SourceSpan>, message: String) -> Rc<Node> {
 }
 
 pub fn parse_recovery_placeholder() -> Rc<Node> {
-    parse_recovery_expr(no_span(), "parser recovery placeholder".to_string())
+    parse_recovery_expr(
+        crate::v1_std_core::no_span(),
+        "parser recovery placeholder".to_string(),
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1165,7 +1179,7 @@ pub struct DescResult {
 pub fn token_span(tok: Option<Rc<Token>>) -> Rc<SourceSpan> {
     match tok.clone() {
         Some(t) => t.span.clone(),
-        None => no_span(),
+        None => crate::v1_std_core::no_span(),
     }
 }
 
@@ -1180,7 +1194,7 @@ pub fn advance(tokens: Rc<TokenStream>) -> Rc<AdvanceResult> {
 }
 
 pub fn parse_error(msg: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
-    make_error_node(
+    crate::v1_std_core::make_error_node(
         Rc::new(CompilerDiagnostic::ParseError {
             message: msg.clone(),
             span: span.clone(),
@@ -1220,7 +1234,7 @@ pub fn parse_string_literal_value(tokens: Rc<TokenStream>) -> Rc<StringLitResult
                 tokens: tokens.clone(),
                 err: Some(parse_error(
                     "expected string literal".to_string(),
-                    no_span(),
+                    crate::v1_std_core::no_span(),
                 )),
             }),
         }
@@ -1271,7 +1285,7 @@ pub fn parse_int_literal_value(tokens: Rc<TokenStream>) -> Rc<IntLitResult> {
                 tokens: tokens.clone(),
                 err: Some(parse_error(
                     "expected integer literal".to_string(),
-                    no_span(),
+                    crate::v1_std_core::no_span(),
                 )),
             }),
         }
@@ -1782,7 +1796,7 @@ pub fn tok_is_question(tok: Option<Rc<Token>>) -> bool {
 pub fn tok_span(tok: Option<Rc<Token>>) -> Rc<SourceSpan> {
     match tok.clone() {
         Some(t) => t.span.clone(),
-        None => no_span(),
+        None => crate::v1_std_core::no_span(),
     }
 }
 
@@ -1937,7 +1951,7 @@ pub fn expect(tokens: Rc<TokenStream>, expected: Rc<ExpectedToken>) -> Rc<TokenR
                 Rc::new(TokenResult {
                     token: Rc::new(Token {
                         text: "".to_string(),
-                        span: no_span(),
+                        span: crate::v1_std_core::no_span(),
                         shape: TokenShape::ShEof,
                     }),
                     tokens: tokens.clone(),
@@ -2220,7 +2234,10 @@ pub fn parser_result_base_var(
             Some(base) => match (*base.expr_data.clone()).clone() {
                 ExprData::ExprVar {
                     binding_kind: _, ..
-                } => Some(expr_var_name_at(base.clone(), source_indices.clone())),
+                } => Some(crate::v1_std_core::expr_var_name_at(
+                    base.clone(),
+                    source_indices.clone(),
+                )),
                 _ => None,
             },
             None => None,
@@ -2252,15 +2269,17 @@ pub fn parser_helper_state_arg_expr(
             {
                 let idx = pair.0.clone();
                 let arg_node = pair.1.clone();
-                let matches_state = match arg_name_at(arg_node.clone(), source_indices.clone()) {
-                    Some(name) => {
-                        ((name.clone() == "state".to_string())
-                            || (name.clone() == "tokens".to_string()))
-                    }
-                    None => (idx.clone() == 0),
-                };
+                let matches_state =
+                    match crate::v1_std_core::arg_name_at(arg_node.clone(), source_indices.clone())
+                    {
+                        Some(name) => {
+                            ((name.clone() == "state".to_string())
+                                || (name.clone() == "tokens".to_string()))
+                        }
+                        None => (idx.clone() == 0),
+                    };
                 if matches_state.clone() {
-                    Some(arg_value(arg_node.clone()))
+                    Some(crate::v1_std_core::arg_value(arg_node.clone()))
                 } else {
                     None
                 }
@@ -2275,7 +2294,8 @@ pub fn parser_progress_flag_var(
 ) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { .. } => {
-            let field = field_access_field_at(expr.clone(), source_indices.clone());
+            let field =
+                crate::v1_std_core::field_access_field_at(expr.clone(), source_indices.clone());
             if ((field.clone() == "consumed".to_string())
                 || (field.clone() == "changed".to_string()))
             {
@@ -2309,23 +2329,23 @@ pub fn parser_passthrough_state_expr(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => {
-            match parser_helper_identity(expr_call_func_at(expr.clone(), source_indices.clone())) {
-                Some(ParserHelperIdentity::ParserHelperSkipNewlines) => {
-                    parser_helper_state_arg_expr(expr.clone(), source_indices.clone())
-                }
-                Some(ParserHelperIdentity::ParserHelperSkipContinuationNewlines) => {
-                    parser_helper_state_arg_expr(expr.clone(), source_indices.clone())
-                }
-                Some(ParserHelperIdentity::ParserHelperWith) => {
-                    match expr.children.clone().first().cloned() {
-                        Some(base_arg) => Some(arg_value(base_arg.clone())),
-                        None => None,
-                    }
-                }
-                None => None,
+        ExprData::ExprCall { .. } => match parser_helper_identity(
+            crate::v1_std_core::expr_call_func_at(expr.clone(), source_indices.clone()),
+        ) {
+            Some(ParserHelperIdentity::ParserHelperSkipNewlines) => {
+                parser_helper_state_arg_expr(expr.clone(), source_indices.clone())
             }
-        }
+            Some(ParserHelperIdentity::ParserHelperSkipContinuationNewlines) => {
+                parser_helper_state_arg_expr(expr.clone(), source_indices.clone())
+            }
+            Some(ParserHelperIdentity::ParserHelperWith) => {
+                match expr.children.clone().first().cloned() {
+                    Some(base_arg) => Some(crate::v1_std_core::arg_value(base_arg.clone())),
+                    None => None,
+                }
+            }
+            None => None,
+        },
         _ => None,
     }
 }
@@ -2336,7 +2356,7 @@ pub fn parser_result_witness(
 ) -> Rc<ParserResultWitness> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
-            match expr_call_func_at(expr.clone(), source_indices.clone()) {
+            match crate::v1_std_core::expr_call_func_at(expr.clone(), source_indices.clone()) {
                 ref __s if __s == "advance" => Rc::new(ParserResultWitness::ParserWitnessAdvance),
                 ref __s if __s == "expect" => Rc::new(ParserResultWitness::ParserWitnessExpect),
                 ref __s if __s == "eat" => Rc::new(ParserResultWitness::ParserWitnessEat),
@@ -2500,15 +2520,18 @@ pub fn node_inferred_to_outputs(
                 Rc::new({
                     let mut __result = Vec::new();
                     for ch in rt.children.clone().iter().cloned() {
-                        __result.push(make_field_node(
+                        __result.push(crate::v1_std_core::make_field_node(
                             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                            authored_name_at(source_indices.clone(), ch.clone()),
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                ch.clone(),
+                            ),
                             child_inferred_or_empty(ch.clone()),
                             Cardinality::Required,
                             ch.body.clone(),
                             Rc::new(vec![]),
                             ch.span.clone(),
-                            node_name_span(ch.clone()),
+                            crate::v1_std_core::node_name_span(ch.clone()),
                         ));
                     }
                     __result
@@ -2518,7 +2541,7 @@ pub fn node_inferred_to_outputs(
             }
         }
     } else {
-        Rc::new(vec![make_field_node(
+        Rc::new(vec![crate::v1_std_core::make_field_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "value".to_string(),
             rt.clone(),
@@ -2526,7 +2549,7 @@ pub fn node_inferred_to_outputs(
             None,
             Rc::new(vec![]),
             rt.span.clone(),
-            no_span(),
+            crate::v1_std_core::no_span(),
         )])
     }
 }
@@ -3303,11 +3326,13 @@ pub fn parse_with_table_at(
     heads_only: bool,
 ) -> Rc<ParseWithTableResult> {
     {
-        let occurrence_allocator = occurrence_id_allocator_advance_to(
-            occurrence_base.allocator.clone(),
-            intern_table.authored_token_ordinals.clone(),
-        );
-        let pre_interned = pre_intern_tokens(tokens.clone(), intern_table.clone());
+        let occurrence_allocator =
+            crate::std_occurrence_identity::occurrence_id_allocator_advance_to(
+                occurrence_base.allocator.clone(),
+                intern_table.authored_token_ordinals.clone(),
+            );
+        let pre_interned =
+            crate::v1_std_core::pre_intern_tokens(tokens.clone(), intern_table.clone());
         let ctx = Rc::new(ParseContext {
             source_indices: source_indices.clone(),
             intern_table: pre_interned.clone(),
@@ -3332,9 +3357,11 @@ pub fn parse_with_table_at(
                         module: None,
                         error: r.err.clone(),
                     }),
-                    intern_table: intern_table_with_authored_token_ordinals(
+                    intern_table: crate::v1_std_core::intern_table_with_authored_token_ordinals(
                         r.ctx.clone().intern_table.clone(),
-                        authored_token_ordinal_space_from_allocator(occurrence_allocator.clone()),
+                        crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator(
+                            occurrence_allocator.clone(),
+                        ),
                     ),
                     occurrence_allocator: occurrence_allocator.clone(),
                     occurrence_transport: occurrence_transport.clone(),
@@ -3365,9 +3392,11 @@ pub fn parse_with_table_at(
                         },
                         error: stamped.err.clone(),
                     }),
-                    intern_table: intern_table_with_authored_token_ordinals(
+                    intern_table: crate::v1_std_core::intern_table_with_authored_token_ordinals(
                         stamped.ctx.clone().intern_table.clone(),
-                        authored_token_ordinal_space_from_allocator(occurrence_allocator.clone()),
+                        crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator(
+                            occurrence_allocator.clone(),
+                        ),
                     ),
                     occurrence_allocator: occurrence_allocator.clone(),
                     occurrence_transport: occurrence_transport.clone(),
@@ -3387,7 +3416,9 @@ pub fn parse_with_table_in_occurrence_scope(
         tokens.clone(),
         source_indices.clone(),
         intern_table.clone(),
-        authored_token_ordinal_space_from_allocator(occurrence_allocator.clone()),
+        crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator(
+            occurrence_allocator.clone(),
+        ),
         false,
     )
 }
@@ -3443,9 +3474,13 @@ pub fn parse(
     tokens: Rc<Vec<Rc<Token>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ParseResult> {
-    parse_with_table(tokens.clone(), source_indices.clone(), empty_intern_table())
-        .result
-        .clone()
+    parse_with_table(
+        tokens.clone(),
+        source_indices.clone(),
+        crate::v1_std_core::empty_intern_table(),
+    )
+    .result
+    .clone()
 }
 
 pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ModuleResult> {
@@ -3460,7 +3495,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
         );
         if has_err(r.err.clone()) {
             return Rc::new(ModuleResult {
-                module: module_node(
+                module: crate::v1_std_core::module_node(
                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     "".to_string(),
                     Rc::new(vec![]),
@@ -3476,7 +3511,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
         let r = parse_dotted_ident(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ModuleResult {
-                module: module_node(
+                module: crate::v1_std_core::module_node(
                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     "".to_string(),
                     Rc::new(vec![]),
@@ -3494,7 +3529,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
         let r = parse_imports(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ModuleResult {
-                module: module_node(
+                module: crate::v1_std_core::module_node(
                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     "".to_string(),
                     Rc::new(vec![]),
@@ -3512,7 +3547,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
         let r = parse_items(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ModuleResult {
-                module: module_node(
+                module: crate::v1_std_core::module_node(
                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     "".to_string(),
                     Rc::new(vec![]),
@@ -3527,7 +3562,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
         let items = r.items.clone();
         let tokens = r.tokens.clone();
         let ctx = r.ctx.clone();
-        let mod_ir = intern(ctx.intern_table.clone(), mod_name.clone());
+        let mod_ir = crate::v1_std_core::intern(ctx.intern_table.clone(), mod_name.clone());
         let ctx = parse_context_with_intern_table(ctx.clone(), mod_ir.table.clone());
         let minted = mint_parsed_node_identity(ctx.clone());
         let base_mod = Rc::new(Node {
@@ -3646,7 +3681,7 @@ pub fn parse_items_acc(
 pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ImportResult> {
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
-        let err_import = import_node(
+        let err_import = crate::v1_std_core::import_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "".to_string(),
             false,
@@ -3714,7 +3749,7 @@ pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Import
                 }
                 let tokens = skip_newlines(r.tokens.clone());
                 let minted = mint_parsed_node_identity(ctx.clone());
-                let base_imp = import_node(
+                let base_imp = crate::v1_std_core::import_node(
                     minted.identity.clone(),
                     mod_path.clone(),
                     false,
@@ -3722,7 +3757,7 @@ pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Import
                     start_span.clone(),
                     mod_path_span.clone(),
                 );
-                let imp_ir = intern(ctx.intern_table.clone(), mod_path.clone());
+                let imp_ir = crate::v1_std_core::intern(ctx.intern_table.clone(), mod_path.clone());
                 let ctx = parse_context_with_intern_table(minted.ctx.clone(), imp_ir.table.clone());
                 let imp = parsed_node_with_ident(base_imp.clone(), imp_ir.id.clone());
                 Rc::new(ImportResult {
@@ -3735,7 +3770,7 @@ pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Import
             EatResult::EatUnchanged { tokens: __eu, .. } => {
                 let tokens = skip_newlines(tokens.clone());
                 let minted = mint_parsed_node_identity(ctx.clone());
-                let base_imp = import_node(
+                let base_imp = crate::v1_std_core::import_node(
                     minted.identity.clone(),
                     mod_path.clone(),
                     true,
@@ -3743,7 +3778,7 @@ pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Import
                     start_span.clone(),
                     mod_path_span.clone(),
                 );
-                let imp_ir = intern(ctx.intern_table.clone(), mod_path.clone());
+                let imp_ir = crate::v1_std_core::intern(ctx.intern_table.clone(), mod_path.clone());
                 let ctx = parse_context_with_intern_table(minted.ctx.clone(), imp_ir.table.clone());
                 let imp = parsed_node_with_ident(base_imp.clone(), imp_ir.id.clone());
                 Rc::new(ImportResult {
@@ -3766,7 +3801,7 @@ pub fn parsed_name_leaf(
     name: String,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
-    leaf_node_with_span(occurrence_identity.clone(), name.clone(), span.clone())
+    crate::v1_std_core::leaf_node_with_span(occurrence_identity.clone(), name.clone(), span.clone())
 }
 
 pub fn parse_import_names_acc(
@@ -4132,10 +4167,10 @@ pub fn field_to_child_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
-        let ret_type = field_node_type_expr(field.clone());
+        let ret_type = crate::v1_std_core::field_node_type_expr(field.clone());
         Rc::new(Node {
             occurrence_identity: field.occurrence_identity.clone(),
-            name: field_node_name_at(field.clone(), source_indices.clone()),
+            name: crate::v1_std_core::field_node_name_at(field.clone(), source_indices.clone()),
             span: field.span.clone(),
             ident_span: field.ident_span.clone(),
             children: Rc::new(vec![]),
@@ -4144,9 +4179,9 @@ pub fn field_to_child_node(
             inferred: Some(Rc::new(InferredNode::Resolved {
                 node: ret_type.clone(),
             })),
-            return_cardinality: field_node_cardinality(field.clone()),
+            return_cardinality: crate::v1_std_core::field_node_cardinality(field.clone()),
             uses: Rc::new(vec![]),
-            body: field_node_default_value(field.clone()),
+            body: crate::v1_std_core::field_node_default_value(field.clone()),
             transport: None,
             properties: field.properties.clone(),
             type_annotation: None,
@@ -4164,7 +4199,7 @@ pub fn variant_to_child_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
-        let fields = variant_node_fields(variant.clone());
+        let fields = crate::v1_std_core::variant_node_fields(variant.clone());
         let children = Rc::new({
             let mut __result = Vec::new();
             for f in fields.iter().cloned() {
@@ -4174,7 +4209,7 @@ pub fn variant_to_child_node(
         });
         Rc::new(Node {
             occurrence_identity: variant.occurrence_identity.clone(),
-            name: variant_node_name_at(variant.clone(), source_indices.clone()),
+            name: crate::v1_std_core::variant_node_name_at(variant.clone(), source_indices.clone()),
             span: variant.span.clone(),
             ident_span: variant.ident_span.clone(),
             children: children.clone(),
@@ -4271,13 +4306,13 @@ pub fn make_operation_node(
             params: Rc::new({
                 let mut __result = Vec::new();
                 for f in inputs.iter().cloned() {
-                    __result.push(make_param_node(
+                    __result.push(crate::v1_std_core::make_param_node(
                         f.occurrence_identity.clone(),
-                        field_node_name_at(f.clone(), source_indices.clone()),
-                        field_node_type_expr(f.clone()),
-                        field_node_default_value(f.clone()),
+                        crate::v1_std_core::field_node_name_at(f.clone(), source_indices.clone()),
+                        crate::v1_std_core::field_node_type_expr(f.clone()),
+                        crate::v1_std_core::field_node_default_value(f.clone()),
                         f.span.clone(),
-                        node_name_span(f.clone()),
+                        crate::v1_std_core::node_name_span(f.clone()),
                     ));
                 }
                 __result
@@ -4317,13 +4352,13 @@ pub fn make_capability_node(
         params: Rc::new({
             let mut __result = Vec::new();
             for f in inputs.iter().cloned() {
-                __result.push(make_param_node(
+                __result.push(crate::v1_std_core::make_param_node(
                     f.occurrence_identity.clone(),
-                    field_node_name_at(f.clone(), source_indices.clone()),
-                    field_node_type_expr(f.clone()),
-                    field_node_default_value(f.clone()),
+                    crate::v1_std_core::field_node_name_at(f.clone(), source_indices.clone()),
+                    crate::v1_std_core::field_node_type_expr(f.clone()),
+                    crate::v1_std_core::field_node_default_value(f.clone()),
                     f.span.clone(),
-                    node_name_span(f.clone()),
+                    crate::v1_std_core::node_name_span(f.clone()),
                 ));
             }
             __result
@@ -5223,11 +5258,11 @@ pub fn parse_predicates_acc(
 
 pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<PredResult> {
     {
-        let zero_span = no_span();
-        let dummy_pred = make_field_init_node(
+        let zero_span = crate::v1_std_core::no_span();
+        let dummy_pred = crate::v1_std_core::make_field_init_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "".to_string(),
-            make_expr_node(
+            crate::v1_std_core::make_expr_node(
                 Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 Rc::new(ExprData::ExprLiteral {
                     value: Rc::new(LiteralValue::LitBool { value: false }),
@@ -5277,10 +5312,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                             r3.tokens.clone(),
                             ctx.clone(),
                             |value_identity, predicate_identity| {
-                                make_field_init_node(
+                                crate::v1_std_core::make_field_init_node(
                                     predicate_identity.clone(),
                                     "Pattern".to_string(),
-                                    make_expr_node(
+                                    crate::v1_std_core::make_expr_node(
                                         value_identity.clone(),
                                         Rc::new(ExprData::ExprLiteral {
                                             value: Rc::new(LiteralValue::LitStr {
@@ -5320,10 +5355,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                             r3.tokens.clone(),
                             ctx.clone(),
                             |value_identity, predicate_identity| {
-                                make_field_init_node(
+                                crate::v1_std_core::make_field_init_node(
                                     predicate_identity.clone(),
                                     "Format".to_string(),
-                                    make_expr_node(
+                                    crate::v1_std_core::make_expr_node(
                                         value_identity.clone(),
                                         Rc::new(ExprData::ExprLiteral {
                                             value: Rc::new(LiteralValue::LitStr {
@@ -5363,10 +5398,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                             r3.tokens.clone(),
                             ctx.clone(),
                             |value_identity, predicate_identity| {
-                                make_field_init_node(
+                                crate::v1_std_core::make_field_init_node(
                                     predicate_identity.clone(),
                                     "Brand".to_string(),
-                                    make_expr_node(
+                                    crate::v1_std_core::make_expr_node(
                                         value_identity.clone(),
                                         Rc::new(ExprData::ExprLiteral {
                                             value: Rc::new(LiteralValue::LitStr {
@@ -5406,10 +5441,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                             r3.tokens.clone(),
                             ctx.clone(),
                             |value_identity, predicate_identity| {
-                                make_field_init_node(
+                                crate::v1_std_core::make_field_init_node(
                                     predicate_identity.clone(),
                                     "ContentEncoding".to_string(),
-                                    make_expr_node(
+                                    crate::v1_std_core::make_expr_node(
                                         value_identity.clone(),
                                         Rc::new(ExprData::ExprLiteral {
                                             value: Rc::new(LiteralValue::LitStr {
@@ -5449,10 +5484,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                             r3.tokens.clone(),
                             ctx.clone(),
                             |value_identity, predicate_identity| {
-                                make_field_init_node(
+                                crate::v1_std_core::make_field_init_node(
                                     predicate_identity.clone(),
                                     "Domain".to_string(),
-                                    make_expr_node(
+                                    crate::v1_std_core::make_expr_node(
                                         value_identity.clone(),
                                         Rc::new(ExprData::ExprLiteral {
                                             value: Rc::new(LiteralValue::LitStr {
@@ -5504,10 +5539,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                             r3.tokens.clone(),
                             max.ctx.clone(),
                             |value_identity, predicate_identity| {
-                                make_field_init_node(
+                                crate::v1_std_core::make_field_init_node(
                                     predicate_identity.clone(),
                                     "range".to_string(),
-                                    make_expr_node(
+                                    crate::v1_std_core::make_expr_node(
                                         value_identity.clone(),
                                         Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
                                         v1_rt::concat(
@@ -5545,10 +5580,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                     tokens.clone(),
                     ctx.clone(),
                     |value_identity, predicate_identity| {
-                        make_field_init_node(
+                        crate::v1_std_core::make_field_init_node(
                             predicate_identity.clone(),
                             "non_empty".to_string(),
-                            make_expr_node(
+                            crate::v1_std_core::make_expr_node(
                                 value_identity.clone(),
                                 Rc::new(ExprData::ExprLiteral {
                                     value: Rc::new(LiteralValue::LitBool { value: true }),
@@ -5566,10 +5601,10 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                     tokens.clone(),
                     ctx.clone(),
                     |value_identity, predicate_identity| {
-                        make_field_init_node(
+                        crate::v1_std_core::make_field_init_node(
                             predicate_identity.clone(),
                             pred_name.clone(),
-                            make_expr_node(
+                            crate::v1_std_core::make_expr_node(
                                 value_identity.clone(),
                                 Rc::new(ExprData::ExprLiteral {
                                     value: Rc::new(LiteralValue::LitBool { value: true }),
@@ -5731,7 +5766,7 @@ pub fn parse_positional_variant_type_fields(
 }),
     EatResult::EatUnchanged { tokens: __eu, .. } => {
             let minted = mint_parsed_node_identity(r.ctx.clone());
-let field = make_field_node(minted.identity.clone(), "0".to_string(), r.type_expr.clone(), Cardinality::Required, None, Rc::new(vec![]), r.type_expr.clone().span.clone(), kernel_span("0".to_string()));
+let field = crate::v1_std_core::make_field_node(minted.identity.clone(), "0".to_string(), r.type_expr.clone(), Cardinality::Required, None, Rc::new(vec![]), r.type_expr.clone().span.clone(), crate::v1_std_core::kernel_span("0".to_string()));
 Rc::new(FieldsResult {
     fields: Rc::new(vec![field.clone()]),
     tokens: r.tokens.clone(),
@@ -5756,7 +5791,7 @@ pub fn parse_variant_fields(
                 let r = parse_field_list(skip_newlines(__ec.clone()), ctx.clone());
                 if has_err(r.err.clone()) {
                     return Rc::new(VariantResult {
-                        variant: make_variant_node(
+                        variant: crate::v1_std_core::make_variant_node(
                             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                             vname.clone(),
                             Rc::new(vec![]),
@@ -5772,7 +5807,7 @@ pub fn parse_variant_fields(
                 let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                 if has_err(r2.err.clone()) {
                     return Rc::new(VariantResult {
-                        variant: make_variant_node(
+                        variant: crate::v1_std_core::make_variant_node(
                             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                             vname.clone(),
                             Rc::new(vec![]),
@@ -5785,7 +5820,7 @@ pub fn parse_variant_fields(
                     });
                 }
                 let minted = mint_parsed_node_identity(r.ctx.clone());
-                let v = make_variant_node(
+                let v = crate::v1_std_core::make_variant_node(
                     minted.identity.clone(),
                     vname.clone(),
                     r.fields.clone(),
@@ -5805,7 +5840,7 @@ pub fn parse_variant_fields(
                         let r = parse_positional_variant_type_fields(__ec.clone(), ctx.clone());
                         if has_err(r.err.clone()) {
                             return Rc::new(VariantResult {
-                                variant: make_variant_node(
+                                variant: crate::v1_std_core::make_variant_node(
                                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                     vname.clone(),
                                     Rc::new(vec![]),
@@ -5820,7 +5855,7 @@ pub fn parse_variant_fields(
                         let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
                         if has_err(r2.err.clone()) {
                             return Rc::new(VariantResult {
-                                variant: make_variant_node(
+                                variant: crate::v1_std_core::make_variant_node(
                                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                     vname.clone(),
                                     Rc::new(vec![]),
@@ -5833,7 +5868,7 @@ pub fn parse_variant_fields(
                             });
                         }
                         let minted = mint_parsed_node_identity(r.ctx.clone());
-                        let v = make_variant_node(
+                        let v = crate::v1_std_core::make_variant_node(
                             minted.identity.clone(),
                             vname.clone(),
                             r.fields.clone(),
@@ -5849,7 +5884,7 @@ pub fn parse_variant_fields(
                     }
                     EatResult::EatUnchanged { tokens: __eu2, .. } => {
                         let minted = mint_parsed_node_identity(ctx.clone());
-                        let v = make_variant_node(
+                        let v = crate::v1_std_core::make_variant_node(
                             minted.identity.clone(),
                             vname.clone(),
                             Rc::new(vec![]),
@@ -6182,7 +6217,7 @@ pub fn parse_callable_param_types(
             });
         }
         let minted = mint_parsed_node_identity(r.ctx.clone());
-        let param = make_param_node(
+        let param = crate::v1_std_core::make_param_node(
             minted.identity.clone(),
             "".to_string(),
             r.type_expr.clone(),
@@ -6355,7 +6390,7 @@ pub fn collect_type_param_names(
             let type_expr =
                 leaf_type_node(type_mint.identity.clone(), r.name.clone(), span.clone());
             let param_mint = mint_parsed_node_identity(type_mint.ctx.clone());
-            let param = make_param_node(
+            let param = crate::v1_std_core::make_param_node(
                 param_mint.identity.clone(),
                 r.name.clone(),
                 type_expr.clone(),
@@ -6542,7 +6577,7 @@ pub fn parse_field_list_acc(
 pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldResult> {
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
-        let dummy_field = make_field_node(
+        let dummy_field = crate::v1_std_core::make_field_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "".to_string(),
             leaf_type_node(
@@ -6619,7 +6654,7 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                     });
                 }
                 let minted = mint_parsed_node_identity(r4.ctx.clone());
-                let f = make_field_node(
+                let f = crate::v1_std_core::make_field_node(
                     minted.identity.clone(),
                     name.clone(),
                     te.clone(),
@@ -6638,7 +6673,7 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
                 let minted = mint_parsed_node_identity(ctx.clone());
-                let f = make_field_node(
+                let f = crate::v1_std_core::make_field_node(
                     minted.identity.clone(),
                     name.clone(),
                     te.clone(),
@@ -6684,7 +6719,7 @@ pub fn parse_optional_from_key(
                                 let value_mint = mint_parsed_node_identity(ctx.clone());
                                 let property_mint =
                                     mint_parsed_node_identity(value_mint.ctx.clone());
-                                let value = make_named_expr_node(
+                                let value = crate::v1_std_core::make_named_expr_node(
                                     value_mint.identity.clone(),
                                     key.clone(),
                                     Rc::new(ExprData::NoExprData),
@@ -6693,7 +6728,7 @@ pub fn parse_optional_from_key(
                                     token_span(tok2.clone()),
                                     token_span(tok2.clone()),
                                 );
-                                let property = make_field_init_node(
+                                let property = crate::v1_std_core::make_field_init_node(
                                     property_mint.identity.clone(),
                                     "from_key".to_string(),
                                     value.clone(),
@@ -6903,7 +6938,7 @@ pub fn parse_fn_after_kw(
 
 pub fn admit_callers_property_nonempty(field: Rc<Node>) -> bool {
     {
-        let list_val = field_init_node_value(field.clone());
+        let list_val = crate::v1_std_core::field_init_node_value(field.clone());
         ((list_val.children.clone().len() as i64) > 0)
     }
 }
@@ -6930,7 +6965,9 @@ pub fn parse_optional_admit_callers(
                 }
                 if !admit_callers_property_nonempty(r.field.clone()) {
                     {
-                        let span = field_init_node_value(r.field.clone()).span.clone();
+                        let span = crate::v1_std_core::field_init_node_value(r.field.clone())
+                            .span
+                            .clone();
                         Rc::new(AdmitCallersResult {
                             props: Rc::new(vec![]),
                             tokens: r.tokens.clone(),
@@ -7508,7 +7545,7 @@ pub fn parse_uses_list_acc(
 pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ResUseResult> {
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
-        let dummy = make_resource_use_node(
+        let dummy = crate::v1_std_core::make_resource_use_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "".to_string(),
             leaf_type_node(
@@ -7590,7 +7627,7 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     ident: None,
                 });
                 let minted = mint_parsed_node_identity(ar.ctx.clone());
-                let ru = make_resource_use_node(
+                let ru = crate::v1_std_core::make_resource_use_node(
                     minted.identity.clone(),
                     name.clone(),
                     res_node.clone(),
@@ -7606,7 +7643,7 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
                 let minted = mint_parsed_node_identity(r3.ctx.clone());
-                let ru = make_resource_use_node(
+                let ru = crate::v1_std_core::make_resource_use_node(
                     minted.identity.clone(),
                     name.clone(),
                     r3.type_expr.clone(),
@@ -7653,7 +7690,7 @@ pub fn parse_resource_config_acc(
                 err: None,
             });
         }
-        let zero_span = no_span();
+        let zero_span = crate::v1_std_core::no_span();
         let r = expect_name(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ResConfigResult {
@@ -7683,7 +7720,7 @@ pub fn parse_resource_config_acc(
             });
         }
         let minted = mint_parsed_node_identity(r3.ctx.clone());
-        let fi = make_field_init_node(
+        let fi = crate::v1_std_core::make_field_init_node(
             minted.identity.clone(),
             field_name.clone(),
             r3.expr.clone(),
@@ -7880,10 +7917,10 @@ pub fn parse_service_after_kw(
         let ns_value_mint = mint_parsed_node_identity(r.ctx.clone());
         let ns_property_mint = mint_parsed_node_identity(ns_value_mint.ctx.clone());
         let item_mint = mint_parsed_node_identity(ns_property_mint.ctx.clone());
-        let ns_prop = make_field_init_node(
+        let ns_prop = crate::v1_std_core::make_field_init_node(
             ns_property_mint.identity.clone(),
             "namespace_root".to_string(),
-            make_expr_node(
+            crate::v1_std_core::make_expr_node(
                 ns_value_mint.identity.clone(),
                 Rc::new(ExprData::ExprLiteral {
                     value: Rc::new(LiteralValue::LitStr {
@@ -7895,10 +7932,10 @@ pub fn parse_service_after_kw(
                 start_span.clone(),
             ),
             start_span.clone(),
-            no_span(),
+            crate::v1_std_core::no_span(),
         );
         let svc_props = match r.config.clone() {
-            Some(cfg) => service_config_properties(
+            Some(cfg) => crate::v1_std_core::service_config_properties(
                 cfg.endpoint.clone(),
                 cfg.auth.clone(),
                 cfg.auth_input.clone(),
@@ -7942,7 +7979,7 @@ pub fn parse_service_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
         tokens.clone(),
         ctx.clone(),
         None,
-        local_transport_node(
+        crate::v1_std_core::local_transport_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             token_span(token_stream_first(tokens.clone())),
         ),
@@ -8150,7 +8187,7 @@ pub fn parse_config_fields(
             let cfg = Rc::new(ServiceConfig {
                 endpoint: match endpoint.clone() {
                     Some(e) => e.clone(),
-                    None => make_expr_node(
+                    None => crate::v1_std_core::make_expr_node(
                         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         Rc::new(ExprData::ExprLiteral {
                             value: Rc::new(LiteralValue::LitStr {
@@ -8159,7 +8196,7 @@ pub fn parse_config_fields(
                         }),
                         Rc::new(vec![]),
                         None,
-                        no_span(),
+                        crate::v1_std_core::no_span(),
                     ),
                 },
                 auth: auth.clone(),
@@ -8175,7 +8212,7 @@ pub fn parse_config_fields(
             });
         } else {
             let dummy_cfg = Rc::new(ServiceConfig {
-                endpoint: make_expr_node(
+                endpoint: crate::v1_std_core::make_expr_node(
                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     Rc::new(ExprData::ExprLiteral {
                         value: Rc::new(LiteralValue::LitStr {
@@ -8184,7 +8221,7 @@ pub fn parse_config_fields(
                     }),
                     Rc::new(vec![]),
                     None,
-                    no_span(),
+                    crate::v1_std_core::no_span(),
                 ),
                 auth: None,
                 auth_input: None,
@@ -8271,7 +8308,7 @@ pub fn parse_transport_binding(
 ) -> Rc<TransportResult> {
     {
         let span = token_span(token_stream_first(tokens.clone()));
-        let dummy = local_transport_node(
+        let dummy = crate::v1_std_core::local_transport_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             span.clone(),
         );
@@ -8473,7 +8510,7 @@ pub fn parse_rest_fields(
     loop {
         tokens = skip_newlines(tokens.clone());
         let span = token_span(token_stream_first(tokens.clone()));
-        let dummy = local_transport_node(
+        let dummy = crate::v1_std_core::local_transport_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             span.clone(),
         );
@@ -8482,7 +8519,7 @@ pub fn parse_rest_fields(
         {
             let bu = match base_url.clone() {
                 Some(e) => e.clone(),
-                None => make_expr_node(
+                None => crate::v1_std_core::make_expr_node(
                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     Rc::new(ExprData::ExprLiteral {
                         value: Rc::new(LiteralValue::LitStr {
@@ -8491,12 +8528,12 @@ pub fn parse_rest_fields(
                     }),
                     Rc::new(vec![]),
                     None,
-                    no_span(),
+                    crate::v1_std_core::no_span(),
                 ),
             };
             let minted = mint_parsed_node_identity(ctx.clone());
             break Rc::new(TransportResult {
-                transport: rest_transport_node(
+                transport: crate::v1_std_core::rest_transport_node(
                     minted.identity.clone(),
                     bu.clone(),
                     Rc::new(vec![]),
@@ -8596,7 +8633,7 @@ pub fn parse_rest_fields(
     transport: dummy.clone(),
     tokens: tokens.clone(),
     ctx: ctx.clone(),
-    err: Some(make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+    err: Some(crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: "transport headers must be a record literal { \"Name\": value, ... }".to_string(),
     span: token_span(token_stream_first(tokens.clone())),
 }), "".to_string())),
@@ -8612,12 +8649,12 @@ pub fn parse_rest_fields(
                                             || (fname.clone() == transport_tls_key()))
                                         {
                                             let minted = mint_parsed_node_identity(ctx.clone());
-                                            let field = make_field_init_node(
+                                            let field = crate::v1_std_core::make_field_init_node(
                                                 minted.identity.clone(),
                                                 fname.clone(),
                                                 r3.expr.clone(),
-                                                no_span(),
-                                                no_span(),
+                                                crate::v1_std_core::no_span(),
+                                                crate::v1_std_core::no_span(),
                                             );
                                             {
                                                 let __tco_0 = minted.ctx.clone();
@@ -8664,7 +8701,7 @@ pub fn parse_shell_fields(
     loop {
         tokens = skip_newlines(tokens.clone());
         let span = token_span(token_stream_first(tokens.clone()));
-        let dummy = local_transport_node(
+        let dummy = crate::v1_std_core::local_transport_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             span.clone(),
         );
@@ -8673,7 +8710,7 @@ pub fn parse_shell_fields(
         {
             let minted = mint_parsed_node_identity(ctx.clone());
             break Rc::new(TransportResult {
-                transport: shell_transport_node(
+                transport: crate::v1_std_core::shell_transport_node(
                     minted.identity.clone(),
                     argv.clone(),
                     Rc::new(vec![]),
@@ -8809,7 +8846,7 @@ pub fn parse_file_fields(
     loop {
         tokens = skip_newlines(tokens.clone());
         let span = token_span(token_stream_first(tokens.clone()));
-        let dummy = local_transport_node(
+        let dummy = crate::v1_std_core::local_transport_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             span.clone(),
         );
@@ -8820,7 +8857,7 @@ pub fn parse_file_fields(
                 Some(bp) => {
                     let minted = mint_parsed_node_identity(ctx.clone());
                     break Rc::new(TransportResult {
-                        transport: file_transport_node(
+                        transport: crate::v1_std_core::file_transport_node(
                             minted.identity.clone(),
                             bp.clone(),
                             verb.clone(),
@@ -9675,7 +9712,7 @@ pub fn status_expr_to_str(
         },
         ExprData::ExprVar {
             binding_kind: _, ..
-        } => expr_var_name_at(expr.clone(), source_indices.clone()),
+        } => crate::v1_std_core::expr_var_name_at(expr.clone(), source_indices.clone()),
         _ => "_".to_string(),
     }
 }
@@ -9768,7 +9805,7 @@ pub fn node_to_name_str(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         let effective_n = if is_optional.clone() {
-            with_required_cardinality(n.clone())
+            crate::v1_std_core::with_required_cardinality(n.clone())
         } else {
             n.clone()
         };
@@ -9777,8 +9814,9 @@ pub fn node_to_name_str(
         } else {
             "".to_string()
         };
-        let effective_name = authored_name_at(source_indices.clone(), effective_n.clone());
-        let is_keyed_container = (is_container_type(effective_name.clone())
+        let effective_name =
+            crate::v1_std_core::authored_name_at(source_indices.clone(), effective_n.clone());
+        let is_keyed_container = (crate::std_types::is_container_type(effective_name.clone())
             && ((effective_n.children.clone().len() as i64) == 2));
         if is_keyed_container.clone() {
             match effective_n.children.clone().last().cloned() {
@@ -9801,7 +9839,7 @@ pub fn node_to_name_str(
                     None => v1_rt::concat(opt_prefix.clone(), effective_name.clone()),
                 }
             } else {
-                if is_container_type(effective_name.clone()) {
+                if crate::std_types::is_container_type(effective_name.clone()) {
                     match effective_n.children.clone().first().cloned() {
                         Some(ch) => v1_rt::concat(
                             v1_rt::concat(opt_prefix.clone(), "List_".to_string()),
@@ -9895,10 +9933,10 @@ pub fn parse_exit_entries_acc(
             let type_name = node_to_name_str(r3.type_expr.clone(), ctx.source_indices.clone());
             let prop_name = v1_rt::concat("exit_".to_string(), code_str.clone());
             let minted = mint_parsed_node_identity(r3.ctx.clone());
-            let entry = make_field_init_node(
+            let entry = crate::v1_std_core::make_field_init_node(
                 minted.identity.clone(),
                 prop_name.clone(),
-                make_named_expr_node(
+                crate::v1_std_core::make_named_expr_node(
                     r3.type_expr.clone().occurrence_identity.clone(),
                     type_name.clone(),
                     Rc::new(ExprData::ExprVar { binding_kind: None }),
@@ -9908,7 +9946,7 @@ pub fn parse_exit_entries_acc(
                     r3.type_expr.clone().span.clone(),
                 ),
                 r3.type_expr.clone().span.clone(),
-                no_span(),
+                crate::v1_std_core::no_span(),
             );
             let e = eat(desc_tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e.clone()).clone() {
@@ -10012,7 +10050,7 @@ pub fn parse_status_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                     Some(v) => v.clone(),
                     None => {
                         return Rc::new(ExprResult {
-                            expr: make_expr_error_node(
+                            expr: crate::v1_std_core::make_expr_error_node(
                                 Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                 ExprErrorKind::InternalExprError,
                                 v1_rt::concat(
@@ -10040,7 +10078,7 @@ pub fn parse_status_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                                 token_stream_advance(tokens.clone(), 2),
                                 ctx.clone(),
                                 |identity| {
-                                    make_expr_node(
+                                    crate::v1_std_core::make_expr_node(
                                         identity.clone(),
                                         Rc::new(ExprData::ExprLiteral {
                                             value: Rc::new(LiteralValue::LitStr {
@@ -10058,7 +10096,7 @@ pub fn parse_status_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                                 token_stream_advance(tokens.clone(), 1),
                                 ctx.clone(),
                                 |identity| {
-                                    make_expr_node(
+                                    crate::v1_std_core::make_expr_node(
                                         identity.clone(),
                                         Rc::new(ExprData::ExprLiteral {
                                             value: Rc::new(LiteralValue::LitInt {
@@ -10077,7 +10115,7 @@ pub fn parse_status_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                         token_stream_advance(tokens.clone(), 1),
                         ctx.clone(),
                         |identity| {
-                            make_expr_node(
+                            crate::v1_std_core::make_expr_node(
                                 identity.clone(),
                                 Rc::new(ExprData::ExprLiteral {
                                     value: Rc::new(LiteralValue::LitInt { value: n.clone() }),
@@ -10096,7 +10134,7 @@ pub fn parse_status_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                     token_stream_advance(tokens.clone(), 1),
                     ctx.clone(),
                     |identity| {
-                        make_expr_node(
+                        crate::v1_std_core::make_expr_node(
                             identity.clone(),
                             Rc::new(ExprData::ExprLiteral {
                                 value: Rc::new(LiteralValue::LitStr { value: id.clone() }),
@@ -10112,7 +10150,7 @@ pub fn parse_status_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                 token_stream_advance(tokens.clone(), 1),
                 ctx.clone(),
                 |identity| {
-                    make_expr_node(
+                    crate::v1_std_core::make_expr_node(
                         identity.clone(),
                         Rc::new(ExprData::ExprLiteral {
                             value: Rc::new(LiteralValue::LitStr {
@@ -10250,10 +10288,10 @@ pub fn parse_response_entries_acc(
             let type_name = node_to_name_str(r3.type_expr.clone(), ctx.source_indices.clone());
             let prop_name = v1_rt::concat("response_".to_string(), status_str.clone());
             let minted = mint_parsed_node_identity(r3.ctx.clone());
-            let entry = make_field_init_node(
+            let entry = crate::v1_std_core::make_field_init_node(
                 minted.identity.clone(),
                 prop_name.clone(),
-                make_named_expr_node(
+                crate::v1_std_core::make_named_expr_node(
                     r3.type_expr.clone().occurrence_identity.clone(),
                     type_name.clone(),
                     Rc::new(ExprData::ExprVar { binding_kind: None }),
@@ -10263,7 +10301,7 @@ pub fn parse_response_entries_acc(
                     r3.type_expr.clone().span.clone(),
                 ),
                 r3.type_expr.clone().span.clone(),
-                no_span(),
+                crate::v1_std_core::no_span(),
             );
             let e = eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e.clone()).clone() {
@@ -10411,12 +10449,12 @@ pub fn parse_mock_response_entries_acc(
             let status_str = status_expr_to_str(status.clone(), ctx.source_indices.clone());
             let prop_name = v1_rt::concat("mock_".to_string(), status_str.clone());
             let minted = mint_parsed_node_identity(r3.ctx.clone());
-            let entry = make_field_init_node(
+            let entry = crate::v1_std_core::make_field_init_node(
                 minted.identity.clone(),
                 prop_name.clone(),
                 body.clone(),
-                no_span(),
-                no_span(),
+                crate::v1_std_core::no_span(),
+                crate::v1_std_core::no_span(),
             );
             let e = eat(desc_tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e.clone()).clone() {
@@ -10761,11 +10799,11 @@ pub fn parse_resource_entries(
                             });
                         }
                         let minted = mint_parsed_node_identity(r3.ctx.clone());
-                        let fi = make_field_init_node(
+                        let fi = crate::v1_std_core::make_field_init_node(
                             minted.identity.clone(),
                             fname.clone(),
                             r3.expr.clone(),
-                            no_span(),
+                            crate::v1_std_core::no_span(),
                             r.span.clone(),
                         );
                         {
@@ -11279,10 +11317,10 @@ pub fn parse_alias_after_kw(
         let value_mint = mint_parsed_node_identity(ctx.clone());
         let property_mint = mint_parsed_node_identity(value_mint.ctx.clone());
         let item_mint = mint_parsed_node_identity(property_mint.ctx.clone());
-        let target_prop = make_field_init_node(
+        let target_prop = crate::v1_std_core::make_field_init_node(
             property_mint.identity.clone(),
             "namespace_alias_target".to_string(),
-            make_expr_node(
+            crate::v1_std_core::make_expr_node(
                 value_mint.identity.clone(),
                 Rc::new(ExprData::ExprLiteral {
                     value: Rc::new(LiteralValue::LitStr {
@@ -11294,7 +11332,7 @@ pub fn parse_alias_after_kw(
                 r.span.clone(),
             ),
             start_span.clone(),
-            no_span(),
+            crate::v1_std_core::no_span(),
         );
         let item = Rc::new(Node {
             occurrence_identity: item_mint.identity.clone(),
@@ -11552,7 +11590,7 @@ pub fn parse_param_list_acc(
 pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamResult> {
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
-        let dummy_param = make_param_node(
+        let dummy_param = crate::v1_std_core::make_param_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "".to_string(),
             leaf_type_node(
@@ -11622,7 +11660,7 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
                     });
                 }
                 let minted = mint_parsed_node_identity(r4.ctx.clone());
-                let p = make_param_node(
+                let p = crate::v1_std_core::make_param_node(
                     minted.identity.clone(),
                     name.clone(),
                     type_expr.clone(),
@@ -11639,7 +11677,7 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
                 let minted = mint_parsed_node_identity(ctx.clone());
-                let p = make_param_node(
+                let p = crate::v1_std_core::make_param_node(
                     minted.identity.clone(),
                     name.clone(),
                     type_expr.clone(),
@@ -11691,7 +11729,7 @@ pub fn heads_skip_block_tokens(
                         tokens: tokens.clone(),
                         err: Some(parse_error(
                             "heads-only parse: unterminated function body".to_string(),
-                            no_span(),
+                            crate::v1_std_core::no_span(),
                         )),
                     });
                 }
@@ -11737,11 +11775,11 @@ pub fn census_heads_body_stand_in_message() -> String {
 }
 
 pub fn census_heads_body_stand_in() -> Rc<Node> {
-    make_expr_error_node(
+    crate::v1_std_core::make_expr_error_node(
         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         ExprErrorKind::CensusHeadsBodyStripped,
         census_heads_body_stand_in_message(),
-        no_span(),
+        crate::v1_std_core::no_span(),
     )
 }
 
@@ -11827,7 +11865,7 @@ pub fn parse_block(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRes
             })
         } else {
             parsed_expr_result(r.tokens.clone(), ctx.clone(), |identity| {
-                make_expr_node(
+                crate::v1_std_core::make_expr_node(
                     identity.clone(),
                     Rc::new(ExprData::ExprBlock),
                     stmts.clone(),
@@ -12266,7 +12304,7 @@ pub fn parse_expr_loop(
                                                 });
                                             }
                                             let minted = mint_parsed_node_identity(ctx.clone());
-                                            let new_lhs = make_named_expr_node(
+                                            let new_lhs = crate::v1_std_core::make_named_expr_node(
                                                 minted.identity.clone(),
                                                 r.name.clone(),
                                                 Rc::new(ExprData::ExprFieldAccess {
@@ -12335,19 +12373,20 @@ pub fn parse_expr_loop(
                                                         let minted = mint_parsed_node_identity(
                                                             r.ctx.clone(),
                                                         );
-                                                        let new_lhs = make_expr_node(
-                                                            minted.identity.clone(),
-                                                            Rc::new(ExprData::ExprBinOp {
-                                                                op: binop.clone(),
-                                                                algebra_field: None,
-                                                            }),
-                                                            Rc::new(vec![
-                                                                lhs.clone(),
-                                                                r.expr.clone(),
-                                                            ]),
-                                                            None,
-                                                            loop_span.clone(),
-                                                        );
+                                                        let new_lhs =
+                                                            crate::v1_std_core::make_expr_node(
+                                                                minted.identity.clone(),
+                                                                Rc::new(ExprData::ExprBinOp {
+                                                                    op: binop.clone(),
+                                                                    algebra_field: None,
+                                                                }),
+                                                                Rc::new(vec![
+                                                                    lhs.clone(),
+                                                                    r.expr.clone(),
+                                                                ]),
+                                                                None,
+                                                                loop_span.clone(),
+                                                            );
                                                         {
                                                             let __tco_0 = r.tokens.clone();
                                                             let __tco_1 = minted.ctx.clone();
@@ -12439,7 +12478,7 @@ pub fn parse_pipe_callee_rest(
             }
             let minted = mint_parsed_node_identity(ctx.clone());
             let next_spine = match spine.clone() {
-                None => make_named_expr_node(
+                None => crate::v1_std_core::make_named_expr_node(
                     minted.identity.clone(),
                     name.clone(),
                     Rc::new(ExprData::ExprVar { binding_kind: None }),
@@ -12448,7 +12487,7 @@ pub fn parse_pipe_callee_rest(
                     name_span.clone(),
                     name_span.clone(),
                 ),
-                Some(base) => make_named_expr_node(
+                Some(base) => crate::v1_std_core::make_named_expr_node(
                     minted.identity.clone(),
                     name.clone(),
                     Rc::new(ExprData::ExprFieldAccess { summary: None }),
@@ -12539,7 +12578,7 @@ pub fn parse_pipe_rhs(
                 Rc::new(ParsedNodesResult {
                     nodes: Rc::new(vec![
                         qualifier.clone(),
-                        make_arg_node(
+                        crate::v1_std_core::make_arg_node(
                             wrapper_mint.identity.clone(),
                             None,
                             receiver.clone(),
@@ -12564,7 +12603,7 @@ pub fn parse_pipe_rhs(
                     });
                 }
                 parsed_expr_result(r2.tokens.clone(), r2.ctx.clone(), |identity| {
-                    make_named_expr_node(
+                    crate::v1_std_core::make_named_expr_node(
                         identity.clone(),
                         method.clone(),
                         Rc::new(ExprData::ExprMethodCall {
@@ -12575,12 +12614,15 @@ pub fn parse_pipe_rhs(
                             Rc::new({
                                 let mut __result = Vec::new();
                                 for na in r2.args.clone().iter().cloned() {
-                                    __result.push(make_arg_node(
+                                    __result.push(crate::v1_std_core::make_arg_node(
                                         na.occurrence_identity.clone(),
-                                        arg_name_at(na.clone(), ctx.source_indices.clone()),
-                                        arg_value(na.clone()),
+                                        crate::v1_std_core::arg_name_at(
+                                            na.clone(),
+                                            ctx.source_indices.clone(),
+                                        ),
+                                        crate::v1_std_core::arg_value(na.clone()),
                                         na.span.clone(),
-                                        node_name_span(na.clone()),
+                                        crate::v1_std_core::node_name_span(na.clone()),
                                     ));
                                 }
                                 __result
@@ -12594,7 +12636,7 @@ pub fn parse_pipe_rhs(
             }
         } else {
             parsed_expr_result(tokens.clone(), leading_result.ctx.clone(), |identity| {
-                make_named_expr_node(
+                crate::v1_std_core::make_named_expr_node(
                     identity.clone(),
                     method.clone(),
                     Rc::new(ExprData::ExprMethodCall {
@@ -12630,7 +12672,7 @@ pub fn parse_prefix(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRe
                     });
                 }
                 parsed_expr_result(r.tokens.clone(), r.ctx.clone(), |identity| {
-                    make_expr_node(
+                    crate::v1_std_core::make_expr_node(
                         identity.clone(),
                         Rc::new(ExprData::ExprUnaryOp {
                             op: UnaryOpKind::Not,
@@ -12652,7 +12694,7 @@ pub fn parse_prefix(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRe
                     });
                 }
                 parsed_expr_result(r.tokens.clone(), r.ctx.clone(), |identity| {
-                    make_expr_node(
+                    crate::v1_std_core::make_expr_node(
                         identity.clone(),
                         Rc::new(ExprData::ExprUnaryOp {
                             op: UnaryOpKind::Neg,
@@ -12688,7 +12730,7 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                     token_stream_advance(after_caret.clone(), 1),
                     ctx.clone(),
                     |identity| {
-                        make_expr_node(
+                        crate::v1_std_core::make_expr_node(
                             identity.clone(),
                             Rc::new(ExprData::ExprLiteral {
                                 value: Rc::new(LiteralValue::LitSymbol {
@@ -12728,14 +12770,14 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                     r2.token.clone().span.clone().end.clone(),
                 );
                 let callee_mint = mint_parsed_node_identity(r.ctx.clone());
-                let callee = make_named_expr_node(
+                let callee = crate::v1_std_core::make_named_expr_node(
                     callee_mint.identity.clone(),
                     "discriminant".to_string(),
                     Rc::new(ExprData::ExprVar { binding_kind: None }),
                     Rc::new(vec![]),
                     None,
                     call_span.clone(),
-                    kernel_span("discriminant".to_string()),
+                    crate::v1_std_core::kernel_span("discriminant".to_string()),
                 );
                 let call_mint = mint_parsed_node_identity(callee_mint.ctx.clone());
                 let call = make_call_expr(
@@ -12798,7 +12840,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                         token_stream_advance(tokens.clone(), 1),
                         ctx.clone(),
                         |identity| {
-                            make_expr_node(
+                            crate::v1_std_core::make_expr_node(
                                 identity.clone(),
                                 Rc::new(ExprData::ExprLiteral { value: lv.clone() }),
                                 Rc::new(vec![]),
@@ -12853,7 +12895,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                     Some(v) => v.clone(),
                     None => {
                         return Rc::new(ExprResult {
-                            expr: make_expr_error_node(
+                            expr: crate::v1_std_core::make_expr_error_node(
                                 Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                 ExprErrorKind::InternalExprError,
                                 v1_rt::concat(
@@ -12876,7 +12918,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                     token_stream_advance(tokens.clone(), 1),
                     ctx.clone(),
                     |identity| {
-                        make_expr_node(
+                        crate::v1_std_core::make_expr_node(
                             identity.clone(),
                             Rc::new(ExprData::ExprLiteral {
                                 value: Rc::new(LiteralValue::LitInt { value: n.clone() }),
@@ -12894,7 +12936,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                     token_stream_advance(tokens.clone(), 1),
                     ctx.clone(),
                     |identity| {
-                        make_expr_node(
+                        crate::v1_std_core::make_expr_node(
                             identity.clone(),
                             Rc::new(ExprData::ExprLiteral {
                                 value: Rc::new(LiteralValue::LitFloat { value: f.clone() }),
@@ -12912,7 +12954,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                     token_stream_advance(tokens.clone(), 1),
                     ctx.clone(),
                     |identity| {
-                        make_expr_node(
+                        crate::v1_std_core::make_expr_node(
                             identity.clone(),
                             Rc::new(ExprData::ExprLiteral {
                                 value: Rc::new(LiteralValue::LitStr { value: s.clone() }),
@@ -12982,7 +13024,7 @@ pub fn parse_lambda_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<E
                     })
                 } else {
                     parsed_expr_result(r.tokens.clone(), r.ctx.clone(), |identity| {
-                        make_expr_node(
+                        crate::v1_std_core::make_expr_node(
                             identity.clone(),
                             Rc::new(ExprData::ExprBlock),
                             r.stmts.clone(),
@@ -13052,7 +13094,7 @@ pub fn parse_ident_expr(
                 }
                 let param_mint = mint_parsed_node_identity(r.ctx.clone());
                 parsed_expr_result(r.tokens.clone(), param_mint.ctx.clone(), |identity| {
-                    make_expr_node(
+                    crate::v1_std_core::make_expr_node(
                         identity.clone(),
                         Rc::new(ExprData::ExprLambda),
                         v1_rt::concat(
@@ -13075,7 +13117,7 @@ pub fn parse_ident_expr(
                 parse_record_literal(tokens.clone(), ctx.clone(), name.clone(), span.clone())
             } else {
                 parsed_expr_result(tokens.clone(), ctx.clone(), |identity| {
-                    make_named_expr_node(
+                    crate::v1_std_core::make_named_expr_node(
                         identity.clone(),
                         name.clone(),
                         Rc::new(ExprData::ExprVar { binding_kind: None }),
@@ -13185,7 +13227,7 @@ pub fn try_postfix(
                             }
                             let minted = mint_parsed_node_identity(r.ctx.clone());
                             Rc::new(PostfixResult {
-                                expr: make_expr_node(
+                                expr: crate::v1_std_core::make_expr_node(
                                     minted.identity.clone(),
                                     Rc::new(ExprData::ExprCast),
                                     Rc::new(vec![lhs.clone(), r.type_expr.clone()]),
@@ -13259,7 +13301,10 @@ pub fn try_postfix(
                 ExprData::ExprVar {
                     binding_kind: _, ..
                 } => {
-                    let n = expr_var_name_at(lhs.clone(), ctx.source_indices.clone());
+                    let n = crate::v1_std_core::expr_var_name_at(
+                        lhs.clone(),
+                        ctx.source_indices.clone(),
+                    );
                     if (is_uppercase_start(n.clone()) && (14 <= min_bp.clone())) {
                         Rc::new(PostfixResult {
                             expr: lhs.clone(),
@@ -13306,7 +13351,10 @@ pub fn try_postfix(
                     }
                 }
                 ExprData::ExprFieldAccess { summary: _, .. } => {
-                    let last_seg = field_access_field_at(lhs.clone(), ctx.source_indices.clone());
+                    let last_seg = crate::v1_std_core::field_access_field_at(
+                        lhs.clone(),
+                        ctx.source_indices.clone(),
+                    );
                     if (is_uppercase_start(last_seg.clone()) && (14 <= min_bp.clone())) {
                         Rc::new(PostfixResult {
                             expr: lhs.clone(),
@@ -13317,14 +13365,17 @@ pub fn try_postfix(
                         })
                     } else {
                         if is_uppercase_start(last_seg.clone()) {
-                            match field_access_spine(lhs.clone(), ctx.source_indices.clone()) {
+                            match crate::v1_std_core::field_access_spine(
+                                lhs.clone(),
+                                ctx.source_indices.clone(),
+                            ) {
                                 Some(spine) => {
                                     let r = parse_record_literal_named(
                                         tokens.clone(),
                                         ctx.clone(),
                                         spine.dotted.clone(),
                                         field_access_chain_span(lhs.clone()),
-                                        kernel_span(spine.dotted.clone()),
+                                        crate::v1_std_core::kernel_span(spine.dotted.clone()),
                                     );
                                     if has_err(r.err.clone()) {
                                         return Rc::new(PostfixResult {
@@ -13472,12 +13523,12 @@ pub fn parse_constraint_list(
             });
         }
         let minted = mint_parsed_node_identity(r.ctx.clone());
-        let fi = make_field_init_node(
+        let fi = crate::v1_std_core::make_field_init_node(
             minted.identity.clone(),
             kw_name.clone(),
             r.expr.clone(),
-            no_span(),
-            no_span(),
+            crate::v1_std_core::no_span(),
+            crate::v1_std_core::no_span(),
         );
         acc = v1_rt::rc_list_push(acc.clone(), fi.clone());
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
@@ -13526,9 +13577,9 @@ pub fn make_call_expr(
     match (*lhs.expr_data.clone()).clone() {
         ExprData::ExprVar {
             binding_kind: _, ..
-        } => make_named_expr_node(
+        } => crate::v1_std_core::make_named_expr_node(
             occurrence_identity.clone(),
-            expr_var_name_at(lhs.clone(), source_indices.clone()),
+            crate::v1_std_core::expr_var_name_at(lhs.clone(), source_indices.clone()),
             Rc::new(ExprData::ExprCall {
                 call_semantics: None,
                 descent_evidence: None,
@@ -13536,11 +13587,11 @@ pub fn make_call_expr(
             args.clone(),
             None,
             lhs.span.clone(),
-            node_name_span(lhs.clone()),
+            crate::v1_std_core::node_name_span(lhs.clone()),
         ),
-        ExprData::ExprFieldAccess { summary: _, .. } => make_named_expr_node(
+        ExprData::ExprFieldAccess { summary: _, .. } => crate::v1_std_core::make_named_expr_node(
             occurrence_identity.clone(),
-            field_access_field_at(lhs.clone(), source_indices.clone()),
+            crate::v1_std_core::field_access_field_at(lhs.clone(), source_indices.clone()),
             Rc::new(ExprData::ExprMethodCall {
                 method_semantics: None,
             }),
@@ -13550,9 +13601,9 @@ pub fn make_call_expr(
             ),
             None,
             lhs.span.clone(),
-            node_name_span(lhs.clone()),
+            crate::v1_std_core::node_name_span(lhs.clone()),
         ),
-        _ => make_named_expr_node(
+        _ => crate::v1_std_core::make_named_expr_node(
             occurrence_identity.clone(),
             "<expr>".to_string(),
             Rc::new(ExprData::ExprCall {
@@ -13562,7 +13613,7 @@ pub fn make_call_expr(
             args.clone(),
             None,
             lhs.span.clone(),
-            no_span(),
+            crate::v1_std_core::no_span(),
         ),
     }
 }
@@ -13619,7 +13670,7 @@ pub fn parse_index_or_slice(
                     });
                 }
                 parsed_expr_result(r.tokens.clone(), ctx.clone(), |identity| {
-                    make_expr_node(
+                    crate::v1_std_core::make_expr_node(
                         identity.clone(),
                         Rc::new(ExprData::ExprSlice),
                         Rc::new(vec![base.clone(), first_expr.clone(), end_expr.clone()]),
@@ -13640,7 +13691,7 @@ pub fn parse_index_or_slice(
                     });
                 }
                 parsed_expr_result(r.tokens.clone(), ctx.clone(), |identity| {
-                    make_expr_node(
+                    crate::v1_std_core::make_expr_node(
                         identity.clone(),
                         Rc::new(ExprData::ExprIndex),
                         Rc::new(vec![base.clone(), first_expr.clone()]),
@@ -13752,7 +13803,7 @@ pub fn parse_arg_list_acc(
 pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ArgResult> {
     {
         let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_arg = make_arg_node(
+        let dummy_arg = crate::v1_std_core::make_arg_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             None,
             parse_recovery_placeholder(),
@@ -13776,7 +13827,7 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                             });
                         }
                         let minted = mint_parsed_node_identity(r.ctx.clone());
-                        let arg = make_arg_node(
+                        let arg = crate::v1_std_core::make_arg_node(
                             minted.identity.clone(),
                             None,
                             r.expr.clone(),
@@ -13806,7 +13857,7 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                                 });
                             }
                             let minted = mint_parsed_node_identity(r.ctx.clone());
-                            let arg = make_arg_node(
+                            let arg = crate::v1_std_core::make_arg_node(
                                 minted.identity.clone(),
                                 Some(name_r.name.clone()),
                                 r.expr.clone(),
@@ -13832,7 +13883,7 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                                 });
                             }
                             let minted = mint_parsed_node_identity(r.ctx.clone());
-                            let arg = make_arg_node(
+                            let arg = crate::v1_std_core::make_arg_node(
                                 minted.identity.clone(),
                                 None,
                                 r.expr.clone(),
@@ -13861,7 +13912,7 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                     });
                 }
                 let minted = mint_parsed_node_identity(r.ctx.clone());
-                let arg = make_arg_node(
+                let arg = crate::v1_std_core::make_arg_node(
                     minted.identity.clone(),
                     None,
                     r.expr.clone(),
@@ -13939,7 +13990,7 @@ pub fn parse_match(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRes
             });
         }
         parsed_expr_result(r.tokens.clone(), ctx.clone(), |identity| {
-            make_expr_node(
+            crate::v1_std_core::make_expr_node(
                 identity.clone(),
                 Rc::new(ExprData::ExprMatch),
                 v1_rt::concat(Rc::new(vec![scrutinee.clone()]), arms.clone()),
@@ -13987,7 +14038,7 @@ pub fn parse_expr_bp_no_brace(
             {
                 let span = token_span(tok.clone());
                 let minted = mint_parsed_node_identity(ctx.clone());
-                let lhs = make_named_expr_node(
+                let lhs = crate::v1_std_core::make_named_expr_node(
                     minted.identity.clone(),
                     tok.clone().unwrap().text.clone(),
                     Rc::new(ExprData::ExprVar { binding_kind: None }),
@@ -14112,7 +14163,7 @@ pub fn parse_expr_loop_no_brace(
                                                 });
                                             }
                                             let minted = mint_parsed_node_identity(ctx.clone());
-                                            let new_lhs = make_named_expr_node(
+                                            let new_lhs = crate::v1_std_core::make_named_expr_node(
                                                 minted.identity.clone(),
                                                 r.name.clone(),
                                                 Rc::new(ExprData::ExprFieldAccess {
@@ -14181,19 +14232,20 @@ pub fn parse_expr_loop_no_brace(
                                                         let minted = mint_parsed_node_identity(
                                                             r.ctx.clone(),
                                                         );
-                                                        let new_lhs = make_expr_node(
-                                                            minted.identity.clone(),
-                                                            Rc::new(ExprData::ExprBinOp {
-                                                                op: binop.clone(),
-                                                                algebra_field: None,
-                                                            }),
-                                                            Rc::new(vec![
-                                                                lhs.clone(),
-                                                                r.expr.clone(),
-                                                            ]),
-                                                            None,
-                                                            loop_span.clone(),
-                                                        );
+                                                        let new_lhs =
+                                                            crate::v1_std_core::make_expr_node(
+                                                                minted.identity.clone(),
+                                                                Rc::new(ExprData::ExprBinOp {
+                                                                    op: binop.clone(),
+                                                                    algebra_field: None,
+                                                                }),
+                                                                Rc::new(vec![
+                                                                    lhs.clone(),
+                                                                    r.expr.clone(),
+                                                                ]),
+                                                                None,
+                                                                loop_span.clone(),
+                                                            );
                                                         {
                                                             let __tco_0 = r.tokens.clone();
                                                             let __tco_1 = minted.ctx.clone();
@@ -14298,12 +14350,12 @@ pub fn parse_match_arms_acc(
 pub fn parse_match_arm(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ArmResult> {
     {
         let arm_span = token_span(token_stream_first(tokens.clone()));
-        let dummy_arm = make_arm_node(
+        let dummy_arm = crate::v1_std_core::make_arm_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             Rc::new(MatchPattern::Wildcard),
             None,
             parse_recovery_placeholder(),
-            no_span(),
+            crate::v1_std_core::no_span(),
         );
         let r = parse_pattern(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
@@ -14353,7 +14405,7 @@ pub fn parse_match_arm(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Arm
             });
         }
         let minted = mint_parsed_node_identity(r.ctx.clone());
-        let arm = make_arm_node(
+        let arm = crate::v1_std_core::make_arm_node(
             minted.identity.clone(),
             pat.clone(),
             guard.clone(),
@@ -14395,7 +14447,7 @@ pub fn parse_match_arm_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                     })
                 } else {
                     parsed_expr_result(r.tokens.clone(), r.ctx.clone(), |identity| {
-                        make_expr_node(
+                        crate::v1_std_core::make_expr_node(
                             identity.clone(),
                             Rc::new(ExprData::ExprBlock),
                             r.stmts.clone(),
@@ -14690,11 +14742,12 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                             let minted = mint_parsed_node_identity(ctx.clone());
                             Rc::new(PatternResult {
                                 pattern: Rc::new(MatchPattern::Bind {
-                                    declaration: make_pattern_binder_declaration_node(
-                                        minted.identity.clone(),
-                                        n.clone(),
-                                        r.span.clone(),
-                                    ),
+                                    declaration:
+                                        crate::v1_std_core::make_pattern_binder_declaration_node(
+                                            minted.identity.clone(),
+                                            n.clone(),
+                                            r.span.clone(),
+                                        ),
                                 }),
                                 tokens: r.tokens.clone(),
                                 ctx: minted.ctx.clone(),
@@ -14842,12 +14895,12 @@ pub fn parse_variant_pattern(
                         });
                     }
                     let minted = mint_parsed_node_identity(r.ctx.clone());
-                    let fb = make_field_binding_node(
+                    let fb = crate::v1_std_core::make_field_binding_node(
                         minted.identity.clone(),
                         "0".to_string(),
                         r.pattern.clone(),
                         span.clone(),
-                        kernel_span("0".to_string()),
+                        crate::v1_std_core::kernel_span("0".to_string()),
                     );
                     Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::VariantPattern {
@@ -14930,7 +14983,7 @@ pub fn parse_variant_bindings_brace_acc(
                         EatResult::EatUnchanged { tokens: _, .. } => r2.tokens.clone(),
                     });
                     let minted = mint_parsed_node_identity(r2.ctx.clone());
-                    let fb = make_field_binding_node(
+                    let fb = crate::v1_std_core::make_field_binding_node(
                         minted.identity.clone(),
                         field_name.clone(),
                         r2.pattern.clone(),
@@ -14953,11 +15006,11 @@ pub fn parse_variant_bindings_brace_acc(
                     });
                     let declaration_mint = mint_parsed_node_identity(ctx.clone());
                     let field_mint = mint_parsed_node_identity(declaration_mint.ctx.clone());
-                    let fb = make_field_binding_node(
+                    let fb = crate::v1_std_core::make_field_binding_node(
                         field_mint.identity.clone(),
                         field_name.clone(),
                         Rc::new(MatchPattern::Bind {
-                            declaration: make_pattern_binder_declaration_node(
+                            declaration: crate::v1_std_core::make_pattern_binder_declaration_node(
                                 declaration_mint.identity.clone(),
                                 field_name.clone(),
                                 field_name_span.clone(),
@@ -15050,7 +15103,7 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
                             r2.tokens.clone(),
                             parse_context_after_node(r2.ctx.clone(), r2.expr.clone()),
                             |identity| {
-                                make_expr_node(
+                                crate::v1_std_core::make_expr_node(
                                     identity.clone(),
                                     Rc::new(ExprData::ExprIf),
                                     Rc::new(vec![
@@ -15079,7 +15132,7 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
                             r2.tokens.clone(),
                             parse_context_after_node(r2.ctx.clone(), r2.expr.clone()),
                             |identity| {
-                                make_expr_node(
+                                crate::v1_std_core::make_expr_node(
                                     identity.clone(),
                                     Rc::new(ExprData::ExprIf),
                                     Rc::new(vec![
@@ -15097,7 +15150,7 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
                 parsed_expr_result(tokens.clone(), ctx.clone(), |identity| {
-                    make_expr_node(
+                    crate::v1_std_core::make_expr_node(
                         identity.clone(),
                         Rc::new(ExprData::ExprIf),
                         Rc::new(vec![condition.clone(), then_branch.clone()]),
@@ -15231,7 +15284,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                     return r3;
                 }
                 parsed_expr_result(r3.tokens.clone(), r3.ctx.clone(), |identity| {
-                    make_named_expr_node(
+                    crate::v1_std_core::make_named_expr_node(
                         identity.clone(),
                         name.clone(),
                         Rc::new(ExprData::ExprLet),
@@ -15269,7 +15322,7 @@ pub fn parse_return(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRe
             return r.clone();
         }
         parsed_expr_result(r.tokens.clone(), r.ctx.clone(), |identity| {
-            make_expr_node(
+            crate::v1_std_core::make_expr_node(
                 identity.clone(),
                 Rc::new(ExprData::ExprReturn),
                 Rc::new(vec![r.expr.clone()]),
@@ -15344,7 +15397,7 @@ pub fn parse_for(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
         }
         let body = r.expr.clone();
         let minted = mint_parsed_node_identity(r.ctx.clone());
-        let for_expr = make_named_expr_node(
+        let for_expr = crate::v1_std_core::make_named_expr_node(
             minted.identity.clone(),
             var_name.clone(),
             Rc::new(ExprData::ExprForEach),
@@ -15366,7 +15419,8 @@ pub fn field_access_chain_span(texpr: Rc<Node>) -> Rc<SourceSpan> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprFieldAccess { summary: _, .. } => {
-                let base_span = field_access_chain_span(field_access_base(texpr.clone()));
+                let base_span =
+                    field_access_chain_span(crate::v1_std_core::field_access_base(texpr.clone()));
                 let chain_end = match texpr.ident_span.clone() {
                     Some(is) => is.end.clone(),
                     None => texpr.span.clone().end.clone(),
@@ -15436,7 +15490,7 @@ pub fn parse_record_literal_named(
             });
         }
         parsed_expr_result(r2.tokens.clone(), r.ctx.clone(), |identity| {
-            make_named_expr_node(
+            crate::v1_std_core::make_named_expr_node(
                 identity.clone(),
                 name.clone(),
                 Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
@@ -15500,9 +15554,9 @@ pub fn parse_field_init_list_acc(
 
 pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldInitResult> {
     {
-        let zero_span = no_span();
+        let zero_span = crate::v1_std_core::no_span();
         let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_fi = make_field_init_node(
+        let dummy_fi = crate::v1_std_core::make_field_init_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "".to_string(),
             parse_recovery_placeholder(),
@@ -15535,7 +15589,7 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                             });
                         }
                         let minted = mint_parsed_node_identity(r.ctx.clone());
-                        let fi = make_field_init_node(
+                        let fi = crate::v1_std_core::make_field_init_node(
                             minted.identity.clone(),
                             n.clone(),
                             r.expr.clone(),
@@ -15552,7 +15606,7 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                 } else {
                     {
                         let value_mint = mint_parsed_node_identity(ctx.clone());
-                        let value = make_named_expr_node(
+                        let value = crate::v1_std_core::make_named_expr_node(
                             value_mint.identity.clone(),
                             n.clone(),
                             Rc::new(ExprData::ExprVar { binding_kind: None }),
@@ -15562,7 +15616,7 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                             name_r.span.clone(),
                         );
                         let field_mint = mint_parsed_node_identity(value_mint.ctx.clone());
-                        let fi = make_field_init_node(
+                        let fi = crate::v1_std_core::make_field_init_node(
                             field_mint.identity.clone(),
                             n.clone(),
                             value.clone(),
@@ -15595,12 +15649,12 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                         });
                     }
                     let minted = mint_parsed_node_identity(r.ctx.clone());
-                    let fi = make_field_init_node(
+                    let fi = crate::v1_std_core::make_field_init_node(
                         minted.identity.clone(),
                         str_name.clone(),
                         r.expr.clone(),
                         span.clone(),
-                        no_span(),
+                        crate::v1_std_core::no_span(),
                     );
                     Rc::new(FieldInitResult {
                         field: fi.clone(),
@@ -15621,12 +15675,12 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                         });
                     }
                     let minted = mint_parsed_node_identity(r.ctx.clone());
-                    let fi = make_field_init_node(
+                    let fi = crate::v1_std_core::make_field_init_node(
                         minted.identity.clone(),
                         "_".to_string(),
                         r.expr.clone(),
                         span.clone(),
-                        no_span(),
+                        crate::v1_std_core::no_span(),
                     );
                     Rc::new(FieldInitResult {
                         field: fi.clone(),
@@ -15679,7 +15733,7 @@ pub fn parse_list_literal(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
             });
         }
         parsed_expr_result(r2.tokens.clone(), r.ctx.clone(), |identity| {
-            make_expr_node(
+            crate::v1_std_core::make_expr_node(
                 identity.clone(),
                 Rc::new(ExprData::ExprListLit),
                 r.exprs.clone(),
@@ -15767,7 +15821,7 @@ pub fn parse_paren_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                 token_stream_advance(tokens.clone(), 1),
                 ctx.clone(),
                 |identity| {
-                    make_expr_node(
+                    crate::v1_std_core::make_expr_node(
                         identity.clone(),
                         Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
                         Rc::new(vec![]),
@@ -15791,7 +15845,7 @@ pub fn parse_paren_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                             });
                         }
                         parsed_expr_result(r.tokens.clone(), r.ctx.clone(), |identity| {
-                            make_expr_node(
+                            crate::v1_std_core::make_expr_node(
                                 identity.clone(),
                                 Rc::new(ExprData::ExprLambda),
                                 v1_rt::concat(
@@ -15893,7 +15947,7 @@ pub fn parse_fn_lambda(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
             return body_r.clone();
         }
         parsed_expr_result(body_r.tokens.clone(), body_r.ctx.clone(), |identity| {
-            make_expr_node(
+            crate::v1_std_core::make_expr_node(
                 identity.clone(),
                 Rc::new(ExprData::ExprLambda),
                 v1_rt::concat(
@@ -16211,7 +16265,7 @@ pub fn parse_interp_parts(
                     token_stream_advance(tokens.clone(), 1),
                     children.ctx.clone(),
                     |identity| {
-                        make_expr_node(
+                        crate::v1_std_core::make_expr_node(
                             identity.clone(),
                             Rc::new(ExprData::ExprStringInterp),
                             children.nodes.clone(),
@@ -16223,20 +16277,22 @@ pub fn parse_interp_parts(
             }
             _ => {
                 break Rc::new(ExprResult {
-                    expr: make_expr_node(
+                    expr: crate::v1_std_core::make_expr_node(
                         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         Rc::new(ExprData::ExprStringInterp),
                         Rc::new({
                             let mut __result = Vec::new();
                             for p in new_parts.iter().cloned() {
                                 __result.push(match (*p.clone()).clone() {
-                                    StringPart::Text { value: v, .. } => make_text_part_node(
-                                        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                                        v.clone(),
-                                        span.clone(),
-                                    ),
+                                    StringPart::Text { value: v, .. } => {
+                                        crate::v1_std_core::make_text_part_node(
+                                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                            v.clone(),
+                                            span.clone(),
+                                        )
+                                    }
                                     StringPart::Interpolation { expr: e, .. } => {
-                                        make_interp_part_node(
+                                        crate::v1_std_core::make_interp_part_node(
                                             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                             e.clone(),
                                             span.clone(),
@@ -16269,7 +16325,7 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                 token_stream_advance(tokens.clone(), 1),
                 ctx.clone(),
                 |identity| {
-                    make_expr_node(
+                    crate::v1_std_core::make_expr_node(
                         identity.clone(),
                         Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
                         Rc::new(vec![]),
@@ -16323,7 +16379,7 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                         r2.tokens.clone(),
                                         r.ctx.clone(),
                                         |identity| {
-                                            make_expr_node(
+                                            crate::v1_std_core::make_expr_node(
                                                 identity.clone(),
                                                 Rc::new(ExprData::ExprBlock),
                                                 r.stmts.clone(),
@@ -16365,7 +16421,7 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                         r2.tokens.clone(),
                                         r.ctx.clone(),
                                         |identity| {
-                                            make_expr_node(
+                                            crate::v1_std_core::make_expr_node(
                                                 identity.clone(),
                                                 Rc::new(ExprData::ExprRecordLit {
                                                     parent_enum: None,
@@ -16437,7 +16493,7 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                     });
                                 }
                                 parsed_expr_result(r2.tokens.clone(), r.ctx.clone(), |identity| {
-                                    make_expr_node(
+                                    crate::v1_std_core::make_expr_node(
                                         identity.clone(),
                                         Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
                                         r.fields.clone(),
@@ -16477,7 +16533,7 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                         r2.tokens.clone(),
                                         r.ctx.clone(),
                                         |identity| {
-                                            make_expr_node(
+                                            crate::v1_std_core::make_expr_node(
                                                 identity.clone(),
                                                 Rc::new(ExprData::ExprRecordLit {
                                                     parent_enum: None,
@@ -16525,7 +16581,7 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                             r2.tokens.clone(),
                                             r.ctx.clone(),
                                             |identity| {
-                                                make_expr_node(
+                                                crate::v1_std_core::make_expr_node(
                                                     identity.clone(),
                                                     Rc::new(ExprData::ExprBlock),
                                                     r.stmts.clone(),

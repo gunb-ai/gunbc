@@ -3,7 +3,7 @@ module gunbc.plans.import_namespace_program
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import gunbc.plan { Plan, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
 
 // WHY THIS ROSTER IS SHORT. The bindings at the foot of this module are the only claims here
@@ -167,6 +167,7 @@ fn import_namespace_program_body() -> List<MarkdownBlock> {
 }
 
 data import_namespace_program_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: "gunbc.plans.import_namespace_program — no markdown for this slug has ever been committed at docs/plans/import-namespace-program.md; the .dag carrier is the authority, as a295e17415 ruled for its sibling." },
   slug: "import-namespace-program",
   title: "Plan — the import/namespace program",
   body: import_namespace_program_body(),

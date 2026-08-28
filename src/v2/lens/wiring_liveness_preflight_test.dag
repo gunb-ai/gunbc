@@ -1,8 +1,9 @@
 module v2.test.lens_wiring_liveness.wiring_liveness_preflight_test
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.dependency { Contains, DependencyView }
 import v2.lens.affected_set {
   ChangedSubgraphFrontier,
@@ -29,7 +30,7 @@ fn wlp_atom(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

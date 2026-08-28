@@ -1,8 +1,9 @@
 module v2.test.lens_cost.atom_zero
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { cost_lens, zero_cost }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Node, TypeNode }
 import v2.std.witness { Holds }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -10,7 +11,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data atom_zero_input: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^atom_zero_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 test fn atom_zero_claim_holds() -> Bool {

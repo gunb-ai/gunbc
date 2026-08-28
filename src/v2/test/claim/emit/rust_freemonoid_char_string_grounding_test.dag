@@ -1,5 +1,6 @@
 module v2.test.emit.rust_freemonoid_char_string_grounding
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.translate {
   translate_type_expression_project
 }
@@ -19,8 +20,7 @@ import v2.std.node {
   Positional,
   TypeNode,
   Instantiation,
-  SyntheticOccurrence,
-  content_hash
+  content_hash,
 }
 import v2.std.text { String }
 import v2.std.logic { Bool }
@@ -38,7 +38,7 @@ fn fmc_freemonoid_char_source_node() -> Node {
       Edge { label: Positional, target: target_carrier_free_monoid_node() },
       Edge { label: Positional, target: char_kernel_type_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

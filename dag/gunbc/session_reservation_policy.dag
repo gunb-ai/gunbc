@@ -25,7 +25,8 @@ import gunbc.session_residency {
 // is that shape applied to the session reservation, so it is a reuse rather than a new coinage.
 
 // A PROSE RECEIPT DOES NOT IDENTIFY THE OBSERVATION THAT PRODUCED A NUMBER. The first cut of this
-// module carried the string "gunbc.session_demand_observe session_demand_observe_ci_wet on srv1",
+// module carried the string "gunbc.session_demand_observe session_demand_observe_ci_wet on srv1"
+// (that module has since been deleted with the rest of the session-container lane),
 // which names a FUNCTION and a HOST and no execution: it cannot distinguish one invocation from
 // another, and after the srv2 scope population changes it cannot distinguish one census from a
 // later one either. Given that this whole lane exists because a stale binary produced numbers

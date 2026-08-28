@@ -1,5 +1,6 @@
 module v2.extdeps.languages.bash
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_right, list_flat_map, list_map }
 import v2.std.grammar {
@@ -45,8 +46,7 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.witness { Holds, Violates, Witness }
 
@@ -54,7 +54,7 @@ fn bash_word_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -71,7 +71,7 @@ fn bash_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
         FixedToken { token_class: _ } => Empty
       }
     }),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -125,7 +125,7 @@ fn bash_empty_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -147,7 +147,7 @@ fn bash_relation_translation_rules_witness(
           children: [
             bash_named_edge(name: rule_name, target: row)
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -743,7 +743,7 @@ fn bash_serialize_source_node(
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -760,7 +760,7 @@ fn bash_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
         target: serialize_source
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

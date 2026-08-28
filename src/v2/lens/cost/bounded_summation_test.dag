@@ -1,5 +1,6 @@
 module v2.test.lens_cost.bounded_summation
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { ConstantCost, LinearCost, SizeVariable, cost_lens, zero_cost }
 import v2.lens.cost.expr {
   CostConst,
@@ -16,7 +17,6 @@ import v2.std.node {
   Atom,
   Node,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.verification {
   EqualsClaim,
@@ -34,7 +34,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data bounded_summation_bound_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^bounded_summation_bound_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data bounded_summation_binder: SizeVariable = SizeVariable {
@@ -98,7 +98,7 @@ data claim_bounded_summation: TestClaim = EqualsClaim {
     Node {
       kind: TypeNode { connective: Atom { identity: ^bounded_summation_claim_failed } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   },
   classification: TestClassification { tier: Tier1, layer: Unit }

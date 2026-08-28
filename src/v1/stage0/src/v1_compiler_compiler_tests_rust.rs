@@ -78,7 +78,7 @@ pub fn ct_type_size_test() -> String {
 
 pub fn ct_coercion_tests() -> String {
     {
-        let entries = extract_coercion_tests();
+        let entries = crate::v1_compiler_coercion::extract_coercion_tests();
         let test_fns = Rc::new({
             let mut __result = Vec::new();
             for e in entries.iter().cloned() {
