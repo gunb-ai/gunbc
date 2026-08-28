@@ -645,9 +645,9 @@ and that alone is what publication would buy.
 | `std.binding` | `dag/std/binding.dag` | STILL-UNCONSUMED |
 | `std.containers` | `dag/std/containers.dag` | STILL-UNCONSUMED |
 | `std.list` | `dag/std/list.dag` | STILL-UNCONSUMED |
-| `tools.build` | `dag/tools/build.dag` | STILL-UNCONSUMED |
-| `tools.codegen` | `dag/tools/codegen.dag` | STILL-UNCONSUMED |
-| `tools.readme` | `dag/tools/readme.dag` | STILL-UNCONSUMED |
+| `tools.build` | `dag/gunbc/instruments/build.dag` | STILL-UNCONSUMED |
+| `tools.codegen` | `dag/gunbc/instruments/codegen.dag` | STILL-UNCONSUMED |
+| `tools.readme` | `dag/gunbc/instruments/readme.dag` | STILL-UNCONSUMED |
 | `v2.bin.main` | `src/v2/bin/main.dag` | STILL-UNCONSUMED |
 | `v2.extdeps.formats.csv` | `src/v2/extdeps/formats/csv.dag` | STILL-UNCONSUMED |
 | `v2.extdeps.formats.json_schema` | `src/v2/extdeps/formats/json_schema.dag` | DEAD-CONSUMER-ONLY |
@@ -706,10 +706,10 @@ Named by a live `.dag`, `.rs` or data file, or otherwise carrying an obligation 
 | `gunbc.auth.optional_impersonation` | `dag/gunbc/auth/optional_impersonation.dag` | STILL-UNCONSUMED |
 | `gunbc.auth.patterns` | `dag/gunbc/auth/patterns.dag` | STILL-UNCONSUMED |
 | `gunbc.char_at_scaling_probe_support` | `dag/gunbc/char_at_scaling_probe_support.dag` | STILL-UNCONSUMED |
-| `gunbc.ci_build_job_v1_compiler_unit_receipt` | `dag/gunbc/ci_build_job_v1_compiler_unit_receipt.dag` | STILL-UNCONSUMED |
+| `gunbc.ci_build_job_v1_compiler_unit_receipt` | `dag/gunbc/ci/ci_build_job_v1_compiler_unit_receipt.dag` | STILL-UNCONSUMED |
 | `gunbc.generic_binder_field_projection_deficit` | `dag/gunbc/generic_binder_field_projection_deficit.dag` | STILL-UNCONSUMED |
-| `gunbc.githooks_pre_push_cli` | `dag/gunbc/githooks_pre_push_cli.dag` | STILL-UNCONSUMED |
-| `gunbc.namespace_census_receipt` | `dag/gunbc/namespace_census_receipt.dag` | STILL-UNCONSUMED |
+| `gunbc.githooks_pre_push_cli` | `dag/gunbc/githooks/githooks_pre_push_cli.dag` | STILL-UNCONSUMED |
+| `gunbc.namespace_census_receipt` | `dag/gunbc/namespace/namespace_census_receipt.dag` | STILL-UNCONSUMED |
 | `gunbc.p1_retention_cohort_receipt` | `dag/gunbc/p1_retention_cohort_receipt.dag` | STILL-UNCONSUMED |
 | `gunbc.plans.affected_set_self_confirmation` | `dag/gunbc/plans/affected_set_self_confirmation.dag` | STILL-UNCONSUMED |
 | `gunbc.plans.fleet_subsumption_manual_gaps` | `dag/gunbc/plans/fleet_subsumption_manual_gaps.dag` | STILL-UNCONSUMED |
@@ -718,7 +718,7 @@ Named by a live `.dag`, `.rs` or data file, or otherwise carrying an obligation 
 | `gunbc.seed_closed_vocabulary_wildcard_census` | `dag/gunbc/seed_closed_vocabulary_wildcard_census.dag` | STILL-UNCONSUMED |
 | `gunbc.site.interaction` | `dag/gunbc/site/interaction.dag` | STILL-UNCONSUMED |
 | `gunbc.test_node_wall_clock_ratchet` | `dag/gunbc/test_node_wall_clock_ratchet.dag` | STILL-UNCONSUMED |
-| `gunbc.v1_maintenance_standing` | `dag/gunbc/v1_maintenance_standing.dag` | STILL-UNCONSUMED |
+| `gunbc.v1_maintenance_standing` | `dag/gunbc/v1/v1_maintenance_standing.dag` | STILL-UNCONSUMED |
 | `std.exec_format` | `dag/std/exec_format.dag` | DEAD-CONSUMER-ONLY |
 | `std.import` | `dag/std/import.dag` | STILL-UNCONSUMED |
 | `std.methods` | `dag/std/methods.dag` | STILL-UNCONSUMED |
@@ -768,8 +768,8 @@ DESIGN §3 frozen-X. Deleting these deletes what the re-add queue exists to re-a
 
 | module | path | bucket |
 | --- | --- | --- |
-| `tools.dag_compile_clean_seam_transport` | `dag/tools/dag_compile_clean_seam_transport.dag` | DEAD-CONSUMER-ONLY |
-| `tools.merge_admission_capture_transport` | `dag/tools/merge_admission_capture_transport.dag` | STILL-UNCONSUMED |
+| `tools.dag_compile_clean_seam_transport` | `dag/gunbc/instruments/dag_compile_clean_seam_transport.dag` | DEAD-CONSUMER-ONLY |
+| `tools.merge_admission_capture_transport` | `dag/gunbc/instruments/merge_admission_capture_transport.dag` | STILL-UNCONSUMED |
 
 ## 7. What this change does NOT claim
 

@@ -179,7 +179,7 @@ data seed_closed_vocabulary_wildcard_sites: List<SeedWildcardSite> = [
     next_trigger: "ExtdepsTransportArgvFact carries a typed projection (ProjectedToken / UnprojectableForm) the way the materialization row already does, and the policy fold reads it -- at which point the empty string is unwritable and the boundary refuses. THE HARD REFUSAL WAS BUILT AND DELIBERATELY NOT LANDED: it stops corpus_git_policy_leak_defused_holds, and that red is not closable by the author who causes it, because the argv-call population is another lane's counted debt. A wall whose only reachable green is someone else's modelling change is not a wall this change may raise"
   },
   SeedWildcardSite {
-    file: "dag/tools/self_host_std_bridge_shims/v2_std_node.rs",
+    file: "dag/gunbc/instruments/self_host_std_bridge_shims/v2_std_node.rs",
     symbol: "well_formed",
     vocabulary_authority: [
       DeclarationRef { module_path: "v2.std.node", decl_name: "Connective", field: WholeDeclaration },

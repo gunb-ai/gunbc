@@ -294,7 +294,7 @@ mod tests {
         let dag = repo.join(format!("src/v2/compiler/{stem}.dag"));
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, format!("module {module}\n")).expect("dag");
-        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
         (dag, bridge)
     }
@@ -316,7 +316,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/01_tokenize.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
-        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
         assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/std_error_primitives.rs")).expect("read");
@@ -359,7 +359,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/04_infer.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.infer\n").expect("dag");
-        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
         assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(src.join("v2_compiler_resolve.rs")).expect("read");
@@ -400,7 +400,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/01_tokenize.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
-        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
         assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(src.join("v2_compiler_resolve.rs")).expect("read");
@@ -438,7 +438,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/self_host.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.self_host\n").expect("dag");
-        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
         assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept =
@@ -459,7 +459,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/self_host.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.self_host\n").expect("dag");
-        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
         assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/dry_run.rs")).expect("read");
@@ -479,7 +479,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/03_name_resolve.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.name_resolve\n").expect("dag");
-        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
         assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/gunbc_plans_md_helpers.rs")).expect("read");
@@ -502,7 +502,7 @@ mod tests {
         let dag = repo.join("src/v2/compiler/05_emit.dag");
         fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
         fs::write(&dag, "module v2.compiler.emit\n").expect("dag");
-        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        let bridge = repo.join("dag/gunbc/instruments/self_host_std_bridge_shims");
         fs::create_dir_all(&bridge).expect("bridge");
         assemble_seed_linked_closure(&out, &dag, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/test_claim_materialization_ladder_witness.rs"))
@@ -604,7 +604,7 @@ mod tests {
             .to_path_buf();
         let gunbc = root.join("target/release/gunbc");
         let assemble_bin = root.join("target/release/cssl_assemble");
-        let shim_dir = root.join("dag/tools/self_host_03_normalize_shims");
+        let shim_dir = root.join("dag/gunbc/instruments/self_host_03_normalize_shims");
         if !gunbc.is_file() || !assemble_bin.is_file() || !shim_dir.is_dir() {
             panic!(
                 "release bins or shim dir missing (gunbc={}, assemble={}, shims={})",
@@ -652,7 +652,7 @@ mod tests {
                 "--root",
                 &root.to_string_lossy(),
                 "--std-bridge-dir",
-                "dag/tools/self_host_std_bridge_shims",
+                "dag/gunbc/instruments/self_host_std_bridge_shims",
             ])
             .current_dir(&root)
             .output()
@@ -671,7 +671,7 @@ mod tests {
         // stubs in place and the control would then refuse for the wrong reason —
         // non-discriminating, since the assertion below is about the dropped
         // `pub mod v2_compiler_namespace_graft`, not about a broken std surface.
-        let std_bridge_dir = root.join("dag/tools/self_host_std_bridge_shims");
+        let std_bridge_dir = root.join("dag/gunbc/instruments/self_host_std_bridge_shims");
         for dir in [&std_bridge_dir, &shim_dir] {
             for entry in fs::read_dir(dir).expect("shim dir") {
                 let entry = entry.expect("entry");

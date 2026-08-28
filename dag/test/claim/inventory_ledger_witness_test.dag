@@ -70,7 +70,7 @@ import product.inventory {
   sum_landed_cost,
 }
 import product.placement_supply { PhysicalAssetIdentity, ProcurementReceiptIdentity }
-import std.currency { Eur, Usd }
+import extdeps.currency.currency { Eur, Usd }
 import std.decl_ref { decl_ref }
 import std.measure { MoneyOnce, money_amount_micro, money_once_micros }
 import std.nat { Nat }

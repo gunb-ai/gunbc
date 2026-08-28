@@ -71,9 +71,9 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
         name: generated_artifact_merge_driver_script_name
       }
     RunnerDeployArtifact => ArtifactLocation { directory: ".github", name: "fleet-runner-deploy.manifest" }
-    Stage0CrateLayoutGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc", name: "stage0_crate_layout_generated.dag" }
+    Stage0CrateLayoutGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_layout_generated.dag" }
     Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
-    Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc", name: "stage0_crate_partition_generated.dag" }
+    Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc/stage0", name: "stage0_crate_partition_generated.dag" }
     V1InterpreterDispatchGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "v1_interpreter_dispatch_generated.rs" }
     AutoinstallUserDataArtifact { spec } =>
       ArtifactLocation { directory: concat("provisioning/", spec.host), name: "user-data" }

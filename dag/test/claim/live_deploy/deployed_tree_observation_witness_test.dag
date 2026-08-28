@@ -189,14 +189,14 @@ test fn witness_an_empty_status_and_no_ignored_paths_read_as_matching_the_commit
 
 test fn witness_a_modified_tracked_path_reads_as_diverged_and_carries_what_was_seen() -> Bool {
   match deployed_tree_content_reading(
-    entries_nul: nul_join([" M dag/gunbc/ci_spec.dag"]),
+    entries_nul: nul_join([" M dag/gunbc/ci/ci_spec.dag"]),
     ignored_nul: "",
   ) {
     ContentUnreadable { detail: _ } => false
     ContentRead { state: s } =>
       match s {
         DeployedScopeMatchesCommit => false
-        DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/ci_spec.dag"
+        DeployedScopeDiverged { changed_paths: body } => body as String == "dag/gunbc/ci/ci_spec.dag"
       }
   }
 }
@@ -205,7 +205,7 @@ test fn witness_a_modified_tracked_path_reads_as_diverged_and_carries_what_was_s
 // excluded prefix would present on a host: rsync never ships it, so the worktree lacks a path HEAD
 // names, and status lists it like any other difference.
 test fn witness_a_deleted_tracked_path_reads_as_diverged() -> Bool {
-  match deployed_tree_content_reading(entries_nul: nul_join([" D dag/gunbc/ci_spec.dag"]), ignored_nul: "") {
+  match deployed_tree_content_reading(entries_nul: nul_join([" D dag/gunbc/ci/ci_spec.dag"]), ignored_nul: "") {
     ContentUnreadable { detail: _ } => false
     ContentRead { state: s } =>
       match s {
@@ -333,11 +333,11 @@ test fn witness_right_revision_with_modifications_is_not_converged_and_not_drift
         desired: a,
         obs: DeployedTreeObserved {
           revision: a,
-          content: DeployedScopeDiverged { changed_paths: "dag/gunbc/ci_spec.dag" as NonEmptyStr },
+          content: DeployedScopeDiverged { changed_paths: "dag/gunbc/ci/ci_spec.dag" as NonEmptyStr },
         },
       ) {
         DeployedTreeModifiedAtRevision { revision: _, changed_paths: body } =>
-          body as String == "dag/gunbc/ci_spec.dag"
+          body as String == "dag/gunbc/ci/ci_spec.dag"
         DeployedTreeConverged { revision: _ } => false
         DeployedTreeRevisionDrifted { desired: _, local: _ } => false
         DeployedTreeStandingUnobserved { cause: _ } => false

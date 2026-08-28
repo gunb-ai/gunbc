@@ -8,8 +8,8 @@ use self::EffectShape::*;
 use self::IdempotencyEvidence::*;
 use self::KeySource::*;
 use self::ModifierAgreement::*;
-pub use crate::std_http_path::PathTemplate;
-pub use crate::std_http_path::{has_path_params, last_path_param};
+pub use crate::extdeps_uri_path::PathTemplate;
+pub use crate::extdeps_uri_path::{has_path_params, last_path_param};
 pub use crate::std_realization_schedule::string_list_eq;
 use crate::std_types::HttpMethod::{DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT};
 pub use crate::std_types::{HttpMethod, List};
@@ -286,7 +286,7 @@ pub fn derive_effect_shape(
         HttpMethod::POST => Rc::new(EffectShape::CreateEffect {
             cause: Rc::new(CreateCause::PostAlways),
         }),
-        HttpMethod::DELETE => match crate::std_http_path::last_path_param(path.clone()) {
+        HttpMethod::DELETE => match crate::extdeps_uri_path::last_path_param(path.clone()) {
             Some(p) => Rc::new(EffectShape::DeleteEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
@@ -296,7 +296,7 @@ pub fn derive_effect_shape(
                 }),
             }),
         },
-        HttpMethod::PUT => match crate::std_http_path::last_path_param(path.clone()) {
+        HttpMethod::PUT => match crate::extdeps_uri_path::last_path_param(path.clone()) {
             Some(p) => Rc::new(EffectShape::UpsertEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
@@ -306,7 +306,7 @@ pub fn derive_effect_shape(
                 }),
             }),
         },
-        HttpMethod::PATCH => match crate::std_http_path::last_path_param(path.clone()) {
+        HttpMethod::PATCH => match crate::extdeps_uri_path::last_path_param(path.clone()) {
             Some(p) => Rc::new(EffectShape::UpsertEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),

@@ -27,8 +27,8 @@ pub mod std_content_hash;
 #[path = "../../stage0/src/std_coercion.rs"]
 pub mod std_coercion;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_currency.rs"]
-pub mod std_currency;
+#[path = "../../stage0/src/extdeps_currency_currency.rs"]
+pub mod extdeps_currency_currency;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_decl_ref.rs"]
 pub mod std_decl_ref;
@@ -50,9 +50,6 @@ pub mod std_disposition;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_error_primitives.rs"]
 pub mod std_error_primitives;
-#[rustfmt::skip]
-#[path = "../../stage0/src/std_http_path.rs"]
-pub mod std_http_path;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_emit_model.rs"]
 pub mod std_emit_model;

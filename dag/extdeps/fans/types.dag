@@ -2,7 +2,7 @@ module extdeps.fans.types
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { Millimeter, Percent, RevolutionsPerMinute, percent_count, rpm, rpm_count }
-import std.acoustic { AWeightedSoundPressureLevel, dba_tenths }
+import extdeps.units.iec_61672 { AWeightedSoundPressureLevel, dba_tenths }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }

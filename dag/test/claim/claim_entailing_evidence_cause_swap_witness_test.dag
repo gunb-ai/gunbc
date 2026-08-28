@@ -16,7 +16,7 @@ data cause_swap_pass_marker: String = "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: 
 
 // ARM 1 -- THE CAUSE THAT SHOULD BE ADMITTED. The driver ran, reached its comparison, found the
 // planted fault and said so on its own terms before exiting nonzero. This is the real 00_compile
-// inject-fault transcript shape: the marker below is what dag/tools/self_host_00_compile_shims/
+// inject-fault transcript shape: the marker below is what dag/gunbc/instruments/self_host_00_compile_shims/
 // witness_main.rs actually prints.
 data cause_swap_fault_detected_stdout: String = "required_lens_grain_note emitted_len=13 seed_len=402 eq=false\nSELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: FAIL\n"
 

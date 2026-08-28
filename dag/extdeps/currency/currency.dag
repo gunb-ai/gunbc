@@ -1,7 +1,6 @@
 module extdeps.currency.currency
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -12,12 +11,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// ISO 4217:2015 authority for std.currency.CurrencyCode and currency_minor_unit_exponent.
-data iso_4217_cited_rows_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "std.currency",
-    decl_name: "currency_minor_unit_exponent",
-    field: WholeDeclaration
+// ISO 4217:2015. Formerly std.currency; consolidated here 2026-08-28, dissolving
+// the iso_4217_cited_rows_scaffold Scaffold row that named this single authority.
+type CurrencyCode =
+    Eur
+  | Usd
+
+fn currency_minor_unit_exponent(c: CurrencyCode) -> Int {
+  match c {
+    Eur => 2
+    Usd => 2
   }
 }

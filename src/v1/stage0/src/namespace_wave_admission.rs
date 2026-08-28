@@ -355,41 +355,1580 @@ pub struct TransitionAdmission {
 /// UNADJUDICATED and refuses. The failure mode of having shrunk too early is therefore a loud
 /// refusal naming the delta, which its author closes by authoring a row -- never a silent
 /// admission. The next transition adds its rows here and removes them when its subject lands.
+/// SECOND SHRINK, SAME RULE. Two `gunbc.ci_render` `plain_span` rows dissolved on
+/// schedule: `ci_render` now imports `plain_span` from the `std.render` authority and declares
+/// none, so no run can produce the deltas those rows named and both were reported stale on
+/// every build. They are removed here by the trigger they were authored with, not by a
+/// reinterpretation of it.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    // `plain_span` was declared TWICE by hand -- once in `gunbc.ci_render` and once in the render
-    // witness -- beside the `std.render` authority that already owned it. Deleting both copies and
-    // importing the authority is a DESIGN §3 reduction: one concept, one declaring identity. The
-    // wall sees the consequence of that deletion, which is that these two bindings' declarer moves
-    // from the local copy to the authority.
-    //
-    // TargetChanged IS THE CORRECT DISPOSITION AND IS NOT BEING SOFTENED. The leaf `plain_span` is
-    // unchanged and the declarer genuinely moved, which is exactly what this disposition reports.
-    // The module's grain note warns that TargetChanged on a REQUALIFICATION wave means a mis-shaped
-    // wave -- two change classes in one diff -- and refuses any per-row tolerance for it. That
-    // warning does not reach this change: no requalification is happening here, the move IS the
-    // change, and it is admitted by enumerated identity rather than by a predicate.
-    //
-    // Blast radius measured 0 modules, so nothing downstream resolves differently.
-    //
-    // These rows dissolve when the transition lands: once `gunbc.ci_render` no longer declares a
-    // local `plain_span` on the merge base, each row matches no delta and is reported as a stale
-    // admission, which reds the wall until it is deleted.
     TransitionAdmission {
-        label: "ci_render plain_span dissolved into the std.render authority (§3)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.ci_render",
-            in_declaration: "box_content_line",
-            spelling: "plain_span",
-        },
+        label: "std->extdeps consolidation 2026-08-28: extdeps.bmc.openbmc::bmc_firmware_factory_login BmcFirmwareFamily",
+        subject: AdmissionSubject::Binding { module: "extdeps.bmc.openbmc", in_declaration: "bmc_firmware_factory_login", spelling: "BmcFirmwareFamily" },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "ci_render plain_span dissolved into the std.render authority (§3)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.ci_render",
-            in_declaration: "box_content_line_hot",
-            spelling: "plain_span",
-        },
+        label: "std->extdeps consolidation 2026-08-28: extdeps.bmc.openbmc::bmc_firmware_host_storage_visibility BmcFirmwareFamily",
+        subject: AdmissionSubject::Binding { module: "extdeps.bmc.openbmc", in_declaration: "bmc_firmware_host_storage_visibility", spelling: "BmcFirmwareFamily" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.bmc.openbmc::bmc_firmware_supported_protocols BmcFirmwareFamily",
+        subject: AdmissionSubject::Binding { module: "extdeps.bmc.openbmc", in_declaration: "bmc_firmware_supported_protocols", spelling: "BmcFirmwareFamily" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.bmc.openbmc::openbmc_supported_protocols BmcProtocol",
+        subject: AdmissionSubject::Binding { module: "extdeps.bmc.openbmc", in_declaration: "openbmc_supported_protocols", spelling: "BmcProtocol" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.bmc.webui.nbd_proxy::bmcweb_nbd_proxy_path_params PathParamBinding",
+        subject: AdmissionSubject::Binding { module: "extdeps.bmc.webui.nbd_proxy", in_declaration: "bmcweb_nbd_proxy_path_params", spelling: "PathParamBinding" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.bmc.webui.nbd_proxy::bmcweb_nbd_proxy_ws_path render_path_template",
+        subject: AdmissionSubject::Binding { module: "extdeps.bmc.webui.nbd_proxy", in_declaration: "bmcweb_nbd_proxy_ws_path", spelling: "render_path_template" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.bmc.webui.nbd_proxy::nbd_slot_endpoint_path_template ParamToken",
+        subject: AdmissionSubject::Binding { module: "extdeps.bmc.webui.nbd_proxy", in_declaration: "nbd_slot_endpoint_path_template", spelling: "ParamToken" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.bmc.webui.nbd_proxy::nbd_slot_endpoint_path_template PathTemplate",
+        subject: AdmissionSubject::Binding { module: "extdeps.bmc.webui.nbd_proxy", in_declaration: "nbd_slot_endpoint_path_template", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.bmc.webui.nbd_proxy::vm_slot_index_endpoint_path_template ParamToken",
+        subject: AdmissionSubject::Binding { module: "extdeps.bmc.webui.nbd_proxy", in_declaration: "vm_slot_index_endpoint_path_template", spelling: "ParamToken" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.bmc.webui.nbd_proxy::vm_slot_index_endpoint_path_template PathTemplate",
+        subject: AdmissionSubject::Binding { module: "extdeps.bmc.webui.nbd_proxy", in_declaration: "vm_slot_index_endpoint_path_template", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.boot.emit::emit_pixel_writer_payload EntryPoint",
+        subject: AdmissionSubject::Binding { module: "extdeps.boot.emit", in_declaration: "emit_pixel_writer_payload", spelling: "EntryPoint" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.colo.halsey_165::halsey_165_cross_connect Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.colo.halsey_165", in_declaration: "halsey_165_cross_connect", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.colo.halsey_165::halsey_165_remote_hands Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.colo.halsey_165", in_declaration: "halsey_165_remote_hands", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.colo.interserver::interserver_half_rack_plan Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.colo.interserver", in_declaration: "interserver_half_rack_plan", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.colo.interserver::interserver_quarter_rack_plan Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.colo.interserver", in_declaration: "interserver_quarter_rack_plan", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.colo.interserver::interserver_single_server_1u_plan Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.colo.interserver", in_declaration: "interserver_single_server_1u_plan", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.colo.natcoweb::natcoweb_plan_10u Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.colo.natcoweb", in_declaration: "natcoweb_plan_10u", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.colo.natcoweb::natcoweb_plan_1u Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.colo.natcoweb", in_declaration: "natcoweb_plan_1u", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.colo.natcoweb::natcoweb_plan_20u Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.colo.natcoweb", in_declaration: "natcoweb_plan_20u", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.colo.natcoweb::natcoweb_plan_full_cabinet Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.colo.natcoweb", in_declaration: "natcoweb_plan_full_cabinet", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.colo.natcoweb::natcoweb_remote_hands Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.colo.natcoweb", in_declaration: "natcoweb_remote_hands", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.energy.nj_electricity::nj_commercial_rate Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.energy.nj_electricity", in_declaration: "nj_commercial_rate", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.energy.nj_electricity::nj_industrial_rate Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.energy.nj_electricity", in_declaration: "nj_industrial_rate", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.energy.nj_electricity::nj_residential_rate Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.energy.nj_electricity", in_declaration: "nj_residential_rate", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.fans.dynatron::dynatron_df126025bu_pwmh_published_points tenths_dba",
+        subject: AdmissionSubject::Binding { module: "extdeps.fans.dynatron", in_declaration: "dynatron_df126025bu_pwmh_published_points", spelling: "tenths_dba" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.fans.noctua::noctua_nf_a9_hs_pwm_published_points tenths_dba",
+        subject: AdmissionSubject::Binding { module: "extdeps.fans.noctua", in_declaration: "noctua_nf_a9_hs_pwm_published_points", spelling: "tenths_dba" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.formats.elf.primitives::linux_x86_64_elf_format ExecutableFormat",
+        subject: AdmissionSubject::Binding { module: "extdeps.formats.elf.primitives", in_declaration: "linux_x86_64_elf_format", spelling: "ExecutableFormat" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.formats.elf.segments::decode_segment_permissions SegmentPermission",
+        subject: AdmissionSubject::Binding { module: "extdeps.formats.elf.segments", in_declaration: "decode_segment_permissions", spelling: "SegmentPermission" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.formats.elf.segments::elf64_phdr_to_load_segment LoadSegment",
+        subject: AdmissionSubject::Binding { module: "extdeps.formats.elf.segments", in_declaration: "elf64_phdr_to_load_segment", spelling: "LoadSegment" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.formats.elf.types::elf64_ehdr_entry_point EntryPoint",
+        subject: AdmissionSubject::Binding { module: "extdeps.formats.elf.types", in_declaration: "elf64_ehdr_entry_point", spelling: "EntryPoint" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.aws_ec2::aws_ec2_m7a_2xlarge_us_east_1 Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.aws_ec2", in_declaration: "aws_ec2_m7a_2xlarge_us_east_1", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.aws_ec2::aws_ec2_m7a_4xlarge_us_east_1 Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.aws_ec2", in_declaration: "aws_ec2_m7a_4xlarge_us_east_1", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.aws_ec2::aws_ec2_m7a_large_us_east_1 Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.aws_ec2", in_declaration: "aws_ec2_m7a_large_us_east_1", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.aws_ec2::aws_ec2_m7a_medium_us_east_1 Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.aws_ec2", in_declaration: "aws_ec2_m7a_medium_us_east_1", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.aws_ec2::aws_ec2_m7a_xlarge_us_east_1 Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.aws_ec2", in_declaration: "aws_ec2_m7a_xlarge_us_east_1", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.github_actions::github_actions_linux_16core_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.github_actions", in_declaration: "github_actions_linux_16core_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.github_actions::github_actions_linux_2core_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.github_actions", in_declaration: "github_actions_linux_2core_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.github_actions::github_actions_linux_4core_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.github_actions", in_declaration: "github_actions_linux_4core_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.github_actions::github_actions_linux_8core_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.github_actions", in_declaration: "github_actions_linux_8core_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.github_actions::github_actions_linux_arm_2core_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.github_actions", in_declaration: "github_actions_linux_arm_2core_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.github_actions::github_actions_linux_slim_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.github_actions", in_declaration: "github_actions_linux_slim_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.gitlab_subscription::gitlab_compute_minute_overage_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.gitlab_subscription", in_declaration: "gitlab_compute_minute_overage_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.gitlab_subscription::gitlab_free_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.gitlab_subscription", in_declaration: "gitlab_free_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.gitlab_subscription::gitlab_premium_2023_price_increase Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.gitlab_subscription", in_declaration: "gitlab_premium_2023_price_increase", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.gitlab_subscription::gitlab_premium_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.gitlab_subscription", in_declaration: "gitlab_premium_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.gitlab_subscription::gitlab_ultimate_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.gitlab_subscription", in_declaration: "gitlab_ultimate_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.hetzner_dedicated::hetzner_ax102_1_ltd_price Eur",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.hetzner_dedicated", in_declaration: "hetzner_ax102_1_ltd_price", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.hetzner_dedicated::hetzner_ax41_1_ltd_price Eur",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.hetzner_dedicated", in_declaration: "hetzner_ax41_1_ltd_price", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.hetzner_dedicated::hetzner_ax42_1_ltd_price Eur",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.hetzner_dedicated", in_declaration: "hetzner_ax42_1_ltd_price", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.hetzner_dedicated::hetzner_ax42_1_price Eur",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.hetzner_dedicated", in_declaration: "hetzner_ax42_1_price", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_egress_first_10tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_egress_first_10tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_egress_next_100tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_egress_next_100tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_egress_next_40tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_egress_next_40tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_egress_over_150tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_egress_over_150tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_hot_gzrs_tier0 Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_hot_gzrs_tier0", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_hot_gzrs_tier_500tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_hot_gzrs_tier_500tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_hot_gzrs_tier_50tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_hot_gzrs_tier_50tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_hot_gzrs_write_operations Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_hot_gzrs_write_operations", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_hot_lrs_tier0 Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_hot_lrs_tier0", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_hot_lrs_tier_500tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_hot_lrs_tier_500tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_hot_lrs_tier_50tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_hot_lrs_tier_50tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_hot_lrs_write_operations Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_hot_lrs_write_operations", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_hot_ra_gzrs_tier0 Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_hot_ra_gzrs_tier0", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_hot_read_operations Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_hot_read_operations", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_hot_zrs_tier0 Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_hot_zrs_tier0", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_hot_zrs_tier_500tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_hot_zrs_tier_500tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::azure_hot_zrs_tier_50tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "azure_hot_zrs_tier_50tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::b2_egress_beyond_free_allowance Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "b2_egress_beyond_free_allowance", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::gcs_default_replication Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "gcs_default_replication", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::gcs_egress_worldwide_first_10tib Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "gcs_egress_worldwide_first_10tib", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::gcs_standard_regional Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "gcs_standard_regional", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::r2_class_a_operations Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "r2_class_a_operations", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::r2_class_b_operations Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "r2_class_b_operations", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::r2_infrequent_access Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "r2_infrequent_access", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::r2_standard Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "r2_standard", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::s3_egress_first_10tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "s3_egress_first_10tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::s3_egress_next_100tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "s3_egress_next_100tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::s3_egress_next_40tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "s3_egress_next_40tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::s3_egress_over_150tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "s3_egress_over_150tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::s3_standard_first_50tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "s3_standard_first_50tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::s3_standard_infrequent_access Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "s3_standard_infrequent_access", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::s3_standard_next_450tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "s3_standard_next_450tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::s3_standard_over_500tb Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "s3_standard_over_500tb", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::s3_tier1_requests Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "s3_tier1_requests", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::s3_tier2_requests Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "s3_tier2_requests", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::storj_egress Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "storj_egress", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::storj_standard_storage Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "storj_standard_storage", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.object_storage::wasabi_hot_storage Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.object_storage", in_declaration: "wasabi_hot_storage", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.regional_compute::usd_per_hour Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.regional_compute", in_declaration: "usd_per_hour", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.ubicloud::ubicloud_arm_standard_16_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.ubicloud", in_declaration: "ubicloud_arm_standard_16_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.ubicloud::ubicloud_arm_standard_2_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.ubicloud", in_declaration: "ubicloud_arm_standard_2_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.ubicloud::ubicloud_premium_standard_16_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.ubicloud", in_declaration: "ubicloud_premium_standard_16_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.pricing.ubicloud::ubicloud_premium_standard_2_price Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.pricing.ubicloud", in_declaration: "ubicloud_premium_standard_2_price", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.realestate.nj_industrial::belleville_specimen Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.realestate.nj_industrial", in_declaration: "belleville_specimen", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.realestate.nj_industrial::nj_industrial_market_snapshot Usd",
+        subject: AdmissionSubject::Binding { module: "extdeps.realestate.nj_industrial", in_declaration: "nj_industrial_market_snapshot", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.aapcs64::aapcs64_linux_syscall_convention CallingConvention",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.aapcs64", in_declaration: "aapcs64_linux_syscall_convention", spelling: "CallingConvention" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.aapcs64::aapcs64_wrong_syscall_number_convention CallingConvention",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.aapcs64", in_declaration: "aapcs64_wrong_syscall_number_convention", spelling: "CallingConvention" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.aapcs64::aarch64_inhabitant_x0 ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.aapcs64", in_declaration: "aarch64_inhabitant_x0", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.aapcs64::aarch64_inhabitant_x1 ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.aapcs64", in_declaration: "aarch64_inhabitant_x1", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.aapcs64::aarch64_inhabitant_x2 ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.aapcs64", in_declaration: "aarch64_inhabitant_x2", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.aapcs64::aarch64_inhabitant_x3 ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.aapcs64", in_declaration: "aarch64_inhabitant_x3", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.aapcs64::aarch64_inhabitant_x4 ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.aapcs64", in_declaration: "aarch64_inhabitant_x4", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.aapcs64::aarch64_inhabitant_x5 ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.aapcs64", in_declaration: "aarch64_inhabitant_x5", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.aapcs64::aarch64_inhabitant_x8 ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.aapcs64", in_declaration: "aarch64_inhabitant_x8", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.sysv_amd64::amd64_inhabitant_r10 ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.sysv_amd64", in_declaration: "amd64_inhabitant_r10", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.sysv_amd64::amd64_inhabitant_r8 ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.sysv_amd64", in_declaration: "amd64_inhabitant_r8", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.sysv_amd64::amd64_inhabitant_r9 ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.sysv_amd64", in_declaration: "amd64_inhabitant_r9", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.sysv_amd64::amd64_inhabitant_rax ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.sysv_amd64", in_declaration: "amd64_inhabitant_rax", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.sysv_amd64::amd64_inhabitant_rcx ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.sysv_amd64", in_declaration: "amd64_inhabitant_rcx", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.sysv_amd64::amd64_inhabitant_rdi ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.sysv_amd64", in_declaration: "amd64_inhabitant_rdi", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.sysv_amd64::amd64_inhabitant_rdx ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.sysv_amd64", in_declaration: "amd64_inhabitant_rdx", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.sysv_amd64::amd64_inhabitant_rsi ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.sysv_amd64", in_declaration: "amd64_inhabitant_rsi", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.sysv_amd64::sysv_amd64_linux_syscall_convention CallingConvention",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.sysv_amd64", in_declaration: "sysv_amd64_linux_syscall_convention", spelling: "CallingConvention" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.abi.sysv_amd64::sysv_amd64_wrong_arg3_convention CallingConvention",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.abi.sysv_amd64", in_declaration: "sysv_amd64_wrong_arg3_convention", spelling: "CallingConvention" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.architecture.aarch64_linux::aarch64_general_purpose_registers ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.architecture.aarch64_linux", in_declaration: "aarch64_general_purpose_registers", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.architecture.aarch64_linux::aarch64_stack_grows_down StackLayout",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.architecture.aarch64_linux", in_declaration: "aarch64_stack_grows_down", spelling: "StackLayout" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.architecture.x86_64_linux::x86_64_general_purpose_registers ArchitecturalRegister",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.architecture.x86_64_linux", in_declaration: "x86_64_general_purpose_registers", spelling: "ArchitecturalRegister" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.runtime.architecture.x86_64_linux::x86_64_stack_grows_down StackLayout",
+        subject: AdmissionSubject::Binding { module: "extdeps.runtime.architecture.x86_64_linux", in_declaration: "x86_64_stack_grows_down", spelling: "StackLayout" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.uri_path::match_path_template PathTemplate",
+        subject: AdmissionSubject::Binding { module: "extdeps.uri_path", in_declaration: "match_path_template", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.uri_path::match_path_tokens LiteralToken",
+        subject: AdmissionSubject::Binding { module: "extdeps.uri_path", in_declaration: "match_path_tokens", spelling: "LiteralToken" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.uri_path::match_path_tokens ParamToken",
+        subject: AdmissionSubject::Binding { module: "extdeps.uri_path", in_declaration: "match_path_tokens", spelling: "ParamToken" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.uri_path::match_path_tokens PathParamBinding",
+        subject: AdmissionSubject::Binding { module: "extdeps.uri_path", in_declaration: "match_path_tokens", spelling: "PathParamBinding" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.uri_path::match_path_tokens UrlPathToken",
+        subject: AdmissionSubject::Binding { module: "extdeps.uri_path", in_declaration: "match_path_tokens", spelling: "UrlPathToken" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.uri_path::parse_path_template PathTemplate",
+        subject: AdmissionSubject::Binding { module: "extdeps.uri_path", in_declaration: "parse_path_template", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.uri_path::parse_segment_tokens LiteralToken",
+        subject: AdmissionSubject::Binding { module: "extdeps.uri_path", in_declaration: "parse_segment_tokens", spelling: "LiteralToken" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: extdeps.uri_path::parse_segment_tokens ParamToken",
+        subject: AdmissionSubject::Binding { module: "extdeps.uri_path", in_declaration: "parse_segment_tokens", spelling: "ParamToken" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.bmc_fan_converge::bmc_fan_parse_os_release_identity OpenBmc",
+        subject: AdmissionSubject::Binding { module: "gunbc.bmc_fan_converge", in_declaration: "bmc_fan_parse_os_release_identity", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.bmc_fan_converge::bmc_firmware_family_content_hash BmcFirmwareFamily",
+        subject: AdmissionSubject::Binding { module: "gunbc.bmc_fan_converge", in_declaration: "bmc_firmware_family_content_hash", spelling: "BmcFirmwareFamily" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.bmc_fan_converge::bmc_firmware_family_content_hash OpenBmc",
+        subject: AdmissionSubject::Binding { module: "gunbc.bmc_fan_converge", in_declaration: "bmc_firmware_family_content_hash", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.bmc_onboarding::altra_onboarding_plan BmcEndpoint",
+        subject: AdmissionSubject::Binding { module: "gunbc.bmc_onboarding", in_declaration: "altra_onboarding_plan", spelling: "BmcEndpoint" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.bmc_onboarding::altra_onboarding_plan Redfish",
+        subject: AdmissionSubject::Binding { module: "gunbc.bmc_onboarding", in_declaration: "altra_onboarding_plan", spelling: "Redfish" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.ci_fleet::per_second_billed_cost_quote CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "gunbc.ci_fleet", in_declaration: "per_second_billed_cost_quote", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.econ.knowable_wedge::convert_money_per_minute_eur_to_usd Eur",
+        subject: AdmissionSubject::Binding { module: "gunbc.econ.knowable_wedge", in_declaration: "convert_money_per_minute_eur_to_usd", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.econ.knowable_wedge::convert_money_per_minute_eur_to_usd Usd",
+        subject: AdmissionSubject::Binding { module: "gunbc.econ.knowable_wedge", in_declaration: "convert_money_per_minute_eur_to_usd", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.econ.knowable_wedge::derive_github_hetzner_ci_minute_wedge Eur",
+        subject: AdmissionSubject::Binding { module: "gunbc.econ.knowable_wedge", in_declaration: "derive_github_hetzner_ci_minute_wedge", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.econ.knowable_wedge::derive_github_hetzner_ci_minute_wedge Usd",
+        subject: AdmissionSubject::Binding { module: "gunbc.econ.knowable_wedge", in_declaration: "derive_github_hetzner_ci_minute_wedge", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.econ.knowable_wedge::derive_monthly_eur_with_amortization Eur",
+        subject: AdmissionSubject::Binding { module: "gunbc.econ.knowable_wedge", in_declaration: "derive_monthly_eur_with_amortization", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.econ.knowable_wedge::derive_runner_cost_floor_per_minute_usd Eur",
+        subject: AdmissionSubject::Binding { module: "gunbc.econ.knowable_wedge", in_declaration: "derive_runner_cost_floor_per_minute_usd", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.econ.knowable_wedge::subtract_money_per_minute_usd Usd",
+        subject: AdmissionSubject::Binding { module: "gunbc.econ.knowable_wedge", in_declaration: "subtract_money_per_minute_usd", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fabric_floor_dispatch::floor_supply_selection Usd",
+        subject: AdmissionSubject::Binding { module: "gunbc.fabric_floor_dispatch", in_declaration: "floor_supply_selection", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fabric_witness_run::floor_buy_terms Usd",
+        subject: AdmissionSubject::Binding { module: "gunbc.fabric_witness_run", in_declaration: "floor_buy_terms", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fabric_witness_run::floor_offer_affordability CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "gunbc.fabric_witness_run", in_declaration: "floor_offer_affordability", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_bmc_firmware_evidence::srv1_bmc_firmware_attestation OpenBmc",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_bmc_firmware_evidence", in_declaration: "srv1_bmc_firmware_attestation", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_bmc_firmware_evidence::srv2_bmc_firmware_attestation OpenBmc",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_bmc_firmware_evidence", in_declaration: "srv2_bmc_firmware_attestation", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_bmc_observation::srv3_bmc_firmware_2_07_00_observation OpenBmc",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_bmc_observation", in_declaration: "srv3_bmc_firmware_2_07_00_observation", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_bmc_observation::srv3_bmc_firmware_3_22_00_observation OpenBmc",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_bmc_observation", in_declaration: "srv3_bmc_firmware_3_22_00_observation", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_bmc_observation::srv4_bmc_firmware_observation OpenBmc",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_bmc_observation", in_declaration: "srv4_bmc_firmware_observation", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_fan_acoustic_evidence::fan_acoustic_evidence_witness dba_tenths",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_fan_acoustic_evidence", in_declaration: "fan_acoustic_evidence_witness", spelling: "dba_tenths" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_intent::srv1_baseboard BmcEndpoint",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_intent", in_declaration: "srv1_baseboard", spelling: "BmcEndpoint" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_intent::srv1_baseboard Redfish",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_intent", in_declaration: "srv1_baseboard", spelling: "Redfish" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_intent::srv2_baseboard BmcEndpoint",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_intent", in_declaration: "srv2_baseboard", spelling: "BmcEndpoint" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_intent::srv2_baseboard Redfish",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_intent", in_declaration: "srv2_baseboard", spelling: "Redfish" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_intent::srv3_baseboard BmcEndpoint",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_intent", in_declaration: "srv3_baseboard", spelling: "BmcEndpoint" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_intent::srv3_baseboard Redfish",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_intent", in_declaration: "srv3_baseboard", spelling: "Redfish" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_intent::srv4_baseboard BmcEndpoint",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_intent", in_declaration: "srv4_baseboard", spelling: "BmcEndpoint" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.fleet_intent::srv4_baseboard Redfish",
+        subject: AdmissionSubject::Binding { module: "gunbc.fleet_intent", in_declaration: "srv4_baseboard", spelling: "Redfish" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.gunbhub_serve::gunbhub_browse_path_template PathTemplate",
+        subject: AdmissionSubject::Binding { module: "gunbc.gunbhub_serve", in_declaration: "gunbhub_browse_path_template", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.gunbhub_serve::gunbhub_repo_path_template PathTemplate",
+        subject: AdmissionSubject::Binding { module: "gunbc.gunbhub_serve", in_declaration: "gunbhub_repo_path_template", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.gunbhub_serve::path_matches_template PathTemplate",
+        subject: AdmissionSubject::Binding { module: "gunbc.gunbhub_serve", in_declaration: "path_matches_template", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.node_http_server_emit::emit_path_template_regex_source LiteralToken",
+        subject: AdmissionSubject::Binding { module: "gunbc.node_http_server_emit", in_declaration: "emit_path_template_regex_source", spelling: "LiteralToken" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.node_http_server_emit::emit_path_template_regex_source ParamToken",
+        subject: AdmissionSubject::Binding { module: "gunbc.node_http_server_emit", in_declaration: "emit_path_template_regex_source", spelling: "ParamToken" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.node_http_server_emit::emit_path_template_regex_source PathTemplate",
+        subject: AdmissionSubject::Binding { module: "gunbc.node_http_server_emit", in_declaration: "emit_path_template_regex_source", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_serve::roadmap_serve_invoke PathParamBinding",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_serve", in_declaration: "roadmap_serve_invoke", spelling: "PathParamBinding" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_serve::roadmap_serve_invoke_for_instance PathParamBinding",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_serve", in_declaration: "roadmap_serve_invoke_for_instance", spelling: "PathParamBinding" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_serve::serve_dispatch_handler_response PathParamBinding",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_serve", in_declaration: "serve_dispatch_handler_response", spelling: "PathParamBinding" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_serve::serve_dispatch_handler_response_for_instance PathParamBinding",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_serve", in_declaration: "serve_dispatch_handler_response_for_instance", spelling: "PathParamBinding" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_serve::serve_dispatch_handler_response_for_instance path_param_value",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_serve", in_declaration: "serve_dispatch_handler_response_for_instance", spelling: "path_param_value" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_serve::serve_publish_handler_response_for_instance PathParamBinding",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_serve", in_declaration: "serve_publish_handler_response_for_instance", spelling: "PathParamBinding" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_serve::serve_publish_handler_response_for_instance path_param_value",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_serve", in_declaration: "serve_publish_handler_response_for_instance", spelling: "path_param_value" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_serve::serve_stop_handler_response PathParamBinding",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_serve", in_declaration: "serve_stop_handler_response", spelling: "PathParamBinding" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_serve::serve_stop_handler_response_for_instance PathParamBinding",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_serve", in_declaration: "serve_stop_handler_response_for_instance", spelling: "PathParamBinding" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_serve::serve_stop_handler_response_for_instance path_param_value",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_serve", in_declaration: "serve_stop_handler_response_for_instance", spelling: "path_param_value" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_static_site::roadmap_site_path_template LiteralToken",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_static_site", in_declaration: "roadmap_site_path_template", spelling: "LiteralToken" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_static_site::roadmap_site_path_template PathTemplate",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_static_site", in_declaration: "roadmap_site_path_template", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_static_site::served_static_route_literal_path LiteralToken",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_static_site", in_declaration: "served_static_route_literal_path", spelling: "LiteralToken" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: gunbc.roadmap_static_site::served_static_route_literal_path ParamToken",
+        subject: AdmissionSubject::Binding { module: "gunbc.roadmap_static_site", in_declaration: "served_static_route_literal_path", spelling: "ParamToken" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.build_fulfillment::cash_step CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.build_fulfillment", in_declaration: "cash_step", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.build_fulfillment::incremental_cash_now CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.build_fulfillment", in_declaration: "incremental_cash_now", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.build_selection::build_standing CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.build_selection", in_declaration: "build_standing", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.build_selection::candidate_missing_inputs CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.build_selection", in_declaration: "candidate_missing_inputs", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.build_selection::candidate_readings CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.build_selection", in_declaration: "candidate_readings", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.build_selection::cash_missing CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.build_selection", in_declaration: "cash_missing", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.build_selection::cash_reading CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.build_selection", in_declaration: "cash_reading", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.build_selection::project_entry CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.build_selection", in_declaration: "project_entry", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.build_selection::project_field CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.build_selection", in_declaration: "project_field", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.fabric.selection::assemble_cost CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.fabric.selection", in_declaration: "assemble_cost", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.fabric.selection::price_available_candidate CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.fabric.selection", in_declaration: "price_available_candidate", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.fabric.selection::price_candidate CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.fabric.selection", in_declaration: "price_candidate", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.fabric.selection::price_over_horizon CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.fabric.selection", in_declaration: "price_over_horizon", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.fabric.selection::price_screened_candidate CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.fabric.selection", in_declaration: "price_screened_candidate", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.fabric.selection::priced_delay CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.fabric.selection", in_declaration: "priced_delay", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.fabric.selection::priced_once CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.fabric.selection", in_declaration: "priced_once", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.fabric.selection::priced_operating CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.fabric.selection", in_declaration: "priced_operating", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.fabric.selection::priced_opportunity CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.fabric.selection", in_declaration: "priced_opportunity", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.fabric.selection::priced_start CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.fabric.selection", in_declaration: "priced_start", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.fabric.selection::priced_transition CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.fabric.selection", in_declaration: "priced_transition", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.fabric.selection::select_supply CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.fabric.selection", in_declaration: "select_supply", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: product.fabric.supply::offer_affordability_for CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "product.fabric.supply", in_declaration: "offer_affordability_for", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: std.effects::derive_effect_shape PathTemplate",
+        subject: AdmissionSubject::Binding { module: "std.effects", in_declaration: "derive_effect_shape", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: std.effects::derive_effect_shape last_path_param",
+        subject: AdmissionSubject::Binding { module: "std.effects", in_declaration: "derive_effect_shape", spelling: "last_path_param" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: std.effects::derive_op_effect PathTemplate",
+        subject: AdmissionSubject::Binding { module: "std.effects", in_declaration: "derive_op_effect", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.acquisition_mechanism_witness::indivisible_scenario Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.acquisition_mechanism_witness", in_declaration: "indivisible_scenario", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.acquisition_mechanism_witness::two_usd_per_click Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.acquisition_mechanism_witness", in_declaration: "two_usd_per_click", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.acquisition_mechanism_witness::w_red_zero_entry_unit_cost_refuses Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.acquisition_mechanism_witness", in_declaration: "w_red_zero_entry_unit_cost_refuses", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_capability_solve::firmware_intent_match_crosses_as_typed_disposition BmcEndpoint",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_capability_solve", in_declaration: "firmware_intent_match_crosses_as_typed_disposition", spelling: "BmcEndpoint" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_capability_solve::firmware_intent_match_crosses_as_typed_disposition OpenBmc",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_capability_solve", in_declaration: "firmware_intent_match_crosses_as_typed_disposition", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_capability_solve::firmware_intent_match_crosses_as_typed_disposition Redfish",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_capability_solve", in_declaration: "firmware_intent_match_crosses_as_typed_disposition", spelling: "Redfish" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_capability_solve::firmware_wire_version_is_parsed_before_track_matching OpenBmc",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_capability_solve", in_declaration: "firmware_wire_version_is_parsed_before_track_matching", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_capability_solve::nbd_proxy_vm_capable_row_solves OpenBmc",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_capability_solve", in_declaration: "nbd_proxy_vm_capable_row_solves", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_capability_solve::node_with_virtual_media_solves_direct OpenBmc",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_capability_solve", in_declaration: "node_with_virtual_media_solves_direct", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_capability_solve::redfish_vm_preferred_over_nbd_proxy OpenBmc",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_capability_solve", in_declaration: "redfish_vm_preferred_over_nbd_proxy", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_capability_solve::update_only_row_without_vm_catalog_falls_to_pxe OpenBmc",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_capability_solve", in_declaration: "update_only_row_without_vm_catalog_falls_to_pxe", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_capability_solve::vm_capable_firmware_row_flips_to_update_path OpenBmc",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_capability_solve", in_declaration: "vm_capable_firmware_row_flips_to_update_path", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_fan_converge_witness::backup_manifest_identity_is_derived_from_every_manifest_field OpenBmc",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_fan_converge_witness", in_declaration: "backup_manifest_identity_is_derived_from_every_manifest_field", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_firmware_evidence_install_mechanism::uncatalogued_firmware OpenBmc",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_firmware_evidence_install_mechanism", in_declaration: "uncatalogued_firmware", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_firmware_evidence_install_mechanism::unknown_endpoint BmcEndpoint",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_firmware_evidence_install_mechanism", in_declaration: "unknown_endpoint", spelling: "BmcEndpoint" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_firmware_evidence_install_mechanism::unknown_endpoint Redfish",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_firmware_evidence_install_mechanism", in_declaration: "unknown_endpoint", spelling: "Redfish" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_firmware_thermal_witness::an_uncatalogued_image_refuses_to_derive_a_surface OpenBmc",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_firmware_thermal_witness", in_declaration: "an_uncatalogued_image_refuses_to_derive_a_surface", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.bmc_firmware_thermal_witness::fixture_pinned_track3_intent OpenBmc",
+        subject: AdmissionSubject::Binding { module: "test.claim.bmc_firmware_thermal_witness", in_declaration: "fixture_pinned_track3_intent", spelling: "OpenBmc" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_fulfillment_witness::usd_micros Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_fulfillment_witness", in_declaration: "usd_micros", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_fulfillment_witness::w_a_build_with_no_purchases_reads_its_own_arm_not_a_zero Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_fulfillment_witness", in_declaration: "w_a_build_with_no_purchases_reads_its_own_arm_not_a_zero", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_fulfillment_witness::w_an_unfillable_line_refuses_the_cash_answer Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_fulfillment_witness", in_declaration: "w_an_unfillable_line_refuses_the_cash_answer", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_fulfillment_witness::w_basis_across_lots_in_two_currencies_refuses Eur",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_fulfillment_witness", in_declaration: "w_basis_across_lots_in_two_currencies_refuses", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_fulfillment_witness::w_basis_across_two_lots_in_one_currency_sums Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_fulfillment_witness", in_declaration: "w_basis_across_two_lots_in_one_currency_sums", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_fulfillment_witness::w_basis_is_exact_under_a_named_policy Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_fulfillment_witness", in_declaration: "w_basis_is_exact_under_a_named_policy", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_fulfillment_witness::w_cash_counts_purchases_only_and_owned_draws_report_zero_cash Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_fulfillment_witness", in_declaration: "w_cash_counts_purchases_only_and_owned_draws_report_zero_cash", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_fulfillment_witness::w_cross_currency_purchase_refuses_rather_than_summing Eur",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_fulfillment_witness", in_declaration: "w_cross_currency_purchase_refuses_rather_than_summing", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_fulfillment_witness::w_cross_currency_purchase_refuses_rather_than_summing Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_fulfillment_witness", in_declaration: "w_cross_currency_purchase_refuses_rather_than_summing", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_selection_witness::usd_micros Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_selection_witness", in_declaration: "usd_micros", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_selection_witness::w_a_candidate_in_an_undeclared_currency_does_not_rank Eur",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_selection_witness", in_declaration: "w_a_candidate_in_an_undeclared_currency_does_not_rank", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_selection_witness::w_a_candidate_in_an_undeclared_currency_does_not_rank Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_selection_witness", in_declaration: "w_a_candidate_in_an_undeclared_currency_does_not_rank", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_selection_witness::w_a_fully_owned_build_ranks_at_zero_cash Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_selection_witness", in_declaration: "w_a_fully_owned_build_ranks_at_zero_cash", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_selection_witness::w_a_pending_candidate_neither_wins_nor_poisons_the_field Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_selection_witness", in_declaration: "w_a_pending_candidate_neither_wins_nor_poisons_the_field", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_selection_witness::w_a_refused_cash_answer_makes_the_candidate_incomparable Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_selection_witness", in_declaration: "w_a_refused_cash_answer_makes_the_candidate_incomparable", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_selection_witness::w_a_strictly_worse_candidate_is_dominated Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_selection_witness", in_declaration: "w_a_strictly_worse_candidate_is_dominated", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_selection_witness::w_a_tradeoff_is_not_a_domination Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_selection_witness", in_declaration: "w_a_tradeoff_is_not_a_domination", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_selection_witness::w_an_unbounded_ceiling_is_declared_missing_not_read_as_zero Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_selection_witness", in_declaration: "w_an_unbounded_ceiling_is_declared_missing_not_read_as_zero", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_selection_witness::w_an_unread_compatibility_is_pending_evidence_not_a_winner Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_selection_witness", in_declaration: "w_an_unread_compatibility_is_pending_evidence_not_a_winner", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_selection_witness::w_duplicate_candidate_identity_refuses_the_selection Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_selection_witness", in_declaration: "w_duplicate_candidate_identity_refuses_the_selection", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_selection_witness::w_the_better_candidate_stands_on_the_frontier Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_selection_witness", in_declaration: "w_the_better_candidate_stands_on_the_frontier", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.build_selection_witness::w_the_projected_entry_is_keyed_by_declaration_identity Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.build_selection_witness", in_declaration: "w_the_projected_entry_is_keyed_by_declaration_identity", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.econ_wedge_witness::github_hetzner_wedge_floor_usd_per_minute Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.econ_wedge_witness", in_declaration: "github_hetzner_wedge_floor_usd_per_minute", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.econ_wedge_witness::github_hetzner_wedge_spread_usd_per_minute Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.econ_wedge_witness", in_declaration: "github_hetzner_wedge_spread_usd_per_minute", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.econ_wedge_witness::github_tiny_umbrella_fixture Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.econ_wedge_witness", in_declaration: "github_tiny_umbrella_fixture", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.econ_wedge_witness::hetzner_ax41_usd_floor_fixture Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.econ_wedge_witness", in_declaration: "hetzner_ax41_usd_floor_fixture", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.effects_witness_test::derived_op PathTemplate",
+        subject: AdmissionSubject::Binding { module: "test.claim.effects_witness_test", in_declaration: "derived_op", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.effects_witness_test::effects_path_parse_witnesses has_path_params",
+        subject: AdmissionSubject::Binding { module: "test.claim.effects_witness_test", in_declaration: "effects_path_parse_witnesses", spelling: "has_path_params" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.effects_witness_test::effects_path_parse_witnesses last_path_param",
+        subject: AdmissionSubject::Binding { module: "test.claim.effects_witness_test", in_declaration: "effects_path_parse_witnesses", spelling: "last_path_param" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.extdeps_round2_grounding_witness::w_served_static_route_content_type_media_type PathTemplate",
+        subject: AdmissionSubject::Binding { module: "test.claim.extdeps_round2_grounding_witness", in_declaration: "w_served_static_route_content_type_media_type", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_budget_encumbrance_witness::a_foreign_currency_reservation_refuses_and_never_converts Eur",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_budget_encumbrance_witness", in_declaration: "a_foreign_currency_reservation_refuses_and_never_converts", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_budget_encumbrance_witness::reserve_on Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_budget_encumbrance_witness", in_declaration: "reserve_on", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_budget_encumbrance_witness::settle_on Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_budget_encumbrance_witness", in_declaration: "settle_on", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_budget_encumbrance_witness::the_currency_refusal_is_distinct_from_a_ceiling_refusal Eur",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_budget_encumbrance_witness", in_declaration: "the_currency_refusal_is_distinct_from_a_ceiling_refusal", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_budget_encumbrance_witness::the_currency_refusal_is_distinct_from_a_ceiling_refusal Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_budget_encumbrance_witness", in_declaration: "the_currency_refusal_is_distinct_from_a_ceiling_refusal", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_budget_encumbrance_witness::usd_account Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_budget_encumbrance_witness", in_declaration: "usd_account", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_contention_witness_test::c_demand Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_contention_witness_test", in_declaration: "c_demand", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_contention_witness_test::continuous_offer Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_contention_witness_test", in_declaration: "continuous_offer", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_contention_witness_test::flat_offer Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_contention_witness_test", in_declaration: "flat_offer", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_contention_witness_test::hourly_offer Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_contention_witness_test", in_declaration: "hourly_offer", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_contention_witness_test::paid_through_offer Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_contention_witness_test", in_declaration: "paid_through_offer", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_contention_witness_test::per_second_offer Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_contention_witness_test", in_declaration: "per_second_offer", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_control_plane_witness::an_offer_quoted_in_another_currency_is_refused_at_the_budget_seam Eur",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_control_plane_witness", in_declaration: "an_offer_quoted_in_another_currency_is_refused_at_the_budget_seam", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_control_plane_witness::an_underfunded_budget_refuses_with_a_ledger_cause Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_control_plane_witness", in_declaration: "an_underfunded_budget_refuses_with_a_ledger_cause", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_control_plane_witness::cp_account CurrencyCode",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_control_plane_witness", in_declaration: "cp_account", spelling: "CurrencyCode" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_control_plane_witness::cp_broker Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_control_plane_witness", in_declaration: "cp_broker", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_control_plane_witness::cp_candidate_for Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_control_plane_witness", in_declaration: "cp_candidate_for", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_control_plane_witness::cp_offer_for Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_control_plane_witness", in_declaration: "cp_offer_for", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_control_plane_witness::the_encumbered_liability_is_the_full_selection_cost Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_control_plane_witness", in_declaration: "the_encumbered_liability_is_the_full_selection_cost", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_demand_effect_witness_test::running_grant Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_demand_effect_witness_test", in_declaration: "running_grant", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_demand_effect_witness_test::second_running_grant Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_demand_effect_witness_test", in_declaration: "second_running_grant", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_demand_effect_witness_test::terms Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_demand_effect_witness_test", in_declaration: "terms", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_floor_dispatch_witness::d_bound Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_floor_dispatch_witness", in_declaration: "d_bound", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_floor_dispatch_witness::d_no_delay_valuation Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_floor_dispatch_witness", in_declaration: "d_no_delay_valuation", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_floor_dispatch_witness::d_offer Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_floor_dispatch_witness", in_declaration: "d_offer", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_selection_witness::an_alternative_use_displaced_prices_a_paid_through_hour_above_zero Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_selection_witness", in_declaration: "an_alternative_use_displaced_prices_a_paid_through_hour_above_zero", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_selection_witness::t_inputs Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_selection_witness", in_declaration: "t_inputs", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_selection_witness::t_no_delay_valuation Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_selection_witness", in_declaration: "t_no_delay_valuation", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_selection_witness::t_owned_offer Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_selection_witness", in_declaration: "t_owned_offer", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_selection_witness::t_owned_operating Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_selection_witness", in_declaration: "t_owned_operating", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_selection_witness::t_rented_offer Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_selection_witness", in_declaration: "t_rented_offer", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_selection_witness::t_select_for Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_selection_witness", in_declaration: "t_select_for", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_selection_witness::valued_delay_enters_the_ranking_and_not_the_reservation Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_selection_witness", in_declaration: "valued_delay_enters_the_ranking_and_not_the_reservation", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_terminal_contract_witness::buy_terms Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_terminal_contract_witness", in_declaration: "buy_terms", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_terminal_contract_witness::owned_offer Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_terminal_contract_witness", in_declaration: "owned_offer", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_terminal_contract_witness::owned_supply_states_zero_rather_than_absent Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_terminal_contract_witness", in_declaration: "owned_supply_states_zero_rather_than_absent", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.fabric_terminal_contract_witness::rented_offer Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.fabric_terminal_contract_witness", in_declaration: "rented_offer", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.http_serve_route_witness::matcher_accepts PathTemplate",
+        subject: AdmissionSubject::Binding { module: "test.claim.http_serve_route_witness", in_declaration: "matcher_accepts", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.http_serve_route_witness::tpl PathTemplate",
+        subject: AdmissionSubject::Binding { module: "test.claim.http_serve_route_witness", in_declaration: "tpl", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.inventory_ledger_witness::usd_micros Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.inventory_ledger_witness", in_declaration: "usd_micros", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.inventory_ledger_witness::w_landed_cost_sums_within_one_currency_and_refuses_across Eur",
+        subject: AdmissionSubject::Binding { module: "test.claim.inventory_ledger_witness", in_declaration: "w_landed_cost_sums_within_one_currency_and_refuses_across", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.inventory_ledger_witness::w_landed_cost_sums_within_one_currency_and_refuses_across Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.inventory_ledger_witness", in_declaration: "w_landed_cost_sums_within_one_currency_and_refuses_across", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.inventory_ledger_witness::w_summing_no_lots_is_empty_not_refused Eur",
+        subject: AdmissionSubject::Binding { module: "test.claim.inventory_ledger_witness", in_declaration: "w_summing_no_lots_is_empty_not_refused", spelling: "Eur" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.inventory_ledger_witness::w_summing_no_lots_is_empty_not_refused Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.inventory_ledger_witness", in_declaration: "w_summing_no_lots_is_empty_not_refused", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.pricing_surface_witness::wrong_github_2core_per_minute_fixture Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.pricing_surface_witness", in_declaration: "wrong_github_2core_per_minute_fixture", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.roadmap_serve_witness::witness_dispatch_param_bound path_param_value",
+        subject: AdmissionSubject::Binding { module: "test.claim.roadmap_serve_witness", in_declaration: "witness_dispatch_param_bound", spelling: "path_param_value" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.training_attempt_graph_witness::demand_for Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.training_attempt_graph_witness", in_declaration: "demand_for", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.training_checkpoint_witness::demand_for Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.training_checkpoint_witness", in_declaration: "demand_for", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.training_execution_control_witness::demand_for Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.training_execution_control_witness", in_declaration: "demand_for", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.training_execution_control_witness::grant_for Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.training_execution_control_witness", in_declaration: "grant_for", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.training_observation_cut_witness::demand_for Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.training_observation_cut_witness", in_declaration: "demand_for", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.training_observation_cut_witness::subject_from Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.training_observation_cut_witness", in_declaration: "subject_from", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.training_readback_witness::demand_keyed Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.training_readback_witness", in_declaration: "demand_keyed", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.training_reconciliation_witness::demand_for Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.training_reconciliation_witness", in_declaration: "demand_for", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.training_reconciliation_witness::grant_for Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.training_reconciliation_witness", in_declaration: "grant_for", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.training_resolution_witness::demand_for Usd",
+        subject: AdmissionSubject::Binding { module: "test.claim.training_resolution_witness", in_declaration: "demand_for", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: test.claim.uri_path_match_witness::tpl PathTemplate",
+        subject: AdmissionSubject::Binding { module: "test.claim.uri_path_match_witness", in_declaration: "tpl", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: tools.fabric_control_plane_live_probe::cp_live_broker_reserves_the_cell_the_market_chose Usd",
+        subject: AdmissionSubject::Binding { module: "tools.fabric_control_plane_live_probe", in_declaration: "cp_live_broker_reserves_the_cell_the_market_chose", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: tools.fabric_control_plane_live_probe::cp_live_nothing_admissible_touches_no_store Usd",
+        subject: AdmissionSubject::Binding { module: "tools.fabric_control_plane_live_probe", in_declaration: "cp_live_nothing_admissible_touches_no_store", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: tools.fabric_control_plane_live_probe::cp_probe_account Usd",
+        subject: AdmissionSubject::Binding { module: "tools.fabric_control_plane_live_probe", in_declaration: "cp_probe_account", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: tools.fabric_control_plane_live_probe::cp_probe_offer_for Usd",
+        subject: AdmissionSubject::Binding { module: "tools.fabric_control_plane_live_probe", in_declaration: "cp_probe_offer_for", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: tools.fabric_control_plane_live_probe::cp_probe_roster Usd",
+        subject: AdmissionSubject::Binding { module: "tools.fabric_control_plane_live_probe", in_declaration: "cp_probe_roster", spelling: "Usd" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: v1.compiler.effect_derivation::re_export_derive_op_effect PathTemplate",
+        subject: AdmissionSubject::Binding { module: "v1.compiler.effect_derivation", in_declaration: "re_export_derive_op_effect", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: v1.compiler.effect_derivation::re_export_has_path_params PathTemplate",
+        subject: AdmissionSubject::Binding { module: "v1.compiler.effect_derivation", in_declaration: "re_export_has_path_params", spelling: "PathTemplate" },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "std->extdeps consolidation 2026-08-28: v1.compiler.effect_derivation::re_export_has_path_params has_path_params",
+        subject: AdmissionSubject::Binding { module: "v1.compiler.effect_derivation", in_declaration: "re_export_has_path_params", spelling: "has_path_params" },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
 ];

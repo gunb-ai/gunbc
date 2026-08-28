@@ -28,6 +28,9 @@ pub mod std_effects;
 #[path = "../../stage0/src/std_execution_mode.rs"]
 pub mod std_execution_mode;
 #[rustfmt::skip]
+#[path = "../../stage0/src/extdeps_uri_path.rs"]
+pub mod extdeps_uri_path;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_interface_summary.rs"]
 pub mod std_interface_summary;
 #[rustfmt::skip]

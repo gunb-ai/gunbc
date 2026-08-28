@@ -673,7 +673,7 @@ pub fn witness_admission_explicit_consumer_keys() -> Vec<String> {
     static KEYS: OnceLock<Vec<String>> = OnceLock::new();
     KEYS.get_or_init(|| {
         let mut keys = witness_admission_entry_function_keys_from_source(
-            "dag/gunbc/ci_layer_roots.dag",
+            "dag/gunbc/ci/ci_layer_roots.dag",
             ci_layer_roots_authority_content(),
         );
         let wet =

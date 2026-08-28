@@ -423,7 +423,7 @@ type RosterIdentity
 // under different roots are not one identity — and so the hashed text is non-empty by construction
 // rather than by the caller having supplied a subject with a name.
 // AND IT IS NAMED FOR THIS RATCHET RATHER THAN FOR THE CONCEPT, for a measured reason.
-// `dag/tools/frontier_ingestion_probe.dag` already declares `roster_identity` over a different
+// `dag/gunbc/instruments/frontier_ingestion_probe.dag` already declares `roster_identity` over a different
 // subject (a list of frontier members) returning a different type. Two declarers of one bare name
 // resolve under a per-entry compile -- which sees only one of them -- and fail to resolve under the
 // floor's whole-corpus preparation, which sees both, so the collision is INVISIBLE to the check an
@@ -2048,7 +2048,7 @@ fn roster_subject_count(roster: RosterIdentity) -> Int {
   }
 }
 
-data emit_ratchet_runner_entry: String = "dag/tools/emit_subject_clean_ratchet.dag"
+data emit_ratchet_runner_entry: String = "dag/gunbc/instruments/emit_subject_clean_ratchet.dag"
 
 data emit_ratchet_runner_observe_function: String = "observe"
 

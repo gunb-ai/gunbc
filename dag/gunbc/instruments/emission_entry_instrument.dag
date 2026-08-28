@@ -1,0 +1,811 @@
+module tools.emission_entry_instrument
+
+import std.types { Bool, Int, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.gunbc
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.cargo_build
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.crypto.hash { Digest }
+import std.measure { byte_size }
+import extdeps.tools.sha256sum {
+  Sha256FileDigest,
+  Sha256FileDigestUnavailable,
+  sha256sum_file_digest_via_shell
+}
+import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+import tools.self_host_curated_seed_linked_harness {
+  cssl_std_bridge_shims_rel,
+  cssl_v1_compiled_probe_lib_cargo_toml
+}
+import gunbc.emit_diagnostic_observation {
+  GunbcDiagnostic,
+  EmitDiagnosticRead,
+  EmitDiagnosticsRead,
+  EmitSummaryAbsent,
+  EmitSummaryUnreadable,
+  EmitPopulationMismatch,
+  EmitSummaryDisagreement,
+  EmittedFileCount,
+  EmitAnchorDuplicated,
+  EmitScopeUnconfirmed,
+  EmitOutputTruncated,
+  CaptureExtent,
+  EmitPopulationExtent,
+  emit_population_extent_of,
+  emit_population_extent_text,
+  FilesEmitted,
+  FilesNotWritten,
+  emitted_file_count_text,
+  read_emit_diagnostics,
+  emit_blocking_count,
+  emit_diagnostic_read_refusal_reason,
+  gunbc_diagnostic_row
+}
+import extdeps.cargo_diagnostic {
+  RustcCodedDiagnostic,
+  CargoDiagnosticScan,
+  CargoDiagnosticsRead,
+  cargo_scan_diagnostics,
+  cargo_diagnostic_scan_refusal_reason,
+  rustc_diagnostic_row
+}
+
+// THE PER-ENTRY EMISSION INSTRUMENT.
+//
+// DESIGN's Building-&-checks section carries a declared rung drop titled "THE MEASUREMENT
+// BANKRUPTCY DELETED A CAPABILITY, NOT ONLY ARTIFACTS". It states the temporary state plainly --
+// no executable route to a per-entry emission board measurement exists, so a board figure quoted
+// from the tree names nothing that can produce it -- and it names its own restoration trigger: a
+// `.dag` entry point that emits, assembles and compiles ONE entry and returns the coded-diagnostic
+// population, cited by name wherever a board figure is quoted. This module is that entry point.
+// It is the INSTRUMENT, not a board: it produces the numbers and stores none of them.
+//
+// WHY ONE ENTRY AND NOT THE CORPUS. gunbc.whole_corpus_compile_admission refuses a whole-bundle
+// compile on the default remote runner -- the declared demand exceeds the runner's budget, and
+// before that refusal existed the same run was killed with no diagnostic, so anything reading its
+// output for a count read a fabricated zero. That module's own scope note records the measured
+// alternative: a scoped `--entry` compile FITS on the runner that killed the whole-corpus run,
+// because its working set is one import closure rather than the whole tree.
+//
+// EXECUTION PROVENANCE IS THE CARRIER'S FIRST JOB, ahead of any count it reports. DESIGN's
+// execution-provenance-loss failure mode is the exact defect this instrument exists to end: a
+// count of zero and an unreached stage must not render identically. So `refused before the emitter
+// ran` has no spelling in the same shape as `emitted with zero diagnostics` -- they are different
+// variants of EmissionMeasurement, and every stage that can prevent a later stage from executing
+// appears in the carrier by name. A consumer cannot read a population without having been told
+// which stages produced it.
+//
+// AND SPLITTING THE STATES IS ONLY HALF OF IT. Naming the stages still lets two different compilers
+// report the same-looking population, so every outcome that carries a population also carries an
+// EmissionMeasurementSubject -- source revision, working-tree standing, and the digests of the two
+// binaries actually invoked -- established before the emitter runs. An unattributable population has
+// no representation here: the one arm without a subject is the one that took no measurement.
+//
+// IT IS NOT A GATE. Nothing here blocks a merge, nothing is enrolled in the required run, and the
+// exit status reports whether the MEASUREMENT completed, never whether the entry was clean: an
+// entry with a thousand diagnostics is a successful measurement. Gating on emission convergence is
+// a separate decision with a separate argument.
+
+// ---------------------------------------------------------------------------------------------
+// THE SUBJECT: WHAT PRODUCED THIS MEASUREMENT.
+//
+// Distinguishing the phase states above is necessary and it is NOT provenance. DESIGN separates the
+// two deliberately: state-space conflation is repaired by SPLITTING STATES, execution-provenance
+// loss is repaired by BINDING AN EXECUTION RECEIPT to the value. A carrier that names its stages but
+// not its compiler can report the same-looking population from two different compilers, which is
+// the same defect one level down from the one the stage split closes.
+//
+// So every outcome that carries a population also carries the subject that produced it, and the
+// subject is established BEFORE the emitter runs. A component that cannot be observed refuses the
+// run rather than being recorded as absent -- an unobserved digest is not the digest of nothing.
+// The identity vocabulary is REUSED, never re-coined: CommitSha from extdeps.git.inspect, Digest
+// from extdeps.crypto.hash. Minting a parallel identity vocabulary inside the instrument built to
+// enforce single authority would be the violation it exists to measure.
+//
+// THE SUBJECT IS AN IDENTITY QUESTION ANSWERED WITH A LOCATOR, and that is stated rather than
+// discovered later. `entry` here is a repository-relative PATH, because the actuation surface is
+// `gunbc compile --entry`, which takes a path and offers no identity-keyed alternative. So a rename
+// of the entry file reads as a different subject even when the declaration it names is unchanged.
+// That is a property of the actuation boundary, not a modelling choice made here, and any consumer
+// keying measurements by declaration identity has to carry the identity-to-path mapping itself and
+// treat it as a fact that can go stale.
+//
+// WHAT IS NOT CARRIED, named rather than silently omitted: the emitted candidate tree's own digest
+// and the installed stage0 mirror's digest. Both are directory-wide readings whose cost is a walk
+// per run, and neither is needed to answer "which compiler produced this population" -- the two
+// binary digests answer that. They are the next things to bind if a consumer needs to join
+// measurements across trees rather than across compilers.
+type WorkingTreeStanding
+  = WorkingTreeClean
+  | WorkingTreeDirty
+
+// The assembly step is a coproduct rather than a directory string so a second assembly mode becomes
+// a variant here rather than an unlabelled path difference between two measurements.
+type EmissionAssemblyMode
+  = SeedLinkedAssembly { std_bridge_dir: String }
+
+// THE SUBJECT IS A SCOPE, NOT AN ENTRY STRING, AND THE REASON IS A MEASURED DEFECT RATHER THAN
+// GENERALITY FOR ITS OWN SAKE. Three whole-corpus runs were taken on 2026-08-28 under
+// `--source-root dag --source-root src/v2` and every one reported, in the compiler's own words,
+// `resolved 3109 sources (primary-root population root=dag), 1061 indexed modules in the name
+// census only`. The CLI takes the FIRST source root as the PRIMARY POPULATION and later roots as
+// DEPENDENCY POOLS, so src/v2 -- the v2 compiler, which is what self-host is about -- was indexed
+// and never compiled as subject. The runs were reported as whole-corpus by everyone including the
+// session that took them.
+//
+// A `String` entry cannot express that distinction, so no receipt built on one can be wrong about
+// it OUT LOUD -- it is simply silent, and a silent subject is read as the subject the reader
+// expected. The scope is therefore a closed coproduct whose PrimaryRootScope arm carries the pool
+// list SEPARATELY from the primary root, which makes the confusion that produced this
+// unrepresentable rather than merely documented (DESIGN section 5, construction over validation).
+type EmissionScope
+  = EntryScope { entry: String }
+  | PrimaryRootScope { primary_root: String, dependency_pools: List<String> }
+
+// THE RENDER TARGET DECIDES THE ARGV RATHER THAN DESCRIBING IT. An earlier shape hardwired
+// `--target rust` in measure_with_subject and would have carried a target field beside it, which
+// is a second representation of one fact and free to disagree with the invocation it claims to
+// describe. Here the subject's own field is what renders into the argv, so a receipt that says
+// Rust was produced by a run that passed rust, by construction.
+type EmissionRenderTarget
+  = RustRender
+  | DagRender
+
+fn emission_render_target_flag(t: EmissionRenderTarget) -> String {
+  match t {
+    RustRender => "rust"
+    DagRender => "dag"
+  }
+}
+
+fn emission_scope_label(sc: EmissionScope) -> String {
+  match sc {
+    EntryScope { entry: e } => concat("entry ", e)
+    PrimaryRootScope { primary_root: r, dependency_pools: pools } =>
+      concat(
+        concat("primary-root ", r),
+        if count(pools) == 0 { " (no dependency pools)" }
+        else { concat(" + dependency pools ", pools |> join(separator: ", ")) }
+      )
+  }
+}
+
+type EmissionSubjectRead
+  = SubjectRead { subject: EmissionMeasurementSubject }
+  | SubjectUnreadable { cause: String }
+
+// THE MODULE ROSTER'S CONTENT-ADDRESSED IDENTITY IS DELIBERATELY ABSENT AND IS NAMED HERE RATHER
+// THAN LEFT TO BE DISCOVERED. A subject binds the revision, the tree standing, both binaries, the
+// scope and the target -- which is enough to say WHAT WAS ASKED FOR, and not enough to say WHICH
+// MODULES ANSWERED. A dirty tree is flagged but not enumerated, and a primary root's population is
+// whatever the filesystem held at read time. NEXT-RUNG TRIGGER: a digest over the resolved module
+// roster, at which point two receipts can be compared for subject identity instead of for argv
+// equality. Until then WorkingTreeDirty is the honest boundary and this carrier does not pretend
+// otherwise.
+type EmissionMeasurementSubject {
+  scope: EmissionScope
+  render_target: EmissionRenderTarget
+  source_revision: CommitSha
+  working_tree: WorkingTreeStanding
+  compiler: Digest
+  assembler: Digest
+  assembly_mode: EmissionAssemblyMode
+}
+
+fn working_tree_standing_text(standing: WorkingTreeStanding) -> String {
+  match standing {
+    WorkingTreeClean => "clean"
+    WorkingTreeDirty => "dirty (the measured bytes are not the revision's bytes)"
+  }
+}
+
+fn emission_assembly_mode_text(mode: EmissionAssemblyMode) -> String {
+  match mode {
+    SeedLinkedAssembly { std_bridge_dir: d } => concat("seed-linked via ", d)
+  }
+}
+
+// THE COUNT AND ITS EXTENT ARE RENDERED BY ONE EXPRESSION, so a reader cannot receive the number
+// without the standing of the set it counts. A separate optional row would let the count travel
+// alone, which is the whole failure: `emit_population 2` reads as "this entry has two blocking
+// diagnostics" when emit may have returned before the check that would have found eight more.
+fn emit_population_rows(ds: List<GunbcDiagnostic>, files: EmittedFileCount) -> List<String> {
+  [
+    concat(
+      concat("emit_population\t", to_string(count(ds))),
+      concat("\tblocking\t", to_string(emit_blocking_count(ds: ds)))
+    ),
+    concat("emit_population_extent\t", emit_population_extent_text(extent: emit_population_extent_of(files: files)))
+  ]
+}
+
+fn emission_subject_rows(subject: EmissionMeasurementSubject) -> List<String> {
+  [
+    concat("subject\t", emission_scope_label(sc: subject.scope)),
+    concat("render_target\t", emission_render_target_flag(t: subject.render_target)),
+    concat("source_revision\t", subject.source_revision as String),
+    concat("working_tree\t", working_tree_standing_text(standing: subject.working_tree)),
+    concat("compiler\t", subject.compiler.hex as String),
+    concat("assembler\t", subject.assembler.hex as String),
+    concat("assembly_mode\t", emission_assembly_mode_text(mode: subject.assembly_mode))
+  ]
+}
+
+// The stages, in the order they run. A stage names a place the line can stop, which is why the
+// list is a closed coproduct rather than a string: an unreachable-stage refusal must be as
+// enumerable as a diagnostic.
+type EmissionStage
+  = StageSubject
+  | StageWorkspace
+  | StageBinaries
+  | StageEmit
+  | StageEmitDecode
+  | StageAssemble
+  | StageManifest
+  | StageCargo
+  | StageCargoDecode
+
+fn emission_stage_name(stage: EmissionStage) -> String {
+  match stage {
+    StageSubject => "subject"
+    StageWorkspace => "workspace"
+    StageBinaries => "binaries"
+    StageEmit => "emit"
+    StageEmitDecode => "emit-decode"
+    StageAssemble => "assemble"
+    StageManifest => "manifest"
+    StageCargo => "cargo"
+    StageCargoDecode => "cargo-decode"
+  }
+}
+
+// FOUR OUTCOMES, AND THE FIRST THREE ARE THE POINT.
+//
+// EmissionUnreached  -- a stage refused before the emitter produced anything. There is no
+//                       population, and the carrier cannot pretend there is an empty one.
+// EmissionEmitRefused-- the emitter RAN and refused. This is a real measurement: the emit-stage
+//                       population is exactly what the caller wants, and it is carried here rather
+//                       than discarded because a refusing entry is the interesting case.
+// EmissionCargoUnreached -- the emitter completed and a later stage refused. The emit population is
+//                       real; the rustc population was never produced and is therefore absent,
+//                       not empty.
+// EmissionMeasured   -- every stage ran. Both populations are observations.
+type EmissionMeasurement
+  = EmissionSubjectUnestablished {
+      entry: String
+      stage: EmissionStage
+      cause: String
+    }
+  | EmissionUnreached {
+      subject: EmissionMeasurementSubject
+      stage: EmissionStage
+      cause: String
+    }
+  | EmissionEmitRefused {
+      subject: EmissionMeasurementSubject
+      exit_code: Int
+      emit_diagnostics: List<GunbcDiagnostic>
+      emitted_files: EmittedFileCount
+    }
+  | EmissionCargoUnreached {
+      subject: EmissionMeasurementSubject
+      stage: EmissionStage
+      cause: String
+      emit_diagnostics: List<GunbcDiagnostic>
+      emitted_files: EmittedFileCount
+    }
+  | EmissionMeasured {
+      subject: EmissionMeasurementSubject
+      emitted_files: EmittedFileCount
+      emit_diagnostics: List<GunbcDiagnostic>
+      cargo_clean: Bool
+      cargo_diagnostics: List<RustcCodedDiagnostic>
+      cargo_lines_scanned: Int
+    }
+
+// THE SUBJECT PROJECTION, and it lives here rather than in a consumer because this module owns the
+// coproduct's shape. A consumer that matched these five arms to reach the subject would hold a
+// second copy of that shape and would have to be edited whenever an arm lands -- the duplication a
+// review of the ratchet's own verdict predicates already objected to once.
+//
+// EmissionSubjectUnestablished is the ONE arm carrying no subject, and it is exactly the arm where
+// establishing the subject is what failed. So the absence is a real state rather than a gap: an
+// unobserved subject is not the subject of nothing.
+type EmissionSubjectCarried
+  = SubjectCarried { subject: EmissionMeasurementSubject }
+  | SubjectNotCarried { entry: String }
+
+fn emission_measurement_subject(m: EmissionMeasurement) -> EmissionSubjectCarried {
+  match m {
+    EmissionSubjectUnestablished { entry: e, stage: _, cause: _ } => SubjectNotCarried { entry: e }
+    EmissionUnreached { subject: sub, stage: _, cause: _ } => SubjectCarried { subject: sub }
+    EmissionCargoUnreached { subject: sub, stage: _, cause: _, emit_diagnostics: _, emitted_files: _ } =>
+      SubjectCarried { subject: sub }
+    EmissionEmitRefused { subject: sub, exit_code: _, emit_diagnostics: _, emitted_files: _ } =>
+      SubjectCarried { subject: sub }
+    EmissionMeasured {
+      subject: sub,
+      emitted_files: _,
+      emit_diagnostics: _,
+      cargo_clean: _,
+      cargo_diagnostics: _,
+      cargo_lines_scanned: _
+    } => SubjectCarried { subject: sub }
+  }
+}
+
+// The measurement is COMPLETE whenever the instrument reached a verdict about the entry, which
+// includes an entry the compiler refused. It is INCOMPLETE only where the instrument itself could
+// not run. Conflating the two is how an instrument reports its own breakage as a finding about
+// its subject.
+fn emission_measurement_completed(m: EmissionMeasurement) -> Bool {
+  match m {
+    EmissionSubjectUnestablished { entry: _, stage: _, cause: _ } => false
+    EmissionUnreached { subject: _, stage: _, cause: _ } => false
+    EmissionCargoUnreached { subject: _, stage: _, cause: _, emit_diagnostics: _, emitted_files: _ } => false
+    EmissionEmitRefused { subject: _, exit_code: _, emit_diagnostics: _, emitted_files: _ } => true
+    EmissionMeasured { subject: _, emitted_files: _, emit_diagnostics: _, cargo_clean: _, cargo_diagnostics: _, cargo_lines_scanned: _ } => true
+  }
+}
+
+fn emit_decode_unreached(subject: EmissionMeasurementSubject, read: EmitDiagnosticRead) -> EmissionMeasurement {
+  EmissionUnreached {
+    subject: subject,
+    stage: StageEmitDecode,
+    cause: emit_diagnostic_read_refusal_reason(read: read)
+  }
+}
+
+// THE CARGO HALF, run only once the emit half has produced a real population. It is a separate
+// function so that "the emitter completed" is established before anything downstream can be
+// reported, and so the stage that refuses is named at the site that knows it.
+//
+// THE ASSEMBLE ARM CHECKS BOTH the assembler's exit status and the verdict marker it prints.
+// Reading only the status would admit a future arm that exits 0 while refusing; reading only the
+// marker would admit a crash that never printed anything.
+//
+// THE CARGO-DECODE ARM IS A REFUSAL, NOT A CLEAN BUILD. A message stream the decoder could not
+// read carries the decoder's own located cause, so the reader learns which line stopped it rather
+// than receiving a population that silently lost members. A stream that simply STOPS -- a killed
+// build -- refuses there too, so a prefix never reaches this carrier as a population.
+//
+// AND THE CLEAN VERDICT COMES FROM CARGO'S OWN TERMINAL MESSAGE, not from the transport's exit
+// status beside it: `build-finished` is emitted BY the run being measured, which is what makes it
+// a fact about that run rather than about a process someone observed nearby.
+// THE ARGV IS DERIVED FROM THE SCOPE, WHICH IS THE WHOLE POINT OF THE SCOPE EXISTING. An entry
+// measurement passes both roots and names the entry; a primary-root measurement passes the primary
+// root FIRST and each pool after it, and names no entry -- so the primary/pool ORDER that decided
+// what 2026-08-28's runs actually measured is produced here from a structure that states it,
+// rather than by a caller spelling two flags in the right sequence.
+fn emission_compile_args(scope: EmissionScope, render_target: EmissionRenderTarget, out_dir: String) -> List<String> {
+  let tail = ["--output-dir", out_dir, "--target", emission_render_target_flag(t: render_target), "--dependency-pool-index", "primary-precedence"]
+  match scope {
+    EntryScope { entry: e } =>
+      concat(["compile", "--source-root", "dag", "--source-root", "src/v2", "--entry", e], tail)
+    PrimaryRootScope { primary_root: r, dependency_pools: pools } =>
+      concat(
+        concat(["compile", "--source-root", r], pools |> flat_map(pl => ["--source-root", pl])),
+        tail
+      )
+  }
+}
+
+// THE ENTRY A SCOPE NAMES, IF IT NAMES ONE -- ONE AUTHORITY WITH TWO CONSUMERS RATHER THAN A
+// PROJECTION PER CALLER. cssl_assemble takes an --entry-dag, and gunbc.emit_subject_clean_frontier
+// joins measurements to its roster on entry identity; both ask the same question and a primary-root
+// scope answers neither. Fabricating an entry -- the primary root's own path, say -- would hand one
+// consumer a subject the measurement never named and the other a false roster match, so the absence
+// is a typed arm and each caller decides what to do with it (DESIGN section 3: one concept, one
+// home). NEXT-RUNG TRIGGER: an assembler that takes a population rather than an entry, at which
+// point the assembly half of this distinction dissolves into EmissionAssemblyMode.
+type EmissionScopeEntry
+  = ScopeEntry { entry: String }
+  | ScopeNamesNoEntry { why: String }
+
+// THE JOIN KEY A SCOPE PRESENTS, and it lives here because THREE callers need it and getting it
+// wrong is silent. gunbc.emit_subject_clean_frontier joins measurements to its roster on entry
+// identity; measure_scope_emission stamps the same key onto the arms where no subject could be
+// established; and both must agree or a run joins to nothing under a name that looks right.
+//
+// AN ENTRY SCOPE PRESENTS ITS BARE PATH, NEVER ITS LABEL. The label reads "entry foo.dag", which is
+// correct prose and a WRONG KEY: it cannot equal a repository-relative path, so the lookup answers
+// SubjectReadingAbsent for exactly the entry the run was about. That is the silent-subject class
+// this whole change exists to close, and review 57181 caught me reintroducing it on the one arm I
+// had not routed through this projection. A population scope presents its LABEL deliberately --
+// prefixed, so it cannot collide with any path and joins to nothing, which is the accurate answer
+// rather than a false match on whichever root it names.
+fn emission_scope_join_key(sc: EmissionScope) -> String {
+  match emission_scope_entry(sc: sc) {
+    ScopeEntry { entry: e } => e
+    ScopeNamesNoEntry { why: _ } => emission_scope_label(sc: sc)
+  }
+}
+
+fn emission_scope_entry(sc: EmissionScope) -> EmissionScopeEntry {
+  match sc {
+    EntryScope { entry: e } => ScopeEntry { entry: e }
+    PrimaryRootScope { primary_root: _, dependency_pools: _ } =>
+      ScopeNamesNoEntry {
+        why: "cssl_assemble takes a single --entry-dag and a primary-root scope names a population rather than an entry; assembling one would measure a subject this run never asked for"
+      }
+  }
+}
+
+fn measure_cargo_half(
+  subject: EmissionMeasurementSubject,
+  root: String,
+  out_dir: String,
+  cssl_assemble_bin: String,
+  emit_diagnostics: List<GunbcDiagnostic>,
+  emitted_files: EmittedFileCount
+) -> EmissionMeasurement {
+  let src_dir = shell.Mkdir.Parents(path: concat(out_dir, "/src"))
+  if !src_dir.success {
+    EmissionCargoUnreached {
+      subject: subject,
+      stage: StageAssemble,
+      cause: concat("could not create the emitted crate's src directory under ", out_dir),
+      emit_diagnostics: emit_diagnostics,
+      emitted_files: emitted_files
+    }
+  } else {
+    match emission_scope_entry(sc: subject.scope) {
+      ScopeNamesNoEntry { why: w } =>
+        EmissionCargoUnreached {
+          subject: subject,
+          stage: StageAssemble,
+          cause: w,
+          emit_diagnostics: emit_diagnostics,
+          emitted_files: emitted_files
+        }
+      ScopeEntry { entry: assembly_entry } => {
+    let assemble = gunbc.WitnessBin.Run(
+      workdir: root,
+      bin_path: cssl_assemble_bin,
+      args: [
+        "--out-dir", out_dir,
+        "--entry-dag", assembly_entry,
+        "--root", root,
+        "--std-bridge-dir", cssl_std_bridge_shims_rel
+      ]
+    )
+    if !assemble.success || !string_contains(s: assemble.stdout, pattern: "CSSL_ASSEMBLE: PASS") {
+      EmissionCargoUnreached {
+        subject: subject,
+        stage: StageAssemble,
+        cause: concat("cssl_assemble refused: ", concat(assemble.stdout, assemble.stderr)),
+        emit_diagnostics: emit_diagnostics,
+        emitted_files: emitted_files
+      }
+    } else {
+      let manifest = Filesystem.Write(
+        path: concat(out_dir, "/Cargo.toml"),
+        content: cssl_v1_compiled_probe_lib_cargo_toml(root: root)
+      )
+      if !manifest.success {
+        EmissionCargoUnreached {
+          subject: subject,
+          stage: StageManifest,
+          cause: concat("could not write the probe crate manifest under ", out_dir),
+          emit_diagnostics: emit_diagnostics,
+          emitted_files: emitted_files
+        }
+      } else {
+        let build = cargo.Build.BuildManifestMessages(
+          workdir: out_dir,
+          manifest_path: concat(out_dir, "/Cargo.toml"),
+          target_dir: concat(out_dir, "/target"),
+          extra_args: ["--release", "--lib"]
+        )
+        match cargo_scan_diagnostics(stdout: build.stdout) {
+          CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n, build_succeeded: ok, terminal_seen: _ } =>
+            EmissionMeasured {
+              subject: subject,
+              emitted_files: emitted_files,
+              emit_diagnostics: emit_diagnostics,
+              cargo_clean: ok,
+              cargo_diagnostics: ds,
+              cargo_lines_scanned: n
+            }
+          scan =>
+            EmissionCargoUnreached {
+              subject: subject,
+              stage: StageCargoDecode,
+              cause: concat(
+                cargo_diagnostic_scan_refusal_reason(scan: scan),
+                concat(" — cargo stderr: ", build.stderr)
+              ),
+              emit_diagnostics: emit_diagnostics,
+              emitted_files: emitted_files
+            }
+        }
+      }
+    }
+      }
+    }
+  }
+}
+
+// ONE ENTRY IN, ONE MEASUREMENT OUT. `entry` is a repository-relative `.dag` path, exactly what
+// `gunbc compile --entry` takes.
+//
+// A COMPILER THAT RAN AND REFUSED IS A MEASUREMENT, not an instrument failure: the population it
+// produced is the answer, so it travels with the refusal rather than being discarded for it.
+// ESTABLISHING THE SUBJECT, and every component that cannot be observed REFUSES the run. There is
+// deliberately no partial subject: a measurement whose compiler digest is "unavailable" is a
+// population nobody can attribute, which is the state this receipt exists to make unrepresentable.
+fn establish_subject(scope: EmissionScope, render_target: EmissionRenderTarget, root: String, gunbc_bin: String, cssl_assemble_bin: String) -> EmissionSubjectRead {
+  let head = git.Inspect.HeadCommit()
+  if !head.success {
+    SubjectUnreadable { cause: "could not read the source revision (git rev-parse HEAD)" }
+  } else {
+    let status = git.Inspect.WorkingTreeStatus()
+    if !status.success {
+      SubjectUnreadable { cause: "could not read the working-tree standing (git status --porcelain)" }
+    } else {
+      match sha256sum_file_digest_via_shell(path: gunbc_bin as NonEmptyStr) {
+        Sha256FileDigestUnavailable { path: p, reason: r } =>
+          SubjectUnreadable { cause: concat(concat("could not digest the compiler at ", p as String), concat(": ", r)) }
+        Sha256FileDigest { digest: compiler } =>
+          match sha256sum_file_digest_via_shell(path: cssl_assemble_bin as NonEmptyStr) {
+            Sha256FileDigestUnavailable { path: p, reason: r } =>
+              SubjectUnreadable { cause: concat(concat("could not digest the assembler at ", p as String), concat(": ", r)) }
+            Sha256FileDigest { digest: assembler } =>
+              SubjectRead {
+                subject: EmissionMeasurementSubject {
+                  scope: scope,
+                  render_target: render_target,
+                  source_revision: head.sha,
+                  working_tree: if status.entries_nul == "" { WorkingTreeClean } else { WorkingTreeDirty },
+                  compiler: compiler,
+                  assembler: assembler,
+                  assembly_mode: SeedLinkedAssembly { std_bridge_dir: cssl_std_bridge_shims_rel }
+                }
+              }
+          }
+      }
+    }
+  }
+}
+
+fn measure_entry_emission(entry: String) -> EmissionMeasurement {
+  measure_scope_emission(scope: EntryScope { entry: entry }, render_target: RustRender)
+}
+
+// THE SCOPE-GENERAL BODY. measure_entry_emission is the entry-shaped face of it and is retained
+// because its callers ask an entry-shaped question; it is one call, not a second implementation
+// (DESIGN section 3 -- an entry measurement and a primary-root measurement are one operation at
+// two breadths, which is section 2's horizontal move, not two instruments).
+fn measure_scope_emission(scope: EmissionScope, render_target: EmissionRenderTarget) -> EmissionMeasurement {
+  let entry = emission_scope_join_key(sc: scope)
+  let root = git.Inspect.Toplevel()
+  let out_dir = shell.Mktemp.Dir()
+  if !out_dir.success {
+    EmissionSubjectUnestablished {
+      entry: entry,
+      stage: StageWorkspace,
+      cause: "could not create a temporary directory for the emitted crate"
+    }
+  } else {
+    let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+    let cssl_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
+    if !gunbc_built || !cssl_built {
+      EmissionSubjectUnestablished {
+        entry: entry,
+        stage: StageBinaries,
+        cause: "the gunbc and cssl_assemble release binaries are not both buildable — the instrument invokes the compiler it is measuring as a subprocess, so an absent binary is a refusal and never a clean measurement"
+      }
+    } else {
+      let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
+      let cssl_assemble_bin = witness_bin_release_path(root: root.path, bin_name: "cssl_assemble")
+      match establish_subject(scope: scope, render_target: render_target, root: root.path, gunbc_bin: gunbc_bin, cssl_assemble_bin: cssl_assemble_bin) {
+        SubjectUnreadable { cause: c } =>
+          EmissionSubjectUnestablished { entry: entry, stage: StageSubject, cause: c }
+        SubjectRead { subject: subject } =>
+          measure_with_subject(
+            subject: subject,
+            root: root.path,
+            out_dir: out_dir.path,
+            gunbc_bin: gunbc_bin,
+            cssl_assemble_bin: cssl_assemble_bin
+          )
+      }
+    }
+  }
+}
+
+// THE EMIT HALF, with the subject already bound. A compiler that RAN AND REFUSED is a measurement,
+// not an instrument failure: the population it produced is the answer, so it travels with the
+// refusal rather than being discarded for it.
+fn measure_with_subject(
+  subject: EmissionMeasurementSubject,
+  root: String,
+  out_dir: String,
+  gunbc_bin: String,
+  cssl_assemble_bin: String
+) -> EmissionMeasurement {
+  let emit = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: gunbc_bin,
+    args: emission_compile_args(scope: subject.scope, render_target: subject.render_target, out_dir: out_dir)
+  )
+  let read = read_emit_diagnostics(
+    stderr: emit.stderr,
+    capture: CaptureExtent {
+      truncated: emit.stderr_truncated,
+      total: byte_size(count: emit.stderr_total_bytes),
+      retained: byte_size(count: emit.stderr_retained_bytes)
+    }
+  )
+  match read {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: files, declared_total: _ } =>
+      if !emit.success {
+        EmissionEmitRefused {
+          subject: subject,
+          exit_code: emit.exit_code,
+          emit_diagnostics: ds,
+          emitted_files: files
+        }
+      } else {
+        measure_cargo_half(
+          subject: subject,
+          root: root,
+          out_dir: out_dir,
+          cssl_assemble_bin: cssl_assemble_bin,
+          emit_diagnostics: ds,
+          emitted_files: files
+        )
+      }
+    EmitSummaryAbsent => emit_decode_unreached(subject: subject, read: read)
+    EmitSummaryUnreadable { line: _ } => emit_decode_unreached(subject: subject, read: read)
+    EmitPopulationMismatch { decoded: _, declared: _ } => emit_decode_unreached(subject: subject, read: read)
+    EmitSummaryDisagreement { compiled_total: _, severity_total: _ } => emit_decode_unreached(subject: subject, read: read)
+    EmitAnchorDuplicated { anchor: _, count: _ } => emit_decode_unreached(subject: subject, read: read)
+    EmitScopeUnconfirmed => emit_decode_unreached(subject: subject, read: read)
+    EmitOutputTruncated { extent: _ } => emit_decode_unreached(subject: subject, read: read)
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// RENDERING. Joinable rows, never a summary sentence.
+//
+// The header states the stage the run reached BEFORE any number appears, so a reader cannot take a
+// count out of context: a report whose first line says the emitter never ran carries no counts at
+// all, because there are none to carry.
+// ---------------------------------------------------------------------------------------------
+
+fn emission_report_rows(m: EmissionMeasurement) -> List<String> {
+  match m {
+    EmissionSubjectUnestablished { entry: e, stage: s, cause: c } => [
+      concat("subject\t", e),
+      concat("outcome\tsubject-unestablished\tstage\t", emission_stage_name(stage: s)),
+      concat("cause\t", c),
+      "provenance\t(none — the instrument could not say what would have produced a measurement, so it took none)"
+    ]
+    EmissionUnreached { subject: subject, stage: s, cause: c } =>
+      concat(
+        emission_subject_rows(subject: subject),
+        [
+          concat("outcome\tunreached\tstage\t", emission_stage_name(stage: s)),
+          concat("cause\t", c)
+        ]
+      )
+    EmissionEmitRefused { subject: subject, exit_code: code, emit_diagnostics: ds, emitted_files: files } =>
+      concat(
+        concat(
+          emission_subject_rows(subject: subject),
+          [
+            concat("outcome\temit-refused\texit_code\t", to_string(code)),
+            concat("emitted_files\t", emitted_file_count_text(files: files))
+          ]
+        ),
+        concat(
+          concat(
+            emit_population_rows(ds: ds, files: files),
+            ["cargo_population\t(not produced — the emitter refused, so no crate was assembled)"]
+          ),
+          map(ds, d => concat("emit\t", gunbc_diagnostic_row(d: d)))
+        )
+      )
+    EmissionCargoUnreached { subject: subject, stage: s, cause: c, emit_diagnostics: ds, emitted_files: files } =>
+      concat(
+        concat(
+          emission_subject_rows(subject: subject),
+          [
+            concat("outcome\tcargo-unreached\tstage\t", emission_stage_name(stage: s)),
+            concat("cause\t", c),
+            concat("emitted_files\t", emitted_file_count_text(files: files))
+          ]
+        ),
+        concat(
+          concat(
+            emit_population_rows(ds: ds, files: files),
+            ["cargo_population\t(not produced)"]
+          ),
+          map(ds, d => concat("emit\t", gunbc_diagnostic_row(d: d)))
+        )
+      )
+    EmissionMeasured {
+      subject: subject,
+      emitted_files: files,
+      emit_diagnostics: ds,
+      cargo_clean: clean,
+      cargo_diagnostics: rs,
+      cargo_lines_scanned: lines
+    } =>
+      concat(
+        concat(
+          concat(
+            emission_subject_rows(subject: subject),
+            [
+              concat("outcome\tmeasured\tcargo_clean\t", to_string(clean)),
+              concat("emitted_files\t", emitted_file_count_text(files: files))
+            ]
+          ),
+          concat(
+            emit_population_rows(ds: ds, files: files),
+            [
+              concat(
+                concat("cargo_population\t", to_string(count(rs))),
+                concat("\tcargo_message_lines\t", to_string(lines))
+              )
+            ]
+          )
+        ),
+        concat(
+          map(ds, d => concat("emit\t", gunbc_diagnostic_row(d: d))),
+          map(rs, r => concat("cargo\t", rustc_diagnostic_row(d: r)))
+        )
+      )
+  }
+}
+
+fn emission_report_text(m: EmissionMeasurement) -> String {
+  concat(join(emission_report_rows(m: m), "\n"), "\n")
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CLI SURFACE.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/emission_entry_instrument.dag --function measure \
+//     --arg entry=dag/extdeps/cpu/ampere.dag --arg report=/tmp/board.tsv
+//
+// The report is WRITTEN rather than returned because `gunbc run` maps a returned value to an exit
+// status and has no value-printing verb; the same wall tools.self_host_curated_probe_cargo records.
+// The typed measurement is what measure_entry_emission returns -- this wrapper only renders it.
+//
+// THE EXIT STATUS REPORTS THE INSTRUMENT, NOT THE SUBJECT. A completed measurement exits zero even
+// when the entry it measured is full of errors, and an instrument that could not run exits nonzero
+// even though it found nothing wrong with anything. Any other mapping would make a broken
+// instrument indistinguishable from a clean subject, which is the failure this whole module is a
+// response to.
+fn measure(entry: String, report: String) -> ProcessExit {
+  if entry == "" {
+    exit_failure(reason: "measure: --arg entry=<repo-relative .dag path> is required")
+  } else {
+    if report == "" {
+      exit_failure(reason: "measure: --arg report=<path> is required — the measurement is written, not printed")
+    } else {
+      let m = measure_entry_emission(entry: entry)
+      let write = Filesystem.Write(path: report, content: emission_report_text(m: m))
+      if !write.success {
+        exit_failure(reason: concat("measure: could not write the report to ", report))
+      } else {
+        if emission_measurement_completed(m: m) {
+          ExitSuccess
+        } else {
+          exit_failure(
+            reason: concat(
+              concat("measure: the instrument did not complete for ", entry),
+              concat(" — the report at ", concat(report, " names the stage that stopped it"))
+            )
+          )
+        }
+      }
+    }
+  }
+}

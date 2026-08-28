@@ -1,0 +1,103 @@
+module gunbc.fabric_floor_dispatch
+
+import std.types { Int, List, NonEmptyStr, Timestamp }
+import extdeps.currency.currency { Usd }
+import std.measure { MoneyAmountMicro, MoneyPerSecond }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
+import product.fabric.demand { Demand, BudgetAccountId, ObservationReceiptRef }
+import product.fabric.selection {
+  CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer,
+  select_supply,
+}
+import gunbc.fabric_witness_run {
+  floor_execution_requirements,
+  floor_grant_duration,
+  floor_buy_terms,
+  floor_admission_terms,
+  floor_satisfaction_requirement,
+}
+
+// THE JOIN, AND IT IS A JOIN RATHER THAN A BROKER.
+//
+// gunbc.fabric_witness_run names its own next-rung trigger twice: "a broker fold that selects a
+// SupplierOffer for this Demand", and records that eleven of its thirteen functions have no
+// production consumer because that fold does not exist. Measured before writing this module: the
+// fold DOES exist. product.fabric.selection's select_supply is complete -- it ranks, prices,
+// screens currency, values delay, and returns OfferSelected or NoAdmissibleOffer -- and it has
+// zero production consumers of its own.
+//
+// So both halves were finished and nothing named the other. This module is that naming. It builds
+// no allocator, invents no vocabulary, and adds no policy: every value it passes is read from an
+// authority that already produced it.
+//
+// WHAT THIS DOES NOT DO, stated first because the module it consumes was corrected for claiming
+// the opposite. Selecting an offer is a DECISION, not an execution. GitHub Actions still owns
+// triggering, queueing, runner selection, concurrency and lifecycle. Nothing here reserves a slot,
+// holds a grant, or causes a process. The invariant fabric_witness_run builds toward --
+//
+//     no committed Grant  ->  no process and no host effect
+//
+// -- is NOT established by this module and must not be read off it. What changes is narrower and
+// real: the floor's Work is now priced against actual offers by the fold that owns that question,
+// so affordability and fungibility move from modeled-but-unread onto a path something executes.
+
+// The floor's demand, assembled from the authority that already states every field. The budget
+// account, prices and deadline are the caller's to supply: they are policy about what this run may
+// spend, and inventing them here would be the layer inversion DESIGN section 3 names -- a workflow
+// fact modeled inside the thing that consumes it.
+fn floor_demand(
+  id: FabricIdentity<NonEmptyStr, DemandKey>,
+  work: FabricIdentity<NonEmptyStr, WorkKey>,
+  origin: ObservationReceiptRef,
+  submitted_at: Timestamp,
+  account: BudgetAccountId,
+  reservation_price: MoneyAmountMicro,
+  maximum_buy_order: MoneyAmountMicro,
+  deadline: Timestamp?,
+) -> Demand<NonEmptyStr> {
+  Demand {
+    id: id,
+    work: work,
+    origin: origin,
+    submitted_at: submitted_at,
+    admission: floor_admission_terms(
+      buy: floor_buy_terms(
+        account: account,
+        reservation_price: reservation_price,
+        maximum_buy_order: maximum_buy_order,
+      ),
+      deadline: deadline,
+    ),
+    satisfaction: floor_satisfaction_requirement(),
+  }
+}
+
+// THE SELECTION ITSELF. Requirements and duration come from the floor's own authority rather than
+// from the caller, because they are facts about what the floor IS -- eight threads, the rust
+// toolchain capability, the internal-fleet trust domain, a thirty-minute estimate. A caller free
+// to restate them could select an offer for a Work this floor is not.
+fn floor_supply_selection(
+  candidates: List<CandidateOffer<NonEmptyStr>>,
+  maximum_buy_order: MoneyAmountMicro,
+  delay_valuation: MoneyPerSecond,
+) -> SupplySelection<NonEmptyStr> {
+  select_supply(
+    requirements: floor_execution_requirements(),
+    candidates: candidates,
+    duration: floor_grant_duration(),
+    maximum_buy_order: maximum_buy_order,
+    budget_currency: Usd,
+    delay_valuation: delay_valuation,
+  )
+}
+
+// An empty candidate list is NoAdmissibleOffer, not a refusal of a different kind, and that is the
+// honest answer rather than a degenerate one: nothing was offered, so nothing was admissible. The
+// distinction a caller needs -- did every offer fail a screen, or were there none -- is carried by
+// `considered`, which is empty in the second case and populated in the first.
+fn floor_selection_selected_offer_count(selection: SupplySelection<NonEmptyStr>) -> Int {
+  match selection {
+    OfferSelected { offer: _, cost: _, basis: _, horizon: _, considered: _ } => 1
+    NoAdmissibleOffer { considered: _ } => 0
+  }
+}
