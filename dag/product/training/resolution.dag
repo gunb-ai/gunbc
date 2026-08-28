@@ -308,32 +308,103 @@ fn loss_mask_policy_material(v: LossMaskPolicy) -> NonEmptyStr {
   }
 }
 
+// ONE PLACE A COORDINATE'S MATERIAL IS SPELLED. The work key and the effective-manifest
+// comparison both need to know what a coordinate's value IS; if each folded the manifest itself,
+// a coordinate could enter the key and be invisible to the comparison, or drift between the two
+// spellings, and both failures compile. The axis-keyed projection below is the single authority,
+// training_manifest_material folds it in axis order, and the reconciliation comparator reads the
+// same function per axis -- so a coordinate cannot reach the key without being comparable.
+fn training_manifest_coordinate_material(
+  m: TrainingResolvedManifest,
+  axis: TrainingResolutionAxis,
+) -> NonEmptyStr {
+  match axis {
+    BaseArtifactAxis => serialize_content_hash(hash: m.base_artifact) as NonEmptyStr
+    DatasetManifestAxis => serialize_content_hash(hash: m.dataset_manifest) as NonEmptyStr
+    TokenizerAxis => serialize_content_hash(hash: m.tokenizer) as NonEmptyStr
+    ChatTemplateAxis => serialize_content_hash(hash: m.chat_template) as NonEmptyStr
+    TrainerClosureAxis => serialize_content_hash(hash: m.trainer_closure) as NonEmptyStr
+    TargetModulesAxis => serialize_content_hash(hash: m.target_modules) as NonEmptyStr
+    OptimizerAxis => serialize_content_hash(hash: m.optimizer_config) as NonEmptyStr
+    SchedulerAxis => serialize_content_hash(hash: m.scheduler_config) as NonEmptyStr
+    LearningRateScheduleAxis => serialize_content_hash(hash: m.learning_rate_schedule) as NonEmptyStr
+    RankAxis => to_string(m.rank) as NonEmptyStr
+    ScalingAxis => to_string(m.scaling) as NonEmptyStr
+    DropoutAxis => to_string(dropout_permille_value(d: m.dropout_permille)) as NonEmptyStr
+    SequenceLengthAxis => to_string(m.sequence_length) as NonEmptyStr
+    PackingAxis => packing_policy_material(v: m.packing)
+    LossMaskAxis => loss_mask_policy_material(v: m.loss_mask)
+    MixtureAxis => serialize_content_hash(hash: m.mixture) as NonEmptyStr
+    MicroBatchAxis => to_string(m.micro_batch) as NonEmptyStr
+    GradientAccumulationAxis => to_string(m.gradient_accumulation) as NonEmptyStr
+    NumericFormatAxis => training_numeric_format_material(v: m.numeric_format)
+    SeedAxis => to_string(m.seed) as NonEmptyStr
+    DataOrderSeedAxis => to_string(m.data_order_seed) as NonEmptyStr
+    CheckpointFormatAxis => serialize_content_hash(hash: m.checkpoint_format) as NonEmptyStr
+    OutputContractAxis => serialize_content_hash(hash: m.output_contract) as NonEmptyStr
+  }
+}
+
+fn training_resolution_axis_name(axis: TrainingResolutionAxis) -> NonEmptyStr {
+  match axis {
+    BaseArtifactAxis => "base_artifact"
+    DatasetManifestAxis => "dataset_manifest"
+    TokenizerAxis => "tokenizer"
+    ChatTemplateAxis => "chat_template"
+    TrainerClosureAxis => "trainer_closure"
+    TargetModulesAxis => "target_modules"
+    OptimizerAxis => "optimizer_config"
+    SchedulerAxis => "scheduler_config"
+    LearningRateScheduleAxis => "learning_rate_schedule"
+    RankAxis => "rank"
+    ScalingAxis => "scaling"
+    DropoutAxis => "dropout_permille"
+    SequenceLengthAxis => "sequence_length"
+    PackingAxis => "packing"
+    LossMaskAxis => "loss_mask"
+    MixtureAxis => "mixture"
+    MicroBatchAxis => "micro_batch"
+    GradientAccumulationAxis => "gradient_accumulation"
+    NumericFormatAxis => "numeric_format"
+    SeedAxis => "seed"
+    DataOrderSeedAxis => "data_order_seed"
+    CheckpointFormatAxis => "checkpoint_format"
+    OutputContractAxis => "output_contract"
+  }
+}
+
+// The axis roster is enumerated ONCE. A consumer that hand-listed the axes it cared about would be
+// a second, silently-narrower roster, and the coordinate it forgot would be the one that drifts.
+fn training_resolution_axes() -> List<TrainingResolutionAxis> {
+  [
+    BaseArtifactAxis, DatasetManifestAxis, TokenizerAxis, ChatTemplateAxis,
+    TrainerClosureAxis, TargetModulesAxis, OptimizerAxis, SchedulerAxis,
+    LearningRateScheduleAxis, RankAxis, ScalingAxis, DropoutAxis,
+    SequenceLengthAxis, PackingAxis, LossMaskAxis, MixtureAxis,
+    MicroBatchAxis, GradientAccumulationAxis, NumericFormatAxis, SeedAxis,
+    DataOrderSeedAxis, CheckpointFormatAxis, OutputContractAxis,
+  ]
+}
+
+fn training_manifest_axis_material(
+  m: TrainingResolvedManifest,
+  axis: TrainingResolutionAxis,
+) -> NonEmptyStr {
+  join(
+    [
+      training_resolution_axis_name(axis: axis),
+      "\u{1f}",
+      training_manifest_coordinate_material(m: m, axis: axis),
+    ],
+    "",
+  ) as NonEmptyStr
+}
+
 fn training_manifest_material(m: TrainingResolvedManifest) -> NonEmptyStr {
-  join([
-    join(["base_artifact", "\u{1f}", serialize_content_hash(hash: m.base_artifact)], ""),
-    join(["dataset_manifest", "\u{1f}", serialize_content_hash(hash: m.dataset_manifest)], ""),
-    join(["tokenizer", "\u{1f}", serialize_content_hash(hash: m.tokenizer)], ""),
-    join(["chat_template", "\u{1f}", serialize_content_hash(hash: m.chat_template)], ""),
-    join(["trainer_closure", "\u{1f}", serialize_content_hash(hash: m.trainer_closure)], ""),
-    join(["target_modules", "\u{1f}", serialize_content_hash(hash: m.target_modules)], ""),
-    join(["optimizer_config", "\u{1f}", serialize_content_hash(hash: m.optimizer_config)], ""),
-    join(["scheduler_config", "\u{1f}", serialize_content_hash(hash: m.scheduler_config)], ""),
-    join(["learning_rate_schedule", "\u{1f}", serialize_content_hash(hash: m.learning_rate_schedule)], ""),
-    join(["rank", "\u{1f}", to_string(m.rank)], ""),
-    join(["scaling", "\u{1f}", to_string(m.scaling)], ""),
-    join(["dropout_permille", "\u{1f}", to_string(dropout_permille_value(d: m.dropout_permille))], ""),
-    join(["sequence_length", "\u{1f}", to_string(m.sequence_length)], ""),
-    join(["packing", "\u{1f}", packing_policy_material(v: m.packing)], ""),
-    join(["loss_mask", "\u{1f}", loss_mask_policy_material(v: m.loss_mask)], ""),
-    join(["mixture", "\u{1f}", serialize_content_hash(hash: m.mixture)], ""),
-    join(["micro_batch", "\u{1f}", to_string(m.micro_batch)], ""),
-    join(["gradient_accumulation", "\u{1f}", to_string(m.gradient_accumulation)], ""),
-    join(["numeric_format", "\u{1f}", training_numeric_format_material(v: m.numeric_format)], ""),
-    join(["seed", "\u{1f}", to_string(m.seed)], ""),
-    join(["data_order_seed", "\u{1f}", to_string(m.data_order_seed)], ""),
-    join(["checkpoint_format", "\u{1f}", serialize_content_hash(hash: m.checkpoint_format)], ""),
-    join(["output_contract", "\u{1f}", serialize_content_hash(hash: m.output_contract)], ""),
-  ], "\u{1e}") as NonEmptyStr
+  join(
+    training_resolution_axes().map(axis => training_manifest_axis_material(m: m, axis: axis)),
+    "\u{1e}",
+  ) as NonEmptyStr
 }
 
 fn training_manifest_reference(m: TrainingResolvedManifest) -> NonEmptyStr {
