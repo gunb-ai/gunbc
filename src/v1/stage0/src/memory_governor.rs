@@ -272,7 +272,7 @@ pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<Strin
 /// and `--target rust` at 13005964 kB, both EXIT=1 (completed and refused, not killed) on an
 /// unthrottled host, with the binary built from the tree being compiled. 12.41 GiB rounded UP
 /// to whole-gibibyte grain, because for a demand figure rounding up refuses the marginal case.
-pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = 13958643712;
+pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = 17179869184;
 
 /// Arm-time admission for a WHOLE-CORPUS compile — the seed mirror of
 /// `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_admission`.
@@ -640,11 +640,21 @@ mod tests {
     /// the run that was SIGKILLed (recovered from its own `cap=1675` line — see
     /// `gunbc.whole_corpus_compile_admission`), paired with the fleet runner slot's declared
     /// `memory.high`, which is what the machine CI runs this instrument on reports. Both
-    /// arms stand on independently measured machines, so each fails for its own reason: the
-    /// refusal ceasing to fire means the doomed run became admissible, and the admission
-    /// ceasing to hold means CI's own runner is being refused.
+    /// arms stand on independently measured machines, so each fails for its own reason.
+    ///
+    /// THE SECOND ARM WAS INVERTED 2026-08-28 AND NOT EDITED TO STAY GREEN. It asserted that
+    /// the CI runner slot is ADMITTED. Adopting the highest measured COMPLETING peak as the
+    /// demand (review 57202 on gunbc#9545) put the threshold above the slot's reported
+    /// `memory.high`, so the slot is now refused — deliberately: the budget a host reports is
+    /// the budget it has agreed to give, and admitting on the grounds that the run will breach
+    /// it and survive on swap below `memory.max` is admitting a known breach. The alternative
+    /// was to lower the threshold until this assertion stayed true, which derives a safety
+    /// literal from a wanted outcome. Its `.dag` twin
+    /// (`test.claim.whole_corpus_compile_admission_witness_test`
+    /// `the_runner_ci_actually_uses_is_refused_at_the_completing_peak_demand`) is inverted in
+    /// lockstep, and `runner_slot_refusal_note` there carries the full argument.
     #[test]
-    fn whole_corpus_compile_refuses_the_budget_that_was_sigkilled_and_admits_the_ci_runner() {
+    fn whole_corpus_compile_refuses_the_budget_that_was_sigkilled_and_refuses_the_ci_runner() {
         let doomed =
             whole_corpus_compile_admission(Some(5_269_094_400), "/proc/meminfo MemAvailable");
         assert!(matches!(
@@ -662,9 +672,9 @@ mod tests {
         );
         assert!(matches!(
             ci_slot,
-            WholeCorpusCompileAdmission::Admitted { .. }
+            WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand { .. }
         ));
-        assert!(whole_corpus_compile_refusal_diagnostic(&ci_slot).is_none());
+        assert!(whole_corpus_compile_refusal_diagnostic(&ci_slot).is_some());
     }
 
     #[test]
