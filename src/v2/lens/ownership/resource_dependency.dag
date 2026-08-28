@@ -1,5 +1,28 @@
 module v2.test.lens_ownership.resource_dependency
 
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.lens.common.algebraic_composition { RequiresAccessWitness }
+import v2.lens.ownership {
+  OwnershipFact,
+  ownership_fact,
+  ownership_fact_eq,
+  ownership_witness
+}
+import v2.std.dependency {
+  ClassifiedDependencyView,
+  DependencyView,
+  ResourceDependsOn
+}
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Edge, Named, Node, TypeNode }
+import v2.std.witness { Violates, Witness }
+import v2.test.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
 data ownership_child: Node = claim_atom_node(s: ^ownership_child_symbol)
 
 data ownership_root: Node = Node {
