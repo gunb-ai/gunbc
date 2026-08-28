@@ -142,17 +142,17 @@ test fn witness_an_observed_conformance_would_read_observed() -> Bool {
 // and reports a rule nobody measured.
 test fn witness_unimported_modules_are_not_emitted() -> Bool {
   required_regen_closure_membership_controls
-    |> filter(o => o.seed_importers == 0)
+    |> filter(o => o.seed_reachable == false)
     |> all(o => o.emitted == false)
 }
 
 test fn witness_imported_modules_are_emitted() -> Bool {
   required_regen_closure_membership_controls
-    |> filter(o => o.seed_importers > 0)
+    |> filter(o => o.seed_reachable)
     |> all(o => o.emitted)
 }
 
 test fn witness_control_table_populates_both_arms() -> Bool {
-  length(xs: required_regen_closure_membership_controls |> filter(o => o.seed_importers == 0)) > 0
-    && length(xs: required_regen_closure_membership_controls |> filter(o => o.seed_importers > 0)) > 0
+  length(xs: required_regen_closure_membership_controls |> filter(o => o.seed_reachable == false)) > 0
+    && length(xs: required_regen_closure_membership_controls |> filter(o => o.seed_reachable)) > 0
 }

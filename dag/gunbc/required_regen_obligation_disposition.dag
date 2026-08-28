@@ -186,9 +186,20 @@ fn refuted_route_count() -> Int {
   }))
 }
 
+// THE FIELD CARRIES THE DISTINCTION ITS CONSUMERS READ, AND NOTHING MORE. An earlier revision
+// carried seed_importers as an Int, and review 57043 was right that a transcribed integer sat
+// oddly beside this module's own retraction of transcribed counts. Measured against the
+// consumers rather than argued: every reader tested `== 0` or `> 0`, so the MAGNITUDE was read
+// by nothing and a row could drift from one importer to seven with no witness changing. That is
+// the same test this file applies to the conformance counts a few declarations up -- a member
+// that can rot without changing any decision was never carrying one -- so the honest move is to
+// delete the magnitude rather than defend it as a fixture. What remains is the zero/non-zero
+// distinction the rule actually turns on, which is a structural fact about the import graph and
+// not a measurement of a population. `emitted` stays a stored Bool because it IS read directly:
+// it is the observed consequence the control exists to pair against reachability.
 type ClosureMembershipObservation {
   module_path: String
-  seed_importers: Int
+  seed_reachable: Bool
   emitted: Bool
 }
 
@@ -196,11 +207,11 @@ type ClosureMembershipObservation {
 // emitted and leave "would an unimported one be emitted anyway?" unanswered -- which is exactly
 // the question the second precondition of the refuted route turns on.
 data required_regen_closure_membership_controls: List<ClosureMembershipObservation> = [
-  ClosureMembershipObservation { module_path: "extdeps.cargo", seed_importers: 2, emitted: true },
-  ClosureMembershipObservation { module_path: "gunbc.cli_dispatch_surface", seed_importers: 1, emitted: true },
-  ClosureMembershipObservation { module_path: "gunbc.ci_spec", seed_importers: 0, emitted: false },
-  ClosureMembershipObservation { module_path: "gunbc.commit_workflow", seed_importers: 0, emitted: false },
-  ClosureMembershipObservation { module_path: "gunbc.doc_graph_roots", seed_importers: 0, emitted: false }
+  ClosureMembershipObservation { module_path: "extdeps.cargo", seed_reachable: true, emitted: true },
+  ClosureMembershipObservation { module_path: "gunbc.cli_dispatch_surface", seed_reachable: true, emitted: true },
+  ClosureMembershipObservation { module_path: "gunbc.ci_spec", seed_reachable: false, emitted: false },
+  ClosureMembershipObservation { module_path: "gunbc.commit_workflow", seed_reachable: false, emitted: false },
+  ClosureMembershipObservation { module_path: "gunbc.doc_graph_roots", seed_reachable: false, emitted: false }
 ]
 
 // THE OPERATION IS ENFORCED; WHAT IS UNOBSERVED IS THE RELATION BETWEEN ITS TWO REALIZATIONS.
