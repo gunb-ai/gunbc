@@ -78,11 +78,11 @@ test fn witness_the_modified_line_carries_what_git_reported() -> Bool {
       let line = deployed_tree_standing_line(
         standing: DeployedTreeModifiedAtRevision {
           revision: a,
-          changed_paths: "dag/gunbc/ci_spec.dag" as NonEmptyStr,
+          changed_paths: "dag/gunbc/ci/ci_spec.dag" as NonEmptyStr,
         },
       )
       string_contains(s: line, pattern: "MODIFIED-AT-REVISION")
-        && string_contains(s: line, pattern: "dag/gunbc/ci_spec.dag")
+        && string_contains(s: line, pattern: "dag/gunbc/ci/ci_spec.dag")
         && string_contains(s: line, pattern: git_object_id_wire_hex(oid: a) as String)
     }
   }

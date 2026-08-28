@@ -1,7 +1,7 @@
 module gunbc.plans.v2_complexity_capability_parity
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, BlockquoteBlock, CodeBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
@@ -183,7 +183,7 @@ fn v2_complexity_capability_parity_body() -> List<MarkdownBlock> {
 }
 
 data v2_complexity_capability_parity_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "v2-complexity-capability-parity",
   title: "v2 complexity capability parity — restoring the engine, not porting the seed",
   body: v2_complexity_capability_parity_body(),

@@ -4,7 +4,7 @@ import v2.std.algebra { Cons, Empty, list_flat_map, any }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-// THE OVER-COST WITHHOLDING MECHANISM, CARRYING 276 IDENTITIES.
+// THE OVER-COST WITHHOLDING MECHANISM, CARRYING 274 IDENTITIES.
 //
 // The count is stated once, here, and derived nowhere else in this file's prose. An earlier
 // revision of this header read "CURRENTLY CARRYING NO IDENTITIES" -- true of the empty carrier
@@ -176,7 +176,7 @@ import v2.std.text { String }
 // Nothing here needs to be re-measured to release a row, and nothing may be added to release
 // one.
 
-// THE ROSTER CARRIES 276 IDENTITIES, IN TWO POPULATIONS THAT ARE ENROLLED FOR DIFFERENT REASONS
+// THE ROSTER CARRIES 274 IDENTITIES, IN TWO POPULATIONS THAT ARE ENROLLED FOR DIFFERENT REASONS
 // AND MUST NOT BE READ AS ONE.
 //
 // POPULATION A -- 225 EXPENSIVE PASSES. Claims that REACHED A VERDICT, PASSED, and whose measured
@@ -597,7 +597,7 @@ fn floor_cost_debt_proven_chunk_11() -> List<String> {
 }
 
 fn floor_cost_debt_censored_chunk_00() -> List<String> {
-  Cons { head: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain", tail: Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_real_corpus_entry_produces_typed_standing", tail: Cons { head: "gunbc.test.claim.witness_execution_class_live_census_test.witness_live_roster_census_holds", tail: Cons { head: "test.claim.transport_script_wall_compile_red.wall_red_deleted_free_minter_refuses", tail: Cons { head: "test.claim.transport_script_wall_compile_red.wall_red_string_join_into_retained_record_refuses", tail: Cons { head: "v2.lens.no_dual_representation_test.no_dual_representation_test_clean_holds", tail: Cons { head: "v2.lens.no_dual_representation_test.no_dual_representation_test_coverage_honesty_holds", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash.roster_bash_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash.roster_lean_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_compile_stage_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_glob_discovery_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_lens_cost_model_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_lens_traversal_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_machine_code_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_std_algebra_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_std.roster_std_change_dag_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_swift.roster_swift_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_corpus_roster_nonempty", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_decl_facts_roster_smoke_totality_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain", tail: Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_real_corpus_entry_produces_typed_standing", tail: Cons { head: "gunbc.test.claim.witness_execution_class_live_census_test.witness_live_roster_census_holds", tail: Cons { head: "v2.lens.no_dual_representation_test.no_dual_representation_test_clean_holds", tail: Cons { head: "v2.lens.no_dual_representation_test.no_dual_representation_test_coverage_honesty_holds", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash.roster_bash_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash.roster_lean_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_compile_stage_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_glob_discovery_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_lens_cost_model_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_lens_traversal_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_machine_code_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_std_algebra_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_std.roster_std_change_dag_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_swift.roster_swift_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_corpus_roster_nonempty", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_decl_facts_roster_smoke_totality_holds", tail: Empty {} } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_cost_debt_censored_chunk_01() -> List<String> {
@@ -639,7 +639,27 @@ fn floor_cost_debt_censored_chunk_02() -> List<String> {
 // clock as it already is for CPU; when that lands these two become cheap rather than invisible and
 // their rows should be DELETED, which is the ordinary shrink this contract is built for.
 //
-// THEY ARE NOT DROPPED PRE-EMPTIVELY, because today the floor enforces on the unadjusted wall and
+// THAT SHRINK HAS NOW HAPPENED, AND THIS IS IT. gunbc#9609 nets shared-artifact fill out of the
+// wall clock exactly as it already is for CPU, so the two rows below are cheap rather than
+// invisible and they are DELETED from this roster by the exit path the paragraph above
+// prescribes. Their own marginal work was 0ms and 1ms; what withholding was hiding was an
+// accounting artifact, not a cost. Removing them returns them to ordinary execution with no
+// disposition attached -- verified before the edit: neither identity appears in
+// `v2.workflow.floor_expected_red`, `v2.workflow.floor_route_gap` or
+// `v2.workflow.floor_non_verdict`, so nothing dormant wakes with them (`suppress_withheld`
+// applies to all three rosters, and a deletion here makes any enrolment there observable again).
+//
+// AND THAT IS WHY THEY HAD TO LEAVE RATHER THAN SIMPLY BEING FIXED. While they sat here the
+// floor reported `completed_over_cost_requirement=0` because they DID NOT RUN, which is
+// indistinguishable in that counter from the repair having worked. The fix's own discriminating
+// evidence -- those two rows reaching a verdict where they previously refused -- is only
+// observable once they are back in the plan.
+//
+// THE PARAGRAPH BELOW IS KEPT IN THE PAST TENSE rather than deleted, because it is the reasoning
+// that made the pre-emptive drop wrong at the time and it is what a later reader needs in order
+// to tell this shrink from a premature one.
+//
+// THEY WERE NOT DROPPED PRE-EMPTIVELY, because at the time the floor enforced on the unadjusted wall and
 // would refuse on them. Dropping a row whose cost is an artifact is right only once the artifact is
 // gone; dropping it while the gate still reads the artifact just moves the red. What is corrected
 // here is the CLAIM, not the membership -- an earlier revision described the whole roster as rows
