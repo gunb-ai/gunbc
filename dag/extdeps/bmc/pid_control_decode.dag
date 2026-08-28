@@ -61,7 +61,13 @@ import extdeps.bmc.pid_control_program {
   zone_demand_value,
   decimal_milliseconds,
   decimal_seconds,
+  phosphor_pid_control_external_authority_anchor,
 }
+import extdeps.external_authority { ExternalAuthority }
+
+// THE ANCHOR IS A BINDING, NOT A SECOND URI. This module decodes documents the daemon whose
+// authority extdeps.bmc.pid_control_program already declares; a decoder does not republish it.
+data extdeps_external_authority_anchor: ExternalAuthority = phosphor_pid_control_external_authority_anchor
 
 // DECODING A CAPTURED CONFIGURATION ONTO THE NEUTRAL MODEL. Every refusal here is typed and names
 // the path it was found at, because the consumer of a refusal is a person about to change a

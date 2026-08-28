@@ -85,3 +85,42 @@ fn mkdir_parents_command(path: String) -> ArgvCommand {
 fn mkdir_parents_command_at(mkdir_binary: NonEmptyStr, path: String) -> ArgvCommand {
   argv_command(program: mkdir_binary, arguments: ["-p", path])
 }
+
+// THE EXACT FORM, WHICH IS POSIX'S DEFAULT AND WAS MISSING FROM THIS MODULE BY OMISSION. The cited
+// authority above specifies mkdir with and without -p; only the -p half was modeled, so a caller
+// needing the exact form had no door and the module mis-described its own upstream. Adding it is
+// completing a faithful model of a cited dependency, not authoring structure for an imagined need.
+//
+// IT DIFFERS FROM THE -p FORM IN TWO WAYS, AND BOTH ARE REFUSALS RATHER THAN CONVENIENCES.
+// Without -p, POSIX requires mkdir to fail when the parent directory does not exist, and to fail
+// when the named directory already exists. The -p annotation above calls its own behaviour an
+// ENSURE rather than a CREATE for exactly this reason.
+//
+// WHY A CONSUMER WOULD WANT THE REFUSING FORM. -p on a resource whose parent is a DECLARED member
+// of another family is an absorbing fallback in the DESIGN section 5 sense: a missing parent is a
+// failure state, and -p answers it by FABRICATING the whole chain instead of refusing. Where the
+// parent is owned by a different authority -- gunbc.fabric_cell_subject classifies /opt/fabric-cells
+// as Ensured, meaning required present and never created by the cell family -- -p would silently
+// have that family create the very directory its ownership model says is not its to make, and
+// nothing would report it. The exact form turns that into a typed non-zero exit.
+//
+// THE NON-IDEMPOTENCE IS NOT A DEFECT TO WORK AROUND. A converge that runs this repeatedly against
+// an existing directory gets an error, which is correct: this form is reached from an ADDED hunk,
+// where the member was observed absent, so a second run producing an error means the observation
+// and the host disagree and the line should stop. A caller wanting run-anyway semantics wants -p
+// and should say so by calling it.
+fn mkdir_exact_args(path: String) -> List<String> {
+  [path]
+}
+
+fn mkdir_exact_argv(path: String) -> List<String> {
+  concat([mkdir_binary_path as String], mkdir_exact_args(path: path))
+}
+
+fn mkdir_exact_command(path: String) -> ArgvCommand {
+  mkdir_exact_command_at(mkdir_binary: mkdir_binary_path, path: path)
+}
+
+fn mkdir_exact_command_at(mkdir_binary: NonEmptyStr, path: String) -> ArgvCommand {
+  argv_command(program: mkdir_binary, arguments: mkdir_exact_args(path: path))
+}

@@ -1,0 +1,457 @@
+module gunbc.fabric_control_plane
+
+import std.types { Int, List, NonEmptyStr, String, Bool }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.measure { MoneyAmountMicro, MoneyPerSecond }
+import std.currency { CurrencyCode }
+import std.durable_compare_and_set {
+  CasExpectation, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasReadableAbsent, CasReadablePresent, CasUnreadableSlot,
+  cas_attempt, cas_generation_count,
+}
+import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
+import product.fabric.demand { Demand }
+import product.fabric.supply { SupplierOffer, OfferQuote, offer_quote_currency }
+import product.fabric.work { ExecutionRequirements }
+import product.fabric.selection { CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, SelectionCost, OfferCandidacy, selection_liability }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.durable_cas_file_store {
+  CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch,
+  CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
+  admit_cas_attempt, file_compare_and_set,
+}
+import gunbc.fabric_floor_dispatch { floor_supply_selection, floor_execution_requirements }
+import product.fabric.budget {
+  MoneyAccount, MoneyReservationRequest, MoneyRefusal, MoneyOutcome,
+  AccountAdvanced, MoneyRefused, reserve_money,
+}
+import product.fabric.execution { ReservationRef }
+import gunbc.fabric_executor_class {
+  ExecutorSanction, CapacityClassAdmission, CapacityClassAdmitted,
+  CapacityClassRefused, ExecutorNotClassified,
+  admit_executor_capacity, capacity_admission_wire,
+}
+
+// THE BROKER: SELECTION DECIDES WHICH CELL, THE STORE DECIDES WHETHER WE GET IT.
+//
+// This is the first production consumer of three authorities that have each
+// been complete and unconsumed. product.fabric.selection's select_supply ranked
+// nothing for anyone; gunbc.fabric_floor_dispatch turned the floor's own Work
+// into a Demand and had only witness rows behind it; and the file-backed
+// compare-and-set had no caller at all. The value of this cut is not new
+// vocabulary -- it invents none -- it is that those three stop being furniture.
+//
+// THE INVARIANT THE WHOLE CONTROL PLANE RESTS ON, and the reason the two steps
+// are in this order and not the other: SELECTION IS A DECISION, NOT A CLAIM.
+// Ranking an offer highest does not reserve the cell it names. Two brokers
+// ranking the same roster reach the SAME answer, so selection alone would hand
+// one cell to both. The compare-and-set is what makes the reservation exclusive,
+// and it is the store rather than a lock that decides, so it holds across hosts.
+//
+// Therefore: no committed compare-and-set, no reservation. A caller that reads
+// CellReserved has a slot generation that only one writer can hold. A caller
+// that reads anything else has nothing, and the arms below say precisely what
+// kind of nothing, because "we did not get the cell" has at least four causes
+// with four different remedies -- nobody was admissible, somebody beat us, the
+// store could not answer, and the attempt was malformed before it was tried.
+//
+// WHAT THIS DOES NOT DO. It does not issue an ExecutionGrant, start a process,
+// or reach a host. A reservation is the precondition for a Grant and is not one:
+// ExecutionGrant carries resource and money reservations that must commit
+// atomically across ledgers, and manufacturing one here from a slot generation
+// would fabricate the very atomicity that record exists to guarantee. The Grant
+// cut consumes this outcome; it does not live in it.
+
+// The one deployment authority that supplies the store's root parameter.
+//
+// The mechanism takes a root and the deployment names it: compare_and_set is
+// parameterized so a second control plane is a different root and not a second
+// implementation, while this function is the single place this control plane's
+// root is stated. Hard-coding the root inside the store would fuse a policy
+// fact into a mechanism, which is the layer inversion the interface warns about.
+fn fabric_control_plane_store_root() -> NonEmptyStr {
+  "/var/lib/gunbc/fabric/allocation"
+}
+
+// THE ALLOCATION KEY IS PROJECTED FROM THE CELL'S OWN IDENTITY, NEVER AUTHORED.
+//
+// runner_slot_instance_name is already the single authority for how a slot is
+// spelled, so the key is that spelling and nothing else. Taking a NonEmptyStr
+// here instead would make the filesystem layout a SECOND identity authority --
+// two spellings of one cell, free to disagree, with the store silently
+// arbitrating between them. A caller cannot name the slot it is about to
+// occupy; it can only hand over the identity and be told where that lands.
+//
+// It is slash-free by construction (host + "-" + index), which is what the
+// store's own key wall requires: a key carrying a separator is refused at the
+// mint because it would escape the store root.
+fn fabric_cell_allocation_key(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  runner_slot_instance_name(slot: slot) as NonEmptyStr
+}
+
+// What the reserved slot holds: the pair that says WHO holds this cell and FOR
+// WHAT. Rendered rather than structured because the store is concrete at
+// NonEmptyStr, and the digest is derived from this exact rendering so the
+// payload and its content hash cannot disagree.
+fn fabric_reservation_payload(
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+) -> NonEmptyStr {
+  concat(concat(demand.key as String, "|"), offer.key as String) as NonEmptyStr
+}
+
+// EVERY WAY THIS ENDS, TYPED AND SEPARATE, because they have different remedies.
+//
+// NoCellAdmissible is a market answer: the roster was read and nothing in it met
+// the demand, and it carries TWO populations because they are two different
+// answers wearing one word. `considered` is the market's own rejection of the
+// offers it was allowed to rank; `refused` is everything removed BEFORE ranking
+// for crossing the capacity-class line, which the market never saw and can say
+// nothing about. Both empty means nothing was offered at all.
+//
+// THE SECOND FIELD IS THE REPAIR OF A SILENT NARROW, NOT AN ADDITION. Admission
+// filtered the roster and dropped its refusals on the floor, so a demand refused
+// entirely on a safety boundary was indistinguishable from a demand nobody
+// offered anything for -- opposite remedies, one symbol, and the annotation here
+// claimed the refusals were counted while nothing counted them. ReservationLost is
+// a race: our selection was fine and another writer committed the slot first, so
+// the remedy is to re-observe and retry. StoreUnavailable is operational: the
+// store could not answer, which says nothing about the cell. AttemptRefused is
+// ours: the attempt did not survive the store's mint, which is a defect in this
+// module rather than a condition in the world.
+//
+// Collapsing any pair of these into one arm would hand a caller a symbol it
+// cannot choose a remedy from, which is the state-space conflation this corpus
+// keeps finding.
+type CellReservation
+  = CellReserved {
+      offer: FabricIdentity<NonEmptyStr, OfferKey>,
+      slot_key: NonEmptyStr,
+      generation: Int,
+      account: MoneyAccount,
+    }
+  | NoCellAdmissible {
+      considered: List<OfferCandidacy<NonEmptyStr>>,
+      refused: List<CapacityClassAdmission>,
+    }
+  | BudgetRefused { slot_key: NonEmptyStr, refusal: MoneyRefusal }
+  | ReservationLost { slot_key: NonEmptyStr }
+  | StoreUnavailable { slot_key: NonEmptyStr, cause: CasUnreadableSlot }
+  | AttemptRefused { slot_key: NonEmptyStr, detail: NonEmptyStr }
+
+// The reservation half, reached only once selection has named an offer.
+//
+// `expected` is a PARAMETER rather than a constant, and that is deliberate. A
+// cell reserved for the first time expects an absent slot; a cell being
+// re-reserved after release expects the generation the release left behind.
+// Hard-coding ExpectSlotAbsent would make a cell reservable exactly once in its
+// lifetime and would refuse every subsequent reservation for a reason that
+// looks like a lost race. The caller states what it believes and the store
+// judges it.
+fn reserve_selected_cell(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  expected: CasExpectation,
+  demand_id: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer_id: FabricIdentity<NonEmptyStr, OfferKey>,
+  account: MoneyAccount,
+) -> CellReservation {
+  let payload = fabric_reservation_payload(demand: demand_id, offer: offer_id)
+  match admit_cas_attempt(
+    attempt: cas_attempt(
+      key: slot_key,
+      expected: expected,
+      proposed: payload,
+      proposed_content: content_hash_of_value(value: payload),
+    )
+  ) {
+    CasAttemptAdmitted { verified: v } =>
+      match file_compare_and_set(root: root, verified: v) {
+        CasCommitted { committed: c } =>
+          CellReserved {
+            offer: offer_id,
+            slot_key: slot_key,
+            generation: cas_generation_count(g: c.generation),
+            account: account,
+          }
+        CasPreconditionFailed { expected: _, observed: _ } => ReservationLost { slot_key: slot_key }
+        CasStoreRefused { cause: c } => StoreUnavailable { slot_key: slot_key, cause: c }
+      }
+    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
+      AttemptRefused { slot_key: slot_key, detail: "reservation payload and its digest disagree" }
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
+      AttemptRefused { slot_key: slot_key, detail: "reservation digest families are incomparable" }
+    CasAttemptKeyNotSlotAddressable { key: _ } =>
+      AttemptRefused { slot_key: slot_key, detail: "allocation key is not slot-addressable" }
+  }
+}
+
+// The whole transition, in the only order that is correct: rank, then reserve.
+//
+// Selection is consulted first because reserving before knowing which cell to
+// reserve is not a cheaper ordering, it is a different operation. And no
+// reservation is attempted on the NoAdmissibleOffer path -- a broker that
+// reserved something anyway when nothing was admissible would be fabricating a
+// decision the market refused to make.
+// THE ARROW BETWEEN THE MARKET'S DECISION AND THE CELL IT LOCKS.
+//
+// An earlier cut of the broker took the slot as a parameter beside the
+// selection, which let a caller reserve one cell against a decision that chose
+// a different supplier's offer. Two true facts -- this offer won, lock that
+// cell -- with nothing relating them: the reservation would be attributed to a
+// decision that never made it, and every arm would still look plausible.
+//
+// The repair is construction rather than a check. A cell may enter the roster
+// only through this mint, and the mint refuses unless the offer's executor is
+// EXACTLY the slot's canonical instance name. So by the time selection ranks
+// anything, every candidate already carries its cell, and a reservation for a
+// cell the market did not choose has no spelling.
+//
+// THE RUNG IS PATH-SCOPED AND THE WEAKER PATH IS THE ONE THAT COUNTS. On the
+// source-to-.dag acceptance path this is structurally impossible: sole_constructor
+// confines construction and the validator here is fixed and module-owned, with
+// zero caller freedom -- so it cannot be defeated the way a caller-supplied
+// predicate can. On the EMISSION path it is unestablished: DESIGN carries an
+// executed receipt that a fixed-law mint of exactly this shape emits as a pub
+// struct with a pub field deriving Deserialize, and both a direct struct literal
+// and a deserialization admit representatives from every refusal partition. The
+// wall does not travel with the type. DESIGN takes a class's rung to be the
+// minimum across its in-scope paths, so the honest statement is the pair, and
+// the next-rung trigger is unforgeable construction surviving emission -- not
+// anything this module can supply.
+//
+// WHAT THE MINT REFUSES THAT LOOKS LIKE IT SHOULD PASS, named so it is a
+// deliberate refusal rather than a surprise: a HOST is not a cell. Fixtures in
+// tree carry executor "srv3", and a slot renders as "srv3-06", so an offer
+// executed by a host refuses here. That is correct -- a host runs many cells and
+// reserving one generation against it would lock a name no single executor owns.
+//
+// Measured population behind the claim that this arrow is new: ten string-literal
+// executors across dag/ and src/v2/ -- "gunbc" x5, "supplier" x2, "srv3" x2,
+// "rented-pool" x1. Not one is a slot identity, so nothing in tree binds an offer
+// to a CELL. An earlier statement of this said every fixture used "gunbc", which
+// was generalized from one file rather than counted.
+type FabricCellCandidate sole_constructor {
+  slot: RunnerSlotIdentity
+  candidate: CandidateOffer<NonEmptyStr>
+}
+
+type CellCandidateBinding
+  = CellCandidateBound { bound: FabricCellCandidate }
+  | OfferExecutorIsNotTheCell { slot_key: NonEmptyStr, executor: NonEmptyStr }
+
+fn bind_fabric_cell_candidate(
+  slot: RunnerSlotIdentity,
+  candidate: CandidateOffer<NonEmptyStr>,
+) -> CellCandidateBinding {
+  let slot_key = fabric_cell_allocation_key(slot: slot)
+  if (candidate.offer.executor as String) != (slot_key as String) {
+    OfferExecutorIsNotTheCell { slot_key: slot_key, executor: candidate.offer.executor }
+  } else {
+    CellCandidateBound { bound: FabricCellCandidate { slot: slot, candidate: candidate } }
+  }
+}
+
+// The winner's executor is the cell's canonical allocation key BY CONSTRUCTION,
+// not by a second rendering: FabricCellCandidate cannot be minted unless the
+// executor is exactly what fabric_cell_allocation_key produced for the slot it
+// is paired with. Recovering the key from the selected offer is therefore the
+// same renderer's output carried through selection, never a second identity
+// authority -- which is the property the store's key must have.
+fn selected_cell_allocation_key(offer: SupplierOffer<NonEmptyStr>) -> NonEmptyStr {
+  offer.executor
+}
+
+fn fabric_cell_roster_candidates(roster: List<FabricCellCandidate>) -> List<CandidateOffer<NonEmptyStr>> {
+  fold(roster, init: [], f: (acc, member) => acc + [member.candidate])
+}
+
+// ADMISSION RUNS BEFORE SELECTION, AND THE ORDER IS THE SAFETY PROPERTY.
+//
+// Fungibility asks whether an executor CAN satisfy the work. Once two offers are
+// fungible they are interchangeable by definition, so a capacity-class boundary
+// checked after ranking is a boundary already crossed. This removes unsanctioned
+// executors from the roster before anything is ranked, so a control-plane cell
+// is never a candidate for customer-executable demand and cannot be chosen by a
+// tie-break, a price, or a later change to the ranking.
+//
+// ONE FOLD, BOTH HALVES, AND THE PREVIOUS SHAPE IS WHY. Admission used to be two
+// folds over one roster -- one keeping the admitted through a Bool predicate,
+// one collecting the refused -- and they could only agree by convention: each
+// re-ran the admission judgement independently, so an edit to either could make
+// a candidate appear in neither half or in both, and nothing would detect it.
+// A partition is ONE decision with two outputs, so the halves cannot disagree
+// (§2 -- the second traversal was a second representation of one judgement).
+//
+// The Bool predicate that selected the admitted half is deleted with it. It
+// collapsed a refused capacity class and an unclassified executor into a single
+// false, which are different problems -- one is an executor asking for work it
+// is not sanctioned for, the other is an executor nobody has classified at all
+// -- and an `if` over that Bool could name no remedy for either.
+type CellAdmissionPartition
+  = CellAdmissionPartition {
+      admitted: List<FabricCellCandidate>,
+      refused: List<CapacityClassAdmission>,
+    }
+
+fn partition_cell_roster(
+  requirements: ExecutionRequirements,
+  sanctions: List<ExecutorSanction>,
+  roster: List<FabricCellCandidate>,
+) -> CellAdmissionPartition {
+  fold(
+    roster,
+    init: CellAdmissionPartition { admitted: [], refused: [] },
+    f: (acc, member) =>
+      match admit_executor_capacity(
+        requirements: requirements,
+        roster: sanctions,
+        executor: member.candidate.offer.executor,
+      ) {
+        CapacityClassAdmitted { executor: _, class: _ } =>
+          CellAdmissionPartition {
+            admitted: acc.admitted + [member],
+            refused: acc.refused,
+          }
+        CapacityClassRefused { executor: e, required: r, sanctioned: sd } =>
+          CellAdmissionPartition {
+            admitted: acc.admitted,
+            refused: acc.refused + [CapacityClassRefused { executor: e, required: r, sanctioned: sd }],
+          }
+        ExecutorNotClassified { executor: e } =>
+          CellAdmissionPartition {
+            admitted: acc.admitted,
+            refused: acc.refused + [ExecutorNotClassified { executor: e }],
+          }
+      },
+  )
+}
+
+// ONE RESERVATION, ONE REFERENCE. The money encumbrance and the cell slot name
+// the same reservation because they are derived from the same pair -- the demand
+// and the offer -- through the very rendering the store slot holds. Minting a
+// separate money key here would make the budget and the store disagree about
+// what is being held, and nothing would ever detect it: two references that are
+// both individually well-formed are indistinguishable from one reservation
+// unless they are DERIVED from a common identity rather than agreed by
+// convention (§3 -- a second name for one concept).
+fn fabric_money_reservation_ref(
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+) -> ReservationRef {
+  fabric_reservation_payload(demand: demand, offer: offer) as ReservationRef
+}
+
+// THE BUDGET REFUSAL RETURNS NEITHER A CELL NOR AN ACCOUNT, AND THAT -- NOT THE
+// ORDER THESE TWO STEPS ARE WRITTEN IN -- IS THE SAFETY ARGUMENT.
+//
+// Two resources are held per reservation and they have opposite reversal costs.
+// The budget is a PURE VALUE: reserving against it produces a new account and
+// changes nothing anyone else can observe, so abandoning it costs exactly
+// nothing -- the caller simply does not persist it. The cell is an EFFECT: a
+// committed compare-and-set is visible to every other broker the instant it
+// lands, and there is no arm here that un-commits it.
+//
+// SO THE GUARANTEE IS STATED OVER THE RETURNED VALUE, NOT OVER A SEQUENCE. On
+// the BudgetRefused arm the store call is not part of the result, so it is
+// never forced and no effect occurs; on every cell-refusal arm there is no
+// account value in the caller's hands to persist. The partial commit -- an
+// encumbrance without its cell, or a cell without its encumbrance -- has no
+// constructor on any arm of CellReservation, so it is unwritable rather than
+// checked (§4b, structurally impossible rather than validated).
+//
+// THIS WAS NEARLY DOCUMENTED AS AN ORDERING GUARANTEE AND IT IS NOT ONE. A
+// witness asserting "the budget refuses before the store is touched" was
+// authored, went green, and then STAYED GREEN under a mutation that moved the
+// compare-and-set ahead of the encumbrance -- because in a lazy substrate the
+// unreturned branch is never forced, so both spellings are equally safe and the
+// row discriminated nothing. The executed receipt is what corrected the claim:
+// the safety is carried by which arm carries what, and source order is free.
+// Writing the encumbrance first is kept because it reads in the order a person
+// reasons about it, and for no stronger reason than that.
+//
+// THE CURRENCY COMES FROM THE OFFER, NOT THE ACCOUNT. product.fabric.budget
+// deliberately makes a request state its own currency so a mismatch is
+// representable and therefore detectable; passing the account's own currency
+// back to it would satisfy the check by construction and turn a real wall into
+// a decoration that can never fire (§4b -- ask whether the RED is authorable).
+// The supplier quotes in its currency and the account holds one, so the two can
+// genuinely disagree, and a mutation substituting the account's currency was
+// executed and turned the witness below red -- so the wall is load-bearing
+// rather than merely present.
+fn broker_reserve_for_demand(
+  root: NonEmptyStr,
+  demand: Demand<NonEmptyStr>,
+  roster: List<FabricCellCandidate>,
+  sanctions: List<ExecutorSanction>,
+  expected: CasExpectation,
+  account: MoneyAccount,
+  maximum_buy_order: MoneyAmountMicro,
+  delay_valuation: MoneyPerSecond,
+) -> CellReservation {
+  let partition = partition_cell_roster(
+    requirements: floor_execution_requirements(),
+    sanctions: sanctions,
+    roster: roster,
+  )
+  match floor_supply_selection(
+    candidates: fabric_cell_roster_candidates(roster: partition.admitted),
+    maximum_buy_order: maximum_buy_order,
+    delay_valuation: delay_valuation,
+  ) {
+    NoAdmissibleOffer { considered: c } =>
+      NoCellAdmissible { considered: c, refused: partition.refused }
+    OfferSelected { offer: o, cost: k, basis: _, horizon: _, considered: _ } =>
+      reserve_priced_cell(
+        root: root,
+        demand_id: demand.id,
+        offer: o,
+        cost: k,
+        expected: expected,
+        account: account,
+      )
+  }
+}
+
+// The priced half, split out so the money reference and the slot key are named
+// once each rather than recomputed inside a match arm.
+//
+// The lease generation is 0 because this is a MINT: the fence in
+// product.fabric.budget exists so that a LATER settle or release must present
+// the generation it observed, and a first encumbrance has no prior generation
+// to present. Deriving it from the CAS generation is not available and would be
+// wrong if it were -- the money reservation is taken before the store is
+// touched, so no CAS generation exists yet, and borrowing one would make the
+// budget's fence depend on a fact from the other resource's clock.
+fn reserve_priced_cell(
+  root: NonEmptyStr,
+  demand_id: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer: SupplierOffer<NonEmptyStr>,
+  cost: SelectionCost,
+  expected: CasExpectation,
+  account: MoneyAccount,
+) -> CellReservation {
+  let slot_key = selected_cell_allocation_key(offer: offer)
+  let reference = fabric_money_reservation_ref(demand: demand_id, offer: offer.id)
+  match reserve_money(
+    a: account,
+    request: MoneyReservationRequest {
+      reference: reference,
+      generation: 0,
+      maximum_liability: selection_liability(c: cost),
+      currency: offer_quote_currency(q: offer.quote),
+    },
+  ) {
+    MoneyRefused { refusal: r } => BudgetRefused { slot_key: slot_key, refusal: r }
+    AccountAdvanced { account: advanced } =>
+      reserve_selected_cell(
+        root: root,
+        slot_key: slot_key,
+        expected: expected,
+        demand_id: demand_id,
+        offer_id: offer.id,
+        account: advanced,
+      )
+  }
+}
+

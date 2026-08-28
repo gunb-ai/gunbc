@@ -232,7 +232,7 @@ test fn dropping_the_definition_edge_roster_surfaces_more() -> Bool {
 data transport_realization_edges: List<String> = [
   "dag/gunbc/retained_shell_script.dag",
   "dag/gunbc/bash_materialized_transport.dag",
-  "dag/gunbc/host_effect_realize.dag"
+  "dag/gunbc/host/host_effect_realize.dag"
 ]
 
 // CONSUMERS HOLDING A TRANSPORT, admitted as exact pairs so that a SEVENTH consumer

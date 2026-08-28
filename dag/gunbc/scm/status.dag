@@ -22,6 +22,7 @@ module gunbc.scm.status
 // for one answer.
 
 import std.types { Bool, Int, List, String }
+import std.minted_identity { minted_id_ordinal }
 import v2.std.node { Symbol }
 import gunbc.scm.object_store { ObjectId }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference }
@@ -137,12 +138,40 @@ fn render_staged_role(staged: StagedRole) -> String {
   }
 }
 
+// THE MISSING ARM NAMES THE COMMIT IT REFUSES ON, and that is a correctness concern rather than
+// presentation. This arm previously read "the checked-out selection names a commit this repository
+// does not contain" while binding its `reference` to `_`: it withholds the one fact needed to act on
+// it, so the reader is told a selection is unresolvable and not WHICH selection -- they cannot even
+// tell whether they mistyped. That is unactionable BY CONSTRUCTION; no care on the reader's part
+// recovers an identity the renderer discarded, and a refusal that does not locate leaves the
+// diagnostic half of DESIGN's fail-closed rule unmet.
+//
+// THE ORDINAL IS THE USER-VISIBLE NAME, NOT REPRESENTATION. `repository_envelope`'s encoder spells a
+// commit's identity on the wire as `json_kv(key: "id", value: json_int(n: minted_id_ordinal(...)))`,
+// so this number is the one the persisted document already shows, and it is what
+// `checkout_repository_at` consumes. Printing it neither leaks below-boundary structure nor invents
+// a second naming scheme -- it repeats the one the model already publishes.
+//
+// THE SIBLING ARM IS DELIBERATELY UNCHANGED, and the asymmetry is the model's rather than this
+// function's. `CheckedOutCommit` carries a root `ObjectId` and NO reference, so the only identity in
+// reach is the content hash -- which `status_does_not_report_store_representation` states this
+// surface must not report, on the ground that below-boundary representation is opaque. Naming that
+// commit by its ordinal would require `StatusCheckout` to carry the reference, which is a change to
+// the carrier and not to its rendering. So this arm is repaired where the fact is already present
+// and the other is left stating a known gap, rather than closing it by printing the one identity
+// this surface is not supposed to expose.
 fn render_status_checkout(checkout: StatusCheckout) -> String {
   match checkout {
     NothingCheckedOut => "nothing checked out"
     CheckedOutCommit { root: _, message: message } => concat("on commit: ", message)
-    CheckedOutCommitMissing { reference: _ } =>
-      "the checked-out selection names a commit this repository does not contain"
+    CheckedOutCommitMissing { reference: reference } =>
+      concat(
+        "the checked-out selection names commit ",
+        concat(
+          to_string(n: minted_id_ordinal(id: reference.identity)),
+          ", which this repository does not contain",
+        ),
+      )
   }
 }
 

@@ -1,7 +1,7 @@
 module gunbc.plans.extdeps_modeling_preflight
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.types { NonEmptyStr }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
@@ -53,7 +53,7 @@ fn extdeps_modeling_preflight_body() -> List<MarkdownBlock> {
 }
 
 data extdeps_modeling_preflight_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "extdeps-modeling-preflight",
   title: "extdeps modeling preflight — one subject per upstream module",
   body: extdeps_modeling_preflight_body(),

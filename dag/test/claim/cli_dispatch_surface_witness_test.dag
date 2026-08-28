@@ -200,3 +200,21 @@ test fn the_test_verb_names_no_host_function() -> Bool {
     CliRefusesUnwired { successor: _ } => false
   })
 }
+
+// THE SCM VERB'S GAP IS COUNTED, NOT SILENT -- which is the whole reason the row was declared before
+// its handler exists.
+//
+// `gunbc scm` is declared in this surface and `AbsentFromEmitMainRs`, so the CLI authority states the
+// verb while the emitter renders nothing for it. That is only worth doing if the absence is OBSERVED:
+// a declared-but-unemitted verb that no consumer counted would be the parallel-ledger failure the
+// declaration exists to end -- the gap living in prose instead of on the carrier.
+//
+// The membership fold is INLINE rather than a top-level helper deliberately: this file's siblings
+// record that two separate top-level `string_contains` definitions already exist in witness files and
+// that top-level names are corpus-wide with silent duplicate selection (#8707), so a third would make
+// that binding arbitrary for every module in the shared scope.
+test fn the_scm_verb_is_listed_in_the_emitter_gap() -> Bool {
+  fold(gunbc_cli_emitter_gap(), init: false, f: fn(found, entry) {
+    if found { true } else { entry == "scm" }
+  })
+}
