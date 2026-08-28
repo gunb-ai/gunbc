@@ -267,6 +267,10 @@ fn floor_route_gap_chunk_01() -> List<String> {
       tail: Cons {
       head: "test.claim.scm_repository_load_witness.scm_repository_load_keystone_holds",
       tail: Cons {
+      head: "test.claim.scm_repository_save_witness.scm_repository_save_keystone_holds",
+      tail: Cons {
+      head: "test.claim.scm_repository_save_witness.scm_sv_a_refused_save_leaves_no_file",
+      tail: Cons {
       head: "test.claim.self_host_00_compile_behavioral_witness.self_host_00_compile_behavioral_receipt_holds",
       tail: Cons {
       head: "test.claim.self_host_01_tokenize_behavioral_witness.self_host_01_tokenize_behavioral_receipt_holds",
@@ -275,6 +279,8 @@ fn floor_route_gap_chunk_01() -> List<String> {
       tail: Cons {
       head: "test.claim.self_host_03_ingest_behavioral_witness.self_host_03_ingest_behavioral_receipt_holds",
       tail: Empty {}
+    }
+    }
     }
     }
     }
