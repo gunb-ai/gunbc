@@ -1,0 +1,251 @@
+module v2.test.claim.provenance.name_origin_carrier
+
+import v2.compiler.resolution_provenance {
+  AnsweredName,
+  AtomIdentityIndexAnswer,
+  LocalBinderLayer,
+  ModuleBindingBinder,
+  ModuleCrossing,
+  ModuleCrossingAnswerPoint,
+  NameOrigin,
+  NotApplicableLocalBinding,
+  OriginUnrecorded,
+  QualifiedPathIndexAnswer,
+  ResolutionRefusedBeforeOrigin,
+  ScopeFrameBinder,
+  AnswerPointNotInstrumented,
+  ProvenanceAmbiguous,
+  ProvenanceOwnerless,
+  ProvenanceResolved,
+  ProvenanceUnbound,
+  ReferenceSite,
+  ResolutionProvenance,
+  resolve_reference_provenance,
+  name_origin_dependency_owner,
+  name_origin_edge_is_not_applicable,
+  name_origin_unrecorded_reason
+}
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_insert }
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The carrier's discriminating evidence. The whole point of NameOrigin is that
+// TWO of its three arms yield no dependency edge for OPPOSITE reasons, so the
+// rows below are built to fail if those two are ever collapsed -- which is
+// exactly what modelling origin as an Optional<QualifiedName> would do.
+
+data noc_owner_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(dotted: "lane.producer")
+
+data noc_target_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(dotted: "lane.producer.Marker")
+
+data noc_module_crossing: NameOrigin = ModuleCrossing {
+  answer_point: AtomIdentityIndexAnswer,
+  target: noc_target_qn,
+  owner: noc_owner_qn
+}
+
+data noc_scope_hit: NameOrigin = NotApplicableLocalBinding { layer: ScopeFrameBinder }
+
+data noc_module_binding_hit: NameOrigin = NotApplicableLocalBinding { layer: ModuleBindingBinder }
+
+data noc_uninstrumented: NameOrigin = OriginUnrecorded {
+  reason: AnswerPointNotInstrumented { answer_point: QualifiedPathIndexAnswer }
+}
+
+data noc_refused: NameOrigin = OriginUnrecorded { reason: ResolutionRefusedBeforeOrigin }
+
+fn noc_has_owner(origin: NameOrigin) -> Bool {
+  match name_origin_dependency_owner(origin: origin) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn noc_has_deficit(origin: NameOrigin) -> Bool {
+  match name_origin_unrecorded_reason(origin: origin) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A module-crossing answer is the ONLY arm that yields a dependency edge, and it
+// yields the owner rather than the target -- the edge is to the module, not to
+// the declaration.
+test fn only_a_module_crossing_answer_yields_a_dependency_edge_holds() -> Bool {
+  let owner_is_the_module = match name_origin_dependency_owner(origin: noc_module_crossing) {
+    Present { value: owner } => owner == noc_owner_qn
+    Absent => false
+  }
+  owner_is_the_module
+    && noc_has_owner(origin: noc_scope_hit) == false
+    && noc_has_owner(origin: noc_module_binding_hit) == false
+    && noc_has_owner(origin: noc_uninstrumented) == false
+    && noc_has_owner(origin: noc_refused) == false
+}
+
+// THE ROW THE CARRIER EXISTS FOR. A scope hit and an unrecorded origin agree on
+// every question about the EDGE -- both have none -- and disagree on every
+// question about WHY. A carrier that modelled origin as Optional<QualifiedName>
+// would pass the first clause of this row and be unable to express the rest, so
+// this is the row that goes red if the split is ever collapsed back.
+test fn absent_edges_are_distinguishable_by_reason_holds() -> Bool {
+  let both_lack_an_edge =
+    noc_has_owner(origin: noc_scope_hit) == false
+      && noc_has_owner(origin: noc_uninstrumented) == false
+  let scope_hit_is_not_applicable_and_not_a_deficit =
+    name_origin_edge_is_not_applicable(origin: noc_scope_hit)
+      && noc_has_deficit(origin: noc_scope_hit) == false
+  let unrecorded_is_a_deficit_and_not_not_applicable =
+    noc_has_deficit(origin: noc_uninstrumented)
+      && name_origin_edge_is_not_applicable(origin: noc_uninstrumented) == false
+  both_lack_an_edge
+    && scope_hit_is_not_applicable_and_not_a_deficit
+    && unrecorded_is_a_deficit_and_not_not_applicable
+}
+
+// A deficit stays TYPED where it is counted: a census can separate an
+// uninstrumented answer point from a refusal without re-deriving either.
+test fn a_deficit_carries_its_own_reason_holds() -> Bool {
+  let uninstrumented_names_its_answer_point =
+    match name_origin_unrecorded_reason(origin: noc_uninstrumented) {
+      Present { value: reason } =>
+        match reason {
+          AnswerPointNotInstrumented { answer_point: point } =>
+            noc_answer_point_code(point: point) == 2
+          ResolutionRefusedBeforeOrigin => false
+        }
+      Absent => false
+    }
+  let refusal_is_its_own_reason =
+    match name_origin_unrecorded_reason(origin: noc_refused) {
+      Present { value: reason } =>
+        match reason {
+          AnswerPointNotInstrumented { answer_point: _ } => false
+          ResolutionRefusedBeforeOrigin => true
+        }
+      Absent => false
+    }
+  uninstrumented_names_its_answer_point && refusal_is_its_own_reason
+}
+
+// The answer points are a CLOSED pair, and this function is where that claim is
+// enforced: adding a third module-crossing answer point makes this match
+// non-exhaustive and fails to compile, rather than silently widening the carrier.
+fn noc_answer_point_code(point: ModuleCrossingAnswerPoint) -> Int {
+  match point {
+    AtomIdentityIndexAnswer => 1
+    QualifiedPathIndexAnswer => 2
+  }
+}
+
+fn noc_binder_layer_code(layer: LocalBinderLayer) -> Int {
+  match layer {
+    ScopeFrameBinder => 1
+    ModuleBindingBinder => 2
+  }
+}
+
+test fn the_two_answer_points_and_two_binder_layers_are_closed_holds() -> Bool {
+  noc_answer_point_code(point: AtomIdentityIndexAnswer) == 1
+    && noc_answer_point_code(point: QualifiedPathIndexAnswer) == 2
+    && noc_binder_layer_code(layer: ScopeFrameBinder) == 1
+    && noc_binder_layer_code(layer: ModuleBindingBinder) == 2
+}
+
+// An answered name carries the position it was asked from, so the carrier can be
+// interrogated at the same containment path the index is filled at.
+test fn an_answered_name_carries_its_position_holds() -> Bool {
+  let answered = AnsweredName {
+    position: qualified_name_from_dotted_string(dotted: "lane.consumer.use_it"),
+    name: ^Marker,
+    origin: noc_module_crossing
+  }
+  answered.position == qualified_name_from_dotted_string(dotted: "lane.consumer.use_it")
+    && noc_has_owner(origin: answered.origin)
+}
+
+// ---------------------------------------------------------------------------
+// REACHABILITY OF ProvenanceOwnerless, measured rather than reasoned.
+//
+// Review proposed that this arm covers two states -- a target with no owning
+// module BY CONSTRUCTION, and a target whose owner is missing from the roster.
+// Reading the producer says the first cannot occur here: every target reaching
+// provenance_from_target comes from an index lookup, and index keys are
+// containment paths (module_qn ++ segments), so an indexed target always HAS an
+// owning module. Scope bindings never enter this fold at all.
+//
+// So the arm should be reachable ONLY by pairing an index with a roster that does
+// not cover it -- a caller-side inconsistency between two arguments that must
+// agree. These two rows are the positive and negative control for that claim.
+data noc_pr_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(dotted: "noc.producer")
+
+data noc_pr_target: FreeMonoid<Symbol> = qualified_name_from_dotted_string(dotted: "noc.producer.Thing")
+
+data noc_site: ReferenceSite = ReferenceSite {
+  position: qualified_name_from_dotted_string(dotted: "noc.consumer"),
+  spelling: noc_pr_target
+}
+
+fn noc_arm_code(p: ResolutionProvenance) -> Int {
+  match p {
+    ProvenanceResolved { site: _, target: _, owner: _ } => 1
+    ProvenanceOwnerless { site: _, target: _ } => 2
+    ProvenanceAmbiguous { site: _ } => 3
+    ProvenanceUnbound { site: _ } => 4
+  }
+}
+
+fn noc_index_with_thing() -> SymbolIndex {
+  symbol_index_insert(
+    index: empty_symbol_index(),
+    qualified_path: noc_pr_target,
+    resolved: noc_thing_node()
+  )
+}
+
+fn noc_thing_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^Thing } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// NEGATIVE CONTROL: index and roster agree. The answer is Resolved, so the
+// Ownerless arm is NOT reachable through a consistent pairing.
+test fn a_consistent_index_and_roster_never_answers_ownerless_holds() -> Bool {
+  noc_arm_code(
+    p: resolve_reference_provenance(
+      index: noc_index_with_thing(),
+      roster: Cons { head: noc_pr_qn, tail: Empty },
+      site: noc_site
+    )
+  ) == 1
+}
+
+// POSITIVE CONTROL: the SAME index against an EMPTY roster answers Ownerless.
+// The two rows differ in exactly one argument, so the arm is a property of the
+// caller's pairing and of nothing else -- the target was found, and only the
+// question "which module owns it" went unanswered.
+//
+// WHAT THIS MEANS FOR THE CARRIER: the arm is not "no owner exists", it is "the
+// roster supplied could not name one". A dependency set derived while this arm
+// fires is silently UNDER-COMPLETE -- a real edge is dropped and `dependencies`
+// still renders as authoritative. That is the empty-observation narrow, and it is
+// why `unresolved` retains these rather than discarding them.
+test fn an_index_paired_with_a_roster_that_omits_the_owner_answers_ownerless_holds() -> Bool {
+  noc_arm_code(
+    p: resolve_reference_provenance(
+      index: noc_index_with_thing(),
+      roster: Empty,
+      site: noc_site
+    )
+  ) == 2
+}

@@ -51,6 +51,28 @@ type ReferenceSite {
   spelling: QualifiedName
 }
 
+// DOMAIN: THE INDEX-LOOKUP FOLD, and every arm below should be read against that
+// and no wider. Targets reach this type only from an index lookup, and index keys
+// are containment paths (module_qn ++ segments), so an indexed target ALWAYS has
+// an owning module. A name bound in scope never enters here -- this type has no
+// scope chain and cannot acquire one without becoming a different fact.
+//
+// The consequence is load-bearing for ProvenanceOwnerless in particular: it does
+// NOT mean "this target has no owning module". It means THE ROSTER SUPPLIED COULD
+// NOT NAME ONE -- reachable exactly when a caller pairs an index with a roster
+// that does not cover it, which is a caller-side inconsistency between two
+// arguments that must agree. A dependency set derived while that arm fires is
+// silently UNDER-COMPLETE: a real edge is dropped while `dependencies` still
+// renders as authoritative, which is the empty-observation narrow (bottom-as-answer
+// conflated with bottom-as-ignorance). That is why `unresolved` retains these
+// rather than discarding them, and why the eventual repair is to make the
+// index/roster pairing unforgeable -- constructed together from one set of roots,
+// so a mismatched pair has no spelling -- rather than to give the symptom a
+// richer name.
+//
+// For provenance at the RESOLUTION site, where scope hits are in domain and
+// common, see NameOrigin at the foot of this file. The two are different domains
+// deliberately, not a duplication.
 type ResolutionProvenance
   = ProvenanceResolved { site: ReferenceSite, target: QualifiedName, owner: QualifiedName }
   | ProvenanceOwnerless { site: ReferenceSite, target: QualifiedName }
@@ -306,4 +328,143 @@ fn answer_target_optional(answer: ResolutionProvenance) -> Optional<QualifiedNam
     ProvenanceAmbiguous { site: _ } => optional_absent()
     ProvenanceUnbound { site: _ } => optional_absent()
   }
+}
+
+// ---------------------------------------------------------------------------
+// THE ORIGIN CARRIER: where the declaration that answered a name came from.
+//
+// ITS DOMAIN IS RESOLUTION, NOT INDEX LOOKUP, and stating that is the first thing
+// this carrier must do -- because the type above it in this same file has the
+// OTHER domain, and confusing the two is how a carrier ends up unable to say what
+// its consumer needs.
+//
+//   ResolutionProvenance (above) answers for the INDEX-LOOKUP fold. Every target
+//   it sees arrives from an index lookup, and index keys are containment paths,
+//   so an indexed target always HAS an owning module. A name bound in scope never
+//   enters that fold at all. Its arms are complete FOR THAT DOMAIN, and its
+//   ProvenanceOwnerless therefore does not mean "no owner exists" -- it means the
+//   roster supplied could not name one.
+//
+//   NameOrigin (below) answers for RESOLUTION ITSELF, at the emission site this
+//   lane is building toward. There the domain is strictly larger: resolve_atom
+//   consults lookup_chain FIRST and reaches the index only on Absent, so SCOPE
+//   HITS ARE THE COMMON CASE. Every one of them is a resolved name with no owning
+//   module by construction -- in domain, in bulk, and not an error.
+//
+// That is why NotApplicableLocalBinding exists here and has no counterpart above.
+// An arm is reachable relative to the OPERATION that returns it: a scope hit is
+// unreachable for the index fold and ordinary for resolution. Reusing one type
+// across both domains would either mint an arm the fold cannot construct, or
+// force resolution's commonest answer into an arm that reads as a failure.
+//
+// This is the domain model for a fact the pipeline does not yet carry, declared
+// BEFORE any stage emits it (model-before-implement). Nothing below is wired into
+// resolution by this module; wiring is a separate change, and the shape is fixed
+// here so that it is not decided by whatever the emission site found convenient.
+//
+// WHY A CARRIER AND NOT A WALK. Resolution already computes this and discards it:
+// it knows which declaration answered a name and throws the path away. The
+// alternative -- recovering origins by re-walking the tree and deciding for
+// ourselves which nodes are references -- would mint a SECOND authority for what
+// a reference is, beside resolve_node's own dispatch. That is the fork this lane
+// exists to remove, and it is not merely inelegant: measured on a real loaded
+// compilation, a walk over the normalized carrier returns grammar machinery and
+// raw tokens as "references" while missing every reference inside a function
+// body, because bodies are still token-level there (receipts in
+// v2.test.claim.provenance.loaded_carrier_receipts). It fails by answering
+// wrongly rather than by refusing.
+
+// THE ANSWER POINTS ARE EXACTLY TWO, AND SAYING SO IS THIS TYPE'S WHOLE JOB.
+// resolve_atom consults the scope chain first and reaches the symbol index only
+// on Absent, via lookup_symbol_index_atom_identity -- which is declared once and
+// has exactly one caller. try_resolve_qualified_name_node reaches
+// symbol_index_lookup for a dotted path. Those are the only two places a
+// MODULE-CROSSING answer is produced, so the carrier is exactly located and needs
+// no general notion of "reference" at all. A closed two-variant coproduct is how
+// that claim stays true: a third answer point cannot be added without failing
+// every exhaustive match over this type.
+type ModuleCrossingAnswerPoint
+  = AtomIdentityIndexAnswer
+  | QualifiedPathIndexAnswer
+
+// The two layers lookup_chain searches before the index is ever consulted. A hit
+// in either is a binding that lives INSIDE the compilation unit's own scope, so
+// it is not a module dependency -- not because we failed to find one, but because
+// the question does not apply to it.
+type LocalBinderLayer
+  = ScopeFrameBinder
+  | ModuleBindingBinder
+
+// Why an origin is absent when it should have been present. This arm exists so
+// the deficit is COUNTABLE: an origin we never recorded must not be able to hide
+// among the origins that legitimately do not exist.
+type OriginUnrecordedReason
+  = AnswerPointNotInstrumented { answer_point: ModuleCrossingAnswerPoint }
+  | ResolutionRefusedBeforeOrigin
+
+// THE LOAD-BEARING SPLIT, and the reason this is a model PR rather than a field
+// added at an emission site. Three states, and the middle one is the trap:
+//
+//   ModuleCrossing            -- the index answered; there IS a dependency edge.
+//   NotApplicableLocalBinding -- scope answered; there is NO edge, and that is
+//                                CORRECT rather than missing.
+//   OriginUnrecorded          -- we do not KNOW; a deficit that must be counted.
+//
+// The second and third both yield "no dependency edge", and a carrier that
+// modelled origin as an Optional would render them identically. That is the
+// state-space conflation this repository keeps finding: one absence symbol over
+// two states with different owners and opposite repairs -- nothing to fix versus
+// something to instrument. The distinction has to exist in the TYPE before
+// anything writes into it, because the first consumer to meet a scope hit will
+// otherwise encode it by convention, and the convention will be wrong.
+type NameOrigin
+  = ModuleCrossing {
+      answer_point: ModuleCrossingAnswerPoint,
+      target: QualifiedName,
+      owner: QualifiedName
+    }
+  | NotApplicableLocalBinding { layer: LocalBinderLayer }
+  | OriginUnrecorded { reason: OriginUnrecordedReason }
+
+// A dependency edge exists ONLY for a module-crossing answer. Both other arms
+// answer Absent, which is why the two predicates below exist beside this one:
+// this function deliberately cannot tell you WHY there is no edge.
+fn name_origin_dependency_owner(origin: NameOrigin) -> Optional<QualifiedName> {
+  match origin {
+    ModuleCrossing { answer_point: _, target: _, owner: owner } => optional_present(value: owner)
+    NotApplicableLocalBinding { layer: _ } => optional_absent()
+    OriginUnrecorded { reason: _ } => optional_absent()
+  }
+}
+
+// "No edge, and that is the right answer." A consumer counting dependencies wants
+// these to be silent.
+fn name_origin_edge_is_not_applicable(origin: NameOrigin) -> Bool {
+  match origin {
+    ModuleCrossing { answer_point: _, target: _, owner: _ } => false
+    NotApplicableLocalBinding { layer: _ } => true
+    OriginUnrecorded { reason: _ } => false
+  }
+}
+
+// "No edge, and we do not know whether there should be one." A consumer counting
+// DEFICITS wants exactly these, and wants them loud. Returning the reason rather
+// than a Bool keeps the deficit typed at the point it is counted, so a census can
+// separate an uninstrumented answer point from a refusal.
+fn name_origin_unrecorded_reason(origin: NameOrigin) -> Optional<OriginUnrecordedReason> {
+  match origin {
+    ModuleCrossing { answer_point: _, target: _, owner: _ } => optional_absent()
+    NotApplicableLocalBinding { layer: _ } => optional_absent()
+    OriginUnrecorded { reason: reason } => optional_present(value: reason)
+  }
+}
+
+// The carrier as it will be emitted: one answered name, at one position, with its
+// origin. `position` is the containment path the answer was asked from, which is
+// the same path symbol_index_fill_containment_node indexes bindings at -- so a
+// site's position names a place the index can actually be interrogated about.
+type AnsweredName {
+  position: QualifiedName
+  name: Symbol
+  origin: NameOrigin
 }
