@@ -52,6 +52,7 @@ import gunbc.scm.repository_save {
 }
 import gunbc.scm.repository_load {
   RepositoryLoad,
+  RepositoryLoadRefused,
   RepositoryFileUnreadable,
   load_repository,
 }
@@ -95,7 +96,7 @@ test fn scm_sv_a_refused_save_leaves_no_file() -> Bool {
     _ => false
   }
   let absent = match load_repository(path: scm_sv_never_written_path) {
-    RepositoryFileUnreadable { path: _, error: _ } => true
+    RepositoryLoadRefused { cause: RepositoryFileUnreadable { path: _, error: _ } } => true
     _ => false
   }
   refused && absent
