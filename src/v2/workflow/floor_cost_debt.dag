@@ -547,8 +547,9 @@ fn floor_cost_debt_roster() -> List<String> {
 // ONE MEMBER OF POPULATION B HAS NOW BEEN MEASURED DIRECTLY, AND IT IS GENUINELY EXPENSIVE.
 // `v2.test.claim.enforcement.grammar_coverage_witness`
 // `grammar_coverage_take_n_fixed_roster_saturates_by_execution`, run by crisp-newt-899 as one
-// dispatch with two arms on the same binary and host: at a 5000ms ceiling it FAILS with "at least
-// 5002ms elapsed"; at a 300000ms ceiling it PASSES its assertion at 7296ms CPU. Over its own work
+// dispatch with two arms on the same binary and host: at a 5000ms ceiling it is INTERRUPTED with
+// an interrupt point of 5002ms; at a 300000ms ceiling it PASSES its assertion at 7296ms CPU. Over
+// its own work
 // by 46%, and no fill is involved -- the completing arm reached the `if fill_cpu_nanos > 0`
 // emission site and printed nothing, which is a zero rather than an absence, unlike the
 // interrupted case above where the site is reached but the counter never advanced.
@@ -558,9 +559,19 @@ fn floor_cost_debt_roster() -> List<String> {
 // does mean population B is not uniformly mischarged, and enrolling it while claiming nothing
 // about own-work cost is right on evidence rather than merely prudent.
 //
-// AND IT QUANTIFIES WHY AN INTERRUPT POINT IS NOT A COST: the bound said "at least 5002ms", the
+// AND IT QUANTIFIES WHY AN INTERRUPT POINT IS NOT A COST: the interrupt point was 5002ms and the
 // truth was 7296ms -- 46% higher. That is the gap between a censored observation and a
 // measurement, on a real row, and it is the concrete figure behind this file's 501..505ms lesson.
+//
+// THE DIAGNOSTIC THAT INVITED THAT MISREADING IS BEING REPAIRED SEPARATELY, and this paragraph is
+// worded so it survives the repair. It used to quote the old rendering ("at least 5002ms"), which
+// put a BOUND in the field a reader scans for a COST -- three readers built wrong models on it in
+// one night, including this file's own first roster, whose members all reported 501..505ms because
+// that was the ceiling rather than any row's cost. gunbc#9599 gives the bound its own named field
+// (`interrupt_point=`) and renders the cost field as `UNMEASURED`, so the two dispositions can no
+// longer be read as the same measurement with a different adjective. Quoting the superseded string
+// here would have been a citation rotting the day it was written, so the mechanism is stated and
+// the wording is not.
 //
 // TWO LIMITS ON THAT NUMBER, kept because dropping them would make it say more than it can. It is
 // ONE row of 44, and it was run STANDALONE rather than in-fold, so it pays a corpus-wide load term
