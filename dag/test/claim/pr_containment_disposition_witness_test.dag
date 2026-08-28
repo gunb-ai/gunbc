@@ -1,0 +1,247 @@
+module test.claim.pr_containment_disposition_witness
+
+import std.types { Bool, Int, String, List }
+import tools.pr_containment_instrument {
+  AddedLine,
+  ContainmentTally,
+  ContainmentDisposition,
+  ContentContained,
+  PositionOnlyDivergence,
+  ResidueCandidate,
+  ContributesNewContent,
+  BranchUnobserved,
+  MergeCompleted,
+  MergeDidNotComplete,
+  added_lines_of_diff,
+  containment_disposition_of,
+  containment_per_mille,
+  disposition_name
+}
+import extdeps.git.inspect {
+  MergeTreeClean,
+  MergeTreeConflicted,
+  MergeTreeRefused,
+  merge_tree_outcome
+}
+
+// Pure decision inputs only -- this witness reads no repository, which is the property that makes
+// the position-only divergence case authorable at all: no live corpus is guaranteed to contain one.
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+// THE DISCRIMINATING CONTROLS FOR THE CONTAINMENT RULE, run against the real decision on synthetic
+// inputs. Nothing here reads a repository: the decision is separated from its observations exactly
+// so these can exercise the rule itself rather than a lookalike.
+//
+// THE PAIRS ARE THE CONTENT. "Contained is reported" alone is satisfied by a rule that reports
+// everything contained, and "new content is reported" alone by a rule that contains nothing. What
+// the pairs pin is the boundary between them -- and one of these cases, the position-only
+// divergence, is the one a live corpus is not guaranteed to contain on any given day, which is
+// precisely why the rule must be reachable without git.
+
+data base_tree_oid: String = "2ade8738f29ec8a27bf1aba85a591c80a3fbab3f"
+
+data other_tree_oid: String = "60607861251d30a4c48ee40e655a26aa3d90af21"
+
+fn tally(added: Int, present: Int) -> ContainmentTally {
+  ContainmentTally { added: added, present: present, residue: [] }
+}
+
+data probe_head_commit: String = "aff2c4ba8236b72dd8f7f8bf885b310c92173c7f"
+
+fn name_of(base_tree: String, merged_tree: String, t: ContainmentTally) -> String {
+  disposition_name(
+    d: containment_disposition_of(
+      base_tree: base_tree,
+      head_commit: probe_head_commit,
+      tree_answer: MergeCompleted { merged_tree: merged_tree },
+      tally: t
+    )
+  )
+}
+
+// THE OBSERVED HEAD TRAVELS WITH EVERY DISPOSITION THAT OBSERVED ONE, and this control is here
+// because its absence cost a wrong answer rather than a missing one. The instrument's first live run
+// passed bare `headRefName` values as refs; 37 of 65 did not resolve, and the rest resolved to STALE
+// LOCAL HEADS left by earlier fetches -- gunbc#9522 was measured three commits behind its real head
+// and the report said nothing about which commit it had read. A disposition that cannot name its
+// subject cannot be checked against the branch it claims to describe.
+fn head_of(base_tree: String, merged_tree: String, t: ContainmentTally) -> String {
+  match containment_disposition_of(
+    base_tree: base_tree,
+    head_commit: probe_head_commit,
+    tree_answer: MergeCompleted { merged_tree: merged_tree },
+    tally: t
+  ) {
+    ContentContained { head_commit: h, merged_tree: _, added: _ } => h
+    PositionOnlyDivergence { head_commit: h, merged_tree: _, added: _ } => h
+    ResidueCandidate { head_commit: h, per_mille: _, added: _, present: _, residue: _ } => h
+    ContributesNewContent { head_commit: h, per_mille: _, added: _, present: _ } => h
+    BranchUnobserved { branch_ref: _, cause: _ } => ""
+  }
+}
+
+test fn every_observing_disposition_names_the_head_it_measured() -> Bool {
+  head_of(base_tree: base_tree_oid, merged_tree: base_tree_oid, t: tally(added: 1, present: 0))
+      == probe_head_commit
+    && head_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 92, present: 92))
+      == probe_head_commit
+    && head_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 100, present: 94))
+      == probe_head_commit
+    && head_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 100, present: 1))
+      == probe_head_commit
+}
+
+// THE CERTAIN MEASURE. A merged tree equal to the base's is containment, and it is containment even
+// though the branch added lines the base does not carry -- which cannot happen in git and is asserted
+// here anyway, because the arm's whole point is that the TREE decides and the ratio is not consulted.
+test fn a_merged_tree_equal_to_the_base_is_contained() -> Bool {
+  name_of(base_tree: base_tree_oid, merged_tree: base_tree_oid, t: tally(added: 92, present: 0))
+    == "content-contained"
+}
+
+// THE MEASURED FALSE NEGATIVE, gunbc#9522. Every added line is on the base, and merging STILL changes
+// the tree, because the same declaration was authored at a different position. This must be its own
+// state: reporting it as contained would assert a merge is a no-op when it would add a duplicate
+// declaration, and reporting it as new content would hide the one case that motivated this module.
+test fn every_added_line_on_the_base_with_a_differing_tree_is_position_only() -> Bool {
+  name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 92, present: 92))
+    == "position-only-divergence"
+}
+
+// THE CANDIDATE BAND, AND ITS LOWER EDGE. 0.94 is the measured score of gunbc#9528, a partially
+// landed stack carrying real new work: it must be raised as a CANDIDATE and never as a verdict.
+test fn a_high_but_partial_ratio_is_only_a_candidate() -> Bool {
+  name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 100, present: 94))
+    == "residue-candidate"
+}
+
+// THE NEGATIVE CONTROL FOR THE BAND. One per-mille below the threshold is ordinary new content.
+// Without this the threshold could be zero and every test above would still pass.
+test fn just_below_the_threshold_is_ordinary_new_content() -> Bool {
+  name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 1000, present: 849))
+    == "contributes-new-content"
+    && name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 1000, present: 850))
+      == "residue-candidate"
+}
+
+// A BRANCH THAT ADDED NOTHING IS NOT FULLY LANDED CONTENT. A pure deletion has no added lines to be
+// a fraction of, and answering 1000 there would report it as position-only divergence. The ratio is
+// zero and the disposition is ordinary -- the tree arm above is the only thing that can call a
+// deletion contained, which is correct, because a deletion the base already has does merge to the
+// base's tree.
+test fn a_branch_with_no_added_lines_is_not_a_ratio() -> Bool {
+  containment_per_mille(tally: tally(added: 0, present: 0)) == 0
+    && name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 0, present: 0))
+      == "contributes-new-content"
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DIFF FOLD.
+
+data added_line_diff: String = concat(
+  "diff --git a/dag/std/logic.dag b/dag/std/logic.dag\n",
+  concat(
+    "--- a/dag/std/logic.dag\n+++ b/dag/std/logic.dag\n@@ -1,0 +2 @@\n",
+    "+data probe: String = \"one\"\n+\n+   data probe_two: String = \"two\"   \n-data gone: String = \"removed\"\n"
+  )
+)
+
+// THREE PROPERTIES IN ONE FOLD, and each is a way the measure could be wrong rather than a restatement
+// of the same one: the blank added line is not content, the removed line is not an addition, and the
+// surviving lines are TRIMMED, because the comparison against the base is on trimmed text and an
+// untrimmed key would report a re-indented line as absent.
+test fn the_diff_fold_counts_content_lines_only_and_trims_them() -> Bool {
+  let lines = added_lines_of_diff(diff_text: added_line_diff)
+  count(lines) == 2
+    && all(lines, l => l.path == "dag/std/logic.dag")
+    && all(lines, l => starts_with(s: l.text, prefix: "data probe"))
+    && any(lines, l => l.text == "data probe_two: String = \"two\"")
+}
+
+// THE `+++ b/` HEADER IS THE ONLY THING THAT OPENS A FILE. A `+` line arriving before any header --
+// which is what the framing lines of a diff look like to a fold that does not exclude them -- must
+// contribute nothing rather than being attributed to an empty path.
+data headerless_diff: String = "+data orphan: String = \"no file\"\n"
+
+test fn an_added_line_outside_any_file_is_not_counted() -> Bool {
+  count(added_lines_of_diff(diff_text: headerless_diff)) == 0
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE EXIT SEMANTICS OF MERGE-TREE, asserted where the containment rule consumes them.
+
+fn outcome_is_clean(exit_code: Int, stdout: String) -> Bool {
+  match merge_tree_outcome(exit_code: exit_code, stdout: stdout, stderr: "") {
+    MergeTreeClean { tree_hex: _ } => true
+    MergeTreeConflicted { tree_hex: _ } => false
+    MergeTreeRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+fn outcome_tree(exit_code: Int, stdout: String) -> String {
+  match merge_tree_outcome(exit_code: exit_code, stdout: stdout, stderr: "") {
+    MergeTreeClean { tree_hex: t } => t
+    MergeTreeConflicted { tree_hex: t } => t
+    MergeTreeRefused { exit_code: _, stderr: _ } => ""
+  }
+}
+
+// A CONFLICTED MERGE STILL REPORTS A TREE, and the containment rule depends on that: exit 1 writes
+// the tree it built and then the conflict report beneath it. A fold that took the whole stdout, or
+// that treated exit 1 as having no tree, would make every conflicted branch unmeasurable.
+test fn a_conflicted_merge_carries_its_tree_on_the_first_line() -> Bool {
+  outcome_tree(exit_code: 1, stdout: concat(other_tree_oid, "\n100644 abc 1\tsrc/a.rs\n"))
+    == other_tree_oid
+    && !outcome_is_clean(exit_code: 1, stdout: concat(other_tree_oid, "\n100644 abc 1\tsrc/a.rs\n"))
+    && outcome_is_clean(exit_code: 0, stdout: concat(other_tree_oid, "\n"))
+}
+
+// AN ANSWERING EXIT THAT PRODUCED NO TREE IS A REFUSAL, not a clean merge of nothing. Without this
+// arm an empty stdout would decode as a tree of "", which compares unequal to the base and would be
+// reported as a branch contributing content nobody can see.
+test fn an_answering_exit_with_no_tree_refuses() -> Bool {
+  match merge_tree_outcome(exit_code: 0, stdout: "", stderr: "") {
+    MergeTreeRefused { exit_code: _, stderr: _ } => true
+    MergeTreeClean { tree_hex: _ } => false
+    MergeTreeConflicted { tree_hex: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// A MERGE THAT DID NOT COMPLETE CANNOT REPORT THE CERTAIN ARM.
+//
+// `git merge-tree --write-tree` exits 1 on conflict and STILL PRINTS A VALID TREE OID (measured in
+// a scratch repository, not read from the manual). An earlier revision of the instrument compared
+// that tree to the base's whatever the exit code said, which let a merge git could not complete
+// answer ContentContained -- the one disposition a reader is entitled to act on. The repair is
+// structural: MergeDidNotComplete carries no tree, so the arm has no constructible path.
+//
+// THIS CONTROL IS THE ADVERSARIAL ONE. It hands the line-grain measure a tally that WOULD have said
+// contained under the old code -- the merged tree equal to the base -- and asserts the certain arm
+// is still not reported. Passing the base's own tree is what makes it discriminating: a fix that
+// merely stopped comparing would pass a weaker probe too.
+fn name_of_incomplete_merge(t: ContainmentTally) -> String {
+  disposition_name(
+    d: containment_disposition_of(
+      base_tree: base_tree_oid,
+      head_commit: probe_head_commit,
+      tree_answer: MergeDidNotComplete,
+      tally: t
+    )
+  )
+}
+
+test fn a_merge_that_did_not_complete_never_reports_the_certain_arm() -> Bool {
+  name_of_incomplete_merge(t: tally(added: 0, present: 0)) == "contributes-new-content"
+    && name_of_incomplete_merge(t: tally(added: 92, present: 92)) == "position-only-divergence"
+    && name_of_incomplete_merge(t: tally(added: 100, present: 94)) == "residue-candidate"
+    && name_of_incomplete_merge(t: tally(added: 100, present: 1)) == "contributes-new-content"
+}
+
+// THE POSITIVE CONTROL FOR THE PAIR. The identical tally under a COMPLETED merge to the base's own
+// tree does report the certain arm. Without this, the test above is satisfied by a rule that never
+// reports containment at all.
+test fn the_same_tally_under_a_completed_merge_does_report_containment() -> Bool {
+  name_of(base_tree: base_tree_oid, merged_tree: base_tree_oid, t: tally(added: 0, present: 0))
+    == "content-contained"
+}

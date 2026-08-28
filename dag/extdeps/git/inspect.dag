@@ -235,6 +235,22 @@ service git.Inspect {
       128 => String "Invalid ref or not a git repository"
     }
   }
+
+  operation MergeTreeWriteTree {
+    input { left: GitRef, right: GitRef }
+    output {
+      stdout: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "merge-tree", "--write-tree", "{left}", "{right}"] }
+    exit {
+      0 => Unit
+      1 => String "Merge produced conflicts"
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
 }
 
 // MERGE-BASE EXIT SEMANTICS ARE A FACT OF GIT, SO THEY ARE MODELED HERE BESIDE THE EXIT TABLE THAT
@@ -292,6 +308,72 @@ fn merge_base_outcome(exit_code: Int, stdout: String, stderr: String) -> MergeBa
       NoCommonAncestor
     } else {
       MergeBaseRefused { exit_code: exit_code, stderr: stderr }
+    }
+  }
+}
+
+// MERGE-TREE EXIT SEMANTICS ARE ALSO A FACT OF GIT, and they are modeled here for the reason the
+// merge-base note above gives: the operation's exit table already states 0, 1 and 128 with distinct
+// meanings, so a consumer comparing bare integers beside it would hold a second representation of
+// this module's fact.
+//
+// WHAT THIS OPERATION ANSWERS, STATED BECAUSE IT IS NOT THE QUESTION CALLERS EXPECT.
+// `git merge-tree --write-tree A B` answers DOES MERGING B INTO A CHANGE A'S TREE. That is not the
+// same question as IS B'S CONTENT ALREADY IN A, and the two diverge exactly where position matters.
+// Measured receipt (gunbc#9522, 2026-08-28): a branch whose 92 added lines were all present on main
+// had authored one declaration at a DIFFERENT POSITION in its file, so the merge registered an
+// addition and this operation reported a tree differing from main's -- while every line of the
+// branch was already there. A consumer answering "is this already landed" from this operation alone
+// will therefore MISS that case. The divergence is not a defect in git and not one here; it is why
+// the containment consumer in tools.pr_containment_instrument runs a second, content-grain measure
+// beside this one and reports the disagreement as its own disposition rather than resolving it.
+//
+// THE CONFLICTED ARM IS AN ANSWER, NOT AN ERROR, exactly as NoCommonAncestor is above: exit 1 means
+// git merged and found conflicting hunks, which is a fact about the two trees. Exit 128 means
+// nothing about either tree was established. Collapsing them would read an unreadable repository as
+// proof that two revisions conflict.
+//
+// THE TREE OID IS THE FIRST LINE OF STDOUT IN BOTH ANSWERING ARMS -- git writes the tree it built,
+// then, when there were conflicts, the conflict report beneath it. So the conflicted arm carries a
+// real tree oid too, and a caller comparing trees must not assume a tree implies a clean merge.
+type MergeTreeOutcome
+  = MergeTreeClean { tree_hex: String }
+  | MergeTreeConflicted { tree_hex: String }
+  | MergeTreeRefused { exit_code: Int, stderr: String }
+
+data merge_tree_exit_clean: Int = 0
+
+data merge_tree_exit_conflicted: Int = 1
+
+// The tree oid is the first line; anything beneath it is the conflict report and is not this
+// module's to interpret. An answering exit that produced NO first line is a refusal rather than a
+// clean merge of nothing -- an empty stdout is not the identity tree.
+fn merge_tree_first_line(stdout: String) -> String {
+  fold(
+    split(s: trim(s: stdout), delimiter: "\n"),
+    init: "",
+    f: (acc, line) => if acc == "" { trim(s: line) } else { acc }
+  )
+}
+
+// Total over every integer, deliberately, per the merge-base fold above: an undeclared exit code is
+// a REFUSAL carrying the code that produced it, never a fourth silent arm.
+fn merge_tree_outcome(exit_code: Int, stdout: String, stderr: String) -> MergeTreeOutcome {
+  let tree = merge_tree_first_line(stdout: stdout)
+  if tree == "" {
+    MergeTreeRefused {
+      exit_code: exit_code,
+      stderr: concat("git merge-tree produced no tree oid on stdout; stderr: ", stderr)
+    }
+  } else {
+    if exit_code == merge_tree_exit_clean {
+      MergeTreeClean { tree_hex: tree }
+    } else {
+      if exit_code == merge_tree_exit_conflicted {
+        MergeTreeConflicted { tree_hex: tree }
+      } else {
+        MergeTreeRefused { exit_code: exit_code, stderr: stderr }
+      }
     }
   }
 }
