@@ -46667,14 +46667,14 @@ pub fn run_required_floor(
     // is never WHICH roster names a row, it is whether exactly one MECHANISM holds it, and a row
     // claimed by two is the authority-substitution shape.
     //
-    // WHY THIS IS NOT OPTIONAL, measured rather than anticipated: 7 identities sit in both this
+    // WHY THIS IS NOT OPTIONAL, measured rather than anticipated: 6 identities sit in both this
     // roster and `floor_expected_red` at the restoration. Leaving both claims standing blocks the
     // run in EITHER direction, which is what makes this a real fork and not a tidy-up. Withheld
     // and still enrolled, the expected-red reverse join reports them as stale (enrolled but never
     // executed) and refuses. Un-withheld so the enrollment stays observable, they execute, exceed
     // the 500ms ceiling, and `ExpectedRedArm` explicitly REFUSES to hold an interrupted budget
-    // outcome -- so they land as ordinary failures and refuse too. All 7 measure 561-3010ms, so
-    // none of them can execute inside the ceiling.
+    // outcome -- so they land as ordinary failures and refuse too. All 6 measure 521-3865ms of
+    // MARGINAL cpu, so none of them can execute inside the ceiling.
     //
     // COST DEBT WINS, and the direction follows from what each roster asserts. Enrollment in
     // `floor_expected_red` asserts, in that module's own words, that the identity REACHES ITS
@@ -48477,7 +48477,7 @@ pub fn run_required_floor(
     // 100ms and a hard error at 500ms, and those are two different mechanisms rather than two
     // tiers of one: the hard error is `required_floor_claim_cpu_safety_limit_ms`, which refuses.
     //
-    // RANKED AND BOUNDED, WITH THE REMAINDER STATED. At a 100ms line the population is ~835 rows
+    // RANKED AND BOUNDED, WITH THE REMAINDER STATED. At a 100ms line the population is ~924 rows
     // on the measured corpus, and this file already carries the receipt for what that does to a
     // log -- the prior 5000ms/10000ms pair "fired on the MEDIAN witness (several hundred
     // `[floor-witness-slow]` lines)", and a signal at that volume is read by nobody. So the print

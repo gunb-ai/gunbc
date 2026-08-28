@@ -1685,7 +1685,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     }
     // STALE WITHHOLDS ARE NAMED INDIVIDUALLY; WITHHELD ROWS ARE NOT. The stale population
     // blocks and every member is a line to delete, so each one is printed. The withheld
-    // population is 320 rows at the restoration and printing it per-row would bury every other
+    // population is 203 rows at the restoration and printing it per-row would bury every other
     // diagnostic in the run — it is counted in the summary above and enumerated in full in
     // `v2.workflow.floor_cost_debt`, which is the authority a reader should be sent to anyway.
     for stale in &outcome.stale_cost_debt {
