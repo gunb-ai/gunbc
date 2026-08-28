@@ -1,0 +1,186 @@
+module gunbc.scm.render
+
+// THE PROCESS-OUTPUT BOUNDARY FOR THE SCM READ VERBS.
+//
+// `gunbc.scm.log`'s own header says where this module had to exist before it did: "turning rows into
+// text is a rendering concern that belongs with the process-output boundary. Nothing here chooses a
+// separator, a column order or a width." This is that boundary. The verbs answer questions; this
+// decides how an answer is PRESENTED, and nothing here decides where the presentation GOES.
+//
+// THE DESTINATION IS ABSENT ON PURPOSE, AND THAT IS THE WHOLE DESIGN. This module names no file
+// descriptor, no stream, no terminal and no stdout. It produces `std.render.Document`, a value; the
+// destination is a Realization handler bound to that value -- `extdeps.render.surface` already binds
+// two (`PlainTerminal`, `GithubActions`) through `serialize_document`. Naming a destination in the
+// shape here would fuse a transport into an interface, which DESIGN section 3 rules is the N-by-M
+// adapter trap: a second destination would then be a second renderer rather than a second handler.
+// A file, a pipe or an HTTP body is therefore one more handler and never a change to these
+// functions.
+//
+// WHY STATUS RE-USES ITS VERB'S LINE HELPERS RATHER THAN RE-DECIDING ITS TEXT. `gunbc.scm.status`
+// already owns `render_status_checkout`, `render_commit_count` and `render_staged`, and those encode
+// real decisions -- notably that an empty staged list renders as "nothing staged" rather than as
+// blank space, because silence and emptiness are different facts to a reader. Re-authoring those
+// choices here would fork the presentation of one concept across two modules (section 3), so this
+// module consumes them and contributes only the DOCUMENT STRUCTURE around them. The witness holds
+// that composition to its consequence: the serialized document is byte-identical to the verb
+// module's own `render_repository_status`, so there is one authority for status text and this
+// module has not quietly become a second.
+//
+// WHY LOG DECIDES ITS TEXT HERE. `gunbc.scm.log` deliberately ships NO renderer, for the reason
+// quoted above. So the log lines are authored here, and the two fields a reader expects and the
+// model does not carry -- AUTHOR and TIMESTAMP -- are ABSENT rather than invented, exactly as that
+// module's header requires. Inventing either to fill a column is the fabricated-plausible-output
+// failure DESIGN section 5 forbids at a user-facing boundary.
+
+import std.types { List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.render { RenderCapability }
+import extdeps.render.surface { RenderTarget }
+import gunbc.cli_wire { CliWireResponse, cli_wire_response }
+import std.render {
+  Document,
+  Block,
+  Leaf,
+  RenderFrame,
+  Line,
+  CursorAction,
+  Append,
+  plain_line,
+}
+import gunbc.scm.read_command { ScmReadResult, ScmReadAnswered, ScmReadRepositoryUnavailable }
+import gunbc.scm.repository_load { repository_load_refusal_lines }
+import gunbc.scm.log {
+  CommitLog,
+  NoCommitsYet,
+  CommitLogRows,
+  CommitLogRow,
+  LoggedCommitStanding,
+  LoggedCommitRootHeld,
+  LoggedCommitRootMissingFromStore,
+}
+import gunbc.scm.status {
+  RepositoryStatus,
+  render_status_checkout,
+  render_commit_count,
+  render_staged,
+}
+
+// A document of plain text lines: one Leaf block, one line per string.
+//
+// `Append` is the honest cursor action for a verb's answer. `Overwrite` and `Clear` exist for a
+// surface that redraws itself, and a read verb does not -- it emits an answer once. Choosing
+// Overwrite here would make the answer's persistence depend on the destination's cursor
+// addressability, which is a property of the handler and not a fact about the answer.
+fn text_lines_document(lines: List<String>) -> Document {
+  Document {
+    blocks: [
+      Leaf {
+        frame: RenderFrame {
+          lines: map(lines, l => plain_line(text: l)),
+          cursor_action: Append,
+        }
+      }
+    ]
+  }
+}
+
+// WHETHER THIS COMMIT'S PROGRAM IS HELD, said in the row rather than left to the reader.
+//
+// `gunbc.scm.log` reports this per row because the envelope can decide it, and a row whose program
+// is missing CANNOT BE CHECKED OUT. Rendering it identically to an ordinary row would present an
+// unusable commit as usable -- the reader's next action differs, so the rendering must.
+fn log_standing_suffix(standing: LoggedCommitStanding) -> String {
+  match standing {
+    LoggedCommitRootHeld => ""
+    LoggedCommitRootMissingFromStore => "  (program not held -- cannot be checked out)"
+  }
+}
+
+fn log_row_line(row: CommitLogRow) -> String {
+  concat(row.message, log_standing_suffix(standing: row.standing))
+}
+
+// NO COMMITS IS AN ANSWER, NOT AN ABSENCE OF ONE. An empty repository read successfully and
+// truthfully has nothing to list; rendering that as no output would make it indistinguishable from a
+// verb that failed to produce lines -- the empty-observation narrow, carried to a human.
+fn commit_log_lines(log: CommitLog) -> List<String> {
+  match log {
+    NoCommitsYet => ["no commits yet"]
+    CommitLogRows { rows: rows } => map(rows, r => log_row_line(row: r))
+  }
+}
+
+fn scm_log_document(result: ScmReadResult<CommitLog>) -> Document {
+  match result {
+    ScmReadRepositoryUnavailable { cause: cause } =>
+      text_lines_document(lines: repository_load_refusal_lines(cause: cause))
+    ScmReadAnswered { path: _, answer: log } =>
+      text_lines_document(lines: commit_log_lines(log: log))
+  }
+}
+
+// The status lines come from the verb module; only the document structure is decided here. See the
+// header: this is the anti-fork constraint, and the witness measures it.
+fn repository_status_lines(status: RepositoryStatus) -> List<String> {
+  concat(
+    [
+      render_status_checkout(checkout: status.checkout),
+      render_commit_count(commit_count: status.commit_count),
+    ],
+    render_staged(staged: status.staged),
+  )
+}
+
+fn scm_status_document(result: ScmReadResult<RepositoryStatus>) -> Document {
+  match result {
+    ScmReadRepositoryUnavailable { cause: cause } =>
+      text_lines_document(lines: repository_load_refusal_lines(cause: cause))
+    ScmReadAnswered { path: _, answer: status } =>
+      text_lines_document(lines: repository_status_lines(status: status))
+  }
+}
+
+// THE EXIT STATUS IS A SEPARATE DECISION FROM THE BYTES, AND THIS IS WHERE IT IS MADE.
+//
+// An unavailable repository still renders a document worth printing -- the located refusal above --
+// and must still exit nonzero, because a script branching on this verb has to be able to tell "the
+// log is empty" from "there is no repository here". That is exactly the pair `CliWireResponse`
+// exists to carry, and it is why the exit status cannot be derived from the rendering.
+//
+// AN EMPTY REPOSITORY EXITS SUCCESS. `NoCommitsYet` is an ANSWER: the read succeeded and the honest
+// report is that there are no commits. Exiting nonzero there would tell a caller the read failed,
+// which is the not-applicable-rendered-as-malformed conflation carried to an exit code -- opposite
+// owners, opposite repairs, one signal.
+fn scm_read_exit<T>(result: ScmReadResult<T>) -> ProcessExit {
+  match result {
+    ScmReadAnswered { path: _, answer: _ } => ExitSuccess
+    ScmReadRepositoryUnavailable { cause: _ } =>
+      exit_failure(reason: "repository unavailable")
+  }
+}
+
+fn scm_log_cli_response(
+  result: ScmReadResult<CommitLog>,
+  target: RenderTarget,
+  capability: RenderCapability
+) -> CliWireResponse {
+  cli_wire_response(
+    doc: scm_log_document(result: result),
+    target: target,
+    capability: capability,
+    exit: scm_read_exit(result: result),
+  )
+}
+
+fn scm_status_cli_response(
+  result: ScmReadResult<RepositoryStatus>,
+  target: RenderTarget,
+  capability: RenderCapability
+) -> CliWireResponse {
+  cli_wire_response(
+    doc: scm_status_document(result: result),
+    target: target,
+    capability: capability,
+    exit: scm_read_exit(result: result),
+  )
+}

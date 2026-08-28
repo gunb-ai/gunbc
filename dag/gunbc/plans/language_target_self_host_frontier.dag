@@ -1,7 +1,7 @@
 module gunbc.plans.language_target_self_host_frontier
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, hr }
 
@@ -80,7 +80,7 @@ fn language_target_self_host_frontier_body() -> List<MarkdownBlock> {
 }
 
 data language_target_self_host_frontier_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "language-target-self-host-frontier",
   title: "Language-target self-host frontier — beginning-to-end dependency map",
   body: language_target_self_host_frontier_body(),

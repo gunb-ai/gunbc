@@ -2,7 +2,7 @@ module gunbc.plans.merge_admission_gate_shape_proposal
 
 import std.dissolution { unbound_dissolution }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import gunbc.plan { Plan, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
 import gunbc.merge_admission { gate_roster_content_hash, receipt_is_admissible }
 
@@ -69,7 +69,7 @@ fn merge_admission_gate_shape_proposal_body() -> List<MarkdownBlock> {
 }
 
 data merge_admission_gate_shape_proposal_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "merge-admission-gate-shape-proposal",
   title: "[SIGNED OFF] Merge-admission gate shape — predicate landed, actuator follow-on HELD",
   body: merge_admission_gate_shape_proposal_body(),

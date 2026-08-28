@@ -769,6 +769,8 @@ data forced_ref_exchange_operations_note: String = "FORCED, REPOSITORY-ADDRESSED
 
 data integration_write_operations_note: String = "THE SIX WRITE/READ OPERATIONS BELOW MODEL GIT'S ORDINARY INTEGRATION SURFACE — stage, commit, branch checkout, merge, and the unmerged-stage read — each taking its repository as a parameter rather than inheriting the process's checkout, for the reason remote_url_takes_its_repository_as_a_parameter_note gives: an operation that answered for whatever directory the process happens to stand in would confirm a result for the wrong repository while looking entirely ordinary. They report exit_code and stderr and NOT a success Bool, per ls_remote_reports_termination_not_success_note: the seed derives exit_success as exactly exit_code == 0, so the pair would carry one fact twice and make a contradictory pair writable. That narrowing matters most for MergeNoEditInRepo, whose nonzero exit is an ANSWER rather than a failure — a caller asking whether a merge left the tree conflicted reads the code, and an operation pre-judging it as unsuccessful would decide something only the caller can. They declare no exit block, per ls_remote_carries_no_exit_block_note: those arms are parsed, re-emitted, and never realized, so authoring one here would mint a fresh declared-but-unrealized instance. Committer identity is deliberately not an input — a caller sets user.email and user.name through ConfigLocalSetInRepo, so identity stays one modeled binding rather than a second per-commit representation."
 
+data repository_coherence_operations_note: String = "Independent repository-coherence observations. WriteTreeInRepo asks git to serialize the repository's actual index; TrackedWorktreeDiffFromInRepo compares tracked working-tree content directly with a named treeish. The latter deliberately does not use status, diff-index or diff-files: each incorporates the index and can therefore report a false difference when the index is the stale side of the three-way state being diagnosed."
+
 service git.Core {
   operation CurrentBranch {
     input {}
@@ -842,6 +844,39 @@ service git.Core {
     transport shell {
       argv: ["git", "-C", "{repository_path}", "worktree", "list", "--porcelain", "-z"]
     }
+  }
+
+  operation WriteTreeInRepo {
+    input { repository_path: String }
+    output {
+      tree: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "write-tree"] }
+  }
+
+  operation CommitTreeInRepo {
+    input { repository_path: String, commit: GitRef }
+    output {
+      tree: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "show", "-s", "--format=%T", "{commit}"] }
+  }
+
+  operation TrackedWorktreeDiffFromInRepo {
+    input { repository_path: String, treeish: GitRef }
+    output {
+      paths_nul: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-C", "{repository_path}", "diff", "--name-only", "-z", "{treeish}", "--"] }
   }
 
   operation LsFiles {

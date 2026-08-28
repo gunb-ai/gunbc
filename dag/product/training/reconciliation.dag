@@ -1,0 +1,515 @@
+module product.training.reconciliation
+
+import product.training.readback {
+  TrainingRunReadback, TrainingRunSubject, TrainingReadbackAxis,
+  ExecutionReadbackAxis, CheckpointReadbackAxis, TerminalReadbackAxis,
+  OutputReadbackAxis, EffectiveManifestReadbackAxis,
+  TrainingPopulationObservation,
+  TrainingPopulationObserved, TrainingPopulationNotAttempted, TrainingPopulationObservationRefused,
+  TrainingProcessObservation, TrainingProcessRunning, TrainingProcessExited,
+  TrainingCheckpointObservation,
+  TrainingAttemptTerminalReceipt, TrainingAttemptSucceeded, TrainingAttemptFailed,
+  TrainingOutputArtifactReceipt, TrainingEffectiveManifestReceipt,
+}
+import product.training.attempt_graph { TrainingRunAttemptGraph, graph_admits_attempt }
+import product.training.composition { TrainingRunEvidenceComposition }
+import product.training.execution_control {
+  TrainingRunConvergenceInput, TrainingExecutionClaim,
+}
+import product.training.resolution { TrainingRunDesired, resolved_training_manifest }
+import product.training.observation_cut {
+  TrainingRunReadbackCut, CrossAxisTemporalRelation,
+  ObservedInOrder, ObservedOutOfOrder, CrossAxisTemporalRelationUnobserved,
+  output_enumeration_follows_terminal,
+}
+import product.training.resolution {
+  TrainingResolvedManifest, TrainingResolutionAxis,
+  TrainingManifestAgreement, TrainingManifestIdentical, TrainingManifestDiffers,
+  training_manifest_agreement,
+}
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.execution { Attempt }
+import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
+import std.types { NonEmptyStr, List, Bool }
+
+// RECONCILIATION IS A PURE FOLD AND DOES NOTHING. It draws a conclusion from admitted evidence;
+// actuation consumes the conclusion. A fold that could also act would decide and do in one step,
+// leaving no representable state in between for anything to disagree with.
+
+// CONFLICTS ARE A PER-ATTEMPT FACT, AND AN EARLIER REVISION OF THIS MODULE GOT THAT WRONG AT THE
+// GRAIN. Retry, capability escalation and requested re-execution create NEW attempts rather than
+// mutating an earlier one, so across attempts:
+//
+//   E1 failed, E2 succeeded          is the ordinary local-model-to-Opus escalation history this
+//                                    programme exists to record, not a contradiction
+//   E1 terminal, E2 running          is normal continuation
+//   E1 -> digest A, E2 -> digest B   is two attempts producing two artifacts
+//
+// The real contradictions are all within ONE attempt: the same attempt reporting both success and
+// failure, the same attempt reporting two different output digests, the same attempt observed
+// running and terminal within one ordered sweep. Reading any of those at run grain would refuse
+// exactly the history the escalation model is designed to keep.
+type TrainingAttemptAssessment<P> {
+  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  processes: List<TrainingProcessObservation<P>>
+  checkpoints: List<TrainingCheckpointObservation<P>>
+  terminals: List<TrainingAttemptTerminalReceipt<P>>
+  outputs: List<TrainingOutputArtifactReceipt<P>>
+  effective_manifests: List<TrainingEffectiveManifestReceipt<P>>
+}
+
+// EVERY WAY A CONCLUSION CAN BE UNAVAILABLE IS ITS OWN NAMED BLOCKER, because the owners differ.
+// Observation refusal is owed to the transport; a never-attempted axis to the scheduling driver; a
+// foreign attempt to whatever filed the evidence; a same-attempt contradiction to the producer that
+// emitted two incompatible receipts. Folding them into one Refused arm would give one remedy to
+// four problems.
+type TrainingRunBlocker<P>
+  = TrainingObservationNotAttempted { axis: TrainingReadbackAxis, obligation: NonEmptyStr }
+  | TrainingObservationRefused {
+      axis: TrainingReadbackAxis,
+      attempt_receipt: ObservationReceiptRef,
+      cause: NonEmptyStr,
+    }
+  | TrainingReadbackAttemptOutsideRun {
+      axis: TrainingReadbackAxis,
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+    }
+  | TrainingAttemptTerminalConflict {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      succeeded: List<TrainingAttemptTerminalReceipt<P>>,
+      failed: List<TrainingAttemptTerminalReceipt<P>>,
+    }
+  | TrainingAttemptOutputConflict {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      outputs: List<TrainingOutputArtifactReceipt<P>>,
+    }
+  | TrainingEffectiveManifestMismatch {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      first_axis: TrainingResolutionAxis,
+      more_axes: List<TrainingResolutionAxis>,
+    }
+  | TrainingSucceededWithoutObservedOutput {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      terminal: TrainingAttemptTerminalReceipt<P>,
+    }
+  | TrainingProcessTerminalContradiction {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      running: List<TrainingProcessObservation<P>>,
+      terminals: List<TrainingAttemptTerminalReceipt<P>>,
+    }
+  | TrainingAttemptWithoutExecutionClaim {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+    }
+  | TrainingCompletionAmbiguous {
+      first: FabricIdentity<P, ExecutionAttemptKey>,
+      more: List<FabricIdentity<P, ExecutionAttemptKey>>,
+    }
+
+// A COMPLETION CANDIDATE IS NOT THREE RECEIPTS THAT AGREE WITH EACH OTHER. Three receipts can name
+// one attempt, agree perfectly, and be collectively about nothing -- so the mint consumes the
+// ADMITTED GRAPH (which is what makes "the same attempt" mean an attempt at THIS run) and the
+// OBSERVATION CUT (which is what makes "the output was enumerated after the terminal" a fact rather
+// than an assumption). Without the cut, an output population observed empty BEFORE the terminal is
+// indistinguishable from a completed run whose artifact is missing, and those have opposite
+// remedies.
+type TrainingCompletionCandidate<P> sole_constructor {
+  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  terminal: TrainingAttemptTerminalReceipt<P>
+  output: TrainingOutputArtifactReceipt<P>
+  effective_manifest: TrainingEffectiveManifestReceipt<P>
+}
+
+fn completion_candidate_seal<P>(
+  attempt: FabricIdentity<P, ExecutionAttemptKey>,
+  terminal: TrainingAttemptTerminalReceipt<P>,
+  output: TrainingOutputArtifactReceipt<P>,
+  effective_manifest: TrainingEffectiveManifestReceipt<P>,
+) -> TrainingCompletionCandidate<P>
+  admit_callers: [
+    decl_ref(module_path: "product.training.reconciliation", decl_name: "completion_candidate_of"),
+  ]
+  = TrainingCompletionCandidate {
+      attempt: attempt,
+      terminal: terminal,
+      output: output,
+      effective_manifest: effective_manifest,
+    }
+
+type TrainingRunDisposition<P>
+  = TrainingRunAlreadyConverged { completion: TrainingCompletionCandidate<P> }
+  | TrainingRunInProgress { running: List<TrainingProcessObservation<P>> }
+  | TrainingRunLaunchDispatchRequired {
+      first: TrainingExecutionClaim<P>,
+      more: List<TrainingExecutionClaim<P>>,
+    }
+  | TrainingRunLaunchPending {
+      first: TrainingExecutionClaim<P>,
+      more: List<TrainingExecutionClaim<P>>,
+    }
+  | TrainingRunExecutionRequired
+  | TrainingRunRestartAuthorizationRequired {
+      failed: List<TrainingAttemptTerminalReceipt<P>>,
+    }
+  | TrainingRunBlocked { first: TrainingRunBlocker<P>, more: List<TrainingRunBlocker<P>> }
+
+type TrainingRunReconciliation<P> sole_constructor {
+  subject: TrainingRunSubject<P>
+  attempts: List<TrainingAttemptAssessment<P>>
+  disposition: TrainingRunDisposition<P>
+}
+
+fn reconciliation_seal<P>(
+  subject: TrainingRunSubject<P>,
+  attempts: List<TrainingAttemptAssessment<P>>,
+  disposition: TrainingRunDisposition<P>,
+) -> TrainingRunReconciliation<P>
+  admit_callers: [
+    decl_ref(module_path: "product.training.reconciliation", decl_name: "reconcile_training_run"),
+  ]
+  = TrainingRunReconciliation { subject: subject, attempts: attempts, disposition: disposition }
+
+fn members_of<T>(o: TrainingPopulationObservation<T>) -> List<T> {
+  match o {
+    TrainingPopulationObserved { members: m, enumeration_receipt: _ } => m
+    TrainingPopulationNotAttempted { obligation: _ } => []
+    TrainingPopulationObservationRefused { attempt_receipt: _, cause: _ } => []
+  }
+}
+
+fn axis_blockers<P, T>(
+  axis: TrainingReadbackAxis,
+  o: TrainingPopulationObservation<T>,
+) -> List<TrainingRunBlocker<P>> {
+  match o {
+    TrainingPopulationObserved { members: _, enumeration_receipt: _ } => []
+    TrainingPopulationNotAttempted { obligation: g } =>
+      [TrainingObservationNotAttempted { axis: axis, obligation: g }]
+    TrainingPopulationObservationRefused { attempt_receipt: r, cause: c } =>
+      [TrainingObservationRefused { axis: axis, attempt_receipt: r, cause: c }]
+  }
+}
+
+fn observation_blockers<P>(rb: TrainingRunReadback<P>) -> List<TrainingRunBlocker<P>> {
+  [
+    axis_blockers(axis: ExecutionReadbackAxis, o: rb.execution),
+    axis_blockers(axis: CheckpointReadbackAxis, o: rb.checkpoints),
+    axis_blockers(axis: TerminalReadbackAxis, o: rb.terminals),
+    axis_blockers(axis: OutputReadbackAxis, o: rb.outputs),
+    axis_blockers(axis: EffectiveManifestReadbackAxis, o: rb.effective_manifests),
+  ].flat_map(x => x)
+}
+
+// A MEMBER NAMING AN ATTEMPT OUTSIDE THE ADMITTED GRAPH IS ITS OWN BLOCKER AT ITS OWN AXIS. Left
+// unchecked it would silently create an assessment row for an attempt this run does not have, and
+// every conclusion drawn from that row would be about another computation.
+fn foreign_attempt_blockers<P>(
+  graph: TrainingRunAttemptGraph<P>,
+  rb: TrainingRunReadback<P>,
+) -> List<TrainingRunBlocker<P>> {
+  [
+    members_of(o: rb.execution)
+      .filter(x => !graph_admits_attempt(graph: graph, attempt: x.attempt))
+      .map(x => TrainingReadbackAttemptOutsideRun { axis: ExecutionReadbackAxis, attempt: x.attempt }),
+    members_of(o: rb.checkpoints)
+      .filter(x => !graph_admits_attempt(graph: graph, attempt: x.attempt))
+      .map(x => TrainingReadbackAttemptOutsideRun { axis: CheckpointReadbackAxis, attempt: x.attempt }),
+    members_of(o: rb.terminals)
+      .filter(x => !graph_admits_attempt(graph: graph, attempt: x.attempt))
+      .map(x => TrainingReadbackAttemptOutsideRun { axis: TerminalReadbackAxis, attempt: x.attempt }),
+    members_of(o: rb.outputs)
+      .filter(x => !graph_admits_attempt(graph: graph, attempt: x.attempt))
+      .map(x => TrainingReadbackAttemptOutsideRun { axis: OutputReadbackAxis, attempt: x.attempt }),
+    members_of(o: rb.effective_manifests)
+      .filter(x => !graph_admits_attempt(graph: graph, attempt: x.attempt))
+      .map(x =>
+        TrainingReadbackAttemptOutsideRun {
+          axis: EffectiveManifestReadbackAxis,
+          attempt: x.attempt,
+        }),
+  ].flat_map(x => x)
+}
+
+fn assessment_for<P>(
+  attempt: Attempt<P>,
+  rb: TrainingRunReadback<P>,
+) -> TrainingAttemptAssessment<P> {
+  TrainingAttemptAssessment {
+    attempt: attempt.id,
+    processes: members_of(o: rb.execution).filter(x => fabric_identity_eq(left: x.attempt, right: attempt.id)),
+    checkpoints: members_of(o: rb.checkpoints).filter(x => fabric_identity_eq(left: x.attempt, right: attempt.id)),
+    terminals: members_of(o: rb.terminals).filter(x => fabric_identity_eq(left: x.attempt, right: attempt.id)),
+    outputs: members_of(o: rb.outputs).filter(x => fabric_identity_eq(left: x.attempt, right: attempt.id)),
+    effective_manifests: members_of(o: rb.effective_manifests)
+      .filter(x => fabric_identity_eq(left: x.attempt, right: attempt.id)),
+  }
+}
+
+fn terminal_succeeded<P>(t: TrainingAttemptTerminalReceipt<P>) -> Bool {
+  match t.standing {
+    TrainingAttemptSucceeded => true
+    TrainingAttemptFailed { detail: _ } => false
+  }
+}
+
+fn process_is_running<P>(p: TrainingProcessObservation<P>) -> Bool {
+  match p.liveness {
+    TrainingProcessRunning => true
+    TrainingProcessExited { detail: _ } => false
+  }
+}
+
+fn outputs_disagree<P>(outputs: List<TrainingOutputArtifactReceipt<P>>) -> Bool {
+  match outputs.first() {
+    none => false
+    Present { value: head } => outputs.any(o => o.artifact.hex != head.artifact.hex)
+  }
+}
+
+fn manifest_blockers_for<P>(
+  a: TrainingAttemptAssessment<P>,
+  intended: TrainingResolvedManifest,
+) -> List<TrainingRunBlocker<P>> {
+  a.effective_manifests.flat_map(r =>
+    match training_manifest_agreement(intended: intended, observed: r.manifest) {
+      TrainingManifestIdentical => []
+      TrainingManifestDiffers { first: f, more: m } =>
+        [TrainingEffectiveManifestMismatch { attempt: a.attempt, first_axis: f, more_axes: m }]
+    }
+  )
+}
+
+// CROSS-AXIS CONTRADICTIONS ARE LICENSED BY THE COMPOSITION, WHICH IS WHY NO ORDER FLAG SURVIVES
+// HERE. A terminal beside an empty output population, or a running process beside a terminal, are
+// contradictions only if the second read happened after the first -- and an admitted composition
+// carries a cut whose receipts are the very ones that produced these populations, so the ordering
+// holds for every input this fold can receive. An earlier revision threaded an `ordered` boolean
+// through these arms; once composition became the only door, that boolean could not be false for
+// any admissible input, and a guard whose red is unreachable is a decoration that would be cited
+// as coverage. The requirement did not disappear -- it moved to the door.
+fn attempt_blockers<P>(
+  a: TrainingAttemptAssessment<P>,
+  intended: TrainingResolvedManifest,
+) -> List<TrainingRunBlocker<P>> {
+  let succeeded = a.terminals.filter(t => terminal_succeeded(t: t))
+  let failed = a.terminals.filter(t => !terminal_succeeded(t: t))
+  let running = a.processes.filter(p => process_is_running(p: p))
+  let terminal_conflict =
+    if succeeded.length() > 0 && failed.length() > 0 {
+      [TrainingAttemptTerminalConflict { attempt: a.attempt, succeeded: succeeded, failed: failed }]
+    } else {
+      []
+    }
+  let output_conflict =
+    if outputs_disagree(outputs: a.outputs) {
+      [TrainingAttemptOutputConflict { attempt: a.attempt, outputs: a.outputs }]
+    } else {
+      []
+    }
+  let succeeded_without_output =
+    if succeeded.length() > 0 && a.outputs.length() == 0 {
+      succeeded.map(t => TrainingSucceededWithoutObservedOutput { attempt: a.attempt, terminal: t })
+    } else {
+      []
+    }
+  let process_terminal =
+    if running.length() > 0 && a.terminals.length() > 0 {
+      [TrainingProcessTerminalContradiction { attempt: a.attempt, running: running, terminals: a.terminals }]
+    } else {
+      []
+    }
+  [
+    terminal_conflict,
+    output_conflict,
+    succeeded_without_output,
+    process_terminal,
+    manifest_blockers_for(a: a, intended: intended),
+  ].flat_map(x => x)
+}
+
+// A CANDIDATE REQUIRES THE ORDERED CUT. Converged is the arm that authorizes SKIPPING a training
+// run, so it takes the strongest evidence available: without an ordered sweep, an output population
+// read before the terminal is indistinguishable from a finished run whose artifact is missing.
+fn completion_candidate_of<P>(
+  a: TrainingAttemptAssessment<P>,
+  intended: TrainingResolvedManifest,
+) -> TrainingCompletionCandidate<P>? {
+  match a.terminals.filter(t => terminal_succeeded(t: t)).first() {
+      none => none
+      Present { value: t } =>
+        match a.outputs.first() {
+          none => none
+          Present { value: o } =>
+            match a.effective_manifests.first() {
+              none => none
+              Present { value: m } =>
+                match training_manifest_agreement(intended: intended, observed: m.manifest) {
+                  TrainingManifestDiffers { first: _, more: _ } => none
+                  TrainingManifestIdentical =>
+                    Present {
+                      value: completion_candidate_seal(
+                        attempt: a.attempt,
+                        terminal: t,
+                        output: o,
+                        effective_manifest: m,
+                      ),
+                    }
+                }
+            }
+        }
+  }
+}
+
+type BlockerSplit<P> {
+  head_taken: Bool
+  more: List<TrainingRunBlocker<P>>
+}
+
+fn blockers_after_head<P>(bs: List<TrainingRunBlocker<P>>) -> List<TrainingRunBlocker<P>> {
+  bs
+    .fold(
+      BlockerSplit { head_taken: false, more: [] },
+      (acc, b) =>
+        if acc.head_taken {
+          BlockerSplit { head_taken: true, more: [acc.more, [b]].flat_map(x => x) }
+        } else {
+          BlockerSplit { head_taken: true, more: acc.more }
+        },
+    )
+    .more
+}
+
+// AN EMPTY BLOCKER POPULATION IS NECESSARY AND NOT SUFFICIENT FOR CONVERGENCE. Five successfully
+// enumerated empty populations contain no contradiction whatsoever and are plainly not a converged
+// run -- they are a run nobody has started. So convergence is reached from POSITIVE evidence
+// (exactly one completion candidate) rather than from the absence of complaints.
+// AN ATTEMPT THE GRAPH HOLDS WITH NO EXECUTION CLAIM IS A CONTROL-STATE DEFECT, NOT A REASON TO
+// LAUNCH. It is the state a retrospective writer produces -- an attempt recorded after the fact with
+// nothing durable inhibiting a second launch -- and treating it as "execution required" is exactly
+// the race this whole slice exists to close.
+fn unclaimed_attempt_blockers<P>(
+  input: TrainingRunConvergenceInput<P>,
+) -> List<TrainingRunBlocker<P>> {
+  input.control.graph.attempts
+    .filter(a =>
+      !input.control.active_claims.any(c => fabric_identity_eq(left: c.attempt, right: a.id))
+    )
+    .map(a => TrainingAttemptWithoutExecutionClaim { attempt: a.id })
+}
+
+type ClaimSplit<P> {
+  head_taken: Bool
+  more: List<TrainingExecutionClaim<P>>
+}
+
+fn claims_after_head<P>(cs: List<TrainingExecutionClaim<P>>) -> List<TrainingExecutionClaim<P>> {
+  cs
+    .fold(
+      ClaimSplit { head_taken: false, more: [] },
+      (acc, c) =>
+        if acc.head_taken {
+          ClaimSplit { head_taken: true, more: [acc.more, [c]].flat_map(x => x) }
+        } else {
+          ClaimSplit { head_taken: true, more: acc.more }
+        },
+    )
+    .more
+}
+
+fn claim_is_dispatched<P>(c: TrainingExecutionClaim<P>) -> Bool {
+  match c.dispatch {
+    none => false
+    Present { value: _ } => true
+  }
+}
+
+// A CLAIM POPULATION, NOT A CLAIM. Two active claims on two lawful transitions -- an initial and a
+// retry -- are both awaiting their launch, and reporting only the first would send a caller to
+// dispatch one and report the run handled. That is the first-wins defect this lane already repaired
+// in the readback binder, and there is no reason it is safer here.
+//
+// UNDISPATCHED OUTRANKS DISPATCHED because the two carry different instructions: the undispatched
+// claims need an actuation, the dispatched ones need only an observer. A pass that answered
+// "pending" while a claim had never been dispatched would wait forever on a launch nobody made.
+fn launch_disposition<P>(
+  claims: List<TrainingExecutionClaim<P>>,
+) -> TrainingRunDisposition<P> {
+  let undispatched = claims.filter(c => !claim_is_dispatched(c: c))
+  match undispatched.first() {
+    Present { value: head } =>
+      TrainingRunLaunchDispatchRequired {
+        first: head,
+        more: claims_after_head(cs: undispatched),
+      }
+    none =>
+      match claims.first() {
+        Present { value: head } =>
+          TrainingRunLaunchPending { first: head, more: claims_after_head(cs: claims) }
+        none => TrainingRunExecutionRequired
+      }
+  }
+}
+
+fn reconcile_training_run<P>(
+  input: TrainingRunConvergenceInput<P>,
+) -> TrainingRunReconciliation<P> {
+  let composition = input.evidence
+  let subject = composition.readback.subject
+  let graph = composition.graph
+  let rb = composition.readback
+  let intended = resolved_training_manifest(resolved: composition.desired.resolved)
+  let assessments = graph.attempts.map(a => assessment_for(attempt: a, rb: rb))
+  let blockers =
+    [
+      observation_blockers(rb: rb),
+      foreign_attempt_blockers(graph: graph, rb: rb),
+      assessments.flat_map(a => attempt_blockers(a: a, intended: intended)),
+      unclaimed_attempt_blockers(input: input),
+    ].flat_map(x => x)
+  let candidates =
+    assessments.flat_map(a =>
+      match completion_candidate_of(a: a, intended: intended) {
+        none => []
+        Present { value: c } => [c]
+      }
+    )
+  let ambiguity =
+    if candidates.length() > 1 {
+      match candidates.first() {
+        none => []
+        Present { value: head } =>
+          [
+            TrainingCompletionAmbiguous {
+              first: head.attempt,
+              more: candidates.filter(c => !fabric_identity_eq(left: c.attempt, right: head.attempt))
+                .map(c => c.attempt),
+            },
+          ]
+      }
+    } else {
+      []
+    }
+  let all_blockers = [blockers, ambiguity].flat_map(x => x)
+  let disposition =
+    match all_blockers.first() {
+      Present { value: head } =>
+        TrainingRunBlocked { first: head, more: blockers_after_head(bs: all_blockers) }
+      none =>
+        match candidates.first() {
+          Present { value: c } => TrainingRunAlreadyConverged { completion: c }
+          none => {
+            let running = assessments.flat_map(a => a.processes.filter(p => process_is_running(p: p)))
+            let failed = assessments.flat_map(a => a.terminals.filter(t => !terminal_succeeded(t: t)))
+            if running.length() > 0 {
+              TrainingRunInProgress { running: running }
+            } else {
+              if failed.length() > 0 {
+                TrainingRunRestartAuthorizationRequired { failed: failed }
+              } else {
+                launch_disposition(claims: input.control.active_claims)
+              }
+            }
+          }
+        }
+    }
+  reconciliation_seal(subject: subject, attempts: assessments, disposition: disposition)
+}

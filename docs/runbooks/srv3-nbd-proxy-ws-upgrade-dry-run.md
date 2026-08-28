@@ -29,7 +29,7 @@ non-upgrade GET (inconclusive — ws routes commonly 404 without an `Upgrade` he
 ## Prerequisites
 
 - Management-network reachability to srv3 BMC: **192.168.1.192** (cited in
-  `dag/gunbc/bmc_onboarding.dag`).
+  `dag/gunbc/bmc/bmc_onboarding.dag`).
 - OpenBMC 2.07.00 (srv3 cited row in `dag/extdeps/bmc/capability.dag`).
 - BMC credentials: factory `root` / `0penBmc` until rotated (`dag/extdeps/bmc/openbmc.dag`), or
   operator netrc per [BMC Redfish operator access](bmc-redfish-operator-access.md).
