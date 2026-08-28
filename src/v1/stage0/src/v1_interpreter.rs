@@ -4830,7 +4830,7 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
 // while the seed is the evaluator.
 //
 // Lane: ROADMAP `v1-materialization-kernel` (rn_53JPH6BB7G588K7DMZNWM0E3AS,
-// docs/plans/witness-realization-plan.md) — the same lane
+// witness-realization-plan (plan doc deleted 2026-08-28)) — the same lane
 // `extdeps.realization.emit_on_demand_host` `emit_on_demand_host_seed_deferral_note`
 // defers to; counted against `v1-honest-frontier` and terminating at
 // `v1-interpreter-quarantine` → `v1-interpreter-delete`.
@@ -4844,7 +4844,7 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
 //
 // Citation note: the two sibling deferrals in this file and in
 // `emit_on_demand_host_seed_deferral_note` name a
-// `dag/gunbc/v1_deletion_plan.dag ^witness_realization_kernel` deletion row. That row
+// `dag/gunbc/v1/v1_deletion_plan.dag ^witness_realization_kernel` deletion row. That row
 // no longer exists — the brick ledger it belonged to was retired 2026-07-28 by that
 // file's own `v1_exit_model_doc`, which moved per-node acceptance onto the roadmap
 // tickets. This deferral therefore names the live roadmap node instead of copying a
@@ -7838,7 +7838,7 @@ macro_rules! v1_algebra_method_arms {
             // eval_algebra_method (method/pipe calls) and that dispatch (direct calls) are two
             // surfaces over one builtin set that have diverged; they should be one authority.
             // Pure-eval logic, in scope of ROADMAP HAND kernel D (`v1_interpreter` pure-eval
-            // dissolution, docs/plans/interpreter-kernel-d.md): dissolution trigger is the
+            // dissolution, interpreter-kernel-d (plan doc deleted 2026-08-28)): dissolution trigger is the
             // pure-eval seam (`emit_host` transport wiring) grounding this dispatch into
             // `v2.compiler.eval`, at which point per-builtin arms stop being hand-Rust here.
             arm "method_call.map_keys" { "map_keys" } => {
@@ -8417,7 +8417,7 @@ fn eval_service_call(
         // (which would fabricate a plausible answer) nor to a real shell/file effect.
         //
         // HAND-RUST GATE — seed-retained, lane `v1-materialization-kernel`
-        // (rn_53JPH6BB7G588K7DMZNWM0E3AS, docs/plans/witness-realization-plan.md),
+        // (rn_53JPH6BB7G588K7DMZNWM0E3AS, witness-realization-plan (plan doc deleted 2026-08-28)),
         // terminating at `v1-interpreter-quarantine` → `v1-interpreter-delete`; the same
         // lane the `WITNESS_EVALUATION_FRAMES` deferral above names. Deletion condition,
         // checkable by execution: when witnesses emit to native code and the emitted
@@ -9597,7 +9597,7 @@ fn argv_materialization_value(
 /// `extdeps.render.ansi` authority (`ansi_mappings` in `dag/extdeps/render/ansi.dag`).
 /// Seed realization until the interpreter consumes that table directly; the
 /// dissolution is the single checkable receipt ROADMAP §1 "interpreter
-/// terminal-output de-fork" (`dag/gunbc/roadmap_authority.dag`).
+/// terminal-output de-fork" (`dag/gunbc/roadmap/roadmap_authority.dag`).
 pub mod sgr {
     pub const SUCCESS: &str = "38;5;34";
     pub const ERROR: &str = "38;5;196";
@@ -12582,8 +12582,8 @@ fn eval_emit_host_run_transport_builtin(
 /// HAND-RUST GATE explicit deferral: this is bounded growth in the existing seed
 /// file, not a census-shrink receipt and not a new Rust authority. Its lane is
 /// ROADMAP "Make native materialization the shared execution kernel",
-/// docs/plans/witness-realization-plan.md P3/P6, with the concrete deletion row
-/// dag/gunbc/v1_deletion_plan.dag ^witness_realization_kernel. Delete these
+/// witness-realization-plan (plan doc deleted 2026-08-28) P3/P6, with the concrete deletion row
+/// dag/gunbc/v1/v1_deletion_plan.dag ^witness_realization_kernel. Delete these
 /// observation/apply helpers when the self-emitted transport consumes the modeled
 /// ResolvedBuildContext and the dispatcher-change, environment-change, and
 /// cold/warm agreement witnesses remain green without them.
@@ -12837,13 +12837,13 @@ fn run_cached_process_spec(
 /// workspace with only the process env). Resolution order: bare name if it
 /// resolves on PATH; else $CARGO_HOME/bin/<name>; else $HOME/.cargo/bin/<name>;
 /// else refuse (DESIGN §5: never return the bare name and widen to ambient PATH
-/// at spawn time — the absorbing fallback hermetic-tool-provisioning-design.md
+/// at spawn time — the absorbing fallback hermetic-tool-provisioning-design (deleted)
 /// §1 names).
 ///
 /// HAND-RUST GATE explicit deferral (review 44883): this function is seed
 /// retained, not a new resolver authority. Its lane is ROADMAP
 /// `toolchain-single-resolver` (gunbc.roadmap_authority,
-/// docs/plans/hermetic-tool-provisioning-design.md P2 — "one resolver",
+/// hermetic-tool-provisioning-design (plan doc deleted 2026-08-28) P2 — "one resolver",
 /// handback: delete `resolve_host_tool_program` and the bash ladder). This PR
 /// repairs only the fail-open terminal arm; it does not admit a parallel key or
 /// grow the census. Delete the whole function when P2's `membership_reconcile`
@@ -17539,7 +17539,7 @@ mod argv_arg_limit_test {
 /// Interim seed witnesses for the fail-closed arms above. HAND-RUST GATE
 /// explicit deferral (review 44883): not a permanent test surface — delete with
 /// `resolve_host_tool_program` when ROADMAP `toolchain-single-resolver` lands
-/// (hermetic-tool-provisioning-design.md P2 RED: unpinned tool refuses before
+/// (hermetic-tool-provisioning-design (deleted) P2 RED: unpinned tool refuses before
 /// spawn, witnessed in `.dag`).
 #[cfg(test)]
 mod resolve_host_tool_program_tests {

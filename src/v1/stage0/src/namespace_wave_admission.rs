@@ -355,44 +355,12 @@ pub struct TransitionAdmission {
 /// UNADJUDICATED and refuses. The failure mode of having shrunk too early is therefore a loud
 /// refusal naming the delta, which its author closes by authoring a row -- never a silent
 /// admission. The next transition adds its rows here and removes them when its subject lands.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    // `plain_span` was declared TWICE by hand -- once in `gunbc.ci_render` and once in the render
-    // witness -- beside the `std.render` authority that already owned it. Deleting both copies and
-    // importing the authority is a DESIGN §3 reduction: one concept, one declaring identity. The
-    // wall sees the consequence of that deletion, which is that these two bindings' declarer moves
-    // from the local copy to the authority.
-    //
-    // TargetChanged IS THE CORRECT DISPOSITION AND IS NOT BEING SOFTENED. The leaf `plain_span` is
-    // unchanged and the declarer genuinely moved, which is exactly what this disposition reports.
-    // The module's grain note warns that TargetChanged on a REQUALIFICATION wave means a mis-shaped
-    // wave -- two change classes in one diff -- and refuses any per-row tolerance for it. That
-    // warning does not reach this change: no requalification is happening here, the move IS the
-    // change, and it is admitted by enumerated identity rather than by a predicate.
-    //
-    // Blast radius measured 0 modules, so nothing downstream resolves differently.
-    //
-    // These rows dissolve when the transition lands: once `gunbc.ci_render` no longer declares a
-    // local `plain_span` on the merge base, each row matches no delta and is reported as a stale
-    // admission, which reds the wall until it is deleted.
-    TransitionAdmission {
-        label: "ci_render plain_span dissolved into the std.render authority (§3)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.ci_render",
-            in_declaration: "box_content_line",
-            spelling: "plain_span",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "ci_render plain_span dissolved into the std.render authority (§3)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.ci_render",
-            in_declaration: "box_content_line_hot",
-            spelling: "plain_span",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// SECOND SHRINK, SAME RULE. Two `gunbc.ci_render` `plain_span` rows dissolved on
+/// schedule: `ci_render` now imports `plain_span` from the `std.render` authority and declares
+/// none, so no run can produce the deltas those rows named and both were reported stale on
+/// every build. They are removed here by the trigger they were authored with, not by a
+/// reinterpretation of it.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
 /// an instrument failure wearing coverage's clothes.
