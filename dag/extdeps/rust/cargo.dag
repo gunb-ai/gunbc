@@ -140,13 +140,13 @@ fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> NonEmp
 fn cargo_workspace_footprint(target_dir_patterns: List<String>, cargo_home_pattern: String) -> WorkspaceFootprint {
   WorkspaceFootprint {
     provenance: CitedUpstream { display: "Cargo build artifacts", upstream: "doc.rust-lang.org/cargo/" },
-    artifacts: append(
+    artifacts: concat(
       map(target_dir_patterns, p => WorkspaceArtifact {
         pattern: p,
         meaning: "cargo build output tree (compiled artifacts, incremental state)",
         reason: RegenerableFromSource
       }),
-      items: [WorkspaceArtifact {
+      [WorkspaceArtifact {
         pattern: cargo_home_pattern,
         meaning: "CARGO_HOME registry/cache; may include git checkouts",
         reason: LocalCacheState
