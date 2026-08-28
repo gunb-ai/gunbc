@@ -35,6 +35,8 @@
 //!   2. the cited-symbol wall — an authored `DeclarationRef` naming a symbol that
 //!      does not resolve (§3: cite the symbol, not the position)
 //!   3. module authorship — a top-level lens with no `construction_justification`
+//!   4. cited-authority reachability — a non-fixture module cited as a fact's home by
+//!      another non-fixture module, while no authored import edge reaches that home
 //!
 //! WHAT THIS IS NOT. It is not a widening of the required floor's source roots, and
 //! the objection `gunbc.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder`
@@ -61,7 +63,11 @@
 //! module: `gunbc.host_effect` `host_effect_apply` from three (`extdeps.github.actions_runner`,
 //! `gunbc.executor_privileged_operation`, `gunbc.runner_slot_provision`), `std.bytes`
 //! `builtin_function_registry` from three, `extdeps.network.mac` `parse_mac_address` from two
-//! (`extdeps.dhcp.v4` and a witness), and four more from two apiece. Every one of those extra
+//! (`extdeps.dhcp.v4` and a witness), and four more from two apiece. (That measurement stands as
+//! taken; the `parse_mac_address` example has since been DISCHARGED rather than falsified — the
+//! module landed, so the witness citations resolve and their rows are deleted, and `extdeps.dhcp.v4`
+//! stopped citing it when its frontier trigger was re-pointed off the artifact and onto the
+//! capability. Noted here so a reader does not grep for a two-site collision that is gone.) Every one of those extra
 //! sites was being suppressed by a row authored about a different module.
 //!
 //! THE ROSTERS ARE RE-DERIVED FROM THAT MEASUREMENT, AND THE FIRST DERIVATION WAS TAKEN OVER THE
@@ -186,6 +192,9 @@ pub struct ModuleDeclarationRecord {
     pub decl_fields: BTreeMap<String, BTreeSet<String>>,
     pub imports: Vec<ImportClaim>,
     pub cited: Vec<CitedSymbol>,
+    /// Callee spellings authored in this module. Used only to partition cited authorities by
+    /// whether the citing module also calls the cited declaration; it is not a resolver.
+    pub called: BTreeSet<String>,
     /// The authored NAME OCCURRENCES in this module's own tree that name something the module
     /// reaches, paired with the top-level declaration whose subtree carries it:
     /// `(in_declaration, spelling)`.
@@ -825,6 +834,7 @@ pub fn record_from_module(
     }
 
     let mut referenced = BTreeSet::new();
+    let mut called = BTreeSet::new();
     for item in module_items(module.clone()).iter() {
         let in_declaration = authored_name_at(source_indices.clone(), item.clone());
         collect_reference_occurrences(
@@ -834,10 +844,19 @@ pub fn record_from_module(
             false,
             &mut referenced,
         );
+        for_each_node(item, &mut |node| {
+            if is_call(node) && !node.name.is_empty() {
+                called.insert(node.name.clone());
+                if let Some(tail) = node.name.rsplit('.').next() {
+                    called.insert(tail.to_string());
+                }
+            }
+        });
     }
 
     ModuleDeclarationRecord {
         referenced,
+        called,
         authored_type_references: authored_type_references_from_transport(transport, &declared),
         declares_construction_justification: declared.contains(CONSTRUCTION_JUSTIFICATION_DECL),
         is_fixture_carrier: module_is_fixture_carrier(&module_path, rel_path),
@@ -890,6 +909,24 @@ pub struct DeclarationIndexPopulation {
     /// Citations naming a namespace no swept module declares — hand-Rust and other
     /// universes. Counted rather than dropped, so a green names what it did NOT cover.
     pub citations_outside_index: usize,
+    /// Distinct in-corpus modules cited as authorities from ordinary authored modules, but
+    /// reached by no authored import edge. A citation asserts that the target is a fact's
+    /// home; without an import edge no consumer closure typechecks that home. Identities are
+    /// carried rather than only a count so the unobserved remainder cannot be mistaken for a
+    /// specimen list or a percentage (DESIGN's third emit-stage escape mode).
+    pub cited_authorities_without_import_edges: Vec<String>,
+    /// The retained identities split by whether any citing module syntactically calls the cited
+    /// declaration. The called arm is an under-declaration candidate, not proof: indirection can
+    /// hide a call and a same-spelled callee can be unrelated. Both arms still lack compile
+    /// coverage; gunbc#9453 demonstrates the import-edge repair for one called specimen only.
+    pub cited_and_called_without_import_edges: Vec<String>,
+    pub cited_not_called_without_import_edges: Vec<String>,
+    /// Retained citees under `dag/`, the FIRST and therefore entry-producing root of the
+    /// existing `--source-root dag --source-root src/v2` corpus compile.
+    pub cited_authorities_under_primary_dag_entry_root: Vec<String>,
+    /// Retained citees under `src/v2/`, which that invocation indexes only as a dependency
+    /// pool. With no inbound import edge these identities are structurally unreachable there.
+    pub cited_authorities_in_src_v2_dependency_pool_only: Vec<String>,
     /// Import members admitted ONLY because they name a kernel type, over a target that
     /// declares no such name. Counted rather than skipped — see `import_member_findings`.
     pub import_members_kernel_named: usize,
@@ -926,6 +963,70 @@ pub fn index_records(index: &DeclarationIndex) -> Vec<&ModuleDeclarationRecord> 
 }
 
 pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation {
+    let imported_modules: BTreeSet<String> = index
+        .modules
+        .values()
+        .filter(|record| !record.is_fixture_carrier)
+        .flat_map(|record| record.imports.iter())
+        .filter_map(|import| {
+            resolve_cited_module(index, &import.target).map(|target| target.module_path.clone())
+        })
+        .collect();
+    let retained_citations: Vec<(&ModuleDeclarationRecord, &CitedSymbol, String)> = index
+        .modules
+        .values()
+        .filter(|record| !record.is_fixture_carrier)
+        .flat_map(|record| record.cited.iter().map(move |cited| (record, cited)))
+        .filter_map(|(record, cited)| {
+            resolve_cited_module(index, &cited.module_path)
+                .filter(|target| {
+                    !target.is_fixture_carrier
+                        && target.module_path != record.module_path
+                        && !imported_modules.contains(&target.module_path)
+                })
+                .map(|target| (record, cited, target.module_path.clone()))
+        })
+        .collect();
+    let cited_authorities_without_import_edges: Vec<String> = retained_citations
+        .iter()
+        .map(|(_, _, target)| target.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let cited_and_called_without_import_edges: Vec<String> = retained_citations
+        .iter()
+        .filter(|(record, cited, _)| record.called.contains(&cited.decl_name))
+        .map(|(_, _, target)| target.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let cited_not_called_without_import_edges: Vec<String> = cited_authorities_without_import_edges
+        .iter()
+        .filter(|target| !cited_and_called_without_import_edges.contains(target))
+        .cloned()
+        .collect();
+    let cited_authorities_under_primary_dag_entry_root: Vec<String> =
+        cited_authorities_without_import_edges
+            .iter()
+            .filter(|module_path| {
+                index
+                    .modules
+                    .get(*module_path)
+                    .is_some_and(|record| record.rel_path.starts_with("dag/"))
+            })
+            .cloned()
+            .collect();
+    let cited_authorities_in_src_v2_dependency_pool_only: Vec<String> =
+        cited_authorities_without_import_edges
+            .iter()
+            .filter(|module_path| {
+                index
+                    .modules
+                    .get(*module_path)
+                    .is_some_and(|record| record.rel_path.starts_with("src/v2/"))
+            })
+            .cloned()
+            .collect();
     DeclarationIndexPopulation {
         modules: index.modules.len(),
         declarations: index.modules.values().map(|r| r.declared.len()).sum(),
@@ -954,6 +1055,11 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
             .flat_map(|r| r.cited.iter())
             .filter(|c| citation_is_outside_index(index, &c.module_path))
             .count(),
+        cited_authorities_without_import_edges,
+        cited_and_called_without_import_edges,
+        cited_not_called_without_import_edges,
+        cited_authorities_under_primary_dag_entry_root,
+        cited_authorities_in_src_v2_dependency_pool_only,
         import_members_kernel_named: import_member_kernel_named_count(index),
         lens_modules: index
             .modules
@@ -1230,28 +1336,7 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
     (
         "test.claim.annotation_carrier",
         "bound_condition_does_not_fire_on_a_near_miss_ref",
-        "extdeps.network.mac",
-        "parse_mac_address",
-        "",
-    ),
-    (
-        "test.claim.annotation_carrier",
-        "bound_condition_does_not_fire_on_a_near_miss_ref",
         "extdeps.network.max",
-        "parse_mac_address",
-        "",
-    ),
-    (
-        "test.claim.annotation_carrier",
-        "bound_condition_pends_until_its_declaration_appears",
-        "extdeps.network.mac",
-        "parse_mac_address",
-        "",
-    ),
-    (
-        "test.claim.annotation_carrier",
-        "frontier_expiry_fired_row_still_present_reds",
-        "extdeps.network.mac",
         "parse_mac_address",
         "",
     ),
@@ -1260,13 +1345,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "frontier_expiry_fired_trigger_absent_from_rows_is_clean",
         "extdeps.network.mac",
         "already_deleted_frontier_unit",
-        "",
-    ),
-    (
-        "test.claim.annotation_carrier",
-        "unbound_condition_cannot_be_forced_to_fire_by_any_present_decls",
-        "extdeps.network.mac",
-        "parse_mac_address",
         "",
     ),
     (
@@ -1503,13 +1581,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
 ];
 
 const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
-    (
-        "extdeps.dhcp.v4",
-        "mac_address_anemic_brand_frontier_rows",
-        "extdeps.network.mac",
-        "parse_mac_address",
-        "",
-    ),
     (
         "extdeps.docker.container_inspect",
         "container_inspect_error_responses_frontier_rows",

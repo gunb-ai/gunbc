@@ -146,7 +146,6 @@ import gunbc.worker_lifecycle {
 }
 import gunbc.dispatch_selection { default_provider_selection_request }
 import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
-import extdeps.filesystem.filesystem_io { filesystem_listing_names_entry }
 import gunbc.deploy_transition {
   ActuationAdmission,
   ActuationAdmitted,
@@ -164,6 +163,10 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_provider_executable_refusal_detail,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
+  DashboardInstanceLookup,
+  DashboardInstanceResolved,
+  DashboardInstanceRootUnknown,
+  dashboard_instance_for_repo_root,
 }
 import gunbc.roadmap_dispatch_environment {
   EnvironmentAdmitted,
@@ -354,6 +357,19 @@ import gunbc.roadmap_presentation {
 import extdeps.gunbc
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io {
+  FilesystemEntryAbsent,
+  FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  filesystem_listing_observation,
+  filesystem_entry_presence,
+  filesystem_read_outcome,
+  filesystem_file_observation,
+}
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
   shape_codex_version_env_args_for_program,
@@ -1951,20 +1967,6 @@ fn belt_pass_outcome_from_member(doc: JsonValue, key: String) -> BeltPassOutcome
   }
 }
 
-type SpawnWorkdirInstanceLookup
-  = SpawnWorkdirInstanceResolved { instance: HostDashboardInstance }
-  | UnknownSpawnWorkdir { workdir: String }
-
-fn belt_dashboard_instance_lookup_for_spawn_workdir(
-  workdir: String,
-) -> SpawnWorkdirInstanceLookup {
-  if workdir == (srv1_live_dashboard_instance().repo_root as String) {
-    SpawnWorkdirInstanceResolved { instance: srv1_live_dashboard_instance() }
-  } else {
-    UnknownSpawnWorkdir { workdir: workdir }
-  }
-}
-
 fn belt_tick_receipt_read_from_filesystem(
   success: Bool,
   content: String,
@@ -2881,15 +2883,7 @@ fn provider_event_projection_error(
   }
 }
 
-data belt_publication_receipt_read_note: String = "THE RECEIPT IS ADDRESSED BY HEAD, SO THERE IS NO PATH TO READ UNTIL THE HEAD IS KNOWN. That ordering is the point: the other receipts on this row live at one path per attempt and can be read before anything is decided, while a publication receipt is one per head, so the subject has to exist before the address does.\\n\\nTHE UNOBSERVED ARM ANSWERS ReceiptSourceAbsent AND THAT IS NOT A FABRICATED ABSENCE. publication_segment refuses on an unobserved subject before it consults the source at all, so this value never reaches a judgment; it exists because the evidence record carries a source for every stage and there is no address to consult for this one. If the projection ever stopped refusing first, this would become a real answer - which is why the refusal there is matched on the subject rather than inferred here.\\n\\nEVERY OTHER ARM ESTABLISHES ITS ANSWER POSITIVELY - see publication_receipt_absence_is_established_note. No arm of this walk turns a failure into an absence, which is the whole difference between it and the read it replaced."
-
-data listing_membership_is_line_exact_note: String = "Filesystem.List returns entry names joined by newlines, so a plain substring test would answer yes for a name that is merely a PREFIX or suffix of a real entry - `abc.json` would be found inside `abc.json.tmp`, and a head sha would be found inside a longer one. Wrapping both sides in newlines makes the test line-exact without needing a split the interpreter does not offer, and every conclusion drawn from it is a membership fact rather than a coincidence of spelling."
-
-fn belt_listing_names_entry(listing: String, name: String) -> Bool {
-  filesystem_listing_names_entry(listing: listing, name: name)
-}
-
-data publication_receipt_absence_is_established_note: String = "ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ (review 46148). Filesystem.Read answers success=false both for a receipt that does not exist and for one that exists and cannot be read, and those two worlds have opposite correct actions - observe and write, versus stop and preserve. This walk therefore never concludes absence from a failure of any kind.\\n\\nTHE LADDER STARTS AT A DIRECTORY THAT IS KNOWN TO EXIST, which is what makes each step decidable. The attempt state directory is created by dispatch when the attempt starts, and this producer only runs for an attempt whose worktree head it has already read, so a failure to list THAT directory is unambiguously a fault rather than a not-yet. From there each answer is positive: the publication directory is absent from a listing that succeeded, or the head's own file is absent from a listing that succeeded. Only when the file is listed does a read happen, and a read that then fails is unambiguously a fault because the entry was just observed to exist.\\n\\nWHAT THIS DELIBERATELY DOES NOT DO is widen on doubt. Every failure arm returns ReceiptSourceUnreadable carrying the path and the host error, which the gate turns into a typed, located, counted refusal that halts the row - it never falls back to `treat it as absent and rewrite`, which is the absorbing fallback DESIGN section 5 forbids and precisely the defect this replaced."
+data belt_publication_receipt_read_note: String = "THE RECEIPT IS ADDRESSED BY HEAD, SO THERE IS NO PATH TO READ UNTIL THE HEAD IS KNOWN. That ordering is the point: the other receipts on this row live at one path per attempt and can be read before anything is decided, while a publication receipt is one per head, so the subject has to exist before the address does.\\n\\nTHE UNOBSERVED ARM ANSWERS ReceiptSourceAbsent AND THAT IS NOT A FABRICATED ABSENCE. publication_segment refuses on an unobserved subject before it consults the source at all, so this value never reaches a judgment; it exists because the evidence record carries a source for every stage and there is no address to consult for this one. If the projection ever stopped refusing first, this would become a real answer - which is why the refusal there is matched on the subject rather than inferred here.\\n\\nEVERY OBSERVED ARM CONSUMES THE FILESYSTEM AUTHORITY. filesystem_entry_presence decides whether the publication directory is listed, and filesystem_file_observation decides the head-addressed receipt. ReceiptSourceAbsent can therefore be projected only from FilesystemEstablishedAbsence, whose sole mint consumes a successful directory listing; this module no longer carries either a prose copy of that law or a second spelling of List's membership encoding. Listing refusal, listed-but-unreadable, and observations that disagree all project to ReceiptSourceUnreadable."
 
 fn belt_publication_receipt_source(
   instance: HostDashboardInstance,
@@ -2906,63 +2900,55 @@ fn belt_publication_receipt_source(
         attempt_key: attempt_key,
       )
       let attempt_listing = Filesystem.List(path: attempt_dir)
-      if !attempt_listing.success {
-        ReceiptSourceUnreadable {
-          detail: join([
-            "the attempt state directory could not be listed, so whether a publication receipt exists was not established: ",
-            attempt_dir,
-            " (",
-            attempt_listing.error,
-            ")",
-          ], ""),
-        }
-      } else if !belt_listing_names_entry(
-        listing: attempt_listing.entries,
+      match filesystem_entry_presence(
+        listing: filesystem_listing_observation(
+          directory: attempt_dir,
+          success: attempt_listing.success,
+          entries: attempt_listing.entries,
+          error: attempt_listing.error,
+        ),
         name: publication_receipt_directory_segment,
       ) {
-        ReceiptSourceAbsent
-      } else {
-        let publication_dir = dispatch_attempt_publication_dir_for_instance(
-          instance: instance,
-          node_id: node_id,
-          attempt_key: attempt_key,
-        )
-        let publication_listing = Filesystem.List(path: publication_dir)
-        if !publication_listing.success {
-          ReceiptSourceUnreadable {
-            detail: join([
-              "the publication receipt directory was named by the attempt listing but could not itself be listed: ",
-              publication_dir,
-              " (",
-              publication_listing.error,
-              ")",
-            ], ""),
-          }
-        } else if !belt_listing_names_entry(
-          listing: publication_listing.entries,
-          name: join([observed.expected_head as String, ".json"], ""),
-        ) {
-          ReceiptSourceAbsent
-        } else {
+        FilesystemEntryPresenceIndeterminate { cause: c } =>
+          ReceiptSourceUnreadable { detail: c }
+        FilesystemEntryAbsent(_) => ReceiptSourceAbsent
+        FilesystemEntryListed { directory: _, name: _ } => {
+          let publication_dir = dispatch_attempt_publication_dir_for_instance(
+            instance: instance,
+            node_id: node_id,
+            attempt_key: attempt_key,
+          )
+          let receipt_basename = join([observed.expected_head as String, ".json"], "")
           let path = dispatch_attempt_publication_receipt_path_for_instance(
             instance: instance,
             node_id: node_id,
             attempt_key: attempt_key,
             head_sha: observed.expected_head as String,
           )
+          let publication_listing = Filesystem.List(path: publication_dir)
           let read = Filesystem.Read(path: path)
-          if read.success {
-            ReceiptSourcePresent { text: read.content }
-          } else {
-            ReceiptSourceUnreadable {
-              detail: join([
-                "a publication receipt for this head was listed and then could not be read, so it exists and its content is unavailable: ",
-                path,
-                " (",
-                read.error,
-                ")",
-              ], ""),
-            }
+          match filesystem_file_observation(
+            listing: filesystem_listing_observation(
+              directory: publication_dir,
+              success: publication_listing.success,
+              entries: publication_listing.entries,
+              error: publication_listing.error,
+            ),
+            name: receipt_basename,
+            path: path,
+            read: filesystem_read_outcome(
+              content: read.content,
+              success: read.success,
+              error: read.error,
+            ),
+          ) {
+            FilesystemFileIndeterminate { cause: c } =>
+              ReceiptSourceUnreadable { detail: c }
+            FilesystemFileObservationsDisagree { path: _, cause: c } =>
+              ReceiptSourceUnreadable { detail: c }
+            FilesystemFileAbsent(_) => ReceiptSourceAbsent
+            FilesystemFileRead { path: _, content: text } =>
+              ReceiptSourcePresent { text: text }
           }
         }
       }
@@ -4637,13 +4623,13 @@ fn belt_run_once_cli() -> ProcessExit {
 }
 
 fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
-  match belt_dashboard_instance_lookup_for_spawn_workdir(workdir: spawn_workdir) {
-    UnknownSpawnWorkdir { workdir: w } =>
+  match dashboard_instance_for_repo_root(repo_root: spawn_workdir) {
+    DashboardInstanceRootUnknown { repo_root: w } =>
       exit_failure(reason: join([
         "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR does not match a known dashboard instance repo root: ",
         w,
       ], ""))
-    SpawnWorkdirInstanceResolved { instance } => {
+    DashboardInstanceResolved { instance } => {
       let t = belt_run_once_in(instance: instance, spawn_workdir: spawn_workdir)
       let tick_receipt = belt_tick_receipt_from_result(
         result: t,

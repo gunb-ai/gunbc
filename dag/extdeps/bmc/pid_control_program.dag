@@ -7,12 +7,18 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Https, Uri }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+// THE LOCATOR IS TYPED ONCE AND NAMED TWICE, because the two names answer different questions.
+// The conventional name is what the mandatory-tag corpus wall reads and it is per module, so it
+// collides the moment one reader cites two authorities; the document-specific name is unique
+// tree-wide and is what the decode, identity and representability modules downstream import.
+data phosphor_pid_control_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "github.com/openbmc/phosphor-pid-control/blob/master/README.md",
   },
 }
+
+data extdeps_external_authority_anchor: ExternalAuthority = phosphor_pid_control_external_authority_anchor
 
 // THE SUBJECT IS THE OpenBMC STACK ITSELF, CITED THROUGH THE DECLARATION THAT ALREADY EXISTS
 // RATHER THAN RESTATED. phosphor-pid-control is a component of that stack, versioned with it and
@@ -26,7 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
       field: WholeDeclaration,
     },
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: phosphor_pid_control_external_authority_anchor,
   further_citations: [],
 }
 

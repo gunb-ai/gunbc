@@ -82,6 +82,19 @@ fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
   }
 }
 
+// A dangling checkout at a CALLER-CHOSEN ordinal. The fixed-ordinal helper below cannot discriminate
+// a renderer that names the selection from one that hard-codes the only ordinal any test ever uses,
+// so the identity claim drives two different ordinals through the same arm.
+fn status_witness_repository_dangling_at(ordinal: Int) -> RepositoryEnvelope {
+  let valid = status_witness_repository_with_checkout()
+  RepositoryEnvelope {
+    store: valid.store,
+    commits: valid.commits,
+    commit_allocator: MintedIdAllocator { next_ordinal: ordinal + 1 },
+    checked_out: Present { value: status_witness_ref(ordinal: ordinal) },
+  }
+}
+
 fn status_witness_repository_with_dangling_checkout() -> RepositoryEnvelope {
   let valid = status_witness_repository_with_checkout()
   RepositoryEnvelope {
@@ -200,4 +213,29 @@ test fn status_does_not_report_store_representation() -> Bool {
     pending: empty_proposal(),
   )
   render_repository_status(status: s) == "on commit: first\n1 commit\n  nothing staged"
+}
+
+// THE REFUSAL NAMES THE COMMIT IT REFUSES ON. Before this claim the arm rendered "the checked-out
+// selection names a commit this repository does not contain" while discarding its `reference`, so
+// the reader could not tell WHICH selection was unresolvable -- unactionable by construction, since
+// no care on their part recovers an identity the renderer dropped. The text of this arm was pinned
+// by nothing, which is how the omission survived beside two arms that were pinned.
+//
+// TWO ORDINALS, NOT ONE, AND THAT IS THE WHOLE POINT OF THE CLAIM. A single case is satisfied by a
+// renderer that prints a constant, which is the defect being repaired wearing a number. Driving 1
+// and 7 through the same arm makes the assertion about the SELECTION rather than about the string:
+// the only implementation that passes both is one that reads `reference`.
+test fn a_dangling_checkout_names_the_commit_it_cannot_resolve() -> Bool {
+  let one = repository_status(
+    envelope: status_witness_repository_dangling_at(ordinal: 1),
+    pending: empty_proposal(),
+  )
+  let seven = repository_status(
+    envelope: status_witness_repository_dangling_at(ordinal: 7),
+    pending: empty_proposal(),
+  )
+  render_repository_status(status: one)
+      == "the checked-out selection names commit 1, which this repository does not contain\n1 commit\n  nothing staged"
+    && render_repository_status(status: seven)
+      == "the checked-out selection names commit 7, which this repository does not contain\n1 commit\n  nothing staged"
 }

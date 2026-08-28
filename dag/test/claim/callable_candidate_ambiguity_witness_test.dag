@@ -126,15 +126,9 @@ test fn the_refusal_replaces_the_downstream_symptom_rather_than_adding_to_it() -
 // harness closure lands in the count. A check whose RED is produced by something it does not
 // measure reports a wall failure when the harness sneezes; these assert the two classes this
 // file is actually about.
-test fn neither_green_source_refuses_and_neither_mis_resolves() -> Bool {
-  blocking_ambiguous_reference_count(source: green_named_authority_source) == 0
-    && blocking_ambiguous_reference_count(source: green_own_declaration_source) == 0
-    && blocking_count_for(source: green_named_authority_source, wanted: "NonExhaustiveMatch") == 0
-    && blocking_count_for(source: green_own_declaration_source, wanted: "NonExhaustiveMatch") == 0
-}
-
 test fn a_bare_call_whose_authority_the_author_named_still_resolves() -> Bool {
   blocking_ambiguous_reference_count(source: green_named_authority_source) == 0
+    && blocking_count_for(source: green_named_authority_source, wanted: "NonExhaustiveMatch") == 0
 }
 
 test fn a_listed_import_does_not_exclude_a_transitively_reached_homonym() -> Bool {
@@ -143,4 +137,5 @@ test fn a_listed_import_does_not_exclude_a_transitively_reached_homonym() -> Boo
 
 test fn a_module_calling_its_own_declaration_of_a_builtin_name_still_resolves() -> Bool {
   blocking_ambiguous_reference_count(source: green_own_declaration_source) == 0
+    && blocking_count_for(source: green_own_declaration_source, wanted: "NonExhaustiveMatch") == 0
 }
