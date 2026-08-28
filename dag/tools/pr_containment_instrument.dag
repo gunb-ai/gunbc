@@ -130,6 +130,23 @@ import extdeps.languages.json.parse {
 // one level out. The remainder is therefore reported as a counted, named population rather than as
 // silence, so the size of what the number pushed out of view is visible beside what it pulled in.
 //
+// AND THE RATIO ITSELF IS CONVENTION-DEPENDENT AND SOFT NEAR THE CUT, which is recorded here so
+// nobody later reads three significant figures as precision and tightens the threshold on them.
+// Measured by eager-owl-431 reviewing #9590: of the lines counted PRESENT, 21% are punctuation or
+// three characters or fewer across all three live candidates, and for one of them 53% occur twenty
+// or more times in the base file. Counting only substantive lines moves 9569 from 918 to 881 (stays
+// a candidate) but 9550 from 858 to 739 and 9476 from 882 to 843 -- BOTH CROSS OUT. Two of three
+// candidates are in the set on boilerplate.
+//
+// The finding is NOT that 739 is the right number: a "substantive lines" rule has no more authority
+// than this one. The finding is that two defensible conventions disagree about two of three rows.
+// The principled repair was tested and REFUTED rather than left untried -- matching contiguous runs
+// instead of lines, which keeps position-independence, measures 918/858/882, identical, because
+// short boilerplate runs match contiguously too.
+//
+// This is the strongest argument for the design above rather than against it: the number is weakest
+// exactly where it is used, which is why the residue read is mandatory and why no arm may decide.
+//
 // Expressed per-mille to keep the arithmetic in Int.
 data containment_candidate_threshold_per_mille: Int = 850
 
@@ -329,6 +346,13 @@ type ContainmentDisposition
   = ContentContained { head_commit: String, merged_tree: String, added: Int }
   | PositionOnlyDivergence { head_commit: String, merged_tree: String, added: Int }
   | ResidueCandidate { head_commit: String, per_mille: Int, added: Int, present: Int, residue: List<AddedLine> }
+  | MergeDidNotCompleteReading {
+      head_commit: String
+      per_mille: Int
+      added: Int
+      present: Int
+      residue: List<AddedLine>
+    }
   | ContributesNewContent { head_commit: String, per_mille: Int, added: Int, present: Int }
   | BranchUnobserved { branch_ref: String, cause: String }
 
@@ -471,11 +495,13 @@ fn containment_disposition_of(
         tally: tally
       )
     MergeDidNotComplete =>
-      containment_disposition_by_line_grain(
+      MergeDidNotCompleteReading {
         head_commit: head_commit,
-        merged_tree: "",
-        tally: tally
-      )
+        per_mille: containment_per_mille(tally: tally),
+        added: tally.added,
+        present: tally.present,
+        residue: residue_within_payload_bound(tally: tally)
+      }
   }
 }
 
@@ -496,8 +522,29 @@ fn containment_disposition_of_completed_merge(
   }
 }
 
-// THE LINE-GRAIN ARMS, reachable from a completed merge that changed the tree AND from a merge that
-// did not complete. ContentContained is deliberately absent: neither caller has established it.
+// THE RESIDUE PAYLOAD BOUND, applied at one site so both readings use the same rule. Below the cut
+// the residue is omitted rather than emptied of meaning: the report would otherwise carry the whole
+// diff, which is the cost this bound exists to hold.
+fn residue_within_payload_bound(tally: ContainmentTally) -> List<AddedLine> {
+  if containment_per_mille(tally: tally) >= containment_candidate_threshold_per_mille {
+    tally.residue
+  } else {
+    []
+  }
+}
+
+// THE LINE-GRAIN ARMS FOR A COMPLETED MERGE THAT CHANGED THE TREE. The merged tree is a parameter
+// rather than a sentinel, and that is the repair of a defect review found in the FIRST repair:
+// removing the tree from MergeDidNotComplete closed the type, and then this function was called with
+// `merged_tree: ""`, which put the sentinel straight back at the call site. PositionOnlyDivergence
+// printed it as an empty field while its note asserted "yet merging changes the tree" -- a claim only
+// the completed path establishes, since a conflict established that merging FAILED. So this function
+// is now reachable ONLY from a completed merge, and the conflicted reading has its own arm above.
+//
+// WHY THAT ARM IS NOT A DETAIL: measured on the live run, ALL THREE candidates conflicted. Every
+// residue-candidate row in that report came from a merge that did not complete, and the report could
+// not say so. A clean merge at 858 and a conflicting branch at 858 need different actions -- the
+// second cannot be assessed as mostly-landed until it is rebased (eager-owl-431, reviewing #9590).
 fn containment_disposition_by_line_grain(
   head_commit: String,
   merged_tree: String,
@@ -650,6 +697,10 @@ fn containment_count_rows(rows: List<PullRequestContainment>) -> List<String> {
     ),
     concat("count\tresidue-candidate\t", to_string(disposition_count(rows: rows, name: "residue-candidate"))),
     concat(
+      "count\tmerge-did-not-complete\t",
+      to_string(disposition_count(rows: rows, name: "merge-did-not-complete"))
+    ),
+    concat(
       "count\tbelow-threshold-not-pointed-at\t",
       concat(
         to_string(disposition_count(rows: rows, name: "contributes-new-content")),
@@ -675,6 +726,8 @@ fn disposition_name(d: ContainmentDisposition) -> String {
     ContentContained { head_commit: _, merged_tree: _, added: _ } => "content-contained"
     PositionOnlyDivergence { head_commit: _, merged_tree: _, added: _ } => "position-only-divergence"
     ResidueCandidate { head_commit: _, per_mille: _, added: _, present: _, residue: _ } => "residue-candidate"
+    MergeDidNotCompleteReading { head_commit: _, per_mille: _, added: _, present: _, residue: _ } =>
+      "merge-did-not-complete"
     ContributesNewContent { head_commit: _, per_mille: _, added: _, present: _ } => "contributes-new-content"
     BranchUnobserved { branch_ref: _, cause: _ } => "branch-unobserved"
   }
@@ -728,6 +781,29 @@ fn containment_rows(pr: PullRequestContainment) -> List<String> {
             )
           ),
           "  note\tCANDIDATE ONLY -- a person must read the residue below; four members of this class were partially-landed stacks carrying real work"
+        ],
+        map(residue, r => concat("  residue\t", concat(r.path, concat("\t", r.text))))
+      )
+    MergeDidNotCompleteReading { head_commit: head, per_mille: ratio, added: added, present: present, residue: residue } =>
+      concat(
+        [
+          concat(
+            prefix,
+            concat(
+              "\thead\t",
+              concat(
+                head,
+                concat(
+                  "\tper_mille\t",
+                  concat(
+                    to_string(ratio),
+                    concat("\tadded\t", concat(to_string(added), concat("\tpresent\t", to_string(present))))
+                  )
+                )
+              )
+            )
+          ),
+          "  note\tthe merge did NOT complete, so no tree-grain answer exists for this branch; the line reading below cannot be assessed as mostly-landed until the branch is rebased"
         ],
         map(residue, r => concat("  residue\t", concat(r.path, concat("\t", r.text))))
       )

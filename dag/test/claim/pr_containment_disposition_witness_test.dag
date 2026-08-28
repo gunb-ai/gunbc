@@ -12,6 +12,7 @@ import tools.pr_containment_instrument {
   BranchUnobserved,
   MergeCompleted,
   MergeDidNotComplete,
+  MergeDidNotCompleteReading,
   added_lines_of_diff,
   containment_disposition_of,
   containment_per_mille,
@@ -46,6 +47,16 @@ fn tally(added: Int, present: Int) -> ContainmentTally {
   ContainmentTally { added: added, present: present, residue: [] }
 }
 
+data three_residue_lines: List<AddedLine> = [
+  AddedLine { path: "dag/std/logic.dag", text: "data a: String = \"a\"" },
+  AddedLine { path: "dag/std/logic.dag", text: "data b: String = \"b\"" },
+  AddedLine { path: "dag/std/logic.dag", text: "data c: String = \"c\"" }
+]
+
+fn tally_with_residue(added: Int, present: Int) -> ContainmentTally {
+  ContainmentTally { added: added, present: present, residue: three_residue_lines }
+}
+
 data probe_head_commit: String = "aff2c4ba8236b72dd8f7f8bf885b310c92173c7f"
 
 fn name_of(base_tree: String, merged_tree: String, t: ContainmentTally) -> String {
@@ -76,6 +87,7 @@ fn head_of(base_tree: String, merged_tree: String, t: ContainmentTally) -> Strin
     PositionOnlyDivergence { head_commit: h, merged_tree: _, added: _ } => h
     ResidueCandidate { head_commit: h, per_mille: _, added: _, present: _, residue: _ } => h
     ContributesNewContent { head_commit: h, per_mille: _, added: _, present: _ } => h
+    MergeDidNotCompleteReading { head_commit: h, per_mille: _, added: _, present: _, residue: _ } => h
     BranchUnobserved { branch_ref: _, cause: _ } => ""
   }
 }
@@ -231,11 +243,48 @@ fn name_of_incomplete_merge(t: ContainmentTally) -> String {
   )
 }
 
+// EVERY conflicted reading lands in its own arm, at every ratio. An earlier revision routed these
+// through the completed-merge arms with `merged_tree: ""` -- the sentinel removed from the type and
+// put back at the call site -- so a conflicted branch could report position-only-divergence, whose
+// note asserts "yet merging changes the tree", a claim only a COMPLETED merge establishes. Measured
+// on the live run, all three candidates conflicted, so every candidate row came from a merge that
+// did not complete and the report could not say so.
 test fn a_merge_that_did_not_complete_never_reports_the_certain_arm() -> Bool {
-  name_of_incomplete_merge(t: tally(added: 0, present: 0)) == "contributes-new-content"
-    && name_of_incomplete_merge(t: tally(added: 92, present: 92)) == "position-only-divergence"
-    && name_of_incomplete_merge(t: tally(added: 100, present: 94)) == "residue-candidate"
-    && name_of_incomplete_merge(t: tally(added: 100, present: 1)) == "contributes-new-content"
+  name_of_incomplete_merge(t: tally(added: 0, present: 0)) == "merge-did-not-complete"
+    && name_of_incomplete_merge(t: tally(added: 92, present: 92)) == "merge-did-not-complete"
+    && name_of_incomplete_merge(t: tally(added: 100, present: 94)) == "merge-did-not-complete"
+    && name_of_incomplete_merge(t: tally(added: 100, present: 1)) == "merge-did-not-complete"
+}
+
+// THE PAIR THAT MAKES THE ARM MEAN SOMETHING. The identical tallies under a COMPLETED merge still
+// reach the three distinct completed-path arms, so the test above is not satisfied by a rule that
+// collapses everything into one answer.
+test fn the_same_tallies_under_a_completed_merge_still_discriminate() -> Bool {
+  name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 92, present: 92))
+      == "position-only-divergence"
+    && name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 100, present: 94))
+      == "residue-candidate"
+    && name_of(base_tree: base_tree_oid, merged_tree: other_tree_oid, t: tally(added: 100, present: 1))
+      == "contributes-new-content"
+}
+
+// THE RESIDUE PAYLOAD BOUND APPLIES TO THE CONFLICTED ARM TOO, and below the cut the residue is
+// omitted rather than the row being dropped: the row is always reported, only its payload is bound.
+fn incomplete_residue_count(t: ContainmentTally) -> Int {
+  match containment_disposition_of(
+    base_tree: base_tree_oid,
+    head_commit: probe_head_commit,
+    tree_answer: MergeDidNotComplete,
+    tally: t
+  ) {
+    MergeDidNotCompleteReading { head_commit: _, per_mille: _, added: _, present: _, residue: r } => count(r)
+    d => 0 - 1
+  }
+}
+
+test fn the_conflicted_arm_carries_residue_only_within_the_payload_bound() -> Bool {
+  incomplete_residue_count(t: tally_with_residue(added: 100, present: 94)) == 3
+    && incomplete_residue_count(t: tally_with_residue(added: 100, present: 1)) == 0
 }
 
 // THE POSITIVE CONTROL FOR THE PAIR. The identical tally under a COMPLETED merge to the base's own
