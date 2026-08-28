@@ -495,10 +495,27 @@ type CellSlotDecode
   = CellSlotDecoded { state: CellSlotState }
   | CellSlotUndecodable { detail: NonEmptyStr }
 
+// THE TAGS ARE NAMED ONCE AND THE BODY IS DERIVED FROM THE TAG THAT MATCHED.
+//
+// Both halves of that are the same rule. An earlier cut spelled each tag twice
+// -- once rendering, once decoding -- and computed the body ONCE against the
+// length of the held tag, reusing it for the free arm. That worked only because
+// the two tags happen to be the same length, so a third tag of any other length
+// would have decoded to a body sliced at the wrong offset, silently, with the
+// round trip still green for the two tags that already existed. The coupling
+// bought nothing and it is removed rather than commented (review 57256).
+data cell_held_tag: String = "held|"
+
+data cell_free_tag: String = "free|"
+
+fn cell_slot_body(text: String, tag: String) -> String {
+  substring(s: text, start: string_length(s: tag), end: string_length(s: text))
+}
+
 fn cell_slot_payload(state: CellSlotState) -> NonEmptyStr {
   match state {
-    CellHeld { reservation: r } => concat("held|", r as String) as NonEmptyStr
-    CellFree { released_by: b } => concat("free|", b as String) as NonEmptyStr
+    CellHeld { reservation: r } => concat(cell_held_tag, r as String) as NonEmptyStr
+    CellFree { released_by: b } => concat(cell_free_tag, b as String) as NonEmptyStr
   }
 }
 
@@ -509,13 +526,19 @@ fn cell_slot_payload(state: CellSlotState) -> NonEmptyStr {
 // split on every occurrence would truncate every real payload it was given.
 fn decode_cell_slot_payload(payload: NonEmptyStr) -> CellSlotDecode {
   let text = payload as String
-  let tag_len = string_length(s: "held|")
-  let body = substring(s: text, start: tag_len, end: string_length(s: text))
-  if starts_with(s: text, prefix: "held|") {
-    CellSlotDecoded { state: CellHeld { reservation: body as ReservationRef } }
+  if starts_with(s: text, prefix: cell_held_tag) {
+    CellSlotDecoded {
+      state: CellHeld {
+        reservation: cell_slot_body(text: text, tag: cell_held_tag) as ReservationRef,
+      },
+    }
   } else {
-    if starts_with(s: text, prefix: "free|") {
-      CellSlotDecoded { state: CellFree { released_by: body as NonEmptyStr } }
+    if starts_with(s: text, prefix: cell_free_tag) {
+      CellSlotDecoded {
+        state: CellFree {
+          released_by: cell_slot_body(text: text, tag: cell_free_tag) as NonEmptyStr,
+        },
+      }
     } else {
       CellSlotUndecodable {
         detail: concat("slot payload carries no recognised state tag: ", text) as NonEmptyStr,
