@@ -523,24 +523,40 @@ fn required_floor_claim_cpu_safety_limit_ms() -> Int {
   500
 }
 
-// THE WALL SAFETY DEADLINE: 2000ms. Independently derived and deliberately LOOSER, and the
+// THE WALL SAFETY DEADLINE: 8000ms. Independently derived and deliberately LOOSER, and the
 // operator ruling that stands over it is still the 2026-08-19 one -- CPU and wall are never one
 // scalar copied into both clocks ("DO NOT set CPU and wall to the same 5000ms").
 //
-// DERIVED FROM THE POPULATION IT MUST NOT TRIP, not as a multiple of the CPU figure -- picking a
-// ratio would be the mechanical copy wearing a different costume. The job of this limit is to
-// catch a claim that is blocked or stuck while never firing on a pure in-process claim that is
-// still inside its CPU envelope. So the binding measurement is the WORST WALL TIME OBSERVED
-// AMONG ROWS WITHIN THE CPU BUDGET: on main run 33109071348, over the 11,572 rows at or under
-// 500ms CPU, the maximum wall was 1037ms (next highest 768ms), against a per-row median of ~1ms.
-// 2000ms clears that worst observed innocent row by roughly 2x, which is headroom for co-tenant
-// descheduling on a shared runner rather than slack for a slow witness.
+// THIS FIGURE WAS 2000ms FOR ONE CI RUN AND THAT WAS WRONG, recorded here because the mistake is
+// instructive and the corrected derivation is unreadable without it. 2000 was derived correctly
+// by method -- the worst wall observed among rows INSIDE the CPU budget, times a headroom factor
+// -- and from the wrong population: it was measured before the roster was rebased onto marginal
+// cost, on data where a first-touch fill payer carried a large CPU figure and was therefore
+// EXCLUDED from the "inside the CPU budget" population the derivation reads.
 //
-// A row that exceeds this while inside its CPU budget is, by construction, spending its time
-// somewhere other than computation -- which is the case this clock exists to catch and the CPU
-// clock structurally cannot see.
+// WHAT THE REBASE EXPOSED, and it is an asymmetry in the measurement rather than in this
+// constant: `v1_compiler.cli_run` `run_claim_measured` subtracts shared-artifact fill from CPU
+// and DOES NOT subtract it from WALL. So a fill payer's marginal CPU goes to ~0 while its wall
+// keeps the whole shared build. Those rows then land inside the CPU budget and dominate the wall
+// population, which is exactly where the derivation reads. Measured on run 33136345225:
+// `test.claim.alias_identity_across_unwrap_witness`
+// `a_second_alias_still_emits_its_own_name_and_not_the_first` reports
+// `marginal_cpu_ms=0 fill_cpu_ms=3772` with `wall_ms=3782` -- the CPU clock exonerates it and a
+// 2000ms wall clock condemns it, for the same work, in the same run. Sixteen rows were in that
+// state.
+//
+// THE DERIVATION, on the corrected population: over the rows at or under the 500ms CPU ceiling,
+// the maximum wall observed is 3859ms (run 33131296988) and 3782ms (run 33136345225). 8000ms
+// clears the worst observed legitimate payer by roughly 2x. It still catches a claim that is
+// genuinely blocked or stuck -- the specimen this clock exists for burned 504 SECONDS of wall
+// while its CPU never approached its limit -- so the wall retains its job.
+//
+// NEXT-RUNG TRIGGER, because 8000ms is loose and the reason it must be loose is a defect rather
+// than a fact about witnesses: when fill is netted out of WALL as it already is out of CPU, a
+// fill payer's wall stops carrying work it does not own, this population disappears, and this
+// figure is re-derived downward against a population that no longer contains it.
 fn required_floor_claim_wall_safety_limit_ms() -> Int {
-  2000
+  8000
 }
 
 // THE WARN TIER IS DELETED (2026-08-20). It is not lowered, not re-derived from the envelope,
