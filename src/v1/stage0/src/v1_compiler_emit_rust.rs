@@ -5542,7 +5542,10 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 diagnostics: anonymous_record_diags.clone(),
             });
         }
-        let filename_collisions = module_filename_collision_diagnostics(typed.clone());
+        let filename_collisions =
+            crate::v1_compiler_emit_core_support::module_filename_collision_diagnostics(
+                typed.clone(),
+            );
         if ((filename_collisions.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
@@ -7815,7 +7818,9 @@ pub fn local_coproduct_variant_names(
         for item in Rc::new({
             let mut __result = Vec::new();
             for item in items.iter().cloned() {
-                if (is_type_def_item(item.clone()) && is_coproduct_type(item.clone())) {
+                if (crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+                    && crate::v1_compiler_infer_types::is_coproduct_type(item.clone()))
+                {
                     __result.push(item);
                 }
             }
@@ -7830,7 +7835,10 @@ pub fn local_coproduct_variant_names(
                     for child in item.children.clone().iter().cloned() {
                         __result.extend(
                             (*{
-                                let vn = authored_name_at(source_indices.clone(), child.clone());
+                                let vn = crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    child.clone(),
+                                );
                                 if (vn.clone() == "".to_string()) {
                                     Rc::new(vec![])
                                 } else {
