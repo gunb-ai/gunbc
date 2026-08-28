@@ -1,0 +1,191 @@
+module test.claim.fabric_control_plane_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.durable_compare_and_set { CasUnreadableReadRefused }
+import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
+import std.currency { Usd }
+import std.measure {
+  MoneyOnce, MoneyPerSecond, money_amount_micro, Second, second, hardware_thread_count,
+}
+import product.fabric.work { Shape, HardRequirements }
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
+import product.fabric.selection {
+  CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
+  AvailabilityObservation, AvailableIndefinitely,
+  CommitmentState, PayAsYouGo,
+  StartCostObservation, StartCostMeasured,
+  TransitionCostObservation, NoTransitionRequired,
+  OperatingCostObservation, OperatingCostMeasured,
+  OpportunityCostObservation, NoFeasibleAlternativeUse,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric_control_plane {
+  CellReservation, CellReserved, NoCellAdmissible, ReservationLost,
+  StoreUnavailable, AttemptRefused,
+  CellCandidateBinding, CellCandidateBound, OfferExecutorIsNotTheCell,
+  fabric_cell_allocation_key, fabric_reservation_payload,
+  cell_reservation_is_held, fabric_control_plane_store_root,
+  bind_fabric_cell_candidate,
+}
+
+// Evidence for the PURE half of the broker. The reserve path performs a host
+// effect, so it is refused under the floor's hermetic envelope and its evidence
+// is a live run rather than a row here -- the same split the CAS store carries,
+// and for the same reason: a witness routed away from its subject is cited as
+// coverage while asserting nothing.
+
+fn cp_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: "srv3", slot_index: 6 }
+}
+
+fn cp_offer_id(key: OfferKey) -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: "gunbc", key: key }
+}
+
+fn cp_demand_id(key: DemandKey) -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: "gunbc", key: key }
+}
+
+// THE WALL THAT KEEPS THE FILESYSTEM FROM BECOMING A SECOND IDENTITY AUTHORITY.
+// The key is the slot's own canonical spelling and nothing else, so there is no
+// second place a cell's name can be written and disagree. The slash check is the
+// store's precondition: a key carrying a separator is refused at the mint, so a
+// projection that ever produced one would make every reservation unmintable.
+test fn the_allocation_key_is_the_slots_own_canonical_spelling() -> Bool {
+  let key = fabric_cell_allocation_key(slot: cp_slot())
+  (key as String) == "srv3-06"
+    && !(key as String).contains("/")
+}
+
+// The positive control. Without it the row below is satisfied by a projection
+// that reports every outcome as unheld, which would be a broker that never
+// reserves anything.
+test fn a_committed_reservation_reports_the_cell_as_held() -> Bool {
+  cell_reservation_is_held(
+    reservation: CellReserved {
+      offer: cp_offer_id(key: "offer-1"),
+      slot_key: "srv3-06",
+      generation: 1,
+    }
+  )
+}
+
+// THE DISCRIMINATING RED, AND IT GUARDS THE FAIL-OPEN DIRECTION. Every arm that
+// is not a committed reservation must report the cell as NOT held. If a future
+// arm defaulted to held, a caller would proceed to execution on a cell nobody
+// reserved -- which is precisely the invariant the broker exists to enforce, so
+// this row goes red before that can ship. All four are asserted rather than a
+// sample, because the danger is exactly the arm someone forgot.
+test fn no_outcome_other_than_a_commit_reports_the_cell_as_held() -> Bool {
+  !cell_reservation_is_held(reservation: NoCellAdmissible { considered: [] })
+    && !cell_reservation_is_held(reservation: ReservationLost { slot_key: "srv3-06" })
+    && !cell_reservation_is_held(
+         reservation: StoreUnavailable {
+           slot_key: "srv3-06",
+           cause: CasUnreadableReadRefused { detail: "store offline" },
+         }
+       )
+    && !cell_reservation_is_held(
+         reservation: AttemptRefused { slot_key: "srv3-06", detail: "malformed" }
+       )
+}
+
+// The slot's contents must say WHO holds the cell and FOR WHAT, or a reservation
+// is an anonymous lock nobody can attribute or release.
+test fn the_reservation_payload_names_both_the_demand_and_the_offer() -> Bool {
+  let payload = fabric_reservation_payload(
+    demand: cp_demand_id(key: "demand-7"),
+    offer: cp_offer_id(key: "offer-1"),
+  )
+  (payload as String).contains("demand-7")
+    && (payload as String).contains("offer-1")
+}
+
+// The deployment authority is a real absolute path rather than a relative or
+// empty one: the store does not create its root, so a root that named nothing
+// would surface as an operational refusal on every reservation.
+test fn the_store_root_is_an_absolute_deployment_path() -> Bool {
+  (fabric_control_plane_store_root() as String).starts_with("/")
+}
+
+fn cp_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: cp_offer_id(key: "offer-1"),
+    executor: executor,
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 1) }, envelope: unstated_envelope() },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: "gunbc.trust.internal-fleet",
+    isolation: IsolationProfile { guarantees: [] },
+    quantity_bound: 1,
+    ready_at: "2026-08-27T00:00:00Z",
+    quote: QuotedPerSecond(MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }),
+    billing_quantum: second(count: 0),
+    evidence: ObservedSupply {
+      observed_at: "2026-08-27T00:00:00Z",
+      receipt: "gunbc.observation.fleet-1",
+    },
+  }
+}
+
+fn cp_candidate_for(executor: NonEmptyStr) -> List<CandidateOffer<NonEmptyStr>> {
+  match bind_candidate(
+    offer: cp_offer_for(executor: executor),
+    dispatch: DispatchInputs {
+      offer: cp_offer_id(key: "offer-1"),
+      availability: AvailableIndefinitely {
+        delay: second(count: 0),
+        receipt: "gunbc.observation.availability-1",
+      },
+      commitment: PayAsYouGo,
+      start: StartCostMeasured {
+        amount: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd },
+        receipt: "gunbc.observation.start-1",
+      },
+      transition: NoTransitionRequired,
+      operating: OperatingCostMeasured {
+        rate: MoneyPerSecond { amount: money_amount_micro(count: 100), currency: Usd },
+        receipt: "gunbc.observation.power-1",
+      },
+      opportunity: NoFeasibleAlternativeUse,
+    },
+  ) {
+    CandidateBound { candidate: c } => [c]
+    DispatchInputsNameAnotherOffer { offer: _, inputs_name: _ } => []
+  }
+}
+
+fn cp_binds(executor: NonEmptyStr) -> List<CellCandidateBinding> {
+  fold(
+    cp_candidate_for(executor: executor),
+    init: [],
+    f: (acc, c) => acc + [bind_fabric_cell_candidate(slot: cp_slot(), candidate: c)],
+  )
+}
+
+fn cp_bind_is_bound(b: CellCandidateBinding) -> Bool {
+  match b {
+    CellCandidateBound { bound: _ } => true
+    OfferExecutorIsNotTheCell { slot_key: _, executor: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE ARROW. An offer whose executor IS the cell's
+// canonical spelling binds, so the row below is not satisfied by a mint that
+// refuses everything -- which would be a roster that can never be built.
+test fn an_offer_executed_by_the_cell_itself_binds_to_that_cell() -> Bool {
+  let bound = cp_binds(executor: "srv3-06")
+  bound.length() == 1 && cp_bind_is_bound(b: bound[0])
+}
+
+// THE DISCRIMINATING RED, AND IT IS THE REASON THE ARROW EXISTS. An earlier cut
+// took the slot as a parameter beside the selection, so a caller could lock
+// srv3-06 against a decision that chose a different supplier's offer -- two
+// true facts with nothing relating them, and every arm still plausible. The
+// mint refuses the mismatched pair, so a reservation for a cell the market did
+// not choose cannot be constructed rather than being caught afterwards.
+test fn an_offer_executed_by_anyone_else_cannot_be_bound_to_this_cell() -> Bool {
+  let bound = cp_binds(executor: "srv1-02")
+  bound.length() == 1 && !cp_bind_is_bound(b: bound[0])
+}

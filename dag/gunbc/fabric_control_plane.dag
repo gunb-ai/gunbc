@@ -1,0 +1,273 @@
+module gunbc.fabric_control_plane
+
+import std.types { Int, List, NonEmptyStr, String, Bool }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.measure { MoneyAmountMicro, MoneyPerSecond }
+import std.durable_compare_and_set {
+  CasExpectation, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasReadableAbsent, CasReadablePresent, CasUnreadableSlot,
+  cas_attempt, cas_generation_count,
+}
+import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
+import product.fabric.demand { Demand }
+import product.fabric.supply { SupplierOffer }
+import product.fabric.selection { CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, SelectionCost, OfferCandidacy }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.durable_cas_file_store {
+  CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch,
+  CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
+  admit_cas_attempt, file_compare_and_set,
+}
+import gunbc.fabric_floor_dispatch { floor_supply_selection }
+
+// THE BROKER: SELECTION DECIDES WHICH CELL, THE STORE DECIDES WHETHER WE GET IT.
+//
+// This is the first production consumer of three authorities that have each
+// been complete and unconsumed. product.fabric.selection's select_supply ranked
+// nothing for anyone; gunbc.fabric_floor_dispatch turned the floor's own Work
+// into a Demand and had only witness rows behind it; and the file-backed
+// compare-and-set had no caller at all. The value of this cut is not new
+// vocabulary -- it invents none -- it is that those three stop being furniture.
+//
+// THE INVARIANT THE WHOLE CONTROL PLANE RESTS ON, and the reason the two steps
+// are in this order and not the other: SELECTION IS A DECISION, NOT A CLAIM.
+// Ranking an offer highest does not reserve the cell it names. Two brokers
+// ranking the same roster reach the SAME answer, so selection alone would hand
+// one cell to both. The compare-and-set is what makes the reservation exclusive,
+// and it is the store rather than a lock that decides, so it holds across hosts.
+//
+// Therefore: no committed compare-and-set, no reservation. A caller that reads
+// CellReserved has a slot generation that only one writer can hold. A caller
+// that reads anything else has nothing, and the arms below say precisely what
+// kind of nothing, because "we did not get the cell" has at least four causes
+// with four different remedies -- nobody was admissible, somebody beat us, the
+// store could not answer, and the attempt was malformed before it was tried.
+//
+// WHAT THIS DOES NOT DO. It does not issue an ExecutionGrant, start a process,
+// or reach a host. A reservation is the precondition for a Grant and is not one:
+// ExecutionGrant carries resource and money reservations that must commit
+// atomically across ledgers, and manufacturing one here from a slot generation
+// would fabricate the very atomicity that record exists to guarantee. The Grant
+// cut consumes this outcome; it does not live in it.
+
+// The one deployment authority that supplies the store's root parameter.
+//
+// The mechanism takes a root and the deployment names it: compare_and_set is
+// parameterized so a second control plane is a different root and not a second
+// implementation, while this function is the single place this control plane's
+// root is stated. Hard-coding the root inside the store would fuse a policy
+// fact into a mechanism, which is the layer inversion the interface warns about.
+fn fabric_control_plane_store_root() -> NonEmptyStr {
+  "/var/lib/gunbc/fabric/allocation"
+}
+
+// THE ALLOCATION KEY IS PROJECTED FROM THE CELL'S OWN IDENTITY, NEVER AUTHORED.
+//
+// runner_slot_instance_name is already the single authority for how a slot is
+// spelled, so the key is that spelling and nothing else. Taking a NonEmptyStr
+// here instead would make the filesystem layout a SECOND identity authority --
+// two spellings of one cell, free to disagree, with the store silently
+// arbitrating between them. A caller cannot name the slot it is about to
+// occupy; it can only hand over the identity and be told where that lands.
+//
+// It is slash-free by construction (host + "-" + index), which is what the
+// store's own key wall requires: a key carrying a separator is refused at the
+// mint because it would escape the store root.
+fn fabric_cell_allocation_key(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  runner_slot_instance_name(slot: slot) as NonEmptyStr
+}
+
+// What the reserved slot holds: the pair that says WHO holds this cell and FOR
+// WHAT. Rendered rather than structured because the store is concrete at
+// NonEmptyStr, and the digest is derived from this exact rendering so the
+// payload and its content hash cannot disagree.
+fn fabric_reservation_payload(
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+) -> NonEmptyStr {
+  concat(concat(demand.key as String, "|"), offer.key as String) as NonEmptyStr
+}
+
+// EVERY WAY THIS ENDS, TYPED AND SEPARATE, because they have different remedies.
+//
+// NoCellAdmissible is a market answer: the roster was read and nothing in it met
+// the demand, and `considered` carries why each was rejected. ReservationLost is
+// a race: our selection was fine and another writer committed the slot first, so
+// the remedy is to re-observe and retry. StoreUnavailable is operational: the
+// store could not answer, which says nothing about the cell. AttemptRefused is
+// ours: the attempt did not survive the store's mint, which is a defect in this
+// module rather than a condition in the world.
+//
+// Collapsing any pair of these into one arm would hand a caller a symbol it
+// cannot choose a remedy from, which is the state-space conflation this corpus
+// keeps finding.
+type CellReservation
+  = CellReserved {
+      offer: FabricIdentity<NonEmptyStr, OfferKey>,
+      slot_key: NonEmptyStr,
+      generation: Int,
+    }
+  | NoCellAdmissible { considered: List<OfferCandidacy<NonEmptyStr>> }
+  | ReservationLost { slot_key: NonEmptyStr }
+  | StoreUnavailable { slot_key: NonEmptyStr, cause: CasUnreadableSlot }
+  | AttemptRefused { slot_key: NonEmptyStr, detail: NonEmptyStr }
+
+// The reservation half, reached only once selection has named an offer.
+//
+// `expected` is a PARAMETER rather than a constant, and that is deliberate. A
+// cell reserved for the first time expects an absent slot; a cell being
+// re-reserved after release expects the generation the release left behind.
+// Hard-coding ExpectSlotAbsent would make a cell reservable exactly once in its
+// lifetime and would refuse every subsequent reservation for a reason that
+// looks like a lost race. The caller states what it believes and the store
+// judges it.
+fn reserve_selected_cell(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  expected: CasExpectation,
+  demand_id: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer_id: FabricIdentity<NonEmptyStr, OfferKey>,
+) -> CellReservation {
+  let payload = fabric_reservation_payload(demand: demand_id, offer: offer_id)
+  match admit_cas_attempt(
+    attempt: cas_attempt(
+      key: slot_key,
+      expected: expected,
+      proposed: payload,
+      proposed_content: content_hash_of_value(value: payload),
+    )
+  ) {
+    CasAttemptAdmitted { verified: v } =>
+      match file_compare_and_set(root: root, verified: v) {
+        CasCommitted { committed: c } =>
+          CellReserved {
+            offer: offer_id,
+            slot_key: slot_key,
+            generation: cas_generation_count(g: c.generation),
+          }
+        CasPreconditionFailed { expected: _, observed: _ } => ReservationLost { slot_key: slot_key }
+        CasStoreRefused { cause: c } => StoreUnavailable { slot_key: slot_key, cause: c }
+      }
+    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
+      AttemptRefused { slot_key: slot_key, detail: "reservation payload and its digest disagree" }
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
+      AttemptRefused { slot_key: slot_key, detail: "reservation digest families are incomparable" }
+    CasAttemptKeyNotSlotAddressable { key: _ } =>
+      AttemptRefused { slot_key: slot_key, detail: "allocation key is not slot-addressable" }
+  }
+}
+
+// The whole transition, in the only order that is correct: rank, then reserve.
+//
+// Selection is consulted first because reserving before knowing which cell to
+// reserve is not a cheaper ordering, it is a different operation. And no
+// reservation is attempted on the NoAdmissibleOffer path -- a broker that
+// reserved something anyway when nothing was admissible would be fabricating a
+// decision the market refused to make.
+// THE ARROW BETWEEN THE MARKET'S DECISION AND THE CELL IT LOCKS.
+//
+// An earlier cut of the broker took the slot as a parameter beside the
+// selection, which let a caller reserve one cell against a decision that chose
+// a different supplier's offer. Two true facts -- this offer won, lock that
+// cell -- with nothing relating them: the reservation would be attributed to a
+// decision that never made it, and every arm would still look plausible.
+//
+// The repair is construction rather than a check. A cell may enter the roster
+// only through this mint, and the mint refuses unless the offer's executor is
+// EXACTLY the slot's canonical instance name. So by the time selection ranks
+// anything, every candidate already carries its cell, and a reservation for a
+// cell the market did not choose has no spelling.
+//
+// THE RUNG IS PATH-SCOPED AND THE WEAKER PATH IS THE ONE THAT COUNTS. On the
+// source-to-.dag acceptance path this is structurally impossible: sole_constructor
+// confines construction and the validator here is fixed and module-owned, with
+// zero caller freedom -- so it cannot be defeated the way a caller-supplied
+// predicate can. On the EMISSION path it is unestablished: DESIGN carries an
+// executed receipt that a fixed-law mint of exactly this shape emits as a pub
+// struct with a pub field deriving Deserialize, and both a direct struct literal
+// and a deserialization admit representatives from every refusal partition. The
+// wall does not travel with the type. DESIGN takes a class's rung to be the
+// minimum across its in-scope paths, so the honest statement is the pair, and
+// the next-rung trigger is unforgeable construction surviving emission -- not
+// anything this module can supply.
+//
+// WHAT THE MINT REFUSES THAT LOOKS LIKE IT SHOULD PASS, named so it is a
+// deliberate refusal rather than a surprise: a HOST is not a cell. Fixtures in
+// tree carry executor "srv3", and a slot renders as "srv3-06", so an offer
+// executed by a host refuses here. That is correct -- a host runs many cells and
+// reserving one generation against it would lock a name no single executor owns.
+//
+// Measured population behind the claim that this arrow is new: ten string-literal
+// executors across dag/ and src/v2/ -- "gunbc" x5, "supplier" x2, "srv3" x2,
+// "rented-pool" x1. Not one is a slot identity, so nothing in tree binds an offer
+// to a CELL. An earlier statement of this said every fixture used "gunbc", which
+// was generalized from one file rather than counted.
+type FabricCellCandidate sole_constructor {
+  slot: RunnerSlotIdentity
+  candidate: CandidateOffer<NonEmptyStr>
+}
+
+type CellCandidateBinding
+  = CellCandidateBound { bound: FabricCellCandidate }
+  | OfferExecutorIsNotTheCell { slot_key: NonEmptyStr, executor: NonEmptyStr }
+
+fn bind_fabric_cell_candidate(
+  slot: RunnerSlotIdentity,
+  candidate: CandidateOffer<NonEmptyStr>,
+) -> CellCandidateBinding {
+  let slot_key = fabric_cell_allocation_key(slot: slot)
+  if (candidate.offer.executor as String) != (slot_key as String) {
+    OfferExecutorIsNotTheCell { slot_key: slot_key, executor: candidate.offer.executor }
+  } else {
+    CellCandidateBound { bound: FabricCellCandidate { slot: slot, candidate: candidate } }
+  }
+}
+
+// The winner's executor is the cell's canonical allocation key BY CONSTRUCTION,
+// not by a second rendering: FabricCellCandidate cannot be minted unless the
+// executor is exactly what fabric_cell_allocation_key produced for the slot it
+// is paired with. Recovering the key from the selected offer is therefore the
+// same renderer's output carried through selection, never a second identity
+// authority -- which is the property the store's key must have.
+fn selected_cell_allocation_key(offer: SupplierOffer<NonEmptyStr>) -> NonEmptyStr {
+  offer.executor
+}
+
+fn fabric_cell_roster_candidates(roster: List<FabricCellCandidate>) -> List<CandidateOffer<NonEmptyStr>> {
+  fold(roster, init: [], f: (acc, member) => acc + [member.candidate])
+}
+
+fn broker_reserve_for_demand(
+  root: NonEmptyStr,
+  demand: Demand<NonEmptyStr>,
+  roster: List<FabricCellCandidate>,
+  expected: CasExpectation,
+  maximum_buy_order: MoneyAmountMicro,
+  delay_valuation: MoneyPerSecond,
+) -> CellReservation {
+  match floor_supply_selection(
+    candidates: fabric_cell_roster_candidates(roster: roster),
+    maximum_buy_order: maximum_buy_order,
+    delay_valuation: delay_valuation,
+  ) {
+    NoAdmissibleOffer { considered: c } => NoCellAdmissible { considered: c }
+    OfferSelected { offer: o, cost: _, basis: _, horizon: _, considered: _ } =>
+      reserve_selected_cell(
+        root: root,
+        slot_key: selected_cell_allocation_key(offer: o),
+        expected: expected,
+        demand_id: demand.id,
+        offer_id: o.id,
+      )
+  }
+}
+
+fn cell_reservation_is_held(reservation: CellReservation) -> Bool {
+  match reservation {
+    CellReserved { offer: _, slot_key: _, generation: _ } => true
+    NoCellAdmissible { considered: _ } => false
+    ReservationLost { slot_key: _ } => false
+    StoreUnavailable { slot_key: _, cause: _ } => false
+    AttemptRefused { slot_key: _, detail: _ } => false
+  }
+}
