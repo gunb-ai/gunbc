@@ -1,0 +1,205 @@
+module test.claim.training_resolution_witness
+
+import product.training.resolution {
+  AxisResolution, AxisResolved, AxisUnresolved, ResolvedAxis,
+  TrainingResolution, TrainingResolved, TrainingResolutionRefused,
+  TrainingResolutionObservations, TrainingResolvedManifest,
+  TrainingNumericFormat, Bf16, Fp16, TrainingMethod, LowRankAdaptation,
+  PackingPolicy, NoPacking, LossMaskPolicy, MaskPromptTokens,
+  SeedAxis, BaseArtifactAxis,
+  TrainingRunDesiredAdmitted, TrainingRunDesiredRefused,
+  resolve_training, training_work_for, admit_training_run_desired,
+  resolved_training_manifest,
+}
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, derive_work_key }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.envelope { ResourceEnvelope }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
+import product.fabric.identity { FabricIdentity }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.currency { Usd }
+import std.measure { money_amount_micro, hardware_thread_count }
+import std.types { NonEmptyStr, Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_note: String = "THE HEADLINE PROPERTY IS THAT EVERY SEMANTIC COORDINATE REACHES THE WORK KEY. That is not provable by reading the projection, because the failure mode is a coordinate that is present in the manifest and absent from the material -- which compiles, and looks complete. So each control below varies exactly ONE coordinate and requires the key to move, and the negative controls vary things that must NOT move it. A suite that only checked the positive direction would pass against a projection that hashed the whole manifest and also against one that hashed nothing but a constant."
+
+fn h(s: NonEmptyStr) -> ContentHash {
+  content_hash_of_value(value: s)
+}
+
+fn axis<T>(v: T) -> AxisResolution<T> {
+  AxisResolved { resolved: ResolvedAxis { value: v, receipt: "obs-1" } }
+}
+
+fn axis_with_receipt<T>(v: T, r: NonEmptyStr) -> AxisResolution<T> {
+  AxisResolved { resolved: ResolvedAxis { value: v, receipt: r } }
+}
+
+data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
+  shape: Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+    envelope: ResourceEnvelope { cpu: none, gpu: none, memory: none, storage: none, network: none },
+  },
+  capabilities: "linux-arm64",
+  trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
+}
+
+fn observations(seed_value: Nat, base: NonEmptyStr, receipt: NonEmptyStr) -> TrainingResolutionObservations {
+  TrainingResolutionObservations {
+    base_artifact: axis_with_receipt(v: h(s: base), r: receipt),
+    dataset_manifest: axis(v: h(s: "dataset-1")),
+    tokenizer: axis(v: h(s: "tok-1")),
+    chat_template: axis(v: h(s: "tmpl-1")),
+    trainer_closure: axis(v: h(s: "trainer-1")),
+    method: axis(v: LowRankAdaptation),
+    target_modules: axis(v: h(s: "qkv")),
+    optimizer_config: axis(v: h(s: "adamw-1")),
+    scheduler_config: axis(v: h(s: "cosine-1")),
+    learning_rate_schedule: axis(v: h(s: "lr-1")),
+    rank: axis(v: 16),
+    scaling: axis(v: 32),
+    dropout_permille: axis(v: 50),
+    sequence_length: axis(v: 4096),
+    packing: axis(v: NoPacking),
+    loss_mask: axis(v: MaskPromptTokens),
+    mixture: axis(v: h(s: "mix-1")),
+    micro_batch: axis(v: 2),
+    global_batch: axis(v: 64),
+    gradient_accumulation: axis(v: 8),
+    numeric_format: axis(v: Bf16),
+    seed: axis(v: seed_value),
+    data_order_seed: axis(v: 99),
+    checkpoint_format: axis(v: h(s: "ckpt-v1")),
+    output_contract: axis(v: h(s: "adapter-out")),
+  }
+}
+
+fn resolve(o: TrainingResolutionObservations) -> TrainingResolution {
+  resolve_training(observations: o, requirements: fixture_requirements)
+}
+
+fn work_key_of(o: TrainingResolutionObservations) -> NonEmptyStr {
+  match resolve(o: o) {
+    TrainingResolutionRefused { axis: _, cause: _ } => "refused"
+    TrainingResolved { resolved: r } =>
+      training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key as NonEmptyStr
+  }
+}
+
+data baseline: TrainingResolutionObservations = observations(seed_value: 7, base: "base-A", receipt: "obs-1")
+
+// A SEMANTIC COORDINATE MOVES THE KEY. Seed is the sharpest case: it changes nothing a reader
+// would call an input, and it changes every weight the run produces.
+test fn a_different_seed_derives_a_different_work_key() -> Bool {
+  work_key_of(o: baseline) != work_key_of(o: observations(seed_value: 8, base: "base-A", receipt: "obs-1"))
+}
+
+test fn a_different_base_artifact_derives_a_different_work_key() -> Bool {
+  work_key_of(o: baseline) != work_key_of(o: observations(seed_value: 7, base: "base-B", receipt: "obs-1"))
+}
+
+// THE NEGATIVE CONTROL, and it is the one that makes the two above mean something. A receipt is
+// provenance: it records WHERE a value came from, not WHAT it is. If changing it moved the key,
+// the projection would be hashing evidence rather than the resolved computation, and two identical
+// runs resolved through different observations would be incomparable.
+test fn a_different_resolution_receipt_derives_the_same_work_key() -> Bool {
+  work_key_of(o: baseline) == work_key_of(o: observations(seed_value: 7, base: "base-A", receipt: "obs-2"))
+}
+
+test fn the_same_observations_derive_the_same_work_key() -> Bool {
+  work_key_of(o: baseline) == work_key_of(o: observations(seed_value: 7, base: "base-A", receipt: "obs-1"))
+}
+
+// AN UNRESOLVED COORDINATE REFUSES, NAMING ITS CLOSED AXIS. The value cannot be deferred into the
+// manifest, so this is the only place the deferral can appear.
+test fn an_unresolved_coordinate_refuses_naming_its_axis() -> Bool {
+  let o = TrainingResolutionObservations {
+    base_artifact: axis(v: h(s: "base-A")),
+    dataset_manifest: axis(v: h(s: "dataset-1")),
+    tokenizer: axis(v: h(s: "tok-1")),
+    chat_template: axis(v: h(s: "tmpl-1")),
+    trainer_closure: axis(v: h(s: "trainer-1")),
+    method: axis(v: LowRankAdaptation),
+    target_modules: axis(v: h(s: "qkv")),
+    optimizer_config: axis(v: h(s: "adamw-1")),
+    scheduler_config: axis(v: h(s: "cosine-1")),
+    learning_rate_schedule: axis(v: h(s: "lr-1")),
+    rank: axis(v: 16),
+    scaling: axis(v: 32),
+    dropout_permille: axis(v: 50),
+    sequence_length: axis(v: 4096),
+    packing: axis(v: NoPacking),
+    loss_mask: axis(v: MaskPromptTokens),
+    mixture: axis(v: h(s: "mix-1")),
+    micro_batch: axis(v: 2),
+    global_batch: axis(v: 64),
+    gradient_accumulation: axis(v: 8),
+    numeric_format: axis(v: Bf16),
+    seed: AxisUnresolved { cause: "operator did not pin a seed" },
+    data_order_seed: axis(v: 99),
+    checkpoint_format: axis(v: h(s: "ckpt-v1")),
+    output_contract: axis(v: h(s: "adapter-out")),
+  }
+  match resolve(o: o) {
+    TrainingResolutionRefused { axis: SeedAxis, cause: _ } => true
+    _ => false
+  }
+}
+
+// THE CROSS-PRINCIPAL PAIR. The requester and the accounting scope are different roles that happen
+// to share a representation, and an earlier revision derived the work under the REQUESTER, which
+// refused every legitimate delegated run. The positive arm is the load-bearing one: a suite with
+// only same-principal fixtures would pass against that collapse.
+fn demand_for(requester: NonEmptyStr, scope: NonEmptyStr, work_key: NonEmptyStr) -> Demand<NonEmptyStr> {
+  Demand {
+    id: FabricIdentity { principal: requester, key: "demand-1" },
+    work: FabricIdentity { principal: scope, key: work_key },
+    origin: "gunbc.observation.training-1",
+    submitted_at: "2026-08-28T00:00:00Z",
+    admission: AdmissionTerms {
+      deadline: none,
+      buy: BuyTerms {
+        budget_account: "training",
+        currency: Usd,
+        reservation_price: money_amount_micro(count: 1),
+        maximum_buy_order: money_amount_micro(count: 1000),
+      },
+    },
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: false,
+      step_reuse_permitted: true,
+    },
+  }
+}
+
+test fn a_requester_may_ask_for_work_scoped_to_another_principal() -> Bool {
+  match resolve(o: baseline) {
+    TrainingResolutionRefused { axis: _, cause: _ } => false
+    TrainingResolved { resolved: r } => {
+      let scoped_key = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+      let d = demand_for(requester: "brian", scope: "gunbai", work_key: scoped_key as NonEmptyStr)
+      match admit_training_run_desired(demand: d, resolved: r) {
+        TrainingRunDesiredAdmitted { desired: _ } => true
+        TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => false
+      }
+    }
+  }
+}
+
+test fn a_demand_naming_a_work_this_resolution_does_not_derive_is_refused() -> Bool {
+  match resolve(o: baseline) {
+    TrainingResolutionRefused { axis: _, cause: _ } => false
+    TrainingResolved { resolved: r } => {
+      let d = demand_for(requester: "brian", scope: "gunbai", work_key: "some-other-work")
+      match admit_training_run_desired(demand: d, resolved: r) {
+        TrainingRunDesiredAdmitted { desired: _ } => false
+        TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => true
+      }
+    }
+  }
+}
