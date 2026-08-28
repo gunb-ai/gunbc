@@ -1,7 +1,6 @@
 module gunbc.spark.serving_desired
 
 import std.types { String, Bool, List, NonEmptyStr }
-import std.nat { Nat }
 import std.measure { TokenCount, token_count }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
@@ -191,7 +190,7 @@ data spark_serving_fleet_desired: SparkServingFleetDesired = spark_serving_fleet
 fn spark_serving_desired_launch_profile() -> OllamaServingLaunchProfile {
   OllamaServingLaunchProfile {
     bind: spark_serving_desired_bind_listen,
-    configured_context: token_count(count: spark_serving_desired_context_length),
+    configured_context: spark_serving_desired_context_length,
   }
 }
 
@@ -209,7 +208,7 @@ fn spark_serving_desired_launch_profile() -> OllamaServingLaunchProfile {
 // become desired state -- an operator chose this number and the reading is why it is defensible. A
 // smaller window remains writable, and a larger one than the model declares is a real request the
 // runtime is free to refuse.
-data spark_serving_desired_context_length: Nat = 131072
+data spark_serving_desired_context_length: TokenCount = token_count(count: 131072)
 
 // The unit's window is DERIVED from the serving policy rather than authored beside it. This is the
 // causal link the repair adds: the policy is the single authority, the unit text is a function of
