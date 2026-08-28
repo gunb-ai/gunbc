@@ -149,3 +149,12 @@ stops contaminating sessions with dead premises.
   ~200 docs/plans referenced from dag/src carriers, tools/ receipts (consumer:
   srv1_residue_rehearsal path strings only), docs/probes single file (referenced by
   lotes_azifa072.dag), runbooks (referenced by roadmap/actuate carriers).
+- 2026-08-28: P4 second cut — deleted tools/ receipt dumps (5 files, operator:
+  derived data is never committed; only .dag derivation code), 33 more stale
+  off-topic plan docs (closure-safe: refs only from snapshot strings/each other),
+  and src/v2/experimental/ (empty quarantine, failed concept per operator).
+  DEFERRED: 112 old off-topic plans cited by live carriers (roadmap_authority
+  ~25, dag plan carriers, cli_run.rs, lens modules) — need carrier-row edits;
+  dag/examples/ (witness-consumed: declared_type_inhabitance, cost_estimate_float,
+  bootstrap_witness.rs); artifacts/bmc (bmc_fan_program carriers consume);
+  provider-runtime/codex (codex witnesses consume).
