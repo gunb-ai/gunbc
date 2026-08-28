@@ -383,6 +383,27 @@ data gitattributes_committed_emit_drift_stall: GuaranteeStall = GuaranteeStall {
   next_rung_trigger: "node://adhoc-16f7520a-85f lands: identify the authority edit that introduced the drift, regenerate .gitattributes from that authority, and restore a required generated-artifact drift gate so later authority/artifact disagreement refuses"
 }
 
+// THE WALL DEADLINE STILL CHARGES A SHARED-ARTIFACT FILL TO WHICHEVER CLAIM PAID IT, and this row
+// exists because a comment beside the code would go stale on the day the population changes while
+// this row cannot. The 2026-08-27 attribution ruling has now been applied to three homes one at a
+// time -- the completion-side CPU split, the completion-side WALL split, and the CPU evaluation
+// deadline -- and each application was made only after that home's omission had cost something.
+// The wall deadline is the fourth home and it is unrepaired.
+//
+// WHY IT IS SCOPED OUT RATHER THAN FIXED HERE: measured on run 33185280160, all 44 interruptions
+// are on the `Cpu` clock, 44 of 44, so the wall arm is currently unexercised. That is a fact about
+// today's population and NOT about the mechanism, which is exactly why the obligation is declared
+// as a countable row rather than left as a note. The trigger is deliberately an OBSERVATION rather
+// than a promise: the first wall-clock interruption to appear in the floor's ledger is the event
+// that makes this reachable, and it fires without anyone remembering this row exists.
+data wall_deadline_shared_fill_attribution_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the wall evaluation deadline charges shared-artifact fill to the claim that paid it, so a wall interruption is a function of discovery order rather than of the row",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "v1_interpreter.arm_wall_deadline", tail: Cons { head: "v1_interpreter.wall_deadline_remaining_ms", tail: Cons { head: "v1_interpreter.wall_deadline_exceeded_error", tail: Empty {} } } } },
+  next_rung_trigger: "the required floor's ledger reports any INTERRUPTED-BEFORE-VERDICT row whose clock is Wall, at which point the wall deadline must read a fill-netted clock exactly as v1_interpreter.budgeted_cpu_nanos does for the CPU deadline"
+}
 data heterogeneous_child_list_stall: GuaranteeStall = GuaranteeStall {
   subject: "a type's child list may hold BOTH a type node and a field node, and v1.04_types child_type_node tells them apart by whether `inferred` is populated -- a stamp v1.02_parse field_to_child_node writes at PARSE TIME as Resolved, before any resolution has run. A child list that mixes the two kinds makes that accessor return the FIELD node where its caller expects the TYPE, with no diagnostic",
   current: OutsideTheLadder,
@@ -432,7 +453,8 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   self_host_candidate_generation_add_slice_stall,
   non_fold_residue_roster_stall,
   retained_rust_live_tree_migration_stall,
-  gitattributes_committed_emit_drift_stall
+  gitattributes_committed_emit_drift_stall,
+  wall_deadline_shared_fill_attribution_stall
 ]
 
 // A STALL AT ITS CEILING IS NOT A STALL: the row would describe a class that already arrived, and

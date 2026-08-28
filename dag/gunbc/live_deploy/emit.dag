@@ -334,7 +334,7 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding)
       ExecStart { command: join([
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
-        " --entry dag/gunbc/roadmap_serve.dag --function ", svc.serve_function as String,
+        " --entry dag/gunbc/roadmap/roadmap_serve.dag --function ", svc.serve_function as String,
         " --host ", host, " --port ", port,
         " --release-revision ", release_revision_execstart_text(binding: revision),
         eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
@@ -369,7 +369,7 @@ fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
       ExecStart { command: join([
         svc.serve_binary as String,
         " run --source-root dag --source-root src/v2",
-        " --entry dag/gunbc/roadmap_belt_actuate.dag --function belt_run_once_cli",
+        " --entry dag/gunbc/roadmap/roadmap_belt_actuate.dag --function belt_run_once_cli",
       ], "") as NonEmptyStr },
     ],
     install: NotInstallable,
@@ -409,7 +409,7 @@ fn emit_publication_service_unit_doc(spec: DeploymentSpec) -> Doc {
       ExecStart { command: join([
         svc.serve_binary as String,
         " run --source-root dag --source-root src/v2",
-        " --entry dag/gunbc/roadmap_publication_helper.dag",
+        " --entry dag/gunbc/roadmap/roadmap_publication_helper.dag",
         " --function publication_helper_run_once_cli",
         " --arg instance_root=", svc.instance_root as String,
       ], "") as NonEmptyStr },
