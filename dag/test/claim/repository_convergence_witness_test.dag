@@ -1,0 +1,463 @@
+module test.claim.repository_convergence_witness_test
+
+import std.types { String, Bool, List }
+import extdeps.git.enumeration {
+  GitRefSetObservation, GitRefSetReadRefused, git_ref_set_observation_of,
+}
+import extdeps.git.worktree_enumeration {
+  GitWorktreeSetObservation, git_worktree_set_observation_of,
+}
+import gunbc.live_deploy.repository_convergence {
+  RepositoryState,
+  GitUntrackedObservation, GitUntrackedObserved, GitUntrackedUnreadable,
+  ConvergenceUntrackedResidue, ConvergenceResidueUnreadable,
+  ConvergencePrimaryBranchNotAtCandidate,
+  RepositoryConvergenceOutcome,
+  ConvergenceCompleted, ConvergenceAlreadyAtCandidate,
+  ConvergencePreStateUnobservable, ConvergencePostStateUnobservable,
+  ConvergenceRefDisappeared, ConvergenceWorktreeDisappeared, ConvergenceWorktreeRebound,
+  ConvergenceHeadNotAtCandidate, ConvergenceHeadMovedWithoutReflog,
+  ConvergenceBaseRefMoved, ConvergenceBaseRefUpdateRefused,
+  base_ref_refusal_from_observation,
+  repository_convergence_verdict,
+  repository_convergence_converged,
+}
+
+data old_sha: String = "1111111111111111111111111111111111111111"
+data new_sha: String = "2222222222222222222222222222222222222222"
+data dispatch_sha: String = "3333333333333333333333333333333333333333"
+data base_ref: String = "refs/remotes/origin/main"
+data primary: String = "/opt/gunbc/gunbc"
+data linked: String = "/opt/gunbc/dispatch-worktrees/attempt-a"
+
+// FIXTURES ARE BUILT FROM GIT'S OWN WIRE TEXT AND DECODED, not hand-constructed. `GitObjectId` is a
+// sole-constructor validated type -- `git_sha1_object_id` refuses anything that is not lowercase hex
+// of a git object width -- so a witness CANNOT cast a String into one, and the first cut of this file
+// tried to and failed at runtime on all nine rows. That refusal is the carrier working as designed.
+//
+// Going through the decoders is the better fixture anyway: the pre- and post-states these witnesses
+// compare are exactly what `ForEachRefIn` and `WorktreeListIn` produce, so the adjudication is
+// exercised over the shape it will really receive rather than over a shape assembled to suit it.
+//
+// WHAT THAT STILL DOES NOT ESTABLISH, and the sibling decoder witnesses say the same: nothing here
+// shows that git EMITS these bytes for any given repository state. That is a transport claim, it
+// cannot execute in the hermetic fold, and reporting these as coverage for it would be rung
+// inflation (DESIGN §4b).
+fn ref_record(name: String, oid: String) -> String {
+  concat(concat(name, concat("\0", oid)), "\0")
+}
+
+// RECORDS ARE SUPPLIED IN LEXICOGRAPHIC ORDER because that is what `git for-each-ref` emits and
+// what the decoder enforces -- it refuses a ref set whose names are not strictly increasing. The
+// first cut of these fixtures listed `refs/remotes/...` before `refs/dispatch/...`, which is
+// decreasing, and the decoder correctly refused the whole observation. That refusal is the decoder
+// working; the fixture was the unrealistic thing.
+fn refs_wire(records: List<String>) -> GitRefSetObservation {
+  git_ref_set_observation_of(raw: join(records, ""), exit_code: 0, stderr: "")
+}
+
+fn base_ref_record(oid: String) -> String {
+  concat(ref_record(name: base_ref, oid: oid), "\n")
+}
+
+data dispatch_ref_name: String = "refs/dispatch/attempt-a"
+
+fn dispatch_ref_record() -> String {
+  concat(ref_record(name: dispatch_ref_name, oid: dispatch_sha), "\n")
+}
+
+// THE ATTACHED BRANCH REFS WERE MISSING FROM THE FIRST CUT OF THESE FIXTURES, and their absence was
+// not a cosmetic gap -- it made the fixture an IMPOSSIBLE REPOSITORY. The primary is reported on
+// `refs/heads/main` and the linked worktree on `refs/heads/dispatch/attempt-a`, and neither ref
+// existed in the ref set, which is a state git cannot be in.
+//
+// WHAT THE OMISSION HID: convergence_first_lost_ref exempted only base_ref, and `reset --hard` on a
+// branch-attached primary necessarily advances that branch, so every SUCCESSFUL convergence on a
+// real repository would have reported ConvergenceRefDisappeared for refs/heads/main. The green
+// control could not see it because the ref it would have named was not in the fixture. An
+// unrealistic fixture does not merely fail to test a case -- it can make a live defect unreachable.
+fn heads_dispatch_record() -> String {
+  concat(ref_record(name: "refs/heads/dispatch/attempt-a", oid: dispatch_sha), "\n")
+}
+
+fn heads_main_record(oid: String) -> String {
+  concat(ref_record(name: "refs/heads/main", oid: oid), "\n")
+}
+
+fn wt_entry(attributes: List<String>) -> String {
+  concat(join(attributes, "\0"), "\0\0")
+}
+
+fn primary_entry(oid: String) -> String {
+  wt_entry(attributes: [
+    concat("worktree ", primary),
+    concat("HEAD ", oid),
+    "branch refs/heads/main",
+  ])
+}
+
+fn linked_entry() -> String {
+  wt_entry(attributes: [
+    concat("worktree ", linked),
+    concat("HEAD ", dispatch_sha),
+    "branch refs/heads/dispatch/attempt-a",
+  ])
+}
+
+fn linked_entry_detached() -> String {
+  wt_entry(attributes: [
+    concat("worktree ", linked),
+    concat("HEAD ", dispatch_sha),
+    "detached",
+  ])
+}
+
+fn worktrees_wire(entries: List<String>) -> GitWorktreeSetObservation {
+  git_worktree_set_observation_of(raw: join(entries, ""), exit_code: 0, stderr: "")
+}
+
+fn state_of(
+  refs: GitRefSetObservation,
+  worktrees: GitWorktreeSetObservation,
+  head: String,
+  reflog: String,
+  untracked: GitUntrackedObservation,
+) -> RepositoryState {
+  RepositoryState {
+    refs: refs,
+    worktrees: worktrees,
+    head: head,
+    reflog: reflog,
+    untracked: untracked,
+  }
+}
+
+// THE REFLOG FIXTURE IS NEWEST-FIRST AND CARRIES THE OBJECT FIRST ON THE LINE, because that is what
+// `git reflog show --format=%H %gd %gs` emits and what the non-noop law now reads. The earlier
+// fixture was the bare text "old-reflog\nnew-entry", which satisfied a before != after check while
+// naming no object at all -- it could not have distinguished this transition from an unrelated
+// append, which is precisely the weakness that check had.
+fn reflog_after(oid: String) -> String {
+  concat(
+    join([oid, "HEAD@{0}", concat("reset: moving to ", oid)], " "),
+    "\nold-reflog",
+  )
+}
+
+fn clean_tree() -> GitUntrackedObservation {
+  GitUntrackedObserved { paths: "" }
+}
+
+fn before_state() -> RepositoryState {
+  state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: old_sha), base_ref_record(oid: old_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: old_sha), linked_entry()]),
+    head: old_sha,
+    reflog: "old-reflog",
+    untracked: clean_tree(),
+  )
+}
+
+fn verdict_for(after: RepositoryState) -> RepositoryConvergenceOutcome {
+  repository_convergence_verdict(
+    before: before_state(),
+    after: after,
+    candidate: new_sha,
+    base_ref: base_ref,
+    primary_path: primary,
+  )
+}
+
+fn is_completed(o: RepositoryConvergenceOutcome) -> Bool {
+  match o {
+    ConvergenceCompleted { candidate: _, refs_preserved: _, worktrees_preserved: _ } => true
+    _ => false
+  }
+}
+
+// THE GREEN CONTROL. Base ref advanced, dispatch ref untouched, linked worktree still bound to its
+// own branch, HEAD at the candidate, reflog grew. Without this every RED below would be satisfied by
+// a function that refuses unconditionally.
+test fn a_clean_transition_converges() -> Bool {
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+    untracked: clean_tree(),
+  )
+  is_completed(o: verdict_for(after: after)) && repository_convergence_converged(outcome: verdict_for(after: after))
+}
+
+// THE PACKED-REFS DELETION TRAP, which is the defect a wholesale `packed-refs` replacement causes.
+// The dispatch ref is simply gone from the post-state. Note the CARDINALITY IS UNCHANGED -- one ref
+// left and the base ref moved -- so a count-equality check would pass here. Identity is the check.
+test fn a_dispatch_ref_that_vanished_refuses() -> Bool {
+  let after = state_of(
+    refs: refs_wire(records: [heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+    untracked: clean_tree(),
+  )
+  match verdict_for(after: after) {
+    ConvergenceRefDisappeared { refname: r, objectname: _ } => r == dispatch_ref_name
+    _ => false
+  }
+}
+
+// A LINKED WORKTREE'S REGISTRATION DROPPED. That is somebody's in-flight dispatch attempt, and it
+// has nothing to do with this release.
+test fn a_linked_worktree_that_vanished_refuses() -> Bool {
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha)]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+    untracked: clean_tree(),
+  )
+  match verdict_for(after: after) {
+    ConvergenceWorktreeDisappeared { path: p } => p == linked
+    _ => false
+  }
+}
+
+// A LINKED WORKTREE SILENTLY DETACHED. Present, same path, still counted -- and no longer on its
+// branch, so the attempt's commits would land nowhere. Presence is not preservation.
+test fn a_linked_worktree_rebound_to_detached_refuses() -> Bool {
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry_detached()]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+    untracked: clean_tree(),
+  )
+  match verdict_for(after: after) {
+    ConvergenceWorktreeRebound { path: p, detail: _ } => p == linked
+    _ => false
+  }
+}
+
+// THE SIGNATURE OF THE REALIZATION THIS REPLACES. HEAD reached the candidate and the reflog did not
+// grow, so whatever moved it was not git -- a file written over `refs/**` leaves exactly this trace.
+// Everything else about the post-state looks correct, which is why the check has to exist.
+test fn a_head_that_moved_without_a_reflog_entry_refuses() -> Bool {
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: "old-reflog",
+    untracked: clean_tree(),
+  )
+  match verdict_for(after: after) {
+    ConvergenceHeadMovedWithoutReflog { candidate: c } => c == new_sha
+    _ => false
+  }
+}
+
+// THE NO-OP IS NOT THE REFLOG DEFECT, and this is the pair that keeps the check above honest. An
+// already-converged repository legitimately adds no reflog entry; refusing it would fire on the
+// healthy case. The two differ only in whether the BEFORE head was already the candidate.
+test fn an_already_converged_repository_is_not_the_reflog_defect() -> Bool {
+  let already = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: "same-reflog",
+    untracked: clean_tree(),
+  )
+  let v = repository_convergence_verdict(
+    before: state_of(
+      refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+      worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+      head: new_sha,
+      reflog: "same-reflog",
+      untracked: clean_tree(),
+    ),
+    after: already,
+    candidate: new_sha,
+    base_ref: base_ref,
+    primary_path: primary,
+  )
+  match v {
+    ConvergenceAlreadyAtCandidate { candidate: c } => c == new_sha
+    _ => false
+  }
+}
+
+// THE PRIMARY IS EXEMPT AND THE EXEMPTION IS NARROW. Its head moved from old to new, which is the
+// operation's own effect, and that must not read as a rebinding. If the primary were checked like a
+// linked worktree this returns Rebound and the operation could never succeed.
+test fn the_primary_moving_is_not_a_rebinding() -> Bool {
+  is_completed(o: verdict_for(after: state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+    untracked: clean_tree(),
+  )))
+}
+
+// AN UNOBSERVABLE POST-STATE IS NOT A PRESERVED ONE. A refused enumeration carries no refs, and a
+// comparison that treated it as an empty set would find nothing missing and report success -- the
+// empty-observation narrow. This is the arm that makes ordering the observability check first
+// load-bearing rather than tidy.
+test fn an_unreadable_post_state_refuses_rather_than_reporting_preservation() -> Bool {
+  let after = RepositoryState {
+    refs: GitRefSetReadRefused { exit_code: 128, stderr: "not a git repository" },
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+    untracked: clean_tree(),
+  }
+  match verdict_for(after: after) {
+    ConvergencePostStateUnobservable { detail: d } => string_contains(s: d, pattern: "not a git repository")
+    _ => false
+  }
+}
+
+// HEAD SHORT OF THE CANDIDATE IS ITS OWN ARM, not folded into a generic failure: the remedy is to
+// look at why the transition did not land, which is different from every preservation fault.
+test fn a_head_short_of_the_candidate_refuses() -> Bool {
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: old_sha), linked_entry()]),
+    head: old_sha,
+    reflog: reflog_after(oid: new_sha),
+    untracked: clean_tree(),
+  )
+  match verdict_for(after: after) {
+    ConvergenceHeadNotAtCandidate { candidate: c, observed: o } => c == new_sha && o == old_sha
+    _ => false
+  }
+}
+
+// A FAILED COMPARE-AND-SWAP IS NOT SELF-DESCRIBING, and these three exist because a review
+// (`review 56941`) found the arms conflated: any nonzero `update-ref` exit was reported as
+// "the base ref moved", so a permissions failure told the operator to re-observe and retry. The
+// remedies differ, so the arms must. Asserted over the DECISION rather than the wet path, because
+// reading a ref is a host effect that cannot execute in the hermetic fold -- and a distinction added
+// to fix a conflation, left with no executing evidence, would be the same failure one level in.
+test fn a_ref_that_left_the_expected_value_reads_as_a_concurrent_move() -> Bool {
+  match base_ref_refusal_from_observation(
+    base_ref: base_ref,
+    expected_old: old_sha,
+    observed: Present { value: new_sha },
+    exit_code: 1,
+    stderr: "cannot lock ref",
+  ) {
+    ConvergenceBaseRefMoved { expected: e, observed: o } => e == old_sha && o == new_sha
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING PAIR. Same nonzero exit, same stderr, and the ref still holds what we expected
+// -- so whatever refused was not a concurrent writer. Fuse the arms and this returns BaseRefMoved,
+// which is the exact defect the split repairs; without this row the split would be untested.
+test fn a_ref_still_at_the_expected_value_is_not_a_concurrent_move() -> Bool {
+  match base_ref_refusal_from_observation(
+    base_ref: base_ref,
+    expected_old: old_sha,
+    observed: Present { value: old_sha },
+    exit_code: 1,
+    stderr: "cannot lock ref: permission denied",
+  ) {
+    ConvergenceBaseRefUpdateRefused { base_ref: r, exit_code: x, stderr: e } =>
+      r == base_ref && x == 1 && string_contains(s: e, pattern: "permission denied")
+    _ => false
+  }
+}
+
+// AN UNREADABLE REF IS NOT EVIDENCE OF ANYTHING. Reporting a move here would be the
+// empty-observation narrow -- a read that could not answer, rendered as the answer.
+test fn a_ref_that_cannot_be_read_is_not_reported_as_moved() -> Bool {
+  match base_ref_refusal_from_observation(
+    base_ref: base_ref,
+    expected_old: old_sha,
+    observed: Absent,
+    exit_code: 128,
+    stderr: "not a git repository",
+  ) {
+    ConvergenceBaseRefUpdateRefused { base_ref: _, exit_code: x, stderr: _ } => x == 128
+    _ => false
+  }
+}
+
+// UNTRACKED RESIDUE SURVIVES THE TRANSITION. Every other fact about the post-state is correct --
+// HEAD at the candidate, every ref preserved, both worktrees bound as before, reflog grew -- and the
+// tree is still not the candidate, because `reset --hard` never touched the files git does not
+// track. This is the one arm where the whole rest of the adjudication says yes.
+test fn a_tree_carrying_untracked_residue_refuses() -> Bool {
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+    untracked: GitUntrackedObserved { paths: concat("stray/left-behind.txt", "\0") },
+  )
+  match verdict_for(after: after) {
+    ConvergenceUntrackedResidue { first_path: p } => p == "stray/left-behind.txt"
+    _ => false
+  }
+}
+
+// AN UNREADABLE LISTING IS NOT A CLEAN TREE. Without this arm the residue check would read the
+// silence of a failed command as "no strays" and admit -- the empty-observation narrow, and the
+// reason the observation is a coproduct rather than the bare String that head and reflog get away
+// with. THE PAIR WITH THE WITNESS ABOVE AND THE GREEN CONTROL IS THE POINT: clean admits, residue
+// refuses, unreadable refuses, and no two of those collapse.
+test fn an_unreadable_untracked_listing_refuses_rather_than_reading_clean() -> Bool {
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+    untracked: GitUntrackedUnreadable { exit_code: 128, stderr: "not a git repository" },
+  )
+  match verdict_for(after: after) {
+    ConvergenceResidueUnreadable { exit_code: c, stderr: _ } => c == 128
+    _ => false
+  }
+}
+
+// THE PRIMARY'S BRANCH LEFT BEHIND. HEAD is at the candidate but refs/heads/main is not, which is
+// what a detached-then-reset sequence produces: the working tree looks converged and the branch
+// every later push and fetch resolves through still points at the old release.
+//
+// THIS IS THE REPLACEMENT OBLIGATION for exempting that ref from the loss check. Exempting it and
+// stopping there would admit the branch moving anywhere at all, so the exemption and this witness
+// are one change -- delete this and the exemption becomes a hole.
+test fn a_primary_branch_left_behind_refuses() -> Bool {
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: old_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+    untracked: clean_tree(),
+  )
+  match verdict_for(after: after) {
+    ConvergencePrimaryBranchNotAtCandidate { branch: b, observed: o } =>
+      b == "refs/heads/main" && o == old_sha
+    _ => false
+  }
+}
+
+// THE REFLOG GREW, AND NOT BECAUSE OF THIS TRANSITION. HEAD is at the candidate and the reflog text
+// differs from the pre-state, so the old `before != after` law was satisfied -- by an append whose
+// newest entry names an unrelated object. A concurrent actor touching HEAD while a file-level write
+// moved the ref produces exactly this, which is why the law reads the newest entry rather than the
+// text. THIS WITNESS IS THE ONE THE OLD CHECK COULD NOT HAVE PASSED OR FAILED MEANINGFULLY: under
+// the previous implementation it went green while the tree had no git-performed arrival at all.
+test fn a_reflog_that_grew_toward_some_other_object_refuses() -> Bool {
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: reflog_after(oid: dispatch_sha),
+    untracked: clean_tree(),
+  )
+  match verdict_for(after: after) {
+    ConvergenceHeadMovedWithoutReflog { candidate: c } => c == new_sha
+    _ => false
+  }
+}

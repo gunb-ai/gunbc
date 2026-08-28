@@ -1,0 +1,517 @@
+module extdeps.git.worktree_enumeration
+
+import std.types { String, List, Bool, Int }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+
+// The typed reading of git.Core.WorktreeListIn's wire, kept in extdeps because the output GRAMMAR
+// is git's fact and not any consumer's, exactly as extdeps.git.enumeration owns the ref wire.
+//
+// THE CHECKOUT IS A COPRODUCT AND NOT A RECORD OF OPTIONALS, and that is the load-bearing modeling
+// choice here. git reports a bare worktree with NO HEAD line at all, and reports every non-bare
+// worktree with a HEAD plus exactly one of `branch` or `detached`. A record carrying head?, branch?
+// and a bare flag would make four impossible states writable -- bare-with-a-head, non-bare with no
+// head, on-a-branch-and-detached, and neither -- each of which a consumer would then have to
+// re-validate. Carrying the head INSIDE the arms that have one makes those states unrepresentable
+// rather than merely checked, which is the DESIGN section 4b construction rung.
+type GitWorktreeCheckout
+  = GitWorktreeOnBranch { head: GitObjectId, branch: String }
+  | GitWorktreeDetachedAt { head: GitObjectId }
+  | GitWorktreeBare
+
+type GitWorktreeIdentity {
+  path: String
+  checkout: GitWorktreeCheckout
+  locked: Bool
+  prunable: Bool
+}
+
+// entry_index rather than record_index: a worktree entry SPANS several NUL records, so the located
+// grain a reader needs to find the fault is the entry. The raw entry is carried joined on the
+// separator git used, so the refusal names bytes the caller can match against git's own output.
+type GitWorktreeSetObservation
+  = GitWorktreeSetObserved { worktrees: List<GitWorktreeIdentity> }
+  | GitWorktreeSetReadRefused { exit_code: Int, stderr: String }
+  | GitWorktreeSetUndecodable { entry_index: Int, raw_entry: String, reason: String }
+
+// git terminates every attribute with NUL and every ENTRY with one further NUL, so a well-formed
+// stream ends with exactly one empty record beyond the final entry terminator. Exactly that one is
+// dropped. Dropping every trailing empty would absorb a truncated stream, and filtering empties
+// everywhere would destroy the entry framing itself, since the empty record IS the separator.
+fn git_worktree_records(raw: String) -> List<String> {
+  let records = split(s: raw, delimiter: "\0")
+  match records.last() {
+    Present { value: final_record } =>
+      if final_record == "" { records.take(n: count(records) - 1) } else { records }
+    Absent => records
+  }
+}
+
+// The attribute fold is TOTAL and accumulates a first fault rather than refusing in place, so that
+// the entry's own finalizer decides the outcome once, with the whole entry in hand. An unknown
+// attribute is a fault and not a skip: git adds attributes over time, and silently ignoring one we
+// do not model would let a future `prunable`-like flag change a worktree's meaning while this
+// decoder kept reporting the old reading (DESIGN section 5 -- a failure arm refuses, never widens).
+type GitWorktreeAttributes {
+  head: GitObjectId?
+  branch: String?
+  detached: Bool
+  bare: Bool
+  locked: Bool
+  prunable: Bool
+  fault: String?
+}
+
+fn git_worktree_first_fault(attributes: GitWorktreeAttributes, reason: String) -> GitWorktreeAttributes {
+  match attributes.fault {
+    Present { value: _ } => attributes
+    Absent =>
+      GitWorktreeAttributes {
+        head: attributes.head,
+        branch: attributes.branch,
+        detached: attributes.detached,
+        bare: attributes.bare,
+        locked: attributes.locked,
+        prunable: attributes.prunable,
+        fault: Present { value: reason },
+      }
+  }
+}
+
+// `locked` and `prunable` appear bare or with a trailing reason, so both spellings are
+// admitted. The reason is git's prose for a human and carries no decidable fact this
+// decoder consumes, so it is deliberately not retained -- keeping it would invent a
+// second authority for a string git may reword at any release.
+// EVERY SINGLETON ATTRIBUTE REFUSES ITS OWN REPETITION, all six of them, and the history of this
+// function is why that is stated as a closed set rather than left to be read off the arms.
+//
+// HEAD refused a repeat from the start. `branch` was then given the same guard, and the four BOOLEAN
+// attributes were left setting their field to true unconditionally -- so two `detached` records, or
+// two `bare`, decoded into a SUCCESSFUL observation. The defect was invisible for the reason
+// repetition defects usually are: setting a flag twice is idempotent, so nothing downstream looks
+// wrong. It is the WIRE that was malformed, and a decoder that quietly normalizes malformed input is
+// not lenient, it is answering a question nobody asked.
+//
+// THE ASYMMETRY WAS THE TELL, and it was introduced by a diff that stated the invariant while
+// applying it to two arms of six. An unknown attribute refused loudly; a KNOWN attribute in an
+// impossible arrangement was accepted quietly. When adding a seventh attribute, the guard is part of
+// the arm, not a follow-up.
+fn git_worktree_attribute_step(
+  attributes: GitWorktreeAttributes,
+  attribute: String,
+) -> GitWorktreeAttributes {
+  if starts_with(s: attribute, prefix: "HEAD ") {
+    let hex = substring(s: attribute, start: 5, end: length(attribute))
+    match git_object_id_from_untagged_hex(hex: hex) {
+      Absent =>
+        git_worktree_first_fault(
+          attributes: attributes,
+          reason: concat("HEAD is not lowercase hex of a git object width: ", hex),
+        )
+      Present { value: oid } =>
+        match attributes.head {
+          Present { value: _ } =>
+            git_worktree_first_fault(attributes: attributes, reason: "entry carries more than one HEAD")
+          Absent =>
+            GitWorktreeAttributes {
+              head: Present { value: oid },
+              branch: attributes.branch,
+              detached: attributes.detached,
+              bare: attributes.bare,
+              locked: attributes.locked,
+              prunable: attributes.prunable,
+              fault: attributes.fault,
+            }
+        }
+    }
+  } else {
+    if starts_with(s: attribute, prefix: "branch ") {
+      match attributes.branch {
+        Present { value: _ } =>
+          git_worktree_first_fault(
+            attributes: attributes,
+            reason: "entry carries more than one branch",
+          )
+        Absent =>
+          GitWorktreeAttributes {
+            head: attributes.head,
+            branch: Present { value: substring(s: attribute, start: 7, end: length(attribute)) },
+            detached: attributes.detached,
+            bare: attributes.bare,
+            locked: attributes.locked,
+            prunable: attributes.prunable,
+            fault: attributes.fault,
+          }
+      }
+    } else {
+      if attribute == "detached" {
+        if attributes.detached {
+          git_worktree_first_fault(
+            attributes: attributes,
+            reason: "entry carries more than one detached",
+          )
+        } else {
+          GitWorktreeAttributes {
+            head: attributes.head,
+            branch: attributes.branch,
+            detached: true,
+            bare: attributes.bare,
+            locked: attributes.locked,
+            prunable: attributes.prunable,
+            fault: attributes.fault,
+          }
+        }
+      } else {
+        if attribute == "bare" {
+          if attributes.bare {
+            git_worktree_first_fault(
+              attributes: attributes,
+              reason: "entry carries more than one bare",
+            )
+          } else {
+            GitWorktreeAttributes {
+              head: attributes.head,
+              branch: attributes.branch,
+              detached: attributes.detached,
+              bare: true,
+              locked: attributes.locked,
+              prunable: attributes.prunable,
+              fault: attributes.fault,
+            }
+          }
+        } else {
+          if attribute == "locked" || starts_with(s: attribute, prefix: "locked ") {
+            if attributes.locked {
+              git_worktree_first_fault(
+                attributes: attributes,
+                reason: "entry carries more than one locked",
+              )
+            } else {
+              GitWorktreeAttributes {
+                head: attributes.head,
+                branch: attributes.branch,
+                detached: attributes.detached,
+                bare: attributes.bare,
+                locked: true,
+                prunable: attributes.prunable,
+                fault: attributes.fault,
+              }
+            }
+          } else {
+            if attribute == "prunable" || starts_with(s: attribute, prefix: "prunable ") {
+              if attributes.prunable {
+                git_worktree_first_fault(
+                  attributes: attributes,
+                  reason: "entry carries more than one prunable",
+                )
+              } else {
+                GitWorktreeAttributes {
+                  head: attributes.head,
+                  branch: attributes.branch,
+                  detached: attributes.detached,
+                  bare: attributes.bare,
+                  locked: attributes.locked,
+                  prunable: true,
+                  fault: attributes.fault,
+                }
+              }
+            } else {
+              git_worktree_first_fault(
+                attributes: attributes,
+                reason: concat("unmodeled worktree attribute: ", attribute),
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The one place a checkout is chosen. Every combination git cannot produce lands in a located
+// refusal rather than a defaulted arm, so the four impossible states the coproduct forbids are
+// refused HERE once instead of being re-checked by every consumer downstream.
+fn git_worktree_checkout_of(attributes: GitWorktreeAttributes) -> GitWorktreeCheckout? {
+  if attributes.bare {
+    match attributes.head {
+      Present { value: _ } => none
+      Absent =>
+        match attributes.branch {
+          Present { value: _ } => none
+          Absent => if attributes.detached { none } else { Present { value: GitWorktreeBare } }
+        }
+    }
+  } else {
+    match attributes.head {
+      Absent => none
+      Present { value: oid } =>
+        match attributes.branch {
+          Present { value: branch } =>
+            if attributes.detached {
+              none
+            } else {
+              Present { value: GitWorktreeOnBranch { head: oid, branch: branch } }
+            }
+          Absent =>
+            if attributes.detached {
+              Present { value: GitWorktreeDetachedAt { head: oid } }
+            } else {
+              none
+            }
+        }
+    }
+  }
+}
+
+fn git_worktree_entry_text(attributes_list: List<String>) -> String {
+  join(attributes_list, "\0")
+}
+
+fn git_worktree_decode_entry(entry_index: Int, attributes_list: List<String>) -> GitWorktreeSetObservation {
+  match attributes_list.first() {
+    Absent =>
+      GitWorktreeSetUndecodable {
+        entry_index: entry_index,
+        raw_entry: "",
+        reason: "empty entry: the record separator is doubled or the stream is truncated",
+      }
+    Present { value: head_attribute } =>
+      if starts_with(s: head_attribute, prefix: "worktree ") {
+        let path = substring(s: head_attribute, start: 9, end: length(head_attribute))
+        let attributes = fold(
+          attributes_list.skip(n: 1),
+          init: GitWorktreeAttributes {
+            head: none,
+            branch: none,
+            detached: false,
+            bare: false,
+            locked: false,
+            prunable: false,
+            fault: none,
+          },
+          f: (acc, attribute) => git_worktree_attribute_step(attributes: acc, attribute: attribute),
+        )
+        match attributes.fault {
+          Present { value: reason } =>
+            GitWorktreeSetUndecodable {
+              entry_index: entry_index,
+              raw_entry: git_worktree_entry_text(attributes_list: attributes_list),
+              reason: reason,
+            }
+          Absent =>
+            if path == "" {
+              GitWorktreeSetUndecodable {
+                entry_index: entry_index,
+                raw_entry: git_worktree_entry_text(attributes_list: attributes_list),
+                reason: "empty worktree path",
+              }
+            } else {
+              match git_worktree_checkout_of(attributes: attributes) {
+                Absent =>
+                  GitWorktreeSetUndecodable {
+                    entry_index: entry_index,
+                    raw_entry: git_worktree_entry_text(attributes_list: attributes_list),
+                    reason: "entry does not describe exactly one of: bare, on a branch, or detached at a HEAD",
+                  }
+                Present { value: checkout } =>
+                  GitWorktreeSetObserved {
+                    worktrees: [
+                      GitWorktreeIdentity {
+                        path: path,
+                        checkout: checkout,
+                        locked: attributes.locked,
+                        prunable: attributes.prunable,
+                      },
+                    ],
+                  }
+              }
+            }
+        }
+      } else {
+        GitWorktreeSetUndecodable {
+          entry_index: entry_index,
+          raw_entry: git_worktree_entry_text(attributes_list: attributes_list),
+          reason: concat("entry does not begin with a worktree path: ", head_attribute),
+        }
+      }
+  }
+}
+
+type GitWorktreeDecodeState {
+  observation: GitWorktreeSetObservation
+  entry_index: Int
+}
+
+// One malformed entry refuses the WHOLE observation rather than being dropped, for the same reason
+// the ref decoder refuses: a partial worktree set is indistinguishable from a repository with fewer
+// worktrees, so a consumer comparing two enumerations would read a dropped entry as a removed
+// worktree and act on it.
+fn git_worktree_decode_step(
+  state: GitWorktreeDecodeState,
+  attributes_list: List<String>,
+) -> GitWorktreeDecodeState {
+  match state.observation {
+    GitWorktreeSetReadRefused { exit_code: _, stderr: _ } => state
+    GitWorktreeSetUndecodable { entry_index: _, raw_entry: _, reason: _ } => state
+    GitWorktreeSetObserved { worktrees: accumulated } =>
+      match git_worktree_decode_entry(
+        entry_index: state.entry_index,
+        attributes_list: attributes_list,
+      ) {
+        GitWorktreeSetObserved { worktrees: decoded } =>
+          match decoded.first() {
+            Present { value: identity } =>
+              GitWorktreeDecodeState {
+                observation: GitWorktreeSetObserved {
+                  worktrees: Cons { head: identity, tail: accumulated },
+                },
+                entry_index: state.entry_index + 1,
+              }
+            Absent =>
+              GitWorktreeDecodeState {
+                observation: GitWorktreeSetUndecodable {
+                  entry_index: state.entry_index,
+                  raw_entry: git_worktree_entry_text(attributes_list: attributes_list),
+                  reason: "entry decoded to no worktree",
+                },
+                entry_index: state.entry_index + 1,
+              }
+          }
+        GitWorktreeSetUndecodable { entry_index: e, raw_entry: r, reason: reason } =>
+          GitWorktreeDecodeState {
+            observation: GitWorktreeSetUndecodable { entry_index: e, raw_entry: r, reason: reason },
+            entry_index: state.entry_index + 1,
+          }
+        GitWorktreeSetReadRefused { exit_code: exit_code, stderr: stderr } =>
+          GitWorktreeDecodeState {
+            observation: GitWorktreeSetReadRefused { exit_code: exit_code, stderr: stderr },
+            entry_index: state.entry_index + 1,
+          }
+      }
+  }
+}
+
+fn git_worktree_set_observation_in_order(
+  observation: GitWorktreeSetObservation,
+) -> GitWorktreeSetObservation {
+  match observation {
+    GitWorktreeSetObserved { worktrees: worktrees } =>
+      GitWorktreeSetObserved { worktrees: reverse(worktrees) }
+    GitWorktreeSetReadRefused { exit_code: exit_code, stderr: stderr } =>
+      GitWorktreeSetReadRefused { exit_code: exit_code, stderr: stderr }
+    GitWorktreeSetUndecodable { entry_index: entry_index, raw_entry: raw_entry, reason: reason } =>
+      GitWorktreeSetUndecodable { entry_index: entry_index, raw_entry: raw_entry, reason: reason }
+  }
+}
+
+// GROUPING AND DECODING ARE ONE PASS, DELIBERATELY. An earlier shape folded records into a
+// List<List<String>> of entries and then folded THAT into worktrees, which materialized an
+// intermediate representation only to consume it immediately -- the redundant work DESIGN section 2
+// prices. Folding the records directly also keeps the decode in git's EMITTED order for free, and
+// that order is not cosmetic: it is what numbers entry_index 0,1,2 as a reader counts entries, and
+// what makes the FIRST malformed entry the one reported rather than the last. A fold over reversed
+// entries would still produce a correct worktree list and silently invert both.
+type GitWorktreeScanState {
+  observation: GitWorktreeSetObservation
+  current_reversed: List<String>
+  entry_index: Int
+}
+
+fn git_worktree_scan_step(state: GitWorktreeScanState, record: String) -> GitWorktreeScanState {
+  if record == "" {
+    let decoded = git_worktree_decode_step(
+      state: GitWorktreeDecodeState {
+        observation: state.observation,
+        entry_index: state.entry_index,
+      },
+      attributes_list: reverse(state.current_reversed),
+    )
+    GitWorktreeScanState {
+      observation: decoded.observation,
+      current_reversed: [],
+      entry_index: decoded.entry_index,
+    }
+  } else {
+    GitWorktreeScanState {
+      observation: state.observation,
+      current_reversed: Cons { head: record, tail: state.current_reversed },
+      entry_index: state.entry_index,
+    }
+  }
+}
+
+// The exit status is consulted BEFORE the payload. A path that is not a repository exits nonzero
+// with empty stdout, and a repository with no linked worktrees exits zero with a single entry, so
+// folding the payload first would render "git refused" and "git answered" identically -- the
+// execution-provenance conflation DESIGN records, where an unreached read must not inhabit the same
+// carrier as a read that happened.
+// EXIT ZERO WITH NO ENTRIES IS MALFORMED, NOT AN EMPTY SET, and until this refusal existed the
+// decoder returned it as a SUCCESSFUL observation of zero worktrees. Git's porcelain contract lists
+// the main worktree first and then the linked ones; every repository has a main worktree, a bare one
+// included. So there is no repository for which git answers zero, and a zero-entry success is a
+// truncated or redirected stream wearing the shape of an answer.
+//
+// WHY IT MATTERED MORE THAN A MISSING SET ELEMENT: a consumer comparing worktree rosters before and
+// after an operation finds nothing missing from an empty before-set, so EVERY preservation check
+// over it passes vacuously. The invalid observation does not produce a wrong worktree, it produces
+// an unconditional yes from whatever asks about worktrees -- which is the empty-observation narrow,
+// bottom-as-answer read as bottom-as-ignorance, arriving through the decoder rather than through the
+// consumer.
+//
+// NEXT RUNG, DECLARED RATHER THAN CLAIMED. This is a REFUSAL (mechanically preventable): the invalid
+// state is still representable and a check rejects it. The structural form is to split the observed
+// arm into `primary: GitWorktreeIdentity` beside `linked: List<GitWorktreeIdentity>`, which makes a
+// zero-worktree success unwritable rather than rejected, and additionally lets a consumer derive the
+// primary from git's own roster instead of accepting a caller-supplied path. That change alters the
+// type this module's consumers destructure, so it lands with the rebase that puts the convergence
+// consumer on top of this module rather than in a diff that would break it across two open branches.
+fn git_worktree_reject_empty_success(
+  observation: GitWorktreeSetObservation,
+) -> GitWorktreeSetObservation {
+  match observation {
+    GitWorktreeSetReadRefused { exit_code: c, stderr: e } =>
+      GitWorktreeSetReadRefused { exit_code: c, stderr: e }
+    GitWorktreeSetUndecodable { entry_index: i, raw_entry: r, reason: n } =>
+      GitWorktreeSetUndecodable { entry_index: i, raw_entry: r, reason: n }
+    GitWorktreeSetObserved { worktrees: ws } =>
+      if count(ws) == 0 {
+        GitWorktreeSetUndecodable {
+          entry_index: 0,
+          raw_entry: "",
+          reason: "git exited zero and listed no worktree; every repository has a main worktree, so an empty successful enumeration is a truncated or redirected stream rather than an empty set",
+        }
+      } else {
+        GitWorktreeSetObserved { worktrees: ws }
+      }
+  }
+}
+
+fn git_worktree_set_observation_of(
+  raw: String,
+  exit_code: Int,
+  stderr: String,
+) -> GitWorktreeSetObservation {
+  if exit_code != 0 {
+    GitWorktreeSetReadRefused { exit_code: exit_code, stderr: stderr }
+  } else {
+    let scanned = fold(
+      git_worktree_records(raw: raw),
+      init: GitWorktreeScanState {
+        observation: GitWorktreeSetObserved { worktrees: [] },
+        current_reversed: [],
+        entry_index: 0,
+      },
+      f: (state, record) => git_worktree_scan_step(state: state, record: record),
+    )
+    if count(scanned.current_reversed) != 0 {
+      GitWorktreeSetUndecodable {
+        entry_index: scanned.entry_index,
+        raw_entry: git_worktree_entry_text(attributes_list: reverse(scanned.current_reversed)),
+        reason: "final entry is not terminated: the stream ends mid-entry",
+      }
+    } else {
+      git_worktree_set_observation_in_order(
+        observation: git_worktree_reject_empty_success(observation: scanned.observation),
+      )
+    }
+  }
+}
