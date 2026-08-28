@@ -10329,17 +10329,22 @@ pub fn alias_chain_generic_decl(env: Rc<TypeEnv>, carrier: Rc<Node>, target: Rc<
 pub fn alias_chain_type_arg_arity_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "WHY THIS SEAM REFUSES INSTEAD OF SUBSTITUTING WHAT FITS (DESIGN sec 5, the absorbing fallback; sec 4b floor band 'applications bind in exact bijection'). alias_chain_type_arg_subst folded the DECLARED parameters against the SUPPLIED type arguments positionally and absorbed every disagreement in both directions at once: with fewer arguments than parameters the fold's Absent arm left the surplus parameters unsubstituted, so the expanded record kept type-variable fields and field access on it was judged against a hole; with more arguments than parameters the surplus arguments were simply never read. Neither state produced a diagnostic, so `Alias<Int>` and `Alias<Int, String>` against a one-parameter Alias compiled identically -- correct and incorrect indistinguishable at the floor band. One of the three call sites did notice: expand_alias_chain_for_field_access computed `dropped_args` at its recursion seam and widened `lossy`, which is the absorbing fallback in its purest form -- the failure arm stood the field-presence wall DOWN rather than refusing, so the deficit's frequency was zero by construction and nothing ranked it for repair. The other two call sites (alias_chain_target_after_args, and the record branch's re-substitution over an unresolved-parameter field) did not check at all. The repair is construction before validation: the subst is now Optional and has NO spelling for a partial map, so a mismatch cannot be handed downstream by any caller; and alias_chain_arity_diagnostics states the refusal ONCE, typed and located, at the seam that owns both the declaration and the application. SCOPE, stated rather than implied: the refused population is exactly the state `dropped_args` already computed -- both counts nonzero and unequal -- so this wall adds no refusal to a shape the code was not already treating as wrong, and a zero-parameter declaration or a zero-argument use is untouched. Container spellings are excluded because their arity has its own authority (container_expected_arity) and its own diagnostic.".to_string()
+            "WHY THIS SEAM REFUSES INSTEAD OF SUBSTITUTING WHAT FITS (DESIGN sec 5, the absorbing fallback; sec 4b floor band 'applications bind in exact bijection'). alias_chain_type_arg_subst folded the DECLARED parameters against the SUPPLIED type arguments positionally and absorbed every disagreement in both directions at once: with fewer arguments than parameters the fold's Absent arm left the surplus parameters unsubstituted, so the expanded record kept type-variable fields and field access on it was judged against a hole; with more arguments than parameters the surplus arguments were simply never read. Neither state produced a diagnostic, so `Alias<Int>` and `Alias<Int, String>` against a one-parameter Alias compiled identically -- correct and incorrect indistinguishable at the floor band. One of the three call sites did notice: expand_alias_chain_for_field_access computed `dropped_args` at its recursion seam and widened `lossy`, which is the absorbing fallback in its purest form -- the failure arm stood the field-presence wall DOWN rather than refusing, so the deficit's frequency was zero by construction and nothing ranked it for repair. The other two call sites (alias_chain_target_after_args, and the record branch's re-substitution over an unresolved-parameter field) did not check at all. The repair is construction before validation: the subst is now Optional and has NO spelling for a partial map, so a mismatch cannot be handed downstream by any caller; and alias_chain_arity_diagnostics states the refusal ONCE, typed and located, at the seam that owns both the declaration and the application. SCOPE, stated rather than implied: the refused population is exactly the state `dropped_args` already computed -- both counts nonzero and unequal -- so this wall adds no refusal to a shape the code was not already treating as wrong, and a zero-parameter declaration or a zero-argument use is untouched. Container spellings are excluded because their arity has its own authority (container_expected_arity) and its own diagnostic. AND THE CARRIER MUST BE A USE-SITE LEAF, which is the qualification the first cut of this wall omitted and CI refused it for -- correctly, and the refusal is recorded here rather than quietly patched out. alias_chain_carrier answers the authored node only when it is NoConnective and named; otherwise it answers structural_from_expanded_type, whose children are the record's FIELDS or the coproduct's VARIANTS, not type arguments at all. Reading those as arguments made the check compare a declaration's field count against its parameter count, so `type Medium<R> { carried: R  fidelity: DecodeFidelity }` reported 'two type arguments supplied, one type parameter declared' at its own declaration -- 2460 diagnostics over 154 sites and 65 type names across dag/ and src/v2/, none of them a use site and none of them wrong source. The predicate therefore requires connective == NoConnective, which is exactly the branch where children ARE the applied arguments, and is the same position the deleted dropped_args occupied. WHY THIS WAS NOT CAUGHT BEFORE PUSHING: the corpus control was run with a compiler built BEFORE the change, so it exercised nothing and its zero was a fact about the old binary. A control that cannot flip is not a control.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn alias_chain_type_arg_arity_mismatch(decl: Rc<Node>, type_args: Rc<Vec<Rc<Node>>>) -> bool {
+pub fn alias_chain_type_arg_arity_mismatch(
+    carrier: Rc<Node>,
+    decl: Rc<Node>,
+    type_args: Rc<Vec<Rc<Node>>>,
+) -> bool {
     {
         let declared = (decl.params.clone().len() as i64);
         let supplied = (type_args.clone().len() as i64);
-        (((declared.clone() > 0) && (supplied.clone() > 0))
+        ((((carrier.connective.clone() == Connective::NoConnective) && (declared.clone() > 0))
+            && (supplied.clone() > 0))
             && (declared.clone() != supplied.clone()))
     }
 }
@@ -10352,7 +10357,7 @@ pub fn alias_chain_type_arg_subst(
 ) -> Option<Rc<HashMap<String, Rc<Node>>>> {
     {
         let decl = alias_chain_generic_decl(env.clone(), carrier.clone(), target.clone());
-        if alias_chain_type_arg_arity_mismatch(decl.clone(), type_args.clone()) {
+        if alias_chain_type_arg_arity_mismatch(carrier.clone(), decl.clone(), type_args.clone()) {
             None
         } else {
             Some(
@@ -10418,7 +10423,11 @@ pub fn alias_chain_arity_diagnostics(
                 Some(target) => {
                     let decl =
                         alias_chain_generic_decl(env.clone(), carrier.clone(), target.clone());
-                    if alias_chain_type_arg_arity_mismatch(decl.clone(), type_args.clone()) {
+                    if alias_chain_type_arg_arity_mismatch(
+                        carrier.clone(),
+                        decl.clone(),
+                        type_args.clone(),
+                    ) {
                         Rc::new(vec![crate::v1_std_core::make_error_node(
                             Rc::new(CompilerDiagnostic::TypeArgumentArityMismatch {
                                 type_name: carrier_name.clone(),
