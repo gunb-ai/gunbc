@@ -141,10 +141,12 @@ import gunbc.roadmap_belt_actuate {
   belt_tick_empty_reconcile,
   BeltTickResult,
   Running,
-  belt_dashboard_instance_lookup_for_spawn_workdir,
-  SpawnWorkdirInstanceResolved,
-  UnknownSpawnWorkdir,
   srv1_live_dashboard_instance,
+}
+import gunbc.roadmap_dashboard_instance {
+  DashboardInstanceResolved,
+  DashboardInstanceRootUnknown,
+  dashboard_instance_for_repo_root,
 }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.fleet_desired_observe {
@@ -1126,9 +1128,9 @@ test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
 }
 
 test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
-  match belt_dashboard_instance_lookup_for_spawn_workdir(workdir: "/typo/gunbc") {
-    UnknownSpawnWorkdir { workdir: w } => w == "/typo/gunbc"
-    SpawnWorkdirInstanceResolved { instance: _ } => false
+  match dashboard_instance_for_repo_root(repo_root: "/typo/gunbc") {
+    DashboardInstanceRootUnknown { repo_root: w } => w == "/typo/gunbc"
+    DashboardInstanceResolved { instance: _ } => false
   }
 }
 
@@ -1136,7 +1138,7 @@ test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
 // assert that two known spawn workdirs resolve to DIFFERENT instances, with the deleted green slot
 // as the second one. Re-enrolling it against srv1-lab looked right and failed by execution: the
 // lookup's population is the instances this belt actuates, and the lab was never in it, so the lab
-// root resolves to UnknownSpawnWorkdir. Distinctness is not something the lookup can be asked about
+// root resolves to DashboardInstanceRootUnknown. Distinctness is not something the lookup can be asked about
 // any more -- it knows exactly one workdir -- and that is a consequence of the single deployment
 // rather than a guarantee that was dropped.
 //
@@ -1147,10 +1149,10 @@ test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
 // refusal arm cannot detect its absence.
 test fn the_known_spawn_workdir_resolves_to_its_own_instance() -> Bool {
   let live = srv1_live_dashboard_instance()
-  match belt_dashboard_instance_lookup_for_spawn_workdir(workdir: live.repo_root as String) {
-    SpawnWorkdirInstanceResolved { instance: resolved } =>
+  match dashboard_instance_for_repo_root(repo_root: live.repo_root as String) {
+    DashboardInstanceResolved { instance: resolved } =>
       (resolved.instance_id as String) == (live.instance_id as String)
-    UnknownSpawnWorkdir { workdir: _ } => false
+    DashboardInstanceRootUnknown { repo_root: _ } => false
   }
 }
 

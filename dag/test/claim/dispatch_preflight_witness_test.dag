@@ -8,6 +8,7 @@ import gunbc.roadmap_execution_contract {
 }
 import gunbc.roadmap_dispatch_environment { CapabilityEnsureReceipt }
 import gunbc.fleet_desired_observe {
+  FleetRevisionStanding,
   RevisionConverged,
   RevisionDrifted,
   RevisionUnobserved,
@@ -20,15 +21,17 @@ import gunbc.dispatch_preflight {
   DispatchPreflight,
   PreflightAdmitted,
   PreflightRefused,
-  PreflightWorkdirLookup,
-  PreflightInstanceResolved,
-  PreflightUnknownWorkdir,
   axis_verdict_is_refused,
   capability_axis_verdict,
   revision_axis_verdict,
+  preflight_axes,
   preflight_verdict_for_report,
   dispatch_preflight_json_value,
-  preflight_instance_for_workdir,
+}
+import gunbc.roadmap_dashboard_instance {
+  DashboardInstanceResolved,
+  DashboardInstanceRootUnknown,
+  dashboard_instance_for_repo_root,
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import extdeps.languages.json.emit { serialize_json }
@@ -65,12 +68,37 @@ fn ungrounded_receipt() -> CapabilityEnsureReceipt {
   }
 }
 
-fn report_with(axes: List<PreflightAxisVerdict>) -> DispatchPreflightReport {
+// A report is built from the OBSERVATIONS it carries, because after review 57110 there is
+// no axis field to hand-author: the axes a report answers with are derived from these two
+// lists and nothing else, so a witness cannot construct a report whose axes disagree with
+// its receipts even deliberately.
+fn report_of(
+  receipts: List<CapabilityEnsureReceipt>,
+  revision: FleetRevisionStanding,
+) -> DispatchPreflightReport {
   DispatchPreflightReport {
     instance_id: "srv1-live",
     repo_root: "/opt/gunbc/gunbc",
-    capability_receipts: [],
-    axes: axes,
+    capability_receipts: receipts,
+    revision: revision,
+  }
+}
+
+fn converged_revision() -> FleetRevisionStanding {
+  match git_object_id_from_untagged_hex(hex: desired_hex) {
+    Present { value: oid } => RevisionConverged { revision: oid }
+    Absent => RevisionUnobserved { cause: "witness fixture hex did not decode" }
+  }
+}
+
+fn drifted_revision() -> FleetRevisionStanding {
+  match git_object_id_from_untagged_hex(hex: desired_hex) {
+    Absent => RevisionUnobserved { cause: "witness fixture hex did not decode" }
+    Present { value: desired } =>
+      match git_object_id_from_untagged_hex(hex: local_hex) {
+        Absent => RevisionUnobserved { cause: "witness fixture hex did not decode" }
+        Present { value: local } => RevisionDrifted { desired: desired, local: local }
+      }
   }
 }
 
@@ -129,14 +157,14 @@ test fn preflight_revision_axis_names_both_sides_of_the_drift() -> Bool {
 }
 
 test fn preflight_counts_every_refusal_not_the_first() -> Bool {
-  let two_bad = preflight_verdict_for_report(report: report_with(axes: [
-    AxisRefused { axis_label: "capability:tmux-session", reason: "absent" },
-    AxisGrounded { axis_label: "capability:git-workspace", evidence: "ok" },
-    AxisRefused { axis_label: "deployed-revision", reason: "drifted" },
-  ]))
-  let all_good = preflight_verdict_for_report(report: report_with(axes: [
-    AxisGrounded { axis_label: "capability:git-workspace", evidence: "ok" },
-  ]))
+  let two_bad = preflight_verdict_for_report(report: report_of(
+    receipts: [ungrounded_receipt(), grounded_receipt()],
+    revision: drifted_revision(),
+  ))
+  let all_good = preflight_verdict_for_report(report: report_of(
+    receipts: [grounded_receipt()],
+    revision: converged_revision(),
+  ))
   return match two_bad {
     PreflightAdmitted { report: _ } => false
     PreflightRefused { report: _, refused_axis_count } => refused_axis_count == 2
@@ -149,14 +177,16 @@ test fn preflight_counts_every_refusal_not_the_first() -> Bool {
 
 test fn preflight_wire_reports_the_refusal_it_reached() -> Bool {
   let refused = serialize_json(v: dispatch_preflight_json_value(
-    preflight: preflight_verdict_for_report(report: report_with(axes: [
-      AxisRefused { axis_label: "deployed-revision", reason: "drifted" },
-    ])),
+    preflight: preflight_verdict_for_report(report: report_of(
+      receipts: [],
+      revision: drifted_revision(),
+    )),
   ))
   let admitted = serialize_json(v: dispatch_preflight_json_value(
-    preflight: preflight_verdict_for_report(report: report_with(axes: [
-      AxisGrounded { axis_label: "deployed-revision", evidence: "converged" },
-    ])),
+    preflight: preflight_verdict_for_report(report: report_of(
+      receipts: [],
+      revision: converged_revision(),
+    )),
   ))
   return string_contains(s: refused, pattern: "\"status\": \"refused\"")
     && string_contains(s: refused, pattern: "\"refused_axis_count\": 1")
@@ -166,13 +196,32 @@ test fn preflight_wire_reports_the_refusal_it_reached() -> Bool {
 }
 
 test fn preflight_refuses_a_workdir_that_is_not_a_known_instance() -> Bool {
-  return match preflight_instance_for_workdir(workdir: "/opt/gunbc/gunbc") {
-    PreflightInstanceResolved { instance } =>
+  return match dashboard_instance_for_repo_root(repo_root: "/opt/gunbc/gunbc") {
+    DashboardInstanceResolved { instance } =>
       (instance.repo_root as String) == "/opt/gunbc/gunbc"
-    PreflightUnknownWorkdir { workdir: _ } => false
+    DashboardInstanceRootUnknown { repo_root: _ } => false
   }
-    && match preflight_instance_for_workdir(workdir: "/tmp/somebody-elses-tree") {
-         PreflightInstanceResolved { instance: _ } => false
-         PreflightUnknownWorkdir { workdir } => workdir == "/tmp/somebody-elses-tree"
+    && match dashboard_instance_for_repo_root(repo_root: "/tmp/somebody-elses-tree") {
+         DashboardInstanceResolved { instance: _ } => false
+         DashboardInstanceRootUnknown { repo_root } => repo_root == "/tmp/somebody-elses-tree"
        }
+}
+
+// The executing evidence that the single-authority repair is real rather than a rename:
+// the axis list is a FUNCTION of the two observations, so its length and its refusal count
+// move only when the receipts or the revision move. Before review 57110 this could not be
+// asserted at all, because axes were a stored field a caller supplied independently.
+test fn preflight_axes_are_derived_from_the_observations() -> Bool {
+  let mixed = preflight_axes(report: report_of(
+    receipts: [grounded_receipt(), ungrounded_receipt()],
+    revision: converged_revision(),
+  ))
+  let bare = preflight_axes(report: report_of(
+    receipts: [],
+    revision: drifted_revision(),
+  ))
+  return count(mixed) == 3
+    && count(filter(mixed, a => axis_verdict_is_refused(verdict: a))) == 1
+    && count(bare) == 1
+    && count(filter(bare, a => axis_verdict_is_refused(verdict: a))) == 1
 }

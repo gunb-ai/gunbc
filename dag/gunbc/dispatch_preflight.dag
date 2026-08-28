@@ -6,6 +6,10 @@ import gunbc.host_layout { belt_spawn_workdir_env_var }
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   srv1_live_dashboard_instance,
+  DashboardInstanceLookup,
+  DashboardInstanceResolved,
+  DashboardInstanceRootUnknown,
+  dashboard_instance_for_repo_root,
 }
 import gunbc.roadmap_execution_contract {
   DispatchHostEnvironment,
@@ -134,11 +138,21 @@ fn revision_axis_verdict(standing: FleetRevisionStanding) -> PreflightAxisVerdic
   }
 }
 
+data dispatch_preflight_single_authority_note: String = "THE REPORT HOLDS THE OBSERVATIONS AND DERIVES THE AXES, and the first cut did not (review 57110, gunbc#9559). It stored capability_receipts AND the axes projected from them side by side, which is the second representation DESIGN 3 forbids: the two could disagree, and nothing anywhere would have said which one was right. This was not hypothetical and the proof was in this change's own witnesses — they constructed a report with an EMPTY receipt list and populated capability axes, so the inconsistent state was demonstrably authorable by the very tests that were supposed to establish the carrier's honesty.\n\nThe repair is construction rather than a consistency check (DESIGN 5): the report carries the capability receipts and the fleet revision standing — two independent observations, neither derived from the other — and preflight_axes projects them on demand for the verdict and for the wire. A report whose axes disagree with its receipts now has no spelling, so there is nothing left to validate."
+
 type DispatchPreflightReport {
   instance_id: String
   repo_root: String
   capability_receipts: List<CapabilityEnsureReceipt>
-  axes: List<PreflightAxisVerdict>
+  revision: FleetRevisionStanding
+}
+
+fn preflight_axes(report: DispatchPreflightReport) -> List<PreflightAxisVerdict> {
+  concat(
+    map(report.capability_receipts, receipt =>
+      capability_axis_verdict(receipt: receipt)),
+    [revision_axis_verdict(standing: report.revision)],
+  )
 }
 
 type DispatchPreflight
@@ -155,14 +169,7 @@ fn preflight_report_for_instance(
     instance_id: instance.instance_id as String,
     repo_root: instance.repo_root as String,
     capability_receipts: receipts,
-    axes: concat(
-      map(receipts, receipt => capability_axis_verdict(receipt: receipt)),
-      [
-        revision_axis_verdict(
-          standing: fleet_revision_standing(repo: instance.repo_root),
-        ),
-      ],
-    ),
+    revision: fleet_revision_standing(repo: instance.repo_root),
   }
 }
 
@@ -170,7 +177,10 @@ fn preflight_report_for_instance(
 // refusal bounds the producer's patience rather than the host's state, and an operator
 // who repairs the one axis they were shown has no way to learn there were three.
 fn preflight_verdict_for_report(report: DispatchPreflightReport) -> DispatchPreflight {
-  let refused = count(filter(report.axes, a => axis_verdict_is_refused(verdict: a)))
+  let refused = count(filter(
+    preflight_axes(report: report),
+    a => axis_verdict_is_refused(verdict: a),
+  ))
   if refused == 0 {
     PreflightAdmitted { report: report }
   } else {
@@ -198,7 +208,10 @@ fn dispatch_preflight_json_value(preflight: DispatchPreflight) -> JsonValue {
         json_kv(key: "refused_axis_count", value: json_int(n: 0)),
         json_kv(
           key: "axes",
-          value: json_array(elements: map(report.axes, a => axis_verdict_json(verdict: a))),
+          value: json_array(elements: map(
+            preflight_axes(report: report),
+            a => axis_verdict_json(verdict: a),
+          )),
         ),
         json_kv(
           key: "capability_receipts",
@@ -215,7 +228,10 @@ fn dispatch_preflight_json_value(preflight: DispatchPreflight) -> JsonValue {
         json_kv(key: "refused_axis_count", value: json_int(n: refused_axis_count)),
         json_kv(
           key: "axes",
-          value: json_array(elements: map(report.axes, a => axis_verdict_json(verdict: a))),
+          value: json_array(elements: map(
+            preflight_axes(report: report),
+            a => axis_verdict_json(verdict: a),
+          )),
         ),
         json_kv(
           key: "capability_receipts",
@@ -249,29 +265,20 @@ fn dispatch_preflight_cli_for_instance(instance: HostDashboardInstance) -> Proce
   }
 }
 
-type PreflightWorkdirLookup
-  = PreflightInstanceResolved { instance: HostDashboardInstance }
-  | PreflightUnknownWorkdir { workdir: String }
-
-// The same instance resolution the belt tick performs, and it is deliberately the same
-// SHAPE rather than a shared call: importing gunbc.roadmap_belt_actuate for one lookup
-// would put the whole belt -- spawn, reap, verify, publish -- behind a read-only probe.
-fn preflight_instance_for_workdir(workdir: String) -> PreflightWorkdirLookup {
-  if workdir == (srv1_live_dashboard_instance().repo_root as String) {
-    PreflightInstanceResolved { instance: srv1_live_dashboard_instance() }
-  } else {
-    PreflightUnknownWorkdir { workdir: workdir }
-  }
-}
-
+// The repo-root -> instance resolution is CONSUMED from gunbc.roadmap_dashboard_instance,
+// which owns the instances. The first cut of this module copied the belt's private
+// spelling and said so in a comment; a declared fork is still a fork (review 57110), and
+// the authority moved to the instance module rather than being imported from the belt --
+// importing gunbc.roadmap_belt_actuate for one lookup would put spawn, reap, verify and
+// publish behind a read-only probe.
 fn dispatch_preflight_cli_in(spawn_workdir: String) -> ProcessExit {
-  match preflight_instance_for_workdir(workdir: spawn_workdir) {
-    PreflightUnknownWorkdir { workdir: w } =>
+  match dashboard_instance_for_repo_root(repo_root: spawn_workdir) {
+    DashboardInstanceRootUnknown { repo_root: w } =>
       exit_failure(reason: join([
         "dispatch_preflight_cli: GUNBC_BELT_SPAWN_WORKDIR does not match a known dashboard instance repo root: ",
         w,
       ], ""))
-    PreflightInstanceResolved { instance } =>
+    DashboardInstanceResolved { instance } =>
       dispatch_preflight_cli_for_instance(instance: instance)
   }
 }

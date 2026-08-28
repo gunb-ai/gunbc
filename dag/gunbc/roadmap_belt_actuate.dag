@@ -156,6 +156,10 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_provider_executable_refusal_detail,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
+  DashboardInstanceLookup,
+  DashboardInstanceResolved,
+  DashboardInstanceRootUnknown,
+  dashboard_instance_for_repo_root,
 }
 import gunbc.roadmap_dispatch_environment {
   EnvironmentAdmitted,
@@ -1940,20 +1944,6 @@ fn belt_pass_outcome_from_member(doc: JsonValue, key: String) -> BeltPassOutcome
       BeltPassOutcomeUnreadable {
         reason: join(["belt tick receipt ", key, " is missing"], ""),
       }
-  }
-}
-
-type SpawnWorkdirInstanceLookup
-  = SpawnWorkdirInstanceResolved { instance: HostDashboardInstance }
-  | UnknownSpawnWorkdir { workdir: String }
-
-fn belt_dashboard_instance_lookup_for_spawn_workdir(
-  workdir: String,
-) -> SpawnWorkdirInstanceLookup {
-  if workdir == (srv1_live_dashboard_instance().repo_root as String) {
-    SpawnWorkdirInstanceResolved { instance: srv1_live_dashboard_instance() }
-  } else {
-    UnknownSpawnWorkdir { workdir: workdir }
   }
 }
 
@@ -4596,13 +4586,13 @@ fn belt_run_once_cli() -> ProcessExit {
 }
 
 fn belt_run_once_cli_in(spawn_workdir: String) -> ProcessExit {
-  match belt_dashboard_instance_lookup_for_spawn_workdir(workdir: spawn_workdir) {
-    UnknownSpawnWorkdir { workdir: w } =>
+  match dashboard_instance_for_repo_root(repo_root: spawn_workdir) {
+    DashboardInstanceRootUnknown { repo_root: w } =>
       exit_failure(reason: join([
         "belt_run_once_cli: GUNBC_BELT_SPAWN_WORKDIR does not match a known dashboard instance repo root: ",
         w,
       ], ""))
-    SpawnWorkdirInstanceResolved { instance } => {
+    DashboardInstanceResolved { instance } => {
       let t = belt_run_once_in(instance: instance, spawn_workdir: spawn_workdir)
       let tick_receipt = belt_tick_receipt_from_result(
         result: t,
