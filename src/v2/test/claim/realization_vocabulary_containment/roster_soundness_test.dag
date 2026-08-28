@@ -24,7 +24,7 @@ data roster_soundness_fast_lane_note: String = "Live-corpus roster soundness rec
 data ts0_frozen_census_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dag/gunbc/roadmap_component.dag",
+    path: "dag/gunbc/roadmap/roadmap_component.dag",
     import_module: typescript_sidecar_module
   },
   LayerImportFact {
@@ -52,7 +52,7 @@ data ts0_frozen_census_facts: List<LayerImportFact> = [
 data ts0_frozen_census_facts_missing_build_step: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dag/gunbc/roadmap_component.dag",
+    path: "dag/gunbc/roadmap/roadmap_component.dag",
     import_module: typescript_sidecar_module
   },
   LayerImportFact {
@@ -92,12 +92,12 @@ test fn realization_vocab_grandfathered_edge_roster_keys_are_distinct_holds() ->
 
 test fn realization_vocab_grandfathered_edge_keys_distinct_red_on_planted_duplicate_holds() -> Bool {
   let planted = [
-    "dag/gunbc/roadmap_component.dag -> extdeps.languages.typescript.program",
+    "dag/gunbc/roadmap/roadmap_component.dag -> extdeps.languages.typescript.program",
     "dag/tools/build_step.dag -> v2.extdeps.languages.bash_build",
-    "dag/gunbc/roadmap_component.dag -> extdeps.languages.typescript.program"
+    "dag/gunbc/roadmap/roadmap_component.dag -> extdeps.languages.typescript.program"
   ]
   let distinct = [
-    "dag/gunbc/roadmap_component.dag -> extdeps.languages.typescript.program",
+    "dag/gunbc/roadmap/roadmap_component.dag -> extdeps.languages.typescript.program",
     "dag/tools/build_step.dag -> v2.extdeps.languages.bash_build"
   ]
   !realization_vocab_grandfathered_edge_keys_are_distinct(keys: planted)

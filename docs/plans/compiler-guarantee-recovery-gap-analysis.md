@@ -3365,7 +3365,7 @@ enforces end to end.
    definition is the one that binds.
 
    **A confirmed production victim, not a hypothetical.** gunbc#9081 commit `29088e133` landed
-   `dag/gunbc/fabric_cell_converge.dag` carrying two definitions each of `fabric_cell_ids` and
+   `dag/gunbc/fabric/fabric_cell_converge.dag` carrying two definitions each of `fabric_cell_ids` and
    `fabric_cell_population_unobserved`. The compile was clean, the witness rows were green, and
    the copy that executed was the second — a §3 single-authority violation running in
    production, found by a reviewer reading the file and by nothing else. The reviewer's own

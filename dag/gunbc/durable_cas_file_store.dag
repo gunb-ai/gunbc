@@ -1,0 +1,297 @@
+module gunbc.durable_cas_file_store
+
+import std.types { NonEmptyStr, String, Int, Bool }
+import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+import std.durable_compare_and_set { CasAttempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasUnreadableMalformed, CasUnreadableReadRefused, cas_generation_first, cas_generation_next, cas_generation_count }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// The first production realization of std.durable_compare_and_set: one keyed
+// slot backed by generation-suffixed files, exclusion supplied by O_EXCL.
+//
+// WHY THIS SHAPE. The interface module states the realization it wants --
+// "folding read and conditional-write into ONE store-owned operation so no
+// caller ever supplies an observation separately", with the store reading
+// attempt.key itself. That is what file_compare_and_set is. The caller hands
+// over an attempt and never an observation, so the declared key-relation
+// boundary obligation is CLOSED HERE BY CONSTRUCTION rather than observed and
+// refused: there is no second argument in which a caller could supply an
+// observation read from another slot.
+//
+// WHY GENERATION-SUFFIXED FILES, which is the whole mechanism. A slot at
+// generation N is the file <root>/<key>.<N>, written once and never rewritten.
+// Then BOTH expectations collapse into the same primitive:
+//
+//   ExpectSlotAbsent          -> create-new <key>.1
+//   ExpectSlotGeneration{N}   -> create-new <key>.<N+1>
+//
+// and create-new is O_EXCL, which fails if the path exists. So the exclusion
+// is performed by the operating system on the write itself, not by a lock the
+// caller holds. That is the gap the interface module names: the exclusion in
+// fleet_converge_plan_cli is flock, which is single-host by construction and
+// cannot serialize two writers on different hosts. O_EXCL on a shared
+// filesystem can -- BUT ONLY AGAINST THE SAME STORE INSTANCE, and the premise
+// matters enough to state rather than imply. O_EXCL serializes two writers when
+// they address one store: a shared filesystem whose exclusive-create semantics
+// are trusted, or a single control plane performing the operation. Two LOCAL
+// roots on two hosts are two independent stores and exclude nothing from each
+// other. No update-in-place operation is needed at all, and one is deliberately
+// not offered.
+//
+// THE ORDERING, CORRECTED. An earlier revision of this module read "the write
+// DECIDES and the read only REPORTS", and computed the target generation from
+// the expectation alone before writing. That is sound for ExpectSlotAbsent and
+// WRONG for ExpectSlotGeneration, because O_EXCL excludes competing writers for
+// the TARGET PATH and establishes nothing about which generation is currently
+// the head.
+//
+// The counterexample that retired it: an EMPTY store, an attempt expecting
+// generation 7. The target is 8, no key.8 exists, the exclusive create succeeds,
+// and the old code reported CasCommitted -- committing on a precondition that
+// was never true. Likewise a slot at generation 3 expecting 7: key.8 is free, so
+// the write wins and skips 4 through 7.
+//
+// THE CORRECT INVARIANT IS: THE READ ESTABLISHES ELIGIBILITY, THE EXCLUSIVE
+// WRITE DECIDES THE WINNER. Reading first does NOT reopen a time-of-check to
+// time-of-use race, which is the objection that produced the wrong ordering in
+// the first place: if two writers both observe head N, both derive target N+1,
+// and both attempt an exclusive create, exactly one succeeds. The race is
+// resolved by the write exactly as before -- what the read adds is that a writer
+// whose expectation never matched the store is refused instead of winning.
+//
+// So the sequence is: observe the slot, compare the observation against the
+// expectation, derive the target from the OBSERVATION, create it exclusively,
+// and only then report a commit.
+
+// WHY THE FAILED WRITE IS DISAMBIGUATED BY A SECOND OBSERVATION rather than
+// by reading write.error. "The path already exists" and "the store refused the
+// write" are different outcomes with opposite remedies -- one is a lost race
+// to be retried against the new generation, the other is an operational fault
+// -- and the transport reports both as success:false with a String. Choosing
+// between them by matching on that String would be the anemic leaf DESIGN 2
+// names: a caller parsing prose to pick a remedy. Observing the target instead
+// is a structural test. It is sound precisely BECAUSE slot files are
+// append-only: a generation file is never rewritten and never deleted, so if
+// the read sees it, it is the real winner and not a value that might vanish.
+//
+// WHAT THIS MODULE DOES NOT DO. It does not create <root>; a missing root
+// surfaces as a store refusal rather than being silently created, because
+// creating the directory that defines the control plane's identity is a
+// convergence decision and not a side effect of one attempt. It offers no
+// delete and no rewrite, so the append-only invariant the disambiguation above
+// depends on is preserved by the absence of an operation rather than by a rule
+// anyone has to follow.
+
+// The verified attempt, and the reason it exists is a gap this realization
+// found in the interface by being the first thing to implement it.
+//
+// CasOutcome has exactly three arms -- committed, precondition failed, store
+// refused -- and NONE of them can say "the attempt's proposed_content is not
+// the digest of its proposed value". Reporting that as CasStoreRefused would
+// blame the store for a caller's inconsistency, which is the state-space
+// conflation DESIGN names: two states with opposite owners and opposite
+// repairs collapsed onto one symbol.
+//
+// The interface module says the pairing "cannot be closed by construction in a
+// pure generic fold" because content_hash_of_value is not generic over T, and
+// that is correct THERE. It does not bind HERE: this realization is concrete
+// at NonEmptyStr, which is exactly the type content_hash_of_value accepts, so
+// the digest IS derivable from the payload at this layer. The interface also
+// names where the duty belongs -- "the obligation belongs to the immutable
+// object store that realizes this interface: it holds the bytes, so it can
+// verify bytes against digest" -- and this is that store.
+//
+// So rather than widen CasOutcome, the input is narrowed. Verification happens
+// at the mint, and file_compare_and_set accepts only the minted form; the
+// unverified pair is not refused downstream, it is unwritable there. This is
+// the same move the interface made when it narrowed CasSlotObservation to
+// CasReadableSlot -- deleting arms instead of checking them.
+//
+// sole_constructor is the wall: admit_cas_attempt is the only mint, so no
+// caller in any other module can produce a VerifiedCasAttempt by writing the
+// record literal. RUNG: structurally guaranteed on the source-to-.dag
+// acceptance path, which is the path this store is consumed on. It is NOT
+// claimed for the emitted-Rust path, where DESIGN records by execution that a
+// sole_constructor type's emitted mirror is forgeable; that is a known gap in
+// the wall itself and not a property of this carrier.
+type VerifiedCasAttempt sole_constructor {
+  attempt: CasAttempt<NonEmptyStr>
+}
+
+// Why a digest disagreement and a cross-family pair are separate arms: they
+// have different repairs. A mismatch means the caller paired one value with
+// another value's digest and the fix is in the caller. Incomparable means the
+// two hashes are from different families and no comparison was possible at
+// all, so nothing was checked -- an absence of evidence, and reporting it as a
+// mismatch would be a verdict the store never reached. compare_content_hash
+// exists precisely to refuse that collapse, and consuming it while flattening
+// its third arm would discard the distinction it was built to preserve.
+// THE KEY MUST NAME A SLOT, NOT A PATH, and this arm is a defect found by
+// building the realization rather than by reading the model.
+//
+// cas_file_slot_path interpolates the key straight into a filesystem path. A
+// key containing a slash therefore stops being an identifier and becomes
+// navigation: "../../etc/passwd" writes OUTSIDE the store root entirely, and
+// any key with a slash also needs directories this store deliberately does not
+// create. Neither is a store fault to be reported -- both are keys that should
+// never have reached the store.
+//
+// REFUSING THE SLASH IS SUFFICIENT, and the reason is worth stating because it
+// is not obvious. A bare ".." is harmless here: the generation suffix is ALWAYS
+// appended, so ".." becomes the file "...1" and can never be the final path
+// component. Traversal needs a separator to climb, so removing the separator
+// removes the class -- this is one predicate, not a blocklist of dangerous
+// spellings, and a blocklist would be the heuristic DESIGN 4 says a closed
+// system never needs.
+type CasAttemptAdmission
+  = CasAttemptAdmitted { verified: VerifiedCasAttempt }
+  | CasAttemptKeyNotSlotAddressable { key: NonEmptyStr }
+  | CasAttemptDigestMismatch { claimed: ContentHash, actual: ContentHash }
+  | CasAttemptDigestIncomparable { claimed: ContentHash, actual: ContentHash }
+
+fn cas_key_is_slot_addressable(key: NonEmptyStr) -> Bool {
+  !(key as String).contains("/")
+}
+
+fn admit_cas_attempt(attempt: CasAttempt<NonEmptyStr>) -> CasAttemptAdmission {
+  if !cas_key_is_slot_addressable(key: attempt.key) {
+    CasAttemptKeyNotSlotAddressable { key: attempt.key }
+  } else {
+    cas_admit_verified_digest(attempt: attempt)
+  }
+}
+
+fn cas_admit_verified_digest(attempt: CasAttempt<NonEmptyStr>) -> CasAttemptAdmission {
+  let actual = content_hash_of_value(value: attempt.proposed)
+  match compare_content_hash(left: attempt.proposed_content, right: actual) {
+    ContentHashEqual => CasAttemptAdmitted { verified: VerifiedCasAttempt { attempt: attempt } }
+    ContentHashDifferent => CasAttemptDigestMismatch { claimed: attempt.proposed_content, actual: actual }
+    ContentHashCrossFamilyIncomparable => CasAttemptDigestIncomparable { claimed: attempt.proposed_content, actual: actual }
+  }
+}
+
+// The path a slot's generation occupies. The generation is IN the path, which
+// is what lets an exclusive create serve as the conditional write: two
+// generations of one slot are two different files, so the OS decides the race.
+fn cas_file_slot_path(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> String {
+  concat(concat(concat(concat(root as String, "/"), key as String), "."), cas_generation_count(g: generation) as String)
+}
+
+// HOW THE SLOT IS OBSERVED, AND THE BOUND IS PART OF THE CONTRACT.
+//
+// Generations are contiguous and append-only, so the head is found by probing
+// upward from 1 until a generation is absent. That needs only Read, no
+// directory listing and no parsing of names back into numbers -- a filesystem
+// layout that had to be re-parsed to be understood would be a second identity
+// authority beside the key.
+//
+// THE PROBE IS BOUNDED AND THE BOUND REFUSES RATHER THAN TRUNCATING. Running off
+// the end returns a typed refusal, not "the head is wherever I stopped looking":
+// a walk that silently reported its own patience as the answer would be the
+// bound-shaped closure DESIGN names, where a real number satisfies a question it
+// never measured.
+//
+// DECLARED BOUNDARY, INHERITED FROM THE TRANSPORT RATHER THAN INTRODUCED HERE:
+// Filesystem.Read reports success and an error string, and cannot distinguish
+// "this generation does not exist" from "this generation could not be read".
+// The probe therefore treats an unreadable generation as the end of the chain.
+// Choosing between them by matching on the error string would be the anemic leaf
+// DESIGN forbids, so the conflation is declared instead of papered over. RUNG:
+// mitigatable. NEXT-RUNG TRIGGER: a filesystem read operation whose absence arm
+// is a typed outcome rather than a false success flag.
+type CasSlotProbe
+  = ProbedAbsent
+  | ProbedHead { generation: CasGeneration, value: NonEmptyStr }
+  | ProbedBeyondBound { bound: Int }
+
+data cas_max_generation_probe: Int = 4096
+
+fn cas_probe_from(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration, previous: NonEmptyStr) -> CasSlotProbe {
+  if cas_generation_count(g: generation) > cas_max_generation_probe {
+    ProbedBeyondBound { bound: cas_max_generation_probe }
+  } else {
+    let read = Filesystem.Read(path: cas_file_slot_path(root: root, key: key, generation: generation))
+    if read.success {
+      cas_probe_from(root: root, key: key, generation: cas_generation_next(g: generation), previous: read.content as NonEmptyStr)
+    } else {
+      if cas_generation_count(g: generation) == 1 {
+        ProbedAbsent
+      } else {
+        ProbedHead { generation: cas_generation_count(g: generation) - 1, value: previous }
+      }
+    }
+  }
+}
+
+fn cas_observe_slot(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotProbe {
+  cas_probe_from(root: root, key: key, generation: cas_generation_first(), previous: "unread" as NonEmptyStr)
+}
+
+fn cas_probe_as_readable(probe: CasSlotProbe) -> CasReadableSlot<NonEmptyStr> {
+  match probe {
+    ProbedAbsent => CasReadableAbsent
+    ProbedHead { generation: h, value: v } =>
+      CasReadablePresent {
+        version: CasSlotVersion { generation: h, content: content_hash_of_value(value: v), value: v }
+      }
+    ProbedBeyondBound { bound: _ } => CasReadableAbsent
+  }
+}
+
+// The exclusive create. Reached only once the observation has already satisfied
+// the expectation, so this decides WHO WINS among eligible writers and nothing
+// else. Losing here is a lost race, not a bad precondition -- another writer
+// took the same target between our observation and our write -- so the slot is
+// re-observed to report what actually beat us rather than guessing.
+fn cas_commit_at(root: NonEmptyStr, attempt: CasAttempt<NonEmptyStr>, target: CasGeneration) -> CasOutcome<NonEmptyStr> {
+  let write = Filesystem.WriteOwnerOnly(
+    path: cas_file_slot_path(root: root, key: attempt.key, generation: target),
+    content: attempt.proposed as String,
+  )
+  if write.success {
+    CasCommitted {
+      committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed }
+    }
+  } else {
+    CasPreconditionFailed {
+      expected: attempt.expected,
+      observed: cas_probe_as_readable(probe: cas_observe_slot(root: root, key: attempt.key)),
+    }
+  }
+}
+
+// The store-owned compare-and-set. It reads attempt.key itself; no caller
+// supplies an observation, which is what closes the key-relation obligation.
+//
+// THE TARGET GENERATION IS DERIVED FROM THE OBSERVATION, NEVER FROM THE
+// EXPECTATION. That is the whole correction: an expectation is a claim about the
+// store, and deriving the write target from the claim rather than from the store
+// is what let an attempt expecting generation 7 commit against an empty slot.
+fn file_compare_and_set(root: NonEmptyStr, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {
+  let attempt = verified.attempt
+  let probe = cas_observe_slot(root: root, key: attempt.key)
+  match probe {
+    ProbedBeyondBound { bound: b } =>
+      CasStoreRefused {
+        cause: CasUnreadableMalformed {
+          detail: concat("slot exceeds the generation probe bound of ", b as String) as NonEmptyStr
+        }
+      }
+    ProbedAbsent =>
+      match attempt.expected {
+        ExpectSlotAbsent => cas_commit_at(root: root, attempt: attempt, target: cas_generation_first())
+        ExpectSlotGeneration { generation: _ } =>
+          CasPreconditionFailed { expected: attempt.expected, observed: CasReadableAbsent }
+      }
+    ProbedHead { generation: h, value: v } =>
+      match attempt.expected {
+        ExpectSlotAbsent =>
+          CasPreconditionFailed { expected: attempt.expected, observed: cas_probe_as_readable(probe: probe) }
+        ExpectSlotGeneration { generation: g } =>
+          if cas_generation_count(g: g) == cas_generation_count(g: h) {
+            cas_commit_at(root: root, attempt: attempt, target: cas_generation_next(g: h))
+          } else {
+            CasPreconditionFailed { expected: attempt.expected, observed: cas_probe_as_readable(probe: probe) }
+          }
+      }
+  }
+}

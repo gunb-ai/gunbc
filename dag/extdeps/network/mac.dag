@@ -1,0 +1,251 @@
+module extdeps.network.mac
+
+import std.types { Int, String, Bool, NonEmptyStr, List, list_length }
+import std.integer { UInt8 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "standards.ieee.org/wp-content/uploads/import/documents/tutorials/eui.pdf",
+  }
+}
+
+data ieee_802_address_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.ieee802.org/1/files/public/docs2020/yangsters-smansfield-mac-address-format-0420-v01.pdf",
+  }
+}
+
+// Structured EUI-48 hardware address -- the dissolution of extdeps.dhcp.v4.MacAddress's anemic
+// `NonEmptyStr where brand(MacAddress)`, whose declared trigger names THIS module and THIS parse
+// function. It follows extdeps.network.ipv4 exactly rather than inventing a second shape: the
+// octet is the grounded unit, two entry points split model
+// from realization (mac_address(..) for authored literals, parse_mac_address(String) for wire text
+// such as `ip link` output), and malformed input REFUSES with a typed located error rather than
+// fabricating an address.
+//
+// THE OCTET IS std.integer.UInt8 RATHER THAN A SECOND 0..255 BOUND, and that is a deliberate
+// departure from the sibling module rather than an oversight. extdeps.network.ipv4 declares
+// `type Octet = Int where range(min: 0, max: 255)`, and measured across the corpus that is the ONLY
+// such refinement -- so a MacOctet declared here would have been the SECOND name for one concept,
+// which is exactly the re-invention DESIGN section 2 tests for ("net concepts must not grow by
+// re-invention"). std.integer.UInt8 is the universal authority for an 8-bit unsigned integer and
+// already exists, so the byte grounds there. Importing ipv4's Octet was the other option and is
+// worse: a MAC octet is not an IPv4 octet, and the dependency would ground a link-layer fact on a
+// network-layer module for no reason but that the bound was written there first. THIS LEAVES ipv4's
+// own Octet as a pre-existing duplicate of UInt8; it is not touched here, because retyping a public
+// type in a module this change does not otherwise modify is a separate decision with its own
+// consumers.
+//
+// THE FIRST OCTET IS NOT OPAQUE, and decomposing it is why this module is worth more than a
+// validated string. IEEE 802 assigns two flag bits inside it: bit 0 is I/G -- individual (unicast)
+// versus group (multicast) -- and bit 1 is U/L -- universally administered (burned in by the
+// assignee of the OUI) versus locally administered (set by software). Both are derived here rather
+// than stored, so they cannot disagree with the octets they are read from.
+//
+// WHY THAT MATTERS TO A CONSUMER RATHER THAN BEING TRIVIA: keying a host interface on its address
+// is only stable if the address is the PERMANENT one, and a locally-administered address is
+// precisely one that software chose and software can change. A branded string cannot express that
+// difference, so a consumer keying on it cannot tell a burned-in identity from a temporary one --
+// which is the whole reason the DHCP carrier's brand was marked anemic.
+//
+// SPELLING: the canonical wire form is six lowercase hex pairs separated by colons, which is what
+// Linux `ip` emits. Hyphen-separated and dotted-quad forms are NOT accepted and NOT silently
+// normalized -- they refuse with MacWrongOctetCount or MacOctetNotHex, because a parser that
+// quietly accepts several spellings makes the render/parse round trip untrue and hides which
+// spelling a source actually produced.
+
+type Eui48Address {
+  octet1: UInt8
+  octet2: UInt8
+  octet3: UInt8
+  octet4: UInt8
+  octet5: UInt8
+  octet6: UInt8
+}
+
+// The two IEEE flag bits carried in the first octet, each named rather than left as a bit test at
+// every call site. They are DERIVED from octet1 below, never stored beside it.
+type MacAddressScope
+  = UniversallyAdministered
+  | LocallyAdministered
+
+type MacAddressTransmission
+  = IndividualAddress
+  | GroupAddress
+
+type MacParseError =
+    MacWrongOctetCount { observed_count: Int }
+  | MacOctetNotHex { position: Int, raw: String }
+  | MacOctetWrongWidth { position: Int, raw: String, observed_width: Int }
+
+type MacParseResult =
+    MacParsed { address: Eui48Address }
+  | MacParseFailed { error: MacParseError }
+
+fn mac_address(
+  octet1: UInt8,
+  octet2: UInt8,
+  octet3: UInt8,
+  octet4: UInt8,
+  octet5: UInt8,
+  octet6: UInt8,
+) -> Eui48Address {
+  Eui48Address {
+    octet1: octet1,
+    octet2: octet2,
+    octet3: octet3,
+    octet4: octet4,
+    octet5: octet5,
+    octet6: octet6,
+  }
+}
+
+fn mac_hex_digit(value: Int) -> String {
+  match value {
+    0 => "0"
+    1 => "1"
+    2 => "2"
+    3 => "3"
+    4 => "4"
+    5 => "5"
+    6 => "6"
+    7 => "7"
+    8 => "8"
+    9 => "9"
+    10 => "a"
+    11 => "b"
+    12 => "c"
+    13 => "d"
+    14 => "e"
+    _ => "f"
+  }
+}
+
+fn render_mac_octet(value: UInt8) -> String {
+  join([mac_hex_digit(value: value / 16), mac_hex_digit(value: value % 16)], "")
+}
+
+fn render_mac_address(addr: Eui48Address) -> NonEmptyStr {
+  join([
+    render_mac_octet(value: addr.octet1),
+    render_mac_octet(value: addr.octet2),
+    render_mac_octet(value: addr.octet3),
+    render_mac_octet(value: addr.octet4),
+    render_mac_octet(value: addr.octet5),
+    render_mac_octet(value: addr.octet6),
+  ], ":") as NonEmptyStr
+}
+
+// THE OUI IS THE FIRST THREE OCTETS (IEEE EUI-48). It is projected rather than stored for the same
+// reason the flag bits are: a stored copy could disagree with the address it was taken from.
+fn mac_oui(addr: Eui48Address) -> List<UInt8> {
+  [addr.octet1, addr.octet2, addr.octet3]
+}
+
+// U/L is bit 1 of the first octet. SET means LOCALLY administered -- the sense is inverted relative
+// to how the name reads, which is exactly the kind of detail that goes wrong when every consumer
+// open-codes the bit test.
+fn mac_address_scope(addr: Eui48Address) -> MacAddressScope {
+  if (addr.octet1 / 2) % 2 == 1 {
+    LocallyAdministered
+  } else {
+    UniversallyAdministered
+  }
+}
+
+// I/G is bit 0 of the first octet. SET means GROUP (multicast).
+fn mac_address_transmission(addr: Eui48Address) -> MacAddressTransmission {
+  if addr.octet1 % 2 == 1 {
+    GroupAddress
+  } else {
+    IndividualAddress
+  }
+}
+
+// A PERMANENT INTERFACE IDENTITY IS UNICAST AND UNIVERSALLY ADMINISTERED. This is the predicate a
+// consumer keying an interface actually wants, stated once here rather than re-derived from the two
+// flags at every call site -- a locally administered address was chosen by software and can be
+// changed by software, and a group address names no single interface at all.
+fn mac_is_permanent_interface_identity(addr: Eui48Address) -> Bool {
+  match mac_address_scope(addr: addr) {
+    UniversallyAdministered =>
+      match mac_address_transmission(addr: addr) {
+        IndividualAddress => true
+        GroupAddress => false
+      }
+    LocallyAdministered => false
+  }
+}
+
+fn mac_is_lower_hex_code_point(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
+}
+
+fn mac_hex_digit_value(cp: Int) -> Int {
+  if cp >= 48 && cp <= 57 {
+    cp - 48
+  } else {
+    (cp - 97) + 10
+  }
+}
+
+type MacOctetResult =
+    MacOctetOk { value: UInt8 }
+  | MacOctetErr { error: MacParseError }
+
+fn parse_mac_octet_at(parts: List<String>, position: Int) -> MacOctetResult {
+  match parts |> get(position) {
+    Absent => MacOctetErr { error: MacWrongOctetCount { observed_count: list_length(items: parts) } }
+    Present { value: raw } => {
+      let points = chars(s: raw)
+      if list_length(items: points) != 2 {
+        MacOctetErr {
+          error: MacOctetWrongWidth { position: position, raw: raw, observed_width: list_length(items: points) },
+        }
+      } else {
+        if points |> all(c => mac_is_lower_hex_code_point(cp: c)) {
+          MacOctetOk {
+            value: fold(points, init: 0, f: fn(acc, c) { acc * 16 + mac_hex_digit_value(cp: c) }),
+          }
+        } else {
+          MacOctetErr { error: MacOctetNotHex { position: position, raw: raw } }
+        }
+      }
+    }
+  }
+}
+
+fn parse_mac_address(text: String) -> MacParseResult {
+  let parts = split(s: text, delimiter: ":")
+  if list_length(items: parts) != 6 {
+    MacParseFailed { error: MacWrongOctetCount { observed_count: list_length(items: parts) } }
+  } else {
+    match parse_mac_octet_at(parts: parts, position: 0) {
+      MacOctetErr { error: e0 } => MacParseFailed { error: e0 }
+      MacOctetOk { value: o1 } => match parse_mac_octet_at(parts: parts, position: 1) {
+        MacOctetErr { error: e1 } => MacParseFailed { error: e1 }
+        MacOctetOk { value: o2 } => match parse_mac_octet_at(parts: parts, position: 2) {
+          MacOctetErr { error: e2 } => MacParseFailed { error: e2 }
+          MacOctetOk { value: o3 } => match parse_mac_octet_at(parts: parts, position: 3) {
+            MacOctetErr { error: e3 } => MacParseFailed { error: e3 }
+            MacOctetOk { value: o4 } => match parse_mac_octet_at(parts: parts, position: 4) {
+              MacOctetErr { error: e4 } => MacParseFailed { error: e4 }
+              MacOctetOk { value: o5 } => match parse_mac_octet_at(parts: parts, position: 5) {
+                MacOctetErr { error: e5 } => MacParseFailed { error: e5 }
+                MacOctetOk { value: o6 } => MacParsed {
+                  address: Eui48Address {
+                    octet1: o1, octet2: o2, octet3: o3, octet4: o4, octet5: o5, octet6: o6,
+                  },
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

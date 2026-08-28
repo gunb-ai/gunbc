@@ -9,7 +9,7 @@ and the spawn-request contract from that doc still hold (graph readiness comes f
 
 ## What exists (verified against the live tree, 2026-07-03)
 
-- **Frontier + brief**: `dag/gunbc/roadmap_spawner.dag` — `spawn_frontier` (ready/upcoming/done),
+- **Frontier + brief**: `dag/gunbc/roadmap/roadmap_spawner.dag` — `spawn_frontier` (ready/upcoming/done),
   per-node metadata JSON, `dispatch_brief_template`. Served today at
   `/target/roadmap-dispatch.json`; the roadmap page renders Ready/Upcoming/Done buckets.
 - **The srv1 server**: emitted static Node server — `node_http_server_emit.dag`
@@ -86,7 +86,7 @@ The server is emitted from `.dag`; the actuator must be too — no hand-written 
   is one realization handler bound to the route shape; the route/interface shape stays in the
   model. Witness: emitted server source contains the dispatch arm; an emitted toy server
   executes a harmless command on POST and 404s on GET (RED: drop the row → route gone).
-- **M2 — dispatch actuator model** (`dag/gunbc/roadmap_dispatch_actuator.dag`): brief fill
+- **M2 — dispatch actuator model** (`dag/gunbc/roadmap/roadmap_dispatch_actuator.dag`): brief fill
   (template × node metadata → filled brief string), spawn command construction (worktree +
   tmux + claude argv as data), tmux session naming (`gunbc-dispatch-<node_id>`), lease
   classifier reuse, intricacy/volume → effort map, `tmux ls` output parse for GET /sessions,

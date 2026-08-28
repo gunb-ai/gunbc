@@ -51,8 +51,6 @@ data claude_agent_sdk_stream_authority_note: String = "Upstream @anthropic-ai/cl
 data claude_stream_event_type_control_response: String = "control_response"
 data claude_stream_event_type_rate_limit_event: String = "rate_limit_event"
 
-data claude_sdk_parser_drop_receipt_path: String = "docs/probes/claude_paired_entitlement_probe/claude_sdk_parser_drop_receipt.json"
-
 type JsonStringListDecode
   = JsonStringListOk { values: List<String> }
   | JsonStringListFail
@@ -204,6 +202,23 @@ fn claude_sdk_control_response_parser_drop_holds(
     )
 }
 
+// WHAT GROUNDS THIS FIXTURE IS NOW HISTORY, AND THE RECEIPT IT WAS TRANSCRIBED FROM IS GONE.
+// A committed wet receipt at docs/probes/claude_paired_entitlement_probe/ once stood beside these
+// rows, and a witness read it so that the parser-drop claim rested on a checked-in observation
+// rather than on numbers someone had typed here. d3bebd0072f (#9132) deleted that directory whole.
+// The bankruptcy's stated cut was to keep every instrument and delete every transcription, but this
+// probe's instruments were .mjs while the surviving-instrument clause named .sh/.py, so
+// run-paired-probe.mjs and claude-wrapper-tee.mjs went with the capture -- and the 2026-08-24
+// ruling then removed the .sh/.py corpus as well. Nothing in the tree re-derives this receipt.
+//
+// SO THE READ-IT-BACK WITNESS IS RETIRED RATHER THAN REPOINTED, and the loss is stated here rather
+// than left to be inferred from its absence: the predicate below and its five discriminating
+// controls survive intact in test.claim.claude_sdk_parser_drop_witness, but nothing any longer
+// establishes that the fixture agrees with a committed observation. Re-authoring the JSON by hand
+// would have made the witness green while fabricating exactly the measurement receipt the
+// bankruptcy existed to end. If the paired probe is ever modeled as an entry point, the honest
+// repair is to re-run it against the then-current SDK and let these rows follow the new receipt --
+// not to restore the deleted bytes.
 data claude_sdk_parser_drop_witness_fixture_note: String = "Positive control derived from the 2026-08-06 wet paired probe receipt on Claude Code 2.1.223 with SDK 0.3.220. The subprocess raw stream carried control_response; the SDK query() parsed surface did not."
 
 data parser_drop_fixture_subprocess_raw_types: List<String> = [

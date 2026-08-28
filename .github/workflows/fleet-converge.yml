@@ -185,7 +185,7 @@ jobs:
         id: plan
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_converge_plan_cli.dag --function fleet_converge_plan_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_plan_wet
         if: github.event.inputs.mode == 'plan'
         timeout-minutes: 5
       - name: Upload fleet converge plan artifact
@@ -216,7 +216,7 @@ jobs:
           ACTUAL="$(cat /tmp/fleet-converge-plan/plan_content.hex)"
           if [ -z "${EXPECTED_HASH:-}" ] || [ "$EXPECTED_HASH" != "$ACTUAL" ]; then echo "::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL" >&2; exit 1; fi
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_converge_plan_cli.dag --function fleet_converge_apply_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_apply_wet
         env:
           EXPECTED_HASH: ${{ github.event.inputs.plan_artifact_hash }}
         if: github.event.inputs.mode == 'apply'
