@@ -78,7 +78,7 @@ data effect_reach_host_sink_callee_symbols_v0: List<String> = [
 // NEXT-RUNG TRIGGER, NAMING THE CAPABILITY AND NOT AN ARTIFACT: call-reachability-grade
 // classification of live reads -- an fn-arrow DependencyView over lowered bodies that answers,
 // per witness function, whether a host-effect operation is reachable from it. That capability
-// is planned at docs/plans/live-read-witness-classification-design.md, and a partial instrument
+// is planned at live-read-witness-classification-design (plan doc deleted 2026-08-28), and a partial instrument
 // contributing to it does not retire this row; the row retires when a witness function's live
 // read is decided by reachability rather than by text.
 //

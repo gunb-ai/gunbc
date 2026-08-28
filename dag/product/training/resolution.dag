@@ -1,0 +1,751 @@
+module product.training.resolution
+
+import product.fabric.work {
+  Work, WorkContract, ExecutionRequirements, WorkStep, ReceiptSatisfiable, work_for,
+}
+import product.fabric.demand { Demand, ObservationReceiptRef }
+import product.fabric.identity {
+  FabricIdentity, WorkKey, fabric_identity_eq, fabric_identity_principal,
+}
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import std.integer { PositiveInt }
+import std.nat { Nat }
+import std.types { NonEmptyStr, List }
+
+// THE RESOLUTION STAGE: authored intent becomes an exact computation, and only then a Work.
+//
+// A recipe answers "are these the same authored instructions". It does NOT answer "will these
+// instructions perform the same training computation", and the gap between those two questions is
+// where a training run silently becomes a different run. Resolution closes it by freezing every
+// value that can move the update trajectory BEFORE the Work is minted, so a Work identity names
+// one computation rather than a family of them.
+//
+// THIS SLICE MODELS LOW-RANK ADAPTATION AND NOTHING ELSE, and that is a narrowing rather than an
+// omission. An earlier revision carried TrainingMethod = FullParameter | LowRankAdaptation while
+// keeping target_modules, rank, scaling and dropout as UNCONDITIONAL manifest coordinates -- a sum
+// whose parameters were modelled as a product. The consequence is the exact inverse of the
+// collision this module exists to prevent: a full-parameter computation would have carried a LoRA
+// rank the trainer never reads, so two identical full-parameter runs would derive DIFFERENT Work
+// keys because someone authored rank 16 rather than rank 32, and one computation would receive
+// many identities. Deleting the arm is correct rather than convenient: a full-parameter arm kept
+// only to anticipate a consumer that does not exist is the carrier-before-consumer scaffold this
+// module otherwise refuses. When full-parameter training has a real consumer the honest shape is a
+// sum OF PRODUCTS -- each arm carrying only the coordinates its method consumes -- and the
+// discriminating control is that a full-parameter value has no spelling containing rank at all.
+
+// THE CLOSED AXIS VOCABULARY. Every coordinate that can be unresolved names itself here, so a new
+// manifest field cannot be added without adding an axis and failing every exhaustive match over
+// this type. An open NonEmptyStr axis label would let the manifest grow a coordinate while the
+// refusal population silently stayed complete-looking.
+type TrainingResolutionAxis
+  = BaseArtifactAxis
+  | DatasetManifestAxis
+  | TokenizerAxis
+  | ChatTemplateAxis
+  | TrainerClosureAxis
+  | TargetModulesAxis
+  | OptimizerAxis
+  | SchedulerAxis
+  | LearningRateScheduleAxis
+  | RankAxis
+  | ScalingAxis
+  | DropoutAxis
+  | SequenceLengthAxis
+  | PackingAxis
+  | LossMaskAxis
+  | MixtureAxis
+  | MicroBatchAxis
+  | GradientAccumulationAxis
+  | NumericFormatAxis
+  | SeedAxis
+  | DataOrderSeedAxis
+  | CheckpointFormatAxis
+  | OutputContractAxis
+
+// CLOSED FAMILIES, because these are the coordinates where a convention word is the failure mode.
+// `numeric_format: NonEmptyStr` admits "auto" and "default"; TrainingNumericFormat does not, and
+// that is the difference between a pinned value and a word that looks like one.
+type TrainingNumericFormat = Bf16 | Fp16 | Fp32 | Fp8E4M3 | Fp8E5M2
+
+type PackingPolicy = NoPacking | ConcatenatedPacking
+
+type LossMaskPolicy = MaskPromptTokens | AllTokens
+
+// A DROPOUT RATE IS BOUNDED AND Nat IS NOT. Zero is meaningful here, so PositiveInt would be the
+// wrong narrowing -- but Nat admits 1001 and 5000, which are not probabilities. There is no
+// bounded refinement predicate to consume, so the bound is carried by a sealed mint: the only way
+// to obtain a DropoutPermille is through a door that refuses anything above one thousand.
+type DropoutPermille sole_constructor { permille: Nat }
+
+type DropoutPermilleAdmission
+  = DropoutPermilleAdmitted { value: DropoutPermille }
+  | DropoutPermilleOutOfRange { offered: Nat }
+
+fn dropout_permille_seal(permille: Nat) -> DropoutPermille
+  admit_callers: [
+    decl_ref(module_path: "product.training.resolution", decl_name: "dropout_permille"),
+  ]
+  = DropoutPermille { permille: permille }
+
+fn dropout_permille(permille: Nat) -> DropoutPermilleAdmission {
+  if permille > 1000 {
+    DropoutPermilleOutOfRange { offered: permille }
+  } else {
+    DropoutPermilleAdmitted { value: dropout_permille_seal(permille: permille) }
+  }
+}
+
+fn dropout_permille_value(d: DropoutPermille) -> Nat {
+  d.permille
+}
+
+// ONE RESOLVED COORDINATE: the value AND the receipt that resolved it, never a bare value. The
+// receipt is what makes a later divergence between two runs of one recipe explicable rather than
+// merely visible.
+type ResolvedAxis<T> {
+  value: T
+  receipt: ObservationReceiptRef
+}
+
+type AxisResolution<T>
+  = AxisResolved { resolved: ResolvedAxis<T> }
+  | AxisUnresolved { cause: NonEmptyStr }
+
+// THE OBSERVATIONS ARE THE ONLY INPUT TO THE DOOR, and that is what makes the manifest derived
+// rather than asserted. An earlier revision took a prebuilt manifest AND its evidence as separate
+// arguments, which sealed WHO could construct while leaving WHAT IS TRUE of the pair entirely
+// unchecked -- a manifest naming base B beside evidence saying base A resolved was constructible
+// and no wall could see it. sole_constructor confines construction; it establishes nothing about
+// caller-supplied values, which is exactly the ceiling this repository already records for it.
+type TrainingResolutionObservations {
+  base_artifact: AxisResolution<ContentHash>
+  dataset_manifest: AxisResolution<ContentHash>
+  tokenizer: AxisResolution<ContentHash>
+  chat_template: AxisResolution<ContentHash>
+  trainer_closure: AxisResolution<ContentHash>
+  target_modules: AxisResolution<ContentHash>
+  optimizer_config: AxisResolution<ContentHash>
+  scheduler_config: AxisResolution<ContentHash>
+  learning_rate_schedule: AxisResolution<ContentHash>
+  rank: AxisResolution<PositiveInt>
+  scaling: AxisResolution<PositiveInt>
+  dropout_permille: AxisResolution<DropoutPermille>
+  sequence_length: AxisResolution<PositiveInt>
+  packing: AxisResolution<PackingPolicy>
+  loss_mask: AxisResolution<LossMaskPolicy>
+  mixture: AxisResolution<ContentHash>
+  micro_batch: AxisResolution<PositiveInt>
+  gradient_accumulation: AxisResolution<PositiveInt>
+  numeric_format: AxisResolution<TrainingNumericFormat>
+  seed: AxisResolution<Nat>
+  data_order_seed: AxisResolution<Nat>
+  checkpoint_format: AxisResolution<ContentHash>
+  output_contract: AxisResolution<ContentHash>
+}
+
+// Evidence holds every coordinate WITH its receipt. It is not constructible with a missing or
+// deferred coordinate, because AxisResolved is the only arm that yields a ResolvedAxis.
+type TrainingResolutionEvidence {
+  base_artifact: ResolvedAxis<ContentHash>
+  dataset_manifest: ResolvedAxis<ContentHash>
+  tokenizer: ResolvedAxis<ContentHash>
+  chat_template: ResolvedAxis<ContentHash>
+  trainer_closure: ResolvedAxis<ContentHash>
+  target_modules: ResolvedAxis<ContentHash>
+  optimizer_config: ResolvedAxis<ContentHash>
+  scheduler_config: ResolvedAxis<ContentHash>
+  learning_rate_schedule: ResolvedAxis<ContentHash>
+  rank: ResolvedAxis<PositiveInt>
+  scaling: ResolvedAxis<PositiveInt>
+  dropout_permille: ResolvedAxis<DropoutPermille>
+  sequence_length: ResolvedAxis<PositiveInt>
+  packing: ResolvedAxis<PackingPolicy>
+  loss_mask: ResolvedAxis<LossMaskPolicy>
+  mixture: ResolvedAxis<ContentHash>
+  micro_batch: ResolvedAxis<PositiveInt>
+  gradient_accumulation: ResolvedAxis<PositiveInt>
+  numeric_format: ResolvedAxis<TrainingNumericFormat>
+  seed: ResolvedAxis<Nat>
+  data_order_seed: ResolvedAxis<Nat>
+  checkpoint_format: ResolvedAxis<ContentHash>
+  output_contract: ResolvedAxis<ContentHash>
+}
+
+// THE MANIFEST IS A TOTAL PROJECTION OF THE EVIDENCE, never an independent argument. There is
+// therefore no pair to disagree: the values in the manifest ARE the values the receipts attest.
+//
+// GLOBAL BATCH IS ABSENT AND DERIVED, and that is a repair rather than a simplification. An
+// earlier revision stored micro_batch, gradient_accumulation AND global_batch as three
+// independent coordinates with no worker count anywhere. Under the ordinary relation
+// global = micro * accumulation * workers, a fixture of 2, 8 and 64 silently asserts four data
+// parallel workers -- a topology fact the manifest never carried. Both (2, 8, 16) and (2, 8, 64)
+// construct, and their difference is an OMITTED topology rather than two valid spellings of one
+// computation. So the independent causes are carried and the consequence is derived. This slice
+// admits single-worker training only; a worker count and a gradient reduction policy are
+// semantic, not placement, and belong here when a coordinated multi-host realization exists.
+type TrainingResolvedManifest {
+  base_artifact: ContentHash
+  dataset_manifest: ContentHash
+  tokenizer: ContentHash
+  chat_template: ContentHash
+  trainer_closure: ContentHash
+  target_modules: ContentHash
+  optimizer_config: ContentHash
+  scheduler_config: ContentHash
+  learning_rate_schedule: ContentHash
+  rank: PositiveInt
+  scaling: PositiveInt
+  dropout_permille: DropoutPermille
+  sequence_length: PositiveInt
+  packing: PackingPolicy
+  loss_mask: LossMaskPolicy
+  mixture: ContentHash
+  micro_batch: PositiveInt
+  gradient_accumulation: PositiveInt
+  numeric_format: TrainingNumericFormat
+  seed: Nat
+  data_order_seed: Nat
+  checkpoint_format: ContentHash
+  output_contract: ContentHash
+}
+
+fn training_resolved_manifest(evidence: TrainingResolutionEvidence) -> TrainingResolvedManifest {
+  TrainingResolvedManifest {
+    base_artifact: evidence.base_artifact.value,
+    dataset_manifest: evidence.dataset_manifest.value,
+    tokenizer: evidence.tokenizer.value,
+    chat_template: evidence.chat_template.value,
+    trainer_closure: evidence.trainer_closure.value,
+    target_modules: evidence.target_modules.value,
+    optimizer_config: evidence.optimizer_config.value,
+    scheduler_config: evidence.scheduler_config.value,
+    learning_rate_schedule: evidence.learning_rate_schedule.value,
+    rank: evidence.rank.value,
+    scaling: evidence.scaling.value,
+    dropout_permille: evidence.dropout_permille.value,
+    sequence_length: evidence.sequence_length.value,
+    packing: evidence.packing.value,
+    loss_mask: evidence.loss_mask.value,
+    mixture: evidence.mixture.value,
+    micro_batch: evidence.micro_batch.value,
+    gradient_accumulation: evidence.gradient_accumulation.value,
+    numeric_format: evidence.numeric_format.value,
+    seed: evidence.seed.value,
+    data_order_seed: evidence.data_order_seed.value,
+    checkpoint_format: evidence.checkpoint_format.value,
+    output_contract: evidence.output_contract.value,
+  }
+}
+
+// The effective global batch under this slice's single-worker topology. Derived, never stored:
+// storing it would reintroduce the third writable representation described above.
+fn effective_global_batch(m: TrainingResolvedManifest) -> PositiveInt {
+  m.micro_batch * m.gradient_accumulation
+}
+
+// WHAT IS DELIBERATELY NOT IN THE MANIFEST, and the rule that decides it. A fact belongs here
+// only if changing it changes the answer the training Work promises. Changing the seed, the
+// optimizer configuration, the data order or the numeric format changes the produced weights, so
+// those are in. The selected host, the supplier quote, the metered electricity rate, the current
+// wall draw, the opportunity cost, the queue position, the free capacity, the lease generation,
+// the checkpoint save CADENCE, the log cadence and the retention duration change none of it, so
+// those are out. The consequence is the point: a change in the electricity tariff must not mint a
+// new semantic training Work, and it cannot, because no field here can carry it. Checkpoint
+// FORMAT is in and checkpoint CADENCE is out, and the split is one rule applied twice -- the
+// format decides whether a resume continues the same trajectory, the cadence decides only how
+// often we pay to write one.
+//
+// SUBSTRATE-DEPENDENT SEMANTIC RESOLUTION IS REFUSED AT THIS SLICE. A microbatch chosen as the
+// largest that fits the selected host, a precision taken from a runtime default, or a gradient
+// accumulation derived from available memory would let two hosts execute different update
+// trajectories under ONE Work identity. So exact values are required before the demand is
+// dispatched. A later authority may prove two substrate-specific realizations semantically
+// equivalent; that relation does not exist yet, and asserting it early would be a fabricated
+// equivalence rather than a convenience.
+
+// THE COMPLETENESS WALL: EVERY MANIFEST COORDINATE REACHES THE WORK KEY, BY PROJECTION.
+//
+// An earlier revision took the WorkContract as an ARGUMENT beside the observations. That is the
+// same defect as taking a manifest beside its evidence, one level out: the contract and the
+// manifest were independent inputs, so a caller could resolve a manifest pinning seed 7 and pass
+// a contract that mentioned nothing about it, and derive_work_key -- which reads ONLY the
+// contract and requirements -- would mint an identity that ignored every training coordinate.
+// Two runs differing in seed, optimizer and numeric format would then share one Work key while
+// producing different weights. The contract is therefore DERIVED here and never accepted.
+//
+// THE MATERIAL IS FIELD-TAGGED AND DELIMITER-SEPARATED over delimiter-free renderings, which is
+// the honest description of what the code does: U+001F separates a field tag from its value and
+// U+001E separates coordinates, and no rendering can contain either -- serialized hashes, decimal
+// numerals and the closed enum spellings are all delimiter-free -- so the encoding is injective
+// over this domain. An earlier annotation called it length-separated, which it never was; a
+// mechanism described as one it does not implement is a defect in the description whether or not
+// the code is right, and if a renderable domain ever gains a delimiter the claim has to become
+// real length prefixing rather than a comment nobody rechecked. ContentHash coordinates go
+// through serialize_content_hash rather than a bare digest cast because that preserves the hash
+// FAMILY -- dropping it can make values from different families render alike, and a cross-family
+// collision here would be an identity collision.
+fn training_numeric_format_material(v: TrainingNumericFormat) -> NonEmptyStr {
+  match v {
+    Bf16 => "bf16"
+    Fp16 => "fp16"
+    Fp32 => "fp32"
+    Fp8E4M3 => "fp8e4m3"
+    Fp8E5M2 => "fp8e5m2"
+  }
+}
+
+fn packing_policy_material(v: PackingPolicy) -> NonEmptyStr {
+  match v {
+    NoPacking => "no-packing"
+    ConcatenatedPacking => "concatenated-packing"
+  }
+}
+
+fn loss_mask_policy_material(v: LossMaskPolicy) -> NonEmptyStr {
+  match v {
+    MaskPromptTokens => "mask-prompt-tokens"
+    AllTokens => "all-tokens"
+  }
+}
+
+// ONE PLACE A COORDINATE'S MATERIAL IS SPELLED. The work key and the effective-manifest
+// comparison both need to know what a coordinate's value IS; if each folded the manifest itself,
+// a coordinate could enter the key and be invisible to the comparison, or drift between the two
+// spellings, and both failures compile. The axis-keyed projection below is the single authority,
+// training_manifest_material folds it in axis order, and the reconciliation comparator reads the
+// same function per axis -- so a coordinate cannot reach the key without being comparable.
+fn training_manifest_coordinate_material(
+  m: TrainingResolvedManifest,
+  axis: TrainingResolutionAxis,
+) -> NonEmptyStr {
+  match axis {
+    BaseArtifactAxis => serialize_content_hash(hash: m.base_artifact) as NonEmptyStr
+    DatasetManifestAxis => serialize_content_hash(hash: m.dataset_manifest) as NonEmptyStr
+    TokenizerAxis => serialize_content_hash(hash: m.tokenizer) as NonEmptyStr
+    ChatTemplateAxis => serialize_content_hash(hash: m.chat_template) as NonEmptyStr
+    TrainerClosureAxis => serialize_content_hash(hash: m.trainer_closure) as NonEmptyStr
+    TargetModulesAxis => serialize_content_hash(hash: m.target_modules) as NonEmptyStr
+    OptimizerAxis => serialize_content_hash(hash: m.optimizer_config) as NonEmptyStr
+    SchedulerAxis => serialize_content_hash(hash: m.scheduler_config) as NonEmptyStr
+    LearningRateScheduleAxis => serialize_content_hash(hash: m.learning_rate_schedule) as NonEmptyStr
+    RankAxis => to_string(m.rank) as NonEmptyStr
+    ScalingAxis => to_string(m.scaling) as NonEmptyStr
+    DropoutAxis => to_string(dropout_permille_value(d: m.dropout_permille)) as NonEmptyStr
+    SequenceLengthAxis => to_string(m.sequence_length) as NonEmptyStr
+    PackingAxis => packing_policy_material(v: m.packing)
+    LossMaskAxis => loss_mask_policy_material(v: m.loss_mask)
+    MixtureAxis => serialize_content_hash(hash: m.mixture) as NonEmptyStr
+    MicroBatchAxis => to_string(m.micro_batch) as NonEmptyStr
+    GradientAccumulationAxis => to_string(m.gradient_accumulation) as NonEmptyStr
+    NumericFormatAxis => training_numeric_format_material(v: m.numeric_format)
+    SeedAxis => to_string(m.seed) as NonEmptyStr
+    DataOrderSeedAxis => to_string(m.data_order_seed) as NonEmptyStr
+    CheckpointFormatAxis => serialize_content_hash(hash: m.checkpoint_format) as NonEmptyStr
+    OutputContractAxis => serialize_content_hash(hash: m.output_contract) as NonEmptyStr
+  }
+}
+
+fn training_resolution_axis_name(axis: TrainingResolutionAxis) -> NonEmptyStr {
+  match axis {
+    BaseArtifactAxis => "base_artifact"
+    DatasetManifestAxis => "dataset_manifest"
+    TokenizerAxis => "tokenizer"
+    ChatTemplateAxis => "chat_template"
+    TrainerClosureAxis => "trainer_closure"
+    TargetModulesAxis => "target_modules"
+    OptimizerAxis => "optimizer_config"
+    SchedulerAxis => "scheduler_config"
+    LearningRateScheduleAxis => "learning_rate_schedule"
+    RankAxis => "rank"
+    ScalingAxis => "scaling"
+    DropoutAxis => "dropout_permille"
+    SequenceLengthAxis => "sequence_length"
+    PackingAxis => "packing"
+    LossMaskAxis => "loss_mask"
+    MixtureAxis => "mixture"
+    MicroBatchAxis => "micro_batch"
+    GradientAccumulationAxis => "gradient_accumulation"
+    NumericFormatAxis => "numeric_format"
+    SeedAxis => "seed"
+    DataOrderSeedAxis => "data_order_seed"
+    CheckpointFormatAxis => "checkpoint_format"
+    OutputContractAxis => "output_contract"
+  }
+}
+
+// The axis roster is enumerated ONCE. A consumer that hand-listed the axes it cared about would be
+// a second, silently-narrower roster, and the coordinate it forgot would be the one that drifts.
+fn training_resolution_axes() -> List<TrainingResolutionAxis> {
+  [
+    BaseArtifactAxis, DatasetManifestAxis, TokenizerAxis, ChatTemplateAxis,
+    TrainerClosureAxis, TargetModulesAxis, OptimizerAxis, SchedulerAxis,
+    LearningRateScheduleAxis, RankAxis, ScalingAxis, DropoutAxis,
+    SequenceLengthAxis, PackingAxis, LossMaskAxis, MixtureAxis,
+    MicroBatchAxis, GradientAccumulationAxis, NumericFormatAxis, SeedAxis,
+    DataOrderSeedAxis, CheckpointFormatAxis, OutputContractAxis,
+  ]
+}
+
+fn training_manifest_axis_material(
+  m: TrainingResolvedManifest,
+  axis: TrainingResolutionAxis,
+) -> NonEmptyStr {
+  join(
+    [
+      training_resolution_axis_name(axis: axis),
+      "\u{1f}",
+      training_manifest_coordinate_material(m: m, axis: axis),
+    ],
+    "",
+  ) as NonEmptyStr
+}
+
+fn training_manifest_material(m: TrainingResolvedManifest) -> NonEmptyStr {
+  join(
+    training_resolution_axes().map(axis => training_manifest_axis_material(m: m, axis: axis)),
+    "\u{1e}",
+  ) as NonEmptyStr
+}
+
+// AGREEMENT IS A POPULATION OF DIFFERING COORDINATES, NOT A BOOLEAN. "The manifests differ" sends
+// a reader to twenty-three coordinates; naming the first one that differs hides the rest until it
+// is fixed. Both are answers a hash could have given, which is why this reads the axis-keyed
+// projection rather than comparing a digest: a hash answers same-or-different and can never answer
+// WHICH, and which is the entire purpose of the effective-manifest axis.
+type TrainingManifestAgreement
+  = TrainingManifestIdentical
+  | TrainingManifestDiffers {
+      first: TrainingResolutionAxis,
+      more: List<TrainingResolutionAxis>,
+    }
+
+type AxisDiffSplit {
+  head_taken: Bool
+  more: List<TrainingResolutionAxis>
+}
+
+fn manifest_differing_axes(
+  intended: TrainingResolvedManifest,
+  observed: TrainingResolvedManifest,
+) -> List<TrainingResolutionAxis> {
+  training_resolution_axes().filter(axis =>
+    training_manifest_coordinate_material(m: intended, axis: axis)
+      != training_manifest_coordinate_material(m: observed, axis: axis)
+  )
+}
+
+fn training_manifest_agreement(
+  intended: TrainingResolvedManifest,
+  observed: TrainingResolvedManifest,
+) -> TrainingManifestAgreement {
+  let differing = manifest_differing_axes(intended: intended, observed: observed)
+  match differing.first() {
+    none => TrainingManifestIdentical
+    Present { value: head } =>
+      TrainingManifestDiffers {
+        first: head,
+        more: differing
+          .fold(
+            AxisDiffSplit { head_taken: false, more: [] },
+            (acc, a) =>
+              if acc.head_taken {
+                AxisDiffSplit { head_taken: true, more: [acc.more, [a]].flat_map(x => x) }
+              } else {
+                AxisDiffSplit { head_taken: true, more: acc.more }
+              },
+          )
+          .more,
+      }
+  }
+}
+
+fn training_manifest_reference(m: TrainingResolvedManifest) -> NonEmptyStr {
+  serialize_content_hash(
+    hash: content_hash_of_value(value: training_manifest_material(m: m))
+  )
+}
+
+// The contract's semantic fields all descend from the manifest. `inputs` carries the canonical
+// manifest reference, so a change to ANY coordinate changes the contract and therefore the key;
+// runtime_closure and output_contract additionally travel in their own fields because the fabric
+// reads them for its own purposes and flattening them into the reference would hide them.
+fn training_work_contract(evidence: TrainingResolutionEvidence) -> WorkContract {
+  let m = training_resolved_manifest(evidence: evidence)
+  WorkContract {
+    program: "gunbc-training-run-low-rank-adaptation",
+    steps: [WorkStep { step_id: "train", resumability: ReceiptSatisfiable }],
+    source: serialize_content_hash(hash: m.dataset_manifest),
+    inputs: training_manifest_reference(m: m),
+    runtime_closure: serialize_content_hash(hash: m.trainer_closure),
+    effect_contract: "training-write-checkpoints-and-adapter",
+    output_contract: serialize_content_hash(hash: m.output_contract),
+  }
+}
+
+// SEALED. The evidence record is the whole specification and the contract is DERIVED from it, so
+// the only door that yields one is resolve_training below, which cannot produce it while any
+// coordinate is unresolved.
+type ResolvedTrainingWork sole_constructor {
+  evidence: TrainingResolutionEvidence
+  contract: WorkContract
+  requirements: ExecutionRequirements
+}
+
+fn resolved_training_work_seal(
+  evidence: TrainingResolutionEvidence,
+  contract: WorkContract,
+  requirements: ExecutionRequirements,
+) -> ResolvedTrainingWork
+  admit_callers: [
+    decl_ref(module_path: "product.training.resolution", decl_name: "resolve_training"),
+  ]
+  = ResolvedTrainingWork {
+      evidence: evidence,
+      contract: contract,
+      requirements: requirements,
+    }
+
+fn resolved_training_manifest(resolved: ResolvedTrainingWork) -> TrainingResolvedManifest {
+  training_resolved_manifest(evidence: resolved.evidence)
+}
+
+// The deferral the manifest cannot spell lands HERE, named by a CLOSED axis and located by a
+// cause. A caller that has not pinned the base artifact does not write base_artifact: Auto -- it
+// cannot -- its observation is AxisUnresolved and the run does not start.
+type TrainingResolution
+  = TrainingResolved { resolved: ResolvedTrainingWork }
+  | TrainingResolutionRefused { axis: TrainingResolutionAxis, cause: NonEmptyStr }
+
+fn resolve_training(
+  observations: TrainingResolutionObservations,
+  requirements: ExecutionRequirements,
+) -> TrainingResolution {
+  match observations.base_artifact {
+    AxisUnresolved { cause: c } =>
+      TrainingResolutionRefused { axis: BaseArtifactAxis, cause: c }
+    AxisResolved { resolved: r_base_artifact } =>
+      match observations.dataset_manifest {
+        AxisUnresolved { cause: c } =>
+          TrainingResolutionRefused { axis: DatasetManifestAxis, cause: c }
+        AxisResolved { resolved: r_dataset_manifest } =>
+          match observations.tokenizer {
+            AxisUnresolved { cause: c } =>
+              TrainingResolutionRefused { axis: TokenizerAxis, cause: c }
+            AxisResolved { resolved: r_tokenizer } =>
+              match observations.chat_template {
+                AxisUnresolved { cause: c } =>
+                  TrainingResolutionRefused { axis: ChatTemplateAxis, cause: c }
+                AxisResolved { resolved: r_chat_template } =>
+                  match observations.trainer_closure {
+                    AxisUnresolved { cause: c } =>
+                      TrainingResolutionRefused { axis: TrainerClosureAxis, cause: c }
+                    AxisResolved { resolved: r_trainer_closure } =>
+                      match observations.target_modules {
+                        AxisUnresolved { cause: c } =>
+                          TrainingResolutionRefused { axis: TargetModulesAxis, cause: c }
+                        AxisResolved { resolved: r_target_modules } =>
+                          match observations.optimizer_config {
+                            AxisUnresolved { cause: c } =>
+                              TrainingResolutionRefused { axis: OptimizerAxis, cause: c }
+                            AxisResolved { resolved: r_optimizer_config } =>
+                              match observations.scheduler_config {
+                                AxisUnresolved { cause: c } =>
+                                  TrainingResolutionRefused { axis: SchedulerAxis, cause: c }
+                                AxisResolved { resolved: r_scheduler_config } =>
+                                  match observations.learning_rate_schedule {
+                                    AxisUnresolved { cause: c } =>
+                                      TrainingResolutionRefused { axis: LearningRateScheduleAxis, cause: c }
+                                    AxisResolved { resolved: r_learning_rate_schedule } =>
+                                      match observations.rank {
+                                        AxisUnresolved { cause: c } =>
+                                          TrainingResolutionRefused { axis: RankAxis, cause: c }
+                                        AxisResolved { resolved: r_rank } =>
+                                          match observations.scaling {
+                                            AxisUnresolved { cause: c } =>
+                                              TrainingResolutionRefused { axis: ScalingAxis, cause: c }
+                                            AxisResolved { resolved: r_scaling } =>
+                                              match observations.dropout_permille {
+                                                AxisUnresolved { cause: c } =>
+                                                  TrainingResolutionRefused { axis: DropoutAxis, cause: c }
+                                                AxisResolved { resolved: r_dropout_permille } =>
+                                                  match observations.sequence_length {
+                                                    AxisUnresolved { cause: c } =>
+                                                      TrainingResolutionRefused { axis: SequenceLengthAxis, cause: c }
+                                                    AxisResolved { resolved: r_sequence_length } =>
+                                                      match observations.packing {
+                                                        AxisUnresolved { cause: c } =>
+                                                          TrainingResolutionRefused { axis: PackingAxis, cause: c }
+                                                        AxisResolved { resolved: r_packing } =>
+                                                          match observations.loss_mask {
+                                                            AxisUnresolved { cause: c } =>
+                                                              TrainingResolutionRefused { axis: LossMaskAxis, cause: c }
+                                                            AxisResolved { resolved: r_loss_mask } =>
+                                                              match observations.mixture {
+                                                                AxisUnresolved { cause: c } =>
+                                                                  TrainingResolutionRefused { axis: MixtureAxis, cause: c }
+                                                                AxisResolved { resolved: r_mixture } =>
+                                                                  match observations.micro_batch {
+                                                                    AxisUnresolved { cause: c } =>
+                                                                      TrainingResolutionRefused { axis: MicroBatchAxis, cause: c }
+                                                                    AxisResolved { resolved: r_micro_batch } =>
+                                                                      match observations.gradient_accumulation {
+                                                                        AxisUnresolved { cause: c } =>
+                                                                          TrainingResolutionRefused { axis: GradientAccumulationAxis, cause: c }
+                                                                        AxisResolved { resolved: r_gradient_accumulation } =>
+                                                                          match observations.numeric_format {
+                                                                            AxisUnresolved { cause: c } =>
+                                                                              TrainingResolutionRefused { axis: NumericFormatAxis, cause: c }
+                                                                            AxisResolved { resolved: r_numeric_format } =>
+                                                                              match observations.seed {
+                                                                                AxisUnresolved { cause: c } =>
+                                                                                  TrainingResolutionRefused { axis: SeedAxis, cause: c }
+                                                                                AxisResolved { resolved: r_seed } =>
+                                                                                  match observations.data_order_seed {
+                                                                                    AxisUnresolved { cause: c } =>
+                                                                                      TrainingResolutionRefused { axis: DataOrderSeedAxis, cause: c }
+                                                                                    AxisResolved { resolved: r_data_order_seed } =>
+                                                                                      match observations.checkpoint_format {
+                                                                                        AxisUnresolved { cause: c } =>
+                                                                                          TrainingResolutionRefused { axis: CheckpointFormatAxis, cause: c }
+                                                                                        AxisResolved { resolved: r_checkpoint_format } =>
+                                                                                          match observations.output_contract {
+                                                                                            AxisUnresolved { cause: c } =>
+                                                                                              TrainingResolutionRefused { axis: OutputContractAxis, cause: c }
+                                                                                            AxisResolved { resolved: r_output_contract } =>
+                                                                                              let evidence = TrainingResolutionEvidence {
+                                                                                                base_artifact: r_base_artifact,
+                                                                                                dataset_manifest: r_dataset_manifest,
+                                                                                                tokenizer: r_tokenizer,
+                                                                                                chat_template: r_chat_template,
+                                                                                                trainer_closure: r_trainer_closure,
+                                                                                                target_modules: r_target_modules,
+                                                                                                optimizer_config: r_optimizer_config,
+                                                                                                scheduler_config: r_scheduler_config,
+                                                                                                learning_rate_schedule: r_learning_rate_schedule,
+                                                                                                rank: r_rank,
+                                                                                                scaling: r_scaling,
+                                                                                                dropout_permille: r_dropout_permille,
+                                                                                                sequence_length: r_sequence_length,
+                                                                                                packing: r_packing,
+                                                                                                loss_mask: r_loss_mask,
+                                                                                                mixture: r_mixture,
+                                                                                                micro_batch: r_micro_batch,
+                                                                                                gradient_accumulation: r_gradient_accumulation,
+                                                                                                numeric_format: r_numeric_format,
+                                                                                                seed: r_seed,
+                                                                                                data_order_seed: r_data_order_seed,
+                                                                                                checkpoint_format: r_checkpoint_format,
+                                                                                                output_contract: r_output_contract,
+                                                                                              }
+                                                                                              TrainingResolved {
+                                                                                                resolved: resolved_training_work_seal(
+                                                                                                  evidence: evidence,
+                                                                                                  contract: training_work_contract(evidence: evidence),
+                                                                                                  requirements: requirements,
+                                                                                                ),
+                                                                                              }
+                                                                                          }
+                                                                                      }
+                                                                                  }
+                                                                              }
+                                                                          }
+                                                                      }
+                                                                  }
+                                                              }
+                                                          }
+                                                      }
+                                                  }
+                                              }
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE WORK KEY IS NOT MINTED HERE, and that is the most load-bearing line in this module.
+//
+// derive_work_key(contract, requirements) in product.fabric.work is the sole semantic identity
+// authority and it stays that way: this function projects and delegates. A local hash over the
+// manifest would be a second identity for one concept -- the fork DESIGN section 3 forbids -- and
+// it would drift from the fabric's the first time either side gained a field.
+//
+// Nothing stores the resulting identity either. ResolvedTrainingWork carries no work_identity
+// field, so a stored key cannot disagree with the derived one, because there is no stored key.
+fn training_work_for<P>(principal: P, resolved: ResolvedTrainingWork) -> Work<P> {
+  work_for(
+    principal: principal,
+    contract: resolved.contract,
+    requirements: resolved.requirements,
+  )
+}
+
+// THE DESIRED CONVERGENCE OCCURRENCE.
+//
+// Sealed on ONE relation: the demand's work must be the work this resolution derives. Without it
+// the record is two halves that merely travel together -- a demand for one computation carrying
+// the resolution of another -- and every downstream observation joining on "the work" would join
+// on a lie no later stage could detect.
+//
+// There is deliberately no `work` field. Demand already carries one, and a second copy would be a
+// place for the two to disagree.
+type TrainingRunDesired<P> sole_constructor {
+  demand: Demand<P>
+  resolved: ResolvedTrainingWork
+}
+
+type TrainingRunDesiredAdmission<P>
+  = TrainingRunDesiredAdmitted { desired: TrainingRunDesired<P> }
+  | TrainingRunDesiredRefused {
+      demand_work: FabricIdentity<P, WorkKey>,
+      resolved_work: FabricIdentity<P, WorkKey>,
+    }
+
+fn training_run_desired_seal<P>(
+  demand: Demand<P>,
+  resolved: ResolvedTrainingWork,
+) -> TrainingRunDesired<P>
+  admit_callers: [
+    decl_ref(module_path: "product.training.resolution", decl_name: "admit_training_run_desired"),
+  ]
+  = TrainingRunDesired { demand: demand, resolved: resolved }
+
+// THE PRINCIPAL COMES FROM demand.work, NOT FROM demand.id, AND THE DIFFERENCE IS A REAL RELATION
+// RATHER THAN A DETAIL. An earlier revision derived under demand.id.principal, reasoning that
+// taking it from the demand made a cross-principal match unconstructible. That was over-tight and
+// it encoded a tenancy policy inside semantic identity: the demand's principal is the REQUESTER,
+// the work's principal is the ACCOUNTING AND ISOLATION SCOPE, and the fabric keeps them separate
+// precisely so a requester can ask for work accounted under an organization scope. Deriving under
+// the requester refused every such demand even when demand.work named the correct scope, which
+// would have made service accounts and delegated execution unrepresentable.
+//
+// Using demand.work.principal smuggles nothing in. It establishes exactly one thing: the resolved
+// manifest derives the semantic Work this demand NAMES. Whether the requester may execute and be
+// charged under that scope is a separate grant question the fabric already answers downstream, and
+// answering it here would be this module deciding a policy it does not own.
+fn admit_training_run_desired<P>(
+  demand: Demand<P>,
+  resolved: ResolvedTrainingWork,
+) -> TrainingRunDesiredAdmission<P> {
+  let derived = training_work_for(
+    principal: fabric_identity_principal(id: demand.work),
+    resolved: resolved,
+  )
+  if fabric_identity_eq(left: demand.work, right: derived.id) {
+    TrainingRunDesiredAdmitted {
+      desired: training_run_desired_seal(demand: demand, resolved: resolved),
+    }
+  } else {
+    TrainingRunDesiredRefused { demand_work: demand.work, resolved_work: derived.id }
+  }
+}
+
+fn training_run_desired_work<P>(desired: TrainingRunDesired<P>) -> FabricIdentity<P, WorkKey> {
+  desired.demand.work
+}

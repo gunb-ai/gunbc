@@ -1,6 +1,6 @@
 //! Receipt for the string-literal escape path (`process_escapes` / `scan_string_body`).
 //!
-//! Two halves, per the Lane A oracle in docs/plans/inner-cost-lanes-scoping.md.
+//! Two halves, per the Lane A oracle in inner-cost-lanes-scoping (plan doc deleted 2026-08-28).
 //!
 //! EQUIVALENCE (`escape_decode_table`): the recognized decode vocabulary is unchanged. On its
 //! own it proves nothing about cost, because it is satisfied by changing nothing. The refusal

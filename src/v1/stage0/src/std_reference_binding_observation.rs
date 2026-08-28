@@ -4,6 +4,7 @@
 use self::ReferenceBindingObservation::*;
 use self::ReferenceBindingProductionGap::*;
 use self::StructuralBindingResolution::*;
+use self::StructuralObservationSubjectModule::*;
 pub use crate::std_occurrence_binding::{BindingCandidate, OccurrenceBinding};
 use crate::std_occurrence_binding_candidates::AuthoredOrderIndexRefusal::*;
 use crate::std_occurrence_binding_candidates::DeclarationExposure::*;
@@ -81,6 +82,13 @@ pub enum ReferenceBindingProductionGap {
     ReferenceBindingParserTransportRefused,
     ReferenceBindingNamedReferenceAbsent,
     ReferenceBindingNamedDeclarationAbsent,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum StructuralObservationSubjectModule {
+    SubjectModuleProduced { module_path: String },
+    SubjectModuleProductionRefused { gap: ReferenceBindingProductionGap },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

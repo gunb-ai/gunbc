@@ -231,13 +231,21 @@ pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<Strin
 /// above: the decision runs before any `.dag` value could exist, because it is the decision
 /// about whether resolving the corpus may begin.
 ///
-/// Basis: two dated, uncensored CI receipts in
-/// `docs/plans/compile-clean-whole-tree-time-diagnosis.md` — run 29828873976 on an
-/// unconstrained slot peaked at ~6.3 GiB at `emit.done`, run 29834202745 on a 15 GiB/16 GiB
-/// slot peaked at ~6.2 GiB with swap=0. Neither sits at its own armed line, so neither is a
-/// throttle pin. The receipts carry one decimal place, so the declared figure is the higher
-/// reading rounded UP to whole-gibibyte grain: for a DEMAND figure, rounding up refuses the
-/// marginal case and rounding down admits it.
+/// Basis: two dated, uncensored whole-corpus peaks taken ON THE COMPILE ROUTE ITSELF
+/// (2026-08-28, session clever-tern-899, srv1), against a clean tree staged at
+/// `91c05c1b344d29f97a363eaff34843177d552a99` with a binary BUILT FROM THAT SAME SHA —
+/// `--target dag` peaked at 13008052 kB and `--target rust` at 13005964 kB, both EXIT=1
+/// (completed and refused on diagnostics, not killed), with 271 GiB still free on the host at
+/// exit so neither peak is a throttle pin. A scoped positive control ran first and returned
+/// EXIT=0 with a file emitted, so the harness produces both outcomes. The declared figure is
+/// the higher reading rounded UP to whole-gibibyte grain: for a DEMAND figure, rounding up
+/// refuses the marginal case and rounding down admits it.
+///
+/// The predecessor basis was two 2026-07-21 CI receipts (runs 29828873976 / 29834202745,
+/// ~6.3 and ~6.2 GiB) taken on the FLOOR route rather than this one, declared as a proxy and
+/// as a LOWER bound. Those receipts no longer ground this constant and are named here only as
+/// the superseded basis; the row's own re-measure trigger — a dated uncensored whole-tree peak
+/// on the compile route — is what retired them.
 ///
 /// This is the seed's copy of `gunbc.whole_corpus_compile_admission`
 /// `whole_corpus_compile_measured_peak_demand`, written as a canonical decimal literal so the
@@ -254,8 +262,39 @@ pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<Strin
 /// together here, which is the coupling that was always required.
 ///
 /// dissolve-on: the emit path that retires this seed's other budget mirrors; re-measure
-/// trigger: a dated uncensored whole-tree peak taken on the `gunbc compile` route itself.
-pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = 7516192768;
+/// trigger: a dated uncensored whole-corpus peak on the `gunbc compile` route, taken with a
+/// binary built from the subject sha, that EXCEEDS this figure.
+///
+/// The 7 GiB predecessor was a PROXY taken on the floor route at an older tree and sat 43.6%
+/// BELOW the measured peak — 7 GiB against 12.41 GiB, or 56.4% of it — so this arm admitted
+/// hosts it would then be killed on. Its own
+/// re-measure trigger fired on 2026-08-28: whole-corpus `--target dag` peaked at 13008052 kB
+/// and `--target rust` at 13005964 kB, both EXIT=1 (completed and refused, not killed) on an
+/// unthrottled host, with the binary built from the tree being compiled.
+///
+/// THIS VALUE IS NOT DERIVED FROM THOSE PEAKS, and the distinction is the whole reason the
+/// figure is 16 GiB rather than 13. All three of those runs REFUSED on diagnostics, so each
+/// peak bounds a run that stopped early; the highest COMPLETING whole-corpus peak measured on
+/// this route is 15871708 kB = 15.14 GiB (`--target dag`, exit 0, attributed to warm-ant-908
+/// and adopted rather than reproduced here). 15.14 GiB rounded UP to whole-gibibyte grain is
+/// 16 GiB = 17179869184 — landing on `memory_max` by arithmetic, not by design.
+///
+/// Declaring 13 GiB (the refusing peaks rounded up) was this row's state until review 57202 on
+/// gunbc#9545, which observed that it left every budget from 13 to 15.14 GiB admitted with no
+/// evidence it can complete — the same fail-open class this constant exists to close, one band
+/// narrower. Rounding UP is what makes the grain rule fail-closed: for a DEMAND figure it
+/// refuses the marginal case where rounding down would admit it. A threshold must not sit below
+/// the highest peak anyone has measured on this route, whoever measured it.
+///
+/// The `.dag` authority `gunbc.whole_corpus_compile_admission`
+/// `whole_corpus_compile_measured_demand_note` carries the full adoption argument, what
+/// adoption does and does not assert, and why the CI runner slot is now REFUSED as a
+/// deliberate over-refusal. Keep this paragraph and that note in step: this comment is prose
+/// the seed-mirror lens does not check (it verifies the numeric value only — see
+/// `seed_mirror_reach_note`'s residual), so a stale justification here is exactly the
+/// unaudited-prose drift that residual names, and it recurred in the very diff that repaired
+/// another instance of it.
+pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = 17179869184;
 
 /// Arm-time admission for a WHOLE-CORPUS compile — the seed mirror of
 /// `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_admission`.
@@ -267,9 +306,12 @@ pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = 7516192768;
 /// 13cf8d2e-173a-42d2-9a56-101bb3332740): SIGKILL, exit 137, no diagnostic — so a harness
 /// grepping the captured output reads a fabricated zero rather than a failure.
 ///
-/// What it does NOT claim: an admitted budget is not certified sufficient. The threshold is
-/// a lower bound on demand taken on a neighbouring route at an older tree, so admission
-/// means "not provably doomed" (mitigatable, §4b), never "will fit".
+/// What it does NOT claim: an admitted budget is not certified sufficient. The threshold is a
+/// peak taken on THIS route, at a named sha, with a binary built from it — the "neighbouring
+/// route at an older tree" qualification this comment carried until 2026-08-28 is retired.
+/// What survives is narrower and still true: it is ONE tree's peak, and a demand figure does
+/// not shrink with corpus growth, so admission means "not provably doomed at the tree that was
+/// measured" (mitigatable, §4b), never "will fit".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WholeCorpusCompileAdmission {
     Admitted {
@@ -333,8 +375,9 @@ pub fn whole_corpus_compile_refusal_diagnostic(
         } => Some(format!(
             "WholeCorpusCompileBudgetBelowMeasuredDemand: host memory budget={budget_bytes} \
              bytes (source={source}) is below the measured whole-tree compile demand of \
-             {required_bytes} bytes (CI receipts 29828873976 / 29834202745, \
-             gunbc.whole_corpus_compile_admission). Refusing to start a run that is provably \
+             {required_bytes} bytes (gunbc.whole_corpus_compile_admission \
+             whole_corpus_compile_measured_peak_demand). Refusing to start a run that is \
+             provably \
              below measured demand — the previous behaviour was to start it and be SIGKILLed, \
              which reports as a silent exit-137 zero rather than a diagnostic, so any count \
              grepped from such a run is a memorial to a killed process. Remedy: scope the \
@@ -346,7 +389,7 @@ pub fn whole_corpus_compile_refusal_diagnostic(
              than admitting against the widest cap available — an unbounded resolve on an \
              unbounded host is the OOM-kill this arm exists to prevent. Declare one with \
              GUNBC_MEMORY_BUDGET_BYTES, or model this platform's memory source \
-             (dag/gunbc/host_budget_source.dag)."
+             (dag/gunbc/host/host_budget_source.dag)."
         )),
     }
 }
@@ -400,7 +443,7 @@ pub fn read_host_budget_bytes() -> (Option<u64>, String) {
         return (Some(budget), source);
     }
     // Terminal arms. Authority for the source vocabulary and its rendering is
-    // `dag/gunbc/host_budget_source.dag` (`HostBudgetSource`); `dag/extdeps/linux/procfs.dag`
+    // `dag/gunbc/host/host_budget_source.dag` (`HostBudgetSource`); `dag/extdeps/linux/procfs.dag`
     // carries why a Darwin host never reaches the meminfo arm.
     //
     // The meminfo arm used to be unconditional: `(mem_total_bytes(), "/proc/meminfo
@@ -619,11 +662,21 @@ mod tests {
     /// the run that was SIGKILLed (recovered from its own `cap=1675` line — see
     /// `gunbc.whole_corpus_compile_admission`), paired with the fleet runner slot's declared
     /// `memory.high`, which is what the machine CI runs this instrument on reports. Both
-    /// arms stand on independently measured machines, so each fails for its own reason: the
-    /// refusal ceasing to fire means the doomed run became admissible, and the admission
-    /// ceasing to hold means CI's own runner is being refused.
+    /// arms stand on independently measured machines, so each fails for its own reason.
+    ///
+    /// THE SECOND ARM WAS INVERTED 2026-08-28 AND NOT EDITED TO STAY GREEN. It asserted that
+    /// the CI runner slot is ADMITTED. Adopting the highest measured COMPLETING peak as the
+    /// demand (review 57202 on gunbc#9545) put the threshold above the slot's reported
+    /// `memory.high`, so the slot is now refused — deliberately: the budget a host reports is
+    /// the budget it has agreed to give, and admitting on the grounds that the run will breach
+    /// it and survive on swap below `memory.max` is admitting a known breach. The alternative
+    /// was to lower the threshold until this assertion stayed true, which derives a safety
+    /// literal from a wanted outcome. Its `.dag` twin
+    /// (`test.claim.whole_corpus_compile_admission_witness_test`
+    /// `the_runner_ci_actually_uses_is_refused_at_the_completing_peak_demand`) is inverted in
+    /// lockstep, and `runner_slot_refusal_note` there carries the full argument.
     #[test]
-    fn whole_corpus_compile_refuses_the_budget_that_was_sigkilled_and_admits_the_ci_runner() {
+    fn whole_corpus_compile_refuses_the_budget_that_was_sigkilled_and_refuses_the_ci_runner() {
         let doomed =
             whole_corpus_compile_admission(Some(5_269_094_400), "/proc/meminfo MemAvailable");
         assert!(matches!(
@@ -641,9 +694,9 @@ mod tests {
         );
         assert!(matches!(
             ci_slot,
-            WholeCorpusCompileAdmission::Admitted { .. }
+            WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand { .. }
         ));
-        assert!(whole_corpus_compile_refusal_diagnostic(&ci_slot).is_none());
+        assert!(whole_corpus_compile_refusal_diagnostic(&ci_slot).is_some());
     }
 
     #[test]

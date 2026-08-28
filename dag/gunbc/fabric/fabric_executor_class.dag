@@ -1,0 +1,124 @@
+module gunbc.fabric_executor_class
+
+import std.types { Bool, List, NonEmptyStr, String }
+import product.fabric.work {
+  CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,
+  ExecutionRequirements, capacity_class_eq, capacity_class_wire,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+
+// WHAT AN EXECUTOR IS SANCTIONED FOR IS OUR FACT, NOT THE SUPPLIER'S.
+//
+// product.fabric.work.ExecutionRequirements carries what a piece of work
+// REQUIRES. This module carries the other half of the join: what a given
+// executor is permitted to serve. The two are deliberately in different
+// authorities, and the reason is the whole point of the class.
+//
+// gunbc.fabric_capacity_class_gap ruled out asking the SUPPLIER, because that
+// asks the party with the least knowledge and the most incentive to say yes to
+// make a safety assertion, and the claim is unfalsifiable from this side. So
+// the classification cannot live on SupplierOffer, and it cannot live on Shape
+// either -- Shape is one type carried by both ExecutionRequirements and
+// SupplierOffer, so a class there IS a supplier assertion, reached by accident
+// through a shared type rather than by choice.
+//
+// It lives here instead: a fleet-side roster we author, about executors we
+// either own or rent. We know srv3-06 is ours and runs our control plane. We
+// know what we bought a spark for. The supplier is never asked.
+//
+// THE PRECEDENT THIS FOLLOWS is already in the corpus one layer down.
+// product.supplier.ubicloud refuses to name an isolation profile from a
+// published price list, because that would be "inventing a vendor guarantee
+// from its price list". A capacity class read off a supplier's catalog would be
+// the same invention, and worse, because a broker reading an invented class
+// would ROUTE ACROSS A SAFETY BOUNDARY rather than merely mis-rank.
+
+// UNCLASSIFIED IS ITS OWN ANSWER AND IT REFUSES.
+//
+// The tempting shape is a default -- treat an unknown executor as customer
+// capacity, or as control-plane. Both are fabricated: "we have not classified
+// this executor" and "this executor is customer-executable" are different
+// states with different remedies, and collapsing them means the roster silently
+// grows a sanction nobody authored. An unclassified executor is refused BY NAME
+// so the remedy is to classify it, which is a thing a person does once.
+type ExecutorSanction
+  = ExecutorSanctioned { executor: NonEmptyStr, sanctioned: CapacityClass }
+  | ExecutorUnclassified { executor: NonEmptyStr }
+
+// OUR OWN FLEET CELLS ARE CONTROL-PLANE BY CONSTRUCTION, not by a roster row
+// someone must remember to add. A RunnerSlotIdentity IS a cell in our build
+// fleet -- the type cannot name anything else -- so the classification falls
+// out of the identity rather than out of a lookup that could be missing.
+fn fleet_cell_sanction(slot: RunnerSlotIdentity) -> ExecutorSanction {
+  ExecutorSanctioned {
+    executor: runner_slot_instance_name(slot: slot) as NonEmptyStr,
+    sanctioned: ControlPlaneCapacity,
+  }
+}
+
+fn executor_sanction_matches(sanction: ExecutorSanction, executor: NonEmptyStr) -> Bool {
+  match sanction {
+    ExecutorSanctioned { executor: e, sanctioned: _ } => (e as String) == (executor as String)
+    ExecutorUnclassified { executor: e } => (e as String) == (executor as String)
+  }
+}
+
+fn sanction_lookup(roster: List<ExecutorSanction>, executor: NonEmptyStr) -> ExecutorSanction {
+  fold(
+    roster,
+    init: ExecutorUnclassified { executor: executor },
+    f: (acc, row) =>
+      if executor_sanction_matches(sanction: row, executor: executor) { row } else { acc },
+  )
+}
+
+// ADMISSION IS DECIDED BEFORE FUNGIBILITY, AND THAT ORDERING IS THE POINT.
+//
+// Fungibility asks whether an executor's shape, trust domain and capabilities
+// can satisfy the work. Once two offers are fungible the distinction this class
+// carries has already been erased -- they are interchangeable by definition. So
+// a safety boundary that runs AFTER fungibility is a boundary that has already
+// been crossed. This runs first, on the roster, and what it removes never
+// reaches the ranking at all.
+type CapacityClassAdmission
+  = CapacityClassAdmitted { executor: NonEmptyStr, class: CapacityClass }
+  | CapacityClassRefused {
+      executor: NonEmptyStr,
+      required: CapacityClass,
+      sanctioned: CapacityClass,
+    }
+  | ExecutorNotClassified { executor: NonEmptyStr }
+
+fn admit_executor_capacity(
+  requirements: ExecutionRequirements,
+  roster: List<ExecutorSanction>,
+  executor: NonEmptyStr,
+) -> CapacityClassAdmission {
+  match sanction_lookup(roster: roster, executor: executor) {
+    ExecutorUnclassified { executor: e } => ExecutorNotClassified { executor: e }
+    ExecutorSanctioned { executor: e, sanctioned: s } =>
+      if capacity_class_eq(left: requirements.capacity_class, right: s) {
+        CapacityClassAdmitted { executor: e, class: s }
+      } else {
+        CapacityClassRefused {
+          executor: e,
+          required: requirements.capacity_class,
+          sanctioned: s,
+        }
+      }
+  }
+}
+
+fn capacity_admission_wire(admission: CapacityClassAdmission) -> NonEmptyStr {
+  match admission {
+    CapacityClassAdmitted { executor: e, class: c } =>
+      concat(concat(concat("admitted ", e as String), " as "), capacity_class_wire(c: c) as String) as NonEmptyStr
+    CapacityClassRefused { executor: e, required: r, sanctioned: s } =>
+      concat(
+        concat(concat(concat("refused ", e as String), ": work requires "), capacity_class_wire(c: r) as String),
+        concat(", executor is sanctioned for ", capacity_class_wire(c: s) as String),
+      ) as NonEmptyStr
+    ExecutorNotClassified { executor: e } =>
+      concat(concat("refused ", e as String), ": no fleet classification for this executor") as NonEmptyStr
+  }
+}

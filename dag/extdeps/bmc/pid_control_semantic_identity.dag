@@ -35,7 +35,13 @@ import extdeps.bmc.pid_control_program {
   TemperatureSensor,
   ThermalDemandController,
   ZoneDemandValue,
+  phosphor_pid_control_external_authority_anchor,
 }
+import extdeps.external_authority { ExternalAuthority }
+
+// THE ANCHOR IS A BINDING, NOT A SECOND URI -- the identity is of programs whose authority
+// extdeps.bmc.pid_control_program declares.
+data extdeps_external_authority_anchor: ExternalAuthority = phosphor_pid_control_external_authority_anchor
 
 // A PROGRAM'S SEMANTIC IDENTITY: WHAT THE MACHINE RUNS, NOT WHAT SOMEBODY TYPED. Two hosts running
 // the identical program must produce the identical identity even when their configuration files

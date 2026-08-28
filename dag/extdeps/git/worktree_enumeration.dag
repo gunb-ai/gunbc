@@ -2,6 +2,12 @@ module extdeps.git.worktree_enumeration
 
 import std.types { String, List, Bool, Int }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.git { git_worktree_external_authority_anchor }
+
+// THE ANCHOR IS A BINDING, NOT A SECOND URI, exactly as in extdeps.git.enumeration: the
+// git-worktree(1) authority is already declared beside the operation whose wire this decodes.
+data extdeps_external_authority_anchor: ExternalAuthority = git_worktree_external_authority_anchor
 
 // The typed reading of git.Core.WorktreeListIn's wire, kept in extdeps because the output GRAMMAR
 // is git's fact and not any consumer's, exactly as extdeps.git.enumeration owns the ref wire.
@@ -29,9 +35,17 @@ type GitWorktreeIdentity {
 // grain a reader needs to find the fault is the entry. The raw entry is carried joined on the
 // separator git used, so the refusal names bytes the caller can match against git's own output.
 type GitWorktreeSetObservation
-  = GitWorktreeSetObserved { worktrees: List<GitWorktreeIdentity> }
+  = GitWorktreeSetObserved { primary: GitWorktreeIdentity, linked: List<GitWorktreeIdentity> }
   | GitWorktreeSetReadRefused { exit_code: Int, stderr: String }
   | GitWorktreeSetUndecodable { entry_index: Int, raw_entry: String, reason: String }
+
+// The decoder needs an empty accumulator while scanning, but the PUBLIC observation must not make
+// an empty successful roster writable. Git defines the first porcelain entry as the main worktree;
+// this private intermediate is converted exactly once after the wire has been decoded in order.
+type GitWorktreeDecodeObservation
+  = GitWorktreeDecodeObserved { worktrees: List<GitWorktreeIdentity> }
+  | GitWorktreeDecodeReadRefused { exit_code: Int, stderr: String }
+  | GitWorktreeDecodeUndecodable { entry_index: Int, raw_entry: String, reason: String }
 
 // git terminates every attribute with NUL and every ENTRY with one further NUL, so a well-formed
 // stream ends with exactly one empty record beyond the final entry terminator. Exactly that one is
@@ -266,10 +280,10 @@ fn git_worktree_entry_text(attributes_list: List<String>) -> String {
   join(attributes_list, "\0")
 }
 
-fn git_worktree_decode_entry(entry_index: Int, attributes_list: List<String>) -> GitWorktreeSetObservation {
+fn git_worktree_decode_entry(entry_index: Int, attributes_list: List<String>) -> GitWorktreeDecodeObservation {
   match attributes_list.first() {
     Absent =>
-      GitWorktreeSetUndecodable {
+      GitWorktreeDecodeUndecodable {
         entry_index: entry_index,
         raw_entry: "",
         reason: "empty entry: the record separator is doubled or the stream is truncated",
@@ -292,14 +306,14 @@ fn git_worktree_decode_entry(entry_index: Int, attributes_list: List<String>) ->
         )
         match attributes.fault {
           Present { value: reason } =>
-            GitWorktreeSetUndecodable {
+            GitWorktreeDecodeUndecodable {
               entry_index: entry_index,
               raw_entry: git_worktree_entry_text(attributes_list: attributes_list),
               reason: reason,
             }
           Absent =>
             if path == "" {
-              GitWorktreeSetUndecodable {
+              GitWorktreeDecodeUndecodable {
                 entry_index: entry_index,
                 raw_entry: git_worktree_entry_text(attributes_list: attributes_list),
                 reason: "empty worktree path",
@@ -307,13 +321,13 @@ fn git_worktree_decode_entry(entry_index: Int, attributes_list: List<String>) ->
             } else {
               match git_worktree_checkout_of(attributes: attributes) {
                 Absent =>
-                  GitWorktreeSetUndecodable {
+                  GitWorktreeDecodeUndecodable {
                     entry_index: entry_index,
                     raw_entry: git_worktree_entry_text(attributes_list: attributes_list),
                     reason: "entry does not describe exactly one of: bare, on a branch, or detached at a HEAD",
                   }
                 Present { value: checkout } =>
-                  GitWorktreeSetObserved {
+                  GitWorktreeDecodeObserved {
                     worktrees: [
                       GitWorktreeIdentity {
                         path: path,
@@ -327,7 +341,7 @@ fn git_worktree_decode_entry(entry_index: Int, attributes_list: List<String>) ->
             }
         }
       } else {
-        GitWorktreeSetUndecodable {
+        GitWorktreeDecodeUndecodable {
           entry_index: entry_index,
           raw_entry: git_worktree_entry_text(attributes_list: attributes_list),
           reason: concat("entry does not begin with a worktree path: ", head_attribute),
@@ -337,7 +351,7 @@ fn git_worktree_decode_entry(entry_index: Int, attributes_list: List<String>) ->
 }
 
 type GitWorktreeDecodeState {
-  observation: GitWorktreeSetObservation
+  observation: GitWorktreeDecodeObservation
   entry_index: Int
 }
 
@@ -350,25 +364,25 @@ fn git_worktree_decode_step(
   attributes_list: List<String>,
 ) -> GitWorktreeDecodeState {
   match state.observation {
-    GitWorktreeSetReadRefused { exit_code: _, stderr: _ } => state
-    GitWorktreeSetUndecodable { entry_index: _, raw_entry: _, reason: _ } => state
-    GitWorktreeSetObserved { worktrees: accumulated } =>
+    GitWorktreeDecodeReadRefused { exit_code: _, stderr: _ } => state
+    GitWorktreeDecodeUndecodable { entry_index: _, raw_entry: _, reason: _ } => state
+    GitWorktreeDecodeObserved { worktrees: accumulated } =>
       match git_worktree_decode_entry(
         entry_index: state.entry_index,
         attributes_list: attributes_list,
       ) {
-        GitWorktreeSetObserved { worktrees: decoded } =>
+        GitWorktreeDecodeObserved { worktrees: decoded } =>
           match decoded.first() {
             Present { value: identity } =>
               GitWorktreeDecodeState {
-                observation: GitWorktreeSetObserved {
+                observation: GitWorktreeDecodeObserved {
                   worktrees: Cons { head: identity, tail: accumulated },
                 },
                 entry_index: state.entry_index + 1,
               }
             Absent =>
               GitWorktreeDecodeState {
-                observation: GitWorktreeSetUndecodable {
+                observation: GitWorktreeDecodeUndecodable {
                   entry_index: state.entry_index,
                   raw_entry: git_worktree_entry_text(attributes_list: attributes_list),
                   reason: "entry decoded to no worktree",
@@ -376,14 +390,14 @@ fn git_worktree_decode_step(
                 entry_index: state.entry_index + 1,
               }
           }
-        GitWorktreeSetUndecodable { entry_index: e, raw_entry: r, reason: reason } =>
+        GitWorktreeDecodeUndecodable { entry_index: e, raw_entry: r, reason: reason } =>
           GitWorktreeDecodeState {
-            observation: GitWorktreeSetUndecodable { entry_index: e, raw_entry: r, reason: reason },
+            observation: GitWorktreeDecodeUndecodable { entry_index: e, raw_entry: r, reason: reason },
             entry_index: state.entry_index + 1,
           }
-        GitWorktreeSetReadRefused { exit_code: exit_code, stderr: stderr } =>
+        GitWorktreeDecodeReadRefused { exit_code: exit_code, stderr: stderr } =>
           GitWorktreeDecodeState {
-            observation: GitWorktreeSetReadRefused { exit_code: exit_code, stderr: stderr },
+            observation: GitWorktreeDecodeReadRefused { exit_code: exit_code, stderr: stderr },
             entry_index: state.entry_index + 1,
           }
       }
@@ -391,14 +405,26 @@ fn git_worktree_decode_step(
 }
 
 fn git_worktree_set_observation_in_order(
-  observation: GitWorktreeSetObservation,
+  observation: GitWorktreeDecodeObservation,
 ) -> GitWorktreeSetObservation {
   match observation {
-    GitWorktreeSetObserved { worktrees: worktrees } =>
-      GitWorktreeSetObserved { worktrees: reverse(worktrees) }
-    GitWorktreeSetReadRefused { exit_code: exit_code, stderr: stderr } =>
+    GitWorktreeDecodeObserved { worktrees: worktrees } => {
+      let ordered = reverse(worktrees)
+      match ordered.first() {
+        Absent => GitWorktreeSetUndecodable {
+          entry_index: 0,
+          raw_entry: "",
+          reason: "git exited zero and listed no worktree; every repository has a main worktree",
+        }
+        Present { value: primary } => GitWorktreeSetObserved {
+          primary: primary,
+          linked: ordered.skip(n: 1),
+        }
+      }
+    }
+    GitWorktreeDecodeReadRefused { exit_code: exit_code, stderr: stderr } =>
       GitWorktreeSetReadRefused { exit_code: exit_code, stderr: stderr }
-    GitWorktreeSetUndecodable { entry_index: entry_index, raw_entry: raw_entry, reason: reason } =>
+    GitWorktreeDecodeUndecodable { entry_index: entry_index, raw_entry: raw_entry, reason: reason } =>
       GitWorktreeSetUndecodable { entry_index: entry_index, raw_entry: raw_entry, reason: reason }
   }
 }
@@ -411,7 +437,7 @@ fn git_worktree_set_observation_in_order(
 // what makes the FIRST malformed entry the one reported rather than the last. A fold over reversed
 // entries would still produce a correct worktree list and silently invert both.
 type GitWorktreeScanState {
-  observation: GitWorktreeSetObservation
+  observation: GitWorktreeDecodeObservation
   current_reversed: List<String>
   entry_index: Int
 }
@@ -457,34 +483,6 @@ fn git_worktree_scan_step(state: GitWorktreeScanState, record: String) -> GitWor
 // bottom-as-answer read as bottom-as-ignorance, arriving through the decoder rather than through the
 // consumer.
 //
-// NEXT RUNG, DECLARED RATHER THAN CLAIMED. This is a REFUSAL (mechanically preventable): the invalid
-// state is still representable and a check rejects it. The structural form is to split the observed
-// arm into `primary: GitWorktreeIdentity` beside `linked: List<GitWorktreeIdentity>`, which makes a
-// zero-worktree success unwritable rather than rejected, and additionally lets a consumer derive the
-// primary from git's own roster instead of accepting a caller-supplied path. That change alters the
-// type this module's consumers destructure, so it lands with the rebase that puts the convergence
-// consumer on top of this module rather than in a diff that would break it across two open branches.
-fn git_worktree_reject_empty_success(
-  observation: GitWorktreeSetObservation,
-) -> GitWorktreeSetObservation {
-  match observation {
-    GitWorktreeSetReadRefused { exit_code: c, stderr: e } =>
-      GitWorktreeSetReadRefused { exit_code: c, stderr: e }
-    GitWorktreeSetUndecodable { entry_index: i, raw_entry: r, reason: n } =>
-      GitWorktreeSetUndecodable { entry_index: i, raw_entry: r, reason: n }
-    GitWorktreeSetObserved { worktrees: ws } =>
-      if count(ws) == 0 {
-        GitWorktreeSetUndecodable {
-          entry_index: 0,
-          raw_entry: "",
-          reason: "git exited zero and listed no worktree; every repository has a main worktree, so an empty successful enumeration is a truncated or redirected stream rather than an empty set",
-        }
-      } else {
-        GitWorktreeSetObserved { worktrees: ws }
-      }
-  }
-}
-
 fn git_worktree_set_observation_of(
   raw: String,
   exit_code: Int,
@@ -496,7 +494,7 @@ fn git_worktree_set_observation_of(
     let scanned = fold(
       git_worktree_records(raw: raw),
       init: GitWorktreeScanState {
-        observation: GitWorktreeSetObserved { worktrees: [] },
+        observation: GitWorktreeDecodeObserved { worktrees: [] },
         current_reversed: [],
         entry_index: 0,
       },
@@ -509,9 +507,7 @@ fn git_worktree_set_observation_of(
         reason: "final entry is not terminated: the stream ends mid-entry",
       }
     } else {
-      git_worktree_set_observation_in_order(
-        observation: git_worktree_reject_empty_success(observation: scanned.observation),
-      )
+      git_worktree_set_observation_in_order(observation: scanned.observation)
     }
   }
 }

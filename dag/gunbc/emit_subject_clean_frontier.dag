@@ -320,9 +320,14 @@ import tools.emission_entry_instrument {
 // exactly one, and its shape is the load-bearing part: a PARSED DECLARATION INDEX under declared
 // source roots. It is deliberately NOT an import walk, not a resolution result, not a product
 // closure, and not a set of successfully-emitted outputs -- deriving the universe from the edges
-// whose defects it exists to expose is how an orphan stays invisible. The live specimen is
-// `gunbc.auth.credentials`, which zero import edges in the tree reach and which a declaration-index
-// universe covers because its file sits under `dag`.
+// whose defects it exists to expose is how an orphan stays invisible. The specimen that produced
+// this reasoning was `gunbc.auth.credentials`, which zero import edges in the tree reached and
+// which a declaration-index universe covers because its file sits under `dag`. That specimen was
+// REPAIRED on 2026-08-27 -- the carrier that cited it as its credential authority now imports it,
+// so it is reached by an edge and is no longer an orphan. The specimen is kept in the past tense
+// rather than swapped for a fresh one because the argument does not depend on a current
+// inhabitant: an import-derived universe cannot see the module it is about to be given, and
+// repairing one orphan does not make the next one visible.
 //
 // THE HONEST SCOPE IS `dag` AND `src/v2`, NEVER "the corpus". src/v1 is excluded because
 // gunbc.ci_layer_roots rules the floor's source roots out of widening to include it on name
@@ -773,15 +778,29 @@ fn emit_subject_outcome(m: EmissionMeasurement) -> EmitSubjectOutcome {
   }
 }
 
+// THE ENTRY A SUBJECT NAMES, ASKED OF THE SCOPE'S OWN AUTHORITY RATHER THAN RE-DERIVED HERE. The
+// subject carried a `String entry` until 2026-08-28 and now carries an EmissionScope, because an
+// entry string could not say WHICH SOURCE ROOT WAS PRIMARY -- three runs were reported as
+// whole-corpus while measuring 3109 of 4170 sources.
+//
+// tools.emission_entry_instrument emission_scope_join_key owns the answer, and it owns it because
+// the INSTRUMENT stamps the same key onto its own subject-unestablished arms. A local match here
+// would be a second derivation of one key, free to disagree with the producer that writes it --
+// and review 57181 caught exactly that disagreement in the other direction before this call
+// replaced it.
+fn emission_subject_entry_text(s: EmissionMeasurementSubject) -> String {
+  emission_scope_join_key(sc: s.scope)
+}
+
 // THE ENTRY A MEASUREMENT IS ABOUT, total over the coproduct so a measurement joins to the roster
 // on the identity it already holds. Carrying the pairing in a parallel list beside the measurements
 // would be a second representation of that identity.
 fn emission_measurement_entry(m: EmissionMeasurement) -> String {
   match m {
     EmissionSubjectUnestablished { entry: e, stage: _, cause: _ } => e
-    EmissionUnreached { subject: s, stage: _, cause: _ } => s.entry
-    EmissionEmitRefused { subject: s, exit_code: _, emit_diagnostics: _, emitted_files: _ } => s.entry
-    EmissionCargoUnreached { subject: s, stage: _, cause: _, emit_diagnostics: _, emitted_files: _ } => s.entry
+    EmissionUnreached { subject: s, stage: _, cause: _ } => emission_subject_entry_text(s: s)
+    EmissionEmitRefused { subject: s, exit_code: _, emit_diagnostics: _, emitted_files: _ } => emission_subject_entry_text(s: s)
+    EmissionCargoUnreached { subject: s, stage: _, cause: _, emit_diagnostics: _, emitted_files: _ } => emission_subject_entry_text(s: s)
     EmissionMeasured {
       subject: s,
       emitted_files: _,
@@ -789,7 +808,7 @@ fn emission_measurement_entry(m: EmissionMeasurement) -> String {
       cargo_clean: _,
       cargo_diagnostics: _,
       cargo_lines_scanned: _
-    } => s.entry
+    } => emission_subject_entry_text(s: s)
   }
 }
 

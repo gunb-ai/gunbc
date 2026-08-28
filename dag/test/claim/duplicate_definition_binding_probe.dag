@@ -21,17 +21,22 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // binding to two definitions with no refusal is silent wrongness, which is outside the ladder,
 // not a weak rung on it.
 //
-// THIS ROW DOES NOT EXECUTE IN THE REQUIRED FLOOR TODAY, AND THAT IS DECLARED HERE RATHER THAN
-// LEFT TO BE DISCOVERED. `compile_dag_diagnostic_census` resolves the synthetic source against
+// THIS ROW DID NOT EXECUTE BEFORE THE ROOT CUT, AND THAT HISTORY IS DECLARED HERE RATHER THAN
+// LEFT TO BE RECONSTRUCTED. `compile_dag_diagnostic_census` resolves the synthetic source against
 // `build_module_path_index_from_witness_roots`, which walks the live tree, so the read is real and
-// the declaration below is `ReadsLiveTree`. `v1_compiler.cli_run` `run_required_floor` routes every
-// such site to `DeclinedLiveTree` -- discovered, counted, never run -- so this row is not enrolled
-// in `v2.workflow.floor_expected_red`: enrolling asserts that a row REACHES ITS SUBJECT AND
-// ANSWERS, and a declined row answers nothing. An enrolment here would have been a false assertion
-// wearing the shape of coverage, which is the exact failure this row exists to name.
-// EXECUTION TRIGGER: the deletion of the `DeclinedLiveTree` arm, which
-// `v2.workflow.required_floor` already carries as retained and staged for deletion at the root.
-// When that lands this row executes, reds, and belongs on the expected-red roster the same day.
+// the declaration below is `ReadsLiveTree`. Before the root cut, `run_required_floor` routed every
+// such site to `DeclinedLiveTree` -- discovered, counted, never run -- so enrolment would have
+// asserted a verdict that did not exist. The root deletion has now fired that execution trigger:
+// this row executes. It was enrolled in `v2.workflow.floor_expected_red` on that same change,
+// and that enrolment has since been REMOVED because the row now PASSES: the floor reported it as
+// a stale quarantine (enrolled as expected-red and PASSED, on the plain arm rather than the
+// PassedOverBudget one), with its single-definition positive control clean in the same run, so the
+// assertion discriminates rather than having gone green by the probe source breaking some other
+// way. What is NOT claimed here is the mechanism: the row asserts a blocking-diagnostic count and
+// the count is now met; which predicate produces that diagnostic has not been read, and naming one
+// from the row's passing alone would be a situation mistaken for a cause. Per DESIGN 4b(4) the
+// probe does not retire with its roster row -- it stays enrolled as a permanent regression control.
+// The honest ReadsLiveTree declaration remains the affected-set selection fact.
 // An earlier revision of this module WAS enrolled, justified by a sibling census probe that
 // declares no disposition and was inferred to route and pass. That inference was wrong twice over:
 // undeclared is `ReadsLiveTree` by the fail-closed default (`cli_run`
