@@ -202,3 +202,28 @@ data applied_type_variable_argument_source: String = "module probe_inhabit_appli
 test fn w_a_type_variable_type_argument_is_not_read_as_a_disagreement() -> Bool {
   violation_count(source: applied_type_variable_argument_source, wanted: "DeclaredTypeNotInhabited") == 0
 }
+
+// THE PHANTOM ARM, AND IT IS NOT THE Wrapper ARM TWICE -- THE TWO FAIL ON DIFFERENT BUGS, which
+// is the test for whether a second control earns its place. In the Wrapper probe above the two
+// candidate arguments are KindA and KindB, DISTINCT RECORDS with distinct fields, so any
+// comparison that reaches representation at all sees a difference. Here the two candidates are
+// representationally IDENTICAL -- DemandKey and WorkKey have the same single String field -- and
+// the parameter they occupy is PHANTOM: K appears in the parameter list and in no field. The two
+// instantiations therefore differ ONLY nominally, at every level below the type.
+//
+// THE BUG THIS CATCHES AND THE OTHER DOES NOT: "a type argument that does not affect layout
+// cannot affect inhabitance" is a reasonable-sounding optimization that would leave the Wrapper
+// arm green while silently reopening this class whole. Enrolled at the request of the lane that
+// found the original defect (zesty-crane-477), whose objection to omitting it was correct.
+//
+// WHY THIS SHAPE IS THE PRODUCTION ONE. product.fabric's demand/work/attempt/grant/offer/receipt
+// identities are non-interchangeable ONLY because of a phantom K in FabricIdentity<P,K>, and
+// there is NO runtime fallback: the carrier stores principal and key, fabric_identity_eq compares
+// exactly those two, so a wrong-kind identity admitted at a parameter is not merely uncaught
+// downstream -- the equality CONFIRMS it on equal principal and key. This arm is the only thing
+// standing between that and a silent false match.
+data phantom_distinct_type_argument_source: String = "module probe_inhabit_phantom\nimport std.types { String }\ntype DemandKey { v: String }\ntype WorkKey { v: String }\ntype FabricIdentity<P, K> { principal: P, key: String }\nfn mk_work() -> FabricIdentity<String, WorkKey> { FabricIdentity { principal: \"p\", key: \"k\" } }\nfn takes_demand(x: FabricIdentity<String, DemandKey>) -> String { x.key }\nfn probe() -> String { takes_demand(x: mk_work()) }\n"
+
+test fn w_a_phantom_type_argument_with_identical_representation_is_still_separated() -> Bool {
+  violation_count(source: phantom_distinct_type_argument_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
