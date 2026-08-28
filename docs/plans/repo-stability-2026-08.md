@@ -177,45 +177,47 @@ stops contaminating sessions with dead premises.
   authority-only plan carriers themselves (imports/rosters/doc_graph edits), and
   the docs/plans doc-to-doc islands.
 
-## Finding — per-invocation whole-tree tax (2026-08-28, handoff to operator)
+## Finding — per-invocation whole-tree pool tax (2026-08-28, CORRECTED same day)
 
-Every `gunbc run` executed with cwd INSIDE a git checkout pays ~60–99s before
-the entry's own compile begins; the identical invocation outside a checkout, or
-against a replica tree, costs <0.5s. Measured matrix (same binary, entry
-`dag/std/abi.dag`, warm):
+AN EARLIER REVISION OF THIS SECTION CLAIMED A CWD-GATED SWITCH (identical trees
+<0.5s outside a checkout) AND IS REPLACED WHOLE: those fast controls were
+PANICS — `repo_relative_path_normalized` aborts on roots outside the process
+workspace root, and the discarded stderr was misread as fast success. The
+fabricated-fast twin of execution-provenance loss. `git rev-parse` is workspace
+discovery only, not a heavy-work toggle.
 
-- full roots `dag + src/v2` (4187 modules): 81–99s
-- `--source-root dag` only (2962): 63s
-- byte-identical replica of `dag/` in a non-repo dir (2962): 0.13s
-- cwd outside the repo, absolute source-root INTO the repo: 0.08s
-- every partial-tree combination tried (up to 4103 modules): <0.5s
+ESTABLISHED by succeeding runs (entry compiled, NoSuchFunction reached) over
+subset roots inside the workspace, entry `std/abi.dag` (imports nothing):
+140 modules 3.5s · 1637 39s · 2962 (dag) 63s · 4308 (dag+src/v2) 81–99s.
+LINEAR at ~20–25ms per POOL module, paid per process invocation, independent of
+the entry (widest closure 110s vs smallest 81s on the same roots).
 
-Cost is entry-INDEPENDENT: the widest closure (`src/v2/compiler/00_compile`)
-costs 110s vs the smallest entry's 81s against the same roots.
+MECHANISM (gdb stacks + code read; all hand-Rust in src/v1/stage0/src/cli_run.rs):
+`resolve_entry_graph` routes every run through the process shared index
+(`try_process_shared_index_for_pool`); building it (`new_multi_entry_index_shell`)
+EAGERLY constructs `build_module_graph_facts_live` — a tolerant parse of EVERY
+pool module (`reference_resolution_facts`, `module_declaration_facts`, import +
+strict-reference adjacency at two tiers) — plus `build_module_path_index`,
+another whole-pool parse. Hot leaves: `v1_std_core::build_newline_index`
+(im::Vector push_back per element — plain-Vec shape) and `v1_std_core::intern`
+String clones in `pre_intern_tokens`.
 
-MECHANISM (established by a git-shim count and gdb stack samples, not by code
-read alone): exactly one git subprocess runs — `rev-parse --show-toplevel` in
-`cli_run.rs resolve_process_workspace_root` — and its SUCCESS is a switch.
-Inside a checkout, `resolve_entry_graph` routes through
-`try_process_shared_index_for_pool → new_multi_entry_index_shell →
-build_module_graph_facts_live_uncached`, which runs
-`reference_resolution_facts` with a tolerant parse over EVERY module, plus
-`build_module_path_index_uncached` (a second whole-tree parse). The CI floor's
-own `[floor-phase] whole-tree-graph-facts wall_ms=44579` is the same pass at
-the runner. Outside a checkout that pool path is skipped and the run is
-correct anyway (the probe entry still compiled and reached evaluation).
+WHY THE FACTS EXIST (per the in-code comment block): loader-tier adjacency and
+selection-tier adjacency (affected-set selection). A single-entry run needs at
+most one entry's loader closure; it pays both tiers over the whole pool. The
+facts ARE memoized (thread-local MODULE_GRAPH_FACTS_CACHE / PROCESS_RESOLVE_INDEX),
+so one process pays once — but every PROCESS pays cold, and CI phases,
+emit-compile entries, and belt ticks are one process per invocation.
 
-HOT LEAVES (from the samples): `v1_std_core::build_newline_index` builds each
-file's line index by `im::Vector::push_back` from_iter (Arc::make_mut churn
-per element — plain Vec shape); `v1_std_core::intern` clones Strings inside
-`pre_intern_tokens`.
+RELATION TO .dag: acknowledged hand-Rust area — 🟡 dissolve-on markers cite the
+cli-run hollowing plan (`dag/gunbc/plans/cli_run_hollowing_plan.dag`,
+`gunbc.cli_run_hand_rust_area_ledger`); `import_closure_live_paths` labels
+itself "Host realization of v2.lens.module_graph.import_closure_live"; path
+admission modeled by `gunbc.cli_run_repo_grant`. The MODEL is .dag; the
+execution that costs the time is hand-Rust.
 
-NOT ESTABLISHED here: why the pool needs whole-tree facts for a single-entry
-run; whether the floor's 22-min `compile.reconcile`
-(`typecheck_with_census_extra`) shares any of this or is a separate subject;
-whether the cwd-outside behavior differs semantically for entries that need
-workspace-relative facts (the probe did not).
-
-REPRO: shim `git` onto PATH logging argv (1 call observed); `gdb -p <pid>
--batch -ex "thread apply all bt"` during the slow window; replica trees under
-a non-repo directory for the A/B.
+NOT ESTABLISHED: the floor's 22-min `compile.reconcile`
+(`typecheck_with_census_extra`, ~300ms/module) is a separate larger cost, not
+attributed here. REPRO: in-workspace subset roots (untracked dirs), success
+judged by the NoSuchFunction cause line, never by wall time with output
+discarded; gdb -p <pid> -batch -ex "thread apply all bt" during the slow window.
