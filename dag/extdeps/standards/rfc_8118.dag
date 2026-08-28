@@ -23,7 +23,7 @@ import extdeps.uri {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
 
-data rfc_8118_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc8118#section-3"
@@ -66,7 +66,7 @@ data rfc_8118_model_scope: ExternalModelScope = ExternalModelScope {
       field: WholeDeclaration,
     }
   },
-  first_citation: rfc_8118_external_authority_anchor,
+  first_citation: extdeps_external_authority_anchor,
   further_citations: [iso_32000_2_authority],
 }
 
@@ -437,7 +437,7 @@ fn pdf_open_fragment_selector(sequence: PdfOpenParameterSequence) -> PdfOpenFrag
       }
     PdfOpenParameterSequenceWired { wire: fragment } =>
       match fragment_selector(
-        conforms_to: rfc_8118_external_authority_anchor,
+        conforms_to: extdeps_external_authority_anchor,
         value: fragment as NonEmptyStr,
       ) {
         CitationSelectorConstructed(selector) => PdfOpenFragmentSelectorConstructed(selector)

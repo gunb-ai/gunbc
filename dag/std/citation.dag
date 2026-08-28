@@ -458,7 +458,7 @@ data citation_cit1_pdf_profile_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "extdeps.standards.rfc_8118",
-    decl_name: "rfc_8118_external_authority_anchor",
+    decl_name: "extdeps_external_authority_anchor",
     field: WholeDeclaration,
   },
 }

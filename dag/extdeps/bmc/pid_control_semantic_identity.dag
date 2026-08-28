@@ -36,6 +36,15 @@ import extdeps.bmc.pid_control_program {
   ThermalDemandController,
   ZoneDemandValue,
 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "github.com/openbmc/phosphor-pid-control/blob/master/README.md",
+  },
+}
 
 // A PROGRAM'S SEMANTIC IDENTITY: WHAT THE MACHINE RUNS, NOT WHAT SOMEBODY TYPED. Two hosts running
 // the identical program must produce the identical identity even when their configuration files

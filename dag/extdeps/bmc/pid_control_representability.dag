@@ -22,6 +22,15 @@ import extdeps.bmc.pid_control_decode {
   ProgramRefusal,
   decode_program,
 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "github.com/openbmc/phosphor-pid-control/blob/master/README.md",
+  },
+}
 
 // THE GATE THAT STOPS A PARTIAL OBSERVATION FROM BEING CITED AS A COMPLETE PROGRAM. A decode can
 // succeed while leaving members it does not model, and such a program is a perfectly good

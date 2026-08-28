@@ -2,6 +2,15 @@ module extdeps.git.worktree_enumeration
 
 import std.types { String, List, Bool, Int }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "git-scm.com/docs/git-worktree",
+  },
+}
 
 // The typed reading of git.Core.WorktreeListIn's wire, kept in extdeps because the output GRAMMAR
 // is git's fact and not any consumer's, exactly as extdeps.git.enumeration owns the ref wire.

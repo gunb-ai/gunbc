@@ -1,7 +1,7 @@
 module test.claim.citation_cit1_witness
 
 import extdeps.standards.rfc_8118 {
-  rfc_8118_external_authority_anchor,
+  extdeps_external_authority_anchor,
   rfc_8118_section_3_locator,
   iso_32000_2_authority,
   rfc_8118_normative_relationship_note,
@@ -127,7 +127,7 @@ test fn project_navigable_uri_safe_refuses_when_base_carries_fragment() -> Bool 
   match pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]) {
     SafeSequenceConstructed(_) =>
       match project_navigable_uri_safe(
-        base: rfc_8118_external_authority_anchor.uri,
+        base: extdeps_external_authority_anchor.uri,
         construction: pdf_safe_parameter_sequence(constructions: [pdf_open_page(page: 1)]),
       ) {
         NavigableUriSafeRefused { cause: BaseLocatorAlreadyCarriesFragmentFromRfc { locator: l } } =>
@@ -222,7 +222,7 @@ test fn pdf_open_fragment_selector_conforms_to_rfc_8118() -> Bool {
     SequenceConstructed(sequence) =>
       match pdf_open_fragment_selector(sequence: sequence) {
         PdfOpenFragmentSelectorConstructed(FragmentSelectorVariant(s)) =>
-          s.conforms_to.uri.locator == rfc_8118_external_authority_anchor.uri.locator
+          s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
             && s.value == ("page=1" as NonEmptyStr)
         _ => false
       }
