@@ -81,7 +81,7 @@ fn grammar_coverage_distinct_rel_paths(facts: List<v2.std.decl_index.DeclFact>) 
 
 fn grammar_coverage_corpus_roster_live() -> List<String> {
   grammar_coverage_distinct_rel_paths(
-    facts: decl_facts(pool_roots: v2.lens.enforcement.standing_intent.whole_corpus_scope.roots)
+    facts: v2.std.decl_index.decl_facts(pool_roots: v2.lens.enforcement.standing_intent.whole_corpus_scope.roots)
   )
 }
 

@@ -320,9 +320,14 @@ import tools.emission_entry_instrument {
 // exactly one, and its shape is the load-bearing part: a PARSED DECLARATION INDEX under declared
 // source roots. It is deliberately NOT an import walk, not a resolution result, not a product
 // closure, and not a set of successfully-emitted outputs -- deriving the universe from the edges
-// whose defects it exists to expose is how an orphan stays invisible. The live specimen is
-// `gunbc.auth.credentials`, which zero import edges in the tree reach and which a declaration-index
-// universe covers because its file sits under `dag`.
+// whose defects it exists to expose is how an orphan stays invisible. The specimen that produced
+// this reasoning was `gunbc.auth.credentials`, which zero import edges in the tree reached and
+// which a declaration-index universe covers because its file sits under `dag`. That specimen was
+// REPAIRED on 2026-08-27 -- the carrier that cited it as its credential authority now imports it,
+// so it is reached by an edge and is no longer an orphan. The specimen is kept in the past tense
+// rather than swapped for a fresh one because the argument does not depend on a current
+// inhabitant: an import-derived universe cannot see the module it is about to be given, and
+// repairing one orphan does not make the next one visible.
 //
 // THE HONEST SCOPE IS `dag` AND `src/v2`, NEVER "the corpus". src/v1 is excluded because
 // gunbc.ci_layer_roots rules the floor's source roots out of widening to include it on name

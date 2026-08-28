@@ -46,7 +46,7 @@ type FamilyVerificationLedgerRow {
   dissolution: DissolutionCondition
 }
 
-data spine_compile_clean_recipe: String = "claim_executor batch-1 dag_compile_clean_gate (--target dag whole-tree; same authority as gunbc_ci_floor_plan)"
+data spine_compile_clean_recipe: String = "claim_executor batch-1 dag_compile_clean_gate (--target dag whole-tree). THE AUTHORITY THIS RECIPE NAMED IS DELETED: it read 'same authority as gunbc_ci_floor_plan', which the 2026-08-15 floor cut removed, and the recipe is retained as the historical spine rather than as a runnable command -- DESIGN records that compile-clean has no reachable entry point at all today, so no repointing would make this executable."
 
 data spine_regen_recipe: String = "claim_executor --required-regen then --required-regen-fixed-point (RequiredRegenGate transport; first_generation_equal and fixed_point_equal are distinct invocations)"
 
