@@ -270,8 +270,30 @@ pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<Strin
 /// hosts it would then be killed on. Its own
 /// re-measure trigger fired on 2026-08-28: whole-corpus `--target dag` peaked at 13008052 kB
 /// and `--target rust` at 13005964 kB, both EXIT=1 (completed and refused, not killed) on an
-/// unthrottled host, with the binary built from the tree being compiled. 12.41 GiB rounded UP
-/// to whole-gibibyte grain, because for a demand figure rounding up refuses the marginal case.
+/// unthrottled host, with the binary built from the tree being compiled.
+///
+/// THIS VALUE IS NOT DERIVED FROM THOSE PEAKS, and the distinction is the whole reason the
+/// figure is 16 GiB rather than 13. All three of those runs REFUSED on diagnostics, so each
+/// peak bounds a run that stopped early; the highest COMPLETING whole-corpus peak measured on
+/// this route is 15871708 kB = 15.14 GiB (`--target dag`, exit 0, attributed to warm-ant-908
+/// and adopted rather than reproduced here). 15.14 GiB rounded UP to whole-gibibyte grain is
+/// 16 GiB = 17179869184 — landing on `memory_max` by arithmetic, not by design.
+///
+/// Declaring 13 GiB (the refusing peaks rounded up) was this row's state until review 57202 on
+/// gunbc#9545, which observed that it left every budget from 13 to 15.14 GiB admitted with no
+/// evidence it can complete — the same fail-open class this constant exists to close, one band
+/// narrower. Rounding UP is what makes the grain rule fail-closed: for a DEMAND figure it
+/// refuses the marginal case where rounding down would admit it. A threshold must not sit below
+/// the highest peak anyone has measured on this route, whoever measured it.
+///
+/// The `.dag` authority `gunbc.whole_corpus_compile_admission`
+/// `whole_corpus_compile_measured_demand_note` carries the full adoption argument, what
+/// adoption does and does not assert, and why the CI runner slot is now REFUSED as a
+/// deliberate over-refusal. Keep this paragraph and that note in step: this comment is prose
+/// the seed-mirror lens does not check (it verifies the numeric value only — see
+/// `seed_mirror_reach_note`'s residual), so a stale justification here is exactly the
+/// unaudited-prose drift that residual names, and it recurred in the very diff that repaired
+/// another instance of it.
 pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = 17179869184;
 
 /// Arm-time admission for a WHOLE-CORPUS compile — the seed mirror of
