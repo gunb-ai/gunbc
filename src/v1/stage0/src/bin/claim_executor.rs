@@ -1560,9 +1560,9 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     );
     // THE SUBJECT THE ROSTER WAS PROJECTED FROM, STATED BEFORE THE ROSTER.
     // `planned` is the population that SURVIVED site projection; printing it
-    // without `offered` and `declined_long` made the receipt unable to say what it
+    // without `offered` and the declines made the receipt unable to say what it
     // dropped, which is how a roster that narrowed read exactly like one that did
-    // not. The three are printed together so the subtraction is visible rather
+    // not. The categories are printed together so the subtraction is visible rather
     // than inferable.
     // AND THE SENTENCE IS NOW BOUNDED ABOVE, WHICH IT WAS NOT.
     // "every discovered site is exactly one of these" is a totality claim over SITES, and it was
@@ -1572,13 +1572,13 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // entry stops the line in `run_required_floor` before this point — so the guarantee is stated
     // rather than left for a reader to discover it was never claimed.
     eprintln!(
-        "required-floor: offered={} routed={} declined_long={} \
-         declined_live={} — every discovered site is exactly one of these, and no `*_test.dag` \
+        "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
+         — every discovered site is exactly one of these, and no `*_test.dag` \
          entry offered zero sites (BarrenTestSidecar refuses upstream of this line)",
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
-        outcome.declined_live_tree
+        outcome.declined_fixture_member
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
     // The old field printed `outcome.route_gap.len()` under the bare name `route_gap` — the
