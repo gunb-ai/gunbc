@@ -310,8 +310,15 @@ fn decimal_measures_agree<Q, S>(a: Measure<Q, S, ExactDecimal>, b: Measure<Q, S,
   exact_decimal_equal(a: a.count, b: b.count)
 }
 
+// THE OUTPUT COMPARISON CANNOT GO THROUGH decimal_measures_agree, and this annotation records why
+// rather than the reader re-deriving it from two similar-looking lines. `reading` is a
+// Measure<Temperature, One, ExactDecimal> and `output` is a ZoneDemandValue -- a plain record with
+// one ExactDecimal field, deliberately NOT a Measure, because a controller's demand output is not a
+// quantity in std.measure's sense. Passing it at a Measure parameter was admitted silently until the
+// direct-call inhabitance judgment learned to descend into applied nominal types (gunbc#9608); it is
+// the same class as the fixtures that PR enrolls, found in production rather than in a fixture.
 fn curve_points_agree(a: DemandCurvePoint, b: DemandCurvePoint) -> Bool {
   a.index == b.index
     && decimal_measures_agree(a: a.reading, b: b.reading)
-    && decimal_measures_agree(a: a.output, b: b.output)
+    && exact_decimal_equal(a: a.output.magnitude, b: b.output.magnitude)
 }

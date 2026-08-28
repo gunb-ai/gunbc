@@ -4081,23 +4081,19 @@ pub fn applied_type_argument_is_nested_application(n: Rc<Node>, scope: Rc<InferS
 }
 
 pub fn applied_type_argument_identity_known(name: String, scope: Rc<InferScope>) -> bool {
-    if (name.clone() == "".to_string()) {
+    if ((name.clone() == "".to_string()) || crate::std_types::is_kernel_type(name.clone())) {
         false
     } else {
-        if crate::std_types::is_kernel_type(name.clone()) {
-            true
-        } else {
-            match crate::v1_compiler_infer_env::lookup_type_by_name(
-                scope.type_env.clone(),
-                name.clone(),
-            ) {
-                Some(decl) => {
-                    (((decl.connective.clone() == Connective::Conj)
-                        || (decl.connective.clone() == Connective::Disj))
-                        && ((decl.children.clone().len() as i64) > 0))
-                }
-                None => false,
+        match crate::v1_compiler_infer_env::lookup_type_by_name(
+            scope.type_env.clone(),
+            name.clone(),
+        ) {
+            Some(decl) => {
+                (((decl.connective.clone() == Connective::Conj)
+                    || (decl.connective.clone() == Connective::Disj))
+                    && ((decl.children.clone().len() as i64) > 0))
             }
+            None => false,
         }
     }
 }

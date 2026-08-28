@@ -2952,14 +2952,19 @@ fn applied_type_argument_is_nested_application(n: Node, scope: InferScope) -> Bo
 //
 // WHAT HOLDS OVER THE CORPUS: a type parameter binds to a bare leaf standing for itself, while a
 // real type resolves to a declaration WITH STRUCTURE -- a record's fields, a coproduct's variants.
-// So the test is structural rather than nominal, and it fails open twice over: an argument whose
-// name does not resolve, and an argument that resolves to something structureless (a bare alias,
-// a parameter), are both left unjudged.
+// So the test is structural rather than nominal, and it fails open three times over: an argument
+// whose name does not resolve, an argument that resolves to something structureless (a bare alias,
+// a parameter), and an argument NAMING A KERNEL TYPE, are all left unjudged.
+//
+// THE KERNEL EXCLUSION IS NOT SYMMETRY FOR ITS OWN SAKE. A refinement alias such as
+// `NonEmptyStr = String where non_empty` is a distinct NAME over the same kernel carrier, and the
+// corpus passes one where the other is declared on purpose. Comparing head names across that seam
+// reports a distinctness violation for a relationship the refinement authority already governs, so
+// kernel-versus-nominal is the wrong judgment to make HERE rather than a judgment to make more
+// carefully. Measured: it was the sole surviving false positive over the 4181-module subject.
 fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool {
-  if name == "" {
+  if name == "" || is_kernel_type(name: name) {
     false
-  } else if is_kernel_type(name: name) {
-    true
   } else {
     match lookup_type_by_name(env: scope.type_env, name: name) {
       Present { value: decl } =>
