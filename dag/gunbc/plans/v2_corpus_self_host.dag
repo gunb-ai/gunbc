@@ -51,13 +51,14 @@ fn section_2() -> List<MarkdownBlock> {
 fn section_3() -> List<MarkdownBlock> {
   [
     h2(text: "3. Hosting — settled, and previously mis-stated"),
-    p(text: "The whole-corpus compile requires ~7 GiB, from `gunbc.whole_corpus_compile_admission` — a threshold derived from two dated CI receipts and deliberately not scaled for corpus growth."),
+    p(text: "The whole-corpus compile requires **13 GiB**, from `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_measured_peak_demand` — a measured peak of 12.41 GiB rounded up to whole-gibibyte grain in the fail-closed direction."),
+    p(text: "**This section said ~7 GiB until 2026-08-28 and that figure was a live fail-open, not merely stale.** It was a PROXY taken on the floor route at an older tree, 64% under the real peak, so the admission arm admitted hosts the instrument would then be SIGKILLed on. The authority's own re-measure trigger — a dated uncensored whole-tree peak taken on the compile route itself — fired: whole-corpus `--target dag` peaked at 13008052 kB and `--target rust` at 13005964 kB, both EXIT=1 (completed and refused on diagnostics, not killed) on an unthrottled srv1, with the binary BUILT FROM the sha being compiled. A reader planning capacity against the old number would have provisioned a host that dies."),
     TableBlock {
       header: row(cells: [cell(text: "host"), cell(text: "admits?"), cell(text: "basis")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "CI self-hosted runner"), cell(text: "YES"), cell(text: "a witness named for exactly this: refuses the budget that was SIGKILLed and ADMITS the CI runner. Corroborated by the floor's ~9.4 GiB peak on that runner.")]),
-        row(cells: [cell(text: "srv1 / srv2"), cell(text: "likely, UNMEASURED"), cell(text: "operator granted access 2026-08-26; capacity not yet measured")]),
+        row(cells: [cell(text: "CI self-hosted runner"), cell(text: "YES, but the margin is thin"), cell(text: "15 GiB slot against a 12.41 GiB measured peak — about 21% headroom, where the superseded 7 GiB figure implied better than 2x. The witness named for exactly this still holds: refuses the budget that was SIGKILLed and ADMITS the CI runner.")]),
+        row(cells: [cell(text: "srv1"), cell(text: "YES, and it is where the measurement was taken"), cell(text: "502 GiB total, 334 GiB available at arm time, aarch64. Both whole-corpus runs completed here on 2026-08-28; 271 GiB still free at exit, so neither peak is a throttle line mistaken for demand. srv2 was not reachable from this session and remains unmeasured.")]),
         row(cells: [cell(text: "BuildBuddy remote"), cell(text: "no"), cell(text: "MemAvailable under 5 GiB; two SIGKILL exit-137 receipts")]),
         row(cells: [cell(text: "in-session"), cell(text: "forbidden"), cell(text: "shared slice, swap off; the kernel kills the LARGEST task, possibly another session's floor run")]),
       ],
