@@ -36,6 +36,27 @@ fn filesystem_read_outcome(
 
 data filesystem_read_outcome_adoption_standing: String = "RUNG: mitigatable. filesystem_read_outcome provides the single modeled fold from Filesystem.Read's scalar transport observation into FilesystemReadSucceeded | FilesystemReadRefused, but nothing forces callers through it. gunbc.ci_yaml_validate is the first converted consumer and preserves read refusal separately from YAML parse refusal. The raw operation remains directly consumed elsewhere, so content+success+error nonsense combinations remain writable at those sites. SUBJECT: an unconverted consumption site is a Filesystem Read call whose bound result has any success, error, or content projection outside the three arguments of filesystem_read_outcome. The call and those three projections remain after conversion because they supply the fold; adoption changes where they are consumed, not whether they exist. BASELINE measured on origin/main b21b710d5378387ae0c841f07323292c5d72faba: 92 unconverted consumption sites across 48 .dag files. REMAINDER after the first conversion: 91 unconverted consumption sites across 47 files. RE-DERIVATION: enumerate Filesystem Read assignment calls in tracked .dag source, excluding this adoption-standing data declaration so the instrument cannot count its own prose; for each bound result, classify it converted only when every success, error, and content projection is an argument of filesystem_read_outcome, otherwise classify it unconverted; count unconverted rows and distinct paths. NEXT-RUNG TRIGGER: the unconverted population reaches zero -- every Filesystem Read result projection occurs only as an argument to filesystem_read_outcome. The compiler-only filesystem_read intrinsic is a separate replacement migration and is not part of this population or this fold."
 
+// ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ. `Read` answers
+// success=false both for a path that does not exist and for one that exists and cannot be read, and
+// those two worlds have opposite correct actions -- proceed, versus stop and preserve. Any consumer
+// that concludes "not there" from a read failure has conflated them, and it fails toward good news.
+//
+// `List` returns entry names joined by newlines, so a plain substring test answers yes for a name
+// that is merely a prefix or suffix of a real entry -- `abc.json` is found inside `abc.json.tmp`.
+// Wrapping both sides in newlines makes the test line-exact without needing a split the interpreter
+// does not offer, so every conclusion drawn from it is a membership fact rather than a coincidence
+// of spelling.
+//
+// This predicate lives beside the operation whose output encoding defines it. Two consumers had
+// spelled it independently over one wire format, which is the second representation section 3
+// forbids: the encoding is `List`'s fact, so the membership question over it is too.
+fn filesystem_listing_names_entry(listing: String, name: String) -> Bool {
+  string_contains(
+    s: join(["\n", listing, "\n"], ""),
+    pattern: join(["\n", name, "\n"], ""),
+  )
+}
+
 service Filesystem {
 
   operation Write {

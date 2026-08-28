@@ -8,6 +8,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadSucceeded,
   FilesystemReadRefused,
   filesystem_read_outcome,
+  filesystem_listing_names_entry,
 }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -93,12 +94,16 @@ data deploy_transition_schema: String = "gunbc.deploy_transition/1"
 // The durable records live beside the deployment, never inside the repository being transitioned.
 // A file written under `repo_root` would be untracked residue in the tree the convergence reads
 // back, so the convergence's own residue check would refuse on the artifact protecting it.
+data transition_lease_file_name: String = "transition-lease.json"
+
+data transition_inhibition_file_name: String = "transition-inhibition.json"
+
 fn transition_lease_path(instance_root: String) -> String {
-  join([instance_root, "/transition-lease.json"], "")
+  join([instance_root, "/", transition_lease_file_name], "")
 }
 
 fn transition_inhibition_path(instance_root: String) -> String {
-  join([instance_root, "/transition-inhibition.json"], "")
+  join([instance_root, "/", transition_inhibition_file_name], "")
 }
 
 // The subject of one transition: which repository, moving which ref, to which candidate.
@@ -296,37 +301,94 @@ fn transition_record_decode(text: String) -> TransitionRecordDecode {
   }
 }
 
-// THREE STATES AND NOT TWO. A file that is absent, a file that decodes, and a file that exists and
-// does not decode have three different remedies -- proceed, refuse naming the holder, refuse naming
-// the corruption -- so collapsing the third into either of the others erases the distinction that
-// decides what an operator does next.
+// ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ, and getting this wrong is
+// how a marker-based guard fails open in its steady state. `Filesystem.Read` answers success=false
+// both for a path that does not exist and for one that exists and cannot be read; those two worlds
+// have opposite correct actions -- proceed, versus stop -- so a fold that maps a read refusal to
+// "absent" hands the belt a permit exactly when the marker it could not read is the one saying stop.
+//
+// The first cut of this module did that. The scenario that surfaced it -- a marker written by one
+// principal and read by another -- has since been ruled out by a separate decision about WHO
+// acquires the lease (the convergence unit, as the service user, as its first act, so writer and
+// reader are one principal). The defect is fixed anyway and that is the point: a fail-open that is
+// harmless only while a deployment decision stays put is not a wall, it is a coincidence.
+//
+// WHAT CLOSES IT IS THIS FOLD AND NOT A FILE MODE. Making the marker world-readable was proposed and
+// REFUSED, on grounds worth keeping: it removes one CAUSE of unreadability and leaves the AMBIGUITY,
+// so the belt still could not separate "no transition in flight" from "I could not look", and the
+// next configuration change reopens the same fail-open through a different cause. Presence is
+// instead decided by a successful directory listing, so "absent" is a positive observation rather
+// than the residue of a failure, and every way of NOT establishing it -- the listing refused, the
+// entry listed but unreadable, the bytes unreadable as a record -- lands in one indeterminate arm
+// that refuses at the admission seam. Acquisition may treat indeterminate as free because the O_EXCL
+// create still decides there; admission may not, because the read is its whole decision.
+//
+// WHY THE ACQUISITION ASYMMETRY DOES NOT EXCUSE THE READ ARM, recorded because it is what made the
+// defect survive a careful reading: the comment on acquisition below is true -- a read refusal is
+// not proof of absence, and acquisition is safe regardless because the O_EXCL create decides and the
+// read only NAMES the holder afterwards. That argument is scoped to acquisition. The admission path
+// has no create to fall back on; the read IS the decision. A justification for one caller sitting
+// above a fold used by two reads as though it covered both, and every sentence in it is correct.
 type TransitionFileObservation
   = TransitionFileAbsent { detail: String }
   | TransitionFilePresent { record: TransitionRecord }
-  | TransitionFileUndecodable { cause: String }
+  | TransitionFileIndeterminate { cause: String }
 
-fn transition_file_observation_of(read: FilesystemReadOutcome, path: String) -> TransitionFileObservation {
-  match read {
-    FilesystemReadRefused { error: e } => TransitionFileAbsent { detail: e }
-    FilesystemReadSucceeded { content: c } =>
-      match transition_record_decode(text: c) {
-        TransitionRecordUndecodable { cause: why } =>
-          TransitionFileUndecodable {
-            cause: join([why, " (at ", path, ")"], ""),
-          }
-        TransitionRecordDecoded { record: r } => TransitionFilePresent { record: r }
+fn transition_file_observation_of(
+  listed: Bool,
+  listing: String,
+  list_error: String,
+  name: String,
+  read: FilesystemReadOutcome,
+  path: String,
+) -> TransitionFileObservation {
+  if !listed {
+    TransitionFileIndeterminate {
+      cause: join([
+        "gunbc.deploy_transition: the directory holding ",
+        path,
+        " could not be listed, so absence cannot be established -- ",
+        list_error,
+      ], ""),
+    }
+  } else {
+    if !filesystem_listing_names_entry(listing: listing, name: name) {
+      TransitionFileAbsent {
+        detail: join(["no ", name, " is listed beside ", path], ""),
       }
+    } else {
+      match read {
+        FilesystemReadRefused { error: e } =>
+          TransitionFileIndeterminate {
+            cause: join([
+              "gunbc.deploy_transition: ",
+              path,
+              " is listed and could not be read -- ",
+              e,
+            ], ""),
+          }
+        FilesystemReadSucceeded { content: c } =>
+          match transition_record_decode(text: c) {
+            TransitionRecordUndecodable { cause: why } =>
+              TransitionFileIndeterminate {
+                cause: join([why, " (at ", path, ")"], ""),
+              }
+            TransitionRecordDecoded { record: r } => TransitionFilePresent { record: r }
+          }
+      }
+    }
   }
 }
 
-// A READ REFUSAL IS NOT PROOF OF ABSENCE, and this is where that matters most. The file transport
-// reports one error channel, so "no such file" and "permission denied on the directory" arrive
-// identically -- which means an unreadable lease directory would read as a free lease. The
-// asymmetry that makes this safe is that acquisition never trusts this reading: the O_EXCL create
-// is what decides, and this observation only NAMES the holder once the create has already refused.
-fn observe_transition_file(path: String) -> TransitionFileObservation {
+fn observe_transition_file(instance_root: String, name: String) -> TransitionFileObservation {
+  let path = join([instance_root, "/", name], "")
+  let listing = Filesystem.List(path: instance_root)
   let read = Filesystem.Read(path: path)
   transition_file_observation_of(
+    listed: listing.success,
+    listing: listing.entries,
+    list_error: listing.error,
+    name: name,
     read: filesystem_read_outcome(
       content: read.content,
       success: read.success,
@@ -366,7 +428,7 @@ fn lease_acquisition_from_create(
   } else {
     match observed {
       TransitionFilePresent { record: r } => LeaseHeldBy { record: r }
-      TransitionFileUndecodable { cause: why } => LeaseHeldUndecodable { cause: why }
+      TransitionFileIndeterminate { cause: why } => LeaseHeldUndecodable { cause: why }
       TransitionFileAbsent { detail: d } =>
         LeaseUnobtainable {
           cause: join([
@@ -405,7 +467,10 @@ fn acquire_transition_lease(
     observed: if created.success {
       TransitionFileAbsent { detail: "" }
     } else {
-      observe_transition_file(path: path)
+      observe_transition_file(
+        instance_root: subject.instance_root,
+        name: transition_lease_file_name,
+      )
     },
   )
 }
@@ -414,30 +479,122 @@ type TransitionActuation
   = TransitionActuationCompleted { detail: String }
   | TransitionActuationRefused { cause: String }
 
-// SETTING THE INHIBITION IS ITSELF EXCLUSIVE. It is written with the same O_EXCL create as the
-// lease, so a residue left by a dead converge cannot be silently overwritten by the next one: an
-// existing inhibition refuses here, and the caller must resolve it through the clearance path
-// below. Overwriting would erase the only durable evidence that a partial transition happened.
+// SETTING THE INHIBITION IS ITSELF AN EXCLUSIVE CREATE, for the same reason the lease is: a residue
+// left by a converge that died is the only durable evidence that a partial transition happened, and
+// an ordinary write would erase exactly that. O_EXCL makes the overwrite unrepresentable rather than
+// checked -- a check-then-write would be safe here, since this function takes a `TransitionGuard`
+// and the lease is already held, but safe-because-of-a-caller is the sentence construction exists to
+// delete.
+//
+// MODE IS AN ACCESS QUESTION AND NOT A SAFETY MECHANISM (operator ruling, 2026-08-28). An earlier
+// revision of this function wrote the marker world-readable so an actuator running as a different
+// principal could read it. That was refused on the right grounds: it removes one CAUSE of
+// unreadability and leaves the AMBIGUITY, so the belt still could not separate "no transition in
+// flight" from "I could not look", and the next configuration change reopens the same fail-open
+// through a different cause. The observation split above is the fix; the mode is not. The ruling
+// that makes 0600 correct in fact is separate and is about WHO WRITES: the lease is acquired by the
+// convergence unit as the service user, as its first act, so writer and reader are one principal.
+//
+// AND THE WRITE IS READ BACK. A successful write means the host accepted the bytes, never that the
+// marker now reads as the record intended -- the same distinction the convergence this protects
+// makes about its own steps.
 fn set_transition_inhibition(guard: TransitionGuard) -> TransitionActuation {
-  let path = transition_inhibition_path(instance_root: guard.subject.instance_root)
-  let written = Filesystem.WriteOwnerOnly(
+  let root = guard.subject.instance_root
+  let path = transition_inhibition_path(instance_root: root)
+  let created = Filesystem.WriteOwnerOnly(
     path: path,
     content: transition_record_json(
       record: transition_guard_record(guard: guard, phase: transition_phase_in_force),
     ),
   )
-  if written.success {
-    TransitionActuationCompleted { detail: path }
-  } else {
+  if !created.success {
     TransitionActuationRefused {
-      cause: join([
-        "gunbc.deploy_transition: inhibition could not be set at ",
-        path,
-        " -- ",
-        written.error,
-        " (an existing record here is a prior transition that has not been resolved)",
-      ], ""),
+      cause: set_inhibition_refusal_cause(
+        path: path,
+        create_error: created.error,
+        observed: observe_transition_file(
+          instance_root: root,
+          name: transition_inhibition_file_name,
+        ),
+      ),
     }
+  } else {
+    match observe_transition_file(instance_root: root, name: transition_inhibition_file_name) {
+      TransitionFilePresent { record: back } =>
+        if transition_record_same_subject(
+          a: back,
+          b: transition_guard_record(guard: guard, phase: transition_phase_in_force),
+        ) {
+          TransitionActuationCompleted { detail: path }
+        } else {
+          TransitionActuationRefused {
+            cause: join([
+              "gunbc.deploy_transition: the inhibition read back at ",
+              path,
+              " names ",
+              back.actor,
+              "/",
+              back.invocation,
+              " rather than this transition; something else is writing this marker",
+            ], ""),
+          }
+        }
+      TransitionFileAbsent { detail: d } =>
+        TransitionActuationRefused {
+          cause: join([
+            "gunbc.deploy_transition: the inhibition write succeeded and the marker is not there on readback -- ",
+            d,
+          ], ""),
+        }
+      TransitionFileIndeterminate { cause: why } =>
+        TransitionActuationRefused {
+          cause: join([
+            "gunbc.deploy_transition: the inhibition write succeeded and could not be read back -- ",
+            why,
+          ], ""),
+        }
+    }
+  }
+}
+
+// A CREATE THAT REFUSED HAS THREE READINGS AND THE OBSERVATION SEPARATES THEM: a prior transition
+// stands here and is named, something stands here that cannot be read, or nothing stands here and
+// the directory itself refused the write. The third is a host problem and the first is a clearance
+// problem, and an operator sent to the wrong one loses the time this whole lane is about.
+fn set_inhibition_refusal_cause(
+  path: String,
+  create_error: String,
+  observed: TransitionFileObservation,
+) -> String {
+  match observed {
+    TransitionFilePresent { record: prior } =>
+      join([
+        "gunbc.deploy_transition: an inhibition already stands at ",
+        path,
+        " for ",
+        prior.actor,
+        "/",
+        prior.invocation,
+        " at candidate ",
+        prior.candidate,
+        " (",
+        prior.phase,
+        "); it must be resolved through the clearance path, never overwritten",
+      ], "")
+    TransitionFileIndeterminate { cause: why } =>
+      join([
+        "gunbc.deploy_transition: the inhibition could not be created at ",
+        path,
+        " and what stands there could not be established -- ",
+        why,
+      ], "")
+    TransitionFileAbsent { detail: _ } =>
+      join([
+        "gunbc.deploy_transition: the inhibition could not be created at ",
+        path,
+        " and nothing is listed there, so the directory refused the write -- ",
+        create_error,
+      ], "")
   }
 }
 
@@ -479,14 +636,15 @@ fn actuation_standing_of(observed: TransitionFileObservation) -> ActuationStandi
   match observed {
     TransitionFileAbsent { detail: _ } => ActuationPermitted
     TransitionFilePresent { record: r } => ActuationInhibited { record: r }
-    TransitionFileUndecodable { cause: why } => ActuationStandingUnreadable { cause: why }
+    TransitionFileIndeterminate { cause: why } => ActuationStandingUnreadable { cause: why }
   }
 }
 
 fn transition_actuation_standing(instance_root: String) -> ActuationStanding {
   actuation_standing_of(
     observed: observe_transition_file(
-      path: transition_inhibition_path(instance_root: instance_root),
+      instance_root: instance_root,
+      name: transition_inhibition_file_name,
     ),
   )
 }
@@ -724,7 +882,7 @@ fn clearance_subject_mismatch(
           ], ""),
         }
       }
-    TransitionFileUndecodable { cause: why } =>
+    TransitionFileIndeterminate { cause: why } =>
       Present {
         value: join([
           "gunbc.deploy_transition: refusing to clear an unreadable marker -- ",
@@ -830,7 +988,10 @@ fn clear_transition_records(
   match clearance_admission(
     basis: basis,
     readback_converged: readback_converged,
-    observed: observe_transition_file(path: inhibition),
+    observed: observe_transition_file(
+      instance_root: instance_root,
+      name: transition_inhibition_file_name,
+    ),
   ) {
     ClearanceRefused { reason: why } => TransitionActuationRefused { cause: why }
     ClearanceAdmitted { basis: b } => {

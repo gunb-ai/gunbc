@@ -14,7 +14,7 @@ import gunbc.deploy_transition {
   TransitionFileObservation,
   TransitionFileAbsent,
   TransitionFilePresent,
-  TransitionFileUndecodable,
+  TransitionFileIndeterminate,
   TransitionRecordDecode,
   TransitionRecordDecoded,
   TransitionRecordUndecodable,
@@ -52,6 +52,8 @@ import gunbc.deploy_transition {
   transition_record_json,
   transition_record_decode,
   transition_file_observation_of,
+  transition_lease_file_name,
+  transition_inhibition_file_name,
   transition_record_same_subject,
   lease_acquisition_from_create,
   actuation_standing_of,
@@ -217,7 +219,7 @@ test fn the_four_acquisition_outcomes_are_four_different_answers() -> Bool {
   )
   let corrupt = acquire_with(
     created: false,
-    observed: TransitionFileUndecodable { cause: "bad" },
+    observed: TransitionFileIndeterminate { cause: "bad" },
   )
   let unobtainable = acquire_with(
     created: false,
@@ -236,7 +238,7 @@ test fn the_four_acquisition_outcomes_are_four_different_answers() -> Bool {
 test fn a_lease_that_does_not_decode_is_not_a_free_lease() -> Bool {
   let corrupt = acquire_with(
     created: false,
-    observed: TransitionFileUndecodable { cause: "bad" },
+    observed: TransitionFileIndeterminate { cause: "bad" },
   )
   corrupt != "acquired" && corrupt != "held"
 }
@@ -303,38 +305,91 @@ test fn a_duplicated_field_refuses_rather_than_picking_one() -> Bool {
     text: "{\"schema\":\"gunbc.deploy_transition/1\",\"actor\":\"a\",\"invocation\":\"i\",\"repo_root\":\"r\",\"base_ref\":\"b\",\"candidate\":\"c\",\"candidate\":\"d\",\"phase\":\"in-force\"}"))
 }
 
-// A READ REFUSAL RENDERS AS ABSENT AND A DECODE REFUSAL DOES NOT. The file transport reports one
-// error channel, so absence and permission denial arrive identically here -- which is safe only
-// because acquisition never trusts this reading, and unsafe if it ever leaked into the standing.
-// The next witness is the half that makes that safe.
-test fn the_observation_separates_a_read_refusal_from_a_decode_refusal() -> Bool {
-  let missing = transition_file_observation_of(
-    read: FilesystemReadRefused { error: "No such file or directory" },
-    path: "/opt/gunbc/transition-lease.json",
+fn observe(listed: Bool, listing: String, read: FilesystemReadOutcome) -> TransitionFileObservation {
+  transition_file_observation_of(
+    listed: listed,
+    listing: listing,
+    list_error: "Permission denied (os error 13)",
+    name: transition_inhibition_file_name,
+    read: read,
+    path: "/opt/gunbc/transition-inhibition.json",
   )
-  let corrupt = transition_file_observation_of(
-    read: FilesystemReadSucceeded { content: "not json" },
-    path: "/opt/gunbc/transition-lease.json",
-  )
-  let good = transition_file_observation_of(
-    read: FilesystemReadSucceeded { content: transition_record_json(record: in_force_record()) },
-    path: "/opt/gunbc/transition-lease.json",
-  )
-  match missing {
-    TransitionFileAbsent { detail: _ } =>
-      match corrupt {
-        TransitionFileUndecodable { cause: _ } =>
-          match good {
-            TransitionFilePresent { record: _ } => true
-            TransitionFileAbsent { detail: _ } => false
-            TransitionFileUndecodable { cause: _ } => false
-          }
-        TransitionFileAbsent { detail: _ } => false
-        TransitionFilePresent { record: _ } => false
-      }
-    TransitionFilePresent { record: _ } => false
-    TransitionFileUndecodable { cause: _ } => false
+}
+
+fn observation_arm(o: TransitionFileObservation) -> String {
+  match o {
+    TransitionFileAbsent { detail: _ } => "absent"
+    TransitionFilePresent { record: _ } => "present"
+    TransitionFileIndeterminate { cause: _ } => "indeterminate"
   }
+}
+
+fn good_bytes() -> FilesystemReadOutcome {
+  FilesystemReadSucceeded { content: transition_record_json(record: in_force_record()) }
+}
+
+// ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ. This is the fail-open the
+// first cut of this module shipped, and the configuration that produces it is the steady state
+// rather than an edge case: the convergence runs as the repository owner and the belt as the service
+// principal, so a marker the belt cannot read is the ordinary case, not a fault. Mapping that to
+// "absent" hands the belt a permit exactly when the marker it could not read is the one saying stop.
+//
+// The three arms are driven over inputs that differ only in the two observations the fold consumes.
+test fn a_marker_that_is_listed_and_unreadable_is_not_absent() -> Bool {
+  observation_arm(o: observe(
+    listed: true,
+    listing: "transition-inhibition.json",
+    read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+  )) == "indeterminate"
+    && observation_arm(o: observe(
+      listed: true,
+      listing: "receipts\nbin",
+      read: FilesystemReadRefused { error: "No such file or directory" },
+    )) == "absent"
+    && observation_arm(o: observe(
+      listed: true,
+      listing: "transition-inhibition.json",
+      read: good_bytes(),
+    )) == "present"
+}
+
+// A DIRECTORY THAT CANNOT BE LISTED ESTABLISHES NOTHING. Without this arm the fold would fall back
+// on the read, which is the same conflation one level out -- an unreadable directory would present
+// as an empty one.
+test fn a_directory_that_cannot_be_listed_establishes_no_absence() -> Bool {
+  observation_arm(o: observe(
+    listed: false,
+    listing: "",
+    read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+  )) == "indeterminate"
+}
+
+// AND THE BELT REFUSES ON IT, which is the half that matters -- the arm above is only a
+// classification until something acts on it. This is the end-to-end statement of the defect: an
+// unreadable marker must not admit actuation.
+test fn an_unreadable_marker_refuses_belt_actuation_rather_than_admitting_it() -> Bool {
+  !admission_admits(a: actuation_admission(standing: actuation_standing_of(
+    observed: observe(
+      listed: true,
+      listing: "transition-inhibition.json",
+      read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+    ),
+  )))
+    && admission_admits(a: actuation_admission(standing: actuation_standing_of(
+      observed: observe(listed: true, listing: "receipts", read: good_bytes()),
+    )))
+}
+
+// MEMBERSHIP IS LINE-EXACT, so a marker is not found inside a longer neighbouring name. A substring
+// test would report `transition-inhibition.json.tmp` as the marker and inhibit the belt forever on a
+// host that merely has a stray temp file.
+test fn a_listing_match_is_line_exact_and_not_a_substring() -> Bool {
+  observation_arm(o: observe(
+    listed: true,
+    listing: "transition-inhibition.json.tmp",
+    read: FilesystemReadRefused { error: "No such file or directory" },
+  )) == "absent"
+    && transition_lease_file_name != transition_inhibition_file_name
 }
 
 // ONLY ONE STANDING ADMITS. An unreadable inhibition refuses, which is the direction that matters:
@@ -352,9 +407,10 @@ test fn only_a_permitted_standing_admits_actuation() -> Bool {
 // constructing the standing directly, so the witness covers the join and not just the last arm.
 test fn an_unreadable_inhibition_refuses_actuation() -> Bool {
   let standing = actuation_standing_of(
-    observed: transition_file_observation_of(
+    observed: observe(
+      listed: true,
+      listing: "transition-inhibition.json",
       read: FilesystemReadSucceeded { content: "{\"schema\":\"wrong\"}" },
-      path: "/opt/gunbc/transition-inhibition.json",
     ),
   )
   !admission_admits(a: actuation_admission(standing: standing))
@@ -623,7 +679,7 @@ test fn a_vanished_or_unreadable_marker_refuses_the_clearance() -> Bool {
         && !clearance_admits(c: clearance_admission(
           basis: ClearedByHolder(g),
           readback_converged: true,
-          observed: TransitionFileUndecodable { cause: "corrupt" },
+          observed: TransitionFileIndeterminate { cause: "corrupt" },
         ))
   }
 }

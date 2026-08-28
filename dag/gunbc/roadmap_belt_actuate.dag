@@ -146,6 +146,7 @@ import gunbc.worker_lifecycle {
 }
 import gunbc.dispatch_selection { default_provider_selection_request }
 import gunbc.host_layout { srv1_gunbc_repo_root, belt_spawn_workdir_env_var, instance_receipts_dir }
+import extdeps.filesystem.filesystem_io { filesystem_listing_names_entry }
 import gunbc.deploy_transition {
   ActuationAdmission,
   ActuationAdmitted,
@@ -2885,10 +2886,7 @@ data belt_publication_receipt_read_note: String = "THE RECEIPT IS ADDRESSED BY H
 data listing_membership_is_line_exact_note: String = "Filesystem.List returns entry names joined by newlines, so a plain substring test would answer yes for a name that is merely a PREFIX or suffix of a real entry - `abc.json` would be found inside `abc.json.tmp`, and a head sha would be found inside a longer one. Wrapping both sides in newlines makes the test line-exact without needing a split the interpreter does not offer, and every conclusion drawn from it is a membership fact rather than a coincidence of spelling."
 
 fn belt_listing_names_entry(listing: String, name: String) -> Bool {
-  string_contains(
-    s: join(["\n", listing, "\n"], ""),
-    pattern: join(["\n", name, "\n"], ""),
-  )
+  filesystem_listing_names_entry(listing: listing, name: name)
 }
 
 data publication_receipt_absence_is_established_note: String = "ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ (review 46148). Filesystem.Read answers success=false both for a receipt that does not exist and for one that exists and cannot be read, and those two worlds have opposite correct actions - observe and write, versus stop and preserve. This walk therefore never concludes absence from a failure of any kind.\\n\\nTHE LADDER STARTS AT A DIRECTORY THAT IS KNOWN TO EXIST, which is what makes each step decidable. The attempt state directory is created by dispatch when the attempt starts, and this producer only runs for an attempt whose worktree head it has already read, so a failure to list THAT directory is unambiguously a fault rather than a not-yet. From there each answer is positive: the publication directory is absent from a listing that succeeded, or the head's own file is absent from a listing that succeeded. Only when the file is listed does a read happen, and a read that then fails is unambiguously a fault because the entry was just observed to exist.\\n\\nWHAT THIS DELIBERATELY DOES NOT DO is widen on doubt. Every failure arm returns ReceiptSourceUnreadable carrying the path and the host error, which the gate turns into a typed, located, counted refusal that halts the row - it never falls back to `treat it as absent and rewrite`, which is the absorbing fallback DESIGN section 5 forbids and precisely the defect this replaced."
