@@ -10604,14 +10604,167 @@ pub struct BudgetEvent {
     pub completion: BudgetCompletion,
 }
 
-impl BudgetCompletion {
-    /// How the elapsed number may be READ. Rendered beside every budget figure so a reader
-    /// never has to know which mechanism produced it.
-    pub fn elapsed_reading(self) -> &'static str {
+// `BudgetCompletion::elapsed_reading` USED TO LIVE HERE AND IS DELETED, because it was the
+// mechanism that made the defect cheap to write. It answered "at least" / "exactly", which is a
+// QUALIFIER handed to a caller who then supplies the sentence — and every caller supplied the
+// same sentence, `cost {reading} {n}ms against {budget}ms`. That template puts a right-censored
+// BOUND in the field position a reader scans for a COST, with the qualification arriving after
+// the number has already been read, and the two dispositions then differ by ONE WORD in the
+// middle of a sentence while carrying opposite epistemic status. Measured cost of that shape:
+// three readers built wrong models on it independently in one night, and one of them
+// TRANSCRIBED the sentence's own "the figure is the interrupt point, not this row's cost" while
+// drawing an inference those words forbid. A caveat competes with a number in the cost field;
+// it does not win. So the repair is not a louder caveat but a different FIELD, and it has to be
+// unavailable rather than merely discouraged: a shared qualifier can only ever be dropped into
+// somebody's cost template.
+
+impl ClaimOutcome {
+    /// THE ONE RENDERING OF A BUDGET FIGURE, and the reason it is a whole phrase rather than a
+    /// qualifier is the whole point of it.
+    ///
+    /// A bound and a measurement do not differ by an adjective, so they do not share a field.
+    /// The interrupted arm renders `cost=UNMEASURED` — the cost field NEVER holds a number for
+    /// a row that produced no verdict — and reports the interrupt point in its own named field,
+    /// after the cost, labelled with what it is a property of. The completed arm renders an
+    /// exact cost, because it has one.
+    ///
+    /// WHY THE INTERRUPT POINT IS NOT SILENTLY DROPPED: it is real data about the RUN (which
+    /// ceiling fired, and that the poll observed it when it did). What it is not is data about
+    /// the ROW, and that is stated in the same breath, because the misreading it produces is
+    /// structural rather than careless: every interrupted row reports approximately whatever
+    /// ceiling interrupted it, so a "cluster near the budget" is GUARANTEED for any ceiling over
+    /// any population and carries zero information. Both wrong models above were of exactly that
+    /// shape — reading a distribution the deadline manufactured.
+    pub fn budget_figure_phrase(&self) -> Option<String> {
         match self {
-            BudgetCompletion::Interrupted => "at least",
-            BudgetCompletion::CompletedOverBudget => "exactly",
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms,
+                budget_ms,
+                kind,
+            } => Some(format!(
+                "{} budget {}ms EXCEEDED; cost=UNMEASURED — the deadline preempted the witness, \
+                 so this row's cost is ABOVE {}ms with NO UPPER BOUND (a bound, not a near \
+                 miss: it is wrong as a cost by an unbounded amount, always low). \
+                 interrupt_point={}ms is where the poll observed the ceiling; every interrupted \
+                 row reports approximately whatever ceiling interrupted it, so that figure is a \
+                 property of the BUDGET and not of this row — do not compare it with the budget \
+                 or with another row's",
+                kind.label(),
+                budget_ms,
+                budget_ms,
+                elapsed_at_least_ms
+            )),
+            ClaimOutcome::CompletedOverBudget {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => Some(format!(
+                "{} budget {}ms EXCEEDED; cost={}ms EXACT — the witness ran to completion and \
+                 was then reclassified on cost, so this figure is a measurement of the row",
+                kind.label(),
+                budget_ms,
+                elapsed_ms
+            )),
+            // Every other outcome carries no budget figure at all. The wildcard is the same one
+            // `budget_event` above uses and for the same reason: this is a projection OUT of the
+            // two budget arms, and a new non-budget arm has nothing to render here.
+            _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod budget_figure_rendering_tests {
+    use super::{BudgetKind, ClaimOutcome};
+
+    // THE FIELD, NOT THE CAVEAT. The defect this guards is not that the sentence lacked a
+    // qualification — it carried "UNMEASURED" in capitals and three readers still read the
+    // number as a cost, one of them while quoting that word. So the assertion is positional:
+    // whatever follows `cost=` for an INTERRUPTED row must not be a number, whatever the rest
+    // of the sentence says.
+    fn cost_field(phrase: &str) -> String {
+        let after = phrase
+            .split_once("cost=")
+            .expect("every budget phrase names a cost field")
+            .1;
+        after
+            .split_whitespace()
+            .next()
+            .expect("cost field is non-empty")
+            .to_string()
+    }
+
+    fn interrupted(elapsed: u64, budget: u64) -> ClaimOutcome {
+        ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: elapsed,
+            budget_ms: budget,
+            kind: BudgetKind::Cpu,
+        }
+    }
+
+    // RED: restore any rendering of the form `cost ... {elapsed_at_least_ms}ms` — the shape
+    // every site carried before — and this fails, because a digit reaches the cost field.
+    #[test]
+    fn an_interrupted_rows_cost_field_never_holds_a_number() {
+        let phrase = interrupted(5_002, 5_000)
+            .budget_figure_phrase()
+            .expect("interrupted rows render a budget figure");
+        assert_eq!(
+            cost_field(&phrase),
+            "UNMEASURED",
+            "the cost field of an undecided row must name the absence, not a bound: {phrase}"
+        );
+        assert!(
+            !cost_field(&phrase).chars().any(|c| c.is_ascii_digit()),
+            "no digit may occupy the cost field of an interrupted row: {phrase}"
+        );
+    }
+
+    // POSITIVE CONTROL. Without it, a renderer that answered "UNMEASURED" for BOTH arms — and
+    // so carried no information at all — would pass the assertion above.
+    #[test]
+    fn a_completed_rows_cost_field_holds_its_exact_measurement() {
+        let phrase = ClaimOutcome::CompletedOverBudget {
+            elapsed_ms: 5_002,
+            budget_ms: 5_000,
+            kind: BudgetKind::Cpu,
+        }
+        .budget_figure_phrase()
+        .expect("completed-over-budget rows render a budget figure");
+        assert_eq!(cost_field(&phrase), "5002ms", "{phrase}");
+        assert!(phrase.contains("EXACT"), "{phrase}");
+    }
+
+    // THE FIGURE IS KEPT, IN ITS OWN FIELD. Dropping it would trade one wrong reading for a
+    // lost fact about the run: which ceiling fired, and that the poll observed it.
+    #[test]
+    fn the_interrupt_point_survives_under_its_own_name() {
+        let phrase = interrupted(5_002, 5_000).budget_figure_phrase().unwrap();
+        assert!(
+            phrase.contains("interrupt_point=5002ms"),
+            "the interrupt point is reported, just not as a cost: {phrase}"
+        );
+    }
+
+    // THE MISREADING THE FIELD REMOVES, STATED AS A TEST. Two rows whose true costs differ by
+    // any amount report interrupt points that differ only by poll granularity, because the
+    // number is a property of the ceiling. Both must therefore render the SAME cost field, and
+    // that field must be the one that says nothing — otherwise the ledger manufactures a
+    // "cluster near the budget" out of the deadline.
+    #[test]
+    fn two_rows_of_unrelated_true_cost_render_one_indistinguishable_cost() {
+        let quick = interrupted(5_001, 5_000).budget_figure_phrase().unwrap();
+        let slow = interrupted(5_004, 5_000).budget_figure_phrase().unwrap();
+        assert_eq!(cost_field(&quick), cost_field(&slow));
+        assert_eq!(cost_field(&quick), "UNMEASURED", "{quick}");
+    }
+
+    // NON-BUDGET OUTCOMES CARRY NO FIGURE, so no caller can render one for a row that never
+    // met a ceiling.
+    #[test]
+    fn outcomes_without_a_budget_render_no_figure() {
+        assert!(ClaimOutcome::Pass.budget_figure_phrase().is_none());
+        assert!(ClaimOutcome::Fail.budget_figure_phrase().is_none());
     }
 }
 
@@ -28919,37 +29072,24 @@ fn run_discovery_rows(
                     hermetic_effect_ground_label(&ground)
                 ))
             }
-            // Rendered so the elapsed value is never mistaken for a completed duration:
-            // the row was killed AT the budget, so this is a ceiling, not a cost. The
-            // clock (cpu vs wall) is named because the two have different remedies.
-            // BOTH ARMS RENDER, and the reading comes from the arm rather than from a field
-            // this format could have wildcarded: `at least` for an interruption's ceiling,
-            // `exactly` for a completed cost.
-            ClaimOutcome::BudgetInterrupted {
-                elapsed_at_least_ms,
-                budget_ms,
-                kind,
-            } => summary.failures.push(format!(
-                "{} ({}) over its {} budget: cost is at least {}ms against a {}ms budget",
-                row.function,
-                row.entry,
-                kind.label(),
-                elapsed_at_least_ms,
-                budget_ms
-            )),
-            ClaimOutcome::CompletedOverBudget {
-                elapsed_ms,
-                budget_ms,
-                kind,
-            } => summary.failures.push(format!(
-                "{} ({}) reached its verdict and then exceeded its {} budget: cost is exactly \
-                 {}ms against a {}ms budget",
-                row.function,
-                row.entry,
-                kind.label(),
-                elapsed_ms,
-                budget_ms
-            )),
+            // BOTH BUDGET ARMS RENDER THROUGH `budget_figure_phrase` AND NEITHER SPELLS ITS
+            // OWN SENTENCE. This site used to hand-write `cost is at least {n}ms against a
+            // {budget}ms budget`, which is the bound-in-the-cost-field defect that renderer
+            // exists to remove; keeping a local format string here would let this transport
+            // disagree with the floor's about one outcome, which has happened before.
+            ClaimOutcome::BudgetInterrupted { .. } | ClaimOutcome::CompletedOverBudget { .. } => {
+                summary.failures.push(format!(
+                    "{} ({}) {}",
+                    row.function,
+                    row.entry,
+                    // SAFE BY CONSTRUCTION: the two arms matched here are exactly the two the
+                    // renderer answers `Some` for. The fallback text is unreachable and says so
+                    // rather than fabricating a figure.
+                    outcome
+                        .budget_figure_phrase()
+                        .unwrap_or_else(|| "budget outcome carried no figure".to_string())
+                ))
+            }
             // THIS PATH DOES NOT STOP THE LINE ON AN UNWIND THE WAY THE REQUIRED FLOOR DOES, and
             // the difference is deliberate rather than an oversight: discovery runs rows across
             // worker threads with no single ordered fold to halt, and a `NotAttempted` population
@@ -47879,24 +48019,18 @@ pub fn run_required_floor(
                 // nobody observed.
                 ExpectedRedArm::BudgetRefused => {
                     known_red_budget_refused += 1;
-                    let detail = match &result {
-                        // The arm reached here is the interrupted one BY CONSTRUCTION —
-                        // `ExpectedRedArm::BudgetRefused` has exactly one producer — so the
-                        // reading is `at least` and cannot be anything else. Matching the
-                        // completed arm here would be unreachable, which is why it is not
-                        // written: an unreachable arm rendering "exactly" would be a decoration
-                        // whose red no input can produce.
-                        ClaimOutcome::BudgetInterrupted {
-                            elapsed_at_least_ms,
-                            budget_ms,
-                            kind,
-                        } => format!(
-                            "{kind:?}, cost at least {elapsed_at_least_ms}ms against {budget_ms}ms"
-                        ),
-                        other => format!("{other:?}"),
-                    };
+                    // ONE RENDERER, NOT A LOCAL FORMAT STRING. The arm reached here is the
+                    // interrupted one BY CONSTRUCTION — `ExpectedRedArm::BudgetRefused` has
+                    // exactly one producer — so `budget_figure_phrase` answers `Some` and
+                    // renders `cost=UNMEASURED` with the interrupt point in its own field. The
+                    // local string this replaced said `cost at least {n}ms against {budget}ms`,
+                    // which is the bound-in-the-cost-field reading the renderer exists to make
+                    // unwritable; the debug fallback stays for the same reason it always did.
+                    let detail = result
+                        .budget_figure_phrase()
+                        .unwrap_or_else(|| format!("{result:?}"));
                     outcome.interrupted_before_verdict.push(format!(
-                        "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed: \
+                        "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed. \
                          {}. Enrollment asserts an expected verdict and a budget refusal \
                          produces none, so the enrolled claim went undecided — THIS ROW'S \
                          CORRECTNESS IS UNKNOWN, not merely expensive: the refusal preempted \
@@ -47922,14 +48056,15 @@ pub fn run_required_floor(
                 // to drop was the repaid-debt signal the roster exists to surface.
                 ExpectedRedArm::PassedOverBudget => {
                     known_red_passed_over_budget += 1;
-                    let cost = match &result {
-                        ClaimOutcome::CompletedOverBudget {
-                            elapsed_ms,
-                            budget_ms,
-                            kind,
-                        } => format!("{kind:?}, cost exactly {elapsed_ms}ms against {budget_ms}ms"),
-                        other => format!("{other:?}"),
-                    };
+                    // ONE RENDERER HERE TOO, though this arm's figure was never a bound: a
+                    // completed row has an exact cost. It routes through
+                    // `budget_figure_phrase` anyway so that the completed and interrupted
+                    // sentences keep being authored in one place — a local "exactly" template
+                    // beside a shared renderer is how the two readings drift back into one
+                    // shape.
+                    let cost = result
+                        .budget_figure_phrase()
+                        .unwrap_or_else(|| format!("{result:?}"));
                     outcome.stale_quarantine.push(format!(
                         "{} is enrolled as expected-red and PASSED (then exceeded its budget: \
                          {}) — remove it from v2.workflow.floor_expected_red; the cost debt is \
@@ -47937,10 +48072,8 @@ pub fn run_required_floor(
                         claim.qualified, cost
                     ));
                     outcome.completed_over_cost_requirement.push(format!(
-                        "{} PASSED but exceeded its budget: {}. This is an exact measurement, \
-                         not a bound — the witness ran to completion — so the cost is known and \
-                         actionable. Reduce it, or move the row to a lane declaring its own \
-                         ceiling.",
+                        "{} PASSED but exceeded its budget. {}. Reduce it, or move the row to a \
+                         lane declaring its own ceiling.",
                         claim.qualified, cost
                     ));
                     continue;
@@ -48182,32 +48315,36 @@ pub fn run_required_floor(
             // is EXACT. Printing one sentence for both would repeat the conflation this arm
             // exists to remove — asserting "correctness unknown" over a row that demonstrably
             // answered is as wrong as calling a cost a defect.
-            ClaimOutcome::BudgetInterrupted {
-                elapsed_at_least_ms,
-                budget_ms,
-                kind,
-            } => outcome.interrupted_before_verdict.push(format!(
-                "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
-                 {elapsed_at_least_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
-                 nothing claims it is broken — but the deadline preempted the verdict, so \
-                 whether it passes is UNKNOWN and its real cost is UNMEASURED: the figure \
-                 is the interrupt point, not this row's cost. Reduce the cost, or move it \
-                 to a lane declaring its own ceiling, so the witness reaches a verdict.",
-                claim.qualified
-            )),
-            ClaimOutcome::CompletedOverBudget {
-                elapsed_ms,
-                budget_ms,
-                kind,
-            } => outcome.completed_over_cost_requirement.push(format!(
-                "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
-                 exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
-                 completion, so this is a measurement rather than a bound and the cost is \
-                 known and actionable. This is a cost debt only — it is not a defect and \
-                 it does not belong on the expected-red roster, which asserts an expected \
-                 FAILURE this row does not exhibit.",
-                claim.qualified
-            )),
+            // THE FIGURES COME FROM `budget_figure_phrase` AND THE PROSE NO LONGER RESTATES
+            // THEM. What used to stand here was `cost at least {n}ms against {budget}ms`
+            // followed by a caveat saying that number was not a cost — a caveat that competes
+            // with a number already read in the cost position, and demonstrably loses. The
+            // renderer does not put the bound there at all, so the remedy sentences below need
+            // only say what to DO, which is the part a caveat was never the right carrier for.
+            ClaimOutcome::BudgetInterrupted { .. } => {
+                let figure = result
+                    .budget_figure_phrase()
+                    .unwrap_or_else(|| format!("{result:?}"));
+                outcome.interrupted_before_verdict.push(format!(
+                    "{} was BUDGET-REFUSED and went UNDECIDED. {}. Not enrolled as \
+                     expected-red, so nothing claims it is broken — but the deadline preempted \
+                     the verdict, so whether it PASSES is UNKNOWN too. Reduce the cost, or move \
+                     it to a lane declaring its own ceiling, so the witness reaches a verdict.",
+                    claim.qualified, figure
+                ))
+            }
+            ClaimOutcome::CompletedOverBudget { .. } => {
+                let figure = result
+                    .budget_figure_phrase()
+                    .unwrap_or_else(|| format!("{result:?}"));
+                outcome.completed_over_cost_requirement.push(format!(
+                    "{} reached its verdict and then exceeded its budget. {}. The cost is \
+                     therefore known and actionable. This is a cost debt only — it is not a \
+                     defect and it does not belong on the expected-red roster, which asserts an \
+                     expected FAILURE this row does not exhibit.",
+                    claim.qualified, figure
+                ))
+            }
             // NEITHER REACHES THIS MATCH, and both are named rather than wildcarded. A panic
             // breaks the loop above this point, and a not-attempted row is minted after the loop
             // and never classified here at all. Naming them keeps this match total over the
