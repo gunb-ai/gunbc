@@ -295,7 +295,7 @@ fn projection_preserves_the_cause() -> Bool {
       cause == BmcFanProjectionObservedProgramNotAdopted
     BmcFanProjectionApplySuitable => false
   }
-  let srv4_maps_to_unrepresentable = match bmc_fan_policy_projection_apply_suitability(
+  let srv4_maps_to_representable_not_adopted = match bmc_fan_policy_projection_apply_suitability(
     capability: srv4_bmc_fan_projection_capability,
     board: srv4_bmc_fan_projection_capability.board,
     desired_curve: srv4_bmc_fan_projection_capability.projected_curve,
@@ -307,7 +307,7 @@ fn projection_preserves_the_cause() -> Bool {
       cause == BmcFanProjectionObservedProgramRepresentableNotAdopted
     BmcFanProjectionApplySuitable => false
   }
-  srv1_maps_to_unadopted && srv4_maps_to_unrepresentable
+  srv1_maps_to_unadopted && srv4_maps_to_representable_not_adopted
 }
 
 // THE DUPLICATE REFUSAL SURVIVES BOTH ORDERINGS. The case above places the admitting row FIRST,
