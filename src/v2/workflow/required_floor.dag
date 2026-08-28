@@ -395,8 +395,8 @@ fn required_floor_site_disposition(
         ModulePrefixMatched { prefix: p } => DeclinedFixtureMember { matched_prefix: p }
         ModulePrefixUnmatched =>
           match floor_cost_debt_holds(name: identity) {
-            True {} => DeclinedCostDebt {}
-            False {} => Planned {}
+            True => DeclinedCostDebt {}
+            False => Planned {}
           }
       }
   }
