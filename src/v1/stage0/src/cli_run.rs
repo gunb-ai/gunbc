@@ -9909,7 +9909,7 @@ struct BothClosureEdgeIndex {
 /// The bare census indexes top-level declaration heads. A coproduct VARIANT is not
 /// one, so a module that declares `type VisibilityScope = Repo | Org | Network | World`
 /// and then writes `World` was scanned as referencing some other module — and the
-/// pool happens to contain `type World sole_constructor` in `dag/product/spatial_world.dag`,
+/// pool happens to contain `type World sole_constructor` in `dag/gunbc/product/spatial_world.dag`,
 /// so `std.cache_interface` acquired a closure edge to the spatial product corpus.
 ///
 /// Three more of the identical shape in one closure: `Volume` (a variant of

@@ -7,7 +7,7 @@ import gunbc.plans.md_helpers { h2, p, li, ul }
 
 fn budget_tree_body() -> List<MarkdownBlock> {
   [
-    p(text: "Carriers: [dag/extdeps/accounting/budget.dag](../../dag/extdeps/accounting/budget.dag) (the §3 authority), [dag/product/budget_tree.dag](../../dag/product/budget_tree.dag) (the memory instantiation). Roadmap node: §1 `1-budget-tree`. PR #5582."),
+    p(text: "Carriers: [dag/extdeps/accounting/budget.dag](../../dag/extdeps/accounting/budget.dag) (the §3 authority), [dag/gunbc/product/budget_tree.dag](../../dag/gunbc/product/budget_tree.dag) (the memory instantiation). Roadmap node: §1 `1-budget-tree`. PR #5582."),
     p(text: "Rationale is homed here, not in-file: ctrl#1793 strips `.dag` comments tree-wide, so a comment-heavy carrier would red main when that wall lands. These are the planning-level grounding facts the carrier cannot carry; the model itself lives on the carrier (§6)."),
     h2(text: "1. Grounded in real accounting (§1 reduce-convention-to-necessity, §3)"),
     p(text: "Budgeting is a real, well-developed framework, so the tree is grounded in it rather than in a coined abstraction: `extdeps.accounting.budget` is the §3 authority, anchored to a real `ExternalAuthority` (`Https en.wikipedia.org/wiki/Budget`), with the upstream's real names — `Appropriation` (\"max amount for a certain expenditure\"), `LineItem`, `BudgetBalance` (`Surplus | Balanced | Deficit`), `BudgetingMethod` (`ZeroBased | Incremental | ActivityBased`). Two methods are adopted: **zero-based** (admission) and **appropriation-as-ceiling** (`within_appropriation`). Being a proper anchored module, it does not trip the unrostered-module anchor-completeness lens."),
