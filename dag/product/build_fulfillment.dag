@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.measure { MoneyAmountMicro, MoneyOnce, money_amount_micro, money_amount_micro_count, money_once_micros }
-import std.currency { CurrencyCode }
+import extdeps.currency.currency { CurrencyCode }
 import extdeps.external_authority { ExternalAuthority }
 import gunbc.memory_provisioning { PopulationOption }
 import extdeps.memory.training { memory_training_step_label }

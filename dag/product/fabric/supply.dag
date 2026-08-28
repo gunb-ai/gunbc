@@ -8,7 +8,7 @@ import std.measure {
   HardwareThreadCount, hardware_thread_count_value, money_amount_micro_count,
   Second, second_count, minutes_per_hour, seconds_per_minute, measure_scale_fraction_ceil,
 }
-import std.currency { CurrencyCode }
+import extdeps.currency.currency { CurrencyCode }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef, ExecutionRequirements }

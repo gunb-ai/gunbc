@@ -6,7 +6,7 @@ import std.measure {
   money_once_micros, money_rate_micros,
   Second, second, second_count,
 }
-import std.currency { CurrencyCode }
+import extdeps.currency.currency { CurrencyCode }
 import std.nat { Nat, nat_min }
 import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
 import product.fabric.demand { ObservationReceiptRef }

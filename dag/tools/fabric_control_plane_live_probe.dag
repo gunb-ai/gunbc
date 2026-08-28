@@ -1,7 +1,7 @@
 module tools.fabric_control_plane_live_probe
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.measure {
   MoneyAmountMicro, MoneyOnce, MoneyPerSecond, money_amount_micro,
   Second, second, hardware_thread_count,

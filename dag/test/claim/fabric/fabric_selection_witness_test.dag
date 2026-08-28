@@ -9,7 +9,7 @@ import std.measure {
   Second, second,
   HardwareThreadCount, hardware_thread_count,
 }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.work {
   Shape, HardRequirements, ExecutionRequirements, CapabilityManifestRef, TrustDomainRef,

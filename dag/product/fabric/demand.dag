@@ -3,7 +3,7 @@ module product.fabric.demand
 import std.types { NonEmptyStr, Timestamp, Bool, List }
 import std.decl_ref { DeclarationRef }
 import std.measure { MoneyAmountMicro }
-import std.currency { CurrencyCode }
+import extdeps.currency.currency { CurrencyCode }
 import product.fabric.identity { fabric_identity_eq, FabricIdentity, DemandKey, WorkKey }
 
 // Demand is WHO currently wants a result and WHERE to report it. Provider facts

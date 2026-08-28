@@ -48,7 +48,7 @@ import gunbc.fleet_intent {
   srv4_host,
 }
 import product.placement_supply { HostIdentity }
-import std.bmc { OpenBmc }
+import extdeps.bmc.endpoint { OpenBmc }
 import std.measure {
   Celsius,
   RevolutionsPerMinute,

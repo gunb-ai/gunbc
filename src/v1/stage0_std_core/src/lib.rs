@@ -27,8 +27,8 @@ pub mod std_content_hash;
 #[path = "../../stage0/src/std_coercion.rs"]
 pub mod std_coercion;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_currency.rs"]
-pub mod std_currency;
+#[path = "../../stage0/src/extdeps_currency_currency.rs"]
+pub mod extdeps_currency_currency;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_decl_ref.rs"]
 pub mod std_decl_ref;

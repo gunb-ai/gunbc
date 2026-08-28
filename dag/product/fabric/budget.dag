@@ -2,7 +2,7 @@ module product.fabric.budget
 
 import std.types { NonEmptyStr, Int, Timestamp }
 import std.measure { MoneyAmountMicro, Currency, Micro }
-import std.currency { CurrencyCode }
+import extdeps.currency.currency { CurrencyCode }
 import product.fabric.demand { BudgetAccountId }
 import product.fabric.execution { ReservationRef }
 import extdeps.accounting.encumbrance {

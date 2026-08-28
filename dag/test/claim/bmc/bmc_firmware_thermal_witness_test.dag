@@ -149,7 +149,7 @@ import std.measure {
   rpm_count,
 }
 import std.nat { Nat }
-import std.bmc { OpenBmc }
+import extdeps.bmc.endpoint { OpenBmc }
 import std.types { List, NonEmptyStr, list_length }
 import extdeps.uri { Uri, Https }
 import std.upsert_decision {

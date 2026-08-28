@@ -6,7 +6,7 @@ import extdeps.pricing.hetzner_dedicated {
   hetzner_dedicated_server_threads,
   hetzner_dedicated_setup_fee_micros,
 }
-import std.currency { Eur, Usd }
+import extdeps.currency.currency { Eur, Usd }
 import std.measure {
   AmortizationMonths,
   BasisPoint,

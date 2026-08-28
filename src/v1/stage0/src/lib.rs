@@ -53,7 +53,7 @@ pub mod std_coercion;
 pub mod std_computation;
 pub mod std_constructors;
 pub mod std_content_hash;
-pub mod std_currency;
+pub mod extdeps_currency_currency;
 pub mod std_decl_ref;
 pub mod std_disposition;
 pub mod std_dissolution;
