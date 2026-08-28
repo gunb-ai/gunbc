@@ -158,3 +158,9 @@ stops contaminating sessions with dead premises.
   dag/examples/ (witness-consumed: declared_type_inhabitance, cost_estimate_float,
   bootstrap_witness.rs); artifacts/bmc (bmc_fan_program carriers consume);
   provider-runtime/codex (codex witnesses consume).
+- 2026-08-28: P4 third cut — deleted docs/plans/receipts (13M, 73 files) and
+  docs/plans/measurements (456K) whole: persisted measurement dumps, operator-ruled
+  garbage (derived data is never committed; only the derivation code is). Every
+  in-tree mention verified to be prose (comments, note strings, srv1 snapshot rows,
+  a roadmap handback sentence) — no executing consumer reads any of these paths.
+  Those prose pointers now reference history, same status as any receipt citation.
