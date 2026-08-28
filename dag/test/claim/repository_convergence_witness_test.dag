@@ -19,6 +19,7 @@ import gunbc.live_deploy.repository_convergence {
   ConvergenceCompleted, ConvergenceAlreadyAtCandidate,
   ConvergencePreStateUnobservable, ConvergencePostStateUnobservable,
   ConvergenceRefDisappeared, ConvergenceWorktreeDisappeared, ConvergenceWorktreeRebound,
+  ConvergenceUnexpectedRef,
   ConvergenceHeadNotAtCandidate, ConvergenceHeadMovedWithoutReflog,
   ConvergenceIndexNotAtCandidateTree, ConvergenceTrackedWorktreeNotAtCandidate,
   ConvergenceCoherenceUnreadable, ConvergenceRepairedAtCandidate,
@@ -50,6 +51,10 @@ data linked: String = "/opt/gunbc/dispatch-worktrees/attempt-a"
 // inflation (DESIGN §4b).
 fn ref_record(name: String, oid: String) -> String {
   concat(concat(name, concat("\0", oid)), "\0")
+}
+
+fn symref_record(name: String, oid: String, target: String) -> String {
+  concat(join([name, oid, target], "\0"), "\n")
 }
 
 // RECORDS ARE SUPPLIED IN LEXICOGRAPHIC ORDER because that is what `git for-each-ref` emits and
@@ -192,6 +197,65 @@ fn clean_after_with_coherence(coherence: RepositoryCoherenceObservation) -> Repo
     reflog: GitTextObserved { text: reflog_after(oid: new_sha) },
     untracked: clean_tree(),
     coherence: coherence,
+  }
+}
+
+fn transition_state_with_refs(refs: GitRefSetObservation, head: String, reflog: String) -> RepositoryState {
+  state_of(
+    refs: refs,
+    worktrees: worktrees_wire(entries: [primary_entry(oid: head), linked_entry()]),
+    head: head,
+    reflog: reflog,
+    untracked: clean_tree(),
+  )
+}
+
+test fn a_ref_added_during_transition_refuses() -> Bool {
+  let added_name = "refs/dispatch/added-during-transition"
+  let after = transition_state_with_refs(
+    refs: refs_wire(records: [
+      concat(ref_record(name: added_name, oid: dispatch_sha), "\n"),
+      dispatch_ref_record(),
+      heads_dispatch_record(),
+      heads_main_record(oid: new_sha),
+      base_ref_record(oid: new_sha),
+    ]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+  )
+  match verdict_for(after: after) {
+    ConvergenceUnexpectedRef { refname: r, objectname: o } => r == added_name && o == dispatch_sha
+    _ => false
+  }
+}
+
+test fn a_symref_retargeted_at_the_same_object_refuses() -> Bool {
+  let alias = "refs/alias/release"
+  let before = transition_state_with_refs(
+    refs: refs_wire(records: [
+      symref_record(name: alias, oid: dispatch_sha, target: "refs/heads/dispatch/attempt-a"),
+      dispatch_ref_record(),
+      heads_dispatch_record(),
+      heads_main_record(oid: old_sha),
+      base_ref_record(oid: old_sha),
+    ]),
+    head: old_sha,
+    reflog: "old-reflog",
+  )
+  let after = transition_state_with_refs(
+    refs: refs_wire(records: [
+      symref_record(name: alias, oid: dispatch_sha, target: "refs/dispatch/attempt-a"),
+      dispatch_ref_record(),
+      heads_dispatch_record(),
+      heads_main_record(oid: new_sha),
+      base_ref_record(oid: new_sha),
+    ]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+  )
+  match repository_convergence_verdict(before: before, after: after, candidate: new_sha, base_ref: base_ref) {
+    ConvergenceRefDisappeared { refname: r, objectname: o } => r == alias && o == dispatch_sha
+    _ => false
   }
 }
 

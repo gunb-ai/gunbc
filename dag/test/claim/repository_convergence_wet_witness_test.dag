@@ -92,6 +92,14 @@ fn run_scratch(s: ScratchRepository) -> ProcessExit {
   repository_converge_wet(repo: s.repo, remote: "origin", base_ref: "refs/remotes/origin/main", candidate: s.candidate)
 }
 
+// THE WET BOUNDARY RETURNS ProcessExit, NOT RepositoryConvergenceOutcome. These witnesses therefore
+// discriminate refusal ownership through repository_convergence_detail's rendered cause. That
+// coupling is deliberate: repository_converge_wet consumes the typed outcome internally and exposes
+// only the process contract production receives. Pure witnesses separately match the coproduct arms;
+// changing human-facing text can red these integration witnesses even when adjudication is intact,
+// because the exposed process diagnostic is part of the end-to-end contract being executed here.
+data wet_process_exit_discrimination_note: String = "WET assertions inspect the only refusal carrier repository_converge_wet exposes: ProcessExit.reason."
+
 fn mutate_scratch(s: ScratchRepository, body: String) -> Bool {
   shell.Exec.Run(
     script: retained_runtime(body: body, reason: "repository convergence refusal fixture mutation" as NonEmptyStr),
