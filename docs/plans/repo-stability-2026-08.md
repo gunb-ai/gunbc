@@ -240,3 +240,10 @@ the resolver/index core (resolve_entry_*, build_module_*, import_closure_*,
 whole_tree_*, the shared-index thread_locals — the pool-tax subject) and the
 floor runner (floor_*, run_required_*, budget/accounting). Move each in a quiet
 window; the extraction recipe is in the split commits' messages.
+- 2026-08-28 (later): the two deferred cores are moved with operator approval —
+  entry_resolve (75 items, ~2.5k lines: shared index, resolve store, module
+  graph facts, path index, typed-module cache) and required_floor_runner
+  (49 items, ~4.8k lines: run_required_floor, claim eval/measurement,
+  discovery, diff observation, resource sampling). cli_run.rs 50,536 → 38,636
+  lines, 26 submodules. Remainder: ~450 fns of mixed verbs/helpers plus ~350
+  embedded test fns; further carving is ordinary follow-up, no core left.
