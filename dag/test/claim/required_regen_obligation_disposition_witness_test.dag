@@ -3,20 +3,24 @@ module test.claim.required_regen_obligation_disposition_witness
 import gunbc.required_regen_obligation_disposition {
   ObligationLifecycle,
   Active,
-  Transferred,
+  RealizationTransferred,
+  AuthorityTransferred,
+  RetirementPrepared,
   Retired,
-  RetirementObligation,
-  MirrorPopulationEmpty,
-  RequiredConsumerPopulationEmpty,
-  retirement_fully_discharged,
+  RetirementProgress,
+  MirrorPopulationStillOccupied,
+  RequiredConsumersRemain,
+  BothObligationsOutstanding,
   host_deletion_admitted,
   carrier_deletion_admitted,
   required_regen_derivation_routes,
   some_derivation_route_remains_unexamined,
   refuted_route_count,
   required_regen_closure_membership_controls,
-  required_regen_conformance_divergence,
-  conformance_divergence_is_observed
+  RealizationConformance,
+  RealizationConformanceObserved,
+  required_regen_realization_conformance,
+  conformance_is_observed
 }
 import std.decl_ref { decl_ref }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -27,25 +31,50 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 // the inert decoration the carrier it guards warns about.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data transferred_example: ObligationLifecycle = Transferred {
-  successor_authority: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run"),
-  successor_realization: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_sync_admission")
+// The live candidate: the carrier stays canonical and a successor realization replaces the
+// hand-written host -- a generated or interpreted realization consuming this same authority.
+data realization_transferred_example: ObligationLifecycle = RealizationTransferred {
+  successor_realization: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run")
 }
 
-data fully_retired_example: ObligationLifecycle = Retired {
-  discharged: [MirrorPopulationEmpty, RequiredConsumerPopulationEmpty]
+// The other future: the DEFINITION itself moves, so this carrier stops being canonical.
+data authority_transferred_example: ObligationLifecycle = AuthorityTransferred {
+  successor_authority: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_sync_admission"),
+  successor_realization: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run")
 }
 
-data partially_retired_example: ObligationLifecycle = Retired {
-  discharged: [MirrorPopulationEmpty]
+// Retired carries nothing: the arm IS the claim that both populations are empty.
+data fully_retired_example: ObligationLifecycle = Retired
+
+data partially_retired_example: ObligationLifecycle = RetirementPrepared {
+  outstanding: RequiredConsumersRemain
 }
 
 // THE ASYMMETRY, ASSERTED AS A DISAGREEMENT. Asserting each predicate separately is satisfied by a
 // pair that answers false to everything -- the fused row again in typed clothing. The arms
 // DIFFERING is the entire content of the split, so the test requires the difference.
 test fn witness_transfer_admits_host_deletion_but_not_carrier_deletion() -> Bool {
-  host_deletion_admitted(lifecycle: transferred_example)
-    && carrier_deletion_admitted(lifecycle: transferred_example) == false
+  host_deletion_admitted(lifecycle: realization_transferred_example)
+    && carrier_deletion_admitted(lifecycle: realization_transferred_example) == false
+}
+
+// THE DEFECT THIS SPLIT REPAIRS, ASSERTED AS A DISAGREEMENT. The arms were one arm carrying a
+// successor AUTHORITY whose carrier deletion answered false, so the carrier's own terminal state
+// left two definitions answering for one operation. Asserting the authority arm's admission alone
+// would stay green if the arms were re-fused with carrier deletion widened to both; asserting the
+// realization arm's refusal alone would stay green if they were re-fused the other way. Only the
+// arms DIFFERING distinguishes the split from either fusion, which is why the two are compared
+// rather than checked.
+test fn witness_the_two_transfers_disagree_on_carrier_deletion() -> Bool {
+  carrier_deletion_admitted(lifecycle: authority_transferred_example)
+    != carrier_deletion_admitted(lifecycle: realization_transferred_example)
+}
+
+// A completed authority transfer makes the successor canonical, so keeping the old carrier is the
+// dual-authority state SS3 forbids -- both files go.
+test fn witness_authority_transfer_admits_deleting_both() -> Bool {
+  host_deletion_admitted(lifecycle: authority_transferred_example)
+    && carrier_deletion_admitted(lifecycle: authority_transferred_example)
 }
 
 test fn witness_fully_discharged_retirement_admits_both_deletions() -> Bool {
@@ -53,19 +82,23 @@ test fn witness_fully_discharged_retirement_admits_both_deletions() -> Bool {
     && carrier_deletion_admitted(lifecycle: fully_retired_example)
 }
 
-// A RETIREMENT THAT ASSERTS ITSELF WITHOUT DISCHARGING BOTH OBLIGATIONS ADMITS NOTHING. This is
-// what typing the obligations bought: an earlier revision carried free-form String receipts, which
-// could claim discharge without exhibiting it, so this case was unrepresentable and therefore
-// untestable. It is the exact shape the finding is about -- naming a disposition is not proving it.
+// A RETIREMENT WHOSE OBLIGATIONS ARE NOT ALL DISCHARGED ADMITS NOTHING, and it is now a separate
+// ARM rather than a Retired value that has to be inspected. Two earlier revisions could not test
+// this at all: a String receipt could claim discharge without exhibiting it, and a discharge LIST
+// made "retired" and "not actually retired" the same constructor. It is the exact shape the
+// finding is about -- naming a disposition is not proving it.
 test fn witness_partial_retirement_admits_neither_deletion() -> Bool {
   host_deletion_admitted(lifecycle: partially_retired_example) == false
     && carrier_deletion_admitted(lifecycle: partially_retired_example) == false
 }
 
-test fn witness_partial_retirement_is_not_fully_discharged() -> Bool {
-  retirement_fully_discharged(discharged: [MirrorPopulationEmpty]) == false
-    && retirement_fully_discharged(discharged: [RequiredConsumerPopulationEmpty]) == false
-    && retirement_fully_discharged(discharged: [MirrorPopulationEmpty, RequiredConsumerPopulationEmpty])
+// EVERY incomplete progress state admits neither deletion, asserted across all three rather than
+// on the one the example happens to carry -- otherwise adding a fourth outstanding state could
+// silently admit a deletion from a prepared retirement.
+test fn witness_no_prepared_retirement_admits_any_deletion() -> Bool {
+  ([MirrorPopulationStillOccupied, RequiredConsumersRemain, BothObligationsOutstanding]
+    |> all(g => host_deletion_admitted(lifecycle: RetirementPrepared { outstanding: g }) == false
+             && carrier_deletion_admitted(lifecycle: RetirementPrepared { outstanding: g }) == false))
 }
 
 test fn witness_active_admits_neither_deletion() -> Bool {
@@ -86,20 +119,23 @@ test fn witness_exactly_one_route_is_refuted() -> Bool {
   refuted_route_count() == 1
 }
 
-// THE FINDING ITSELF, ASSERTED SO IT EXPIRES LOUDLY. If a conformance relation later lands and the
-// carrier names every state the host refuses, this goes RED and the census must be revisited
-// rather than standing as a claim about a state that has ended.
+// THE FINDING ITSELF, ASSERTED SO IT EXPIRES LOUDLY. If a conformance relation later lands, this
+// goes RED and the census must be revisited rather than standing as a claim about a state that has
+// ended. A prior revision asserted this over five transcribed counts; the counts are gone, and the
+// claim they were supposed to support is unchanged -- which is the evidence they were not carrying
+// it. What replaces them is not a smaller number but a state that cannot go stale, because it
+// asserts that nothing relates the two realizations rather than describing how far apart they are.
 test fn witness_conformance_relation_remains_unobserved() -> Bool {
-  conformance_divergence_is_observed(d: required_regen_conformance_divergence) == false
+  conformance_is_observed(c: required_regen_realization_conformance) == false
 }
 
-test fn witness_divergence_counts_are_internally_consistent() -> Bool {
-  required_regen_conformance_divergence.carrier_named_states
-      < required_regen_conformance_divergence.host_distinct_refusal_states
-    && required_regen_conformance_divergence.host_distinct_refusal_states
-      <= required_regen_conformance_divergence.host_production_refusal_sites
-    && required_regen_conformance_divergence.carrier_variants_without_producer
-      < required_regen_conformance_divergence.carrier_declared_variants
+// ANTI-VACUITY FOR THE PREDICATE ABOVE: a conformance predicate that answered false for every
+// input would satisfy the witness while proving nothing, so the arm that must displace it is
+// exhibited answering true.
+test fn witness_an_observed_conformance_would_read_observed() -> Bool {
+  conformance_is_observed(c: RealizationConformanceObserved {
+    receipt: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run")
+  })
 }
 
 // Both arms of the control table, plus anti-vacuity: either arm alone passes over an empty table

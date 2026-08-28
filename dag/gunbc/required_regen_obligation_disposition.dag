@@ -11,6 +11,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // `delete-with-v1` at the Wave 4 real-fixpoint cutover. That row answers for two futures with
 // different obligations: TRANSFER, where the operation survives under a successor and owes an
 // equivalence receipt, and RETIRE, where the operation ceases and owes proof its subject is empty.
+// Transfer itself splits again by whether the successor replaces the REALIZATION or the AUTHORITY.
 // Both end in deleting the same two files, which is why one row can cover them and why nothing
 // notices that it does. `delete-with-v1` states the ACTION and leaves the JUSTIFICATION unstated.
 //
@@ -37,46 +38,73 @@ import std.decl_ref { DeclarationRef, decl_ref }
 // structurally silent for this class, and the only thing that finds one is somebody attempting
 // the work it governs.
 
-// A retirement's obligations, as discharge markers rather than prose. Modeling these as typed
-// members is what makes "retirement owes proof" mechanical: a Retired arm carrying an incomplete
-// discharge list is inspectable, where a String receipt could only be read.
-type RetirementObligation
-  = MirrorPopulationEmpty
-  | RequiredConsumerPopulationEmpty
+// A RETIREMENT'S OUTSTANDING WORK, ENUMERATED RATHER THAN CHECKED. A prior revision carried the
+// Retired arm as a LIST of discharged obligations plus a predicate asserting both were present,
+// which review 57020 correctly named as predicate dissolution -- two folds each matching a closed
+// two-variant coproduct and answering true for one arm and false for the other. The repair is not
+// to respell that predicate. It is to notice that the predicate existed only because the carrier
+// could represent a retirement that was not retired, and to remove that representation: an
+// incompletely discharged retirement is now a DIFFERENT ARM, not a Retired value carrying a short
+// list. The invalid state stops being writable, so there is nothing left to validate and the
+// predicate dissolves rather than being reformulated (SS5 construction over validation, SS4b
+// dissolution on climb -- the production check goes, the witnesses stay).
+//
+// The list also admitted a state with no meaning: `Retired { discharged: [] }` was representable
+// and was neither retired nor prepared. Enumerating the incomplete states removes that too.
+type RetirementProgress
+  = MirrorPopulationStillOccupied
+  | RequiredConsumersRemain
+  | BothObligationsOutstanding
 
+// TRANSFER SPLITS IN TWO, and fusing them was this carrier's own instance of the defect it exists
+// to name. A single Transferred arm carrying a successor AUTHORITY described a full authority
+// transfer, while the deletion rule below denied deleting the old carrier under it -- so the
+// carrier encoded a terminal state in which two definitions answer for one operation, which is
+// exactly what SS3 forbids. Which realization performs the work and which authority DEFINES it are
+// separate questions with separate deletion consequences, so they are separate arms.
+//
+// RETIREMENT SPLITS THE SAME WAY AND FOR THE SAME REASON: Retired carries NOTHING, because it
+// means both populations are empty and a value that has to be inspected to find out whether it
+// means that is not a terminal state.
 type ObligationLifecycle
   = Active
-  | Transferred {
+  | RealizationTransferred { successor_realization: DeclarationRef }
+  | AuthorityTransferred {
       successor_authority: DeclarationRef
       successor_realization: DeclarationRef
     }
-  | Retired { discharged: List<RetirementObligation> }
-
-// Both obligations must be discharged for a retirement to be complete. An earlier revision carried
-// these as free-form String receipts, which could assert discharge without exhibiting it.
-fn retirement_fully_discharged(discharged: List<RetirementObligation>) -> Bool {
-  (discharged |> any(o => match o { MirrorPopulationEmpty => true  RequiredConsumerPopulationEmpty => false }))
-    && (discharged |> any(o => match o { RequiredConsumerPopulationEmpty => true  MirrorPopulationEmpty => false }))
-}
+  | RetirementPrepared { outstanding: RetirementProgress }
+  | Retired
 
 // THE ASYMMETRY IS THE ENTIRE CONTENT, and a symmetric pair would be the fused row again in typed
-// clothing. The HOST is one realization: a transfer moves its work to the successor, a retirement
-// ends it, so both terminal arms admit deleting it. The CARRIER is the operation's DEFINITION, so
-// deleting it under a transfer destroys the referent of the equivalence receipt that transfer
-// owes. Only a fully discharged retirement admits it.
+// clothing. The HOST is one realization: either transfer moves its work to a successor and a
+// retirement ends it, so those arms admit deleting it. The CARRIER is the operation's DEFINITION,
+// and the two transfers part company there. Under a REALIZATION transfer the carrier stays
+// canonical -- the successor realization consumes it -- so deleting it would destroy the referent
+// of the equivalence receipt that transfer owes. Under an AUTHORITY transfer the successor
+// authority becomes canonical, so the old carrier MUST delete or the operation has two
+// definitions; the continuation evidence has to live outside it by then.
+//
+// A PREPARED RETIREMENT ADMITS NEITHER, and it is the only non-Active arm that does not: no
+// terminal deletion is authorized from a prepared state, because the thing that would justify it
+// has not happened yet.
 fn host_deletion_admitted(lifecycle: ObligationLifecycle) -> Bool {
   match lifecycle {
     Active => false
-    Transferred { successor_authority: _, successor_realization: _ } => true
-    Retired { discharged: d } => retirement_fully_discharged(discharged: d)
+    RealizationTransferred { successor_realization: _ } => true
+    AuthorityTransferred { successor_authority: _, successor_realization: _ } => true
+    RetirementPrepared { outstanding: _ } => false
+    Retired => true
   }
 }
 
 fn carrier_deletion_admitted(lifecycle: ObligationLifecycle) -> Bool {
   match lifecycle {
     Active => false
-    Transferred { successor_authority: _, successor_realization: _ } => false
-    Retired { discharged: d } => retirement_fully_discharged(discharged: d)
+    RealizationTransferred { successor_realization: _ } => false
+    AuthorityTransferred { successor_authority: _, successor_realization: _ } => true
+    RetirementPrepared { outstanding: _ } => false
+    Retired => true
   }
 }
 
@@ -175,46 +203,48 @@ data required_regen_closure_membership_controls: List<ClosureMembershipObservati
   ClosureMembershipObservation { module_path: "gunbc.doc_graph_roots", seed_importers: 0, emitted: false }
 ]
 
-type ConformanceDivergence {
-  host_production_refusal_sites: Int
-  host_distinct_refusal_states: Int
-  carrier_named_states: Int
-  carrier_declared_variants: Int
-  carrier_variants_without_producer: Int
-}
-
 // THE OPERATION IS ENFORCED; WHAT IS UNOBSERVED IS THE RELATION BETWEEN ITS TWO REALIZATIONS.
-// Measured across all of src/v1/stage0/src/*.rs, `required_regen_run` and
-// `required_regen_sync_admission` occur exactly ONCE, and the occurrence is a COMMENT naming the
-// carrier as authority for an ordering. No production Rust calls into the carrier; its only
-// executor is its own witness test.
+// Across all of src/v1/stage0/src/*.rs the carrier's operation symbols occur only inside a COMMENT
+// naming the carrier as authority for an ordering. No production Rust calls into the carrier; its
+// only executor is its own witness test.
 //
 // AN EARLIER REVISION READ THAT AS THE OPERATION BEING UNENFORCED. It is not, and the correction
 // changes both severity and repair: the hand-written host is an INDEPENDENT REALIZATION and it
-// does enforce required-regen -- it refuses drift, names paths, stops the line. The honest pair is
-// OperationEnforcedByIndependentRealization with CarrierRealizationConformanceUnobserved. What is
-// missing is a mechanically enforced RELATION between the two realizations, not the enforcement.
+// does enforce required-regen -- it refuses drift, names paths, stops the line. What is missing is
+// a mechanically enforced RELATION between the two realizations, not the enforcement.
 //
-// The row below is what that unobserved relation COST. Site count and state count are separate
-// members because two states refuse at two sites each, so a site total read as a state total
-// overstates the divergence.
+// A PRIOR REVISION CARRIED THAT RELATION AS FIVE TRANSCRIBED COUNTS, and review 57020 was right to
+// refuse them: they were measured off a live-tree scan with no instrument named, which is exactly
+// what the 2026-08-24 ruling forbids -- a transcribed number is unreachable from the thing that
+// owns it, so it rots without anyone touching either end. The repair is not to re-source them but
+// to observe that they were never load-bearing. The standing this carrier needs is QUALITATIVE:
+// whether a conformance relation has been observed at all. The magnitude of the divergence changes
+// that answer not at all, and the predicate that consumed the counts read `false` regardless of
+// whether they were current -- so the counts could rot silently while the decision stayed right,
+// which is the definition of a member carrying no decision.
 //
-// WHY THE PRODUCERLESS COUNT IS SOUND DESPITE COMING FROM A NAME GREP: constructing a .dag
-// coproduct variant requires the literal variant name, and a check for reflective construction
-// (construct_variant / variant_by_name / make_variant) returns nothing in the corpus, so for the
-// .dag side the terminal-constructor vocabulary IS the producer-path vocabulary. An exclusion
-// oracle needs a closed producer-path vocabulary, not merely a closed terminal-constructor one.
-data required_regen_conformance_divergence: ConformanceDivergence = ConformanceDivergence {
-  host_production_refusal_sites: 23,
-  host_distinct_refusal_states: 21,
-  carrier_named_states: 6,
-  carrier_declared_variants: 11,
-  carrier_variants_without_producer: 3
-}
+// CONFORMANCE IS A SEPARATE AXIS FROM LIFECYCLE, not an arm of it. The operation's fate and the
+// state of the relation between its realizations are orthogonal: the operation is Active today AND
+// its realization conformance is unobserved, and fusing them would make one row answer for two
+// independent questions.
+type RealizationConformance
+  = IndependentRealizationConformanceUnobserved
+  | RealizationConformanceObserved { receipt: DeclarationRef }
+  | NoIndependentRealizationExists
 
-fn conformance_divergence_is_observed(d: ConformanceDivergence) -> Bool {
-  d.carrier_named_states == d.host_distinct_refusal_states
-    && d.carrier_variants_without_producer == 0
+// The observed standing, and it is an assertion of ABSENCE rather than a measurement -- which is
+// why it needs no instrument. Naming an instrument is owed by a number that claims to describe the
+// tree; this claims only that nothing in the tree relates the two realizations, and the arm that
+// would displace it (RealizationConformanceObserved) is uninhabitable until a receipt exists to
+// fill it.
+data required_regen_realization_conformance: RealizationConformance = IndependentRealizationConformanceUnobserved
+
+fn conformance_is_observed(c: RealizationConformance) -> Bool {
+  match c {
+    IndependentRealizationConformanceUnobserved => false
+    RealizationConformanceObserved { receipt: _ } => true
+    NoIndependentRealizationExists => false
+  }
 }
 
 data required_regen_obligation_authorities: List<DeclarationRef> = [
