@@ -28,7 +28,6 @@ import gunbc.discovery_census {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember,
   Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
   required_floor_site_disposition,
 }
