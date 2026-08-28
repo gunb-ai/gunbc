@@ -8984,8 +8984,45 @@ fn reference_derived_closure_admission_value(
         variant_name: ctx.sym(&variant_name),
         fields: Rc::new(Vec::new()),
     };
+    // The variant NAME is spelled by a total match, never derived from `Debug` (review 57100).
+    // Debug happens to print exactly the variant name for these nullary enums today, and it stops
+    // doing so the moment any variant gains a payload -- it would print `Foo { .. }` and this seam
+    // would mint a variant name no `.dag` match accepts. That fails loudly rather than silently,
+    // but it fails at RUNTIME on a name; a total match makes the same mistake a COMPILE error here,
+    // which is the construction-over-validation direction DESIGN 5 asks for. It also stops the
+    // Rust identifier from being a second representation of the variant's identity (DESIGN 3).
     let capability = |c: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability| {
-        nullary("ReferenceDerivedClosureCapability", format!("{c:?}"))
+        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability as C;
+        let name = match c {
+            C::SameFileEarlierNeighbourVisible => "SameFileEarlierNeighbourVisible",
+            C::SiblingDecisionBranchExcluded => "SiblingDecisionBranchExcluded",
+            C::LaterDeclarationExcluded => "LaterDeclarationExcluded",
+            C::DistinctSameSpelledDeclarationsPreserved => "DistinctSameSpelledDeclarationsPreserved",
+            C::RepeatedMentionsCollapseDependency => "RepeatedMentionsCollapseDependency",
+            C::UnrelatedLoadedFileExcluded => "UnrelatedLoadedFileExcluded",
+        };
+        nullary("ReferenceDerivedClosureCapability", name.to_string())
+    };
+    let trigger_value = |t: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger| {
+        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger as T;
+        let name = match t {
+            T::P2aStructuralCandidateProducer7515 => "P2aStructuralCandidateProducer7515",
+            T::P2aReferenceDependencyProjection7515 => "P2aReferenceDependencyProjection7515",
+            T::P2aPoolIndependentDependencyProjection7515 => "P2aPoolIndependentDependencyProjection7515",
+        };
+        nullary("ReferenceDerivedClosureTrigger", name.to_string())
+    };
+    let scenario_failure = |f: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure| {
+        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure as F;
+        let name = match f {
+            F::SameFileNeighbourMissing => "SameFileNeighbourMissing",
+            F::SiblingBranchLeaked => "SiblingBranchLeaked",
+            F::LaterDeclarationLeaked => "LaterDeclarationLeaked",
+            F::DistinctDeclarationCollapsed => "DistinctDeclarationCollapsed",
+            F::RepeatedMentionDuplicatedDependency => "RepeatedMentionDuplicatedDependency",
+            F::UnrelatedLoadedFileDependencyLeaked => "UnrelatedLoadedFileDependencyLeaked",
+        };
+        nullary("ReferenceDerivedClosureScenarioFailure", name.to_string())
     };
     match admission {
         A::ReferenceDerivedClosureEstablished { receipt } => Value::Variant {
@@ -9010,13 +9047,7 @@ fn reference_derived_closure_admission_value(
             variant_name: ctx.sym("ReferenceDerivedClosureRefused"),
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("capability"), capability(c)),
-                (
-                    ctx.sym("failure"),
-                    nullary(
-                        "ReferenceDerivedClosureScenarioFailure",
-                        format!("{failure:?}"),
-                    ),
-                ),
+                (ctx.sym("failure"), scenario_failure(failure)),
             ])),
         },
         A::ReferenceDerivedClosureUnavailable {
@@ -9027,10 +9058,7 @@ fn reference_derived_closure_admission_value(
             variant_name: ctx.sym("ReferenceDerivedClosureUnavailable"),
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("capability"), capability(c)),
-                (
-                    ctx.sym("trigger"),
-                    nullary("ReferenceDerivedClosureTrigger", format!("{trigger:?}")),
-                ),
+                (ctx.sym("trigger"), trigger_value(trigger)),
             ])),
         },
     }
