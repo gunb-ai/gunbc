@@ -117,20 +117,6 @@ pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
     }
 }
 
-pub fn child_type_at(n: Rc<Node>, index: i64) -> Option<Rc<Node>> {
-    match n
-        .children
-        .clone()
-        .iter()
-        .cloned()
-        .skip(index.clone() as usize)
-        .next()
-    {
-        Some(ch) => Some(child_type_node(ch.clone())),
-        None => None,
-    }
-}
-
 pub fn node_is_collection(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
