@@ -14,8 +14,9 @@ import product.training.readback {
 import product.training.attempt_graph { TrainingRunAttemptGraph, graph_admits_attempt }
 import product.training.composition { TrainingRunEvidenceComposition }
 import product.training.execution_control {
-  TrainingRunConvergenceInput, TrainingExecutionClaim,
+  TrainingRunConvergenceInput, TrainingExecutionClaim, launch_identity_of,
 }
+import product.training.launch_identity { TrainingLaunchIdentity, launch_identity_eq }
 import product.training.resolution { TrainingRunDesired, resolved_training_manifest }
 import product.training.observation_cut {
   TrainingRunReadbackCut, CrossAxisTemporalRelation,
@@ -99,6 +100,16 @@ type TrainingRunBlocker<P>
     }
   | TrainingAttemptWithoutExecutionClaim {
       attempt: FabricIdentity<P, ExecutionAttemptKey>,
+    }
+  | TrainingProcessWithoutExecutionClaim {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      observed_launch: TrainingLaunchIdentity<P>,
+      receipt: ObservationReceiptRef,
+    }
+  | TrainingProcessFromForeignClaim {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      observed_launch: TrainingLaunchIdentity<P>,
+      receipt: ObservationReceiptRef,
     }
   | TrainingCompletionAmbiguous {
       first: FabricIdentity<P, ExecutionAttemptKey>,
@@ -415,6 +426,41 @@ fn claims_after_head<P>(cs: List<TrainingExecutionClaim<P>>) -> List<TrainingExe
     .more
 }
 
+// A PROCESS IS CURRENT ONLY IF ITS REPORTED LAUNCH IDENTITY MATCHES A LIVE CLAIM. The three cases
+// are separated because their remedies are opposite: a process matching a claim is the run; a
+// process naming an attempt this run holds but a launch identity no claim carries is a STALE
+// REALIZATION that must be reconciled away, not waited on; and a process with no claim at all means
+// something started a trainer outside the control plane.
+fn process_matches_a_claim<P>(
+  claims: List<TrainingExecutionClaim<P>>,
+  p: TrainingProcessObservation<P>,
+) -> Bool {
+  claims.any(c => launch_identity_eq(a: launch_identity_of(claim: c), b: p.launch))
+}
+
+fn foreign_process_blockers<P>(
+  input: TrainingRunConvergenceInput<P>,
+  processes: List<TrainingProcessObservation<P>>,
+) -> List<TrainingRunBlocker<P>> {
+  let claims = input.control.active_claims
+  processes
+    .filter(p => !process_matches_a_claim(claims: claims, p: p))
+    .map(p =>
+      if claims.any(c => fabric_identity_eq(left: c.attempt, right: p.attempt)) {
+        TrainingProcessFromForeignClaim {
+          attempt: p.attempt,
+          observed_launch: p.launch,
+          receipt: p.receipt,
+        }
+      } else {
+        TrainingProcessWithoutExecutionClaim {
+          attempt: p.attempt,
+          observed_launch: p.launch,
+          receipt: p.receipt,
+        }
+      })
+}
+
 fn claim_is_dispatched<P>(c: TrainingExecutionClaim<P>) -> Bool {
   match c.dispatch {
     none => false
@@ -464,6 +510,10 @@ fn reconcile_training_run<P>(
       foreign_attempt_blockers(graph: graph, rb: rb),
       assessments.flat_map(a => attempt_blockers(a: a, intended: intended)),
       unclaimed_attempt_blockers(input: input),
+      foreign_process_blockers(
+        input: input,
+        processes: assessments.flat_map(a => a.processes),
+      ),
     ].flat_map(x => x)
   let candidates =
     assessments.flat_map(a =>
@@ -497,7 +547,11 @@ fn reconcile_training_run<P>(
         match candidates.first() {
           Present { value: c } => TrainingRunAlreadyConverged { completion: c }
           none => {
-            let running = assessments.flat_map(a => a.processes.filter(p => process_is_running(p: p)))
+            let running =
+              assessments.flat_map(a =>
+                a.processes.filter(p =>
+                  process_is_running(p: p)
+                    && process_matches_a_claim(claims: input.control.active_claims, p: p)))
             let failed = assessments.flat_map(a => a.terminals.filter(t => !terminal_succeeded(t: t)))
             if running.length() > 0 {
               TrainingRunInProgress { running: running }

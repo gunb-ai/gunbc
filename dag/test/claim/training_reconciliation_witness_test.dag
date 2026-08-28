@@ -7,6 +7,9 @@ import product.training.attempt_graph {
   AttemptPredecessorAbsent, DuplicateAttemptIdentity, AttemptLineageUnrooted,
   admit_attempt_graph, graph_admits_attempt,
 }
+import product.training.launch_identity {
+  TrainingLaunchIdentity, TrainingExecutionClaimIdentity, launch_identity_eq,
+}
 import product.training.readback {
   TrainingRunSubject, subject_of_desired, TrainingCheckpointObservation,
   TrainingRunReadback, TrainingReadbackAxis,
@@ -40,6 +43,7 @@ import product.training.reconciliation {
   TrainingAttemptOutputConflict, TrainingEffectiveManifestMismatch,
   TrainingSucceededWithoutObservedOutput, TrainingProcessTerminalContradiction,
   TrainingCompletionAmbiguous, TrainingAttemptWithoutExecutionClaim,
+  TrainingProcessWithoutExecutionClaim, TrainingProcessFromForeignClaim,
   TrainingRunLaunchPending, TrainingRunLaunchDispatchRequired,
   reconcile_training_run,
 }
@@ -77,7 +81,7 @@ import product.training.execution_control {
   TrainingRunExecutionControl, TrainingControlAdmission, TrainingControlAdmitted,
   TrainingControlRefused, admit_execution_control,
   TrainingRunConvergenceInput, TrainingConvergenceInputAdmitted,
-  TrainingConvergenceInputSubjectMismatch, admit_convergence_input,
+  TrainingConvergenceInputSubjectMismatch, admit_convergence_input, launch_identity_of,
 }
 import product.fabric.work { ExecutionRequirements, Shape, HardRequirements }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
@@ -338,9 +342,23 @@ fn manifest_at(d: TrainingRunDesired<NonEmptyStr>, k: NonEmptyStr) -> TrainingEf
   }
 }
 
-fn running_at(k: NonEmptyStr) -> TrainingProcessObservation<NonEmptyStr> {
+// A PROCESS OBSERVATION CARRIES THE LAUNCH IDENTITY THE HOST REPORTED, so every fixture below has
+// to say WHICH launch it saw. That is the point of the field: there is no way to author a process
+// observation without committing to which committed occurrence it belongs to.
+fn launch_for(
+  s: TrainingRunSubject<NonEmptyStr>,
+  k: NonEmptyStr,
+) -> TrainingLaunchIdentity<NonEmptyStr>? {
+  both_claims(s: s).filter(c => c.attempt.key == k).map(c => launch_identity_of(claim: c)).first()
+}
+
+fn running_with(
+  launch: TrainingLaunchIdentity<NonEmptyStr>,
+  k: NonEmptyStr,
+) -> TrainingProcessObservation<NonEmptyStr> {
   TrainingProcessObservation {
     attempt: attempt_id(k: k),
+    launch: launch,
     liveness: TrainingProcessRunning,
     receipt: "gunbc.observation.proc",
   }
@@ -390,6 +408,10 @@ fn blocker_name(b: TrainingRunBlocker<NonEmptyStr>) -> NonEmptyStr {
     TrainingProcessTerminalContradiction { attempt: _, running: _, terminals: _ } => "process-terminal"
     TrainingCompletionAmbiguous { first: _, more: _ } => "completion-ambiguous"
     TrainingAttemptWithoutExecutionClaim { attempt: _ } => "attempt-without-claim"
+    TrainingProcessWithoutExecutionClaim { attempt: _, observed_launch: _, receipt: _ } =>
+      "process-without-claim"
+    TrainingProcessFromForeignClaim { attempt: _, observed_launch: _, receipt: _ } =>
+      "process-from-foreign-claim"
   }
 }
 
@@ -791,9 +813,12 @@ test fn a_running_process_with_no_terminal_is_in_progress() -> Bool {
   match desired_fixture() {
     none => false
     Present { value: d } =>
+      match launch_for(s: subject_of_desired(desired: d), k: "e1") {
+        none => false
+        Present { value: lz } =>
       match compose(
         d: d,
-        processes: observed(members: [running_at(k: "e1")], receipt: "obs.proc"),
+        processes: observed(members: [running_with(launch: lz, k: "e1")], receipt: "obs.proc"),
         terminals: observed(members: [], receipt: "obs.term"),
         outputs: observed(members: [], receipt: "obs.out"),
         manifests: observed(members: [], receipt: "obs.manifest"),
@@ -802,6 +827,7 @@ test fn a_running_process_with_no_terminal_is_in_progress() -> Bool {
         Present { value: c } => disposition_name(v: reconcile(c: c)) == "in-progress"
       }
   }
+      }
 }
 
 // A SUCCEEDED ATTEMPT WITH NO OUTPUT IS A BLOCKER, and it is reportable ONLY because the cut
@@ -932,9 +958,12 @@ test fn a_running_process_outranks_a_dispatched_claim() -> Bool {
   match desired_fixture() {
     none => false
     Present { value: d } =>
+      match launch_for(s: subject_of_desired(desired: d), k: "e2") {
+        none => false
+        Present { value: lz } =>
       match compose(
         d: d,
-        processes: observed(members: [running_at(k: "e2")], receipt: "obs.proc"),
+        processes: observed(members: [running_with(launch: lz, k: "e2")], receipt: "obs.proc"),
         terminals: observed(members: [], receipt: "obs.term"),
         outputs: observed(members: [], receipt: "obs.out"),
         manifests: observed(members: [], receipt: "obs.manifest"),
@@ -943,6 +972,7 @@ test fn a_running_process_outranks_a_dispatched_claim() -> Bool {
         Present { value: c } => disposition_name(v: reconcile(c: c)) == "in-progress"
       }
   }
+      }
 }
 
 fn launch_claim_count(v: TrainingRunDisposition<NonEmptyStr>) -> Nat {
@@ -1006,5 +1036,148 @@ test fn an_undispatched_claim_outranks_a_dispatched_one_and_reports_only_itself(
           disposition_name(v: v) == "launch-dispatch-required" && launch_claim_count(v: v) == 1
         }
       }
+  }
+}
+
+// A PROCESS THAT NAMES THIS RUN'S ATTEMPT BUT A LAUNCH IDENTITY NO CLAIM CARRIES IS STALE, NOT
+// RUNNING. This is the case attempt-identity matching cannot see: a realization that survived a
+// recovery or a lease replacement reports the same attempt while belonging to a committed
+// generation that is no longer current. Reading it as in-progress would have the controller wait
+// forever on a dead run, and the run would never be restarted because it looked alive.
+test fn a_process_from_a_superseded_generation_is_stale_not_in_progress() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } => {
+      let s = subject_of_desired(desired: d)
+      match launch_for(s: s, k: "e2") {
+        none => false
+        Present { value: live } => {
+          let stale =
+            TrainingLaunchIdentity {
+              commitment: TrainingExecutionClaimIdentity {
+                transition_slot: live.commitment.transition_slot,
+                committed_generation: live.commitment.committed_generation - 1,
+              },
+              attempt: live.attempt,
+              grant: live.grant,
+              lease: live.lease,
+            }
+          match compose(
+            d: d,
+            processes: observed(members: [running_with(launch: stale, k: "e2")], receipt: "obs.proc"),
+            terminals: observed(members: [], receipt: "obs.term"),
+            outputs: observed(members: [], receipt: "obs.out"),
+            manifests: observed(members: [], receipt: "obs.manifest"),
+          ) {
+            none => false
+            Present { value: c } => {
+              let v = reconcile(c: c)
+              disposition_name(v: v) != "in-progress"
+                && blocker_names(v: v).any(n => n == "process-from-foreign-claim")
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE DISCRIMINATING CONTROL FOR THE WITNESS ABOVE, and without it that witness proves nothing: the
+// SAME process, differing only in the committed generation, IS in-progress when its launch identity
+// matches a live claim. The two together establish that the generation is load-bearing rather than
+// that the fixture happens to be refused for some other reason.
+test fn the_same_process_at_the_live_generation_is_in_progress() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } => {
+      let s = subject_of_desired(desired: d)
+      match launch_for(s: s, k: "e2") {
+        none => false
+        Present { value: live } =>
+          match compose(
+            d: d,
+            processes: observed(members: [running_with(launch: live, k: "e2")], receipt: "obs.proc"),
+            terminals: observed(members: [], receipt: "obs.term"),
+            outputs: observed(members: [], receipt: "obs.out"),
+            manifests: observed(members: [], receipt: "obs.manifest"),
+          ) {
+            none => false
+            Present { value: c } => disposition_name(v: reconcile(c: c)) == "in-progress"
+          }
+      }
+    }
+  }
+}
+
+// A PROCESS RUNNING FOR AN ATTEMPT NOTHING CLAIMED IS A DIFFERENT FACT WITH A DIFFERENT OWNER:
+// something started a trainer outside the control plane. Reported separately from the stale case
+// because one is reconciled away and the other is an unaccounted actuator.
+//
+// THE FIXTURE USES AN IN-GRAPH ATTEMPT DELIBERATELY, and the first cut of this witness did not --
+// it named an attempt the graph does not hold, which is already reported one layer up as
+// TrainingReadbackAttemptOutsideRun and never reaches this fold at all, because the process
+// population is keyed on the graph's attempts. That witness went red and the arm looked unreachable.
+// It is not: the reachable shape is an attempt the graph DOES hold with no claim covering it.
+test fn a_process_under_an_unclaimed_attempt_is_reported_as_unclaimed() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } => {
+      let s = subject_of_desired(desired: d)
+      match launch_for(s: s, k: "e1") {
+        none => false
+        Present { value: l1 } => {
+          let unclaimed =
+            TrainingLaunchIdentity {
+              commitment: TrainingExecutionClaimIdentity {
+                transition_slot: "unclaimed-slot",
+                committed_generation: l1.commitment.committed_generation,
+              },
+              attempt: attempt_id(k: "e2"),
+              grant: l1.grant,
+              lease: l1.lease,
+            }
+          match compose(
+            d: d,
+            processes: observed(
+              members: [running_with(launch: unclaimed, k: "e2")],
+              receipt: "obs.proc",
+            ),
+            terminals: observed(members: [], receipt: "obs.term"),
+            outputs: observed(members: [], receipt: "obs.out"),
+            manifests: observed(members: [], receipt: "obs.manifest"),
+          ) {
+            none => false
+            Present { value: c } => {
+              let names = blocker_names(v: reconcile_with(
+                  c: c,
+                  claims: both_claims(s: s).filter(cl => cl.attempt.key == "e1"),
+                ))
+              names.any(n => n == "process-without-claim")
+                && !names.any(n => n == "process-from-foreign-claim")
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE LAUNCH IDENTITY SURVIVES record_claim_dispatch. This is why the identity is derived from the
+// COMMITMENT and not from the whole claim: recording a dispatch mutates the claim, and a stamp over
+// the whole claim would change the instant a launch was recorded -- so the observer would stop
+// recognising the very process it had just started, and every dispatched run would read as stale.
+test fn recording_a_dispatch_does_not_change_the_launch_identity() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } => {
+      let s = subject_of_desired(desired: d)
+      both_claims(s: s).all(c =>
+        launch_identity_eq(
+          a: launch_identity_of(claim: c),
+          b: launch_identity_of(
+            claim: record_claim_dispatch(claim: c, dispatch: "gunbc.observation.dispatch"),
+          ),
+        ))
+    }
   }
 }

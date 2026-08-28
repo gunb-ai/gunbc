@@ -7,6 +7,7 @@ import product.training.attempt_graph {
   AttemptPredecessorAbsent, DuplicateAttemptIdentity, AttemptLineageUnrooted,
   admit_attempt_graph, graph_admits_attempt,
 }
+import product.training.launch_identity { TrainingLaunchIdentity, launch_identity_eq }
 import product.training.readback {
   TrainingRunSubject, subject_of_desired, TrainingCheckpointObservation,
   TrainingRunReadback, TrainingReadbackAxis,
@@ -70,7 +71,7 @@ import product.training.execution_control {
   admit_execution_control,
   TrainingRunConvergenceInput, TrainingConvergenceInputAdmission,
   TrainingConvergenceInputAdmitted, TrainingConvergenceInputSubjectMismatch,
-  admit_convergence_input,
+  admit_convergence_input, launch_identity_of,
 }
 import product.fabric.work { ExecutionRequirements, Shape, HardRequirements }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
@@ -331,13 +332,6 @@ fn manifest_at(d: TrainingRunDesired<NonEmptyStr>, k: NonEmptyStr) -> TrainingEf
   }
 }
 
-fn running_at(k: NonEmptyStr) -> TrainingProcessObservation<NonEmptyStr> {
-  TrainingProcessObservation {
-    attempt: attempt_id(k: k),
-    liveness: TrainingProcessRunning,
-    receipt: "gunbc.observation.proc",
-  }
-}
 
 fn compose(
   d: TrainingRunDesired<NonEmptyStr>,

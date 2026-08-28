@@ -6,7 +6,11 @@ import product.training.composition { TrainingRunEvidenceComposition }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.execution { ExecutionGrant }
 import product.fabric.identity {
-  FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, fabric_identity_eq,
+  FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, GrantKey, fabric_identity_eq,
+}
+import product.training.launch_identity {
+  TrainingExecutionClaimIdentity, claim_commitment_identity_eq,
+  TrainingLaunchIdentity, launch_identity_eq,
 }
 import std.types { NonEmptyStr, List, Bool, Int }
 
@@ -96,6 +100,23 @@ fn training_execution_claim_seal<P>(
       committed_generation: committed_generation,
       dispatch: dispatch,
     }
+
+fn claim_commitment_identity<P>(claim: TrainingExecutionClaim<P>) -> TrainingExecutionClaimIdentity {
+  TrainingExecutionClaimIdentity {
+    transition_slot: transition_slot(k: claim.transition),
+    committed_generation: claim.committed_generation,
+  }
+}
+
+fn launch_identity_of<P>(claim: TrainingExecutionClaim<P>) -> TrainingLaunchIdentity<P> {
+  TrainingLaunchIdentity {
+    commitment: claim_commitment_identity(claim: claim),
+    attempt: claim.attempt,
+    grant: claim.grant.id,
+    lease: claim.grant.context.lease,
+  }
+}
+
 
 // DISPATCH IS RECORDED AFTER THE CLAIM COMMITS, NEVER BESIDE IT. There is no route that mints a
 // claim already carrying a dispatch receipt, so "dispatched" cannot be asserted about an occurrence

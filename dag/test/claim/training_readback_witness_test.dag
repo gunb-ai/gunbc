@@ -1,5 +1,9 @@
 module test.claim.training_readback_witness
 
+import product.training.launch_identity {
+  TrainingLaunchIdentity, TrainingExecutionClaimIdentity,
+}
+import product.fabric.execution { LeaseIdentity }
 import product.training.readback {
   TrainingRunSubject, subject_of_desired, training_run_subject_eq,
   TrainingPopulationObservation,
@@ -27,7 +31,7 @@ import product.fabric.work { ExecutionRequirements, Shape, HardRequirements }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.envelope { ResourceEnvelope }
 import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
-import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
+import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, GrantKey, fabric_identity_eq }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_of_value }
 import std.currency { Usd }
 import std.measure { money_amount_micro, hardware_thread_count }
@@ -138,6 +142,26 @@ fn desired_fixture(demand_work_key_override: NonEmptyStr?) -> TrainingRunDesired
           }
         }
       }
+  }
+}
+
+// THE LAUNCH IDENTITY THIS FIXTURE'S OBSERVER REPORTED. These witnesses are about SUBJECT binding,
+// not about the launch fence, so the value only has to be well-formed -- but it cannot be omitted,
+// which is the field doing its job: there is no way to author a process observation that declines
+// to say which committed occurrence it belongs to.
+fn fixture_launch(k: NonEmptyStr) -> TrainingLaunchIdentity<NonEmptyStr> {
+  TrainingLaunchIdentity {
+    commitment: TrainingExecutionClaimIdentity {
+      transition_slot: "fixture-slot",
+      committed_generation: 1,
+    },
+    attempt: attempt(k: k),
+    grant: FabricIdentity { principal: "gunbai", key: "fixture-grant" },
+    lease: LeaseIdentity {
+      lease_key: "fixture-lease",
+      resource_fingerprint: h(s: "fixture-slice"),
+      generation: 1,
+    },
   }
 }
 
@@ -474,6 +498,7 @@ test fn a_terminally_failed_run_may_still_hold_a_checkpoint() -> Bool {
       let procs: List<TrainingProcessObservation<NonEmptyStr>> = [
         TrainingProcessObservation {
           attempt: attempt(k: "attempt-1"),
+          launch: fixture_launch(k: "attempt-1"),
           liveness: TrainingProcessExited { detail: "signal 9" },
           receipt: "gunbc.observation.proc-1",
         },

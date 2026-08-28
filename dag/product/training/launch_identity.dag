@@ -1,0 +1,62 @@
+module product.training.launch_identity
+
+import product.fabric.execution { LeaseIdentity }
+import product.fabric.identity {
+  FabricIdentity, ExecutionAttemptKey, GrantKey, fabric_identity_eq,
+}
+import std.content_hash { serialize_content_hash }
+import std.types { NonEmptyStr, Bool, Int }
+
+// THE LAUNCH IDENTITY IS A SEPARATE MODULE BECAUSE BOTH SIDES OF THE FENCE NEED IT. The control
+// plane derives it from a committed claim; the process readback carries what the host reported. If
+// the type lived beside the claim, the readback would have to import the control plane to describe
+// an observation -- and an observation module that depends on the thing it is supposed to check
+// independently is the join collapsing into one authority.
+
+// THE LAUNCH IDENTITY IS DERIVED FROM THE IMMUTABLE COMMITMENT, NEVER FROM THE WHOLE CLAIM.
+// record_claim_dispatch changes the claim's dispatch field, so a stamp derived from the claim as a
+// whole would change the moment a launch was recorded -- and the observer would stop recognising the
+// process it had just started. Dispatch standing is lifecycle evidence BESIDE the commitment, not
+// part of what occurrence was committed.
+type TrainingExecutionClaimIdentity {
+  transition_slot: NonEmptyStr
+  committed_generation: Int
+}
+
+fn claim_commitment_identity_eq(
+  a: TrainingExecutionClaimIdentity,
+  b: TrainingExecutionClaimIdentity,
+) -> Bool {
+  a.transition_slot == b.transition_slot && a.committed_generation == b.committed_generation
+}
+
+// THE SLOT ALONE IS NOT A FENCE. It proves one semantic transition has one winner; it says nothing
+// about whether an observed process belongs to the CURRENT committed generation, the winning
+// attempt, the current grant, or the current lease epoch. A stale realization surviving a recovery
+// or a lease replacement carries the same slot, and matching on the slot would let it turn
+// LaunchPending into InProgress -- a dead process reported as a running training run.
+//
+// MODELLED AS A RECORD RATHER THAN A DIGEST ON PURPOSE. A digest is a TRANSPORT projection for the
+// substrate boundary, not a second authority for the claim; minting one here would put the fence's
+// meaning inside an opaque string that no judgment can descend into.
+type TrainingLaunchIdentity<P> {
+  commitment: TrainingExecutionClaimIdentity
+  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  grant: FabricIdentity<P, GrantKey>
+  lease: LeaseIdentity
+}
+
+// THE FINGERPRINT IS COMPARED THROUGH ITS FAMILY-QUALIFIED WIRE FORM, NOT WITH A UNION `==`.
+// LeaseIdentity.resource_fingerprint is a ContentHash coproduct, and std.content_hash deliberately
+// carries no union-level equality: two digests from different families are incomparable rather than
+// unequal. serialize_content_hash emits the family qualifier, so a cross-family pair cannot collide
+// into a false match, and this module does not become the place a cross-family `==` reappears.
+fn launch_identity_eq<P>(a: TrainingLaunchIdentity<P>, b: TrainingLaunchIdentity<P>) -> Bool {
+  claim_commitment_identity_eq(a: a.commitment, b: b.commitment)
+    && fabric_identity_eq(left: a.attempt, right: b.attempt)
+    && fabric_identity_eq(left: a.grant, right: b.grant)
+    && a.lease.lease_key == b.lease.lease_key
+    && a.lease.generation == b.lease.generation
+    && serialize_content_hash(hash: a.lease.resource_fingerprint)
+      == serialize_content_hash(hash: b.lease.resource_fingerprint)
+}

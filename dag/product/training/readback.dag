@@ -1,6 +1,7 @@
 module product.training.readback
 
 import product.training.resolution { TrainingRunDesired, TrainingResolvedManifest }
+import product.training.launch_identity { TrainingLaunchIdentity }
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.identity {
   FabricIdentity,
@@ -84,8 +85,18 @@ type TrainingPopulationObservation<T>
       cause: NonEmptyStr,
     }
 
+// THE PROCESS CARRIES THE LAUNCH IDENTITY IT REPORTED, NOT THE ONE WE EXPECTED. Attempt identity
+// alone cannot fence a process: a realization surviving a recovery or a lease replacement names the
+// same attempt while belonging to a committed generation, grant and lease that are no longer
+// current, and joining on the attempt would let that stale process turn LaunchPending into
+// InProgress -- a dead run reported as training.
+//
+// THE OBSERVER READS THIS BACK FROM THE HOST. It must never be copied out of the control ledger into
+// the observation: an observation that carries the expected value agrees with the expectation by
+// construction, which is the join proving itself.
 type TrainingProcessObservation<P> {
   attempt: FabricIdentity<P, ExecutionAttemptKey>
+  launch: TrainingLaunchIdentity<P>
   liveness: TrainingProcessLiveness
   receipt: ObservationReceiptRef
 }
