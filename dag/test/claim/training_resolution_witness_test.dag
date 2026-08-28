@@ -20,7 +20,7 @@ import product.fabric.envelope { ResourceEnvelope }
 import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
 import product.fabric.identity { FabricIdentity }
 import std.content_hash { ContentHash, content_hash_of_value }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.integer { PositiveInt }
 import std.measure { money_amount_micro, hardware_thread_count }
 import std.nat { Nat }

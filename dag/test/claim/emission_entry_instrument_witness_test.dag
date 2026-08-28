@@ -428,7 +428,7 @@ data specimen_subject: EmissionMeasurementSubject = EmissionMeasurementSubject {
   working_tree: WorkingTreeClean,
   compiler: sha256_digest(hex: "aa" as NonEmptyStr),
   assembler: sha256_digest(hex: "bb" as NonEmptyStr),
-  assembly_mode: SeedLinkedAssembly { std_bridge_dir: "dag/tools/self_host_std_bridge_shims" }
+  assembly_mode: SeedLinkedAssembly { std_bridge_dir: "dag/gunbc/instruments/self_host_std_bridge_shims" }
 }
 
 data unreached_specimen: EmissionMeasurement = EmissionSubjectUnestablished {

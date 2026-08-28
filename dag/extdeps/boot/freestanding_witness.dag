@@ -9,7 +9,7 @@ import extdeps.boot.linux_x86_boot { BootImageRejected, LinuxX86BootImage, accep
 import extdeps.formats.elf.encode { encode_elf64_ehdr, encode_elf64_phdr, int_lists_equal, int_lists_equal_at, witness_encode_decode_roundtrip_ehdr }
 import extdeps.formats.elf.segments { decode_elf64_phdr, elf64_phdr_to_load_segment }
 import extdeps.formats.elf.types { ElfRejected, byte_at_in_bounds, decode_elf64_ehdr }
-import std.exec_format { EntryPoint }
+import extdeps.exec_format { EntryPoint }
 import std.types { Bool, Int, List, NonEmptyStr }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

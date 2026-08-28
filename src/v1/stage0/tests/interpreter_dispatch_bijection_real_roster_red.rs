@@ -78,7 +78,7 @@ fn write(path: &Path, content: &str) {
     std::fs::write(path, content).unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
 }
 
-/// Runs the real regen entrypoint (`dag/tools/generated_artifact_gate.dag` `main_wet`) inside
+/// Runs the real regen entrypoint (`dag/gunbc/instruments/generated_artifact_gate.dag` `main_wet`) inside
 /// `clone_root`, using the already-built `gunbc` binary from the real workspace (the binary's own
 /// behavior is unaffected by the roster perturbation -- it only interprets `.dag` source at
 /// `--source-root`, which points at the clone's mutated copy).
@@ -92,7 +92,7 @@ fn regen_generated_artifacts(gunbc_bin: &Path, clone_root: &Path) -> Output {
             "--source-root",
             "src/v2",
             "--entry",
-            "dag/tools/generated_artifact_gate.dag",
+            "dag/gunbc/instruments/generated_artifact_gate.dag",
             "--function",
             "main_wet",
         ])

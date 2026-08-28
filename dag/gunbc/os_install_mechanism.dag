@@ -1,6 +1,6 @@
 module gunbc.os_install_mechanism
 
-import std.bmc { BmcEndpoint }
+import extdeps.bmc.endpoint { BmcEndpoint }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { EpochMs, Int, List, String }
 import extdeps.bmc.types {

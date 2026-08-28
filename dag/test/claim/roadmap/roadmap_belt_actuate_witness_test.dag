@@ -130,7 +130,7 @@ import gunbc.roadmap_belt_actuate {
   belt_publish_gate,
   belt_publish_write_outcome,
   BeltPublishOutcome,
-  PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable,
+  PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable, PublishRequested,
   PublishWriteFailed, PublishDeferred,
   BeltPassOutcome,
   BeltPassRecorded, BeltPassDeferred, BeltPassRefused, BeltPassFailed,
@@ -654,12 +654,13 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 13
+  belt_dispatch_label_band_rows().length() == 14
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "session_liveness_unobserved") == "loud"
     && band_key_for_label(label: "deployed_revision_drifted") == "loud"
     && band_key_for_label(label: "deployed_revision_unobserved") == "loud"
     && band_key_for_label(label: "session_multiplicity_conflict") == "loud"
+    && band_key_for_label(label: "deployment_transition_inhibited") == "loud"
     && band_key_for_label(label: "spawned") == "ok"
     && band_key_for_label(label: "already_live") == "ok"
     && band_key_for_label(label: "disabled") == "fail"
@@ -702,6 +703,7 @@ fn d4_wire_contract_labels() -> List<String> {
     "session_liveness_unobserved",
     "deployed_revision_drifted",
     "deployed_revision_unobserved",
+    "deployment_transition_inhibited",
     "session_multiplicity_conflict",
   ]
 }
@@ -1512,6 +1514,7 @@ fn belt_pub_gate_key(gate: BeltPublishGate) -> String {
         PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => "recorded"
         PublishWriteFailed { node_id: _, detail: _ } => "write-failed"
         PublishDeferred { node_id: _, reason: _ } => "deferred"
+        PublishRequested { node_id: _, head_sha: _, request_path: _ } => "deferred"
       }
   }
 }
@@ -1554,6 +1557,7 @@ test fn a_receipt_about_another_subject_is_not_overwritten() -> Bool {
         PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
         PublishWriteFailed { node_id: _, detail: _ } => false
         PublishDeferred { node_id: _, reason: _ } => false
+        PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
       }
   }
 }
@@ -1576,6 +1580,7 @@ test fn an_unreadable_receipt_halts_rather_than_being_overwritten() -> Bool {
         PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
         PublishWriteFailed { node_id: _, detail: _ } => false
         PublishDeferred { node_id: _, reason: _ } => false
+        PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
       }
   }
 }
@@ -1594,6 +1599,7 @@ test fn a_present_but_empty_receipt_is_a_fault_not_an_absence() -> Bool {
         PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
         PublishWriteFailed { node_id: _, detail: _ } => false
         PublishDeferred { node_id: _, reason: _ } => false
+        PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
       }
   }
 }
@@ -1614,6 +1620,7 @@ test fn an_undecodable_receipt_is_not_overwritten_either() -> Bool {
         PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
         PublishWriteFailed { node_id: _, detail: _ } => false
         PublishDeferred { node_id: _, reason: _ } => false
+        PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
       }
   }
 }
@@ -1659,11 +1666,13 @@ test fn a_failed_write_reports_loss_rather_than_the_outcome_it_computed() -> Boo
           PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
           PublishEvidenceUnreadable { node_id: _, detail: _ } => false
           PublishDeferred { node_id: _, reason: _ } => false
+          PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
         }
     PublishWriteFailed { node_id: _, detail: _ } => false
     PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
     PublishEvidenceUnreadable { node_id: _, detail: _ } => false
     PublishDeferred { node_id: _, reason: _ } => false
+    PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
   }
 }
 

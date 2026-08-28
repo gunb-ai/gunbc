@@ -114,10 +114,10 @@ index 82eb9af874..2cdafa5a23 100644
    witness_v1_dag_parse_holds()
 +    && witness_v1_dag_parse_invocation_is_quoted_var_command()
  }
-diff --git a/dag/tools/v1_dag_parse_transport.dag b/dag/tools/v1_dag_parse_transport.dag
+diff --git a/dag/gunbc/instruments/v1_dag_parse_transport.dag b/dag/gunbc/instruments/v1_dag_parse_transport.dag
 index e63271d6d2..9703b15c33 100644
---- a/dag/tools/v1_dag_parse_transport.dag
-+++ b/dag/tools/v1_dag_parse_transport.dag
+--- a/dag/gunbc/instruments/v1_dag_parse_transport.dag
++++ b/dag/gunbc/instruments/v1_dag_parse_transport.dag
 @@ -2,8 +2,7 @@ module tools.v1_dag_parse_transport
  
  import extdeps.shell

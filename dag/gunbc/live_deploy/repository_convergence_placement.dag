@@ -120,33 +120,31 @@ import gunbc.live_deploy.repository_convergence { repository_converge_wet }
 
 // THE OPERANDS ARE DERIVED, AND THE TWO THAT ARE NOT ARE THE TWO THAT CANNOT BE.
 //
-// repository_converge_wet takes five strings and a caller may hand it any five. Its own header names
-// that as a weakness for primary_path specifically -- "a wrong path exempts the wrong worktree" --
-// and the same exposure runs through repo and base_ref, where a wrong value would converge some
-// other repository or advance some other ref while reporting success about the one asked for.
+// repository_converge_wet takes four strings and a caller may hand it any four. The exposure runs
+// through repo and base_ref, where a wrong value would converge some other repository or advance
+// some other ref while reporting success about the one asked for.
 //
-// So this module does not take operands. It DERIVES repo, base_ref and primary_path from the
-// deployment spec, which is the authority for where this instance's tree lives. Two values remain
-// arguments because no authoring-time fact determines them: the CANDIDATE, which is the admitted
-// subject of this particular deployment, and the OBJECT SOURCE, which is the path the runner
-// happened to check out on this particular run. Both are rendered into the unit by
-// convergence_unit_doc from the spec and the deploy's own environment file, so the production path
-// never hand-spells either.
+// So this module does not take operands. It DERIVES repo and base_ref from the deployment spec,
+// which is the authority for where this instance's tree lives. Two values remain arguments because
+// no authoring-time fact determines them: the CANDIDATE, which is the admitted subject of this
+// particular deployment, and the OBJECT SOURCE, which is the path the runner happened to check out
+// on this particular run. Both are rendered into the unit by convergence_unit_doc from the spec and
+// the deploy's own environment file, so the production path never hand-spells either.
 type ConvergencePlacementOperands {
   repo: String
   remote: String
   base_ref: String
   candidate: String
-  primary_path: String
 }
 
-// THE PRIMARY IS THE REPOSITORY ROOT ITSELF, which is the one case where the caller-supplied
-// primary_path weakness cannot bite: the deployed tree is a normal checkout, so its primary worktree
-// path IS its repository path, and both are read from the same spec field. Deriving the primary from
-// git's own roster is the stronger construction and it belongs to the module that owns the
-// adjudication (extdeps.git.worktree_enumeration already declares the primary/linked split for it);
-// deriving both sides from ONE spec field here removes the disagreement this module could introduce
-// and does not claim to close that one.
+// THE PRIMARY IS NO LONGER THIS MODULE'S TO DERIVE. This record carried a primary_path alongside
+// repo, read from the same spec field, because repository_converge_wet took the primary worktree
+// path as a caller string and a wrong one exempts the wrong worktree. #9555 moved that derivation
+// into the callee, which now reads the primary from git's own roster -- the stronger construction,
+// and the one this block already named as belonging to the module that owns the adjudication
+// (extdeps.git.worktree_enumeration declares the primary/linked split for it). The field went with
+// the argument rather than outliving it: kept, it would have been derived here, witnessed here, and
+// read by nobody.
 data convergence_base_ref: String = "refs/remotes/origin/main"
 
 type ConvergenceOperandAdmission
@@ -212,7 +210,6 @@ fn convergence_operands_for(
           remote: object_source,
           base_ref: convergence_base_ref,
           candidate: git_object_id_wire_hex(oid: oid) as String,
-          primary_path: repo,
         } }
       }
   }

@@ -518,7 +518,7 @@ surfaces with zero readers. Note the standing irony: DESIGN's fixed-point rule f
 emitted mirror is *about* rustfmt, and `v2.extdeps.formatters.rustfmt` is not what
 implements it. Missing-consumer or residue — not a mechanical call.
 
-**d. `dag/tools/` — 13 FROZEN, 5 residue, 2 that turned out to be invoked, and the split is per-module.** These are the
+**d. `dag/gunbc/instruments/` — 13 FROZEN, 5 residue, 2 that turned out to be invoked, and the split is per-module.** These are the
 `.dag` sides of capabilities whose invokers the floor cut (2026-08-15) and the regen root
 cut (2026-08-18) removed. DESIGN's CI paragraph names a **re-add queue** with a restoration
 trigger, and a module the queue exists to re-attach is §3 frozen-X, not residue — deleting
@@ -817,7 +817,7 @@ executable against the real corpus rather than against a fixture someone has to 
 | `std.import` | `dag/std/import.dag` | 2 | {'dag': 1} `dag/gunbc/commit_workflow.dag` |
 | `std.list` | `dag/std/list.dag` | 3 | —  |
 | `std.rational` | `dag/std/rational.dag` | 5 | {'dag': 2} `dag/gunbc/doc_graph_roots.dag` `dag/gunbc/econ/acquisition.dag` |
-| `tools.codegen` | `dag/tools/codegen.dag` | 5 | —  |
+| `tools.codegen` | `dag/gunbc/instruments/codegen.dag` | 5 | —  |
 | `v2.bin.main` | `src/v2/bin/main.dag` | 4 | —  |
 | `v2.std.inhabitant_bridge` | `src/v2/std/inhabitant_bridge.dag` | 4 | —  |
 | `v2.std.type_expr_projection_row_schema` | `src/v2/std/type_expr_projection_row_schema.dag` | 4 | —  |
@@ -847,9 +847,9 @@ executable against the real corpus rather than against a fixture someone has to 
 | `gunbc.tools.roadmap_spawn_request` | `dag/gunbc/tools/roadmap_spawn_request.dag` | 36 | —  |
 | `std.binding` | `dag/std/binding.dag` | 7 | —  |
 | `std.syllogism` | `dag/std/syllogism.dag` | 82 | —  |
-| `tools.build` | `dag/tools/build.dag` | 34 | —  |
-| `tools.readme` | `dag/tools/readme.dag` | 70 | —  |
-| `tools.roadmap_dispatch` | `dag/tools/roadmap_dispatch.dag` | 17 | —  |
+| `tools.build` | `dag/gunbc/instruments/build.dag` | 34 | —  |
+| `tools.readme` | `dag/gunbc/instruments/readme.dag` | 70 | —  |
+| `tools.roadmap_dispatch` | `dag/gunbc/instruments/roadmap_dispatch.dag` | 17 | —  |
 | `v2.extdeps.formats.csv` | `src/v2/extdeps/formats/csv.dag` | 136 | —  |
 | `v2.extdeps.formats.openapi` | `src/v2/extdeps/formats/openapi.dag` | 459 | —  |
 | `v2.extdeps.formats.toml` | `src/v2/extdeps/formats/toml.dag` | 132 | —  |
@@ -931,19 +931,19 @@ executable against the real corpus rather than against a fixture someone has to 
 
 | module | path | lines | re-add anchor |
 | --- | --- | --- | --- |
-| `tools.auth_declared_but_unwired_witness_transport` | `dag/tools/auth_declared_but_unwired_witness_transport.dag` | 12 | `auth_declared_but_unwired_witness` bin, still declared in `gunbc.ci_release_bins` |
-| `tools.bootstrap_witness_transport` | `dag/tools/bootstrap_witness_transport.dag` | 12 | `bootstrap_witness` bin, still declared in `gunbc.ci_release_bins` |
-| `tools.dag_collect_fingerprint_witness_transport` | `dag/tools/dag_collect_fingerprint_witness_transport.dag` | 12 | `dag_collect_fingerprint_witness` bin, still declared in `gunbc.ci_release_bins` |
-| `tools.dag_compile_clean_seam` | `dag/tools/dag_compile_clean_seam.dag` | 110 | compile-clean entry point — WEAKER ANCHOR: a prose restoration trigger in DESIGN, no bin and no queue line |
-| `tools.dag_compile_clean_seam_transport` | `dag/tools/dag_compile_clean_seam_transport.dag` | 124 | compile-clean entry point — WEAKER ANCHOR, as above |
-| `tools.dag_compile_clean_shard_transport` | `dag/tools/dag_compile_clean_shard_transport.dag` | 43 | compile-clean entry point — WEAKER ANCHOR, as above |
-| `tools.effects_rest_transport_witness_transport` | `dag/tools/effects_rest_transport_witness_transport.dag` | 12 | `effects_rest_transport_witness` bin, still declared in `gunbc.ci_release_bins` |
-| `tools.infer_semantics_witness_transport` | `dag/tools/infer_semantics_witness_transport.dag` | 12 | `infer_semantics_witness` bin, still declared in `gunbc.ci_release_bins` |
-| `tools.interp_recorded_fixture_witness_transport` | `dag/tools/interp_recorded_fixture_witness_transport.dag` | 13 | `interp_recorded_fixture_witness` bin, still declared in `gunbc.ci_release_bins` |
-| `tools.merge_admission_capture_transport` | `dag/tools/merge_admission_capture_transport.dag` | 32 | merge-admission stamping — named on DESIGN's unguarded list |
-| `tools.merge_admission_current_context` | `dag/tools/merge_admission_current_context.dag` | 134 | merge-admission stamping — named on DESIGN's unguarded list |
-| `tools.parse_witness_transport` | `dag/tools/parse_witness_transport.dag` | 20 | `parse_witness` bin, still declared in `gunbc.ci_release_bins` |
-| `tools.v1_dag_parse_transport` | `dag/tools/v1_dag_parse_transport.dag` | 12 | `v1_src_dag_parse` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.auth_declared_but_unwired_witness_transport` | `dag/gunbc/instruments/auth_declared_but_unwired_witness_transport.dag` | 12 | `auth_declared_but_unwired_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.bootstrap_witness_transport` | `dag/gunbc/instruments/bootstrap_witness_transport.dag` | 12 | `bootstrap_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.dag_collect_fingerprint_witness_transport` | `dag/gunbc/instruments/dag_collect_fingerprint_witness_transport.dag` | 12 | `dag_collect_fingerprint_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.dag_compile_clean_seam` | `dag/gunbc/instruments/dag_compile_clean_seam.dag` | 110 | compile-clean entry point — WEAKER ANCHOR: a prose restoration trigger in DESIGN, no bin and no queue line |
+| `tools.dag_compile_clean_seam_transport` | `dag/gunbc/instruments/dag_compile_clean_seam_transport.dag` | 124 | compile-clean entry point — WEAKER ANCHOR, as above |
+| `tools.dag_compile_clean_shard_transport` | `dag/gunbc/instruments/dag_compile_clean_shard_transport.dag` | 43 | compile-clean entry point — WEAKER ANCHOR, as above |
+| `tools.effects_rest_transport_witness_transport` | `dag/gunbc/instruments/effects_rest_transport_witness_transport.dag` | 12 | `effects_rest_transport_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.infer_semantics_witness_transport` | `dag/gunbc/instruments/infer_semantics_witness_transport.dag` | 12 | `infer_semantics_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.interp_recorded_fixture_witness_transport` | `dag/gunbc/instruments/interp_recorded_fixture_witness_transport.dag` | 13 | `interp_recorded_fixture_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.merge_admission_capture_transport` | `dag/gunbc/instruments/merge_admission_capture_transport.dag` | 32 | merge-admission stamping — named on DESIGN's unguarded list |
+| `tools.merge_admission_current_context` | `dag/gunbc/instruments/merge_admission_current_context.dag` | 134 | merge-admission stamping — named on DESIGN's unguarded list |
+| `tools.parse_witness_transport` | `dag/gunbc/instruments/parse_witness_transport.dag` | 20 | `parse_witness` bin, still declared in `gunbc.ci_release_bins` |
+| `tools.v1_dag_parse_transport` | `dag/gunbc/instruments/v1_dag_parse_transport.dag` | 12 | `v1_src_dag_parse` bin, still declared in `gunbc.ci_release_bins` |
 
 ### PROSE-NAMED — 79 modules
 
@@ -1012,7 +1012,7 @@ executable against the real corpus rather than against a fixture someone has to 
 | `std.methods` | `dag/std/methods.dag` | 67 | {'dag': 1, 'rs': 2} `src/v1/compiler_tests_rust.dag` `src/v1/stage0/src/v1_compiler_compiler_tests_rust.rs` |
 | `std.stack` | `dag/std/stack.dag` | 56 | {'dag': 1, 'rs': 1} `dag/gunbc/witness/witness_floor_workflow.dag` `src/v1/stage0/src/bin/parse_witness.rs` |
 | `std.verification` | `dag/std/verification.dag` | 34 | {'dag': 3} `dag/gunbc/plans/resolver_type_name_collision_wall.dag` `dag/gunbc/plans/realization_measurement_loop.dag` |
-| `tools.gunbc_ci` | `dag/tools/gunbc_ci.dag` | 25 | {'dag': 2, 'rs': 1} `dag/std/emit_on_demand.dag` `src/v2/test/claim/host_language_transport_script/corpus/wall_residue_live_test.dag` |
+| `tools.gunbc_ci` | `dag/gunbc/instruments/gunbc_ci.dag` | 25 | {'dag': 2, 'rs': 1} `dag/std/emit_on_demand.dag` `src/v2/test/claim/host_language_transport_script/corpus/wall_residue_live_test.dag` |
 | `v2.extdeps.languages.ecmascript` | `src/v2/extdeps/languages/ecmascript.dag` | 1340 | {'dag': 1} `dag/gunbc/language_target_registry.dag` |
 | `v2.extdeps.languages.machine_code` | `src/v2/extdeps/languages/machine_code.dag` | 559 | {'dag': 4} `dag/extdeps/languages/riscv/subject.dag` `dag/test/claim/language_target_registry_totality_test.dag` |
 | `v2.extdeps.languages.ptx` | `src/v2/extdeps/languages/ptx.dag` | 223 | {'dag': 1} `dag/gunbc/language_target_registry.dag` |
@@ -1024,10 +1024,10 @@ executable against the real corpus rather than against a fixture someone has to 
 | `v2.test.workflow.glob_discovery_law` | `src/v2/workflow/glob_discovery_law.dag` | 113 | {'dag': 1} `src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag` |
 | `v2.workflow.class_b_import_closure_transport` | `src/v2/workflow/class_b_import_closure_transport.dag` | 118 | {'dag': 2, 'rs': 1} `dag/test/claim/long/rust_test_fixtures_import_closure_witness_test.dag` `src/v2/workflow/class_b_import_closure_probe.dag` |
 | `v2.workflow.compile_door_ledger` | `src/v2/workflow/compile_door_ledger.dag` | 341 | {'dag': 1} `src/v2/test/claim/long/door_real_module_probe_test.dag` |
-| `v2.workflow.compiler_closure_ingest_transport` | `src/v2/workflow/compiler_closure_ingest_transport.dag` | 150 | {'dag': 4} `dag/tools/ci_gates.dag` `dag/gunbc/ci/ci_layer_roots.dag` |
+| `v2.workflow.compiler_closure_ingest_transport` | `src/v2/workflow/compiler_closure_ingest_transport.dag` | 150 | {'dag': 4} `dag/gunbc/instruments/ci_gates.dag` `dag/gunbc/ci/ci_layer_roots.dag` |
 | `v2.workflow.phase_profile_proof_plan` | `src/v2/workflow/phase_profile_proof_plan.dag` | 22 | {'rs': 1} `src/v1/stage0/tests/phase_profile_claim_executor.rs` |
-| `v2.workflow.source_root_ingest_gate` | `src/v2/workflow/source_root_ingest_gate.dag` | 18 | {'dag': 3} `dag/test/claim/guarantee_rung_drop_witness_test.dag` `dag/tools/ci_gates.dag` |
-| `v2.workflow.source_root_ingest_transport` | `src/v2/workflow/source_root_ingest_transport.dag` | 90 | {'dag': 2} `dag/tools/ci_gates.dag` `src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag` |
+| `v2.workflow.source_root_ingest_gate` | `src/v2/workflow/source_root_ingest_gate.dag` | 18 | {'dag': 3} `dag/test/claim/guarantee_rung_drop_witness_test.dag` `dag/gunbc/instruments/ci_gates.dag` |
+| `v2.workflow.source_root_ingest_transport` | `src/v2/workflow/source_root_ingest_transport.dag` | 90 | {'dag': 2} `dag/gunbc/instruments/ci_gates.dag` `src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag` |
 
 ### CITED-AUTHORITY — 103 modules
 

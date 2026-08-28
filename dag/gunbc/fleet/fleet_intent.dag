@@ -35,7 +35,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.boards.types { ServerBaseboard }
 import gunbc.bmc_intent { BmcControlPlaneIntent, fleet_bmc_valid_state }
-import std.bmc { BmcEndpoint, Redfish }
+import extdeps.bmc.endpoint { BmcEndpoint, Redfish }
 import std.credentials { CredentialFlow, Stored }
 import std.measure { hertz, ByteSize, byte_size, byte_size_count, Bandwidth, HardwareThreadCount, hardware_thread_count_value, Nano, measure_count, Nanosecond, nanosecond }
 import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }

@@ -39,7 +39,7 @@ import gunbc.os_install_mechanism {
   srv3_firmware_catalog,
   srv3_install_mechanism,
 }
-import std.bmc { BmcEndpoint, OpenBmc, Redfish }
+import extdeps.bmc.endpoint { BmcEndpoint, OpenBmc, Redfish }
 import std.types { Bool, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.firmware.types { firmware_semantic_version }

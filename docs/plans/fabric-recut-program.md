@@ -212,8 +212,8 @@ answer the question I asked of it, and I reported its output as a structural fac
 and changes the cut's shape:
 
 ```
-dag/product/fabric/supply.dag:6                              import product.compute_fabric { Shape }
-dag/product/fabric/work.dag:5                                import product.compute_fabric { Shape }
+dag/gunbc/product/fabric/supply.dag:6                              import product.compute_fabric { Shape }
+dag/gunbc/product/fabric/work.dag:5                                import product.compute_fabric { Shape }
 dag/test/claim/fabric_terminal_contract_witness_test.dag:7   import product.compute_fabric { Shape, HardRequirements }
 ```
 

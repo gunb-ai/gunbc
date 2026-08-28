@@ -105,7 +105,7 @@ data realization_vocab_grandfathered_edge_roster: List<RealizationVocabGrandfath
   },
   RealizationVocabGrandfatheredEdgeRow {
     edge: RealizationVocabImportEdge {
-      importer_path: "dag/tools/build_step.dag",
+      importer_path: "dag/gunbc/instruments/build_step.dag",
       vocab_module: "v2.extdeps.languages.bash_build"
     },
     debt_class: MisplacedRealizationEdge,
@@ -223,7 +223,7 @@ fn realization_vocab_grandfathered_edge_roster_well_formed() -> Bool {
 data realization_vocab_consumer_scan_roots: List<String> = [
   "dag/std",
   "dag/extdeps",
-  "dag/tools",
+  "dag/gunbc/instruments",
   "dag/gunbc",
   "src/v2/std",
   "src/v2/extdeps",

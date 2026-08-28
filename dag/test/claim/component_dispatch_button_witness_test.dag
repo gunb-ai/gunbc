@@ -24,10 +24,17 @@ test fn witness_scale_well_formed() -> Bool {
   scale_well_formed()
 }
 
+// THE PIN MOVES 13 -> 14 WITH `DispatchTransitionInhibited`, and it is maintenance rather than a
+// loosening: the roster is one exemplar per BeltDispatchResult variant over a CLOSED coproduct, so
+// the literal pins a hand-enumerated fixture's size and not a measured population. The two clauses
+// above it are the ones with the failure mode -- both directions of totality, derived on each side --
+// and they held through this change because the component's states are `map`ped from the label
+// authority rather than listed beside it. What this literal catches is a variant added to the wire
+// without its exemplar, which is the half derivation cannot see.
 test fn witness_dispatch_button_states_total_over_wire() -> Bool {
   dispatch_button_wire_total()
     && dispatch_button_terminal_count() == belt_dispatch_all_status_labels().length()
-    && belt_dispatch_all_status_labels().length() == 13
+    && belt_dispatch_all_status_labels().length() == 14
 }
 
 test fn witness_dropped_state_is_located_red() -> Bool {

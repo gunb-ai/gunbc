@@ -47,11 +47,11 @@ test fn product_reachability_test_harness_is_test_only() -> Bool {
 
 test fn product_reachability_tooling_refuses_instead_of_manufacturing_negative() -> Bool {
   match product_reachability_verdict_for_path(
-    path: "dag/tools/foo/witness_main.rs",
+    path: "dag/gunbc/instruments/foo/witness_main.rs",
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
   ) {
     ReachabilityRefused { path: path, unresolved_edge: edge } =>
-      path == "dag/tools/foo/witness_main.rs" && edge != ""
+      path == "dag/gunbc/instruments/foo/witness_main.rs" && edge != ""
     _ => false
   }
 }

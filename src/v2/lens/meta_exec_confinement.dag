@@ -23,7 +23,7 @@ data meta_exec_confinement_law: String = "Meta-exec confinement (shell→intent 
 data target_meta_exec_module: String = "extdeps.shell.exec"
 
 data meta_exec_realization_edge_path_prefixes: List<String> = [
-  "dag/tools/",
+  "dag/gunbc/instruments/",
   "dag/gunbc/host_effect_realize",
   "dag/gunbc/retained_shell_script",
   "dag/gunbc/ci_deploy_access_observe",
@@ -123,7 +123,7 @@ fn meta_exec_confinement_holds_canonical(facts: List<LayerImportFact>) -> Bool {
 data meta_exec_consumer_scan_roots: List<String> = [
   "dag/std",
   "dag/extdeps",
-  "dag/tools",
+  "dag/gunbc/instruments",
   "dag/gunbc",
   "src/v2/std",
   "src/v2/extdeps",

@@ -26,7 +26,7 @@ data bash_vocab_module: String = "v2.extdeps.languages.bash_build"
 data fresh_leak_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dag/tools/_perturb_fresh_consumer.dag",
+    path: "dag/gunbc/instruments/_perturb_fresh_consumer.dag",
     import_module: sidecar_module
   }
 ]
@@ -74,7 +74,7 @@ test fn de_rostered_consumer_import_is_leak_holds() -> Bool {
 data non_vocab_import_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dag/tools/_perturb_fresh_consumer.dag",
+    path: "dag/gunbc/instruments/_perturb_fresh_consumer.dag",
     import_module: "extdeps.shell"
   }
 ]
@@ -109,7 +109,7 @@ test fn ci_spec_excused_from_bash_roster_holds() -> Bool {
 test fn build_step_rostered_for_bash_build_holds() -> Bool {
   edge_in_grandfathered_roster(
     edge: RealizationVocabImportEdge {
-      importer_path: "dag/tools/build_step.dag",
+      importer_path: "dag/gunbc/instruments/build_step.dag",
       vocab_module: bash_vocab_module
     }
   )
@@ -118,7 +118,7 @@ test fn build_step_rostered_for_bash_build_holds() -> Bool {
 data bash_fresh_leak_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dag/tools/_perturb_fresh_bash_consumer.dag",
+    path: "dag/gunbc/instruments/_perturb_fresh_bash_consumer.dag",
     import_module: bash_vocab_module
   }
 ]

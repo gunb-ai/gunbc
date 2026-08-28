@@ -490,9 +490,13 @@ data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
 // serialization is not ORDERING -- a slow build of an older revision can acquire the lease after a
 // fast build of a newer one and install backwards -- and it is not COMPLETE INGRESS, because
 // `gunbc.apply` DashboardSrv1 reaches live_deploy_apply_srv1_wet directly and never traverses a
-// GitHub concurrency group at all. Both are open; the closing construction for the second is a
-// host-local lease the host effect owns, since GitHub owns only one transport into the critical
-// section. Recorded here rather than left implicit because a concurrency group is exactly the kind
+// GitHub concurrency group at all. The first is open. The second's closing construction NOW EXISTS:
+// `gunbc.deploy_transition` `acquire_transition_lease` is the host-local lease, an O_EXCL create
+// under the deployment's own instance root, so both ingresses contend for one file and the loser
+// takes a typed refusal naming the holder. GitHub owns only one transport into the critical
+// section, which is why the wall could never live in a concurrency group. WHAT IS NOT CLAIMED: the
+// lease exists and is witnessed, and this workflow does not yet acquire it -- binding it into the
+// mutating ingresses is a separate change, so the bypass is closable rather than closed. Recorded here rather than left implicit because a concurrency group is exactly the kind
 // of artifact a later reader cites as the serialization authority.
 data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
 

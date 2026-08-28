@@ -722,6 +722,7 @@ fn ct_rust_btree_set_ord_eligibility_test() -> String {
     "    fn shaped_type_node(name: &str, children: Vec<std::rc::Rc<crate::v1_std_core::Node>>) -> std::rc::Rc<crate::v1_std_core::Node> {\n",
     "        let span = crate::v1_std_core::no_span();\n",
     "        std::rc::Rc::new(crate::v1_std_core::Node {\n",
+    "            occurrence_identity: std::rc::Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),\n",
     "            name: name.to_string(),\n",
     "            ident: None,\n",
     "            span: span.clone(),\n",

@@ -16,6 +16,8 @@ pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
+pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::NullCoalesce;
 use crate::std_syntax::BinOp::*;
@@ -2085,7 +2087,10 @@ pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
 
 pub fn service_fallback_transport(item: Rc<Node>) -> Rc<Node> {
     if (item.transport.clone() == None) {
-        crate::v1_std_core::local_transport_node(item.span.clone())
+        crate::v1_std_core::local_transport_node(
+            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            item.span.clone(),
+        )
     } else {
         item.transport.clone().clone().unwrap()
     }

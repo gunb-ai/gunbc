@@ -2,7 +2,7 @@ module test.claim.build_fulfillment_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.currency { Eur, Usd }
+import extdeps.currency.currency { Eur, Usd }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { ByteSize, MoneyOnce, byte_size, money_amount_micro, money_amount_micro_count, money_once_micros }
 import extdeps.uri { Uri, File }

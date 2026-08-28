@@ -19,7 +19,7 @@ import extdeps.cpu.ampere { altra_q6430_catalog }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.memory.types { MemoryKind, Dram }
 import product.placement_supply { HostIdentity }
-import std.currency { CurrencyCode }
+import extdeps.currency.currency { CurrencyCode }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, NamedField }
 import std.measure { byte_size, hertz, MoneyAmountMicro, money_amount_micro_count }

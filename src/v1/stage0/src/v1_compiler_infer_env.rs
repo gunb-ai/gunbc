@@ -8,6 +8,8 @@ use crate::std_induction::RecursionShape::{
 };
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::*;
 pub use crate::std_types::is_kernel_type;
@@ -1316,6 +1318,9 @@ pub fn qualify_borrowed_type_names(
                         let qname =
                             v1_rt::concat(v1_rt::concat(mp.clone(), ".".to_string()), name.clone());
                         Rc::new(Node {
+                            occurrence_identity: Rc::new(
+                                NodeOccurrenceIdentity::OccurrenceSynthetic,
+                            ),
                             name: qname.clone(),
                             span: n.span.clone(),
                             ident_span: Some(crate::v1_std_core::kernel_span(qname.clone())),
@@ -1345,6 +1350,7 @@ pub fn qualify_borrowed_type_names(
 
 pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: n.name.clone(),
         ident: n.ident.clone(),
         span: n.span.clone(),
@@ -1368,6 +1374,7 @@ pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> 
 
 pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: n.name.clone(),
         ident: n.ident.clone(),
         span: n.span.clone(),
@@ -1937,6 +1944,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
             let tp_binding = Rc::new(TypeBinding {
                 name: tp_name.clone(),
                 resolved: Rc::new(Node {
+                    occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: tp_name.clone(),
                     span: crate::v1_std_core::kernel_span(tp_name.clone()),
                     ident_span: Some(crate::v1_std_core::kernel_span(tp_name.clone())),

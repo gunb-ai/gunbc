@@ -2,7 +2,7 @@ module gunbc.durable_cas_file_store
 
 import std.types { NonEmptyStr, String, Int, Bool }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.durable_compare_and_set { CasAttempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasUnreadableMalformed, CasUnreadableReadRefused, cas_generation_first, cas_generation_next, cas_generation_count }
+import std.durable_compare_and_set { CasAttempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, cas_generation_first, cas_generation_next, cas_generation_count }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 // The first production realization of std.durable_compare_and_set: one keyed
@@ -234,6 +234,38 @@ fn cas_probe_as_readable(probe: CasSlotProbe) -> CasReadableSlot<NonEmptyStr> {
         version: CasSlotVersion { generation: h, content: content_hash_of_value(value: v), value: v }
       }
     ProbedBeyondBound { bound: _ } => CasReadableAbsent
+  }
+}
+
+// THE STORE'S OBSERVATION, FOR CALLERS THAT MUST DECIDE BEFORE THEY WRITE.
+//
+// file_compare_and_set needs no such surface: it observes and decides in one
+// step, and its callers hand it an attempt rather than an observation. A
+// caller that has to answer a question about the slot BEFORE proposing
+// anything -- is this cell held, and by whom -- has no way to ask, and hand
+// building an observation to feed such a decision would make the caller the
+// author of the fact it is supposed to be reading.
+//
+// THE BOUND ARM IS WHY THIS IS NOT cas_probe_as_readable. That projection
+// answers CasReadableAbsent for a slot that exceeded the probe bound, which is
+// correct for its own use -- reporting what beat a lost race -- and wrong here:
+// a decision caller would read "the slot holds nothing" from a store that could
+// not tell it anything, and choose the remedy for an empty cell when the actual
+// remedy is to repair the slot. That is the state-space conflation this corpus
+// keeps finding, so the bound arm becomes unreadable-with-a-cause and only the
+// two genuinely readable arms delegate.
+fn observe_cas_slot_state(root: NonEmptyStr, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
+  let probe = cas_observe_slot(root: root, key: key)
+  match probe {
+    ProbedBeyondBound { bound: b } =>
+      CasObservedUnreadable {
+        cause: CasUnreadableMalformed {
+          detail: concat("slot exceeds the generation probe bound of ", b as String) as NonEmptyStr
+        }
+      }
+    ProbedAbsent => CasObservedReadable { readable: cas_probe_as_readable(probe: probe) }
+    ProbedHead { generation: _, value: _ } =>
+      CasObservedReadable { readable: cas_probe_as_readable(probe: probe) }
   }
 }
 

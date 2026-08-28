@@ -80,6 +80,7 @@ type FleetPosixAccountKey
   | FleetAccountSrv3Host
   | FleetAccountAutomation
   | FleetAccountInferenceService
+  | FleetAccountPublicationHelper
 
 data fleet_posix_root_user: PosixUser = PosixUser {
   name: "root",
@@ -470,6 +471,13 @@ fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
         name_requirements: service_name_requirements,
         sudo_grants: fleet_posix_inference_service_sudo_grants(),
       }
+    FleetAccountPublicationHelper =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: NoLoginServiceIdentity,
+        name_requirements: service_name_requirements,
+        sudo_grants: fleet_posix_publication_helper_sudo_grants(),
+      }
   }
 }
 
@@ -490,6 +498,24 @@ fn fleet_posix_automation_sudo_grants() -> List<PosixSudoGrant> {
 // EMPTY BY CONSTRUCTION. The served process runs a model and answers requests; it never needs to
 // change the host it runs on, under either a persistent or a supervisor-managed identity.
 fn fleet_posix_inference_service_sudo_grants() -> List<PosixSudoGrant> {
+  []
+}
+
+// EMPTY BY CONSTRUCTION, AND THE EMPTINESS IS THE WHOLE POINT OF THE PRINCIPAL. This account exists
+// so that ONE capability -- reading pull requests for the repository this roadmap publishes into --
+// is held by a principal that has no other capability at all. A sudo grant of any shape would give
+// the publication reader a route to act as somebody else, which is precisely the property the
+// separation was created to remove; the account is therefore not merely ungranted today but
+// declared empty, so a future grant is a visible edit to this function rather than a roster append
+// nobody reads.
+//
+// It is also why the publication helper spawns no session. The belt's leak surface is the sessions
+// it dispatches into -- `env -C <workdir> <program>` inherits the environment, so an ambient token
+// reaches git, tmux and the provider session that outlives the tick. The helper does spawn
+// children, `printenv` and `git`, and neither is a session anything is dispatched into nor survives
+// the run. A principal with no grants running a process that starts no session has no such surface,
+// and that is a fact about what the helper DOES rather than a promise about what it will not do.
+fn fleet_posix_publication_helper_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
 
@@ -826,6 +852,7 @@ fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipalOut
       }
     FleetAccountAutomation => PrincipalRequiresHostScope { principal: key }
     FleetAccountInferenceService => PrincipalRequiresHostScope { principal: key }
+    FleetAccountPublicationHelper => PrincipalRequiresHostScope { principal: key }
   }
 }
 

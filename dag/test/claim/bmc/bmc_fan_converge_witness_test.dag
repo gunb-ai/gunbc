@@ -42,7 +42,7 @@ import gunbc.bmc_fan_monitor {
   bmc_fan_assess_monitoring_samples,
 }
 import gunbc.fleet_intent { srv3_host, srv4_host }
-import std.bmc { OpenBmc }
+import extdeps.bmc.endpoint { OpenBmc }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.firmware.types { firmware_semantic_version }
 

@@ -1,7 +1,7 @@
 module gunbc.fabric_witness_run
 
 import std.types { NonEmptyStr }
-import std.currency { CurrencyCode, Usd }
+import extdeps.currency.currency { CurrencyCode, Usd }
 import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, MoneyAmountMicro, Second, second }
 import product.fabric.isolation { IsolationProfile }
