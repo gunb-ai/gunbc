@@ -231,13 +231,21 @@ pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<Strin
 /// above: the decision runs before any `.dag` value could exist, because it is the decision
 /// about whether resolving the corpus may begin.
 ///
-/// Basis: two dated, uncensored CI receipts in
-/// `docs/plans/compile-clean-whole-tree-time-diagnosis.md` — run 29828873976 on an
-/// unconstrained slot peaked at ~6.3 GiB at `emit.done`, run 29834202745 on a 15 GiB/16 GiB
-/// slot peaked at ~6.2 GiB with swap=0. Neither sits at its own armed line, so neither is a
-/// throttle pin. The receipts carry one decimal place, so the declared figure is the higher
-/// reading rounded UP to whole-gibibyte grain: for a DEMAND figure, rounding up refuses the
-/// marginal case and rounding down admits it.
+/// Basis: two dated, uncensored whole-corpus peaks taken ON THE COMPILE ROUTE ITSELF
+/// (2026-08-28, session clever-tern-899, srv1), against a clean tree staged at
+/// `91c05c1b344d29f97a363eaff34843177d552a99` with a binary BUILT FROM THAT SAME SHA —
+/// `--target dag` peaked at 13008052 kB and `--target rust` at 13005964 kB, both EXIT=1
+/// (completed and refused on diagnostics, not killed), with 271 GiB still free on the host at
+/// exit so neither peak is a throttle pin. A scoped positive control ran first and returned
+/// EXIT=0 with a file emitted, so the harness produces both outcomes. The declared figure is
+/// the higher reading rounded UP to whole-gibibyte grain: for a DEMAND figure, rounding up
+/// refuses the marginal case and rounding down admits it.
+///
+/// The predecessor basis was two 2026-07-21 CI receipts (runs 29828873976 / 29834202745,
+/// ~6.3 and ~6.2 GiB) taken on the FLOOR route rather than this one, declared as a proxy and
+/// as a LOWER bound. Those receipts no longer ground this constant and are named here only as
+/// the superseded basis; the row's own re-measure trigger — a dated uncensored whole-tree peak
+/// on the compile route — is what retired them.
 ///
 /// This is the seed's copy of `gunbc.whole_corpus_compile_admission`
 /// `whole_corpus_compile_measured_peak_demand`, written as a canonical decimal literal so the
@@ -275,9 +283,12 @@ pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = 13958643712
 /// 13cf8d2e-173a-42d2-9a56-101bb3332740): SIGKILL, exit 137, no diagnostic — so a harness
 /// grepping the captured output reads a fabricated zero rather than a failure.
 ///
-/// What it does NOT claim: an admitted budget is not certified sufficient. The threshold is
-/// a lower bound on demand taken on a neighbouring route at an older tree, so admission
-/// means "not provably doomed" (mitigatable, §4b), never "will fit".
+/// What it does NOT claim: an admitted budget is not certified sufficient. The threshold is a
+/// peak taken on THIS route, at a named sha, with a binary built from it — the "neighbouring
+/// route at an older tree" qualification this comment carried until 2026-08-28 is retired.
+/// What survives is narrower and still true: it is ONE tree's peak, and a demand figure does
+/// not shrink with corpus growth, so admission means "not provably doomed at the tree that was
+/// measured" (mitigatable, §4b), never "will fit".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WholeCorpusCompileAdmission {
     Admitted {
@@ -341,8 +352,9 @@ pub fn whole_corpus_compile_refusal_diagnostic(
         } => Some(format!(
             "WholeCorpusCompileBudgetBelowMeasuredDemand: host memory budget={budget_bytes} \
              bytes (source={source}) is below the measured whole-tree compile demand of \
-             {required_bytes} bytes (CI receipts 29828873976 / 29834202745, \
-             gunbc.whole_corpus_compile_admission). Refusing to start a run that is provably \
+             {required_bytes} bytes (gunbc.whole_corpus_compile_admission \
+             whole_corpus_compile_measured_peak_demand). Refusing to start a run that is \
+             provably \
              below measured demand — the previous behaviour was to start it and be SIGKILLed, \
              which reports as a silent exit-137 zero rather than a diagnostic, so any count \
              grepped from such a run is a memorial to a killed process. Remedy: scope the \
