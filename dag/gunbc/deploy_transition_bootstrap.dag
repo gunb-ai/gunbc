@@ -288,14 +288,35 @@ type ExternalQuiescence sole_constructor {
   unit: NonEmptyStr
   inactive: UnitInactiveStanding
   activation: UnitActivationInhibitedStanding
+  persistence: MaskPersistence
 }
 
 fn observe_unit_quiescence(
   unit: NonEmptyStr,
   inactive: UnitInactiveStanding,
   activation: UnitActivationInhibitedStanding,
+  persistence: MaskPersistence,
 ) -> ExternalQuiescence {
-  ExternalQuiescence { unit: unit, inactive: inactive, activation: activation }
+  ExternalQuiescence {
+    unit: unit,
+    inactive: inactive,
+    activation: activation,
+    persistence: persistence,
+  }
+}
+
+// REBOOT DURABILITY IS CARRIED, AND DELIBERATELY DOES NOT GATE THE ADMISSION. "Nothing can start
+// while I am gone" and "the inhibition survives a reboot" are different propositions, and only the
+// first is what quiescence means -- a transition that does not span a reboot is correctly admitted
+// over a runtime mask. So the fact travels on the record for a caller whose window DOES span one,
+// and `unit_quiescence_admission` stays silent about it rather than refusing a state that is fine.
+//
+// THIS FIELD IS WHY THE TYPE EXISTS AT ALL. It was introduced carrying the withdrawn reboot claim
+// and then not wired to anything -- `MaskPersistence` had one Bool reader and no carrier, so the
+// commit that added it asserted the mechanism was "observed per unit" while nothing observed it.
+// Caught in review of the predicate, one level past what the review found.
+fn quiescence_survives_reboot(q: ExternalQuiescence) -> Bool {
+  mask_survives_reboot(p: q.persistence)
 }
 
 type QuiescenceAdmission
@@ -339,13 +360,6 @@ fn unit_quiescence_admission(q: ExternalQuiescence) -> QuiescenceAdmission {
           }
         ActivationObservedRefused { unit: _, detail: _ } => QuiescenceInForce
       }
-  }
-}
-
-fn quiescence_admits(a: QuiescenceAdmission) -> Bool {
-  match a {
-    QuiescenceInForce => true
-    QuiescenceRefused { cause: _ } => false
   }
 }
 

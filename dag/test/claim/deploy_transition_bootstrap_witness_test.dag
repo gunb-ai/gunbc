@@ -56,7 +56,7 @@ import gunbc.deploy_transition_bootstrap {
   unit_activation_standing,
   unit_quiescence_admission,
   roster_quiescence_admission,
-  quiescence_admits,
+  quiescence_survives_reboot,
   quiescence_probe_start_command,
   quiescence_probe_stop_command,
   QuiescenceAdmission,
@@ -289,9 +289,23 @@ test fn no_step_reaches_past_the_lease_from_the_principal() -> Bool {
 // QUIESCENCE IS TWO FACTS AND EACH ONE ALONE ADMITS NOTHING. The four combinations are driven
 // through one fold so that a version answering from either arm alone is red: inactive-and-refused
 // is the only admission, and the other three each refuse with their own cause.
+// THE Bool PROJECTION LIVES HERE, NOT IN THE MODULE. `quiescence_admits` was a production surface
+// with no production consumer -- only these witnesses -- so it is deleted and the match is local. A
+// new QuiescenceAdmission arm now fails to compile in THIS file rather than silently joining the
+// false side, which is stronger than the fold it replaces.
+fn admits(a: QuiescenceAdmission) -> Bool {
+  match a {
+    QuiescenceInForce => true
+    QuiescenceRefused { cause: _ } => false
+  }
+}
+
 fn q(unit: NonEmptyStr, inactive: UnitInactiveStanding, act: UnitActivationInhibitedStanding) -> Bool {
-  quiescence_admits(a: unit_quiescence_admission(
-    q: observe_unit_quiescence(unit: unit, inactive: inactive, activation: act),
+  admits(a: unit_quiescence_admission(
+    q: observe_unit_quiescence(
+      unit: unit, inactive: inactive, activation: act,
+      persistence: MaskPersistenceUnobserved { unit: unit, cause: "not inspected by this witness" },
+    ),
   ))
 }
 
@@ -355,12 +369,13 @@ test fn a_roster_missing_one_unit_refuses_even_when_the_rest_admit() -> Bool {
     unit: u,
     inactive: UnitObservedInactive { unit: u },
     activation: ActivationObservedRefused { unit: u, detail: "Unit is masked." },
+    persistence: MaskPersistentObserved { unit: u, path: "/etc/systemd/system" },
   ))
   match first(units) {
     Absent => false
     Present { value: dropped } =>
-      quiescence_admits(a: roster_quiescence_admission(names: names(), observed: good))
-        && !quiescence_admits(a: roster_quiescence_admission(
+      admits(a: roster_quiescence_admission(names: names(), observed: good))
+        && !admits(a: roster_quiescence_admission(
           names: names(),
           observed: filter(good, g => (g.unit as String) != (dropped as String)),
         ))
@@ -390,6 +405,7 @@ test fn a_successful_probe_refuses_under_every_containment_and_names_which() -> 
       unit: a_unit(), probe_ran: true, start_succeeded: true, detail: "started",
       containment: probe_containment(
         stopped_ok: true, observed: true, detail: "stopped again")),
+    persistence: MaskPersistenceUnobserved { unit: a_unit(), cause: "n/a" },
   ))
   let uncontained = unit_quiescence_admission(q: observe_unit_quiescence(
     unit: a_unit(),
@@ -398,9 +414,10 @@ test fn a_successful_probe_refuses_under_every_containment_and_names_which() -> 
       unit: a_unit(), probe_ran: true, start_succeeded: true, detail: "started",
       containment: probe_containment(
         stopped_ok: false, observed: true, detail: "stop exited 1")),
+    persistence: MaskPersistenceUnobserved { unit: a_unit(), cause: "n/a" },
   ))
-  !quiescence_admits(a: contained)
-    && !quiescence_admits(a: uncontained)
+  !admits(a: contained)
+    && !admits(a: uncontained)
     && string_contains(s: refusal_cause(a: uncontained), pattern: "RUNNING")
     && !string_contains(s: refusal_cause(a: contained), pattern: "RUNNING")
 }
@@ -461,4 +478,32 @@ test fn the_containment_producer_maps_a_failed_stop_to_uncontained() -> Bool {
 test fn an_unobserved_stop_does_not_read_as_contained() -> Bool {
   containment_key(c: probe_containment(stopped_ok: true, observed: false, detail: "no ssh"))
     != containment_key(c: probe_containment(stopped_ok: true, observed: true, detail: "stopped"))
+}
+
+
+// REBOOT DURABILITY IS CARRIED ON THE RECORD AND DOES NOT GATE THE ADMISSION, and those are two
+// separate claims this witness makes together because either alone would be satisfied by a wrong
+// implementation. A runtime mask satisfies "nothing can start while I am gone" -- so a transition
+// that does not span a reboot is CORRECTLY admitted over one -- while answering false to "does the
+// inhibition survive a reboot". A version that refused on a runtime mask would be over-strict; a
+// version that reported it as reboot-durable would be the unmeasured claim this field replaced.
+test fn a_runtime_mask_is_quiesced_now_and_not_durable_across_a_reboot() -> Bool {
+  let runtime = observe_unit_quiescence(
+    unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    activation: ActivationObservedRefused { unit: a_unit(), detail: "Unit is masked." },
+    persistence: MaskRuntimeOnlyObserved {
+      unit: a_unit(), path: "/run/systemd/system/gunbc-roadmap-belt.timer" },
+  )
+  let persistent = observe_unit_quiescence(
+    unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    activation: ActivationObservedRefused { unit: a_unit(), detail: "Unit is masked." },
+    persistence: MaskPersistentObserved {
+      unit: a_unit(), path: "/etc/systemd/system/gunbc-roadmap-belt.timer" },
+  )
+  admits(a: unit_quiescence_admission(q: runtime))
+    && admits(a: unit_quiescence_admission(q: persistent))
+    && !quiescence_survives_reboot(q: runtime)
+    && quiescence_survives_reboot(q: persistent)
 }
