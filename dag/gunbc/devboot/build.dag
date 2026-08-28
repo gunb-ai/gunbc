@@ -5,7 +5,16 @@ import std.measure { Second, second, second_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.gunbc
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_read_outcome,
+  filesystem_listing_observation,
+  filesystem_file_observation,
+  FilesystemFileObservation,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+}
 import extdeps.git
 import extdeps.git.plumbing
 import extdeps.git { git_ref_missing_exit_code, git_repository_unusable_exit_code }
@@ -160,16 +169,36 @@ type TextFileReadOutcome
   | TextFileReadFailed { error: String }
   | TextFileAbsent
 
-fn read_text_file(repo_root: String, path: String) -> TextFileReadOutcome {
+// ABSENCE USED TO BE INFERRED FROM AN EMPTY ERROR STRING, which is a heuristic over a host message
+// standing where a declared operation was available -- and DESIGN section 4 rules a heuristic never
+// necessary in a closed system. Worse than the parsing, it was silent about the case that matters:
+// a produced artifact that exists and cannot be read reported the same TextFileAbsent as one the
+// producer never wrote, and the exchange walk below treats absent as "the producer had nothing to
+// say" and carries on. Presence is now decided by a successful listing of the directory the caller
+// already names, so TextFileAbsent is reachable only from an established absence and every failure
+// to look lands in TextFileReadFailed.
+fn read_text_file(dir: String, name: String) -> TextFileReadOutcome {
+  let path = join([dir, "/", name], "")
+  let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)
-  if read.success {
-    TextFilePresent { text: trim(s: read.content) }
-  } else {
-    if read.error == "" {
-      TextFileAbsent
-    } else {
-      TextFileReadFailed { error: read.error }
-    }
+  match filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: dir,
+      success: listing.success,
+      entries: listing.entries,
+      error: listing.error,
+    ),
+    name: name,
+    path: path,
+    read: filesystem_read_outcome(
+      content: read.content,
+      success: read.success,
+      error: read.error,
+    ),
+  ) {
+    FilesystemFileAbsent(_) => TextFileAbsent
+    FilesystemFileRead { path: _, content: text } => TextFilePresent { text: trim(s: text) }
+    FilesystemFileIndeterminate { cause: c } => TextFileReadFailed { error: c }
   }
 }
 
@@ -639,11 +668,11 @@ fn devboot_receive_answer(
     BuildRefused { cause: ArtifactNotRetrievable { detail: "the producer's answer could not be materialized" } }
   } else {
     let out_dir = exchange_out_dir(work_root: work_root, token: token)
-    match read_text_file(repo_root: exchange_repo, path: join([out_dir, "/", produced_refusal_entry], "")) {
+    match read_text_file(dir: out_dir, name: produced_refusal_entry) {
       TextFileReadFailed { error } =>
         BuildRefused { cause: ArtifactNotRetrievable { detail: join(["could not read the producer refusal: ", error], "") } }
       TextFileAbsent =>
-        match read_text_file(repo_root: exchange_repo, path: join([out_dir, "/", produced_subject_entry], "")) {
+        match read_text_file(dir: out_dir, name: produced_subject_entry) {
           TextFileReadFailed { error } =>
             BuildRefused { cause: ArtifactNotRetrievable { detail: join(["could not read the produced subject: ", error], "") } }
           TextFileAbsent =>
@@ -661,7 +690,7 @@ fn devboot_receive_answer(
         if !(refusal_text == "") {
           BuildRefused { cause: ProducerRefusedRequest { detail: refusal_text } }
         } else {
-          match read_text_file(repo_root: exchange_repo, path: join([out_dir, "/", produced_subject_entry], "")) {
+          match read_text_file(dir: out_dir, name: produced_subject_entry) {
             TextFileReadFailed { error } =>
               BuildRefused { cause: ArtifactNotRetrievable { detail: join(["could not read the produced subject: ", error], "") } }
             TextFileAbsent =>
@@ -691,7 +720,7 @@ fn devboot_receive_answer_subject(
     BuildRefused { cause: SubjectMismatch { requested: trim(s: subject_text), produced: produced_subject } }
   } else {
     let artifact_path = join([out_dir, "/", produced_artifact_entry], "")
-    match read_text_file(repo_root: exchange_repo, path: join([out_dir, "/", produced_digest_entry], "")) {
+    match read_text_file(dir: out_dir, name: produced_digest_entry) {
       TextFileReadFailed { error } =>
         BuildRefused { cause: ArtifactNotRetrievable { detail: join(["could not read the expected digest: ", error], "") } }
       TextFileAbsent =>
@@ -731,7 +760,7 @@ fn devboot_receive_answer_subject(
                       cause: ArtifactNotRetrievable { detail: join(["could not install the artifact at ", out_path], "") },
                     }
                   } else {
-                    match read_text_file(repo_root: exchange_repo, path: join([out_dir, "/", produced_host_entry], "")) {
+                    match read_text_file(dir: out_dir, name: produced_host_entry) {
                       TextFileReadFailed { error } =>
                         BuildRefused { cause: ArtifactNotRetrievable { detail: join(["could not read the producer host: ", error], "") } }
                       TextFileAbsent =>
