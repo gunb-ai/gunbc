@@ -76,7 +76,28 @@ import gunbc.roadmap_validation_oracle {
   ValidationReceiptUndecodable,
   validation_oracle_parse_pinned_identity_wire,
 }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome,
+  FilesystemReadSucceeded,
+  FilesystemReadRefused,
+  filesystem_read_outcome,
+  FilesystemListingObservation,
+  FilesystemDirectoryListed,
+  FilesystemDirectoryListingRefused,
+  filesystem_listing_observation,
+  FilesystemEntryPresence,
+  FilesystemEntryAbsent,
+  FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate,
+  filesystem_entry_presence,
+  FilesystemFileObservation,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  filesystem_file_observation,
+}
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 
 data verification_subject_note: String = "ONE VERIFICATION QUESTION HAS ONE SUBJECT. A verdict is about one durable roadmap node identity under one criteria revision, in one attempt and branch, at one committed head, against one exact change-window identity. None of those six fields is Optional: a receipt that cannot name any one of them cannot state which question it answered and therefore cannot be constructed as VerificationReceipt. The node's durable identity is RoadmapNodeIdentity rather than its editable slug; criteria_digest is the Fnv1a64Structural value derived by gunbc.roadmap_model node_criteria_digest; head_sha is std.types CommitSha rather than an anonymous revision string; change_window_identity is the Fnv1a64Structural content hash over target, target_generation, base, head, and relation from gunbc.git_diff_change_window (git_diff_window_absent_identity when the contract does not consume an affected-set window).\n\nTHE HEAD IS OBSERVED, NOT INFERRED FROM THE BRANCH. A branch is a moving publication handle and remains in the subject because it locates the attempt's line of work. The committed head is the verification identity: head A and head B in the same attempt are different subjects, so findings against A can coexist with a later green receipt for B without either overwriting or impersonating the other. When the target branch advances but head stays fixed, change_window_identity moves with target_generation and base, so an old receipt for (B1, H) cannot answer (B2, H)."
@@ -141,13 +162,6 @@ type BeltVerificationDecision
   | BeltVerificationDefer { reason: String }
   | BeltVerificationRefuse { reason: String }
   | BeltVerificationEvidenceUnreadable { reason: String }
-
-fn verification_listing_names_entry(listing: String, name: String) -> Bool {
-  string_contains(
-    s: join(["\n", listing, "\n"], ""),
-    pattern: join(["\n", name, "\n"], ""),
-  )
-}
 
 fn exact_verification_receipt_basename(
   head_sha: String,
@@ -402,71 +416,68 @@ fn current_verification_selection_decode_document(
   }
 }
 
+// BOTH WALKS BELOW ESTABLISH ABSENCE POSITIVELY, AND THEY NO LONGER SPELL THAT LAW THEMSELVES.
+// They used to hold their own listing ladder and their own line-exact membership predicate, which
+// made the law a property of this file's care rather than of the types it consumes. Absence now
+// arrives as `FilesystemEstablishedAbsence`, whose only mint takes a listing that succeeded, so the
+// arms below are a translation into this module's vocabulary rather than a second statement of the
+// rule -- and a future edit here cannot reintroduce the conflation, because there is no way to
+// construct the absent arm from a read.
 fn current_verification_selection_observe(
   attempt_dir: String,
   verification_dir: String,
   head_sha: String,
 ) -> CurrentVerificationSelectionObservation {
   let attempt_listing = Filesystem.List(path: attempt_dir)
-  if !attempt_listing.success {
-    SelectionUnreadable {
-      cause: join([
-        "the attempt state directory could not be listed, so whether a current verification selection exists was not established: ",
-        attempt_dir,
-        " (",
-        attempt_listing.error,
-        ")",
-      ], ""),
-    }
-  } else if !verification_listing_names_entry(
-    listing: attempt_listing.entries,
+  match filesystem_entry_presence(
+    listing: filesystem_listing_observation(
+      directory: attempt_dir,
+      success: attempt_listing.success,
+      entries: attempt_listing.entries,
+      error: attempt_listing.error,
+    ),
     name: verification_directory_segment,
   ) {
-    SelectionAbsent
-  } else {
-    let verification_listing = Filesystem.List(path: verification_dir)
-    if !verification_listing.success {
+    FilesystemEntryPresenceIndeterminate { cause: c } =>
       SelectionUnreadable {
         cause: join([
-          "the verification directory was named by the attempt listing but could not itself be listed: ",
-          verification_dir,
-          " (",
-          verification_listing.error,
-          ")",
+          "whether a current verification selection exists was not established: ",
+          c,
         ], ""),
       }
-    } else {
+    FilesystemEntryAbsent(_) => SelectionAbsent
+    FilesystemEntryListed { directory: _, name: _ } => {
       let selection_basename = current_verification_selection_basename(
         head_sha: head_sha,
       )
-      if !verification_listing_names_entry(
-        listing: verification_listing.entries,
+      let selection_path = join([verification_dir, "/", selection_basename], "")
+      let verification_listing = Filesystem.List(path: verification_dir)
+      let read = Filesystem.Read(path: selection_path)
+      match filesystem_file_observation(
+        listing: filesystem_listing_observation(
+          directory: verification_dir,
+          success: verification_listing.success,
+          entries: verification_listing.entries,
+          error: verification_listing.error,
+        ),
         name: selection_basename,
+        path: selection_path,
+        read: filesystem_read_outcome(
+          content: read.content,
+          success: read.success,
+          error: read.error,
+        ),
       ) {
-        SelectionAbsent
-      } else {
-        let selection_path = join(
-          [verification_dir, "/", selection_basename],
-          "",
-        )
-        let read = Filesystem.Read(path: selection_path)
-        if !read.success {
-          SelectionUnreadable {
-            cause: join([
-              "the current verification selection was listed and then could not be read: ",
-              selection_path,
-              " (",
-              read.error,
-              ")",
-            ], ""),
-          }
-        } else {
+        FilesystemFileIndeterminate { cause: c } => SelectionUnreadable { cause: c }
+        FilesystemFileObservationsDisagree { path: _, cause: c } =>
+          SelectionUnreadable { cause: c }
+        FilesystemFileAbsent(_) => SelectionAbsent
+        FilesystemFileRead { path: _, content: text } =>
           current_verification_selection_decode_document(
             selection_path: selection_path,
             expected_head_sha: head_sha,
-            content: read.content,
+            content: text,
           )
-        }
       }
     }
   }
@@ -479,52 +490,48 @@ fn exact_verification_receipt_source_read(
 ) -> ExactVerificationReceiptSource {
   let receipt_path = join([verification_dir, "/", receipt_basename], "")
   let attempt_listing = Filesystem.List(path: attempt_dir)
-  if !attempt_listing.success {
-    ExactVerificationReceiptUnreadable {
-      detail: join([
-        "the attempt state directory could not be listed, so whether a verification receipt exists was not established: ",
-        attempt_dir,
-        " (",
-        attempt_listing.error,
-        ")",
-      ], ""),
-    }
-  } else if !verification_listing_names_entry(
-    listing: attempt_listing.entries,
+  match filesystem_entry_presence(
+    listing: filesystem_listing_observation(
+      directory: attempt_dir,
+      success: attempt_listing.success,
+      entries: attempt_listing.entries,
+      error: attempt_listing.error,
+    ),
     name: verification_directory_segment,
   ) {
-    ExactVerificationReceiptAbsent
-  } else {
-    let verification_listing = Filesystem.List(path: verification_dir)
-    if !verification_listing.success {
+    FilesystemEntryPresenceIndeterminate { cause: c } =>
       ExactVerificationReceiptUnreadable {
         detail: join([
-          "the verification directory was named by the attempt listing but could not itself be listed: ",
-          verification_dir,
-          " (",
-          verification_listing.error,
-          ")",
+          "whether a verification receipt exists was not established: ",
+          c,
         ], ""),
       }
-    } else if !verification_listing_names_entry(
-      listing: verification_listing.entries,
-      name: receipt_basename,
-    ) {
-      ExactVerificationReceiptAbsent
-    } else {
+    FilesystemEntryAbsent(_) => ExactVerificationReceiptAbsent
+    FilesystemEntryListed { directory: _, name: _ } => {
+      let verification_listing = Filesystem.List(path: verification_dir)
       let read = Filesystem.Read(path: receipt_path)
-      if read.success {
-        ExactVerificationReceiptPresent { text: read.content }
-      } else {
-        ExactVerificationReceiptUnreadable {
-          detail: join([
-            "the exact verification receipt was listed and then could not be read: ",
-            receipt_path,
-            " (",
-            read.error,
-            ")",
-          ], ""),
-        }
+      match filesystem_file_observation(
+        listing: filesystem_listing_observation(
+          directory: verification_dir,
+          success: verification_listing.success,
+          entries: verification_listing.entries,
+          error: verification_listing.error,
+        ),
+        name: receipt_basename,
+        path: receipt_path,
+        read: filesystem_read_outcome(
+          content: read.content,
+          success: read.success,
+          error: read.error,
+        ),
+      ) {
+        FilesystemFileIndeterminate { cause: c } =>
+          ExactVerificationReceiptUnreadable { detail: c }
+        FilesystemFileObservationsDisagree { path: _, cause: c } =>
+          ExactVerificationReceiptUnreadable { detail: c }
+        FilesystemFileAbsent(_) => ExactVerificationReceiptAbsent
+        FilesystemFileRead { path: _, content: text } =>
+          ExactVerificationReceiptPresent { text: text }
       }
     }
   }
