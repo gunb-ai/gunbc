@@ -1,12 +1,34 @@
 module test.claim.gcp_oauth_access_token_witness
 
 
-// THIS WITNESS EXECUTES AGAINST `gunbc.auth.credentials` AND RECORDED NO EDGE TO IT.
-// It reached `gcp_oauth_access_token` and both leaf patterns through the flat whole-tree
-// namespace, so the module was depended-upon-but-unimported -- a live consumer, not a prose
-// citation, with nothing in the import graph to show for it. That is the same accidental pool
-// coverage this change repairs in `gunbc.tailscale_acl_phase2_credential`; a witness is the worse
-// place for it, because the thing with no recorded edge is the thing asserting the behaviour.
+// THIS FILE ASSERTS NOTHING TODAY, AND ITS PRESENCE IN `dag/test/claim` IS NOT COVERAGE.
+// Stated first and positively, because the failure it would otherwise cause is a later reader
+// counting it. Measured on this tree: 0 `test fn`, so floor discovery folds nothing from it;
+// no other module imports it, so the support-module pattern that legitimises a zero-`test fn`
+// file does not apply; and no `live_tree_disposition`, so the fail-closed default would decline
+// it even if it were discovered. Its 11 entries are plain `fn`, reachable by nothing.
+//
+// AND IT CANNOT BE FIXED BY DECLARING ONE, which is the part worth recording rather than the
+// three above. The obvious repair -- convert to `test fn`, declare `SubstrateInputsOnly`, rename
+// to `_test.dag` -- would declare something false. Both roll-ups reach
+// `gcp_oauth_access_token_via_gcloud`, whose body is `shell.GCloud.AuthPrintAccessToken()`, a host
+// effect; the ADC leaves declare `uses net: std.resources.Network`. Neither is substrate-only.
+// Run directly, the gcloud leaf answers `Unimplemented { what: "unknown service operation:
+// shell.GCloud.AuthPrintAccessToken" }` -- the call exists and nothing is behind it. Enrolled under
+// a false disposition it would be refused at the hermetic boundary, counted `executed`, and assert
+// nothing, while a `_test.dag` name made `BarrenTestSidecar` vouch for it: a silently inert witness
+// converted into a loudly enrolled one. That is strictly worse than this comment.
+//
+// WHAT WOULD ACTUALLY MAKE IT EXECUTE is modeling the gcloud service operation, or restructuring
+// the assertions onto a subject that carries no host effect. Neither is done here.
+//
+// WHY THE IMPORT EDGE IS STILL RIGHT: the edge is a fact about REFERENCE, not about execution.
+// This module names `gcp_oauth_access_token` and both leaf patterns and resolved them through the
+// flat whole-tree namespace, so it was depended-upon-but-unimported -- the same accidental pool
+// coverage this change repairs in `gunbc.tailscale_acl_phase2_credential`. Recording the edge is
+// correct whether or not the assertions ever run, and an earlier revision of this comment claimed
+// they run. They do not; that claim was asserted without being measured, in a change whose whole
+// subject is evidence that is cited but never executed.
 //
 // ADDING THE EDGE CANNOT CHANGE WHICH DECLARATION BINDS, and that is measured rather than assumed:
 // each of the four names below is declared in exactly one module across `dag/` and `src/v2`, so the
