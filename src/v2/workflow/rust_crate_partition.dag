@@ -234,6 +234,7 @@ fn stage0_std_surface_modules() -> List<String> {
   [
     "std_effects",
     "std_execution_mode",
+    "extdeps_uri_path",
     "std_interface_summary",
     "std_pareto",
     "std_realization_schedule",
