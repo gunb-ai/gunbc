@@ -634,7 +634,6 @@ func placement_converge_with_operands(
         remote: operands.remote,
         base_ref: operands.base_ref,
         candidate: operands.candidate,
-        primary_path: operands.primary_path,
       ),
     ),
   )
