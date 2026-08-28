@@ -1,12 +1,13 @@
 module test.claim.generated_artifact_assessment
 
-import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact }
+import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
   GeneratedArtifactObserved,
   GeneratedArtifactObservationRefused,
   GeneratedArtifactPopulationFindings,
   UnadjudicatedArtifactFinding,
+  assess_generated_artifact_population,
   generated_artifact_population_findings,
   generated_artifact_population_findings_count,
   generated_artifact_population_findings_empty,
