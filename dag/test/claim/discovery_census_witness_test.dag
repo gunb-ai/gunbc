@@ -196,6 +196,7 @@ test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
     DeclinedFixtureMember { matched_prefix: p } => p == "v2.test.fixture.walk_plan_stage."
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedCostDebt => false
   }
 }
 
