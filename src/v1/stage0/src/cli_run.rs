@@ -1304,6 +1304,38 @@ mod process_workspace_root_tests {
             .is_file());
     }
 
+    /// THE TWO MODULE-INDEX BUILDERS MUST ANCHOR A RELATIVE ROOT THE SAME WAY.
+    ///
+    /// `try_build_module_index` resolved each root through `anchor_source_root` -- a relative
+    /// spelling anchors to the PROCESS WORKSPACE -- while the primary-precedence builder read the
+    /// string straight off the filesystem, anchoring it to the PROCESS CWD. One concept with two
+    /// answers, selected by which builder a caller happened to reach.
+    ///
+    /// THIS TEST IS THE DISCRIMINATING RED, and it discriminates because `cargo test` runs with
+    /// its CWD at the PACKAGE directory (`src/v1/stage0`), not the workspace root. Under the
+    /// forked behaviour the relative root `dag` did not exist relative to that CWD and the
+    /// primary-precedence builder refused with `source root does not exist: dag`; the strict
+    /// builder resolved the same string to the real tree. A run whose CWD happens to BE the
+    /// workspace root -- which is every CI invocation -- cannot tell the two apart, which is why
+    /// the fork survived: the one place it is visible is the one place nothing was asserting.
+    #[test]
+    fn both_module_index_builders_anchor_a_relative_root_to_the_workspace() {
+        let roots = vec!["dag".to_string()];
+        let strict = super::try_build_module_index(&roots).expect("strict builder anchors `dag`");
+        let primary = super::try_build_module_index_primary_precedence(&roots)
+            .expect("primary-precedence builder must anchor `dag` the same way");
+        assert!(
+            !strict.is_empty(),
+            "the strict builder must find modules under `dag` -- an empty index would make the \
+             agreement below vacuous"
+        );
+        assert_eq!(
+            strict.len(),
+            primary.len(),
+            "both builders index the same tree for the same relative root spelling"
+        );
+    }
+
     #[test]
     fn try_anchor_source_root_skips_declared_absent_root() {
         assert_eq!(
@@ -3447,11 +3479,29 @@ fn index_source_root_into_module_index(
         .unwrap_or_else(|e| panic!("{e}"))
 }
 
+/// THE ROOT IS ANCHORED HERE, as `try_build_module_index` already anchors its own.
+///
+/// The two module-index builders forked on this: the strict one resolved each root through
+/// `anchor_source_root` (a relative spelling anchors to the PROCESS WORKSPACE), the
+/// primary-precedence one read the string straight off the filesystem (a relative spelling
+/// anchors to the PROCESS CWD). One concept, two answers, decided by which builder a caller
+/// happened to reach -- the §3 fork, and the kind that only shows when something makes the two
+/// paths meet. Routing the compile transaction's primary arm through the shared index is what
+/// made them meet: `canonical_shared_index_roots` rewrites an absolute root to its repo-relative
+/// spelling for the memo key AND hands that spelling to the builder, which is correct under the
+/// anchoring builder and CWD-dependent under this one. Anchoring here makes the two agree by
+/// construction rather than by every caller running from the right directory.
+///
+/// A root that cannot be anchored falls through to the existence refusal below with its ORIGINAL
+/// spelling, so the diagnostic still names what the caller asked for rather than a rewritten form
+/// the caller never wrote.
 fn try_index_source_root_into_module_index(
     root: &str,
     index: &mut ModuleSourceIndex,
     pool_fill_only: bool,
 ) -> Result<(), String> {
+    let anchored = try_anchor_source_root(root);
+    let root = anchored.as_deref().unwrap_or(root);
     let root_path = std::path::Path::new(root);
     if !root_path.exists() {
         return Err(format!("source root does not exist: {root}"));
@@ -5557,6 +5607,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             "ServiceConfigReferenceJudgmentDeferred"
         }
         CompilerDiagnostic::UnlistedVariantValueUse { .. } => "UnlistedVariantValueUse",
+        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { .. } => {
+            "ReferenceDerivedImportProviderUnknown"
+        }
+        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => {
+            "ReferenceDerivedImportExportUnproven"
+        }
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -5601,6 +5657,8 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
+        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name, .. } => name.clone(),
+        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name, .. } => name.clone(),
         CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter, .. } => parameter.clone(),
