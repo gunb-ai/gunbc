@@ -77,6 +77,54 @@ import gunbc.guarantee_rung_drop {
 //   - a rostered identity the tree no longer carries REFUSES as a stale row, so the roster
 //     cannot rot into a permission slip for witnesses that no longer exist.
 //
+// A KNOWN, BOUNDED IMPURITY IN THIS UNIVERSE, DECLARED RATHER THAN DISCOVERED LATER.
+//
+// The marginal basis above corrects attribution for ONE shared artifact and not for shared
+// builds in general. `v1_compiler.cli_run` `record_shared_artifact_fill_cpu` has exactly one
+// call site -- inside `compile_dag_rust_emit_check` -- so a claim whose cost is dominated by a
+// DIFFERENT unbracketed shared build is still charged for work it does not own, and the
+// subtraction reports zero for it. The known instance: gunbc#9428 memoized the sibling
+// `compile_dag_diagnostic_census` without a bracket, so a census miss accumulates nothing.
+// (Found by snappy-dove-250 and sleek-cat-45; the single call site and the census's missing
+// bracket are verified here by code read, and the discriminating evidence is theirs -- main run
+// 33131296988 carries 259 per-claim `[floor-shared-fill]` lines and none names a
+// callable_candidate_ambiguity row, beside a 5812ms charge that is almost entirely fill.)
+//
+// SIXTEEN OF THE ROWS BELOW SIT IN A CENSUS-CALLING MODULE, and they are named so that this is
+// a retryable list rather than an invisible one:
+//   test.claim.arity_zero_import_refusal_witness.the_same_import_carrying_one_member_is_accepted
+//   test.claim.callable_candidate_ambiguity_witness.a_bare_call_whose_only_declarer_is_reached_transitively_refuses
+//   test.claim.callable_candidate_ambiguity_witness.a_listed_import_does_not_exclude_a_transitively_reached_homonym
+//   test.claim.callable_candidate_ambiguity_witness.neither_green_source_refuses_and_neither_mis_resolves
+//   test.claim.declared_type_inhabitance_direct_call_witness.w_kernel_numeric_at_the_natively_realized_nat_is_admitted
+//   test.claim.declared_type_inhabitance_direct_call_witness.w_kernel_numeric_at_the_peano_nat_is_refused
+//   test.claim.declared_type_inhabitance_list_element_witness.w_declared_coproduct_member_is_accepted
+//   test.claim.declared_type_inhabitance_list_element_witness.w_optional_carrier_is_undecidable_not_refused
+//   test.claim.declared_type_inhabitance_list_element_witness.w_reachability_control_discriminates_on_the_name
+//   test.claim.generic_lambda_parameter_binding_witness.a_lambda_argument_binds_a_type_variable_a_later_argument_determines
+//   test.claim.generic_lambda_parameter_binding_witness.a_lambda_field_of_a_generic_record_binds_the_type_its_sibling_field_determines
+//   test.claim.generic_lambda_parameter_binding_witness.a_lambda_parameter_bound_to_a_type_variable_can_reach_its_fields
+//   test.claim.import_admission_closure_membership_witness_test.listed_name_resolves
+//   test.claim.import_admission_closure_membership_witness_test.pool_coincidence_name_still_resolves_today
+//   test.claim.import_admission_closure_membership_witness_test.selective_unlisted_name_still_resolves_today
+//   test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller
+//
+// HOW TO READ SIXTEEN. It is an UPPER bound on census-caused miswarding and not a count of
+// wrong rows: only the claim arriving FIRST at a given source absorbs the fill, so some of
+// these are legitimately over the ceiling on their own marginal cost. It is also NOT a bound on
+// the general class -- any row dominated by another unbracketed shared build is miswarded and
+// invisible here. `both_closure_edge_index` is the obvious next candidate (the ~28s artifact
+// `v2.workflow.required_floor`'s own header describes, and the source of the 57193ms
+// qualified_spelling specimen); its treatment is UNVERIFIED and is asserted in neither
+// direction.
+//
+// WHY THIS MATTERS MORE FOR THIS ROSTER THAN FOR AN ORDINARY MEASUREMENT: a row frozen for cost
+// that belongs to a shared build cannot take the exit below, because the exit is "make it
+// cheap" and the cost is not its own to reduce. It would sit here looking exactly like debt.
+// TRIGGER: when gunbc#9560 lands the missing census bracket, RE-MEASURE THESE SIXTEEN and delete
+// the lines that fall under the ceiling. That is a specific, dated, bounded action against a
+// named list, which is the difference between a declared impurity and a silent one.
+
 // HOW A ROW LEAVES, AND WHY THAT MAKES THE ROSTER SELF-CORRECTING. Delete its line. The floor
 // then runs it under the 500ms ceiling and it either passes or fails on its own marginal cost.
 // Nothing here needs to be re-measured to release a row, and nothing may be added to release
