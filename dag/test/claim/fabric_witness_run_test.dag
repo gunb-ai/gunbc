@@ -599,3 +599,62 @@ test fn an_owned_hour_is_eligible_to_a_demand_that_meets_its_asking_price() -> B
     budget_currency: Usd,
   ))
 }
+
+// THE REFUSAL REPORTS THE JOB TO MEASURE, NOT THE QUOTE'S OWN ARITHMETIC.
+//
+// UnobservedGrantDuration carries an obligation because the remedy for an unmeasured grant is a
+// SPECIFIC measurement, and the pricing fold used to drop that field and substitute a fixed
+// sentence of its own. That sentence was true and useless: it restated why a rate quote needs a
+// duration, which the variant name already says, and deleted the only part naming what to go
+// and do. A witness asserting a single obligation round-trips would not have caught it either,
+// because any fixed sentence passes an equality against itself. So this drives TWO DIFFERENT
+// obligations through the same offer and requires the refusal to distinguish them: a fold that
+// invents its own remedy answers identically for both and goes red on the second conjunct,
+// whichever sentence it invents.
+fn t_unpriceable_obligation(why: NonEmptyStr) -> DemandOfferAffordability {
+  offer_affordability_for(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 10), currency: Usd }),
+    ),
+    maximum_buy_order: money_amount_micro(count: 1000),
+    budget_currency: Usd,
+    duration: UnobservedGrantDuration { obligation: why },
+  )
+}
+
+fn t_reported_obligation(a: DemandOfferAffordability, expected: NonEmptyStr) -> Bool {
+  match a {
+    QuoteNotPriceableWithoutDuration { obligation: why } => (why as String) == (expected as String)
+    Affordable => false
+    AffordableUnderEstimate { duration_seconds: _, projected_total: _ } => false
+    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
+    QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
+  }
+}
+
+test fn an_unobserved_duration_refusal_reports_the_durations_own_obligation() -> Bool {
+  let first = "Time one full run of the reconcile stage before pricing an hourly quote against it."
+  let second = "Nobody has ever timed the emitted-closure cargo phase. Measure it, or bound it."
+  t_reported_obligation(a: t_unpriceable_obligation(why: first), expected: first)
+    && t_reported_obligation(a: t_unpriceable_obligation(why: second), expected: second)
+}
+
+// The control: the same offer, the same ceiling, a MEASURED duration. Without it the witness
+// above is equally satisfied by a fold that refuses every hourly quote as unpriceable, which is
+// the blanket refusal this suite's dimensional pair already records once.
+test fn the_same_offer_prices_normally_once_the_duration_is_measured() -> Bool {
+  affordable(a: offer_affordability_for(
+    offer: t_offer(
+      threads: hardware_thread_count(count: 128),
+      caps: "gunbc.capabilities.linux-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+      quote: QuotedPerHour(MoneyRate { amount: money_amount_micro(count: 10), currency: Usd }),
+    ),
+    maximum_buy_order: money_amount_micro(count: 1000),
+    budget_currency: Usd,
+    duration: ExactGrantDuration { seconds: second(count: 3600) },
+  ))
+}

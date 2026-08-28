@@ -12,7 +12,7 @@ import gunbc.build_target {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember,
+  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
   required_floor_site_disposition,
 }
 import v2.std.live_tree { LiveTreeDisposition }
@@ -199,7 +199,8 @@ fn census_fold_site(state: CensusFoldState, site: DiscoveredSite) -> CensusFoldS
             CensusRow {
               label: l,
               disposition: required_floor_site_disposition(
-                module_path: site.module_path
+                module_path: site.module_path,
+                identity: identity
               )
             }
           ], state.rows_reversed),
@@ -240,12 +241,20 @@ type CensusPartition {
   declined: List<CensusRow>
 }
 
+// WITHHELD BY THE COST-DEBT ROSTER IS A DECLINE, and it lands on the declined side for the
+// reason the other two do: the census's question is whether a site was routed to a claim, and a
+// withheld site was not. It is a DISTINCT ARM rather than folded into either existing decline
+// because the remedies differ -- a long-home row needs a cadence, a live-tree row needs a
+// hermetic route, and a cost-debt row needs to be made cheaper -- and collapsing them would be
+// the total-at-the-level-examined defect DESIGN names.
 fn census_partition_step(acc: CensusPartition, row: CensusRow) -> CensusPartition {
   match row.disposition {
     Planned => CensusPartition { planned: concat([row], acc.planned), declined: acc.declined }
     DeclinedLongModule { matched_prefix: _ } =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
     DeclinedFixtureMember { matched_prefix: _ } =>
+      CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
+    DeclinedCostDebt =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
   }
 }
@@ -311,6 +320,7 @@ type CensusCounts {
   planned: Int
   declined_long_module: Int
   declined_fixture_member: Int
+  declined_cost_debt: Int
 }
 
 fn census_counts_zero() -> CensusCounts {
@@ -318,7 +328,8 @@ fn census_counts_zero() -> CensusCounts {
     offered: 0,
     planned: 0,
     declined_long_module: 0,
-    declined_fixture_member: 0
+    declined_fixture_member: 0,
+    declined_cost_debt: 0
   }
 }
 
@@ -329,21 +340,32 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         offered: counts.offered + 1,
         planned: counts.planned + 1,
         declined_long_module: counts.declined_long_module,
-        declined_fixture_member: counts.declined_fixture_member
+        declined_fixture_member: counts.declined_fixture_member,
+        declined_cost_debt: counts.declined_cost_debt
       }
     DeclinedLongModule { matched_prefix: _ } =>
       CensusCounts {
         offered: counts.offered + 1,
         planned: counts.planned,
         declined_long_module: counts.declined_long_module + 1,
-        declined_fixture_member: counts.declined_fixture_member
+        declined_fixture_member: counts.declined_fixture_member,
+        declined_cost_debt: counts.declined_cost_debt
       }
     DeclinedFixtureMember { matched_prefix: _ } =>
       CensusCounts {
         offered: counts.offered + 1,
         planned: counts.planned,
         declined_long_module: counts.declined_long_module,
-        declined_fixture_member: counts.declined_fixture_member + 1
+        declined_fixture_member: counts.declined_fixture_member + 1,
+        declined_cost_debt: counts.declined_cost_debt
+      }
+    DeclinedCostDebt =>
+      CensusCounts {
+        offered: counts.offered + 1,
+        planned: counts.planned,
+        declined_long_module: counts.declined_long_module,
+        declined_fixture_member: counts.declined_fixture_member,
+        declined_cost_debt: counts.declined_cost_debt + 1
       }
   }
 }
