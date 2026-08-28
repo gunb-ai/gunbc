@@ -39,8 +39,14 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_artifact_dir,
   fleet_converge_plan_content_hash,
   fleet_converge_observed_baseline_matches,
-  fleet_converge_apply_subject_host_matches,
   fleet_converge_member_set_fingerprint_matches,
+  fleet_converge_plan_subject_scope_path,
+  fleet_converge_apply_artifact_admits,
+  fleet_converge_apply_admission_refusal_text,
+  fleet_converge_scope_wire,
+  fleet_converge_plan_subject,
+  FleetConvergeRequest,
+  FullHostConverge,
   timer_retirement_observed_legacy_srv1,
   fleet_converge_generation_store_path,
   fleet_converge_locked_apply_script,
@@ -65,7 +71,7 @@ data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-con
 // makes rather than a fact about a host: 0755 is owner-write, everyone-read-and-execute.
 data fleet_converge_plan_apply_shell_mode: NonEmptyStr = "0755"
 
-data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire (empty wire on non-Spark hosts); on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh + spark wire match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0. Subject host is a typed observation (observe_host_short_wet returns NonEmptyStr?, Absent when the hostname probe did not succeed or returned empty output): both plan and apply refuse outright on Absent rather than folding a failed probe into an empty String, and the SubjectHostMismatch check itself routes through fleet_converge_apply_subject_host_matches on two NonEmptyStr values (gunbc.fleet_converge_plan) — the same authority fleet_converge_apply_subject_admits uses — never a bare String != that two coincident non-observations (both hosts probed empty) could satisfy by accident."
+data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect LeaseEpoch generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire (empty wire on non-Spark hosts); on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh + spark wire match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0. Subject host is a typed observation (observe_host_short_wet returns NonEmptyStr?, Absent when the hostname probe did not succeed or returned empty output): both plan and apply refuse outright on Absent rather than folding a failed probe into an empty String, and subject admission itself routes through the single canonical predicate fleet_converge_apply_artifact_admits (gunbc.fleet_converge_plan), which judges host AND scope AND member-set fingerprint together over exactly what the artifact carries, returning a typed FleetConvergeApplyAdmission rather than a Bool so the three causes keep their distinct operator remedies. The planned scope is persisted as subject_scope.txt and decoded fail-closed: an empty or unrecognised wire refuses rather than defaulting to full-host, because defaulting would widen apply from one resource family to every family on the host and the widening would be invisible."
 
 // MAIN CLOSED THIS ONE AND THIS BRANCH DOES NOT RE-OPEN IT. The optional return IS the next-rung
 // repair this lane named -- an unreadable hostname is now Absent rather than a String that looks
@@ -211,6 +217,10 @@ func fleet_converge_plan_wet() -> ProcessExit
                 path: fleet_converge_plan_member_set_fp_path,
                 content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
               )
+              let w_scope = Filesystem.Write(
+                path: fleet_converge_plan_subject_scope_path,
+                content: fleet_converge_scope_wire(scope: artifact.subject.scope),
+              )
               let w_spark_wire = Filesystem.Write(
                 path: fleet_converge_plan_spark_typed_actions_wire_path,
                 content: spark_wire,
@@ -223,6 +233,7 @@ func fleet_converge_plan_wet() -> ProcessExit
                 && w_gen.success
                 && w_prior.success
                 && w_member_fp.success
+                && w_scope.success
                 && w_spark_wire.success {
                 run_shell_commands(
                   commands: [
@@ -258,6 +269,7 @@ func fleet_converge_apply_wet() -> ProcessExit
   let read_member_fp = Filesystem.Read(path: fleet_converge_plan_member_set_fp_path)
   let read_apply = Filesystem.Read(path: fleet_converge_plan_apply_shell_path)
   let read_hash = Filesystem.Read(path: fleet_converge_plan_content_hash_path)
+  let read_scope = Filesystem.Read(path: fleet_converge_plan_subject_scope_path)
   let read_spark_wire = Filesystem.Read(path: fleet_converge_plan_spark_typed_actions_wire_path)
   if !read_plan.success
     || !read_base.success
@@ -267,6 +279,7 @@ func fleet_converge_apply_wet() -> ProcessExit
     || !read_member_fp.success
     || !read_apply.success
     || !read_hash.success
+    || !read_scope.success
     || !read_spark_wire.success {
     exit_failure(reason: "fleet_converge_apply: plan artifact missing — run plan first")
   } else {
@@ -283,15 +296,7 @@ func fleet_converge_apply_wet() -> ProcessExit
           Absent =>
             exit_failure(reason: "fleet_converge_apply: planned_generation artifact corrupt — refuse, do not coerce to 0")
           Present { value: planned_generation } => {
-            if !fleet_converge_apply_subject_host_matches(planned_host: planned_host, observed_host: observed_host) {
-              exit_failure(
-                reason: concat(
-                  "fleet_converge_apply: SubjectHostMismatch planned=",
-                  planned_host as String,
-                  concat(" observed=", observed_host as String),
-                ),
-              )
-            } else {
+            {
               let observed_timers = observe_timer_members_wet()
               let observed_caps = observe_cap_members_wet()
               let observed_fabric_cells = admit_fabric_cell_probe(
@@ -303,24 +308,42 @@ func fleet_converge_apply_wet() -> ProcessExit
                     reason: concat("fleet_converge_apply: RunnerSlotsUnobserved — ", why as String),
                   )
                 RunnerSlotsObserved { members: observed_slots } =>
-              if !fleet_converge_member_set_fingerprint_matches(
+              let observed_request = FullHostConverge {
+                host: observed_host,
+                observed_timers: observed_timers,
+                observed_caps: observed_caps,
+                observed_spark: [],
+                observed_slots: observed_slots,
+                observed_fabric_cells: observed_fabric_cells,
+              }
+              match fleet_converge_apply_artifact_admits(
+                planned_host_text: planned_host as String,
+                planned_scope_wire: read_scope.content,
                 planned_fingerprint_text: read_member_fp.content,
-                host: observed_host,
-                observed_timers: observed_timers,
-                observed_caps: observed_caps,
-                observed_spark: [],
-                observed_slots: observed_slots,
-                observed_fabric_cells: observed_fabric_cells,
+                observed: observed_request,
               ) {
-                exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
-              } else if !fleet_converge_observed_baseline_matches(
-                host: observed_host,
+                ApplySubjectHostMismatch { planned: ph, observed: oh } =>
+                  exit_failure(
+                    reason: concat(
+                      "fleet_converge_apply: SubjectHostMismatch planned=",
+                      concat(ph, concat(" observed=", oh)),
+                    ),
+                  )
+                ApplyScopeUndecodable { cause: why } =>
+                  exit_failure(reason: concat("fleet_converge_apply: PlannedScopeUndecodable — ", why))
+                ApplyScopeMismatch { planned_wire: pw, observed_wire: ow } =>
+                  exit_failure(
+                    reason: concat(
+                      "fleet_converge_apply: SubjectScopeMismatch — the plan selected ",
+                      concat(pw, concat(" and apply re-observed ", concat(ow, "; apply would actuate a family the plan never selected"))),
+                    ),
+                  )
+                ApplyMemberSetMismatch =>
+                  exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
+                ApplyAdmitted =>
+              if !fleet_converge_observed_baseline_matches(
                 observed_baseline_hex: trim(s: read_base.content),
-                observed_timers: observed_timers,
-                observed_caps: observed_caps,
-                observed_spark: [],
-                observed_slots: observed_slots,
-                observed_fabric_cells: observed_fabric_cells,
+                observed: observed_request,
               ) {
                 exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review")
               } else if !fleet_converge_plan_bundle_matches(
@@ -345,6 +368,7 @@ func fleet_converge_apply_wet() -> ProcessExit
                   ],
                   transport: LocalExec,
                 )
+              }
               }
             }
           }

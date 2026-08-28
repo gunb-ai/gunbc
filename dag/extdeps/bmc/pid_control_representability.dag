@@ -1,0 +1,122 @@
+module extdeps.bmc.pid_control_representability
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.content_hash { ContentHash }
+import extdeps.languages.json.emit { JsonValue }
+import extdeps.languages.json.member_conservation {
+  ConservationVerdict,
+  JsonOccurrenceIdentity,
+  MemberDefective,
+  MemberDisposition,
+  MemberUnmodeled,
+  MemberConsumed,
+  ObjectMemberPartition,
+}
+import extdeps.bmc.pid_control_program { BmcFanControlProgram }
+import extdeps.bmc.pid_control_semantic_identity { semantic_program_digest }
+import extdeps.bmc.pid_control_decode {
+  ProgramDecode,
+  ProgramDecodeRefused,
+  ProgramDecoded,
+  ProgramMembersNotConserved,
+  ProgramRefusal,
+  decode_program,
+}
+
+// THE GATE THAT STOPS A PARTIAL OBSERVATION FROM BEING CITED AS A COMPLETE PROGRAM. A decode can
+// succeed while leaving members it does not model, and such a program is a perfectly good
+// OBSERVATION and an unusable BASIS FOR POLICY: the residue is exactly the part nobody has decided
+// about, so an intent derived from the represented part would silently drop it on the next write.
+//
+// This is why the gate exists as its own step rather than as a flag on the decode. There must be
+// no interval in which a consumer can hold a decoded program and not know whether it is whole --
+// which is also why it lands in the same change as the decode rather than after it.
+type RepresentabilityRefusal
+  = ResidueUnmodeled { identity: JsonOccurrenceIdentity, key: String, residue_count: Int }
+  | KnownFieldDefective { identity: JsonOccurrenceIdentity, key: String, cause: NonEmptyStr }
+
+// THE TWO REFUSALS ARE NOT THE SAME FINDING AT DIFFERENT SEVERITIES. Unmodelled residue means this
+// repository is behind the document -- the fix is a model change here. A defective known field
+// means the DOCUMENT is wrong against a field we do model -- the fix is on the host. Collapsing
+// them would send half the work to the wrong place, and the residue case is the one that must not
+// read as an error in the fleet's configuration.
+type ProgramRepresentability
+  = FanProgramFullyRepresentable { program: BmcFanControlProgram, semantic_digest: ContentHash }
+  | FanProgramNotRepresentable { refusal: RepresentabilityRefusal }
+  | FanProgramNotDecoded { refusal: ProgramRefusal }
+  | FanProgramNotConserved { verdict: ConservationVerdict }
+
+fn unmodeled_of(partition: ObjectMemberPartition) -> List<MemberDisposition> {
+  filter(partition.dispositions, disposition =>
+    match disposition {
+      MemberUnmodeled { occurrence } => true
+      MemberConsumed { occurrence, role } => false
+      MemberDefective { occurrence, cause } => false
+    })
+}
+
+fn defective_of(partition: ObjectMemberPartition) -> List<MemberDisposition> {
+  filter(partition.dispositions, disposition =>
+    match disposition {
+      MemberDefective { occurrence, cause } => true
+      MemberConsumed { occurrence, role } => false
+      MemberUnmodeled { occurrence } => false
+    })
+}
+
+fn residue_refusal(dispositions: List<MemberDisposition>, total: Int) -> List<RepresentabilityRefusal> {
+  map(dispositions, disposition =>
+    match disposition {
+      MemberUnmodeled { occurrence } =>
+        ResidueUnmodeled {
+          identity: occurrence.identity,
+          key: occurrence.member.key,
+          residue_count: total,
+        }
+      MemberDefective { occurrence, cause } =>
+        KnownFieldDefective {
+          identity: occurrence.identity,
+          key: occurrence.member.key,
+          cause: cause,
+        }
+      MemberConsumed { occurrence, role } =>
+        ResidueUnmodeled {
+          identity: occurrence.identity,
+          key: occurrence.member.key,
+          residue_count: total,
+        }
+    })
+}
+
+// THE DEFECTIVE POPULATION IS REPORTED BEFORE THE RESIDUE, because a document that is wrong about
+// a field we DO understand is the more urgent of the two and the one an operator can act on
+// without waiting for this repository to model anything.
+fn representability_of_partitions(
+  partitions: List<ObjectMemberPartition>,
+) -> List<RepresentabilityRefusal> {
+  let defective = flat_map(partitions, partition => defective_of(partition: partition))
+  let unmodeled = flat_map(partitions, partition => unmodeled_of(partition: partition))
+  if defective.length() > 0 {
+    residue_refusal(dispositions: defective, total: defective.length())
+  } else {
+    residue_refusal(dispositions: unmodeled, total: unmodeled.length())
+  }
+}
+
+fn program_representability(document: JsonValue) -> ProgramRepresentability {
+  match decode_program(document: document) {
+    ProgramDecodeRefused { refusal } => FanProgramNotDecoded { refusal: refusal }
+    ProgramMembersNotConserved { verdict } => FanProgramNotConserved { verdict: verdict }
+    ProgramDecoded { program, partitions, element_partitions } => {
+      let refusals = representability_of_partitions(partitions: partitions)
+      if refusals.length() > 0 {
+        FanProgramNotRepresentable { refusal: refusals.first() }
+      } else {
+        FanProgramFullyRepresentable {
+          program: program,
+          semantic_digest: semantic_program_digest(program: program),
+        }
+      }
+    }
+  }
+}
