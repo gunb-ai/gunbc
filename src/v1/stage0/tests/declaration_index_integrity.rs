@@ -571,6 +571,33 @@ fn fixture_citation_does_not_claim_authority_reachability() {
     );
 }
 
+#[test]
+fn fixture_import_does_not_fabricate_production_authority_reachability() {
+    let dir = scratch_root("fixture_import_reachability");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data citation: DeclarationRef = DeclarationRef {\n  \
+         module_path: \"probe.authority\",\n  decl_name: \"real_declaration\",\n  \
+         field: WholeDeclaration\n}\n",
+    );
+    author(
+        &dir,
+        "consumer_test.dag",
+        "module probe.consumer_test\n\nimport probe.authority { real_declaration }\n\n\
+         data fixture_consumes_authority: Bool = real_declaration\n",
+    );
+
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    assert_eq!(
+        index_population(&sweep.index).cited_authorities_without_import_edges,
+        vec!["probe.authority"],
+        "a fixture import is evidence input, not production reachability"
+    );
+}
+
 // The live credentials defect is intentionally NOT this control: another change may repair it,
 // which must not make the evidence permanently green. These two caller-authored modules keep the
 // compiler's refusing and accepting directions under the fixture's control.

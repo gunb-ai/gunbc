@@ -962,6 +962,7 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
     let imported_modules: BTreeSet<String> = index
         .modules
         .values()
+        .filter(|record| !record.is_fixture_carrier)
         .flat_map(|record| record.imports.iter())
         .filter_map(|import| {
             resolve_cited_module(index, &import.target).map(|target| target.module_path.clone())
