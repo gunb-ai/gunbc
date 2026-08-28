@@ -1783,7 +1783,7 @@ fn build_module_path_index_uncached(source_roots: &[String]) -> HashMap<String, 
 }
 
 #[derive(Clone)]
-struct ModuleBindingManifestRow {
+pub(crate) struct ModuleBindingManifestRow {
     module_path: String,
     rel_path: String,
     root_variant: String,
@@ -3304,7 +3304,7 @@ fn call_compile_clean_bool_list_fn(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum CompileCleanScopePlan {
+pub(crate) enum CompileCleanScopePlan {
     /// Local dev only — neither `GITHUB_ACTIONS` nor `GUNBC_CI_DIFF_BASE` active.
     WholeTree,
     SkipNoAffected {
@@ -33804,7 +33804,7 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum CommitWitnessClaimPairResolvability {
+pub(crate) enum CommitWitnessClaimPairResolvability {
     Resolvable,
     EntryMissing { detail: String },
     EntryResolveFailed { detail: String },
@@ -33812,7 +33812,7 @@ enum CommitWitnessClaimPairResolvability {
 }
 
 #[derive(Debug, Clone)]
-enum RosterEntryRegistryCache {
+pub(crate) enum RosterEntryRegistryCache {
     EntryMissing { detail: String },
     EntryResolveFailed { detail: String },
     Functions(std::collections::HashSet<String>),
@@ -35347,7 +35347,7 @@ fn doc_reachable_set(
     reached
 }
 
-struct DocGraphReport {
+pub(crate) struct DocGraphReport {
     doc_count: usize,
     orphans: Vec<String>,
     dangling: Vec<(String, String)>,
@@ -35441,11 +35441,11 @@ struct TestMigrationDebtEntry {
     test_fn_count: i64,
 }
 
-struct TestMigrationDebtReport {
+pub(crate) struct TestMigrationDebtReport {
     entries: Vec<TestMigrationDebtEntry>,
 }
 
-struct TestMigrationBehaviorDiscoveryReport {
+pub(crate) struct TestMigrationBehaviorDiscoveryReport {
     legacy_behavior_ids: Vec<String>,
     witness_behavior_ids: Vec<String>,
     errors: Vec<String>,
@@ -38428,7 +38428,7 @@ pub struct ExtdepsExternalAuthorityModuleFacts {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum ExternalAuthorityAnchorProjection {
+pub(crate) enum ExternalAuthorityAnchorProjection {
     Absent,
     Refused {
         cause: String,
