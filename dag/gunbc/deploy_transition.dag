@@ -7,8 +7,16 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadOutcome,
   FilesystemReadSucceeded,
   FilesystemReadRefused,
+  FilesystemEstablishedAbsence,
+  FilesystemFileObservation,
+  FilesystemFileAbsent,
+  FilesystemFileRead,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
   filesystem_read_outcome,
-  filesystem_listing_names_entry,
+  filesystem_listing_observation,
+  filesystem_file_observation,
+  filesystem_established_absence_detail,
 }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -359,54 +367,50 @@ fn transition_record_decode(text: String) -> TransitionRecordDecode {
 // read only NAMES the holder afterwards. That argument is scoped to acquisition. The admission path
 // has no create to fall back on; the read IS the decision. A justification for one caller sitting
 // above a fold used by two reads as though it covered both, and every sentence in it is correct.
+// ABSENCE IS THE SUBSTRATE'S TO ESTABLISH, NOT THIS MODULE'S TO ASSERT. The absent arm carries
+// `FilesystemEstablishedAbsence`, whose only mint lives in `extdeps.filesystem.filesystem_io` and
+// requires a listing whose success channel was true -- so this module cannot write an absence at
+// all, let alone infer one from a failed read. That is the same rule this file used to hold as
+// prose and then broke; the carrier is why it cannot break again here.
+//
+// THE FOURTH ARM IS THE SUBSTRATE'S AND IT MATTERS MORE HERE THAN ANYWHERE. A listing that did not
+// name the marker joined with a read of that marker that SUCCEEDED is two observations at two
+// instants disagreeing, and for this lane the subject of the disagreement is the inhibition itself:
+// the marker is being written or removed WHILE it is being read. Collapsing that into absence is
+// precisely the fail-open this module exists to close -- it would report ActuationPermitted at the
+// exact instant a transition is mutating the marker.
 type TransitionFileObservation
-  = TransitionFileAbsent { detail: String }
+  = TransitionFileAbsent(FilesystemEstablishedAbsence)
   | TransitionFilePresent { record: TransitionRecord }
   | TransitionFileIndeterminate { cause: String }
+  | TransitionFileObservationsDisagree { cause: String }
 
+// THE ONLY THING THIS FOLD DECIDES IS THE DECODE. Presence, absence, unreadability and the
+// disagreement are all decided by `filesystem_file_observation`; what is genuinely this module's is
+// that a file which read cleanly may still not be a transition record, which is a fourth way to be
+// indeterminate and is not a filesystem fact.
 fn transition_file_observation_of(
-  listed: Bool,
-  listing: String,
-  list_error: String,
-  name: String,
-  read: FilesystemReadOutcome,
+  observed: FilesystemFileObservation,
   path: String,
 ) -> TransitionFileObservation {
-  if !listed {
-    TransitionFileIndeterminate {
-      cause: join([
-        "gunbc.deploy_transition: the directory holding ",
-        path,
-        " could not be listed, so absence cannot be established -- ",
-        list_error,
-      ], ""),
-    }
-  } else {
-    if !filesystem_listing_names_entry(listing: listing, name: name) {
-      TransitionFileAbsent {
-        detail: join(["no ", name, " is listed beside ", path], ""),
+  match observed {
+    FilesystemFileAbsent(absence) => TransitionFileAbsent(absence)
+    FilesystemFileIndeterminate { cause: why } =>
+      TransitionFileIndeterminate {
+        cause: join(["gunbc.deploy_transition: ", why], ""),
       }
-    } else {
-      match read {
-        FilesystemReadRefused { error: e } =>
+    FilesystemFileObservationsDisagree { path: _, cause: why } =>
+      TransitionFileObservationsDisagree {
+        cause: join(["gunbc.deploy_transition: ", why], ""),
+      }
+    FilesystemFileRead { path: _, content: c } =>
+      match transition_record_decode(text: c) {
+        TransitionRecordUndecodable { cause: why } =>
           TransitionFileIndeterminate {
-            cause: join([
-              "gunbc.deploy_transition: ",
-              path,
-              " is listed and could not be read -- ",
-              e,
-            ], ""),
+            cause: join([why, " (at ", path, ")"], ""),
           }
-        FilesystemReadSucceeded { content: c } =>
-          match transition_record_decode(text: c) {
-            TransitionRecordUndecodable { cause: why } =>
-              TransitionFileIndeterminate {
-                cause: join([why, " (at ", path, ")"], ""),
-              }
-            TransitionRecordDecoded { record: r } => TransitionFilePresent { record: r }
-          }
+        TransitionRecordDecoded { record: r } => TransitionFilePresent { record: r }
       }
-    }
   }
 }
 
@@ -415,14 +419,20 @@ fn observe_transition_file(instance_root: String, name: String) -> TransitionFil
   let listing = Filesystem.List(path: instance_root)
   let read = Filesystem.Read(path: path)
   transition_file_observation_of(
-    listed: listing.success,
-    listing: listing.entries,
-    list_error: listing.error,
-    name: name,
-    read: filesystem_read_outcome(
-      content: read.content,
-      success: read.success,
-      error: read.error,
+    observed: filesystem_file_observation(
+      listing: filesystem_listing_observation(
+        directory: instance_root,
+        success: listing.success,
+        entries: listing.entries,
+        error: listing.error,
+      ),
+      name: name,
+      path: path,
+      read: filesystem_read_outcome(
+        content: read.content,
+        success: read.success,
+        error: read.error,
+      ),
     ),
     path: path,
   )
@@ -446,29 +456,46 @@ type LeaseAcquisition
 // record. A lease that expires on a clock is a lease that a slow transition loses while it is still
 // mutating, and the second acquirer would then be admitted into a live critical section by the very
 // mechanism meant to serialize it. Staleness is resolved by EVIDENCE, below, never by duration.
+// THE SUCCESS ARM CARRIES NO OBSERVATION, WHICH IS WHY IT CANNOT CARRY A FABRICATED ONE. The
+// earlier shape took `created: Bool` beside an observation and ignored the observation when the
+// create succeeded, so every caller had to supply one anyway -- and the production caller supplied
+// a hand-built absence with an empty detail. That value was never read, which is exactly what let
+// it survive review: a fabricated observation flowing into a fold is a fabricated plausible output
+// (section 5) whether or not this version happens to consume it, and the next arm added here would
+// have consumed it. Making the outcome a coproduct puts the observation on the ONLY arm that has a
+// question to answer with it, so the success path has no field in which to invent one -- the state
+// is unwritable rather than merely unread (section 4b, construction over validation).
+//
+// AND THE GUARD MINT STAYS IN ONE FOLD. Splitting this into a public "admitted" constructor would
+// have made `TransitionGuard` forgeable by any caller willing to assert success, which is the whole
+// property the sole_constructor wall exists to hold.
+type LeaseCreateOutcome
+  = LeaseCreateSucceeded
+  | LeaseCreateRefused { error: String, observed: TransitionFileObservation }
+
 fn lease_acquisition_from_create(
   subject: TransitionSubject,
   holder: TransitionActor,
-  created: Bool,
-  create_error: String,
-  observed: TransitionFileObservation,
+  outcome: LeaseCreateOutcome,
 ) -> LeaseAcquisition {
-  if created {
-    LeaseAcquired(TransitionGuard { subject: subject, holder: holder })
-  } else {
-    match observed {
-      TransitionFilePresent { record: r } => LeaseHeldBy { record: r }
-      TransitionFileIndeterminate { cause: why } => LeaseHeldUndecodable { cause: why }
-      TransitionFileAbsent { detail: d } =>
-        LeaseUnobtainable {
-          cause: join([
-            "gunbc.deploy_transition: exclusive create refused and no lease record is readable -- create error: ",
-            create_error,
-            "; read detail: ",
-            d,
-          ], ""),
-        }
-    }
+  match outcome {
+    LeaseCreateSucceeded =>
+      LeaseAcquired(TransitionGuard { subject: subject, holder: holder })
+    LeaseCreateRefused { error: e, observed: o } =>
+      match o {
+        TransitionFilePresent { record: r } => LeaseHeldBy { record: r }
+        TransitionFileIndeterminate { cause: why } => LeaseHeldUndecodable { cause: why }
+        TransitionFileObservationsDisagree { cause: why } => LeaseHeldUndecodable { cause: why }
+        TransitionFileAbsent(absence) =>
+          LeaseUnobtainable {
+            cause: join([
+              "gunbc.deploy_transition: exclusive create refused and no lease record is readable -- create error: ",
+              e,
+              "; read detail: ",
+              filesystem_established_absence_detail(absence: absence),
+            ], ""),
+          }
+      }
   }
 }
 
@@ -492,15 +519,16 @@ fn acquire_transition_lease(
   lease_acquisition_from_create(
     subject: subject,
     holder: holder,
-    created: created.success,
-    create_error: created.error,
-    observed: if created.success {
-      TransitionFileAbsent { detail: "" }
+    outcome: if created.success {
+      LeaseCreateSucceeded
     } else {
-      observe_transition_file(
-        instance_root: subject.instance_root,
-        name: transition_lease_file_name,
-      )
+      LeaseCreateRefused {
+        error: created.error,
+        observed: observe_transition_file(
+          instance_root: subject.instance_root,
+          name: transition_lease_file_name,
+        ),
+      }
     },
   )
 }
@@ -569,11 +597,18 @@ fn set_transition_inhibition(guard: TransitionGuard) -> TransitionActuation {
             ], ""),
           }
         }
-      TransitionFileAbsent { detail: d } =>
+      TransitionFileAbsent(absence) =>
         TransitionActuationRefused {
           cause: join([
             "gunbc.deploy_transition: the inhibition write succeeded and the marker is not there on readback -- ",
-            d,
+            filesystem_established_absence_detail(absence: absence),
+          ], ""),
+        }
+      TransitionFileObservationsDisagree { cause: why } =>
+        TransitionActuationRefused {
+          cause: join([
+            "gunbc.deploy_transition: the inhibition write succeeded and the readback disagreed with the listing -- ",
+            why,
           ], ""),
         }
       TransitionFileIndeterminate { cause: why } =>
@@ -618,11 +653,20 @@ fn set_inhibition_refusal_cause(
         " and what stands there could not be established -- ",
         why,
       ], "")
-    TransitionFileAbsent { detail: _ } =>
+    TransitionFileObservationsDisagree { cause: why } =>
       join([
         "gunbc.deploy_transition: the inhibition could not be created at ",
         path,
-        " and nothing is listed there, so the directory refused the write -- ",
+        " and what stands there is being written or removed while it is read -- ",
+        why,
+      ], "")
+    TransitionFileAbsent(absence) =>
+      join([
+        "gunbc.deploy_transition: the inhibition could not be created at ",
+        path,
+        " and ",
+        filesystem_established_absence_detail(absence: absence),
+        ", so the directory refused the write -- ",
         create_error,
       ], "")
   }
@@ -662,11 +706,21 @@ type ActuationStanding
   | ActuationInhibited { record: TransitionRecord }
   | ActuationStandingUnreadable { cause: String }
 
+// THE DISAGREEMENT ARM REFUSES, AND IT IS THE ARM THIS SEAM MOST NEEDED. A listing that did not
+// name the marker joined with a read of it that SUCCEEDED means the marker is being written or
+// removed at the instant the belt asked. Under the previous three-state fold that case rendered as
+// absence, and absence renders as ActuationPermitted -- so the belt would have been admitted at
+// precisely the moment a transition was mutating the inhibition. It is NOT folded into
+// ActuationStandingUnreadable: "I could not look" is a host fault and "the subject moved while I
+// looked" is contention with the transition this module serializes against, and an operator sent to
+// the wrong one loses the time this lane exists to protect.
 fn actuation_standing_of(observed: TransitionFileObservation) -> ActuationStanding {
   match observed {
-    TransitionFileAbsent { detail: _ } => ActuationPermitted
+    TransitionFileAbsent(_) => ActuationPermitted
     TransitionFilePresent { record: r } => ActuationInhibited { record: r }
     TransitionFileIndeterminate { cause: why } => ActuationStandingUnreadable { cause: why }
+    TransitionFileObservationsDisagree { cause: why } =>
+      ActuationStandingUnreadable { cause: why }
   }
 }
 
@@ -920,11 +974,18 @@ fn clearance_subject_mismatch(
           why,
         ], ""),
       }
-    TransitionFileAbsent { detail: d } =>
+    TransitionFileObservationsDisagree { cause: why } =>
+      Present {
+        value: join([
+          "gunbc.deploy_transition: refusing to clear a marker that is moving under the clearance -- ",
+          why,
+        ], ""),
+      }
+    TransitionFileAbsent(absence) =>
       Present {
         value: join([
           "gunbc.deploy_transition: refusing to clear a marker that is no longer readable at clearance time; something else removed or replaced it -- ",
-          d,
+          filesystem_established_absence_detail(absence: absence),
         ], ""),
       }
   }

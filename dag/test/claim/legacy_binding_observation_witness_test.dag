@@ -5,6 +5,13 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { Fnv1a64Structural, structural_content_hash }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
 import std.occurrence_identity { OccurrenceId }
+import std.observation_completeness {
+  ObservationComplete,
+  ObservationMissingExpected,
+  ObservationForeignObserved,
+  ObservationRepeatedObserved,
+  ObservationRepeatedExpected
+}
 import v2.workflow.legacy_binding_observation {
   LegacyResolutionPolicy,
   LegacyBindingObservation,
@@ -13,11 +20,6 @@ import v2.workflow.legacy_binding_observation {
   LegacyResolutionPolicy,
   ImportScopedPolicy,
   NamespaceOnlyPolicy,
-  LegacyObservationCompleteness,
-  LegacyObservationComplete,
-  LegacyObservationMissingExpected,
-  LegacyObservationForeignObserved,
-  LegacyObservationRepeatedObserved,
   LegacySubjectApplicability,
   LegacySubjectApplicable,
   LegacySubjectDiverged,
@@ -262,10 +264,11 @@ fn lbo_expected() -> List<Int> {
 
 test fn an_observation_answering_exactly_the_expected_occurrences_is_complete() -> Bool {
   match legacy_observation_completeness(observation: lbo_observation(ids: [11, 22, 33]), expected: lbo_expected()) {
-    LegacyObservationComplete => true
-    LegacyObservationMissingExpected { occurrences: _ } => false
-    LegacyObservationForeignObserved { occurrences: _ } => false
-    LegacyObservationRepeatedObserved { occurrences: _ } => false
+    ObservationComplete => true
+    ObservationMissingExpected { keys: _ } => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
   }
 }
 
@@ -273,19 +276,21 @@ test fn an_observation_answering_exactly_the_expected_occurrences_is_complete() 
 // between an identity join and a count equality, stated as a fixture rather than as a claim.
 test fn an_observation_missing_one_expected_occurrence_refuses() -> Bool {
   match legacy_observation_completeness(observation: lbo_observation(ids: [11, 22, 99]), expected: lbo_expected()) {
-    LegacyObservationMissingExpected { occurrences: missing } => (missing |> count) == 1
-    LegacyObservationComplete => false
-    LegacyObservationForeignObserved { occurrences: _ } => false
-    LegacyObservationRepeatedObserved { occurrences: _ } => false
+    ObservationMissingExpected { keys: missing } => (missing |> count) == 1
+    ObservationComplete => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
   }
 }
 
 test fn an_observation_answering_for_a_non_subject_occurrence_refuses() -> Bool {
   match legacy_observation_completeness(observation: lbo_observation(ids: [11, 22, 33, 44]), expected: lbo_expected()) {
-    LegacyObservationForeignObserved { occurrences: foreign } => (foreign |> count) == 1
-    LegacyObservationComplete => false
-    LegacyObservationMissingExpected { occurrences: _ } => false
-    LegacyObservationRepeatedObserved { occurrences: _ } => false
+    ObservationForeignObserved { keys: foreign } => (foreign |> count) == 1
+    ObservationComplete => false
+    ObservationMissingExpected { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
   }
 }
 
@@ -299,10 +304,11 @@ test fn an_observation_answering_for_a_non_subject_occurrence_refuses() -> Bool 
 // broken; this arm is the standing answer that it is not.
 test fn an_observation_whose_every_row_is_refused_is_still_complete() -> Bool {
   match legacy_observation_completeness(observation: lbo_observation(ids: [11, 22, 33]), expected: lbo_expected()) {
-    LegacyObservationComplete => true
-    LegacyObservationMissingExpected { occurrences: _ } => false
-    LegacyObservationForeignObserved { occurrences: _ } => false
-    LegacyObservationRepeatedObserved { occurrences: _ } => false
+    ObservationComplete => true
+    ObservationMissingExpected { keys: _ } => false
+    ObservationForeignObserved { keys: _ } => false
+    ObservationRepeatedObserved { keys: _ } => false
+    ObservationRepeatedExpected { keys: _ } => false
   }
 }
 
@@ -315,10 +321,11 @@ test fn an_observation_whose_every_row_is_refused_is_still_complete() -> Bool {
 // review 56288 on the first cut of this module.
 test fn an_observation_answering_twice_for_one_occurrence_refuses() -> Bool {
   match legacy_observation_completeness(observation: lbo_observation(ids: [11, 11, 22, 33]), expected: lbo_expected()) {
-    LegacyObservationRepeatedObserved { occurrences: repeated } => (repeated |> count) == 1
-    LegacyObservationComplete => false
-    LegacyObservationMissingExpected { occurrences: _ } => false
-    LegacyObservationForeignObserved { occurrences: _ } => false
+    ObservationRepeatedObserved { keys: repeated } => (repeated |> count) == 1
+    ObservationRepeatedExpected { keys: _ } => false
+    ObservationComplete => false
+    ObservationMissingExpected { keys: _ } => false
+    ObservationForeignObserved { keys: _ } => false
   }
 }
 

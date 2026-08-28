@@ -5,6 +5,7 @@ import v2.std.collection { Map }
 import v2.std.constraints { CanonicalGrounding }
 import v2.std.node { Node }
 import v2.std.witness { Witness }
+import std.algebra { PartialFunction }
 
 // InferredFacts/InferredTree/InferredFactsEntry are the SHAPE infer's pass
 // produces and consumers hold -- not the pass itself. They lived inside

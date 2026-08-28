@@ -5,6 +5,9 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadOutcome,
   FilesystemReadSucceeded,
   FilesystemReadRefused,
+  filesystem_read_outcome,
+  filesystem_listing_observation,
+  filesystem_file_observation,
 }
 import gunbc.deploy_transition {
   TransitionSubject,
@@ -15,6 +18,10 @@ import gunbc.deploy_transition {
   TransitionFileAbsent,
   TransitionFilePresent,
   TransitionFileIndeterminate,
+  TransitionFileObservationsDisagree,
+  LeaseCreateOutcome,
+  LeaseCreateSucceeded,
+  LeaseCreateRefused,
   TransitionRecordDecode,
   TransitionRecordDecoded,
   TransitionRecordUndecodable,
@@ -112,13 +119,22 @@ fn acquisition_arm(a: LeaseAcquisition) -> String {
   }
 }
 
-fn acquire_with(created: Bool, observed: TransitionFileObservation) -> String {
+fn acquire_with(observed: TransitionFileObservation) -> String {
   acquisition_arm(a: lease_acquisition_from_create(
     subject: subject(),
     holder: holder(),
-    created: created,
-    create_error: "File exists (os error 17)",
-    observed: observed,
+    outcome: LeaseCreateRefused {
+      error: "File exists (os error 17)",
+      observed: observed,
+    },
+  ))
+}
+
+fn acquire_succeeded() -> String {
+  acquisition_arm(a: lease_acquisition_from_create(
+    subject: subject(),
+    holder: holder(),
+    outcome: LeaseCreateSucceeded,
   ))
 }
 
@@ -186,9 +202,7 @@ fn acquired_guard() -> TransitionGuard? {
   match lease_acquisition_from_create(
     subject: subject(),
     holder: holder(),
-    created: true,
-    create_error: "",
-    observed: TransitionFileAbsent { detail: "" },
+    outcome: LeaseCreateSucceeded,
   ) {
     LeaseAcquired(g) => Present { value: g }
     LeaseHeldBy { record: _ } => none
@@ -215,19 +229,10 @@ test fn the_durable_records_sit_outside_the_repository_they_protect() -> Bool {
 // in the two facts the decision consumes. Asserting one arm alone would stay green against a fold
 // that answered it unconditionally.
 test fn the_four_acquisition_outcomes_are_four_different_answers() -> Bool {
-  let acquired = acquire_with(created: true, observed: TransitionFileAbsent { detail: "" })
-  let held = acquire_with(
-    created: false,
-    observed: TransitionFilePresent { record: in_force_record() },
-  )
-  let corrupt = acquire_with(
-    created: false,
-    observed: TransitionFileIndeterminate { cause: "bad" },
-  )
-  let unobtainable = acquire_with(
-    created: false,
-    observed: TransitionFileAbsent { detail: "Permission denied" },
-  )
+  let acquired = acquire_succeeded()
+  let held = acquire_with(observed: TransitionFilePresent { record: in_force_record() })
+  let corrupt = acquire_with(observed: TransitionFileIndeterminate { cause: "bad" })
+  let unobtainable = acquire_with(observed: absent_observation())
   acquired == "acquired"
     && held == "held"
     && corrupt == "undecodable"
@@ -239,10 +244,7 @@ test fn the_four_acquisition_outcomes_are_four_different_answers() -> Bool {
 // converge the critical section a first one is still inside. This witness reds the moment the
 // undecodable arm is folded into either neighbour.
 test fn a_lease_that_does_not_decode_is_not_a_free_lease() -> Bool {
-  let corrupt = acquire_with(
-    created: false,
-    observed: TransitionFileIndeterminate { cause: "bad" },
-  )
+  let corrupt = acquire_with(observed: TransitionFileIndeterminate { cause: "bad" })
   corrupt != "acquired" && corrupt != "held"
 }
 
@@ -250,8 +252,8 @@ test fn a_lease_that_does_not_decode_is_not_a_free_lease() -> Bool {
 // directory and a lease held by a peer have opposite remedies -- fix the host, or wait -- so a fold
 // that answered "held" for both would send an operator to wait out a lease that does not exist.
 test fn a_directory_refusal_is_distinguished_from_a_held_lease() -> Bool {
-  acquire_with(created: false, observed: TransitionFileAbsent { detail: "Permission denied" })
-    != acquire_with(created: false, observed: TransitionFilePresent { record: in_force_record() })
+  acquire_with(observed: absent_observation())
+    != acquire_with(observed: TransitionFilePresent { record: in_force_record() })
 }
 
 // THE ROUND TRIP IS THE ORACLE FOR THE ENCODING, not a golden string: what production writes is what
@@ -308,22 +310,43 @@ test fn a_duplicated_field_refuses_rather_than_picking_one() -> Bool {
     text: "{\"schema\":\"gunbc.deploy_transition/1\",\"actor\":\"a\",\"invocation\":\"i\",\"repo_root\":\"r\",\"base_ref\":\"b\",\"candidate\":\"c\",\"candidate\":\"d\",\"phase\":\"in-force\"}"))
 }
 
+// THE WITNESS CANNOT HAND-BUILD AN ABSENCE EITHER, AND THAT IS THE WALL WORKING. Absence now
+// travels as `FilesystemEstablishedAbsence`, whose only mint is in the substrate and requires a
+// listing whose success channel was true. So this helper drives the real listing/read join rather
+// than asserting an arm: an absent observation here is produced the same way production produces
+// one, which is what makes the arms below evidence rather than restatement.
 fn observe(listed: Bool, listing: String, read: FilesystemReadOutcome) -> TransitionFileObservation {
   transition_file_observation_of(
-    listed: listed,
-    listing: listing,
-    list_error: "Permission denied (os error 13)",
-    name: transition_inhibition_file_name,
-    read: read,
+    observed: filesystem_file_observation(
+      listing: filesystem_listing_observation(
+        directory: "/opt/gunbc",
+        success: listed,
+        entries: listing,
+        error: "Permission denied (os error 13)",
+      ),
+      name: transition_inhibition_file_name,
+      path: "/opt/gunbc/transition-inhibition.json",
+      read: read,
+    ),
     path: "/opt/gunbc/transition-inhibition.json",
+  )
+}
+
+// AN ESTABLISHED ABSENCE FOR THE ARMS THAT NEED ONE, obtained through the mint rather than written.
+fn absent_observation() -> TransitionFileObservation {
+  observe(
+    listed: true,
+    listing: "some-other-file.json",
+    read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
   )
 }
 
 fn observation_arm(o: TransitionFileObservation) -> String {
   match o {
-    TransitionFileAbsent { detail: _ } => "absent"
+    TransitionFileAbsent(_) => "absent"
     TransitionFilePresent { record: _ } => "present"
     TransitionFileIndeterminate { cause: _ } => "indeterminate"
+    TransitionFileObservationsDisagree { cause: _ } => "disagree"
   }
 }
 
@@ -379,7 +402,27 @@ test fn an_unreadable_marker_refuses_belt_actuation_rather_than_admitting_it() -
     ),
   )))
     && admission_admits(a: actuation_admission(standing: actuation_standing_of(
-      observed: observe(listed: true, listing: "receipts", read: good_bytes()),
+      observed: absent_observation(),
+    )))
+}
+
+// THIS WITNESS'S POSITIVE CONTROL USED TO BE THE FAIL-OPEN ITSELF, which is worth recording because
+// it is the failure mode a control exists to prevent and it still got past review. The control read
+// `observe(listed: true, listing: "receipts", read: good_bytes())` -- a listing that does NOT name
+// the marker joined with a read of the marker that SUCCEEDED -- and asserted that the belt is
+// ADMITTED. Under the three-state fold that configuration returned absence, because the absent arm
+// never consulted the read, so the assertion passed. It was not testing that the fold admits a
+// clean host; it was pinning the exact state-space conflation this module exists to close, in the
+// witness whose subject is that conflation. The arm below is now the disagreement, so the old
+// control would go RED -- and the replacement control is an absence the substrate established.
+test fn a_marker_the_listing_missed_but_a_read_found_refuses_rather_than_permits() -> Bool {
+  let disagreeing = observe(listed: true, listing: "receipts", read: good_bytes())
+  observation_arm(o: disagreeing) == "disagree"
+    && !admission_admits(a: actuation_admission(standing: actuation_standing_of(
+      observed: disagreeing,
+    )))
+    && admission_admits(a: actuation_admission(standing: actuation_standing_of(
+      observed: absent_observation(),
     )))
 }
 
@@ -677,7 +720,7 @@ test fn a_vanished_or_unreadable_marker_refuses_the_clearance() -> Bool {
       !clearance_admits(c: clearance_admission(
         basis: ClearedByHolder(g),
         readback_converged: true,
-        observed: TransitionFileAbsent { detail: "No such file or directory" },
+        observed: absent_observation(),
       ))
         && !clearance_admits(c: clearance_admission(
           basis: ClearedByHolder(g),
