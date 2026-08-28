@@ -1,0 +1,72 @@
+worktree /opt/gunbc/gunbc
+HEAD 517fdac4ddf92d0dd636c1f66fdb95b508525067
+detached
+
+worktree /opt/gunbc/dispatch-worktrees/2-emit-partition
+HEAD 8d25f06126dea820bcb95141846995b6d30a9963
+branch refs/heads/dispatch/2-emit-partition
+
+worktree /opt/gunbc/dispatch-worktrees/5-regen-cutover
+HEAD d7afe8c309812be3d0870911887f7c099260ffec
+branch refs/heads/dispatch/5-regen-cutover
+
+worktree /opt/gunbc/dispatch-worktrees/namespace-occurrence-transport-a4a977ea6a45af340
+HEAD 623519aa3ca871b7afbcbd47c7ac137542c8f426
+branch refs/heads/dispatch/namespace-occurrence-transport-a4a977ea6a45af340
+
+worktree /opt/gunbc/dispatch-worktrees/ts-authority-converge
+HEAD a5daaaf424e2ec2673a29f77b3321817a76ff8b3
+branch refs/heads/dispatch/ts-authority-converge
+
+worktree /opt/gunbc/dispatch-worktrees/ts-dispatch-redispatch
+HEAD a5daaaf424e2ec2673a29f77b3321817a76ff8b3
+branch refs/heads/dispatch/ts-dispatch-redispatch
+
+worktree /opt/gunbc/dispatch-worktrees/ts-lens-door
+HEAD a5daaaf424e2ec2673a29f77b3321817a76ff8b3
+branch refs/heads/dispatch/ts-lens-door
+
+worktree /opt/gunbc/dispatch-worktrees/ts-obs-model
+HEAD a5daaaf424e2ec2673a29f77b3321817a76ff8b3
+branch refs/heads/dispatch/ts-obs-model
+
+worktree /opt/gunbc/dispatch-worktrees/ts-wf-lamps-v0-a8704c55c32b629f2
+HEAD e8b7117f4de779a48a024d009891e38bc366e6a3
+branch refs/heads/dispatch/ts-wf-lamps-v0-a8704c55c32b629f2
+
+worktree /opt/gunbc/dispatch-worktrees/ts-wf-lamps-v0-ad3401a4a71e004e9
+HEAD e8b7117f4de779a48a024d009891e38bc366e6a3
+branch refs/heads/dispatch/ts-wf-lamps-v0-ad3401a4a71e004e9
+
+worktree /opt/gunbc/dispatch-worktrees/ts-wf-node-schema
+HEAD a5daaaf424e2ec2673a29f77b3321817a76ff8b3
+branch refs/heads/dispatch/ts-wf-node-schema
+
+worktree /opt/gunbc/dispatch-worktrees/v1-hand-queue-drain-a2afa6b6084a6b9d3
+HEAD 623519aa3ca871b7afbcbd47c7ac137542c8f426
+branch refs/heads/dispatch/v1-hand-queue-drain-a2afa6b6084a6b9d3
+
+worktree /opt/gunbc/dispatch-worktrees/v1-test-hygiene-producer-retirement-a0c8b7fccd4b6095b
+HEAD 623519aa3ca871b7afbcbd47c7ac137542c8f426
+branch refs/heads/dispatch/v1-test-hygiene-producer-retirement-a0c8b7fccd4b6095b
+
+worktree /opt/gunbc/dispatch-worktrees/v2-emitter-direct-rust-door-a13840b20ac38d1af
+HEAD ccbcbd2d37ab300d041ee29f00183c905c3aa571
+branch refs/heads/dispatch/v2-emitter-direct-rust-door-a13840b20ac38d1af
+
+worktree /opt/gunbc/dispatch-worktrees/v2-emitter-direct-rust-door-a677905e3704d70a3
+HEAD bb4048a5f09b2963b2b49f73ea505d067c6e7569
+branch refs/heads/dispatch/v2-emitter-direct-rust-door-a677905e3704d70a3
+
+worktree /opt/gunbc/dispatch-worktrees/v2-emitter-direct-rust-door-acc0923494fc8b9cb
+HEAD bb4048a5f09b2963b2b49f73ea505d067c6e7569
+branch refs/heads/dispatch/v2-emitter-direct-rust-door-acc0923494fc8b9cb
+
+worktree /opt/gunbc/dispatch-worktrees/v2-emitter-producer-provenance-a94be0bccc546d597
+HEAD 37eb7e74cfdefc5accc0abdb78ac52ed88be05ed
+branch refs/heads/dispatch/v2-emitter-producer-provenance-a94be0bccc546d597
+
+worktree /opt/gunbc/dispatch-worktrees/v2-emitter-producer-provenance-ac2cc4a9de4f1d4cc
+HEAD c96e7844f1909235cefb41e02ad0eb65900faeff
+branch refs/heads/dispatch/v2-emitter-producer-provenance-ac2cc4a9de4f1d4cc
+
