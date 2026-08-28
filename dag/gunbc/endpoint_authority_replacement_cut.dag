@@ -155,7 +155,11 @@ fn endpoint_authority_cut_region() -> List<DeclarationRef> {
 }
 
 // The witness carrier's declarations are EVIDENCE, not boundary population, and they need separate
-// dispositions even though they occupy one file.
+// dispositions even though they occupy one file. FOUR of them, not three: spark_endpoint_or_empty is
+// an ORDINARY declaration rather than a test fn, which is exactly why one witness FILE is not one
+// evidence subject. It sits outside the region and calls spark_endpoint_for_binding directly,
+// collapsing Absent to "" so the equality witness can compare two Strings -- so it retires with the
+// entry point it adapts.
 fn endpoint_authority_cut_evidence() -> List<EvidenceDisposition> {
   [
     ReplaceEvidence {
@@ -166,10 +170,6 @@ fn endpoint_authority_cut_evidence() -> List<EvidenceDisposition> {
       old_evidence: nes(s: "test.claim.host_reach_identity_probe_witness undecided_spark_slot_projects_no_endpoint"),
       new_evidence: nes(s: "absence never becomes a fabricated endpoint, asserted against Y's typed endpoint-refusal arm; the old subject, an unassigned DgxSparkRouterBinding, retires with X"),
     },
-    // The fourth evidence-grain consumer in that file, and an ORDINARY declaration rather than a
-    // test fn -- which is exactly why one witness file is not one evidence subject. It sits outside
-    // the region and calls spark_endpoint_for_binding directly, collapsing Absent to "" so the
-    // equality witness can compare two Strings.
     RetireEvidence {
       evidence: nes(s: "test.claim.host_reach_identity_probe_witness spark_endpoint_or_empty"),
       retired_subject: nes(s: "an Absent-to-empty-String adapter over spark_endpoint_for_binding"),

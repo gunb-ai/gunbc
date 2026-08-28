@@ -712,7 +712,9 @@ fn cut_id_seen(xs: List<ReplacementCutId>, x: ReplacementCutId) -> Bool {
 
 type RegistryDupState { seen: List<ReplacementCutId>, causes: List<CutRegistryRefusalCause> }
 
-// ONE CAUSE PER DUPLICATED IDENTITY, not one per occurrence. The seen-list idiom is the same one
+// ONE CAUSE PER EXCESS REGISTRATION, not one per roster row. N registrations under one identity
+// yield N-1 causes -- the denominator is the minimum number of rows that must be removed to restore
+// uniqueness, which is the actionable count. The seen-list idiom is the same one
 // consumer_duplicate_causes already uses, and matching it is not tidiness: a fold that re-fires for
 // every occurrence emits N causes for one defect, so the moment a count becomes load-bearing -- and
 // DESIGN §5 requires degradations to be COUNTABLE -- the number would report the roster's shape
