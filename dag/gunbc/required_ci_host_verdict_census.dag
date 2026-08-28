@@ -5,9 +5,14 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // Census of the phases selected by claim_executor's RequiredCiPhase roster -- one row each, so the
-// roster IS the count and no number is transcribed here.  It read "the seven phases" until
-// 2026-08-28, when the rows below numbered eight; the rows were right and the sentence was stale,
-// which is why the count is now derived from them rather than restated beside them.  DESIGN's own
+// roster IS the count and no number is transcribed here.  IT READ "the seven phases" AND THE ROWS
+// ALSO NUMBERED SEVEN, so the sentence and the rows agreed with each other and BOTH were wrong:
+// REQUIRED_CI_PHASES is eight and generated-artifact had no row at all.  A first attempt on
+// 2026-08-28 asserted eight from a `grep -c host_site:` that counted the TYPE FIELD DECLARATION as
+// a data row -- replacing a stale count with a false completeness claim, which review 57225 caught.
+// The row is added below.  What the episode establishes is why no number belongs in this prose:
+// agreement between a hand-written count and a hand-written list is not evidence, because a
+// missing row is invisible to both, and the only thing that can refuse is the authority.  DESIGN's own
 // rule for this is name the instrument, never transcribe its output: the live roster is announced
 // by the required mode itself, one `required-ci: phase <name>` line per phase it owns plus one
 // `ROUTED to lane <other>` line per phase it does not, before any phase runs.  A count written in
@@ -121,6 +126,16 @@ data required_ci_host_verdict_rows: List<RequiredCiHostVerdictRow> = [
       missing_fact: "one terminal outcome joining partition derivation, committed-byte comparison, and crate compilation; rust_crate_partition owns the derivation but does not decide the latter two observations",
       nearest_model: decl_ref(module_path: "v2.workflow.rust_crate_partition", decl_name: "stage0_partition_crate_rows"),
       model_before_cut: unbound_dissolution(description: "dissolve-on: a terminal partition-boundary verification carrier joins the modeled partition to observed committed bytes and compilation before the host implementation is reduced to transport")
+    }
+  },
+  {
+    phase: "generated-artifact",
+    lane: BuildLane,
+    host_site: "v1_compiler.generated_artifact_boundary_host run_generated_artifact_boundary plus claim_executor RequiredCiPhase::GeneratedArtifact",
+    relation: ReDecidesCarrier {
+      carrier: decl_ref(module_path: "gunbc.generated_artifact_emit", decl_name: "generated_artifact_body_for_path"),
+      host_decision: "the projection answers what each rostered path ought to hold and the roster answers which paths are enrolled, but the host independently folds per-path comparison outcomes -- drifted, absent, and reached-no-verdict -- into the phase exit verdict",
+      root_cut: cut(phase: "generated-artifact", carrier: "gunbc.generated_artifact_emit generated_artifact_body_for_path")
     }
   },
   {
