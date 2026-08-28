@@ -16,7 +16,14 @@ import tools.pr_containment_instrument {
   added_lines_of_diff,
   containment_disposition_of,
   containment_per_mille,
-  disposition_name
+  disposition_name,
+  ContainmentSubject,
+  TallyReading,
+  TallyRead,
+  TallyUnreadable,
+  tally_added_lines,
+  tally_file,
+  base_path_set
 }
 import extdeps.git.inspect {
   MergeTreeClean,
@@ -293,4 +300,81 @@ test fn the_conflicted_arm_carries_residue_only_within_the_payload_bound() -> Bo
 test fn the_same_tally_under_a_completed_merge_does_report_containment() -> Bool {
   name_of(base_tree: base_tree_oid, merged_tree: base_tree_oid, t: tally(added: 0, present: 0))
     == "content-contained"
+}
+
+// ---------------------------------------------------------------------------------------------
+// ABSENCE IS DECIDED FROM THE BASE'S PATH SET, NOT FROM A FAILED READ (review 57213).
+//
+// The defect these pin: `git show <base>:<path>` exits 128 both for a path the base does not carry
+// and for a read it could not perform, so an instrument that inferred absence from failure rendered
+// an UNOBSERVED file as "the base carries none of these lines" -- driving the row to
+// ContributesNewContent while the report still said `measured`.
+//
+// THE PAIR IS THE CONTENT, and it is authorable here only because absence is now structural: the
+// absent arm is reached with NO read attempted (so a hermetic witness can exercise it), and the
+// unreadable arm is a state the tally fold must PROPAGATE rather than absorb. Testing either alone
+// proves nothing -- an instrument that refused everything passes the second, and the one under
+// repair passed the first.
+
+data probe_subject_path: String = "dag/tools/pr_containment_instrument.dag"
+
+fn absent_subject() -> ContainmentSubject {
+  ContainmentSubject {
+    base_ref: "origin/main",
+    base_commit: probe_head_commit,
+    base_tree: base_tree_oid,
+    remote: "origin",
+    merge_driver: "unset",
+    base_paths: empty_map()
+  }
+}
+
+fn tally_of_reading(r: TallyReading) -> Int {
+  match r {
+    TallyUnreadable { path: _, cause: _ } => 0 - 1
+    TallyRead { tally: t } => t.present
+  }
+}
+
+fn added_of_reading(r: TallyReading) -> Int {
+  match r {
+    TallyUnreadable { path: _, cause: _ } => 0 - 1
+    TallyRead { tally: t } => t.added
+  }
+}
+
+// A path the base does not list is absent BY CONSTRUCTION -- no read is attempted, which is why
+// this runs under a hermetic disposition at all. Its added lines are counted and none are present.
+test fn a_path_outside_the_base_tree_is_absent_without_a_read() -> Bool {
+  let r = tally_added_lines(
+    subject: absent_subject(),
+    lines: [
+      AddedLine { path: probe_subject_path, text: "let x = 1" },
+      AddedLine { path: probe_subject_path, text: "let y = 2" }
+    ]
+  )
+  added_of_reading(r: r) == 2 && tally_of_reading(r: r) == 0
+}
+
+// THE PROPAGATION ARM. Once a file could not be observed, no later file may quietly restore a
+// measurement: the fold carries the refusal to the end, so the branch is reported unobserved rather
+// than measured against a denominator nobody read.
+test fn an_unreadable_file_refuses_every_later_file() -> Bool {
+  match tally_file(
+    acc: TallyUnreadable { path: "a.dag", cause: "unreadable" },
+    subject: absent_subject(),
+    path: probe_subject_path,
+    lines: [AddedLine { path: probe_subject_path, text: "let x = 1" }]
+  ) {
+    TallyUnreadable { path: p, cause: _ } => p == "a.dag"
+    TallyRead { tally: _ } => false
+  }
+}
+
+// THE BASE PATH SET IS NUL-DELIMITED AND CARRIES NO EMPTY MEMBER. An empty member would make the
+// empty path a member of every base tree, which is the one key `map_contains_key` must never
+// answer true for by accident.
+test fn the_base_path_set_drops_the_trailing_empty_member() -> Bool {
+  let s = base_path_set(paths_nul: concat("a.dag", concat(from_code_point(0), concat("b.dag", from_code_point(0)))))
+  map_contains_key(s, "a.dag") && map_contains_key(s, "b.dag") && !map_contains_key(s, "")
 }
