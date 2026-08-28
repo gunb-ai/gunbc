@@ -489,3 +489,44 @@ test fn the_fixtures_use_synthetic_identities_only() -> Bool {
     && filter(keys, key => starts_with(s: key, prefix: "test.fixture.")).length() == keys.length()
 }
 
+
+// PROSE IS NOT AN ENROLMENT, AND THE RULE THAT SEPARATES THEM IS WHOLE-LITERAL EQUALITY.
+//
+// `//` is not this corpus's only prose carrier. DESIGN 4c records why: while `//` was a parse
+// error the corpus hoisted commentary into `data <name>: String` rows, and 126 of the survivors
+// quote a `test.claim.*` identity inside a sentence. Excluding the CARRIER would be the wrong fix
+// and strictly worse than the pollution -- roster enrolments ARE string data, so blinding the
+// reader to `data ... String` rows would blind it to real enrolments.
+//
+// The discriminator is that a key must be the WHOLE literal, never a substring of one, and this
+// extraction already is that rule: a quoted segment qualifies only if it is itself a spaceless
+// dotted name. Measured over `dag/` and `src/v2` at 7b507a0b: 126 prose rows quoting a test
+// identity, ZERO yielding a key. These witnesses are what keep that true -- the RED is authorable
+// by relaxing the whole-literal test, which is exactly how someone would break it.
+test fn a_prose_sentence_quoting_an_identity_is_not_an_enrolment() -> Bool {
+  let prose = "+data note: String = \"These six rows lived in test.fixture.contradiction_alpha.some_claim_holds until the lens died\""
+  let enrolment = "+data rows: List<String> = [\"test.fixture.contradiction_alpha.some_claim_holds\"]"
+  changed_identities(diff: concat(prose, "\n"), rule: cross_pr_extraction_rule).added.length() == 0
+    && changed_identities(diff: concat(enrolment, "\n"), rule: cross_pr_extraction_rule).added.length() == 1
+}
+
+// A LITERAL WHOSE VALUE IS EXACTLY AN IDENTITY IS AN ENROLMENT, WHATEVER ITS CARRIER. The corpus
+// holds such rows -- a module name or a qualified name stored as `data x: String = "<identity>"` --
+// and reading them is correct rather than pollution. Stating it as a witness is what stops a future
+// author from "fixing" the prose class by excluding the carrier.
+test fn an_identity_valued_data_row_is_a_key() -> Bool {
+  changed_identities(
+    diff: "+data witness_module: String = \"test.fixture.lookup.probe\"\n",
+    rule: cross_pr_extraction_rule
+  ).added.length() == 1
+}
+
+// AN ESCAPED-QUOTED IDENTITY INSIDE A PROSE LITERAL CANNOT LEAK, and the reason is structural
+// rather than lucky: the literal's own opening quote takes the first delimiter, so an escaped
+// fragment inside it always lands at EVEN parity, which the quoted-segment fold skips. This witness
+// records that argument as an executable fact, because it is the shape a reader would otherwise
+// expect to be a hole.
+test fn an_escaped_quoted_identity_inside_prose_does_not_leak() -> Bool {
+  let prose = "+data note: String = \"removed \\\"a\\\" and \\\"test.fixture.contradiction_beta.row_that_only_moved\\\" because both pass\""
+  changed_identities(diff: concat(prose, "\n"), rule: cross_pr_extraction_rule).added.length() == 0
+}
