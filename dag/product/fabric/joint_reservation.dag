@@ -1,0 +1,132 @@
+module product.fabric.joint_reservation
+
+import std.logic { Bool }
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { Measure }
+import extdeps.accounting.encumbrance {
+  EncumbranceLedger, EncumbranceOutcome, LedgerAdvanced, EncumbranceRefused,
+  EncumbranceRefusal, reserve_encumbrance,
+}
+
+// AN ExecutionGrant CARRIES TWO RESERVATIONS AND ITS OWN ANNOTATION SAYS BOTH
+// COMMIT OR NEITHER: "resource admitted with money refused must commit no
+// resource reservation, and money admitted with resource refused must commit no
+// money reservation; both are one canonical state transition. A partial commit
+// is the state that leaks capacity or budget with no grant to account for it,
+// and it is unreachable only if the join is atomic rather than sequential."
+//
+// That join did not exist. This is it.
+//
+// THE ATOMICITY IS NOT A PROTOCOL, AND THAT IS THE WHOLE DESIGN. Two-phase
+// commit, compensating release, an undo log -- every one of those makes the
+// partial state REACHABLE and then works to get out of it, which is validation
+// standing where construction was available. These ledgers are PURE: reserving
+// returns a NEW ledger rather than mutating one. So a joint reservation can
+// simply decline to produce a pair unless both advanced, and the partial commit
+// has no constructor. Nothing has to unwind, because nothing was ever applied.
+//
+// The refusal arms carry which side refused and its typed cause, because
+// "resource exceeded its appropriation" and "money exceeded its appropriation"
+// have different owners and different remedies. Collapsing them into one
+// "reservation refused" would be the state-space conflation that makes a
+// diagnosis unactionable.
+//
+// GENERIC OVER BOTH QUANTITIES ON PURPOSE. EncumbranceLedger<Q, S> is already
+// the single cited authority for holding a commitment against an appropriation,
+// and money is one instantiation of it in product.fabric.budget. A resource
+// ledger is a SECOND INSTANTIATION, not a second authority -- so this join
+// names no quantity at all and works for whatever pair a caller instantiates.
+// Inventing a resource-specific ledger beside the generic would be the
+// re-invention DESIGN section 2 calls a failed decomposition.
+
+type JointLedgers<Q1, S1, Q2, S2> {
+  resource: EncumbranceLedger<Q1, S1>
+  money: EncumbranceLedger<Q2, S2>
+}
+
+// THE SUCCESS ARM CARRIES THE ADVANCED PAIR AND NOTHING ELSE CARRIES A LEDGER.
+// A refusal returns no ledger at all rather than returning the original, so a
+// caller cannot mistake a refusal for a no-op advance and persist it. The only
+// value that can be written back is one where both sides moved.
+type JointReservationOutcome<Q1, S1, Q2, S2>
+  = BothHeld {
+      ledgers: JointLedgers<Q1, S1, Q2, S2>,
+      reference: NonEmptyStr,
+    }
+  | ResourceRefusedJoint {
+      reference: NonEmptyStr,
+      refusal: EncumbranceRefusal<Q1, S1>,
+    }
+  | MoneyRefusedJoint {
+      reference: NonEmptyStr,
+      refusal: EncumbranceRefusal<Q2, S2>,
+    }
+
+// ONE REFERENCE KEYS BOTH SIDES, and that is load-bearing rather than tidy.
+// The encumbrance authority refuses a duplicate reference, and its own note
+// explains why: first-match resolution and rewrite-all-matches are only the
+// same operation while a reference is unique. Using one reference across both
+// ledgers means a settlement or release addresses the same commitment on both
+// sides, and it makes the pair addressable as one thing later.
+fn reserve_jointly<Q1, S1, Q2, S2>(
+  ledgers: JointLedgers<Q1, S1, Q2, S2>,
+  reference: NonEmptyStr,
+  resource_liability: Measure<Q1, S1, Nat>,
+  money_liability: Measure<Q2, S2, Nat>,
+) -> JointReservationOutcome<Q1, S1, Q2, S2> {
+  match reserve_encumbrance(
+    ledger: ledgers.resource,
+    reference: reference,
+    maximum_liability: resource_liability,
+  ) {
+    EncumbranceRefused { refusal: r } =>
+      ResourceRefusedJoint { reference: reference, refusal: r }
+    LedgerAdvanced { ledger: advanced_resource } =>
+      match reserve_encumbrance(
+        ledger: ledgers.money,
+        reference: reference,
+        maximum_liability: money_liability,
+      ) {
+        EncumbranceRefused { refusal: m } =>
+          MoneyRefusedJoint { reference: reference, refusal: m }
+        LedgerAdvanced { ledger: advanced_money } =>
+          BothHeld {
+            ledgers: JointLedgers {
+              resource: advanced_resource,
+              money: advanced_money,
+            },
+            reference: reference,
+          }
+      }
+  }
+}
+
+// THE MONEY REFUSAL ARM IS WHERE THE PARTIAL COMMIT WOULD LIVE IF IT COULD.
+// advanced_resource is computed and then DISCARDED, because the arm that would
+// carry it does not exist. In a mutating design this is the branch that leaks
+// capacity; here it is a value that goes out of scope. The witness for this is
+// the discriminating one: after a money refusal, the caller's resource ledger
+// must be byte-identical to the one it passed in.
+
+fn joint_reservation_holds<Q1, S1, Q2, S2>(
+  outcome: JointReservationOutcome<Q1, S1, Q2, S2>,
+) -> Bool {
+  match outcome {
+    BothHeld { ledgers: _, reference: _ } => true
+    ResourceRefusedJoint { reference: _, refusal: _ } => false
+    MoneyRefusedJoint { reference: _, refusal: _ } => false
+  }
+}
+
+// The ledgers a caller should persist. Absent on every refusal, so there is no
+// spelling in which a refused reservation yields something to write back.
+fn joint_reservation_ledgers<Q1, S1, Q2, S2>(
+  outcome: JointReservationOutcome<Q1, S1, Q2, S2>,
+) -> List<JointLedgers<Q1, S1, Q2, S2>> {
+  match outcome {
+    BothHeld { ledgers: l, reference: _ } => [l]
+    ResourceRefusedJoint { reference: _, refusal: _ } => []
+    MoneyRefusedJoint { reference: _, refusal: _ } => []
+  }
+}
