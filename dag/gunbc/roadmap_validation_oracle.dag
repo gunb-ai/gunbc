@@ -33,6 +33,9 @@ import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
   ExecutionContract,
   ExecutionContractUnspecified,
+  ClosingContractAuthoringValidation,
+  closing_contract_authoring_entry,
+  closing_contract_authoring_function,
 }
 import gunbc.git_diff_change_window {
   ChangeWindowPreparationRefusal,
@@ -255,6 +258,13 @@ fn validation_oracle_scope(validation: ValidationOperation) -> OraclePinScope {
       OracleNotPinnable {
         validation_label: "cargo-fmt",
         reason: "a formatter's oracle is its own rule set, which carries no identity this module can observe",
+      }
+    ClosingContractAuthoringValidation { target: _ } =>
+      OraclePinnable {
+        oracle: ValidationOracleRef {
+          entry: closing_contract_authoring_entry,
+          function: closing_contract_authoring_function,
+        },
       }
   }
 }

@@ -101,6 +101,29 @@ type ScmReadResult<T>
 // report. Filing it beside "the document was unparseable" would be the
 // not-applicable-rendered-as-malformed conflation -- opposite owners, opposite repairs, one symbol.
 
+// THE CLOSED SET OF READ VERBS, AS DATA RATHER THAN AS A SPELLING.
+//
+// The functions below ARE the verbs, but a caller that has to NAME one -- a CLI operand, a dispatch
+// table, a help listing -- cannot name a function. Without this type the name would travel as a bare
+// `String`, and every consumer would re-decide which strings are admissible: the anemic-leaf shape
+// DESIGN section 2 rejects, and a roster that drifts per consumer.
+//
+// IT IS DELIBERATELY NOT A DISPATCHER. There is no `fn run(verb: ScmReadVerb, ...)` here, because the
+// two verbs do not share a result type -- `CommitLog` and `RepositoryStatus` are different answers --
+// and a function returning "one of them" would need a coproduct that re-introduces the per-verb arm
+// `ScmReadResult<T>`'s own header records being removed twice. This type names the verbs; selecting
+// one stays with the consumer that has a reason to.
+type ScmReadVerb
+  = ScmLogVerb
+  | ScmStatusVerb
+
+fn scm_read_verb_spelling(verb: ScmReadVerb) -> String {
+  match verb {
+    ScmLogVerb => "log"
+    ScmStatusVerb => "status"
+  }
+}
+
 fn scm_read_log(path: String) -> ScmReadResult<CommitLog> {
   match load_repository(path: path) {
     RepositoryLoadRefused { cause: cause } => ScmReadRepositoryUnavailable { cause: cause }

@@ -8040,81 +8040,89 @@ pub struct ReferenceDerivedCensus {
 pub fn reference_derived_census(
     rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
 ) -> ReferenceDerivedCensus {
-    ReferenceDerivedCensus {
-        candidates: (rows.clone().len() as i64),
-        survived: (Rc::new({
-            let mut __result = Vec::new();
-            for r in rows.iter().cloned() {
-                if (reference_derived_disposition_name(r.disposition.clone())
-                    == "survived".to_string())
-                {
-                    __result.push(r);
+    rows.iter().cloned().fold(
+        ReferenceDerivedCensus {
+            candidates: 0,
+            survived: 0,
+            own_module: 0,
+            variant_delegated_to_parent: 0,
+            variant_parent_unresolved: 0,
+            registry_absent: 0,
+            export_proof_failed: 0,
+        },
+        |acc: ReferenceDerivedCensus, r: Rc<ReferenceDerivedCandidateRow>| match (*r
+            .disposition
+            .clone())
+        .clone()
+        {
+            ReferenceDerivedCandidateDisposition::CandidateSurvived {
+                provider_module: _, ..
+            } => ReferenceDerivedCensus {
+                candidates: (acc.candidates.clone() + 1),
+                survived: (acc.survived.clone() + 1),
+                own_module: acc.own_module.clone(),
+                variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
+                variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
+                registry_absent: acc.registry_absent.clone(),
+                export_proof_failed: acc.export_proof_failed.clone(),
+            },
+            ReferenceDerivedCandidateDisposition::CandidateOwnModule => ReferenceDerivedCensus {
+                candidates: (acc.candidates.clone() + 1),
+                survived: acc.survived.clone(),
+                own_module: (acc.own_module.clone() + 1),
+                variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
+                variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
+                registry_absent: acc.registry_absent.clone(),
+                export_proof_failed: acc.export_proof_failed.clone(),
+            },
+            ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
+                parent_enum: _,
+                ..
+            } => ReferenceDerivedCensus {
+                candidates: (acc.candidates.clone() + 1),
+                survived: acc.survived.clone(),
+                own_module: acc.own_module.clone(),
+                variant_delegated_to_parent: (acc.variant_delegated_to_parent.clone() + 1),
+                variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
+                registry_absent: acc.registry_absent.clone(),
+                export_proof_failed: acc.export_proof_failed.clone(),
+            },
+            ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved => {
+                ReferenceDerivedCensus {
+                    candidates: (acc.candidates.clone() + 1),
+                    survived: acc.survived.clone(),
+                    own_module: acc.own_module.clone(),
+                    variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
+                    variant_parent_unresolved: (acc.variant_parent_unresolved.clone() + 1),
+                    registry_absent: acc.registry_absent.clone(),
+                    export_proof_failed: acc.export_proof_failed.clone(),
                 }
             }
-            __result
-        })
-        .len() as i64),
-        own_module: (Rc::new({
-            let mut __result = Vec::new();
-            for r in rows.iter().cloned() {
-                if (reference_derived_disposition_name(r.disposition.clone())
-                    == "own-module".to_string())
-                {
-                    __result.push(r);
+            ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
+                ReferenceDerivedCensus {
+                    candidates: (acc.candidates.clone() + 1),
+                    survived: acc.survived.clone(),
+                    own_module: acc.own_module.clone(),
+                    variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
+                    variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
+                    registry_absent: (acc.registry_absent.clone() + 1),
+                    export_proof_failed: acc.export_proof_failed.clone(),
                 }
             }
-            __result
-        })
-        .len() as i64),
-        variant_delegated_to_parent: (Rc::new({
-            let mut __result = Vec::new();
-            for r in rows.iter().cloned() {
-                if (reference_derived_disposition_name(r.disposition.clone())
-                    == "variant-delegated-to-parent".to_string())
-                {
-                    __result.push(r);
-                }
-            }
-            __result
-        })
-        .len() as i64),
-        variant_parent_unresolved: (Rc::new({
-            let mut __result = Vec::new();
-            for r in rows.iter().cloned() {
-                if (reference_derived_disposition_name(r.disposition.clone())
-                    == "variant-parent-unresolved".to_string())
-                {
-                    __result.push(r);
-                }
-            }
-            __result
-        })
-        .len() as i64),
-        registry_absent: (Rc::new({
-            let mut __result = Vec::new();
-            for r in rows.iter().cloned() {
-                if (reference_derived_disposition_name(r.disposition.clone())
-                    == "registry-absent".to_string())
-                {
-                    __result.push(r);
-                }
-            }
-            __result
-        })
-        .len() as i64),
-        export_proof_failed: (Rc::new({
-            let mut __result = Vec::new();
-            for r in rows.iter().cloned() {
-                if (reference_derived_disposition_name(r.disposition.clone())
-                    == "export-proof-failed".to_string())
-                {
-                    __result.push(r);
-                }
-            }
-            __result
-        })
-        .len() as i64),
-    }
+            ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+                provider_module: _,
+                ..
+            } => ReferenceDerivedCensus {
+                candidates: (acc.candidates.clone() + 1),
+                survived: acc.survived.clone(),
+                own_module: acc.own_module.clone(),
+                variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
+                variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
+                registry_absent: acc.registry_absent.clone(),
+                export_proof_failed: (acc.export_proof_failed.clone() + 1),
+            },
+        },
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

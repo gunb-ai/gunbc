@@ -60,6 +60,18 @@ import gunbc.fabric_cell_converge {
   fabric_cell_resource_address_wire,
   fabric_cell_desired_members,
 }
+import gunbc.fabric_cell_effect {
+  FabricCellRealizationRefusal,
+  BoundaryDirectiveVocabularyIncomplete,
+  CellTeardownRefusedByOwnership,
+  CellRosterDuplicateKey,
+  CellChangeNotYetRealizable,
+  CellTeardownNotYetRealizable,
+  CellPlanRealizable,
+  CellPlanRefused,
+  FabricCellDirectoryCreate,
+  fabric_cell_realization,
+}
 import gunbc.fabric_cell_observation_admission {
   FabricCellObservationDecision,
   FabricCellObservationOutcome,
@@ -739,7 +751,7 @@ fn fleet_converge_fabric_cell_lines(
     FabricCellFamilyNotApplicable => []
     FabricCellFamilyConvergedNoActions => []
     FabricCellFamilyRealizationUnavailable { planned: p } =>
-      map(p.actions, a => concat("REFUSED-REALIZATION ", fabric_cell_action_line(action: a)))
+      fabric_cell_realization_lines(actions: p.actions)
     FabricCellFamilyObservationHostMismatch { planned_host: ph, observed_host: oh } =>
       [concat(
         "REFUSED-HOST-MISMATCH fabric-cell planned_host=", ph,
@@ -749,6 +761,58 @@ fn fleet_converge_fabric_cell_lines(
   }
 }
 
+// THE REALIZATION IS NOW ASKED RATHER THAN ASSUMED UNAVAILABLE, AND THAT IS THE WHOLE CHANGE.
+// This arm previously rendered every action as an undifferentiated "REFUSED-REALIZATION", which was
+// honest when the fabric family had no realization surface at all. It has one now
+// (gunbc.fabric_cell_effect), so the family asks it, and an operator reads WHICH address could not
+// be realized and WHY instead of learning that something somewhere is unrealizable.
+//
+// THE PLAN STILL REFUSES AS A WHOLE, and the lines say so rather than implying partial progress.
+// gunbc.fabric_cell_effect refuses a cell in which any address is unrealizable, because a cell root
+// created without its resource boundary is an UNBOUNDED cgroup slice -- worse than an absent cell,
+// since absent is honest and unbounded looks provisioned.
+fn fabric_cell_realization_lines(
+  actions: List<MemberAction<FabricCellMember, String>>,
+) -> List<String> {
+  match fabric_cell_realization(actions: actions) {
+    CellPlanRealizable { effects: es } =>
+      map(es, e => match e {
+        FabricCellDirectoryCreate { path: pth, command: _ } =>
+          concat("REALIZE fabric-cell create-directory ", pth as String)
+      })
+    CellPlanRefused { refusals: rs } =>
+      concat(
+        map(rs, r => concat("REFUSED-REALIZATION ", fabric_cell_realization_refusal_line(refusal: r))),
+        ["REFUSED-REALIZATION fabric-cell plan refused as a whole; no address is applied, because a cell root without its resource boundary is an unbounded slice"],
+      )
+  }
+}
+
+fn fabric_cell_realization_refusal_line(refusal: FabricCellRealizationRefusal) -> String {
+  match refusal {
+    BoundaryDirectiveVocabularyIncomplete { address_wire: w, missing: m } =>
+      concat(
+        concat("fabric-cell ", w),
+        concat(" boundary directives unmodeled in extdeps.systemd.unit_file: ", join(m, "; ")),
+      )
+    CellTeardownRefusedByOwnership { address_wire: w, cause: _ } =>
+      concat("fabric-cell ", concat(w, " teardown refused: member is not Owned"))
+    CellRosterDuplicateKey { address_wire: w } =>
+      concat("fabric-cell ", concat(w, " roster duplicate key"))
+    CellChangeNotYetRealizable { address_wire: w } =>
+      concat("fabric-cell ", concat(w, " change realization undeclared: no staged intermediates (gunbc.change_realization)"))
+    CellTeardownNotYetRealizable { address_wire: w } =>
+      concat("fabric-cell ", concat(w, " teardown unmodeled: destructive effect over possibly-live attempt state"))
+  }
+}
+
+// THE COUNT STAYS TOTAL WHEN THE PLAN REFUSES, AND THAT IS DELIBERATE RATHER THAN LEFTOVER.
+// With a realization surface in place it is tempting to count only the TYPED refusals, which today
+// would report one deficit for a cell whose three addresses all went unapplied. That understates
+// the owed work by exactly the amount the all-or-nothing rule causes: when the plan refuses, no
+// address is applied, so every action is undone work whether or not its own address was realizable.
+// The annotation below was written for the blanket arm and survives the change unaltered because
+// its argument was never about the arm -- it is about the deficit being per unit of work owed.
 // EVERY UNREALIZABLE ACTION COUNTS AS A REFUSAL, not one refusal for the family. The count is what
 // makes the deficit's frequency visible, and the deficit is per unit of work owed: three resources
 // that cannot be provisioned is three pieces of undone work, not one inconvenience.
@@ -762,21 +826,6 @@ fn fleet_converge_fabric_cell_refusal_count(
     FabricCellFamilyConvergedNoActions => 0
     FabricCellFamilyRealizationUnavailable { planned: p } => list_length(items: p.actions)
     FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } => 1
-  }
-}
-
-fn fabric_cell_action_line(action: MemberAction<FabricCellMember, String>) -> String {
-  match action {
-    MemberAdded { at: _, to: t } =>
-      concat("ADD fabric-cell ", fabric_cell_member_key(member: t))
-    MemberChanged { at: _, from: _, to: t } =>
-      concat("CHANGE fabric-cell ", fabric_cell_member_key(member: t))
-    MemberRemoved { at: _, from: f } =>
-      concat("REMOVE fabric-cell ", fabric_cell_member_key(member: f))
-    MemberRemovalRefused { from: f, cause: _ } =>
-      concat("REFUSED-REMOVAL fabric-cell ", fabric_cell_member_key(member: f))
-    MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: _ } =>
-      concat("REFUSED-DUPLICATE-KEY fabric-cell ", fabric_cell_member_key(member: f))
   }
 }
 

@@ -45,6 +45,24 @@ type Document {
   blocks: List<Block>
 }
 
+// CONSTRUCTORS FOR THIS MODULE'S OWN TYPES, HOISTED HERE BECAUSE THEY WERE ALREADY WRITTEN TWICE.
+// `Span` and `Line` are declared here, so "an unstyled span" and "a line holding one span" are facts
+// about this module's types and belong to it. They were independently re-authored byte-identically in
+// `gunbc.ci_render` and `test.claim.render_surface_witness_test`, which is the section 3 nicknaming
+// shape at helper grain: two spellings of one concept, and a third copy would have made the
+// divergence a matter of time rather than of chance. Both copies are repointed here in the same
+// change, so this is a REDUCTION -- one authority replacing two -- and not a third site.
+fn plain_span(text: String) -> Span {
+  Span { text: text, style: SpanStyle { color: none, bold: false, italic: false, symbol: none } }
+}
+
+// A line carrying exactly one unstyled span at no indent. `indent: 0` and `max_width: none` are the
+// absence of a layout decision rather than a choice of one: a caller that has not decided how its
+// text should be laid out must not have a width invented for it here.
+fn plain_line(text: String) -> Line {
+  Line { spans: [plain_span(text: text)], indent: 0, max_width: none }
+}
+
 fn cursor_action_under(requested: CursorAction, cap: RenderCapability) -> CursorAction {
   if cap.cursor_addressable {
     requested

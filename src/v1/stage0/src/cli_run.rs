@@ -1755,7 +1755,6 @@ struct ModuleBindingManifestRow {
     module_path: String,
     rel_path: String,
     root_variant: String,
-    ident_span: Rc<SourceSpan>,
 }
 
 fn witness_layer_root_spelling(root: &str) -> String {
@@ -1886,7 +1885,6 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
                 module_path: binding.module_path,
                 rel_path: rel,
                 root_variant: root_variants[root_idx].clone(),
-                ident_span: binding.ident_span,
             },
         );
     });
@@ -2043,10 +2041,12 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     // `run_claim_measured` as its own `[floor-shared-fill]` column — the claim's marginal and fill
     // halves still sum to what it actually spent.
     let fill_started = v1_interpreter::thread_cpu_nanos();
+    let fill_wall_started = std::time::Instant::now();
     let census = compile_dag_diagnostic_census_uncached(source);
     record_shared_artifact_fill_cpu(
         v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
     );
+    record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
     COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow_mut().insert(memo_key, census.clone()));
     census
 }
@@ -2545,21 +2545,79 @@ thread_local! {
     /// COUNTED. A cost that vanished here would be the absorbing fallback (§5) wearing an
     /// accounting label — the deficit's frequency zeroed by construction — so the receipt carries
     /// marginal and fill as two columns whose sum is the claim's whole measured cost.
-    static SHARED_ARTIFACT_FILL_CPU_NANOS: std::cell::Cell<u128> =
+    // (the CPU fill cell now lives in `v1_interpreter`; see the delegating fns below)
+
+    /// THE SAME FILL, ON THE OTHER CLOCK. The ruling above is about WHOSE COST A FILL IS, which
+    /// is a fact about attribution and not about which clock measured it — so it applies once to
+    /// every ceiling derived from a claim's elapsed time. It was landed on the CPU ceiling alone,
+    /// and the wall ceiling kept charging the whole fill to the first payer, which is how two
+    /// rows whose own cost is 0ms and 1ms refused a required floor at ~18000ms against a 10000ms
+    /// wall requirement (main run 33145062452, `test.claim.transport_script_wall_compile_red`:
+    /// `[floor-shared-fill]` reported `marginal_cpu_ms=0 fill_cpu_ms=18966` for one of them).
+    /// A one-clock accounting rule is the §3 failure the CPU comment already names — one concept
+    /// with two homes, one of which does not apply it — so this cell exists to close the second
+    /// home rather than to add a policy beside it.
+    static SHARED_ARTIFACT_FILL_WALL_NANOS: std::cell::Cell<u128> =
+        const { std::cell::Cell::new(0) };
+
+    /// THE SAME FILL, ON THE OTHER CLOCK. The ruling above is about WHOSE COST A FILL IS, which
+    /// is a fact about attribution and not about which clock measured it — so it applies once to
+    /// every ceiling derived from a claim's elapsed time. It was landed on the CPU ceiling alone,
+    /// and the wall ceiling kept charging the whole fill to the first payer, which is how two
+    /// rows whose own cost is 0ms and 1ms refused a required floor at ~18000ms against a 10000ms
+    /// wall requirement (main run 33145062452, `test.claim.transport_script_wall_compile_red`:
+    /// `[floor-shared-fill]` reported `marginal_cpu_ms=0 fill_cpu_ms=18966` for one of them).
+    /// A one-clock accounting rule is the §3 failure the CPU comment already names — one concept
+    /// with two homes, one of which does not apply it — so this cell exists to close the second
+    /// home rather than to add a policy beside it.
+    static SHARED_ARTIFACT_FILL_WALL_NANOS: std::cell::Cell<u128> =
         const { std::cell::Cell::new(0) };
 }
 
 /// Accumulate CPU spent filling a shared memoized artifact. Called ONLY from a memo MISS path,
 /// and only under the floor guard — outside it there is no memo, so there is no shared artifact
 /// and nothing to attribute.
+///
+/// THE CELL MOVED TO `v1_interpreter` AND THIS DELEGATES. The evaluation deadline must net the
+/// same quantity WHILE a claim runs, and the interpreter cannot read a cell owned here, so one
+/// counter now serves both readers rather than two counters drifting apart — which is the exact
+/// defect (one accounting rule, two homes) this line of work exists to close.
 fn record_shared_artifact_fill_cpu(nanos: u128) {
-    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
+    v1_interpreter::record_shared_artifact_fill_cpu_nanos(nanos);
+}
+
+/// Accumulate WALL time spent filling a shared memoized artifact, under the same rule and from
+/// the same miss paths as `record_shared_artifact_fill_cpu`. The two are recorded together at
+/// every call site so a fill can never be counted on one clock and not the other — which is the
+/// state that produced the defect this pair exists to close.
+fn record_shared_artifact_fill_wall(nanos: u128) {
+    SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
+}
+
+/// Accumulate WALL time spent filling a shared memoized artifact, under the same rule and from
+/// the same miss paths as `record_shared_artifact_fill_cpu`. The two are recorded together at
+/// every call site so a fill can never be counted on one clock and not the other — which is the
+/// state that produced the defect this pair exists to close.
+fn record_shared_artifact_fill_wall(nanos: u128) {
+    SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
 }
 
 /// Read the running total for this thread. The claim loop samples it either side of one claim;
 /// the difference is that claim's fill.
 pub fn shared_artifact_fill_cpu_nanos() -> u128 {
-    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
+    v1_interpreter::shared_artifact_fill_cpu_nanos()
+}
+
+/// Read the running wall-clock total for this thread, sampled either side of one claim exactly
+/// as the CPU total is.
+pub fn shared_artifact_fill_wall_nanos() -> u128 {
+    SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.get())
+}
+
+/// Read the running wall-clock total for this thread, sampled either side of one claim exactly
+/// as the CPU total is.
+pub fn shared_artifact_fill_wall_nanos() -> u128 {
+    SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.get())
 }
 
 static COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS: std::sync::atomic::AtomicU64 =
@@ -2647,10 +2705,12 @@ pub fn compile_dag_rust_emit_check(
     // against, so the two quantities cannot drift apart, and recorded rather than subtracted here
     // — the claim loop does the split, this only says how much of the cost was a fill.
     let fill_started = v1_interpreter::thread_cpu_nanos();
+    let fill_wall_started = std::time::Instant::now();
     let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
     record_shared_artifact_fill_cpu(
         v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
     );
+    record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict));
     verdict
 }
@@ -6454,6 +6514,149 @@ mod compile_clean_via_index_verdict_equivalence {
         );
     }
 
+    /// THE PURITY ORACLE FOR THE SHARED PRIMARY-PRECEDENCE INDEX: cached == cold, BYTE-IDENTICAL.
+    ///
+    /// The change this guards routes `compile_emission`'s primary-precedence arm through the
+    /// process-shared `MultiEntryIndex` instead of a fresh per-call one, so N entries compiled in
+    /// one process now SHARE a parse cache, a typed-module cache, a pool census and an intern
+    /// table. The whole benefit is that the overlapping closure prefix -- most of `dag/std` sits
+    /// in nearly every entry's closure -- reconciles once instead of N times; the whole risk is
+    /// that a shared cache serves one entry's result for another's. DESIGN names the oracle for
+    /// exactly this: byte-identical cached-vs-cold.
+    ///
+    /// THE DISCRIMINATION IS IN THE SECOND ENTRY, not the first. Entry `beta` is compiled twice:
+    /// once COLD (a cleared index, so it re-derives from disk) and once WARM BEHIND `alpha`,
+    /// whose closure shares the `common` module with it -- so the warm arm reads `common` from a
+    /// cache another entry's compile filled. Comparing emitted bytes and diagnostic counts across
+    /// those two arms is what distinguishes a shared cache that is CORRECT from one that merely
+    /// runs. Both arms are asserted to have emitted something first, because two empty file lists
+    /// also compare equal and would green this test over a transaction that never emitted.
+    #[test]
+    fn shared_primary_precedence_index_is_byte_identical_to_cold() {
+        let corpus = Corpus::new(
+            "shared-index-purity",
+            &[
+                (
+                    "common.dag",
+                    "module pur.common\n
+fn shared_double(x: Int) -> Int {\n  x + x\n}\n",
+                ),
+                (
+                    "alpha.dag",
+                    "module pur.alpha\n
+import pur.common { shared_double }\n\nfn alpha_use(x: Int) -> Int {\n  shared_double(x)\n}\n",
+                ),
+                (
+                    "beta.dag",
+                    "module pur.beta\n
+import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_double(x) + 1\n}\n",
+                ),
+            ],
+        );
+        let beta_path = corpus.sources[2].path.clone();
+        let alpha_path = corpus.sources[1].path.clone();
+
+        let emission_of = |run: &super::CompileRun| -> Vec<(String, String)> {
+            run.emissions
+                .iter()
+                .flat_map(|e| e.result.files.iter())
+                .map(|f| (f.path.clone(), f.content.clone()))
+                .collect()
+        };
+
+        // COLD: nothing in this process has compiled anything against these roots.
+        super::reset_process_shared_index_for_test();
+        let cold = super::compile_entry_emission(
+            &corpus.roots,
+            &beta_path,
+            true,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let cold_files = emission_of(&cold);
+        assert!(
+            !cold_files.is_empty(),
+            "the cold arm must actually emit -- two empty file lists compare equal and would \
+             green this oracle over a transaction that never ran; disposition={:?}",
+            cold.disposition
+        );
+
+        // WARM: `alpha` fills the shared caches with `common`'s parse and typecheck first, then
+        // `beta` compiles against an index another entry populated.
+        //
+        // THE SHARING IS ASSERTED, NOT ASSUMED. Purity alone is not evidence for this change:
+        // under the OLD per-call index both arms are cold, the bytes match trivially, and this
+        // test greens over a transaction that shares nothing -- the change-detector shape. So the
+        // index identity is read on both sides of `alpha` and `beta`: `generation` is a
+        // per-process monotone counter minted by `new_multi_entry_index_shell`, so two compiles
+        // reporting the SAME generation is the executed proof that one index served both, and
+        // under the old code it is exactly the assertion that fails.
+        super::reset_process_shared_index_for_test();
+        let _alpha = super::compile_entry_emission(
+            &corpus.roots,
+            &alpha_path,
+            true,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let generation_after_alpha = super::try_process_shared_index_for_pool(&corpus.roots, true)
+            .expect("the shared primary-precedence index exists after alpha compiled")
+            .generation;
+        // WHAT THIS SHARING DOES AND DOES NOT REACH, asserted rather than described, because the
+        // difference is the whole honest scope of this change.
+        //
+        // It reaches the INDEX: source discovery, the module index, the parse cache and the pool
+        // census are now built once per (roots, pool) instead of once per entry.
+        //
+        // It does NOT reach RECONCILE. `compile_emission` calls
+        // `v1_compiler_compile::compile_to_resolved_with_options` directly, whose reconcile is
+        // `reconcile_with_census_extra` over the whole closure -- it never touches this index's
+        // `typed_module_cache`, which is filled only by `reconcile_with_typed_cache` on the
+        // `resolved_graph_from_sources_with_index` route. So the typed cache is EMPTY after a
+        // compile, and this assertion pins that fact so a later reader cannot mistake index
+        // sharing for reconcile sharing. When the reconcile route is unified, this assertion is
+        // the one that fails, which is the correct way for it to be superseded: loudly, at the
+        // line that documents the boundary, rather than by a comment quietly going stale.
+        assert_eq!(
+            super::typed_module_cache_len_for_test(
+                &super::try_process_shared_index_for_pool(&corpus.roots, true).unwrap()
+            ),
+            0,
+            "compile_emission does not reconcile through the shared typed cache -- if this is no \
+             longer 0 the reconcile route was unified and this test's scope note is stale"
+        );
+
+        let warm = super::compile_entry_emission(
+            &corpus.roots,
+            &beta_path,
+            true,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let warm_files = emission_of(&warm);
+        let generation_after_beta = super::try_process_shared_index_for_pool(&corpus.roots, true)
+            .expect("the shared index survives beta's compile")
+            .generation;
+        assert_eq!(
+            generation_after_alpha, generation_after_beta,
+            "both entries must have compiled against ONE index -- a differing generation means \
+             each compile built its own, which is the per-entry cost shape this change removes"
+        );
+
+        assert_eq!(
+            cold_files, warm_files,
+            "emitted bytes must be byte-identical whether `beta`'s closure was reconciled cold or \
+             read from caches `alpha`'s compile filled"
+        );
+        assert_eq!(
+            (cold.blocking_diagnostics, cold.advisory_diagnostics),
+            (warm.blocking_diagnostics, warm.advisory_diagnostics),
+            "diagnostic populations must not depend on which sibling entry warmed the index"
+        );
+        assert_eq!(
+            cold.closure_modules, warm.closure_modules,
+            "the closure the transaction resolved must not depend on cache residency"
+        );
+        super::reset_process_shared_index_for_test();
+    }
+
     #[test]
     fn out_of_closure_annotation_refusal_blocks_scoped_compile_clean() {
         let corpus = Corpus::new(
@@ -8763,9 +8966,16 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // THE PANICKING WRAPPERS SURVIVE for callers whose inputs are already
     // invariant-established; this is the one route that takes a path straight from a CLI
     // argument, so it is the one that must refuse instead.
+    //
+    // BOTH ARMS NOW ROUTE THROUGH THE PROCESS-SHARED INDEX, one slot per pool semantics.
+    // The primary arm previously built a fresh index per call and discarded it, so every cache
+    // it owns -- parse, typed-module, pool census, intern table -- was per-call, and a run
+    // compiling N entries reconciled the shared prefix N times over closures that overlap almost
+    // entirely. See `try_process_shared_index_for_pool` for why that is a §2 cost-shape defect
+    // rather than a budget fact, and for what is NOT changed by the routing.
     let index: Rc<MultiEntryIndex> = if primary_precedence {
-        match try_build_multi_entry_index_primary_precedence(source_roots) {
-            Ok(idx) => Rc::new(idx),
+        match try_process_shared_index_for_pool(source_roots, true) {
+            Ok(idx) => idx,
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
@@ -11385,9 +11595,18 @@ thread_local! {
     // source_roots — a run's roots are fixed, so this is a get-or-build, rebuilt only on
     // the rare roots change. Thread-local by the same Rc-not-Send reason as the store:
     // each shard keeps its own index rather than smuggling Rc across threads.
+    //
+    // TWO SLOTS, ONE PER POOL SEMANTICS, and the pair is what makes the memo safe rather than
+    // merely faster. `primary-precedence` (root[0] wins, later roots fill only absent modules)
+    // and strict are DIFFERENT POOLS over the same roots: serving one where the other was asked
+    // for is a silently divergent resolution, which is the §5 fail-open this cache would
+    // otherwise introduce. So precedence is part of the identity of the slot, not a build flag
+    // applied to a shared one -- a roots-keyed single slot cannot express the distinction and
+    // would answer whichever mode ran first. Each slot keeps the original single-entry,
+    // rebuild-on-roots-change shape, so an index is never held for a pool nobody is asking about.
     #[allow(clippy::type_complexity)]
-    static PROCESS_RESOLVE_INDEX: RefCell<Option<(String, Rc<MultiEntryIndex>)>> =
-        const { RefCell::new(None) };
+    static PROCESS_RESOLVE_INDEX: RefCell<[Option<(String, Rc<MultiEntryIndex>)>; 2]> =
+        const { RefCell::new([None, None]) };
 
     // While loading the materialization-provider authority, cross-process disk hits
     // must not re-enter provider routing (review 44268: bootstrap recursion).
@@ -11468,10 +11687,42 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
 /// discovery must not install a partial index that every later caller in the process would
 /// then read as complete.
 pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntryIndex>, String> {
+    try_process_shared_index_for_pool(source_roots, false)
+}
+
+/// The shared index for `source_roots` under a NAMED POOL SEMANTICS.
+///
+/// WHY THIS EXISTS, and it is a §2 cost-shape repair rather than a new capability. The compile
+/// transaction's two subjects took opposite routes over the same caches: the strict arm resolved
+/// through the process-shared index above -- so a second `--entry` compile in one process is a
+/// cache hit -- while the primary-precedence arm built a FRESH `MultiEntryIndex` per call and
+/// threw it away. Every cache that index owns is per-call under that arm: the parse cache, the
+/// typed-module cache, the pool census, the interned names. So a run that compiles N entries
+/// typechecks the shared prefix N times, and the prefix is nearly the whole closure -- most of
+/// `dag/std` sits in almost every entry's closure. The dominant cost of the emit-compile phase
+/// (`compile.reconcile`) is therefore paid INDEPENDENTLY PER ENTRY over closures that overlap
+/// almost entirely, which is why a per-entry cover cannot reach the corpus at any budget: the
+/// unit of computation was the closure and the unit of fact was the entry.
+///
+/// WHAT CHANGES AND WHAT DOES NOT. Only WHICH index the primary arm reaches; the index's own
+/// semantics are untouched -- it is still built by `try_build_module_index_primary_precedence`
+/// over the same canonicalized roots, so the pool it presents is the same pool. The typed cache
+/// is keyed by authored name and content (`typed_module_content_key`), and the collision-honesty
+/// guard in `reconcile_with_typed_cache` already refuses loudly when one name resolves from two
+/// declaring files across co-resident entries -- which is exactly the co-residence this memo
+/// creates more of, so the wall is upstream of the change rather than owed by it.
+///
+/// PRECEDENCE IS PART OF THE SLOT IDENTITY, never a parameter applied to a shared slot: see the
+/// two-slot note on `PROCESS_RESOLVE_INDEX`.
+pub fn try_process_shared_index_for_pool(
+    source_roots: &[String],
+    primary_precedence: bool,
+) -> Result<Rc<MultiEntryIndex>, String> {
+    let slot = usize::from(primary_precedence);
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
-        s.borrow().as_ref().and_then(|(k, idx)| {
+        s.borrow()[slot].as_ref().and_then(|(k, idx)| {
             if *k == roots_key {
                 Some(idx.clone())
             } else {
@@ -11483,19 +11734,35 @@ pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntry
         return Ok(idx);
     }
     let build_started = std::time::Instant::now();
-    let idx = Rc::new(new_multi_entry_index_shell(
-        try_build_module_index(&roots)?,
-        &roots,
-        None,
-    ));
+    let module_index = if primary_precedence {
+        try_build_module_index_primary_precedence(&roots)?
+    } else {
+        try_build_module_index(&roots)?
+    };
+    let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots, None));
     discovery_phase_totals::add(
         &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
         build_started.elapsed(),
     );
     PROCESS_RESOLVE_INDEX.with(|s| {
-        *s.borrow_mut() = Some((roots_key, idx.clone()));
+        s.borrow_mut()[slot] = Some((roots_key, idx.clone()));
     });
     Ok(idx)
+}
+
+/// Test-only: drop the process-shared index slots so the NEXT compile in this process is COLD.
+///
+/// This exists so `cached == cold` can be asserted by EXECUTION rather than by reading the cache
+/// keys. Without it the two arms of the oracle cannot be distinguished from inside one process:
+/// the second compile is a hit by construction, so a test that ran both arms warm would compare a
+/// value with itself and be green whatever the cache served -- the change-detector shape §5
+/// rejects. Clearing the slot makes the cold arm genuinely re-derive from disk.
+#[cfg(test)]
+pub(crate) fn reset_process_shared_index_for_test() {
+    PROCESS_RESOLVE_INDEX.with(|s| {
+        *s.borrow_mut() = [None, None];
+    });
+    PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
 }
 
 pub fn resolve_entry_graph_shared(
@@ -12572,17 +12839,6 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
         source_roots,
         None,
     )
-}
-
-/// Fallible twin of the above, for the compile transaction. See `try_build_module_index`.
-fn try_build_multi_entry_index_primary_precedence(
-    source_roots: &[String],
-) -> Result<MultiEntryIndex, String> {
-    Ok(new_multi_entry_index_shell(
-        try_build_module_index_primary_precedence(source_roots)?,
-        source_roots,
-        None,
-    ))
 }
 
 pub fn build_multi_entry_index_with_shared_caches(
@@ -20287,11 +20543,15 @@ pub fn run_claim_measured(
     let started = std::time::Instant::now();
     let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();
     let fill_before_nanos = shared_artifact_fill_cpu_nanos();
+    let fill_wall_before_nanos = shared_artifact_fill_wall_nanos();
     let outcome = run_claim(ctx, function);
     // CPU consumed by THIS (witness-eval) thread — the budget metric, so the completion-side
     // check matches the cooperative stride-poll and neither fires on cold-I/O or contention
-    // wall time. wall_nanos stays the measurement/receipt basis (unchanged).
+    // wall time.
     let measured_cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
+    // Sampled here rather than after the report so the wall clock can be split by the same rule
+    // the CPU clock is, and so the reported line and the enforced quantity read one binding.
+    let measured_wall_nanos = started.elapsed().as_nanos();
     // SHARED-ARTIFACT FILL IS NOT THIS CLAIM'S MARGINAL COST (operator-line ruling, 2026-08-27).
     // Whatever this claim spent filling a memo is consumed by every later claim naming the same
     // source — one of them measured at literally 0ms in the same run because this one paid — so
@@ -20304,7 +20564,18 @@ pub fn run_claim_measured(
     // the fill is still counted, still attributed and still visible in the receipt.
     let fill_cpu_nanos = shared_artifact_fill_cpu_nanos().saturating_sub(fill_before_nanos);
     let cpu_nanos = measured_cpu_nanos.saturating_sub(fill_cpu_nanos);
-    if fill_cpu_nanos > 0 {
+    // THE SAME SPLIT ON THE WALL CLOCK. `wall_budget_completion_outcome` below is a
+    // merge-blocking ceiling, so charging it the fill made it a function of execution order in
+    // exactly the way the ruling above forbids — and unlike the CPU side it had no exemption
+    // argument, only an omission. Split, never dropped: both halves are reported and they sum to
+    // `measured_wall_nanos`.
+    let fill_wall_nanos = shared_artifact_fill_wall_nanos().saturating_sub(fill_wall_before_nanos);
+    let wall_nanos = marginal_wall_nanos(measured_wall_nanos, fill_wall_nanos);
+    // EITHER clock, not the CPU one. A fill that blocked on I/O can spend wall time while
+    // charging almost no CPU, and under a `fill_cpu_nanos > 0` guard that fill would be
+    // subtracted from the enforced wall figure and reported nowhere — a cost dropped rather
+    // than split, which is the one thing the ruling above forbids.
+    if fill_cpu_nanos > 0 || fill_wall_nanos > 0 {
         // REPORTED, NOT ABSORBED. Printed on its own line, per claim, whenever a fill happened,
         // so the quantity the ceiling stops charging is visible at the same grain it was measured
         // — the difference between attributing a cost and losing one. `triggered_by` is this
@@ -20313,13 +20584,16 @@ pub fn run_claim_measured(
         // this line names who paid.
         eprintln!(
             "[floor-shared-fill] claim={function} marginal_cpu_ms={} fill_cpu_ms={} \
-             measured_cpu_ms={} provenance=filled-shared-artifact triggered_by={function}",
+             measured_cpu_ms={} marginal_wall_ms={} fill_wall_ms={} measured_wall_ms={} \
+             provenance=filled-shared-artifact triggered_by={function}",
             cpu_nanos / 1_000_000,
             fill_cpu_nanos / 1_000_000,
             measured_cpu_nanos / 1_000_000,
+            wall_nanos / 1_000_000,
+            fill_wall_nanos / 1_000_000,
+            measured_wall_nanos / 1_000_000,
         );
     }
-    let wall_nanos = started.elapsed().as_nanos();
     ctx.clear_eval_deadline();
     ctx.clear_wall_deadline();
     v1_interpreter::eval_subject_clear();
@@ -20789,6 +21063,19 @@ fn budget_completion_outcome(
     }
 }
 
+/// The claim's own wall cost: what it spent, less what it spent filling a shared artifact every
+/// later claim naming the same source then reads free.
+///
+/// Named rather than written inline at the one call site because it is the quantity
+/// `wall_budget_completion_outcome` enforces against, and a merge-blocking ceiling's input
+/// deserves a symbol its regression control can drive directly. The subtraction is saturating for
+/// the same reason the CPU side's is: the two clocks are sampled at slightly different instants,
+/// so a fill measured marginally longer than the enclosing claim is an artifact of sampling, not
+/// a negative cost.
+fn marginal_wall_nanos(measured_wall_nanos: u128, fill_wall_nanos: u128) -> u128 {
+    measured_wall_nanos.saturating_sub(fill_wall_nanos)
+}
+
 /// Whole-receipt wall budget for Wet self-host receipts: emit+cargo subprocess I/O
 /// counts against wall time, not CPU. A Pass over the wall budget converts to the same
 /// typed refusal — silent green would fail open on the nightly falsifier lane budget.
@@ -20839,6 +21126,68 @@ mod budget_completion_tests {
             }
             other => panic!("expected CompletedOverBudget, got {other:?}"),
         }
+    }
+
+    #[test]
+    /// THE DISCRIMINATING RED FOR THE WALL HALF OF THE FILL-ATTRIBUTION RULING. A claim whose own
+    /// wall cost is 1ms, which happened to be the first to reach a shared memo and paid an 18000ms
+    /// fill for it, must not refuse a 10000ms wall requirement — every later claim naming the same
+    /// source reads that artifact free, so charging it here makes the ceiling a function of
+    /// execution order rather than of the tree.
+    ///
+    /// The second arm is what makes this a control rather than a restatement: driving the SAME
+    /// ceiling with the unsplit figure must still refuse. So the test fails if the split is
+    /// removed AND fails if the ceiling stops firing at all, which is the pair a single assertion
+    /// cannot carry. The shape is the one main run 33145062452 exhibited on
+    /// `test.claim.transport_script_wall_compile_red`, whose two rows reported
+    /// `marginal_cpu_ms=0`/`1` against `fill_cpu_ms` near 19000 and refused the required floor.
+    fn a_shared_fill_is_not_charged_to_the_claim_that_paid_it() {
+        let measured_wall_nanos = 18_001_000_000u128;
+        let fill_wall_nanos = 18_000_000_000u128;
+        let budget_ms = 10_000u64;
+
+        assert!(
+            matches!(
+                wall_budget_completion_outcome(
+                    Some(budget_ms),
+                    ClaimOutcome::Pass,
+                    marginal_wall_nanos(measured_wall_nanos, fill_wall_nanos),
+                ),
+                ClaimOutcome::Pass
+            ),
+            "a 1ms claim must not refuse a 10s ceiling because it paid an 18s shared fill"
+        );
+
+        match wall_budget_completion_outcome(
+            Some(budget_ms),
+            ClaimOutcome::Pass,
+            measured_wall_nanos,
+        ) {
+            ClaimOutcome::CompletedOverBudget { kind, .. } => {
+                assert_eq!(kind, BudgetKind::Wall);
+            }
+            other => panic!("the unsplit figure must still refuse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    /// The cost is SPLIT, never DROPPED (§5 — a vanished cost is the absorbing fallback wearing an
+    /// accounting label). Whatever the ceiling stops charging must still be recoverable, so the
+    /// two halves are asserted to sum to what the claim actually spent.
+    fn the_two_wall_halves_sum_to_the_measured_cost() {
+        let measured_wall_nanos = 18_001_000_000u128;
+        let fill_wall_nanos = 18_000_000_000u128;
+        assert_eq!(
+            marginal_wall_nanos(measured_wall_nanos, fill_wall_nanos) + fill_wall_nanos,
+            measured_wall_nanos
+        );
+    }
+
+    #[test]
+    /// A fill sampled marginally longer than the enclosing claim saturates to zero rather than
+    /// wrapping to an enormous cost that would refuse every ceiling.
+    fn a_fill_longer_than_the_claim_saturates() {
+        assert_eq!(marginal_wall_nanos(5, 9), 0);
     }
 
     #[test]
@@ -32610,7 +32959,24 @@ fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
     }
     if body.is_empty() {
         body.push_str("host_sr_empty");
-    } else if body.as_bytes()[0].is_ascii_digit() {
+    } else if body.as_bytes()[0].is_ascii_digit()
+        || v1_compiler_tokenize::is_keyword_text(body.clone())
+    {
+        // THE THIRD ESCAPE ARM, AND THE CORPUS ALREADY CONTAINED ITS CASE.
+        //
+        // This minted `^{stem}` after escaping non-identifier characters and a leading digit,
+        // and stopped there. A stem that IS a keyword still lexes as a keyword, so `dag/std/
+        // import.dag` emitted `^import` and the manifest failed to parse -- measured, at the
+        // caret: "expected identifier or `(` after `^`, found keyword". Two stems in the tree
+        // reach it today, `dag/std/import.dag` and `dag/extdeps/languages/go/module.dag`.
+        //
+        // The mint promised a valid symbol and returned an unparseable one with no refusal,
+        // which is why nothing caught it: the emitter succeeded, the file was written, and the
+        // only executing consumer is a `long/` `ReadsLiveTree` witness the floor declines.
+        //
+        // The keyword test routes through `v1_compiler_tokenize` `is_keyword_text`, whose set is
+        // derived from the grammar. A literal list here would be a second authority for the
+        // keyword vocabulary (DESIGN §3) and would go stale the next time the grammar gains one.
         body = format!("sr_{body}");
     }
     format!("^{body}")
@@ -33032,9 +33398,8 @@ pub fn emit_module_storage_binding_manifest(
     out.push_str("}\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import std.algebra { Cons, Empty }\n");
-    out.push_str("import v2.std.diagnostic { ByteRange, Textual }\n");
     out.push_str("import v2.std.integer { Int }\n");
-    out.push_str("import v2.std.provenance { FromSource, span_index_empty, span_index_record }\n");
+    out.push_str("import v2.std.provenance { span_index_empty }\n");
     out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
     out.push('\n');
@@ -33091,32 +33456,40 @@ fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, Strin
     ))
 }
 
-/// THE FIELD THIS EMITS IS AN `OccurrenceId`, NOT A `NodeOccurrenceIdentity` ARM.
+/// THE HOST TRANSPORT HAS NO OCCURRENCE IDENTITY TO OFFER, SO IT OFFERS NONE.
 ///
-/// `span_index_record` declares `id: OccurrenceId`, and this generator previously wrapped the
-/// value in `MintedOccurrence { id: ... }` and imported that constructor from `v2.std.node` --
-/// a payload-for-carrier confusion of exactly the class
-/// `dag/test/claim/coproduct_payload_soundness_witness_test.dag` records, pointing the other way.
-/// It stayed invisible because this file is generated: whole-tree compile-clean never sees it,
-/// and the committed manifest stub carries no rows, so the wrapped form was never parsed.
-/// Repaired with the v2 `NodeOccurrenceId` facade cut, which deleted the constructor it named.
+/// This emitted a one-entry `SpanIndex` keyed on an `OccurrenceId` derived from the ident
+/// span's byte offset (`start.max(1)`). `std.occurrence_identity` `occurrence_identity_scope_law`
+/// names `SourceSpan` a FORBIDDEN identity input, and the derivation additionally collided:
+/// offsets 0 and 1 both produced 1.
 ///
-/// The construction stays FULLY QUALIFIED, and the name is correspondingly absent from this
-/// manifest's import list: a bare `OccurrenceId` in a record-literal position has resolved
-/// ambiguously in this overlay's compiled pool before (#7352), and qualifying costs nothing.
-fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> String {
-    let start = span.start.max(0);
-    let end = span.end.max(start);
-    let occurrence_id = start.max(1);
-    format!(
-        "span_index_record(\n  index: span_index_empty(),\n  id: std.occurrence_identity.OccurrenceId {{ value: {occurrence_id} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
-    )
+/// Traced to its consumers, the fabricated id was WRITE-ONLY, which is why it stood. Each row
+/// built its own `span_index_empty()` and recorded exactly one entry, so the collision could not
+/// manifest within a row; `span_index_merge`'s only production caller is `v2.compiler.02_parse`
+/// over parser-ALLOCATED ids, never over this manifest's; `span_index_lookup` has only test
+/// callers; and the one executing consumer, the module-binding supply gate, compares
+/// `(file_path -> module)` and discards the field by pattern in
+/// `v2.compiler.source_authority` `module_storage_binding_file_path`.
+///
+/// So this was not a defect with a victim. It was a forbidden identity input written into a
+/// COMMITTED artifact whose innocence rested entirely on no consumer ever reading it -- the
+/// inverse of correctness by construction (DESIGN §5), and one consumer away from becoming real.
+///
+/// THE LOCUS GOES WITH IT, AND THAT IS THE HONEST TRADE RATHER THAN A LOSS. `SpanIndex.entries`
+/// is a `Map<OccurrenceId, OriginEvent>`, so the `ByteRange` this used to carry is reachable
+/// ONLY under a key. A producer holding a locus but no allocator identity therefore cannot
+/// record the locus without inventing the key -- the carrier makes the honest state
+/// representable only as EMPTY. Emitting empty is that honest state; inventing a key to keep a
+/// byte range no consumer reads is fabricated plausible output. The carrier gap is named here
+/// rather than papered over, and it is what a future locus-carrying transport must close first.
+fn emit_module_binding_span_index() -> String {
+    String::from("span_index_empty()")
 }
 
 fn emit_module_binding_row(row: &ModuleBindingManifestRow) -> Result<String, String> {
     let qn = emit_module_binding_qualified_name(&row.module_path)?;
     let artifact_id = source_root_ingest_artifact_id_for_path(&row.rel_path);
-    let span_index = emit_module_binding_span_index(&row.ident_span, &artifact_id);
+    let span_index = emit_module_binding_span_index();
     Ok(format!(
         "module_storage_parsed_binding(\n  module: {qn},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  span_index: {span_index},\n  source_root: {}\n)",
         dag_manifest_scalar_escape(&row.rel_path)?,
@@ -42081,6 +42454,7 @@ fn external_authority_alias_symbol_name(
 fn external_authority_anchor_from_data_body(
     body: &Rc<crate::v1_std_core::Node>,
     module: &Rc<crate::v1_std_core::Node>,
+    module_path: &str,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
@@ -42124,7 +42498,19 @@ fn external_authority_anchor_from_data_body(
         }
         return project_external_authority_named_data(&home, symbol.as_str(), visited);
     }
-    ExternalAuthorityAnchorProjection::Absent
+    // The alias names no IMPORTED symbol, so the only home left for it is this module itself. A
+    // `.dag` declaration may reference a sibling declaration in its own file without importing it,
+    // and reading that as Absent conflates "this module declares no anchor" with "this module
+    // declares one I did not follow" -- two states with opposite remedies, one an authoring defect
+    // and one a defect in this reader. Resolving the local home removes the second state rather
+    // than reporting it (DESIGN section 5).
+    let local_key = format!("{module_path}::{symbol}");
+    if !visited.insert(local_key) {
+        return ExternalAuthorityAnchorProjection::Refused {
+            cause: format!("alias cycle revisiting {module_path} for local symbol {symbol}"),
+        };
+    }
+    project_external_authority_named_data(module_path, symbol.as_str(), visited)
 }
 
 fn project_external_authority_named_data(
@@ -42147,7 +42533,13 @@ fn project_external_authority_named_data(
         let Some(body) = item.body.as_ref() else {
             return ExternalAuthorityAnchorProjection::Absent;
         };
-        return external_authority_anchor_from_data_body(body, &module, &source_indices, visited);
+        return external_authority_anchor_from_data_body(
+            body,
+            &module,
+            module_path,
+            &source_indices,
+            visited,
+        );
     }
     ExternalAuthorityAnchorProjection::Absent
 }
@@ -42155,6 +42547,7 @@ fn project_external_authority_named_data(
 fn read_external_authority_anchor_from_items(
     items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
     module: &Rc<crate::v1_std_core::Node>,
+    module_path: &str,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
@@ -42166,7 +42559,13 @@ fn read_external_authority_anchor_from_items(
         let Some(body) = item.body.as_ref() else {
             return ExternalAuthorityAnchorProjection::Absent;
         };
-        return external_authority_anchor_from_data_body(body, module, source_indices, visited);
+        return external_authority_anchor_from_data_body(
+            body,
+            module,
+            module_path,
+            source_indices,
+            visited,
+        );
     }
     ExternalAuthorityAnchorProjection::Absent
 }
@@ -42176,7 +42575,13 @@ fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnch
     let (module, items, source_indices) = parse_extdeps_module_items(&path);
     let mut visited = std::collections::HashSet::new();
     visited.insert(module_path.to_string());
-    read_external_authority_anchor_from_items(&items, &module, &source_indices, &mut visited)
+    read_external_authority_anchor_from_items(
+        &items,
+        &module,
+        module_path,
+        &source_indices,
+        &mut visited,
+    )
 }
 
 fn external_authority_machinery_exempt_module_paths() -> &'static [&'static str] {
@@ -42302,6 +42707,28 @@ mod extdeps_external_authority_anchor_projection_tests {
             facts.locator,
             "docs.claude.com/en/docs/claude-code/cli-reference"
         );
+    }
+
+    #[test]
+    fn same_file_aliased_extdeps_external_authority_anchor_projects_local_literal() {
+        // The discriminating case: extdeps.cpu_attachment.lotes_azifa072 declares the mandatory
+        // anchor as a reference to azifa072_drawing_authority, which is declared in the SAME file
+        // and imported from nowhere. Before local resolution this projected Absent and the module
+        // was reported as `missing:` by the live clean-tree wall.
+        let facts =
+            extdeps_external_authority_module_facts("extdeps.cpu_attachment.lotes_azifa072");
+        assert_eq!(facts.anchor_kind, "present");
+        assert_eq!(facts.scheme_identity, "Https");
+        assert_eq!(facts.locator, "www.lotes.cc/en/contact.php");
+    }
+
+    #[test]
+    fn absent_anchor_still_projects_absent_after_local_alias_resolution() {
+        // The control the clause above must not have broken: a module declaring no anchor at all
+        // reads Absent, so local resolution widened what resolves without fabricating presence.
+        let facts =
+            extdeps_external_authority_module_facts("extdeps.fixture.external_authority_missing");
+        assert_eq!(facts.anchor_kind, "absent");
     }
 
     #[test]
@@ -44378,7 +44805,8 @@ pub struct PreparedRepository {
     pub modules_excluded: usize,
     /// The witness sites preparation found, already folded. NOT the corpus bytes.
     pub witness_files: Vec<InventoryWitnessFile>,
-    /// Admitted sources carrying zero `test fn` decls. See `PreparedSubject::test_decl_free_paths`.
+    /// Admitted sources carrying zero `test` decls (`test fn` or `test data`). See
+    /// `PreparedSubject::test_decl_free_paths`.
     pub test_decl_free_paths: Vec<String>,
 }
 
@@ -44568,7 +44996,11 @@ pub struct PreparedSubject {
     pub sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     pub inventory: Vec<PreparedSourceView>,
     pub witness_files: Vec<InventoryWitnessFile>,
-    /// Admitted sources carrying ZERO `test fn` decls, by repo-relative path.
+    /// Admitted sources carrying ZERO `test` decls — neither `test fn` nor `test data` — by
+    /// repo-relative path. The vocabulary is `floor_discovery_scan_test_decl_names`'s, so this
+    /// population is the wall's own denominator rather than a narrower one that happens to
+    /// agree.
+    ///
     ///
     /// Preparation records the fact and judges nothing with it. Whether a path in here is a
     /// VIOLATION is a policy question owned by `v2.workflow.floor_naming_hygiene`
@@ -44619,7 +45051,7 @@ pub fn assemble_prepared_subject(
         // loop used to discard that answer. Since `run_required_floor` builds its whole roster
         // from `witness_files`, a `*_test.dag` file declaring no `test fn` was not declined and
         // not counted — it left the floor's universe entirely, one level ABOVE the
-        // `offered = routed + declined_long + declined_live` partition, which is why that line
+        // `offered = routed + declined_long + declined_fixture` partition, which is why that line
         // can be exact and still say nothing about it.
         //
         // The `.dag` producer has carried a wall for exactly this since it was written
@@ -44630,16 +45062,27 @@ pub fn assemble_prepared_subject(
         //
         // WHAT IS RECORDED HERE IS A CANDIDATE SET, NOT A VERDICT, and the distinction is the
         // whole reason no second copy of the rule appears in Rust. This records every source
-        // `witness_file_from_source` declined — i.e. carrying no `test fn` — and asks nothing
-        // about suffixes and nothing about `test data`. Both of those questions belong to
-        // `v2.workflow.floor_naming_hygiene` and are put TO it, per candidate, by
-        // `floor_barren_test_sidecars`.
+        // `witness_file_from_source` declined, and asks nothing about suffixes. That question
+        // belongs to `v2.workflow.floor_naming_hygiene` and is put TO it, per candidate, by
+        // `floor_barren_test_sidecars`. Rust can only widen the question, never decide it, so a
+        // Rust/`.dag` disagreement cannot produce a wrong refusal — only a candidate the
+        // authority discards.
         //
-        // THE SET IS DELIBERATELY OVER-INCLUSIVE and that is what makes it sound. A file with
-        // only `test data` rows lands in here, and the `.dag` predicate then answers NOT barren,
-        // because its own scan counts `test data ` as a test decl. Rust can only widen the
-        // question, never decide it, so a Rust/`.dag` disagreement cannot produce a wrong
-        // refusal — only a candidate the authority discards.
+        // AND THE RECORDED SET NOW USES THE RULE'S OWN VOCABULARY BY CONSTRUCTION, rather than by
+        // a second test standing beside it. `test data ` is a test decl to
+        // `floor_discovery_scan_test_decl_names`, which is what `floor_entry_is_barren_test_sidecar`
+        // composes; this loop used to agree with that rule by asking a SEPARATE question here
+        // (`site.is_none() && no line starts with "test data "`) because the roster builder below
+        // could not see `test data` at all. It can now, so `site.is_none()` means exactly
+        // "declares no test decl" in the wall's own vocabulary and the compensating second scan is
+        // deleted rather than left as a third spelling of the same fact (DESIGN §3, and §4b(4):
+        // a climb deletes the lower-rung machinery it obsoletes). A `test data`-only file
+        // therefore no longer reaches this set at all, where before the repair it did and the
+        // `.dag` predicate discarded it.
+        //
+        // The 40 `test data` claims that compensating scan was protecting from a
+        // wall-over-reach are, for the same reason, no longer dropped from the roster: they are
+        // offered, routed and executed like any other claim. See `witness_file_from_source`.
         match witness_file_from_source(module_path, &sf.path, &sf.content) {
             Some(site) => witness_files.push(site),
             None => test_decl_free_paths.push(p.clone()),
@@ -45306,6 +45749,16 @@ pub enum RequiredFloorDisposition {
     /// but corrupting. See `v2.workflow.required_floor` `fixture_home_prefixes` for the full
     /// argument and the dissolution condition.
     DeclinedFixtureMember { matched_prefix: String },
+    /// Declined because the qualified identity is enrolled in `v2.workflow.floor_cost_debt`:
+    /// it PASSES and costs more than `required_floor_claim_cpu_safety_limit_ms` allows, so it is
+    /// withheld from execution until made cheap. Carries no payload — the roster is the
+    /// authority for which identities these are, and duplicating the measured cost here would be
+    /// a second representation of a number that is only ever read from the fold.
+    ///
+    /// ORDERED LAST among the declines, per `required_floor_site_disposition`'s own note: a site
+    /// that also declines for a home reason keeps the home decline, so a roster line over it
+    /// surfaces as a STALE row to delete rather than as a withhold that looks legitimate.
+    DeclinedCostDebt,
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -45528,6 +45981,18 @@ pub struct RequiredFloorOutcome {
     /// remedy is reducing what it costs, not investigating why it never returned. Still
     /// blocking, per the same ruling.
     pub completed_over_cost_requirement: Vec<String>,
+    /// WITHHELD FROM EXECUTION BY THE COST-DEBT ROSTER. Reported and counted every run, and
+    /// NOT blocking: these rows are the frozen population the 2026-08-27 ceiling restoration
+    /// declared, and blocking on them would red main for exactly the debt the contract exists
+    /// to carry down. It is counted rather than silent because the whole difference between
+    /// this and the relocation the 2026-08-04 ruling forbids is that this one is declared and
+    /// visible — an unreported withhold is the gunbc#7762 specimen with extra steps.
+    pub withheld_cost_debt: Vec<String>,
+    /// A COST-DEBT ROW NAMING AN IDENTITY THE TREE NO LONGER CARRIES. BLOCKING. Without this
+    /// the roster rots into a permission slip: a withheld identity that is renamed or deleted
+    /// leaves a line behind that withholds nothing, and the roster's length then overstates the
+    /// debt in the direction that flatters. Same shape as `stale_quarantine`, same reason.
+    pub stale_cost_debt: Vec<String>,
     /// ENROLLED AS EXPECTED-RED AND THREW, or answered with a non-verdict. Its own collections
     /// for the same reason `route_gap` is not folded into `host_tool_unresolved`: the remedy
     /// differs. A throw is a defect in the witness or its subject; an unreadable observation is
@@ -45597,8 +46062,8 @@ pub struct RequiredFloorOutcome {
     pub long_home_storage_agreement: Vec<LongHomeStorageAgreementRow>,
 }
 
-/// A witness site as preparation found it — the file's path, its module, and the `test fn`
-/// names it declares. Produced from bytes preparation had in hand, and retained INSTEAD of
+/// A witness site as preparation found it — the file's path, its module, and the `test fn` /
+/// `test data` names it declares. Produced from bytes preparation had in hand, and retained INSTEAD of
 /// those bytes.
 pub struct InventoryWitnessFile {
     pub path: String,
@@ -45618,12 +46083,39 @@ pub struct InventoryWitnessFile {
 /// every floor run, acquired the repository a second time, and additionally built a
 /// whole-corpus module graph to answer a question about one file at a time.
 ///
-/// `None` means the file declares no `test fn`, which is how a non-witness module is excluded
+/// `None` means the file declares no `test` decl, which is how a non-witness module is excluded
 /// — the predecessor expressed the same rule as `if !functions.is_empty()` after building the
 /// record.
 ///
-/// A `test fn` is recognised at column zero only, which is the same rule the parser applies to
+/// A `test` decl is recognised at column zero only, which is the same rule the parser applies to
 /// a top-level declaration: an indented occurrence is inside a body and is not a declaration.
+///
+/// BOTH `test fn ` AND `test data ` ARE TEST DECLS HERE, and making that true is the whole of
+/// this function's most recent change. What a test decl IS had two answers in one binary:
+/// `v2.workflow.floor_naming_hygiene` `floor_discovery_scan_test_decl_names` — the authority the
+/// `BarrenTestSidecar` wall composes — counts both forms, while this roster builder counted only
+/// `test fn `. A file whose test decls are all `test data ` therefore SATISFIED the wall (its
+/// predicate found decls) and enrolled ZERO claims (this scan found none), which is partial
+/// enrollment made invisible by construction: nothing refuses, nothing runs, and the run's own
+/// `offered = routed + declined_long + declined_live` partition stays exact because the site was
+/// never offered. That is §3's two-authorities-for-one-fact defect with the two halves wired to
+/// opposite sides of the same gate.
+///
+/// The population this closed is exact and was declared before it was repaired (the note at
+/// `floor_entry_is_barren_test_sidecar`): 40 `test data` decls in 15 files over both source
+/// roots — 34 in 13 files carrying no `test fn` at all, 6 in 2 files the floor already enrolled
+/// partially. The second group is the one no wall could ever have caught.
+///
+/// The two SCANNERS are still two scanners, and that residue is unchanged by this: collapsing
+/// them needs the canonical parser to retain the authored `test` marker, which
+/// `v1_compiler_parse.rs` `drop_leading_test_marker` discards, and `test` cannot become a lex
+/// keyword because it is a live module-path segment. What is repaired here is that they no
+/// longer DISAGREE; what remains is that they are separately spelled.
+///
+/// A `test data` claim executes on exactly the same path as a `test fn` one: `run_claim` calls
+/// `run_in_context`, whose `lookup_fn` resolves a `DataItem` as readily as a function node and
+/// evaluates its initializer with no arguments. There is no second execution mechanism here,
+/// which is why the roster is the only thing that had to move.
 fn witness_file_from_source(
     module_path: &str,
     path: &str,
@@ -45631,7 +46123,10 @@ fn witness_file_from_source(
 ) -> Option<InventoryWitnessFile> {
     let mut functions: Vec<String> = Vec::new();
     for line in content.lines() {
-        let Some(rest) = line.strip_prefix("test fn ") else {
+        let Some(rest) = line
+            .strip_prefix("test fn ")
+            .or_else(|| line.strip_prefix("test data "))
+        else {
             continue;
         };
         let name: String = rest
@@ -46063,6 +46558,11 @@ fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result
 /// are answered by `v2.workflow.floor_naming_hygiene`; Rust supplies facts and decides
 /// nothing.
 ///
+/// Preparation records every admitted source with no `test fn` or `test data` decl; this asks
+/// `floor_naming_hygiene`'s own suffix which of them are `*_test.dag` entries — the same
+/// predicate `floor_entry_is_barren_test_sidecar` composes, consumed here because THIS is the
+/// path the required floor takes.
+///
 ///   1. `floor_entries_requiring_test_sidecar` is asked ONCE for the whole candidate roster.
 ///      It is a pure string question, so the whole list crosses in one call, and it narrows
 ///      thousands of admitted sources to the handful that claim the `*_test.dag` place.
@@ -46400,23 +46900,70 @@ pub struct NonVerdictAdmission {
     pub repaid: Vec<String>,
 }
 
+/// Identity-grain set difference, deterministically ordered for diagnostics and receipts.
+///
+/// This is deliberately not a count comparison. Equal-size sets can have different members,
+/// and that swap is the load-bearing case for every roster whose rows are permissions or debt:
+/// repairing one identity must not buy room for an unrelated identity to appear or disappear.
+pub fn identity_set_difference(left: &HashSet<String>, right: &HashSet<String>) -> Vec<String> {
+    let mut difference: Vec<String> = left.difference(right).cloned().collect();
+    difference.sort();
+    difference
+}
+
 pub fn non_verdict_admission(
     observed: &HashSet<String>,
     roster: &HashSet<String>,
 ) -> NonVerdictAdmission {
-    let mut added: Vec<String> = observed
-        .iter()
-        .filter(|q| !roster.contains(q.as_str()))
-        .cloned()
-        .collect();
-    let mut repaid: Vec<String> = roster
-        .iter()
-        .filter(|q| !observed.contains(q.as_str()))
-        .cloned()
-        .collect();
-    added.sort();
-    repaid.sort();
-    NonVerdictAdmission { added, repaid }
+    NonVerdictAdmission {
+        added: identity_set_difference(observed, roster),
+        repaid: identity_set_difference(roster, observed),
+    }
+}
+
+#[cfg(test)]
+mod identity_set_difference_tests {
+    use super::{identity_set_difference, HashSet};
+
+    fn identities(rows: &[&str]) -> HashSet<String> {
+        rows.iter().map(|row| (*row).to_string()).collect()
+    }
+
+    #[test]
+    fn equal_identity_sets_have_no_difference() {
+        let left = identities(&["m.b", "m.a"]);
+        assert!(identity_set_difference(&left, &left).is_empty());
+    }
+
+    #[test]
+    fn an_equal_cardinality_swap_is_visible_in_both_directions() {
+        let roster = identities(&["m.a", "m.b"]);
+        let observed = identities(&["m.a", "m.c"]);
+
+        assert_eq!(
+            identity_set_difference(&roster, &observed),
+            vec!["m.b".to_string()]
+        );
+        assert_eq!(
+            identity_set_difference(&observed, &roster),
+            vec!["m.c".to_string()]
+        );
+        assert_eq!(
+            roster.len(),
+            observed.len(),
+            "control: counts cannot see the swap"
+        );
+    }
+
+    #[test]
+    fn multiple_missing_identities_are_stably_sorted() {
+        let roster = identities(&["m.z", "m.a", "m.q"]);
+        let observed = identities(&["m.q"]);
+        assert_eq!(
+            identity_set_difference(&roster, &observed),
+            vec!["m.a".to_string(), "m.z".to_string()]
+        );
+    }
 }
 
 /// The admission itself: `added` AND `repaid` are both empty. Kept separate from the sets so a
@@ -46899,7 +47446,8 @@ pub fn run_required_floor(
     )?;
     // THE LINE STOPS BEFORE THE PARTITION IS COMPUTED, because a barren entry is invisible to
     // the partition by construction — it contributes no SITE, so `offered` cannot report it and
-    // `offered == routed + declined_long + declined_fixture` stays exact while saying nothing about
+    // `offered == routed + declined_long + declined_fixture + declined_cost_debt` stays exact
+    // while saying nothing about
     // it. A file that claims the `*_test.dag` place and enrolls nothing is a witness nobody asked
     // and everybody reads as covered.
     let barren_test_sidecars = floor_barren_test_sidecars(
@@ -46910,15 +47458,110 @@ pub fn run_required_floor(
     if !barren_test_sidecars.is_empty() {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=BarrenTestSidecar count={} — a `*_test.dag` entry must \
-             declare at least one `test fn`; the required floor enrolls nothing from: {}",
+             declare at least one `test fn` or `test data` decl; the required floor enrolls \
+             nothing from: {}",
             barren_test_sidecars.len(),
             barren_test_sidecars.join(", ")
         ));
     }
+    // THE COST-DEBT ROSTER, decoded before the claim-build loop below because it decides an
+    // ADMISSION and not a verdict. It answers a FOURTH question: not which claims exist, not
+    // which of them are known to fail, and not which have no route — but which PASS and cost
+    // more than the per-claim ceiling allows, and are therefore WITHHELD FROM EXECUTION until
+    // made cheap.
+    //
+    // Withheld is not deferred and is not covered. See `v2.workflow.floor_cost_debt` for the
+    // monotone debt contract and the DESIGN §4b(3) rung drop; the short form is that a rostered
+    // row does not run anywhere, its coverage is gone while it sits there, and it leaves only by
+    // being deleted from the roster and then passing under the ordinary ceiling.
+    let cost_debt_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_cost_debt.floor_cost_debt_roster",
+            false,
+        )
+        .map_err(|e| format!("floor_cost_debt_roster: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_cost_debt_roster: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    // A DUPLICATE REFUSES, for the reason the expected-red roster gives above
+                    // and one more that is specific to a debt this size: the roster's length is
+                    // the debt, a repeated identity makes that length overstate what is
+                    // withheld, and the second copy survives every removal of the first.
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_cost_debt_roster: duplicate withheld identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_cost_debt_roster: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        // NO EMPTY-ROSTER REFUSAL, and the asymmetry with the expected-red roster is deliberate
+        // rather than an oversight. An empty expected-red roster makes its downstream partition
+        // and did-not-execute joins VACUOUS, so nothing can fire. An empty cost-debt roster
+        // makes nothing vacuous: it means every witness runs under the ceiling, which is the
+        // terminal state this contract is shrinking toward, and the guard that matters — the
+        // stale-row join below — gets STRICTER as the roster empties, never weaker.
+        out
+    };
+    eprintln!(
+        "[floor-cost-debt] roster withholds {} identity(ies) from execution",
+        cost_debt_roster.len()
+    );
+
+    // EXACTLY ONE DECLARED MECHANISM HOLDS A ROW, and when cost debt withholds one it is the
+    // holder. `gunbc.quarantine_probe_disposition` states the rule this implements: the question
+    // is never WHICH roster names a row, it is whether exactly one MECHANISM holds it, and a row
+    // claimed by two is the authority-substitution shape.
+    //
+    // WHY THIS IS NOT OPTIONAL, measured rather than anticipated: 6 identities sit in both this
+    // roster and `floor_expected_red` at the restoration. Leaving both claims standing blocks the
+    // run in EITHER direction, which is what makes this a real fork and not a tidy-up. Withheld
+    // and still enrolled, the expected-red reverse join reports them as stale (enrolled but never
+    // executed) and refuses. Un-withheld so the enrollment stays observable, they execute, exceed
+    // the 500ms ceiling, and `ExpectedRedArm` explicitly REFUSES to hold an interrupted budget
+    // outcome -- so they land as ordinary failures and refuse too. All 6 measure 521-3865ms of
+    // MARGINAL cpu, so none of them can execute inside the ceiling.
+    //
+    // COST DEBT WINS, and the direction follows from what each roster asserts. Enrollment in
+    // `floor_expected_red` asserts, in that module's own words, that the identity REACHES ITS
+    // SUBJECT AND ANSWERS. A withheld row answers nothing, so while it is withheld that assertion
+    // is not merely unobserved -- it is untrue, and the roster that must yield is the one making
+    // a claim the run cannot support. The enrollment is dormant, not deleted: the moment the row
+    // leaves the cost-debt roster its expected-red claim is live again and observed again.
+    //
+    // SUPPRESSION IS COUNTED, NEVER SILENT. A roster quietly shrinking is how a skip list is
+    // born, so the count is printed per roster and the population is recoverable by intersecting
+    // the two authorities. This is a narrowing of what those joins observe, declared as one.
+    let suppress_withheld = |roster: &mut HashSet<String>, name: &str| {
+        let before = roster.len();
+        roster.retain(|identity| !cost_debt_roster.contains(identity));
+        let suppressed = before - roster.len();
+        if suppressed > 0 {
+            eprintln!(
+                "[floor-cost-debt] {name}: {suppressed} enrolled identity(ies) suppressed because \
+                 the cost-debt roster withholds them; their enrollment is dormant, not deleted, \
+                 and becomes observable again when they leave that roster"
+            );
+        }
+    };
+
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
     let mut fixture_declined = 0usize;
+    let mut cost_debt_declined = 0usize;
+    let mut cost_debt_seen: HashSet<String> = HashSet::new();
+    let mut outcome_withheld_cost_debt: Vec<String> = Vec::new();
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
     let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
@@ -46960,6 +47603,28 @@ pub fn run_required_floor(
                     disposition: RequiredFloorDisposition::DeclinedFixtureMember {
                         matched_prefix: prefix.clone(),
                     },
+                });
+                continue;
+            }
+            // THE THIRD DECLINE, APPLIED ONLY TO A SITE THE TWO ABOVE ADMITTED. The precedence
+            // is `required_floor_site_disposition`'s, not this loop's — cost debt is last, so a
+            // rostered identity that ALSO declines for a home reason keeps its home decline and
+            // never lands here. That is what makes such a roster line show up as stale (it never
+            // enters `cost_debt_seen`) instead of as a withhold nobody can tell from a real one.
+            //
+            // DECLINED AT BUILD, NEVER SKIPPED AT EXECUTION. A withheld row must not become a
+            // planned claim: `claims_planned == claims_executed + not_attempted` and the terminal
+            // ledger's identity join both require every planned identity to reach a verdict, so a
+            // skip inside the fold would refuse on both. Declining here keeps all three partition
+            // checks exact and costs the fold nothing — no scope is built and no frame allocated
+            // for a row that will not run.
+            if cost_debt_roster.contains(&identity) {
+                cost_debt_declined += 1;
+                cost_debt_seen.insert(identity.clone());
+                outcome_withheld_cost_debt.push(identity.clone());
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedCostDebt,
                 });
                 continue;
             }
@@ -47010,10 +47675,11 @@ pub fn run_required_floor(
     // it is the construction's own statement of what it guarantees, and it fails loudly the
     // first time an edit adds a third arm that quietly swallows rows, which is precisely how
     // the live-tree decline arrived and stayed invisible.
-    if sites_offered != claims.len() + long_declined + fixture_declined {
+    if sites_offered != claims.len() + long_declined + fixture_declined + cost_debt_declined {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={sites_offered} \
-             routed={} declined_long={long_declined} declined_fixture={fixture_declined} — every \
+             routed={} declined_long={long_declined} declined_fixture={fixture_declined} \
+             declined_cost_debt={cost_debt_declined} — every \
              discovered site must be either routed to a claim or declined with a stated \
              disposition; a gap here is a roster that narrowed without saying so",
             claims.len()
@@ -47021,13 +47687,14 @@ pub fn run_required_floor(
     }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
-         claims={} declined_long={} declined_fixture={}",
+         claims={} declined_long={} declined_fixture={} declined_cost_debt={}",
         projection_started.elapsed().as_millis(),
         sites_offered,
         files.len(),
         claims.len(),
         long_declined,
-        fixture_declined
+        fixture_declined,
+        cost_debt_declined
     );
 
     // THE EXPECTED-RED ROSTER, read from its .dag authority in the policy module's frame — it
@@ -47096,6 +47763,8 @@ pub fn run_required_floor(
         }
         out
     };
+    let mut expected_red_roster = expected_red_roster;
+    suppress_withheld(&mut expected_red_roster, "floor_expected_red");
     eprintln!(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
@@ -47148,6 +47817,8 @@ pub fn run_required_floor(
         }
         out
     };
+    let mut route_gap_roster = route_gap_roster;
+    suppress_withheld(&mut route_gap_roster, "floor_route_gap");
     eprintln!(
         "[floor-route-gap] roster carries {} enrolled identity(ies)",
         route_gap_roster.len()
@@ -47315,6 +47986,8 @@ pub fn run_required_floor(
         }
         out
     };
+    let mut non_verdict_roster = non_verdict_roster;
+    suppress_withheld(&mut non_verdict_roster, "floor_non_verdict");
     eprintln!(
         "[floor-non-verdict] roster carries {} enrolled identity(ies)",
         non_verdict_roster.len()
@@ -47493,6 +48166,8 @@ pub fn run_required_floor(
         stale_quarantine: Vec::new(),
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
+        withheld_cost_debt: outcome_withheld_cost_debt,
+        stale_cost_debt: Vec::new(),
         known_red_runtime_errored: Vec::new(),
         non_verdict_unenrolled: Vec::new(),
         stale_non_verdict: Vec::new(),
@@ -48513,6 +49188,33 @@ pub fn run_required_floor(
             });
         }
     }
+
+    // THE COST-DEBT ROSTER IS A TWO-WAY JOIN FOR THE SAME REASON, and the reverse direction is
+    // the whole thing that stops this contract becoming a permission slip. Forward, the roster
+    // only ever answers "is this planned claim withheld". Reverse, it must answer "does every
+    // withheld identity still exist as a planned claim" — because a rostered row whose witness
+    // was renamed, deleted, or declined by home policy withholds NOTHING while still counting
+    // toward the debt, which overstates what is frozen in the direction that flatters and
+    // survives every repair of the rows around it.
+    //
+    // BLOCKING, unlike the withhold itself. A withheld row is declared debt; a stale row is a
+    // roster that has stopped describing the tree, and the contract's monotone claim is only
+    // worth anything while its universe is the discovered one.
+    {
+        let mut stale: Vec<&String> = cost_debt_roster
+            .iter()
+            .filter(|q| reverse_joins_answerable && !cost_debt_seen.contains(*q))
+            .collect();
+        stale.sort();
+        for identity in stale {
+            outcome.stale_cost_debt.push(format!(
+                "{identity} is enrolled in v2.workflow.floor_cost_debt but was not planned, so \
+                 nothing was withheld for it. It was renamed, deleted, or declined by home \
+                 policy. Delete the row — a withhold over an identity the tree does not carry \
+                 counts as debt while costing nothing and can never ask to be removed."
+            ));
+        }
+    }
     // THE ROSTER IS A TWO-WAY JOIN, NOT A ONE-WAY LOOKUP. Enrollment as written above only ever
     // asks "is this executing claim enrolled". The reverse question — is every enrolled identity
     // still executing — has no consumer unless it is asked here, and without it the roster rots
@@ -48610,6 +49312,18 @@ pub fn run_required_floor(
     // for a reader to compare. A run that planned more claims than it executed has silently
     // narrowed, which is the failure this whole path exists to make unwritable; reporting the
     // pair and letting a human notice is exactly how the deferred bucket survived.
+    // WITHHELD ROWS DO NOT APPEAR IN THIS SUM, and that is a consequence of where the withhold
+    // happens rather than an exemption carved into it. A cost-debt row is declined at claim
+    // BUILD time, alongside the long-home and live-tree declines, so it never becomes a planned
+    // claim and this partition never sees it. The site-level partition upstream
+    // (`SitePartitionInexact`) is what accounts for it.
+    //
+    // A FIRST CUT OF THIS CHANGE WITHHELD INSIDE THE EXECUTION LOOP INSTEAD, and it would have
+    // red the floor on this very check -- 320 planned claims that never executed and never
+    // published as not-attempted. Recorded because the lesson generalises past this diff: a
+    // `continue` at the top of a fold is exactly the shape that leaves a partition behind, and
+    // the three partition checks in this file are the only thing that says so. A code review
+    // approved the loop-skip form; the partition would have refused it on the first run.
     if outcome.claims_planned != outcome.claims_executed + outcome.not_attempted_after_abort
         || outcome.claims_executed != outcome.receipt_identities
     {
@@ -48724,7 +49438,33 @@ pub fn run_required_floor(
         .filter(|row| row.verdict_reached && observed_cost_ms(row, cost_basis) > row.cost_line_ms)
         .collect();
     outcome.over_cost_line_diagnostic = over_cost_members.len();
-    for row in &over_cost_members {
+    // THE WARNING TIER, RESTORED AT 100ms BY OPERATOR RULING (2026-08-27) AND PRINTED RANKED.
+    //
+    // WHY THIS IS NOT THE WARN TIER DELETED ON 2026-08-20, because it will otherwise be deleted
+    // again by a reader who recognises the shape. That tier was a second threshold ON THE SAFETY
+    // DEADLINE -- an admission mechanism -- and "over a threshold, reported, allowed to finish"
+    // is the widen DESIGN section 5 forbids of a FAILURE ARM. This line is not a failure arm and
+    // sits nowhere near admission: `exceeds_completed_cost_line` judges only COMPLETED claims,
+    // nothing reads `over_cost_line_diagnostic` to fail a run, and a row named here has already
+    // been admitted and has already answered. The pairing the operator asked for is a warning at
+    // 100ms and a hard error at 500ms, and those are two different mechanisms rather than two
+    // tiers of one: the hard error is `required_floor_claim_cpu_safety_limit_ms`, which refuses.
+    //
+    // RANKED AND BOUNDED, WITH THE REMAINDER STATED. At a 100ms line the population is ~924 rows
+    // on the measured corpus, and this file already carries the receipt for what that does to a
+    // log -- the prior 5000ms/10000ms pair "fired on the MEDIAN witness (several hundred
+    // `[floor-witness-slow]` lines)", and a signal at that volume is read by nobody. So the print
+    // is the 25 most expensive rows, which is the actionable head of a distribution whose median
+    // is ~1ms.
+    //
+    // THE CAP IS NOT SILENT (DESIGN section 5, no silent caps): the dropped count is printed and
+    // the FULL population is in the per-claim cost TSV, which is written unconditionally a few
+    // lines below and uploaded as a run artifact. A reader who needs row 26 has it; a reader
+    // skimming the log gets the head instead of 835 lines that hide every other diagnostic.
+    let mut ranked: Vec<&WitnessExecutionOccurrence> = over_cost_members.clone();
+    ranked.sort_by_key(|row| std::cmp::Reverse(observed_cost_ms(row, cost_basis)));
+    const OVER_COST_PRINT_LIMIT: usize = 25;
+    for row in ranked.iter().take(OVER_COST_PRINT_LIMIT) {
         eprintln!(
             "[over-cost] {} wall_ms={} cpu_ms={} line_ms={} outcome={}",
             row.identity,
@@ -48732,6 +49472,19 @@ pub fn run_required_floor(
             row.cpu_nanos / 1_000_000,
             row.cost_line_ms,
             row.outcome
+        );
+    }
+    if ranked.len() > OVER_COST_PRINT_LIMIT {
+        eprintln!(
+            "[over-cost] ... and {} further row(s) over the {}ms line, not printed. The complete \
+             population is in the per-claim cost TSV uploaded by this run; this list is the {} \
+             most expensive, ranked on the declared cost basis.",
+            ranked.len() - OVER_COST_PRINT_LIMIT,
+            over_cost_members
+                .first()
+                .map(|row| row.cost_line_ms)
+                .unwrap_or(0),
+            OVER_COST_PRINT_LIMIT
         );
     }
     if let Some(path) = claim_cost_path {
@@ -48826,6 +49579,7 @@ fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
         RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
+        RequiredFloorDisposition::DeclinedCostDebt => "declined_cost_debt",
     }
 }
 
@@ -48833,7 +49587,7 @@ fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposit
     match disposition {
         RequiredFloorDisposition::DeclinedLongModule { matched_prefix }
         | RequiredFloorDisposition::DeclinedFixtureMember { matched_prefix } => matched_prefix,
-        RequiredFloorDisposition::Planned => "",
+        RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedCostDebt => "",
     }
 }
 
@@ -48910,20 +49664,24 @@ fn write_required_floor_disposition_tsv(
     let mut planned = 0usize;
     let mut declined_long = 0usize;
     let mut declined_fixture = 0usize;
+    let mut declined_cost_debt = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
+            RequiredFloorDisposition::DeclinedCostDebt => declined_cost_debt += 1,
         }
     }
     writeln!(
         file,
-        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}",
+        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
+         \tdeclined_cost_debt={}",
         rows.len(),
         planned,
         declined_long,
-        declined_fixture
+        declined_fixture,
+        declined_cost_debt
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix")

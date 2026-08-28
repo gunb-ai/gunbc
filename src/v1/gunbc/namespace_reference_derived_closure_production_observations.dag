@@ -19,9 +19,16 @@ import std.reference_binding_observation {
   LaterDeclarationProductionRefused,
   DistinctHomonymObservation,
   DistinctHomonymProductionRefused,
+  StructuralObservationSubjectModule,
+  SubjectModuleProduced,
+  SubjectModuleProductionRefused,
   structural_binding_resolution_from_candidates,
 }
-import std.types { List, String }
+import gunbc.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureAdmission,
+  assess_reference_binding_observation,
+}
+import std.types { List, String, NonEmptyStr }
 import v1.gunbc.occurrence_binding_parser_walk {
   ParsedOccurrenceBindingSourceReady,
   ParsedOccurrenceBindingSourceRefused,
@@ -32,14 +39,15 @@ import v1.gunbc.occurrence_binding_parser_walk {
   references_named,
 }
 
-data namespace_reference_derived_closure_production_observations_note: String = "N3-A production observers for namespace-reference-derived-closure clauses (a-d). Returns neutral std.reference_binding_observation.ReferenceBindingObservation carriers only — no roadmap capability vocabulary and no assessment at this seam. namespace_structural_binding_observations_a_through_d is the sole export; capability projection lives in dag witnesses."
+data namespace_reference_derived_closure_production_observations_note: String = "N3-A production observers for namespace-reference-derived-closure clauses (a-d), and the closing production for roadmap node namespace-structural-observations. Every observer takes ONE parsed subject: the four clauses are read out of a single ordinary compiled file, never out of four sources shaped one per clause. Observation production returns neutral std.reference_binding_observation carriers; the capability judgement is delegated, unchanged, to the one assessment authority (gunbc.namespace_reference_derived_closure_admission), and the module path each admission carries is the one THE PARSE DECLARED."
 
-data namespace_reference_derived_closure_production_fixture_note: String = "Four independent hand-built fixtures — one per structural clause — exercised as discriminating evidence in src/v1/tests/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag. They do NOT satisfy the namespace-structural-observations closing contract, which waits for ONE ORDINARY COMPILED FILE producing all four observations; each case shown failing on its own is the per-clause red-control requirement, not a licence for four separate fixture strings. Same-file neighbour and source-order/ambiguity fixtures mirror occurrence_binding_parser_walk_witness_test shapes; sibling decision-branch uses if/else let arms (parse_block nesting) because match-arm bodies remain siblings of pattern binders in v1.parse containment."
+data namespace_reference_derived_closure_production_one_subject_note: String = "THE FOUR HARD-CODED FIXTURE SOURCES ARE DELETED, and the deletion is the point rather than tidying. They were four independent strings, one per clause, and their own note recorded that they did NOT satisfy the namespace-structural-observations closing contract because that row asks for ONE ORDINARY COMPILED FILE. Keeping them beside a subject-parameterized producer would have left two ways to answer one question, and the easier one would have been the one that cannot close the row. The per-clause red control the deleted note describes is preserved and strengthened: a caller mutates the ONE subject so that exactly one rule breaks, and the assessment refuses exactly that capability. The subject and its probe spellings are supplied by the caller (gunbc.namespace_structural_observations_contract), so this module knows no fixture text."
 
 type NrdfcParsed
   = NrdfcParsedReady {
       transport: OccurrenceTransport,
       inputs: OccurrenceBindingCandidateInputs,
+      module_path: NonEmptyStr,
     }
   | NrdfcParsedRefused
 
@@ -54,43 +62,28 @@ fn nrdfc_parse(file: String, source: String) -> NrdfcParsed {
           transport: transport,
           grounding: ModuleLocalMemberExposure,
         ),
+        module_path: module_path,
       }
   }
 }
 
-fn nrdfc_same_file_neighbour_source() -> String {
-  "module gunbc.closure_fixture.same_file_neighbour\n\nfn fn_a() -> Int {\n  10\n}\n\nfn fn_b() -> Int {\n  fn_a()\n}\n"
-}
-
-fn nrdfc_sibling_branch_source() -> String {
-  "module gunbc.closure_fixture.sibling_branch\n\nfn demo(b: Bool) -> Int {\n  if b {\n    let x = 1\n    x\n  } else {\n    let x = 2\n    x\n  }\n}\n"
-}
-
-fn nrdfc_later_declaration_source() -> String {
-  "module gunbc.closure_fixture.later_declaration\n\nfn demo() -> Int {\n  fn_later()\n}\n\nfn fn_later() -> Int {\n  0\n}\n"
-}
-
-fn nrdfc_distinct_homonym_source() -> String {
-  "module gunbc.closure_fixture.distinct_homonym\n\nfn helper() -> Int {\n  0\n}\n\nfn helper() -> Int {\n  1\n}\n\nfn demo() -> Int {\n  helper()\n}\n"
-}
-
-fn same_file_neighbour_observation() -> ReferenceBindingObservation {
-  match nrdfc_parse(
-    file: "gunbc/closure_fixture/same_file_neighbour.dag",
-    source: nrdfc_same_file_neighbour_source(),
-  ) {
+fn same_file_neighbour_observation(
+  parsed: NrdfcParsed,
+  neighbour_name: String
+) -> ReferenceBindingObservation {
+  match parsed {
     NrdfcParsedRefused =>
       SameFileNeighbourProductionRefused {
         gap: ReferenceBindingParserTransportRefused,
       }
-    NrdfcParsedReady { transport: transport, inputs: inputs } =>
-      match reference_named(transport: transport, name: "fn_a") {
+    NrdfcParsedReady { transport: transport, inputs: inputs, module_path: _ } =>
+      match reference_named(transport: transport, name: neighbour_name) {
         Absent =>
           SameFileNeighbourProductionRefused {
             gap: ReferenceBindingNamedReferenceAbsent,
           }
         Present { value: reference } =>
-          match declarations_named(transport: transport, name: "fn_a") |> first {
+          match declarations_named(transport: transport, name: neighbour_name) |> first {
             Absent =>
               SameFileNeighbourProductionRefused {
                 gap: ReferenceBindingNamedDeclarationAbsent,
@@ -109,43 +102,43 @@ fn same_file_neighbour_observation() -> ReferenceBindingObservation {
   }
 }
 
-fn sibling_branch_observation() -> ReferenceBindingObservation {
-  match nrdfc_parse(
-    file: "gunbc/closure_fixture/sibling_branch.dag",
-    source: nrdfc_sibling_branch_source(),
-  ) {
+fn sibling_branch_observation(
+  parsed: NrdfcParsed,
+  branch_binder_name: String
+) -> ReferenceBindingObservation {
+  match parsed {
     NrdfcParsedRefused =>
       SiblingBranchProductionRefused {
         gap: ReferenceBindingParserTransportRefused,
       }
-    NrdfcParsedReady { transport: transport, inputs: inputs } =>
-      let x_declarations = declarations_named(transport: transport, name: "x")
-      let x_references = references_named(transport: transport, name: "x")
-      match x_declarations |> first {
+    NrdfcParsedReady { transport: transport, inputs: inputs, module_path: _ } =>
+      let branch_declarations = declarations_named(transport: transport, name: branch_binder_name)
+      let branch_references = references_named(transport: transport, name: branch_binder_name)
+      match branch_declarations |> first {
         Absent =>
           SiblingBranchProductionRefused {
             gap: ReferenceBindingNamedDeclarationAbsent,
           }
-        Present { value: then_branch_x } =>
-          match x_declarations |> reverse |> first {
+        Present { value: then_branch_binder } =>
+          match branch_declarations |> reverse |> first {
             Absent =>
               SiblingBranchProductionRefused {
                 gap: ReferenceBindingNamedDeclarationAbsent,
               }
-            Present { value: else_branch_x } =>
-              match x_references |> reverse |> first {
+            Present { value: else_branch_binder } =>
+              match branch_references |> reverse |> first {
                 Absent =>
                   SiblingBranchObservation {
-                    own_branch_declaration: else_branch_x.occurrence,
-                    sibling_branch_declaration: then_branch_x.occurrence,
+                    own_branch_declaration: else_branch_binder.occurrence,
+                    sibling_branch_declaration: then_branch_binder.occurrence,
                     resolution: StructuralBindingProductionRefused {
                       gap: ReferenceBindingNamedReferenceAbsent,
                     },
                   }
                 Present { value: else_branch_ref } =>
                   SiblingBranchObservation {
-                    own_branch_declaration: else_branch_x.occurrence,
-                    sibling_branch_declaration: then_branch_x.occurrence,
+                    own_branch_declaration: else_branch_binder.occurrence,
+                    sibling_branch_declaration: then_branch_binder.occurrence,
                     resolution: structural_binding_resolution_from_candidates(
                       transport: transport,
                       inputs: inputs,
@@ -158,23 +151,23 @@ fn sibling_branch_observation() -> ReferenceBindingObservation {
   }
 }
 
-fn later_declaration_observation() -> ReferenceBindingObservation {
-  match nrdfc_parse(
-    file: "gunbc/closure_fixture/later_declaration.dag",
-    source: nrdfc_later_declaration_source(),
-  ) {
+fn later_declaration_observation(
+  parsed: NrdfcParsed,
+  later_name: String
+) -> ReferenceBindingObservation {
+  match parsed {
     NrdfcParsedRefused =>
       LaterDeclarationProductionRefused {
         gap: ReferenceBindingParserTransportRefused,
       }
-    NrdfcParsedReady { transport: transport, inputs: inputs } =>
-      match reference_named(transport: transport, name: "fn_later") {
+    NrdfcParsedReady { transport: transport, inputs: inputs, module_path: _ } =>
+      match reference_named(transport: transport, name: later_name) {
         Absent =>
           LaterDeclarationProductionRefused {
             gap: ReferenceBindingNamedReferenceAbsent,
           }
         Present { value: reference } =>
-          match declarations_named(transport: transport, name: "fn_later") |> first {
+          match declarations_named(transport: transport, name: later_name) |> first {
             Absent =>
               LaterDeclarationProductionRefused {
                 gap: ReferenceBindingNamedDeclarationAbsent,
@@ -193,38 +186,38 @@ fn later_declaration_observation() -> ReferenceBindingObservation {
   }
 }
 
-fn distinct_homonym_observation() -> ReferenceBindingObservation {
-  match nrdfc_parse(
-    file: "gunbc/closure_fixture/distinct_homonym.dag",
-    source: nrdfc_distinct_homonym_source(),
-  ) {
+fn distinct_homonym_observation(
+  parsed: NrdfcParsed,
+  homonym_name: String
+) -> ReferenceBindingObservation {
+  match parsed {
     NrdfcParsedRefused =>
       DistinctHomonymProductionRefused {
         gap: ReferenceBindingParserTransportRefused,
       }
-    NrdfcParsedReady { transport: transport, inputs: inputs } =>
-      match reference_named(transport: transport, name: "helper") {
+    NrdfcParsedReady { transport: transport, inputs: inputs, module_path: _ } =>
+      match references_named(transport: transport, name: homonym_name) |> reverse |> first {
         Absent =>
           DistinctHomonymProductionRefused {
             gap: ReferenceBindingNamedReferenceAbsent,
           }
         Present { value: reference } =>
-          let helpers = declarations_named(transport: transport, name: "helper")
-          match helpers |> first {
+          let homonyms = declarations_named(transport: transport, name: homonym_name)
+          match homonyms |> first {
             Absent =>
               DistinctHomonymProductionRefused {
                 gap: ReferenceBindingNamedDeclarationAbsent,
               }
-            Present { value: first_helper } =>
-              match helpers |> reverse |> first {
+            Present { value: first_homonym } =>
+              match homonyms |> reverse |> first {
                 Absent =>
                   DistinctHomonymProductionRefused {
                     gap: ReferenceBindingNamedDeclarationAbsent,
                   }
-                Present { value: second_helper } =>
+                Present { value: second_homonym } =>
                   DistinctHomonymObservation {
-                    first_declaration: first_helper.occurrence,
-                    second_declaration: second_helper.occurrence,
+                    first_declaration: first_homonym.occurrence,
+                    second_declaration: second_homonym.occurrence,
                     resolution: structural_binding_resolution_from_candidates(
                       transport: transport,
                       inputs: inputs,
@@ -237,11 +230,73 @@ fn distinct_homonym_observation() -> ReferenceBindingObservation {
   }
 }
 
-fn namespace_structural_binding_observations_a_through_d() -> List<ReferenceBindingObservation> {
+fn namespace_structural_binding_observations_from_parsed(
+  parsed: NrdfcParsed,
+  neighbour_name: String,
+  branch_binder_name: String,
+  later_name: String,
+  homonym_name: String
+) -> List<ReferenceBindingObservation> {
   [
-    same_file_neighbour_observation(),
-    sibling_branch_observation(),
-    later_declaration_observation(),
-    distinct_homonym_observation(),
+    same_file_neighbour_observation(parsed: parsed, neighbour_name: neighbour_name),
+    sibling_branch_observation(parsed: parsed, branch_binder_name: branch_binder_name),
+    later_declaration_observation(parsed: parsed, later_name: later_name),
+    distinct_homonym_observation(parsed: parsed, homonym_name: homonym_name),
   ]
+}
+
+fn namespace_structural_binding_observations_a_through_d(
+  file: String,
+  source: String,
+  neighbour_name: String,
+  branch_binder_name: String,
+  later_name: String,
+  homonym_name: String
+) -> List<ReferenceBindingObservation> {
+  namespace_structural_binding_observations_from_parsed(
+    parsed: nrdfc_parse(file: file, source: source),
+    neighbour_name: neighbour_name,
+    branch_binder_name: branch_binder_name,
+    later_name: later_name,
+    homonym_name: homonym_name,
+  )
+}
+
+data namespace_structural_observation_admission_module_note: String = "THE COMPILED MODULE AND THE ADMISSIONS ARE TWO EXPORTS OF ONE SUBJECT, and the split is forced rather than chosen. A single export pairing them needs a record whose field is a ReferenceDerivedClosureAdmission, and that coproduct carries a sole_constructor receipt, which the v1 emitter renders Serialize-only with a private field -- so any record embedding it fails to derive serde::Deserialize and the seed does not compile. Measured, not predicted: E0277 on the emitted OrdinaryCompileStructuralAdmission, E0616 on the receipt's field. Both exports are pure functions of (file, source), so a caller passing one pair of strings to both cannot pair a module path with admissions from a different subject; the join is mechanical, never a decision. The module path itself is READ OUT OF THE PARSE (ParsedOccurrenceBindingSourceReady.module_path), never echoed from the caller's file argument -- which is what makes the closing check's single-subject clause falsifiable, since a source declaring a different module reports that module and a source that does not parse reports no module at all."
+
+fn nrdfc_compiled_module(parsed: NrdfcParsed) -> StructuralObservationSubjectModule {
+  match parsed {
+    NrdfcParsedRefused =>
+      SubjectModuleProductionRefused {
+        gap: ReferenceBindingParserTransportRefused,
+      }
+    NrdfcParsedReady { transport: _, inputs: _, module_path: module_path } =>
+      SubjectModuleProduced { module_path: module_path as String }
+  }
+}
+
+fn namespace_structural_observation_compiled_module(
+  file: String,
+  source: String
+) -> StructuralObservationSubjectModule {
+  nrdfc_compiled_module(parsed: nrdfc_parse(file: file, source: source))
+}
+
+fn namespace_structural_observation_admissions(
+  file: String,
+  source: String,
+  neighbour_name: String,
+  branch_binder_name: String,
+  later_name: String,
+  homonym_name: String
+) -> List<ReferenceDerivedClosureAdmission> {
+  namespace_structural_binding_observations_a_through_d(
+    file: file,
+    source: source,
+    neighbour_name: neighbour_name,
+    branch_binder_name: branch_binder_name,
+    later_name: later_name,
+    homonym_name: homonym_name,
+  )
+    |> map(observation => assess_reference_binding_observation(observation: observation))
 }

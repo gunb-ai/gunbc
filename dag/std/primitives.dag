@@ -602,6 +602,7 @@ fn builtin_registry_surface_names() -> List<String> {
     "doc_graph_dangling_link_count",
     "doc_graph_doc_count",
     "compile_dag_rust_emit_check",
+    "namespace_structural_observation_admissions",
     "witness_layer_roots_compile_clean_check",
     "witness_layer_roots_compile_clean_emit_check",
     "install_or_consume_floor_compile_clean_gate_receipt",

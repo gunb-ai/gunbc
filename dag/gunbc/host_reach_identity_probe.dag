@@ -11,7 +11,6 @@ import gunbc.typed_argv_exec {
 }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_reach_endpoint {
-  fleet_probe_endpoint_for,
   fleet_reach_probe_targets,
   fleet_probe_target_for,
   fleet_probe_ready_ssh_target,
