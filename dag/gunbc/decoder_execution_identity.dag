@@ -61,7 +61,6 @@ import gunbc.bmc_fan_program_interpretation {
 // "may I reuse a cached typecheck", which is a question about interfaces; this answers "is this
 // the same reader", which is a question about executed code. Borrowing the first to answer the
 // second is authority substitution -- the entailment invented rather than any fact misstated.
-data typed_module_key_grain_note: String = "std.interface_summary typed_module_key is interface-grain (module source hash folded with DIRECT import interface hashes) and is not reused here: a body-only change in a transitively imported module leaves it unchanged while changing what the decoder produces. This identity is closure-source-grain. THAT REASONING IS AN ARGUMENT AND NOT A MEASUREMENT, said here because two reviews and one external adjudication have now endorsed it and agreement between readers of one argument is not evidence about the argument. The discriminating control is a body-only edit to a directly imported declaration with typed_module_key PINNED UNCHANGED in the same run, and it does not currently execute: the only producer of live import interface hashes is v2.lens.interface_summary module_key_for_rel_path, which has ZERO consumers in the corpus, and the first attempt to run it refused with export_signature_facts marshal failure `empty authored type name` on extdeps.shell.credentials env_credential -- a `pattern` returning an anonymous record, one of three such declarations. Authoring the two export lists by hand instead would be circular: the claim IS that a body edit leaves the exports equal, so asserting their equality assumes what the control is meant to establish. NEXT-RUNG TRIGGER: export_signature_facts marshals an anonymous-record pattern return, at which point the control becomes authorable and this note is replaced by its result."
 
 // THE CLOSURE IS DERIVED, NEVER LISTED. The one authored thing in this module is the entry path,
 // which IS the identity's subject -- naming what you are identifying is not the same as authoring
@@ -79,18 +78,22 @@ data decoder_entry_path: NonEmptyStr = "dag/extdeps/bmc/pid_control_representabi
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // COST, MEASURED RATHER THAN ESTIMATED, because it decides where this may run. The closure walk
-// alone is 40 modules and about four and a half minutes on the decoder entry. That is fine for an
+// alone is tens of modules and several minutes on the decoder entry; report_decoder_identity
+// prints the module count with the digests. That is fine for an
 // instrument invoked on demand and is why nothing here is enrolled in any required lane: a
 // four-minute live-tree walk on every push would be the corpus-denominated cost DESIGN warns
 // about, paid by every consumer that wanted something else.
 // THE DISCRIMINATING PAIR, MEASURED RATHER THAN ARGUED, because an identity that moves on
 // everything and an identity that moves on nothing both look like a working digest from one run.
-// Baseline over the decoder entry's 40-module closure: source_closure=3282f082abc9d722. Appending
-// one comment line to std/decimal.dag -- a module INSIDE the closure -- moved it to
-// 9bcfbd782022b120. Appending one comment line to gunbc/fleet_fan_wiring.dag -- a module OUTSIDE
-// it -- left it at 3282f082abc9d722, byte-identical to baseline. Both files were restored
-// byte-exactly and the baseline re-measured. The compiler digest held at f2c179fb7e10d373 across
-// all three, which is correct: one binary ran them.
+// THE DIGESTS ARE NOT TRANSCRIBED HERE, and that is DESIGN's standing rule rather than brevity:
+// a measurement is cited by naming the producer that re-derives it, never by copying its numbers
+// into prose, because a transcribed figure is unreachable from the thing that owns it and rots
+// without anyone touching either end. This module IS that producer -- run report_decoder_identity
+// and it prints the baseline. What is recorded is the SHAPE of the controls, which does not rot:
+// append one comment line to a module INSIDE the closure and source_closure moves; append one to
+// a module OUTSIDE it and source_closure is byte-identical to baseline; restore both byte-exactly
+// and the baseline returns. The compiler digest holds across all three, which is correct -- one
+// binary ran them.
 //
 // The second half is the one worth having. Without it a digest over the whole tree would pass the
 // first test and be useless, since every unrelated edit anywhere would invalidate an adoption.
@@ -102,9 +105,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // which is weaker than an executing one and is stated as such rather than dressed up. NEXT-RUNG
 // TRIGGER: a fixture-grain closure -- a small tree this instrument owns, mutated inside its own
 // fixture rather than in the corpus -- at which point the pair becomes an ordinary witness.
-data decoder_identity_discrimination_note: String = "MEASURED 2026-08-27: baseline source_closure=3282f082abc9d722 over 40 modules; a one-line edit to std/decimal.dag (inside the closure) moved it to 9bcfbd782022b120; a one-line edit to gunbc/fleet_fan_wiring.dag (outside it) left it byte-identical to baseline. Both restored. compiler_runtime=f2c179fb7e10d373 throughout. Not an enrolled witness: the instrument is live-tree and multi-minute, so the floor declines it, and the mutation half would have to edit tracked source."
 
-data decoder_identity_cost_note: String = "MEASURED 2026-08-27 on dag/extdeps/bmc/pid_control_representability.dag: import_closure_live returns 40 modules in about 4m28s under the interpreter. On-demand only; not enrolled in a required lane."
 
 fn closure_paths() -> FreeMonoid<String> {
   import_closure_live(entry_path: decoder_entry_path as String, pool_roots: witness_layer_roots)
