@@ -292,8 +292,8 @@ test fn a_clean_transition_converges() -> Bool {
   let after = state_of(
     refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
-    head: GitTextObserved { text: new_sha },
-    reflog: GitTextObserved { text: reflog_after(oid: new_sha) },
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
     untracked: clean_tree(),
   )
   is_completed(o: verdict_for(after: after)) && repository_convergence_converged(outcome: verdict_for(after: after))
@@ -306,8 +306,8 @@ test fn a_dispatch_ref_that_vanished_refuses() -> Bool {
   let after = state_of(
     refs: refs_wire(records: [heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
     worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
-    head: GitTextObserved { text: new_sha },
-    reflog: GitTextObserved { text: reflog_after(oid: new_sha) },
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
     untracked: clean_tree(),
   )
   match verdict_for(after: after) {
