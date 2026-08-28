@@ -44,6 +44,7 @@ import gunbc.roadmap_execution_contract {
   GunbcClaimValidation,
   CargoTestValidation,
   CargoFmtValidation,
+  ClosingContractAuthoringValidation,
 }
 import gunbc.roadmap_validation_oracle {
   ValidationVerdict,
@@ -939,6 +940,11 @@ fn verification_validation_operation_json(
       json_object(members: [
         json_kv(key: "kind", value: json_string(s: "cargo-fmt")),
       ])
+    ClosingContractAuthoringValidation { target } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "closing-contract-authoring")),
+        json_kv(key: "target", value: json_string(s: target as String)),
+      ])
   }
 }
 
@@ -1118,6 +1124,16 @@ fn verification_validation_operation_decode(
         }
       } else if kind == "cargo-fmt" {
         Present { value: CargoFmtValidation }
+      } else if kind == "closing-contract-authoring" {
+        match verification_receipt_string_member(doc: doc, key: "target") {
+          VerificationReceiptMemberUnreadable { reason: _ } => none
+          VerificationReceiptMemberRead { value: target } =>
+            Present {
+              value: ClosingContractAuthoringValidation {
+                target: target as NonEmptyStr,
+              },
+            }
+        }
       } else {
         none
       }
