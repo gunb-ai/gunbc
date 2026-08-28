@@ -10,17 +10,33 @@ module test.claim.gcp_oauth_access_token_witness
 //
 // AND IT CANNOT BE FIXED BY DECLARING ONE, which is the part worth recording rather than the
 // three above. The obvious repair -- convert to `test fn`, declare `SubstrateInputsOnly`, rename
-// to `_test.dag` -- would declare something false. Both roll-ups reach
-// `gcp_oauth_access_token_via_gcloud`, whose body is `shell.GCloud.AuthPrintAccessToken()`, a host
-// effect; the ADC leaves declare `uses net: std.resources.Network`. Neither is substrate-only.
-// Run directly, the gcloud leaf answers `Unimplemented { what: "unknown service operation:
-// shell.GCloud.AuthPrintAccessToken" }` -- the call exists and nothing is behind it. Enrolled under
-// a false disposition it would be refused at the hermetic boundary, counted `executed`, and assert
-// nothing, while a `_test.dag` name made `BarrenTestSidecar` vouch for it: a silently inert witness
-// converted into a loudly enrolled one. That is strictly worse than this comment.
+// to `_test.dag` -- would declare something false, and the measurement says so more sharply than
+// a code read does. Both roll-ups reach `gcp_oauth_access_token_via_gcloud`, whose body is
+// `shell.GCloud.AuthPrintAccessToken()`; the ADC leaves declare `uses net: std.resources.Network`.
+// Executed with this file's import edge in place, they do not fail to resolve -- they DISPATCH:
+// the run logs `started shell.GCloud.AuthPrintAccessToken` and then
+// `TypeError { msg: "failed to execute 'gcloud': No such file or directory (os error 2)" }`, and
+// the swapped roll-up first performs two real reads of
+// `~/.config/gcloud/application_default_credentials.json`. So these entries execute host effects --
+// a process exec and a file read -- and fail only because that host lacks the binary.
 //
-// WHAT WOULD ACTUALLY MAKE IT EXECUTE is modeling the gcloud service operation, or restructuring
-// the assertions onto a subject that carries no host effect. Neither is done here.
+// AN EARLIER REVISION OF THIS COMMENT SAID THE OPPOSITE, and the way it was wrong is worth more
+// than the correction. It reported `Unimplemented { what: "unknown service operation:
+// shell.GCloud.AuthPrintAccessToken" }` and concluded "nothing is behind it". That measurement was
+// real but taken on a tree WITHOUT the import edge below, where the operation could not resolve.
+// Carried across that boundary it described a module this file no longer is. The conclusion it was
+// offered for happens to survive -- `SubstrateInputsOnly` is false either way -- which is exactly
+// what let a stale receipt sit under a correct claim unnoticed.
+//
+// Enrolled under a false disposition these would be refused at the hermetic boundary, counted
+// `executed`, and assert nothing, while a `_test.dag` name made `BarrenTestSidecar` vouch for it:
+// a silently inert witness converted into a loudly enrolled one. That is strictly worse than this
+// comment.
+//
+// WHAT WOULD ACTUALLY MAKE IT ASSERT SOMETHING is restructuring onto a subject that carries no
+// host effect, or providing the host binary under a disposition that admits one. Modeling the
+// service operation is NOT the missing piece -- it is already modeled and already dispatches.
+// Neither is done here.
 //
 // WHY THE IMPORT EDGE IS STILL RIGHT: the edge is a fact about REFERENCE, not about execution.
 // This module names `gcp_oauth_access_token` and both leaf patterns and resolved them through the
