@@ -1614,7 +1614,7 @@ fn nullary_coproduct_variant_value(
 
 // DESIGN section 7 seed-retained repair. This bridge retires with
 // `coproduct_reflection` under ROADMAP "Drain the hand-maintained v1 product
-// queue" (`dag/gunbc/v1_deletion_plan.dag` milestone `^hand_queue_drain`).
+// queue" (`dag/gunbc/v1/v1_deletion_plan.dag` milestone `^hand_queue_drain`).
 // Checkable receipt: the imported-named-coproduct generic-wrapper witness must
 // resolve, while the wrong-A/context-B and payload-bearing controls must refuse.
 struct TypedNullaryCoproductWitness {

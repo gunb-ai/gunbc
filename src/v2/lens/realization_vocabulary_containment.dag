@@ -69,7 +69,7 @@ type RealizationVocabGrandfatheredEdgeRow {
 data realization_vocab_grandfathered_edge_roster: List<RealizationVocabGrandfatheredEdgeRow> = [
   RealizationVocabGrandfatheredEdgeRow {
     edge: RealizationVocabImportEdge {
-      importer_path: "dag/gunbc/roadmap_component.dag",
+      importer_path: "dag/gunbc/roadmap/roadmap_component.dag",
       vocab_module: "extdeps.languages.typescript.program"
     },
     debt_class: ProductLayerTargetAstDebt,

@@ -66,7 +66,7 @@ type RouteSelection<H>
 
 ## 2. Handlers: the gunbc instantiation
 
-New `dag/gunbc/roadmap_serve.dag`, `H = RoadmapServeHandler`:
+New `dag/gunbc/roadmap/roadmap_serve.dag`, `H = RoadmapServeHandler`:
 
 ```
 type RoadmapServeHandler
@@ -108,7 +108,7 @@ New subcommand in the seed (`main.rs` dispatch + `cli_run::handle_serve`; both f
 
 ```
 gunbc serve --source-root dag --source-root src/v2 \
-  --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle \
+  --entry dag/gunbc/roadmap/roadmap_serve.dag --function roadmap_serve_handle \
   --host 127.0.0.1 --port 8080
 ```
 
@@ -130,7 +130,7 @@ The launch button + minimal client script land in `gunbc.roadmap_page` in **belt
 
 `gunbc.live_deploy.spec` today: members = {tailscale pkg, nodejs pkg (Ensured), server.js, systemd unit, tailscale-serve (Owned)}. B's desired membership:
 
-- **New single authority `dag/gunbc/host_layout.dag`** (`gunbc.host_layout`): `srv1_gunbc_repo_root = /opt/gunbc/gunbc`, `srv1_gunbc_serve_binary = /opt/gunbc/bin/gunbc`, `srv1_dispatch_worktree_root = /opt/gunbc/dispatch-worktrees`. `roadmap_belt_actuate.belt_actuate_workdir` AND `roadmap_dispatch_actuator.dispatch_worktree_root` re-ground as projections of these rows (deleting their private copies — the belt spawn root and the serve tree are **the same fact**, which is precisely why dispatch works in-process: the serving tree is the repo the belt worktrees from). The deploy spec and the systemd unit consume the same rows. Lane agreement (parent 2026-07-20): A provisions srv1 **manually to these exact paths** for the interim (no env-var fork, no .dag path change on A's side), so the baked defaults work today; B's PR formalizes that same provisioning through the deploy membership — after B's apply, the paths exist *because the deploy's own membership says so*, and the interim hand-provisioning retires.
+- **New single authority `dag/gunbc/host/host_layout.dag`** (`gunbc.host_layout`): `srv1_gunbc_repo_root = /opt/gunbc/gunbc`, `srv1_gunbc_serve_binary = /opt/gunbc/bin/gunbc`, `srv1_dispatch_worktree_root = /opt/gunbc/dispatch-worktrees`. `roadmap_belt_actuate.belt_actuate_workdir` AND `roadmap_dispatch_actuator.dispatch_worktree_root` re-ground as projections of these rows (deleting their private copies — the belt spawn root and the serve tree are **the same fact**, which is precisely why dispatch works in-process: the serving tree is the repo the belt worktrees from). The deploy spec and the systemd unit consume the same rows. Lane agreement (parent 2026-07-20): A provisions srv1 **manually to these exact paths** for the interim (no env-var fork, no .dag path change on A's side), so the baked defaults work today; B's PR formalizes that same provisioning through the deploy membership — after B's apply, the paths exist *because the deploy's own membership says so*, and the interim hand-provisioning retires.
 - **Members:** `ServeBinary` (Owned, path `srv1_gunbc_serve_binary`; upsert = `sudo install -m 0755` of the deploy job's built seed binary — the deploy job already builds the seed to run `gunbc run --function live_deploy_apply_srv1_wet`, so the artifact is present by construction), `GunbcSourceTree` (Owned, path `srv1_gunbc_repo_root`; upsert = rsync of the runner checkout **including `.git`** — the belt's `git worktree add` requires a real repo), `DispatchWorktreeRoot` (Owned, path `srv1_dispatch_worktree_root`; upsert = `install -d` — the belt's worktree target must exist before the first spawn), `SystemdUnit` (ExecStart flips to `gunbc serve …` per §3, `WorkingDirectory` = repo root), `TailscaleServeMapping` (unchanged), `TmuxPackage` (Ensured — the belt's observe/spawn substrate; today present by hand). `NodeJsPackage` and `ServerScript` leave the desired set — under the membership poles that is exactly a `Removed → Teardown` for the Owned server.js and **no teardown** for the Ensured nodejs (R5: Ensured is never torn down — the wall already in the spine). The `claude` CLI is deliberately NOT a member this PR (hand-present on srv1; a follow-up models its provisioning honestly rather than smuggling a curl|bash).
 - The apply/retract scripts + systemd unit goldens regenerate through the existing `emit.dag` pipeline (`orch_emit_pipeline` over the bash medium); the committed `.github/live-deploy-srv1-apply.sh`/`-retract.sh` drift gates stay the byte oracles. The `install_d_shared_setup_latent_coupling_note` marker fires by design: a second (and third) `/opt/gunbc` writer arrives, so the `install -d` moves to the shared-prefix form the note prescribes.
 - Readiness/digest read-back (`live_deploy.readiness`, `roadmap_static_site` digest): unchanged consumers — `/healthz` and the served-digest read-back now prove the **gunbc-served** process. The digest artifact remains content-addressed over the *body*, so the read-back is server-implementation-agnostic by construction (the receipt that proves A→B preserved the contract).
