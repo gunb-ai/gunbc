@@ -17,12 +17,19 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 //
 // WHY IT WAS ADDED. compile_dag_rust_emit_check was already memoized and this sibling was not,
 // so a witness asking two QUESTIONS about one source paid two full compiles of it --
-// test.claim.callable_candidate_ambiguity_witness
-// .neither_green_source_refuses_and_neither_mis_resolves makes four census calls over two
-// distinct sources. That is the DESIGN section 6 bare-minimum-cost class, and its n stopped
-// being small: the row reached 5437ms CPU against the 5000ms
+// test.claim.callable_candidate_ambiguity_witness formerly carried
+// .neither_green_source_refuses_and_neither_mis_resolves, four census calls over two distinct
+// sources. That is the DESIGN section 6 bare-minimum-cost class, and its n stopped being small:
+// the row reached 5437ms CPU against the 5000ms
 // required_floor_claim_cpu_safety_limit_ms, which is a FAIL-STOP protecting the executor. The
 // admissible repair is to stop recomputing, never to raise the line.
+//
+// POST-LANDING COST DISPOSITION (2026-08-28). The memo removed the duplicate call for each
+// source, but the combined row still paid two distinct first-touch compiles and reproduced the
+// refusal at 5653ms and 5195ms CPU on consecutive executions. The combined row is deleted and
+// its two assertions are folded into the already-existing per-source green controls. Each claim
+// now crosses one distinct source compile; no assertion, RED, or source fixture is removed, and
+// the 5000ms line does not move.
 //
 // WHY IT IS RUST AND NOT .dag, which is the question this receipt exists to answer honestly.
 // The cached SUBJECT is a host builtin: compile_dag_diagnostic_census runs
