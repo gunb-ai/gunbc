@@ -1,0 +1,529 @@
+module gunbc.cross_pr_contradiction
+
+import std.types { Bool, Int, String }
+
+// CROSS-PR IDENTITY CONTRADICTIONS: THE MODEL.
+//
+// THE CLASS. Two open pull requests can move the SAME roster identity in OPPOSITE directions --
+// one enrols it, another removes it -- and neither author can see it from their own diff. Each
+// branch is internally consistent, each passes its own required floor, and the contradiction
+// exists only in the merged tree, which no run observes until one of them lands. The floor already
+// carries the wall for a SINGLE tree: `required_floor_outcome_is_clean` gates on stale_quarantine
+// and on the expected-red reverse join, so an enrolled identity that passes, or a roster row naming
+// an identity that did not execute, reds the build. What no mechanism sees is the PAIR.
+//
+// THE MEASUREMENT THAT JUSTIFIES THE INSTRUMENT (swift-badger-524, by hand across 73 open PRs,
+// 2026-08-27): exactly one live contradiction --
+// `test.claim.duplicate_definition_binding_probe.duplicate_definition_in_one_module_is_refused`,
+// net-ADDED by #9569 and net-REMOVED by both #9589 and #9591, the removals because the row now
+// passes. If #9569 lands after either, it re-enrols a passing row and the floor reports a stale
+// quarantine. Merge-order-dependent, invisible from every diff involved.
+//
+// THE PREDICATE IS THE WHOLE POINT, AND IT LIVES HERE RATHER THAN IN THE EXTRACTION. A
+// contradiction is a relation between two PULL REQUESTS' NET DIRECTIONS on one key. It is NOT
+// "both directions appear on this key". The weaker test was run first and reported 8; seven of
+// those 8 were a SINGLE pull request showing both a `+` and a `-` for one key -- an edited or
+// moved line, which disagrees with nobody. At the correct grain there is one. So a detector
+// keying on `both directions present` is 87% wrong AND wrong in the ALARMING direction, which is
+// the one that costs other lanes their time. `NetBoth` is therefore a first-class direction that
+// participates in no contradiction, and it is REPORTED rather than dropped, because it is exactly
+// the evidence separating the 1 from the 8.
+//
+// IT REPORTS. Nothing here closes, edits, comments, or merges. The report is the deliverable.
+//
+// WHAT THIS IS NOT. It is not the duplication index: 45 of the 53 multi-PR keys that hand run
+// found were SAME-direction, and same-direction overlap disagrees with nobody. It is a
+// convenience, it is out of scope, and widening to it would bury the one row that matters in 45
+// that do not.
+//
+// THE RUNG IS `mitigatable` AND THE CEILING IS NAMED. This is an advisory reader over open pull
+// requests; it gates nothing and it cannot make the contradiction unwritable. The structural move
+// -- requiring every branch to be up to date with its base before merge, which makes the merged
+// tree the tree CI observed -- is a repository ruleset fact (`gunbc.repo_ruleset`), not an
+// instrument, and it costs every branch a rebase and a full floor run before landing. That
+// tradeoff is an operator decision and is deliberately not taken here. NEXT-RUNG TRIGGER: that
+// ruleset decision.
+
+// ---------------------------------------------------------------------------------------------
+// SCOPE, DECLARED IN THE OUTPUT RATHER THAN IN A FOOTNOTE.
+//
+// An overlap index computed over a FILTERED file subset is blind to everything outside the filter,
+// and the filter is exactly what an author reaches for when extraction gets awkward -- scope to
+// roster files because that is where the known finds are, and you have measured the finds rather
+// than the corpus. So the scope is a value that travels with every report and is rendered on its
+// own row. Narrowing it later means adding a variant here, which no reader can miss.
+type DiffFileScope
+  = | EveryFileInDiff
+
+fn diff_file_scope_text(scope: DiffFileScope) -> String {
+  match scope {
+    EveryFileInDiff => "every file in every diff (unfiltered)"
+  }
+}
+
+// THE EXTRACTION RULE IS ALSO DECLARED, and it is deliberately weaker than it looks. A key is a
+// dotted name of at least `minimum_segments` segments appearing inside a double-quoted string
+// literal on a changed line. Quoting is what separates an ENROLLED identity from a module name
+// mentioned in prose; it does not separate an enrolment from any other quoted qualified name, so
+// the key population is an UPPER BOUND with co-mention noise in it, and no count taken from it is
+// a corpus rate.
+type IdentityExtractionRule
+  = QuotedDottedName { minimum_segments: Int }
+
+fn identity_extraction_rule_text(rule: IdentityExtractionRule) -> String {
+  match rule {
+    QuotedDottedName { minimum_segments: n } =>
+      concat(
+        "double-quoted dotted name of at least ",
+        concat(to_string(n), " segments on a changed line")
+      )
+  }
+}
+
+data cross_pr_extraction_rule: IdentityExtractionRule = QuotedDottedName { minimum_segments: 3 }
+
+// ---------------------------------------------------------------------------------------------
+// READING ONE DIFF.
+
+// The `+++`/`---` file headers are matched BEFORE the one-character `+`/`-` arms, because both
+// header forms begin with a character this reader otherwise treats as a direction. Reversing the
+// order silently turns every file header into a changed line and every path into a candidate key.
+type DiffLineClass
+  = DiffFileHeader
+  | DiffAddedLine
+  | DiffRemovedLine
+  | DiffOtherLine
+
+fn diff_line_class(line: String) -> DiffLineClass {
+  if starts_with(s: line, prefix: "+++") || starts_with(s: line, prefix: "---") {
+    DiffFileHeader
+  } else {
+    if starts_with(s: line, prefix: "+") {
+      DiffAddedLine
+    } else {
+      if starts_with(s: line, prefix: "-") {
+        DiffRemovedLine
+      } else {
+        DiffOtherLine
+      }
+    }
+  }
+}
+
+type QuotedSegmentFold {
+  inside: Bool
+  found: List<String>
+}
+
+// `split` on the quote character alternates outside/inside, starting outside, so the segments at
+// odd positions are the quoted ones. The toggle carries that parity rather than an index, which is
+// why no `enumerate` appears here. A `.dag` string escape inside a quoted key would defeat the
+// parity; roster rows carry none, and that limit is a property of the rule declared above.
+fn quoted_segment_step(acc: QuotedSegmentFold, part: String) -> QuotedSegmentFold {
+  if acc.inside {
+    QuotedSegmentFold { inside: false, found: acc.found |> list_push(part) }
+  } else {
+    QuotedSegmentFold { inside: true, found: acc.found }
+  }
+}
+
+// THE CHEAP GUARD IS NOT AN OPTIMISATION, IT IS THE COST SHAPE. Most changed lines carry no quote
+// at all, and splitting each of them allocates a list to discover that. `string_contains` answers
+// the same question in one host call.
+fn line_quoted_segments(line: String) -> List<String> {
+  if !string_contains(s: line, pattern: "\"") {
+    []
+  } else {
+    fold(
+      split(s: line, delimiter: "\""),
+      init: QuotedSegmentFold { inside: false, found: [] },
+      f: (acc, part) => quoted_segment_step(acc: acc, part: part)
+    ).found
+  }
+}
+
+fn identity_segments_nonempty(segments: List<String>) -> Bool {
+  filter(segments, seg => seg == "").length() == 0
+}
+
+fn is_identity_key(candidate: String, rule: IdentityExtractionRule) -> Bool {
+  match rule {
+    QuotedDottedName { minimum_segments: n } => {
+      let segments = split(s: candidate, delimiter: ".")
+      segments.length() >= n
+        && identity_segments_nonempty(segments: segments)
+        && !string_contains(s: candidate, pattern: " ")
+        && !string_contains(s: candidate, pattern: "/")
+    }
+  }
+}
+
+fn line_identity_keys(line: String, rule: IdentityExtractionRule) -> List<String> {
+  filter(line_quoted_segments(line: line), seg => is_identity_key(candidate: seg, rule: rule))
+}
+
+type ChangedIdentities {
+  added: List<String>
+  removed: List<String>
+  changed_lines: Int
+}
+
+// NO COPIED ACCUMULATOR. An earlier cut folded the lines with `append(acc.added, items: ...)` on
+// every changed line, which rebuilds the accumulator each round -- the quadratic fold DESIGN's
+// bare-minimum-cost rule says is always repaired regardless of the realized n, and here n is every
+// changed line in every open pull request. The partition is taken once and each side mapped, so no
+// intermediate list is rebuilt.
+fn diff_line_is_added(line: String) -> Bool {
+  match diff_line_class(line: line) {
+    DiffAddedLine => true
+    DiffRemovedLine => false
+    DiffFileHeader => false
+    DiffOtherLine => false
+  }
+}
+
+fn diff_line_is_removed(line: String) -> Bool {
+  match diff_line_class(line: line) {
+    DiffRemovedLine => true
+    DiffAddedLine => false
+    DiffFileHeader => false
+    DiffOtherLine => false
+  }
+}
+
+fn changed_identities(diff: String, rule: IdentityExtractionRule) -> ChangedIdentities {
+  let lines = split(s: diff, delimiter: "\n")
+  let added_lines = filter(lines, line => diff_line_is_added(line: line))
+  let removed_lines = filter(lines, line => diff_line_is_removed(line: line))
+  ChangedIdentities {
+    added: flat_map(added_lines, line => line_identity_keys(line: line, rule: rule)),
+    removed: flat_map(removed_lines, line => line_identity_keys(line: line, rule: rule)),
+    changed_lines: added_lines.length() + removed_lines.length()
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// NET DIRECTION, PER PULL REQUEST, PER KEY.
+
+// `NetAbsent` is not padding and not unreachable: this function is total over the two booleans a
+// caller can hand it, and the join below reads it as "this pull request says nothing about this
+// key". Collapsing it into either direction would let a key with no evidence contradict one with
+// evidence.
+type NetDirection
+  = NetAdd
+  | NetDelete
+  | NetBoth
+  | NetAbsent
+
+fn net_direction(in_added: Bool, in_removed: Bool) -> NetDirection {
+  if in_added {
+    if in_removed { NetBoth } else { NetAdd }
+  } else {
+    if in_removed { NetDelete } else { NetAbsent }
+  }
+}
+
+fn net_direction_text(direction: NetDirection) -> String {
+  match direction {
+    NetAdd => "ADD"
+    NetDelete => "DEL"
+    NetBoth => "BOTH"
+    NetAbsent => "ABSENT"
+  }
+}
+
+type PrIdentityDirection {
+  pull_number: Int
+  identity: String
+  direction: NetDirection
+}
+
+fn string_list_holds(xs: List<String>, wanted: String) -> Bool {
+  filter(xs, x => x == wanted).length() > 0
+}
+
+fn unique_strings(xs: List<String>) -> List<String> {
+  fold(
+    xs,
+    init: [],
+    f: (acc, x) => if string_list_holds(xs: acc, wanted: x) { acc } else { acc |> list_push(x) }
+  )
+}
+
+fn pr_identity_directions(pull_number: Int, changed: ChangedIdentities) -> List<PrIdentityDirection> {
+  map(
+    unique_strings(xs: append(changed.added, items: changed.removed)),
+    key => PrIdentityDirection {
+      pull_number: pull_number,
+      identity: key,
+      direction: net_direction(
+        in_added: string_list_holds(xs: changed.added, wanted: key),
+        in_removed: string_list_holds(xs: changed.removed, wanted: key)
+      )
+    }
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// ONE PULL REQUEST'S OBSERVATION.
+//
+// EMPTY IS NOT ABSENT, AND THIS COPRODUCT IS WHERE THAT IS ENFORCED. Two of the 73 diffs in the
+// hand run came back empty with a success status. An instrument that renders "I could not read
+// this pull request" as "this pull request touches no identities" has produced the verdict
+// `nothing is affected` from an observation that was never made -- the empty-observation narrow
+// DESIGN names, and the direction that hides a contradiction rather than inventing one.
+//
+// So emptiness is admitted on exactly two grounds, and both are spelled separately because they
+// are established by different authorities. DERIVED: `merge-base(base, head) == head` means the
+// head is an ancestor of the base and the branch contains nothing new -- a fact about the commit
+// graph, decided locally, needing nobody's agreement. CORROBORATED: the forge itself reports zero
+// changed files for the pull request and the local diff agrees -- two independent readings of one
+// question, which is what makes "this branch touches nothing" an observation rather than a
+// shrug. A branch whose commits net to nothing without being an ancestor of the base is real, and
+// it is the case the derivation alone cannot admit.
+//
+// An empty local diff that the forge CONTRADICTS -- it reports changed files and we read none --
+// is neither. It is a disagreement with the authority for what the branch contains, and it
+// REFUSES by name, carrying the forge's count so the disagreement is legible rather than a bare
+// "could not read".
+type PrDiffObservation
+  = PrDiffRead {
+      pull_number: Int
+      head_oid: String
+      changed_lines: Int
+      directions: List<PrIdentityDirection>
+    }
+  | PrDiffEmptyDerived { pull_number: Int, head_oid: String }
+  | PrDiffEmptyCorroborated { pull_number: Int, head_oid: String }
+  | PrDiffUnobserved { pull_number: Int, cause: PrDiffUnobservedCause }
+
+type PrDiffUnobservedCause
+  = HeadRefUnresolved { ref_name: String, detail: String }
+  | HeadRefStale { ref_name: String, expected_oid: String, local_oid: String }
+  | MergeBaseUnavailable { head_oid: String, detail: String }
+  | DiffEmptyUnderived { head_oid: String, forge_changed_files: Int }
+
+fn pr_diff_unobserved_cause_text(cause: PrDiffUnobservedCause) -> String {
+  match cause {
+    HeadRefUnresolved { ref_name: r, detail: d } =>
+      concat(concat("head ref ", r), concat(" does not resolve locally: ", d))
+    HeadRefStale { ref_name: r, expected_oid: e, local_oid: l } =>
+      concat(
+        concat("head ref ", r),
+        concat(
+          concat(" resolves to ", l),
+          concat(" locally but GitHub reports ", concat(e, " — the local ref is stale, so any diff read here would describe a different branch state"))
+        )
+      )
+    MergeBaseUnavailable { head_oid: h, detail: d } =>
+      concat(concat("no merge base against ", h), concat(": ", d))
+    DiffEmptyUnderived { head_oid: h, forge_changed_files: n } =>
+      concat(
+        concat("the diff against ", h),
+        concat(
+          " came back empty while the forge reports ",
+          concat(
+            to_string(n),
+            " changed file(s) — the local observation disagrees with the authority for what this branch contains, so no direction may be read from it"
+          )
+        )
+      )
+  }
+}
+
+fn pr_diff_observation_pull_number(observation: PrDiffObservation) -> Int {
+  match observation {
+    PrDiffRead { pull_number: n, head_oid: _, changed_lines: _, directions: _ } => n
+    PrDiffEmptyDerived { pull_number: n, head_oid: _ } => n
+    PrDiffEmptyCorroborated { pull_number: n, head_oid: _ } => n
+    PrDiffUnobserved { pull_number: n, cause: _ } => n
+  }
+}
+
+fn pr_diff_observation_directions(observation: PrDiffObservation) -> List<PrIdentityDirection> {
+  match observation {
+    PrDiffRead { pull_number: _, head_oid: _, changed_lines: _, directions: ds } => ds
+    PrDiffEmptyDerived { pull_number: _, head_oid: _ } => []
+    PrDiffEmptyCorroborated { pull_number: _, head_oid: _ } => []
+    PrDiffUnobserved { pull_number: _, cause: _ } => []
+  }
+}
+
+fn pr_diff_observation_is_unobserved(observation: PrDiffObservation) -> Bool {
+  match observation {
+    PrDiffRead { pull_number: _, head_oid: _, changed_lines: _, directions: _ } => false
+    PrDiffEmptyDerived { pull_number: _, head_oid: _ } => false
+    PrDiffEmptyCorroborated { pull_number: _, head_oid: _ } => false
+    PrDiffUnobserved { pull_number: _, cause: _ } => true
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE JOIN.
+
+// Every pull request naming the key, partitioned by its NET direction. All three lists are carried
+// -- including `net_both`, which contradicts nothing -- because the report's job is to show the
+// predicate's own evidence, and a boolean throws away exactly the distinction that separates a
+// real contradiction from a moved line.
+type KeyDirections {
+  identity: String
+  net_add: List<Int>
+  net_delete: List<Int>
+  net_both: List<Int>
+}
+
+// DIRECTIONS ARE COMPARED AS DIRECTIONS, not by rendering both sides to prose and comparing the
+// strings. The rendering exists for the report; making it load-bearing would put a second
+// representation of this coproduct on the comparison path, where a renaming in the renderer
+// silently changes which pull requests join.
+fn net_direction_eq(left: NetDirection, right: NetDirection) -> Bool {
+  match left {
+    NetAdd => match right { NetAdd => true, NetDelete => false, NetBoth => false, NetAbsent => false }
+    NetDelete => match right { NetAdd => false, NetDelete => true, NetBoth => false, NetAbsent => false }
+    NetBoth => match right { NetAdd => false, NetDelete => false, NetBoth => true, NetAbsent => false }
+    NetAbsent => match right { NetAdd => false, NetDelete => false, NetBoth => false, NetAbsent => true }
+  }
+}
+
+fn pull_numbers_with_direction(
+  rows: List<PrIdentityDirection>,
+  identity: String,
+  direction: NetDirection
+) -> List<Int> {
+  map(
+    filter(rows, row => row.identity == identity && net_direction_eq(left: row.direction, right: direction)),
+    row => row.pull_number
+  )
+}
+
+fn key_directions(rows: List<PrIdentityDirection>, identity: String) -> KeyDirections {
+  KeyDirections {
+    identity: identity,
+    net_add: pull_numbers_with_direction(rows: rows, identity: identity, direction: NetAdd),
+    net_delete: pull_numbers_with_direction(rows: rows, identity: identity, direction: NetDelete),
+    net_both: pull_numbers_with_direction(rows: rows, identity: identity, direction: NetBoth)
+  }
+}
+
+// THE PREDICATE. One pull request net-ADD, a DIFFERENT one net-DEL. The two lists are disjoint by
+// construction -- a pull request has exactly one net direction per key -- so a nonempty
+// intersection is impossible and no same-pull-request pair can satisfy this.
+fn key_directions_contradict(key: KeyDirections) -> Bool {
+  key.net_add.length() > 0 && key.net_delete.length() > 0
+}
+
+fn cross_pr_contradictions(observations: List<PrDiffObservation>) -> List<KeyDirections> {
+  let rows = flat_map(observations, o => pr_diff_observation_directions(observation: o))
+  filter(
+    map(unique_strings(xs: map(rows, row => row.identity)), key => key_directions(rows: rows, identity: key)),
+    key => key_directions_contradict(key: key)
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE REPORT.
+
+type ContradictionReport {
+  file_scope: DiffFileScope
+  extraction: IdentityExtractionRule
+  observations: List<PrDiffObservation>
+  contradictions: List<KeyDirections>
+}
+
+fn contradiction_report(
+  file_scope: DiffFileScope,
+  extraction: IdentityExtractionRule,
+  observations: List<PrDiffObservation>
+) -> ContradictionReport {
+  ContradictionReport {
+    file_scope: file_scope,
+    extraction: extraction,
+    observations: observations,
+    contradictions: cross_pr_contradictions(observations: observations)
+  }
+}
+
+fn report_unobserved(report: ContradictionReport) -> List<PrDiffObservation> {
+  filter(report.observations, o => pr_diff_observation_is_unobserved(observation: o))
+}
+
+// COMPLETENESS IS A PROPERTY OF THE OBSERVATION, NOT OF THE FINDING. A report over a population
+// that could not be fully read may still name real contradictions; what it may never do is imply
+// that the ones it names are all of them. So this is asked and rendered separately from the
+// contradiction list, and the entry point's exit status is bound to THIS rather than to whether
+// anything was found.
+fn report_is_complete(report: ContradictionReport) -> Bool {
+  report_unobserved(report: report).length() == 0
+}
+
+fn int_list_text(xs: List<Int>) -> String {
+  if xs.length() == 0 {
+    "-"
+  } else {
+    join(map(xs, n => to_string(n)), ",")
+  }
+}
+
+fn key_directions_row(key: KeyDirections) -> String {
+  concat(
+    concat("contradiction\t", key.identity),
+    concat(
+      concat("\tnet_add\t", int_list_text(xs: key.net_add)),
+      concat(
+        concat("\tnet_delete\t", int_list_text(xs: key.net_delete)),
+        concat("\tnet_both\t", int_list_text(xs: key.net_both))
+      )
+    )
+  )
+}
+
+fn observation_row(observation: PrDiffObservation) -> String {
+  match observation {
+    PrDiffRead { pull_number: n, head_oid: oid, changed_lines: lines, directions: ds } =>
+      concat(
+        concat("observed\t", to_string(n)),
+        concat(
+          concat("\t", oid),
+          concat(
+            concat("\tchanged_lines\t", to_string(lines)),
+            concat("\tkeys\t", to_string(ds.length()))
+          )
+        )
+      )
+    PrDiffEmptyDerived { pull_number: n, head_oid: oid } =>
+      concat(
+        concat("empty_derived\t", to_string(n)),
+        concat(concat("\t", oid), "\tthe head is an ancestor of the base: this branch contains nothing")
+      )
+    PrDiffEmptyCorroborated { pull_number: n, head_oid: oid } =>
+      concat(
+        concat("empty_corroborated\t", to_string(n)),
+        concat(concat("\t", oid), "\tthe forge reports 0 changed files and the local diff agrees")
+      )
+    PrDiffUnobserved { pull_number: n, cause: cause } =>
+      concat(
+        concat("unobserved\t", to_string(n)),
+        concat("\t", pr_diff_unobserved_cause_text(cause: cause))
+      )
+  }
+}
+
+fn contradiction_report_rows(report: ContradictionReport) -> List<String> {
+  append(
+    append(
+      [
+        concat("file_scope\t", diff_file_scope_text(scope: report.file_scope)),
+        concat("extraction\t", identity_extraction_rule_text(rule: report.extraction)),
+        concat("pull_requests\t", to_string(report.observations.length())),
+        concat("unobserved\t", to_string(report_unobserved(report: report).length())),
+        concat("contradictions\t", to_string(report.contradictions.length()))
+      ],
+      items: map(report.contradictions, key => key_directions_row(key: key))
+    ),
+    items: map(report.observations, o => observation_row(observation: o))
+  )
+}
+
+fn contradiction_report_text(report: ContradictionReport) -> String {
+  concat(join(contradiction_report_rows(report: report), "\n"), "\n")
+}

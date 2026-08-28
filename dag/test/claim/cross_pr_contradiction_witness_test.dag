@@ -1,0 +1,236 @@
+module test.claim.cross_pr_contradiction_witness_test
+
+import std.types { Bool, Int, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.cross_pr_contradiction {
+  EveryFileInDiff,
+  QuotedDottedName,
+  DiffFileHeader,
+  DiffAddedLine,
+  DiffRemovedLine,
+  DiffOtherLine,
+  NetAdd,
+  NetDelete,
+  NetBoth,
+  NetAbsent,
+  NetDirection,
+  PrIdentityDirection,
+  PrDiffObservation,
+  PrDiffRead,
+  PrDiffEmptyDerived,
+  PrDiffEmptyCorroborated,
+  PrDiffUnobserved,
+  DiffEmptyUnderived,
+  HeadRefStale,
+  changed_identities,
+  pr_identity_directions,
+  diff_line_class,
+  net_direction,
+  net_direction_text,
+  line_identity_keys,
+  cross_pr_contradictions,
+  contradiction_report,
+  contradiction_report_text,
+  report_is_complete,
+  report_unobserved,
+  cross_pr_extraction_rule
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DISCRIMINATING FIXTURES FOR THE CROSS-PR CONTRADICTION PREDICATE.
+//
+// Every subject here is authored in this file. That is deliberate: the live population is the open
+// pull requests, which change hourly, so a witness reading them would assert whatever the fleet
+// happened to be doing and could not fail on a defect. These fixtures cannot lose their subject.
+//
+// THE PAIR THAT MATTERS IS THE FIRST TWO. `both directions present on one key` and `two pull
+// requests in opposite net directions` agree on the live corpus's positives and disagree on seven
+// of the eight the weaker predicate reported. The first witness is that disagreement: a single
+// pull request carrying a `+` and a `-` for one key -- an edited or moved line -- must NOT be a
+// contradiction, and must still be REPORTED as NetBoth so the evidence for the verdict survives.
+// It goes red the moment the predicate is relaxed back to `both directions present`.
+
+data pr_9569_diff: String = "--- a/src/v2/workflow/floor_expected_red.dag\n+++ b/src/v2/workflow/floor_expected_red.dag\n+  Cons { head: \"test.claim.duplicate_definition_binding_probe.duplicate_definition_in_one_module_is_refused\", tail: Empty {} }\n"
+
+data pr_9589_diff: String = "--- a/src/v2/workflow/floor_expected_red.dag\n+++ b/src/v2/workflow/floor_expected_red.dag\n-  Cons { head: \"test.claim.duplicate_definition_binding_probe.duplicate_definition_in_one_module_is_refused\", tail: Empty {} }\n"
+
+// One pull request, one key, both directions: the line moved between two chunks.
+data pr_moved_line_diff: String = "--- a/src/v2/workflow/floor_expected_red.dag\n+++ b/src/v2/workflow/floor_expected_red.dag\n-  Cons { head: \"test.claim.moved.row_that_only_moved\", tail: Empty {} }\n+  Cons { head: \"test.claim.moved.row_that_only_moved\", tail: Empty {} }\n"
+
+fn observation_of(pull_number: Int, diff: String) -> PrDiffObservation {
+  PrDiffRead {
+    pull_number: pull_number,
+    head_oid: concat("oid-", to_string(pull_number)),
+    changed_lines: changed_identities(diff: diff, rule: cross_pr_extraction_rule).changed_lines,
+    directions: pr_identity_directions(
+      pull_number: pull_number,
+      changed: changed_identities(diff: diff, rule: cross_pr_extraction_rule)
+    )
+  }
+}
+
+// THE ALARMING DIRECTION IS THE ONE THAT COSTS OTHER LANES THEIR TIME, so this witness asserts both
+// halves: no contradiction is reported, AND the pull request is still visible on the key as
+// NetBoth. Asserting only the first would pass equally over a detector that dropped the row.
+test fn single_pr_moving_a_line_is_not_a_contradiction() -> Bool {
+  let observations = [observation_of(pull_number: 9999, diff: pr_moved_line_diff)]
+  let directions = pr_identity_directions(
+    pull_number: 9999,
+    changed: changed_identities(diff: pr_moved_line_diff, rule: cross_pr_extraction_rule)
+  )
+  cross_pr_contradictions(observations: observations).length() == 0
+    && directions.length() == 1
+    && net_direction_text(direction: get_direction(directions: directions)) == "BOTH"
+}
+
+fn get_direction(directions: List<PrIdentityDirection>) -> NetDirection {
+  match get(xs: directions, index: 0) {
+    Absent => NetAbsent
+    Present { value: row } => row.direction
+  }
+}
+
+// THE POSITIVE CONTROL, and it is the live shape rather than an invented one: #9569 net-ADDS the
+// identity, #9589 net-REMOVES it, and the merged tree carries a roster row for a passing witness.
+test fn opposite_net_directions_across_two_prs_contradict() -> Bool {
+  let found = cross_pr_contradictions(
+    observations: [
+      observation_of(pull_number: 9569, diff: pr_9569_diff),
+      observation_of(pull_number: 9589, diff: pr_9589_diff)
+    ]
+  )
+  found.length() == 1
+    && filter(found, key => key.net_add.length() == 1 && key.net_delete.length() == 1).length() == 1
+}
+
+// SAME-DIRECTION OVERLAP DISAGREES WITH NOBODY. 45 of the 53 multi-pull-request keys the hand run
+// found were this shape; reporting them would bury the one row that matters.
+test fn same_net_direction_across_two_prs_does_not_contradict() -> Bool {
+  cross_pr_contradictions(
+    observations: [
+      observation_of(pull_number: 9589, diff: pr_9589_diff),
+      observation_of(pull_number: 9591, diff: pr_9589_diff)
+    ]
+  ).length() == 0
+}
+
+// EMPTY IS NOT ABSENT, ASSERTED AS A DISCRIMINATING PAIR. Both arms contribute no directions; only
+// one of them leaves the report complete. A detector that rendered an unread pull request as a
+// contentless one would make these two indistinguishable, and this witness is what fails when it
+// does.
+test fn unread_pull_request_and_contentless_one_are_different_states() -> Bool {
+  let derived = contradiction_report(
+    file_scope: EveryFileInDiff,
+    extraction: cross_pr_extraction_rule,
+    observations: [PrDiffEmptyDerived { pull_number: 1, head_oid: "oid-1" }]
+  )
+  let corroborated = contradiction_report(
+    file_scope: EveryFileInDiff,
+    extraction: cross_pr_extraction_rule,
+    observations: [PrDiffEmptyCorroborated { pull_number: 3, head_oid: "oid-3" }]
+  )
+  let unread = contradiction_report(
+    file_scope: EveryFileInDiff,
+    extraction: cross_pr_extraction_rule,
+    observations: [
+      PrDiffUnobserved {
+        pull_number: 2,
+        cause: DiffEmptyUnderived { head_oid: "oid-2", forge_changed_files: 4 }
+      }
+    ]
+  )
+  report_is_complete(report: derived)
+    && report_is_complete(report: corroborated)
+    && !report_is_complete(report: unread)
+    && report_unobserved(report: unread).length() == 1
+}
+
+// THE THREE EMPTY DIFFS ARE THREE STATES, NOT ONE. The forge is the authority for what a branch
+// contains; the local clone is the authority for what its commits say. When they agree on zero the
+// emptiness is an OBSERVATION, and when they disagree it is an unmade one. A detector holding only
+// the ancestry derivation refuses a branch whose commits net to nothing -- correct in the sense
+// that it does not fabricate, and useless in the sense that its report is permanently incomplete
+// over pull requests that are genuinely empty. The live scan carried exactly two of those.
+test fn a_forge_disagreement_over_an_empty_diff_is_not_an_observation() -> Bool {
+  let disagreement = contradiction_report(
+    file_scope: EveryFileInDiff,
+    extraction: cross_pr_extraction_rule,
+    observations: [
+      PrDiffUnobserved {
+        pull_number: 7,
+        cause: DiffEmptyUnderived { head_oid: "oid-7", forge_changed_files: 12 }
+      }
+    ]
+  )
+  !report_is_complete(report: disagreement)
+    && string_contains(
+         s: contradiction_report_text(report: disagreement),
+         pattern: "the forge reports 12 changed file(s)"
+       )
+}
+
+// A STALE LOCAL REF IS AN UNMADE OBSERVATION, not a branch that touches nothing.
+test fn stale_head_ref_is_unobserved() -> Bool {
+  let report = contradiction_report(
+    file_scope: EveryFileInDiff,
+    extraction: cross_pr_extraction_rule,
+    observations: [
+      PrDiffUnobserved {
+        pull_number: 3,
+        cause: HeadRefStale { ref_name: "origin/session/x", expected_oid: "aaa", local_oid: "bbb" }
+      }
+    ]
+  )
+  !report_is_complete(report: report) && report_unobserved(report: report).length() == 1
+}
+
+// FILE HEADERS ARE NOT CHANGED LINES. `+++ b/path` and `--- a/path` begin with the two characters
+// this reader treats as directions, so an ordering mistake here turns every header into a changed
+// line and every path into a candidate key.
+test fn diff_file_headers_are_not_changed_lines() -> Bool {
+  let changed = changed_identities(
+    diff: "--- a/dag/gunbc/a.b.c.dag\n+++ b/dag/gunbc/a.b.c.dag\n context\n",
+    rule: cross_pr_extraction_rule
+  )
+  changed.changed_lines == 0 && changed.added.length() == 0 && changed.removed.length() == 0
+}
+
+test fn diff_line_classes_are_assigned_by_the_longest_prefix() -> Bool {
+  match diff_line_class(line: "+++ b/x") { DiffFileHeader => true, DiffAddedLine => false, DiffRemovedLine => false, DiffOtherLine => false }
+    && match diff_line_class(line: "--- a/x") { DiffFileHeader => true, DiffAddedLine => false, DiffRemovedLine => false, DiffOtherLine => false }
+    && match diff_line_class(line: "+  row") { DiffAddedLine => true, DiffFileHeader => false, DiffRemovedLine => false, DiffOtherLine => false }
+    && match diff_line_class(line: "-  row") { DiffRemovedLine => true, DiffFileHeader => false, DiffAddedLine => false, DiffOtherLine => false }
+    && match diff_line_class(line: "@@ -1 +1 @@") { DiffOtherLine => true, DiffFileHeader => false, DiffAddedLine => false, DiffRemovedLine => false }
+}
+
+// THE EXTRACTION RULE IS AN UPPER BOUND AND IT IS STILL NOT A FREE-FOR-ALL: an unquoted mention and
+// a two-segment name are both outside it, and a path is excluded by its separator.
+test fn extraction_keeps_quoted_qualified_names_only() -> Bool {
+  line_identity_keys(line: "+ // see test.claim.foo.bar in prose", rule: cross_pr_extraction_rule).length() == 0
+    && line_identity_keys(line: "+ \"gunbc.only_two\"", rule: cross_pr_extraction_rule).length() == 0
+    && line_identity_keys(line: "+ \"dag/gunbc/a.b.c\"", rule: cross_pr_extraction_rule).length() == 0
+    && line_identity_keys(line: "+ \"test.claim.a.b\"", rule: cross_pr_extraction_rule).length() == 1
+}
+
+test fn net_direction_is_total_over_the_two_observations() -> Bool {
+  net_direction_text(direction: net_direction(in_added: true, in_removed: false)) == "ADD"
+    && net_direction_text(direction: net_direction(in_added: false, in_removed: true)) == "DEL"
+    && net_direction_text(direction: net_direction(in_added: true, in_removed: true)) == "BOTH"
+    && net_direction_text(direction: net_direction(in_added: false, in_removed: false)) == "ABSENT"
+}
+
+// THE SCOPE TRAVELS WITH THE REPORT. An overlap index computed over a filtered subset is blind to
+// everything outside the filter; stating the scope in a footnote instead of in the output is how
+// that blindness stops being visible to whoever reads the numbers.
+test fn report_states_its_file_scope_and_extraction_rule() -> Bool {
+  let text = contradiction_report_text(
+    report: contradiction_report(
+      file_scope: EveryFileInDiff,
+      extraction: cross_pr_extraction_rule,
+      observations: [observation_of(pull_number: 9569, diff: pr_9569_diff)]
+    )
+  )
+  string_contains(s: text, pattern: "file_scope\tevery file in every diff (unfiltered)")
+    && string_contains(s: text, pattern: "extraction\tdouble-quoted dotted name of at least 3 segments")
+}
