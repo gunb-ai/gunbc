@@ -19,6 +19,19 @@ import std.types { NonEmptyStr, List }
 // where a training run silently becomes a different run. Resolution closes it by freezing every
 // value that can move the update trajectory BEFORE the Work is minted, so a Work identity names
 // one computation rather than a family of them.
+//
+// THIS SLICE MODELS LOW-RANK ADAPTATION AND NOTHING ELSE, and that is a narrowing rather than an
+// omission. An earlier revision carried TrainingMethod = FullParameter | LowRankAdaptation while
+// keeping target_modules, rank, scaling and dropout as UNCONDITIONAL manifest coordinates -- a sum
+// whose parameters were modelled as a product. The consequence is the exact inverse of the
+// collision this module exists to prevent: a full-parameter computation would have carried a LoRA
+// rank the trainer never reads, so two identical full-parameter runs would derive DIFFERENT Work
+// keys because someone authored rank 16 rather than rank 32, and one computation would receive
+// many identities. Deleting the arm is correct rather than convenient: a full-parameter arm kept
+// only to anticipate a consumer that does not exist is the carrier-before-consumer scaffold this
+// module otherwise refuses. When full-parameter training has a real consumer the honest shape is a
+// sum OF PRODUCTS -- each arm carrying only the coordinates its method consumes -- and the
+// discriminating control is that a full-parameter value has no spelling containing rank at all.
 
 // THE CLOSED AXIS VOCABULARY. Every coordinate that can be unresolved names itself here, so a new
 // manifest field cannot be added without adding an axis and failing every exhaustive match over
@@ -30,7 +43,6 @@ type TrainingResolutionAxis
   | TokenizerAxis
   | ChatTemplateAxis
   | TrainerClosureAxis
-  | MethodAxis
   | TargetModulesAxis
   | OptimizerAxis
   | SchedulerAxis
@@ -43,7 +55,6 @@ type TrainingResolutionAxis
   | LossMaskAxis
   | MixtureAxis
   | MicroBatchAxis
-  | GlobalBatchAxis
   | GradientAccumulationAxis
   | NumericFormatAxis
   | SeedAxis
@@ -56,11 +67,37 @@ type TrainingResolutionAxis
 // that is the difference between a pinned value and a word that looks like one.
 type TrainingNumericFormat = Bf16 | Fp16 | Fp32 | Fp8E4M3 | Fp8E5M2
 
-type TrainingMethod = FullParameter | LowRankAdaptation
-
 type PackingPolicy = NoPacking | ConcatenatedPacking
 
 type LossMaskPolicy = MaskPromptTokens | AllTokens
+
+// A DROPOUT RATE IS BOUNDED AND Nat IS NOT. Zero is meaningful here, so PositiveInt would be the
+// wrong narrowing -- but Nat admits 1001 and 5000, which are not probabilities. There is no
+// bounded refinement predicate to consume, so the bound is carried by a sealed mint: the only way
+// to obtain a DropoutPermille is through a door that refuses anything above one thousand.
+type DropoutPermille sole_constructor { permille: Nat }
+
+type DropoutPermilleAdmission
+  = DropoutPermilleAdmitted { value: DropoutPermille }
+  | DropoutPermilleOutOfRange { offered: Nat }
+
+fn dropout_permille_seal(permille: Nat) -> DropoutPermille
+  admit_callers: [
+    decl_ref(module_path: "product.training.resolution", decl_name: "dropout_permille"),
+  ]
+  = DropoutPermille { permille: permille }
+
+fn dropout_permille(permille: Nat) -> DropoutPermilleAdmission {
+  if permille > 1000 {
+    DropoutPermilleOutOfRange { offered: permille }
+  } else {
+    DropoutPermilleAdmitted { value: dropout_permille_seal(permille: permille) }
+  }
+}
+
+fn dropout_permille_value(d: DropoutPermille) -> Nat {
+  d.permille
+}
 
 // ONE RESOLVED COORDINATE: the value AND the receipt that resolved it, never a bare value. The
 // receipt is what makes a later divergence between two runs of one recipe explicable rather than
@@ -86,20 +123,18 @@ type TrainingResolutionObservations {
   tokenizer: AxisResolution<ContentHash>
   chat_template: AxisResolution<ContentHash>
   trainer_closure: AxisResolution<ContentHash>
-  method: AxisResolution<TrainingMethod>
   target_modules: AxisResolution<ContentHash>
   optimizer_config: AxisResolution<ContentHash>
   scheduler_config: AxisResolution<ContentHash>
   learning_rate_schedule: AxisResolution<ContentHash>
   rank: AxisResolution<PositiveInt>
   scaling: AxisResolution<PositiveInt>
-  dropout_permille: AxisResolution<Nat>
+  dropout_permille: AxisResolution<DropoutPermille>
   sequence_length: AxisResolution<PositiveInt>
   packing: AxisResolution<PackingPolicy>
   loss_mask: AxisResolution<LossMaskPolicy>
   mixture: AxisResolution<ContentHash>
   micro_batch: AxisResolution<PositiveInt>
-  global_batch: AxisResolution<PositiveInt>
   gradient_accumulation: AxisResolution<PositiveInt>
   numeric_format: AxisResolution<TrainingNumericFormat>
   seed: AxisResolution<Nat>
@@ -116,20 +151,18 @@ type TrainingResolutionEvidence {
   tokenizer: ResolvedAxis<ContentHash>
   chat_template: ResolvedAxis<ContentHash>
   trainer_closure: ResolvedAxis<ContentHash>
-  method: ResolvedAxis<TrainingMethod>
   target_modules: ResolvedAxis<ContentHash>
   optimizer_config: ResolvedAxis<ContentHash>
   scheduler_config: ResolvedAxis<ContentHash>
   learning_rate_schedule: ResolvedAxis<ContentHash>
   rank: ResolvedAxis<PositiveInt>
   scaling: ResolvedAxis<PositiveInt>
-  dropout_permille: ResolvedAxis<Nat>
+  dropout_permille: ResolvedAxis<DropoutPermille>
   sequence_length: ResolvedAxis<PositiveInt>
   packing: ResolvedAxis<PackingPolicy>
   loss_mask: ResolvedAxis<LossMaskPolicy>
   mixture: ResolvedAxis<ContentHash>
   micro_batch: ResolvedAxis<PositiveInt>
-  global_batch: ResolvedAxis<PositiveInt>
   gradient_accumulation: ResolvedAxis<PositiveInt>
   numeric_format: ResolvedAxis<TrainingNumericFormat>
   seed: ResolvedAxis<Nat>
@@ -140,26 +173,34 @@ type TrainingResolutionEvidence {
 
 // THE MANIFEST IS A TOTAL PROJECTION OF THE EVIDENCE, never an independent argument. There is
 // therefore no pair to disagree: the values in the manifest ARE the values the receipts attest.
+//
+// GLOBAL BATCH IS ABSENT AND DERIVED, and that is a repair rather than a simplification. An
+// earlier revision stored micro_batch, gradient_accumulation AND global_batch as three
+// independent coordinates with no worker count anywhere. Under the ordinary relation
+// global = micro * accumulation * workers, a fixture of 2, 8 and 64 silently asserts four data
+// parallel workers -- a topology fact the manifest never carried. Both (2, 8, 16) and (2, 8, 64)
+// construct, and their difference is an OMITTED topology rather than two valid spellings of one
+// computation. So the independent causes are carried and the consequence is derived. This slice
+// admits single-worker training only; a worker count and a gradient reduction policy are
+// semantic, not placement, and belong here when a coordinated multi-host realization exists.
 type TrainingResolvedManifest {
   base_artifact: ContentHash
   dataset_manifest: ContentHash
   tokenizer: ContentHash
   chat_template: ContentHash
   trainer_closure: ContentHash
-  method: TrainingMethod
   target_modules: ContentHash
   optimizer_config: ContentHash
   scheduler_config: ContentHash
   learning_rate_schedule: ContentHash
   rank: PositiveInt
   scaling: PositiveInt
-  dropout_permille: Nat
+  dropout_permille: DropoutPermille
   sequence_length: PositiveInt
   packing: PackingPolicy
   loss_mask: LossMaskPolicy
   mixture: ContentHash
   micro_batch: PositiveInt
-  global_batch: PositiveInt
   gradient_accumulation: PositiveInt
   numeric_format: TrainingNumericFormat
   seed: Nat
@@ -175,7 +216,6 @@ fn training_resolved_manifest(evidence: TrainingResolutionEvidence) -> TrainingR
     tokenizer: evidence.tokenizer.value,
     chat_template: evidence.chat_template.value,
     trainer_closure: evidence.trainer_closure.value,
-    method: evidence.method.value,
     target_modules: evidence.target_modules.value,
     optimizer_config: evidence.optimizer_config.value,
     scheduler_config: evidence.scheduler_config.value,
@@ -188,7 +228,6 @@ fn training_resolved_manifest(evidence: TrainingResolutionEvidence) -> TrainingR
     loss_mask: evidence.loss_mask.value,
     mixture: evidence.mixture.value,
     micro_batch: evidence.micro_batch.value,
-    global_batch: evidence.global_batch.value,
     gradient_accumulation: evidence.gradient_accumulation.value,
     numeric_format: evidence.numeric_format.value,
     seed: evidence.seed.value,
@@ -198,6 +237,32 @@ fn training_resolved_manifest(evidence: TrainingResolutionEvidence) -> TrainingR
   }
 }
 
+// The effective global batch under this slice's single-worker topology. Derived, never stored:
+// storing it would reintroduce the third writable representation described above.
+fn effective_global_batch(m: TrainingResolvedManifest) -> PositiveInt {
+  m.micro_batch * m.gradient_accumulation
+}
+
+// WHAT IS DELIBERATELY NOT IN THE MANIFEST, and the rule that decides it. A fact belongs here
+// only if changing it changes the answer the training Work promises. Changing the seed, the
+// optimizer configuration, the data order or the numeric format changes the produced weights, so
+// those are in. The selected host, the supplier quote, the metered electricity rate, the current
+// wall draw, the opportunity cost, the queue position, the free capacity, the lease generation,
+// the checkpoint save CADENCE, the log cadence and the retention duration change none of it, so
+// those are out. The consequence is the point: a change in the electricity tariff must not mint a
+// new semantic training Work, and it cannot, because no field here can carry it. Checkpoint
+// FORMAT is in and checkpoint CADENCE is out, and the split is one rule applied twice -- the
+// format decides whether a resume continues the same trajectory, the cadence decides only how
+// often we pay to write one.
+//
+// SUBSTRATE-DEPENDENT SEMANTIC RESOLUTION IS REFUSED AT THIS SLICE. A microbatch chosen as the
+// largest that fits the selected host, a precision taken from a runtime default, or a gradient
+// accumulation derived from available memory would let two hosts execute different update
+// trajectories under ONE Work identity. So exact values are required before the demand is
+// dispatched. A later authority may prove two substrate-specific realizations semantically
+// equivalent; that relation does not exist yet, and asserting it early would be a fabricated
+// equivalence rather than a convenience.
+
 // THE COMPLETENESS WALL: EVERY MANIFEST COORDINATE REACHES THE WORK KEY, BY PROJECTION.
 //
 // An earlier revision took the WorkContract as an ARGUMENT beside the observations. That is the
@@ -206,14 +271,19 @@ fn training_resolved_manifest(evidence: TrainingResolutionEvidence) -> TrainingR
 // a contract that mentioned nothing about it, and derive_work_key -- which reads ONLY the
 // contract and requirements -- would mint an identity that ignored every training coordinate.
 // Two runs differing in seed, optimizer and numeric format would then share one Work key while
-// producing different weights, which is precisely the failure this whole module exists to make
-// unrepresentable. The contract is therefore DERIVED here and never accepted.
+// producing different weights. The contract is therefore DERIVED here and never accepted.
 //
-// The material is FIELD-TAGGED and length-separated so it is injective: two different manifests
-// cannot render the same string by shifting a value across a boundary. ContentHash coordinates
-// go through serialize_content_hash rather than a bare digest cast, because that preserves the
-// hash FAMILY -- dropping it can make values from different families render alike, and a cross
-// family collision here would be an identity collision.
+// THE MATERIAL IS FIELD-TAGGED AND DELIMITER-SEPARATED over delimiter-free renderings, which is
+// the honest description of what the code does: U+001F separates a field tag from its value and
+// U+001E separates coordinates, and no rendering can contain either -- serialized hashes, decimal
+// numerals and the closed enum spellings are all delimiter-free -- so the encoding is injective
+// over this domain. An earlier annotation called it length-separated, which it never was; a
+// mechanism described as one it does not implement is a defect in the description whether or not
+// the code is right, and if a renderable domain ever gains a delimiter the claim has to become
+// real length prefixing rather than a comment nobody rechecked. ContentHash coordinates go
+// through serialize_content_hash rather than a bare digest cast because that preserves the hash
+// FAMILY -- dropping it can make values from different families render alike, and a cross-family
+// collision here would be an identity collision.
 fn training_numeric_format_material(v: TrainingNumericFormat) -> NonEmptyStr {
   match v {
     Bf16 => "bf16"
@@ -221,13 +291,6 @@ fn training_numeric_format_material(v: TrainingNumericFormat) -> NonEmptyStr {
     Fp32 => "fp32"
     Fp8E4M3 => "fp8e4m3"
     Fp8E5M2 => "fp8e5m2"
-  }
-}
-
-fn training_method_material(v: TrainingMethod) -> NonEmptyStr {
-  match v {
-    FullParameter => "full-parameter"
-    LowRankAdaptation => "low-rank-adaptation"
   }
 }
 
@@ -252,20 +315,18 @@ fn training_manifest_material(m: TrainingResolvedManifest) -> NonEmptyStr {
     join(["tokenizer", "\u{1f}", serialize_content_hash(hash: m.tokenizer)], ""),
     join(["chat_template", "\u{1f}", serialize_content_hash(hash: m.chat_template)], ""),
     join(["trainer_closure", "\u{1f}", serialize_content_hash(hash: m.trainer_closure)], ""),
-    join(["method", "\u{1f}", training_method_material(v: m.method)], ""),
     join(["target_modules", "\u{1f}", serialize_content_hash(hash: m.target_modules)], ""),
     join(["optimizer_config", "\u{1f}", serialize_content_hash(hash: m.optimizer_config)], ""),
     join(["scheduler_config", "\u{1f}", serialize_content_hash(hash: m.scheduler_config)], ""),
     join(["learning_rate_schedule", "\u{1f}", serialize_content_hash(hash: m.learning_rate_schedule)], ""),
     join(["rank", "\u{1f}", to_string(m.rank)], ""),
     join(["scaling", "\u{1f}", to_string(m.scaling)], ""),
-    join(["dropout_permille", "\u{1f}", to_string(m.dropout_permille)], ""),
+    join(["dropout_permille", "\u{1f}", to_string(dropout_permille_value(d: m.dropout_permille))], ""),
     join(["sequence_length", "\u{1f}", to_string(m.sequence_length)], ""),
     join(["packing", "\u{1f}", packing_policy_material(v: m.packing)], ""),
     join(["loss_mask", "\u{1f}", loss_mask_policy_material(v: m.loss_mask)], ""),
     join(["mixture", "\u{1f}", serialize_content_hash(hash: m.mixture)], ""),
     join(["micro_batch", "\u{1f}", to_string(m.micro_batch)], ""),
-    join(["global_batch", "\u{1f}", to_string(m.global_batch)], ""),
     join(["gradient_accumulation", "\u{1f}", to_string(m.gradient_accumulation)], ""),
     join(["numeric_format", "\u{1f}", training_numeric_format_material(v: m.numeric_format)], ""),
     join(["seed", "\u{1f}", to_string(m.seed)], ""),
@@ -288,7 +349,7 @@ fn training_manifest_reference(m: TrainingResolvedManifest) -> NonEmptyStr {
 fn training_work_contract(evidence: TrainingResolutionEvidence) -> WorkContract {
   let m = training_resolved_manifest(evidence: evidence)
   WorkContract {
-    program: "gunbc-training-run",
+    program: "gunbc-training-run-low-rank-adaptation",
     steps: [WorkStep { step_id: "train", resumability: ReceiptSatisfiable }],
     source: serialize_content_hash(hash: m.dataset_manifest),
     inputs: training_manifest_reference(m: m),
@@ -297,26 +358,6 @@ fn training_work_contract(evidence: TrainingResolutionEvidence) -> WorkContract 
     output_contract: serialize_content_hash(hash: m.output_contract),
   }
 }
-
-// WHAT IS DELIBERATELY NOT IN THE MANIFEST, and the rule that decides it. A fact belongs here
-// only if changing it changes the answer the training Work promises. Changing the seed, the
-// optimizer configuration, the data order or the numeric format changes the produced weights, so
-// those are in. The selected host, the supplier quote, the metered electricity rate, the current
-// wall draw, the opportunity cost, the queue position, the free capacity, the lease generation,
-// the checkpoint save CADENCE, the log cadence and the retention duration change none of it, so
-// those are out. The consequence is the point: a change in the electricity tariff must not mint a
-// new semantic training Work, and it cannot, because no field here can carry it. Checkpoint
-// FORMAT is in and checkpoint CADENCE is out, and the split is one rule applied twice -- the
-// format decides whether a resume continues the same trajectory, the cadence decides only how
-// often we pay to write one.
-//
-// SUBSTRATE-DEPENDENT SEMANTIC RESOLUTION IS REFUSED AT THIS SLICE. A microbatch chosen as the
-// largest that fits the selected host, a precision taken from a runtime default, or a gradient
-// accumulation derived from available memory would let two hosts execute different update
-// trajectories under ONE Work identity. So exact values are required before the demand is
-// dispatched. A later authority may prove two substrate-specific realizations semantically
-// equivalent; that relation does not exist yet, and asserting it early would be a fabricated
-// equivalence rather than a convenience.
 
 // SEALED. The evidence record is the whole specification and the contract is DERIVED from it, so
 // the only door that yields one is resolve_training below, which cannot produce it while any
@@ -352,9 +393,6 @@ type TrainingResolution
   = TrainingResolved { resolved: ResolvedTrainingWork }
   | TrainingResolutionRefused { axis: TrainingResolutionAxis, cause: NonEmptyStr }
 
-// THE DOOR. Every coordinate is matched; the FIRST unresolved one refuses, naming its closed axis
-// and carrying its cause. Nothing downstream is reachable with a coordinate missing, because the
-// evidence record cannot be built without all of them.
 fn resolve_training(
   observations: TrainingResolutionObservations,
   requirements: ExecutionRequirements,
@@ -379,121 +417,109 @@ fn resolve_training(
                     AxisUnresolved { cause: c } =>
                       TrainingResolutionRefused { axis: TrainerClosureAxis, cause: c }
                     AxisResolved { resolved: r_trainer_closure } =>
-                      match observations.method {
+                      match observations.target_modules {
                         AxisUnresolved { cause: c } =>
-                          TrainingResolutionRefused { axis: MethodAxis, cause: c }
-                        AxisResolved { resolved: r_method } =>
-                          match observations.target_modules {
+                          TrainingResolutionRefused { axis: TargetModulesAxis, cause: c }
+                        AxisResolved { resolved: r_target_modules } =>
+                          match observations.optimizer_config {
                             AxisUnresolved { cause: c } =>
-                              TrainingResolutionRefused { axis: TargetModulesAxis, cause: c }
-                            AxisResolved { resolved: r_target_modules } =>
-                              match observations.optimizer_config {
+                              TrainingResolutionRefused { axis: OptimizerAxis, cause: c }
+                            AxisResolved { resolved: r_optimizer_config } =>
+                              match observations.scheduler_config {
                                 AxisUnresolved { cause: c } =>
-                                  TrainingResolutionRefused { axis: OptimizerAxis, cause: c }
-                                AxisResolved { resolved: r_optimizer_config } =>
-                                  match observations.scheduler_config {
+                                  TrainingResolutionRefused { axis: SchedulerAxis, cause: c }
+                                AxisResolved { resolved: r_scheduler_config } =>
+                                  match observations.learning_rate_schedule {
                                     AxisUnresolved { cause: c } =>
-                                      TrainingResolutionRefused { axis: SchedulerAxis, cause: c }
-                                    AxisResolved { resolved: r_scheduler_config } =>
-                                      match observations.learning_rate_schedule {
+                                      TrainingResolutionRefused { axis: LearningRateScheduleAxis, cause: c }
+                                    AxisResolved { resolved: r_learning_rate_schedule } =>
+                                      match observations.rank {
                                         AxisUnresolved { cause: c } =>
-                                          TrainingResolutionRefused { axis: LearningRateScheduleAxis, cause: c }
-                                        AxisResolved { resolved: r_learning_rate_schedule } =>
-                                          match observations.rank {
+                                          TrainingResolutionRefused { axis: RankAxis, cause: c }
+                                        AxisResolved { resolved: r_rank } =>
+                                          match observations.scaling {
                                             AxisUnresolved { cause: c } =>
-                                              TrainingResolutionRefused { axis: RankAxis, cause: c }
-                                            AxisResolved { resolved: r_rank } =>
-                                              match observations.scaling {
+                                              TrainingResolutionRefused { axis: ScalingAxis, cause: c }
+                                            AxisResolved { resolved: r_scaling } =>
+                                              match observations.dropout_permille {
                                                 AxisUnresolved { cause: c } =>
-                                                  TrainingResolutionRefused { axis: ScalingAxis, cause: c }
-                                                AxisResolved { resolved: r_scaling } =>
-                                                  match observations.dropout_permille {
+                                                  TrainingResolutionRefused { axis: DropoutAxis, cause: c }
+                                                AxisResolved { resolved: r_dropout_permille } =>
+                                                  match observations.sequence_length {
                                                     AxisUnresolved { cause: c } =>
-                                                      TrainingResolutionRefused { axis: DropoutAxis, cause: c }
-                                                    AxisResolved { resolved: r_dropout_permille } =>
-                                                      match observations.sequence_length {
+                                                      TrainingResolutionRefused { axis: SequenceLengthAxis, cause: c }
+                                                    AxisResolved { resolved: r_sequence_length } =>
+                                                      match observations.packing {
                                                         AxisUnresolved { cause: c } =>
-                                                          TrainingResolutionRefused { axis: SequenceLengthAxis, cause: c }
-                                                        AxisResolved { resolved: r_sequence_length } =>
-                                                          match observations.packing {
+                                                          TrainingResolutionRefused { axis: PackingAxis, cause: c }
+                                                        AxisResolved { resolved: r_packing } =>
+                                                          match observations.loss_mask {
                                                             AxisUnresolved { cause: c } =>
-                                                              TrainingResolutionRefused { axis: PackingAxis, cause: c }
-                                                            AxisResolved { resolved: r_packing } =>
-                                                              match observations.loss_mask {
+                                                              TrainingResolutionRefused { axis: LossMaskAxis, cause: c }
+                                                            AxisResolved { resolved: r_loss_mask } =>
+                                                              match observations.mixture {
                                                                 AxisUnresolved { cause: c } =>
-                                                                  TrainingResolutionRefused { axis: LossMaskAxis, cause: c }
-                                                                AxisResolved { resolved: r_loss_mask } =>
-                                                                  match observations.mixture {
+                                                                  TrainingResolutionRefused { axis: MixtureAxis, cause: c }
+                                                                AxisResolved { resolved: r_mixture } =>
+                                                                  match observations.micro_batch {
                                                                     AxisUnresolved { cause: c } =>
-                                                                      TrainingResolutionRefused { axis: MixtureAxis, cause: c }
-                                                                    AxisResolved { resolved: r_mixture } =>
-                                                                      match observations.micro_batch {
+                                                                      TrainingResolutionRefused { axis: MicroBatchAxis, cause: c }
+                                                                    AxisResolved { resolved: r_micro_batch } =>
+                                                                      match observations.gradient_accumulation {
                                                                         AxisUnresolved { cause: c } =>
-                                                                          TrainingResolutionRefused { axis: MicroBatchAxis, cause: c }
-                                                                        AxisResolved { resolved: r_micro_batch } =>
-                                                                          match observations.global_batch {
+                                                                          TrainingResolutionRefused { axis: GradientAccumulationAxis, cause: c }
+                                                                        AxisResolved { resolved: r_gradient_accumulation } =>
+                                                                          match observations.numeric_format {
                                                                             AxisUnresolved { cause: c } =>
-                                                                              TrainingResolutionRefused { axis: GlobalBatchAxis, cause: c }
-                                                                            AxisResolved { resolved: r_global_batch } =>
-                                                                              match observations.gradient_accumulation {
+                                                                              TrainingResolutionRefused { axis: NumericFormatAxis, cause: c }
+                                                                            AxisResolved { resolved: r_numeric_format } =>
+                                                                              match observations.seed {
                                                                                 AxisUnresolved { cause: c } =>
-                                                                                  TrainingResolutionRefused { axis: GradientAccumulationAxis, cause: c }
-                                                                                AxisResolved { resolved: r_gradient_accumulation } =>
-                                                                                  match observations.numeric_format {
+                                                                                  TrainingResolutionRefused { axis: SeedAxis, cause: c }
+                                                                                AxisResolved { resolved: r_seed } =>
+                                                                                  match observations.data_order_seed {
                                                                                     AxisUnresolved { cause: c } =>
-                                                                                      TrainingResolutionRefused { axis: NumericFormatAxis, cause: c }
-                                                                                    AxisResolved { resolved: r_numeric_format } =>
-                                                                                      match observations.seed {
+                                                                                      TrainingResolutionRefused { axis: DataOrderSeedAxis, cause: c }
+                                                                                    AxisResolved { resolved: r_data_order_seed } =>
+                                                                                      match observations.checkpoint_format {
                                                                                         AxisUnresolved { cause: c } =>
-                                                                                          TrainingResolutionRefused { axis: SeedAxis, cause: c }
-                                                                                        AxisResolved { resolved: r_seed } =>
-                                                                                          match observations.data_order_seed {
+                                                                                          TrainingResolutionRefused { axis: CheckpointFormatAxis, cause: c }
+                                                                                        AxisResolved { resolved: r_checkpoint_format } =>
+                                                                                          match observations.output_contract {
                                                                                             AxisUnresolved { cause: c } =>
-                                                                                              TrainingResolutionRefused { axis: DataOrderSeedAxis, cause: c }
-                                                                                            AxisResolved { resolved: r_data_order_seed } =>
-                                                                                              match observations.checkpoint_format {
-                                                                                                AxisUnresolved { cause: c } =>
-                                                                                                  TrainingResolutionRefused { axis: CheckpointFormatAxis, cause: c }
-                                                                                                AxisResolved { resolved: r_checkpoint_format } =>
-                                                                                                  match observations.output_contract {
-                                                                                                    AxisUnresolved { cause: c } =>
-                                                                                                      TrainingResolutionRefused { axis: OutputContractAxis, cause: c }
-                                                                                                    AxisResolved { resolved: r_output_contract } =>
-                                                                                                      let evidence = TrainingResolutionEvidence {
-                                                                                                        base_artifact: r_base_artifact,
-                                                                                                        dataset_manifest: r_dataset_manifest,
-                                                                                                        tokenizer: r_tokenizer,
-                                                                                                        chat_template: r_chat_template,
-                                                                                                        trainer_closure: r_trainer_closure,
-                                                                                                        method: r_method,
-                                                                                                        target_modules: r_target_modules,
-                                                                                                        optimizer_config: r_optimizer_config,
-                                                                                                        scheduler_config: r_scheduler_config,
-                                                                                                        learning_rate_schedule: r_learning_rate_schedule,
-                                                                                                        rank: r_rank,
-                                                                                                        scaling: r_scaling,
-                                                                                                        dropout_permille: r_dropout_permille,
-                                                                                                        sequence_length: r_sequence_length,
-                                                                                                        packing: r_packing,
-                                                                                                        loss_mask: r_loss_mask,
-                                                                                                        mixture: r_mixture,
-                                                                                                        micro_batch: r_micro_batch,
-                                                                                                        global_batch: r_global_batch,
-                                                                                                        gradient_accumulation: r_gradient_accumulation,
-                                                                                                        numeric_format: r_numeric_format,
-                                                                                                        seed: r_seed,
-                                                                                                        data_order_seed: r_data_order_seed,
-                                                                                                        checkpoint_format: r_checkpoint_format,
-                                                                                                        output_contract: r_output_contract,
-                                                                                                      }
-                                                                                                      TrainingResolved {
-                                                                                                        resolved: resolved_training_work_seal(
-                                                                                                          evidence: evidence,
-                                                                                                          contract: training_work_contract(evidence: evidence),
-                                                                                                          requirements: requirements,
-                                                                                                        ),
-                                                                                                      }
-                                                                                                  }
+                                                                                              TrainingResolutionRefused { axis: OutputContractAxis, cause: c }
+                                                                                            AxisResolved { resolved: r_output_contract } =>
+                                                                                              let evidence = TrainingResolutionEvidence {
+                                                                                                base_artifact: r_base_artifact,
+                                                                                                dataset_manifest: r_dataset_manifest,
+                                                                                                tokenizer: r_tokenizer,
+                                                                                                chat_template: r_chat_template,
+                                                                                                trainer_closure: r_trainer_closure,
+                                                                                                target_modules: r_target_modules,
+                                                                                                optimizer_config: r_optimizer_config,
+                                                                                                scheduler_config: r_scheduler_config,
+                                                                                                learning_rate_schedule: r_learning_rate_schedule,
+                                                                                                rank: r_rank,
+                                                                                                scaling: r_scaling,
+                                                                                                dropout_permille: r_dropout_permille,
+                                                                                                sequence_length: r_sequence_length,
+                                                                                                packing: r_packing,
+                                                                                                loss_mask: r_loss_mask,
+                                                                                                mixture: r_mixture,
+                                                                                                micro_batch: r_micro_batch,
+                                                                                                gradient_accumulation: r_gradient_accumulation,
+                                                                                                numeric_format: r_numeric_format,
+                                                                                                seed: r_seed,
+                                                                                                data_order_seed: r_data_order_seed,
+                                                                                                checkpoint_format: r_checkpoint_format,
+                                                                                                output_contract: r_output_contract,
+                                                                                              }
+                                                                                              TrainingResolved {
+                                                                                                resolved: resolved_training_work_seal(
+                                                                                                  evidence: evidence,
+                                                                                                  contract: training_work_contract(evidence: evidence),
+                                                                                                  requirements: requirements,
+                                                                                                ),
                                                                                               }
                                                                                           }
                                                                                       }
