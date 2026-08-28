@@ -157,6 +157,45 @@ test fn duplicate_and_missing_are_distinct_findings() -> Bool {
     && any(rendered, r => string_contains(s: r, pattern: "more than one"))
 }
 
+// ACCEPTANCE ITEM 6: EVERY CAUSE SURVIVES TOGETHER, ABSENCE INCLUDED. every_cause_is_reported_together
+// above predates the absent arm, so it pins four causes and cannot speak for the fifth. This is the
+// same claim widened rather than an edit to that fixture -- two tests are authored against it, and
+// moving their expected counts to cover a new cause would have made their existing assertions less
+// legible for no gain.
+//
+// THE POINT IS SIMULTANEITY. Each cause has a different owner and a different repair, and the
+// collapse this whole carrier removes was the reporting of ONE of them while the rest stayed
+// invisible until it was fixed. So the assertion is not that absence is reported -- an earlier
+// witness covers that alone -- but that it is reported WHILE a drift, a refusal, a missing identity
+// and an unknown observation are all outstanding, with absence landing in the comparison bucket
+// beside the drift and the refusal still alone in provenance.
+fn every_cause_expected() -> List<GeneratedArtifact> {
+  [DesignArtifact, RoadmapArtifact, GitignoreArtifact, GithooksPrePushArtifact, WitnessFloorYamlArtifact]
+}
+
+fn every_cause_observations() -> List<GeneratedArtifactObservation> {
+  [
+    drifted_observation(a: DesignArtifact, path: "DESIGN.md"),
+    absent_observation(a: WitnessFloorYamlArtifact, path: ".github/workflows/witnesses.yml"),
+    GeneratedArtifactObservationRefused { artifact: RoadmapArtifact, path: "ROADMAP.md", cause: "committed read failed" },
+    artifact_observation_fixture(a: GitignoreArtifact, path: ".gitignore", gen: "same", com: "same", valid: false),
+    clean_observation(a: GitattributesArtifact, path: ".gitattributes")
+  ]
+}
+
+test fn absence_survives_alongside_every_other_cause() -> Bool {
+  let f = generated_artifact_population_findings(expected: every_cause_expected(), observations: every_cause_observations())
+  let rendered = generated_artifact_population_findings_rendered(f: f)
+  ((f.observation_failures |> count) == 3)
+    && ((f.unadjudicated |> count) == 1)
+    && ((f.expected_cardinality |> count) == 1)
+    && ((f.unknown_observations |> count) == 1)
+    && (generated_artifact_population_findings_count(f: f) == 6)
+    && string_contains(s: rendered, pattern: "committed artifact is absent")
+    && string_contains(s: rendered, pattern: "committed content differs")
+    && string_contains(s: rendered, pattern: "rostered but no verdict reached")
+}
+
 // AN EMPTY OBSERVATION POPULATION CANNOT GREEN, which is acceptance item 9 and the one failure mode
 // that is WORSE than the absorbing fallback DESIGN already forbids. A widen is merely expensive; a
 // narrow is silently uncovered. If the producer returns nothing -- the listing walk refused, the
