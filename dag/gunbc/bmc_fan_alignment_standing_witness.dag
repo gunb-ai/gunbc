@@ -13,6 +13,9 @@ import gunbc.bmc_fan_alignment_standing {
   IntentMatchesObservedProgram,
   ObservedProgramNotAdopted,
   ObservedProgramNotRepresentableByIntent,
+  ObservedProgramRepresentableNotAdopted,
+  RefusedObservedProgramRepresentableNotAdopted,
+  fan_program_representability_authority,
   AlignmentRefusalCause,
   RefusedObservedProgramNotAdopted,
   RefusedObservedProgramNotRepresentableByIntent,
@@ -25,7 +28,7 @@ import gunbc.bmc_fan_projection {
   BmcFanProjectionApplyRefused,
   BmcFanProjectionApplySuitable,
   BmcFanProjectionObservedProgramNotAdopted,
-  BmcFanProjectionObservedProgramNotRepresentable,
+  BmcFanProjectionObservedProgramRepresentableNotAdopted,
   bmc_fan_policy_projection_apply_suitability,
 }
 import gunbc.fleet_bmc_state { srv4_bmc_fan_projection_capability }
@@ -37,8 +40,13 @@ import gunbc.fleet_intent_network {
 }
 
 // THE HOSTS I RECONFIGURED BY HAND MUST REFUSE ACTUATION. This is the conjunct that makes the
-// interlock real rather than declared: it fails the moment someone marks srv3 or srv4 adopted
-// without the carrier having gained a shape for what they run.
+// interlock real rather than declared: it fails the moment someone marks srv3 or srv4 adopted.
+// THE REASON THEY REFUSE CHANGED ON 2026-08-28 AND THE REQUIREMENT DID NOT, which is exactly why
+// this conjunct is stated over the Bool and not over a cause: the carrier GAINED the shape they
+// run (extdeps.bmc.pid_control_program models one thermal demand feeding several actuators), so
+// they are no longer unrepresentable -- they are representable, read, and not adopted. Apply is
+// still refused, because the projection is still the old single-actuator curve and writing it
+// would replace the quieter program with the worse one.
 fn hand_configured_hosts_refuse() -> Bool {
   !host_alignment_admits_apply_evaluation(standings: fleet_bmc_fan_alignment_standings, host: operator_host_srv3)
     && !host_alignment_admits_apply_evaluation(
@@ -80,6 +88,10 @@ fn refusal_arms_stay_separate() -> Bool {
   let unadopted: BmcFanIntentAlignment = ObservedProgramNotAdopted
   let unrepresentable: BmcFanIntentAlignment =
     ObservedProgramNotRepresentableByIntent { missing: "x" }
+  let representable_unadopted: BmcFanIntentAlignment =
+    ObservedProgramRepresentableNotAdopted {
+      representability_authority: fan_program_representability_authority,
+    }
   let a = match unadopted {
     ObservedProgramNotAdopted => true
     other => false
@@ -88,7 +100,40 @@ fn refusal_arms_stay_separate() -> Bool {
     ObservedProgramNotRepresentableByIntent { missing } => missing == "x"
     other => false
   }
-  a && b
+  let c = match representable_unadopted {
+    ObservedProgramRepresentableNotAdopted { representability_authority } =>
+      representability_authority.decl_name == "program_representability"
+    other => false
+  }
+  a && b && c
+}
+
+// THE VACATED ARM STAYS EXERCISED. srv3 and srv4 moved OFF
+// ObservedProgramNotRepresentableByIntent when the actuator-program split landed; the arm itself
+// did not go away, and a future host may occupy it. Deleting its evidence along with the rows
+// that happened to use it would leave a live refusal path with nothing asserting it still
+// refuses -- so the standing is CONSTRUCTED here rather than borrowed from the fleet roster, and
+// srv3_srv4_expected_missing survives as that construction's payload rather than as dead data.
+fn vacated_unrepresentable_arm_still_refuses() -> Bool {
+  let constructed = [
+    HostBmcFanAlignmentStanding {
+      host: operator_host_srv3,
+      alignment: ObservedProgramNotRepresentableByIntent {
+        missing: srv3_srv4_expected_missing,
+      },
+    },
+  ]
+  let refuses = !host_alignment_admits_apply_evaluation(standings: constructed, host: operator_host_srv3)
+  let carries = match host_alignment_admission(standings: constructed, host: operator_host_srv3) {
+    AlignmentRefused { cause } =>
+      match cause {
+        RefusedObservedProgramNotRepresentableByIntent { missing } =>
+          missing == srv3_srv4_expected_missing
+        other => false
+      }
+    other => false
+  }
+  refuses && carries
 }
 
 // A DUPLICATE ROW REFUSES RATHER THAN LETTING AUTHORING ORDER DECIDE. Two rows for one host
@@ -166,7 +211,7 @@ fn projection_gate_refuses_before_comparisons() -> Bool {
     standings: fleet_bmc_fan_alignment_standings,
   ) {
     BmcFanProjectionApplyRefused { cause } =>
-      cause == BmcFanProjectionObservedProgramNotRepresentable
+      cause == BmcFanProjectionObservedProgramRepresentableNotAdopted
     BmcFanProjectionApplySuitable => false
   }
   let suitable_under_adopted_standing = match bmc_fan_policy_projection_apply_suitability(
@@ -209,29 +254,29 @@ fn producer_emits_the_exact_cause() -> Bool {
     AlignmentRefused { cause } =>
       match cause {
         RefusedObservedProgramNotAdopted => true
-        RefusedObservedProgramNotRepresentableByIntent { missing } => false
+        other => false
       }
     other => false
   }
-  let srv3_unrepresentable = match fleet_host_alignment_admission(host: operator_host_srv3) {
+  let srv3_representable_unadopted = match fleet_host_alignment_admission(host: operator_host_srv3) {
     AlignmentRefused { cause } =>
       match cause {
-        RefusedObservedProgramNotRepresentableByIntent { missing } =>
-          missing == srv3_srv4_expected_missing
-        RefusedObservedProgramNotAdopted => false
+        RefusedObservedProgramRepresentableNotAdopted { representability_authority } =>
+          representability_authority.module_path == "extdeps.bmc.pid_control_representability"
+        other => false
       }
     other => false
   }
-  let srv4_unrepresentable = match fleet_host_alignment_admission(host: operator_host_srv4) {
+  let srv4_representable_unadopted = match fleet_host_alignment_admission(host: operator_host_srv4) {
     AlignmentRefused { cause } =>
       match cause {
-        RefusedObservedProgramNotRepresentableByIntent { missing } =>
-          missing == srv3_srv4_expected_missing
-        RefusedObservedProgramNotAdopted => false
+        RefusedObservedProgramRepresentableNotAdopted { representability_authority } =>
+          representability_authority.module_path == "extdeps.bmc.pid_control_representability"
+        other => false
       }
     other => false
   }
-  srv1_unadopted && srv3_unrepresentable && srv4_unrepresentable
+  srv1_unadopted && srv3_representable_unadopted && srv4_representable_unadopted
 }
 
 // THE PROJECTION BOUNDARY PRESERVES THE CAUSE IT WAS HANDED. The producer emitting two causes
@@ -259,7 +304,7 @@ fn projection_preserves_the_cause() -> Bool {
     standings: fleet_bmc_fan_alignment_standings,
   ) {
     BmcFanProjectionApplyRefused { cause } =>
-      cause == BmcFanProjectionObservedProgramNotRepresentable
+      cause == BmcFanProjectionObservedProgramRepresentableNotAdopted
     BmcFanProjectionApplySuitable => false
   }
   srv1_maps_to_unadopted && srv4_maps_to_unrepresentable
@@ -308,9 +353,11 @@ fn bmc_fan_alignment_standing_witness() -> ProcessExit {
     && unexamined_host_refuses()
     && absent_standing_refuses()
     && represented_program_is_admitted()
-    && refusal_arms_stay_separate() {
+    && refusal_arms_stay_separate()
+    && vacated_unrepresentable_arm_still_refuses() {
     ExitSuccess
   } else {
     exit_failure(reason: "bmc fan alignment standing witness: the srv3/srv4 interlock, the fail-closed default, or the admitted control changed")
   }
 }
+
