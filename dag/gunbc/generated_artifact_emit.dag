@@ -111,6 +111,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     FleetDesiredAdmissionYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     GitignoreArtifact => true
     GitattributesArtifact => true
+    JsSitePageArtifact { page_id: _, form: _ } => true
     RoadmapArtifact => true
     DesignArtifact => true
     GithooksPrePushArtifact => true
