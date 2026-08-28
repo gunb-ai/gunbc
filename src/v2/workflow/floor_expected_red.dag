@@ -1001,10 +1001,27 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // dag add slice and holds only on `Accepted`, with the emitted node equal to
 // `dag_emitted_add_fn_node()` and no diagnostic carried.
 //
-// MEASURED at main 3a8344b5c, by a probe returning each stage's verdict as a Symbol:
-// `infer(dag_add_emitted_root)` answers `infer_accepted`, and
-// `generate_translate_self_emit_candidate` over that same root and `dag_add_target_model`
-// answers `infer_grounding_not_derived`. Infer accepts; the composition refuses.
+// A RECEIPT, AND EXPLICITLY NOT AN INSTRUMENT -- the distinction is stated because DESIGN's
+// name-the-instrument-never-transcribe-its-output ruling reaches this paragraph, and half of it
+// bites here. At main 3a8344b5c, a probe module returning each stage's verdict as a Symbol
+// answered `infer_accepted` for `infer(dag_add_emitted_root)` and `infer_grounding_not_derived`
+// for `generate_translate_self_emit_candidate` over that same root and `dag_add_target_model`.
+// Infer ACCEPTS; the composition refuses.
+//
+// WHAT THE RULING DOES AND DOES NOT REACH HERE. Its subject is a live claim transcribed as a
+// standing figure, which rots because the thing it describes moves. This one names a fixed tree,
+// so it stays true of that tree forever -- the dated-receipt half the ruling preserves. What it
+// DOES reach is reproducibility: the probe was a throwaway module and no `.dag` entry point
+// re-derives this, so a reader cannot re-run it. That gap is recorded here rather than papered
+// over, and it is this note's own next-rung trigger: a `.dag` entry returning the per-stage
+// verdicts for one root would let this paragraph name a producer instead of a commit.
+//
+// IT IS NOT DELETED IN FAVOUR OF THE STRUCTURAL ACCOUNT BELOW, because that account cannot
+// establish it. Reading the gate tells you translate CAN refuse an underived grounding; it
+// cannot tell you that infer ACCEPTED this input rather than rejecting it earlier, and that is
+// the fact locating the work in the derivation rules rather than in translate. A structural
+// argument that reached the same conclusion without the observation would be the inference this
+// repository keeps recording as a diagnostic name read as a mechanism.
 //
 // THE REFUSAL IS THE DECLARED FRONTIER, NOT A DEFECT IN EITHER STAGE. The fixture root is
 // `TypeNode { connective: Arrow }` over `Conj` inhabitants, and `v2.compiler.infer`
