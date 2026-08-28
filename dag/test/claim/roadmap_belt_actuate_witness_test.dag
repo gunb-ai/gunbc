@@ -128,7 +128,6 @@ import gunbc.roadmap_belt_actuate {
   belt_publication_subject_for,
   BeltPublishGate, PublishProceed, PublishHalted,
   belt_publish_gate,
-  belt_listing_names_entry,
   belt_publish_write_outcome,
   BeltPublishOutcome,
   PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable, PublishRequested,
@@ -145,6 +144,10 @@ import gunbc.roadmap_belt_actuate {
   SpawnWorkdirInstanceResolved,
   UnknownSpawnWorkdir,
   srv1_live_dashboard_instance,
+}
+
+import extdeps.filesystem.filesystem_io {
+  filesystem_listing_names_entry,
 }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.fleet_desired_observe {
@@ -1605,13 +1608,13 @@ data listing_membership_note: String = "The line-exact membership test is what m
 
 test fn listing_membership_is_line_exact_not_substring() -> Bool {
   let listing = join(["alpha.json", "beta.json", "beta.json.tmp"], "\n")
-  belt_listing_names_entry(listing: listing, name: "alpha.json")
-    && belt_listing_names_entry(listing: listing, name: "beta.json")
-    && belt_listing_names_entry(listing: listing, name: "beta.json.tmp")
-    && !belt_listing_names_entry(listing: listing, name: "eta.json")
-    && !belt_listing_names_entry(listing: listing, name: "beta")
-    && !belt_listing_names_entry(listing: listing, name: "gamma.json")
-    && !belt_listing_names_entry(listing: "", name: "alpha.json")
+  filesystem_listing_names_entry(listing: listing, name: "alpha.json")
+    && filesystem_listing_names_entry(listing: listing, name: "beta.json")
+    && filesystem_listing_names_entry(listing: listing, name: "beta.json.tmp")
+    && !filesystem_listing_names_entry(listing: listing, name: "eta.json")
+    && !filesystem_listing_names_entry(listing: listing, name: "beta")
+    && !filesystem_listing_names_entry(listing: listing, name: "gamma.json")
+    && !filesystem_listing_names_entry(listing: "", name: "alpha.json")
 }
 
 test fn an_undecodable_receipt_is_not_overwritten_either() -> Bool {
