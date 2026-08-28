@@ -301,7 +301,7 @@ fn reference_declared_module_prefix_facts(
     module_to_path: module_to_path,
     acc: acc
   )
-  if length(xs: exact) > length(xs: acc) {
+  if std.types.list_length(items: exact) > std.types.list_length(items: acc) {
     exact
   } else {
     fold_list(
@@ -392,7 +392,7 @@ fn reference_corpus_paths_live(
     acc: from_modules
   )
   fold_list(
-    xs: v2.lens.enforcement.grammar_coverage.grammar_coverage_distinct_rel_paths(facts: decl_facts(pool_roots: pool_roots)),
+    xs: v2.lens.enforcement.grammar_coverage.grammar_coverage_distinct_rel_paths(facts: v2.std.decl_index.decl_facts(pool_roots: pool_roots)),
     empty: from_imports,
     cons: fn(acc, path) { v2.lens.coverage.dedupe_snoc(acc: acc, item: path, eq: string_eq) }
   )
@@ -563,8 +563,8 @@ fn reference_resolution_refusal_count_live(
   importer_roots: List<String>,
   exclude_substrings: List<String>
 ) -> Int {
-  length(
-    xs: reference_resolution_census_live(
+  std.types.list_length(
+    items: reference_resolution_census_live(
       pool_roots: pool_roots,
       importer_roots: importer_roots,
       exclude_substrings: exclude_substrings
