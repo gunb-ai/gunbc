@@ -44619,7 +44619,7 @@ pub fn assemble_prepared_subject(
         // loop used to discard that answer. Since `run_required_floor` builds its whole roster
         // from `witness_files`, a `*_test.dag` file declaring no `test fn` was not declined and
         // not counted — it left the floor's universe entirely, one level ABOVE the
-        // `offered = routed + declined_long + declined_live` partition, which is why that line
+        // `offered = routed + declined_long + declined_fixture` partition, which is why that line
         // can be exact and still say nothing about it.
         //
         // The `.dag` producer has carried a wall for exactly this since it was written
@@ -45306,6 +45306,16 @@ pub enum RequiredFloorDisposition {
     /// but corrupting. See `v2.workflow.required_floor` `fixture_home_prefixes` for the full
     /// argument and the dissolution condition.
     DeclinedFixtureMember { matched_prefix: String },
+    /// Declined because the qualified identity is enrolled in `v2.workflow.floor_cost_debt`:
+    /// it PASSES and costs more than `required_floor_claim_cpu_safety_limit_ms` allows, so it is
+    /// withheld from execution until made cheap. Carries no payload — the roster is the
+    /// authority for which identities these are, and duplicating the measured cost here would be
+    /// a second representation of a number that is only ever read from the fold.
+    ///
+    /// ORDERED LAST among the declines, per `required_floor_site_disposition`'s own note: a site
+    /// that also declines for a home reason keeps the home decline, so a roster line over it
+    /// surfaces as a STALE row to delete rather than as a withhold that looks legitimate.
+    DeclinedCostDebt,
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -45528,6 +45538,18 @@ pub struct RequiredFloorOutcome {
     /// remedy is reducing what it costs, not investigating why it never returned. Still
     /// blocking, per the same ruling.
     pub completed_over_cost_requirement: Vec<String>,
+    /// WITHHELD FROM EXECUTION BY THE COST-DEBT ROSTER. Reported and counted every run, and
+    /// NOT blocking: these rows are the frozen population the 2026-08-27 ceiling restoration
+    /// declared, and blocking on them would red main for exactly the debt the contract exists
+    /// to carry down. It is counted rather than silent because the whole difference between
+    /// this and the relocation the 2026-08-04 ruling forbids is that this one is declared and
+    /// visible — an unreported withhold is the gunbc#7762 specimen with extra steps.
+    pub withheld_cost_debt: Vec<String>,
+    /// A COST-DEBT ROW NAMING AN IDENTITY THE TREE NO LONGER CARRIES. BLOCKING. Without this
+    /// the roster rots into a permission slip: a withheld identity that is renamed or deleted
+    /// leaves a line behind that withholds nothing, and the roster's length then overstates the
+    /// debt in the direction that flatters. Same shape as `stale_quarantine`, same reason.
+    pub stale_cost_debt: Vec<String>,
     /// ENROLLED AS EXPECTED-RED AND THREW, or answered with a non-verdict. Its own collections
     /// for the same reason `route_gap` is not folded into `host_tool_unresolved`: the remedy
     /// differs. A throw is a defect in the witness or its subject; an unreadable observation is
@@ -46899,7 +46921,8 @@ pub fn run_required_floor(
     )?;
     // THE LINE STOPS BEFORE THE PARTITION IS COMPUTED, because a barren entry is invisible to
     // the partition by construction — it contributes no SITE, so `offered` cannot report it and
-    // `offered == routed + declined_long + declined_fixture` stays exact while saying nothing about
+    // `offered == routed + declined_long + declined_fixture + declined_cost_debt` stays exact
+    // while saying nothing about
     // it. A file that claims the `*_test.dag` place and enrolls nothing is a witness nobody asked
     // and everybody reads as covered.
     let barren_test_sidecars = floor_barren_test_sidecars(
@@ -46915,10 +46938,104 @@ pub fn run_required_floor(
             barren_test_sidecars.join(", ")
         ));
     }
+    // THE COST-DEBT ROSTER, decoded before the claim-build loop below because it decides an
+    // ADMISSION and not a verdict. It answers a FOURTH question: not which claims exist, not
+    // which of them are known to fail, and not which have no route — but which PASS and cost
+    // more than the per-claim ceiling allows, and are therefore WITHHELD FROM EXECUTION until
+    // made cheap.
+    //
+    // Withheld is not deferred and is not covered. See `v2.workflow.floor_cost_debt` for the
+    // monotone debt contract and the DESIGN §4b(3) rung drop; the short form is that a rostered
+    // row does not run anywhere, its coverage is gone while it sits there, and it leaves only by
+    // being deleted from the roster and then passing under the ordinary ceiling.
+    let cost_debt_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_cost_debt.floor_cost_debt_roster",
+            false,
+        )
+        .map_err(|e| format!("floor_cost_debt_roster: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_cost_debt_roster: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    // A DUPLICATE REFUSES, for the reason the expected-red roster gives above
+                    // and one more that is specific to a debt this size: the roster's length is
+                    // the debt, a repeated identity makes that length overstate what is
+                    // withheld, and the second copy survives every removal of the first.
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_cost_debt_roster: duplicate withheld identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_cost_debt_roster: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        // NO EMPTY-ROSTER REFUSAL, and the asymmetry with the expected-red roster is deliberate
+        // rather than an oversight. An empty expected-red roster makes its downstream partition
+        // and did-not-execute joins VACUOUS, so nothing can fire. An empty cost-debt roster
+        // makes nothing vacuous: it means every witness runs under the ceiling, which is the
+        // terminal state this contract is shrinking toward, and the guard that matters — the
+        // stale-row join below — gets STRICTER as the roster empties, never weaker.
+        out
+    };
+    eprintln!(
+        "[floor-cost-debt] roster withholds {} identity(ies) from execution",
+        cost_debt_roster.len()
+    );
+
+    // EXACTLY ONE DECLARED MECHANISM HOLDS A ROW, and when cost debt withholds one it is the
+    // holder. `gunbc.quarantine_probe_disposition` states the rule this implements: the question
+    // is never WHICH roster names a row, it is whether exactly one MECHANISM holds it, and a row
+    // claimed by two is the authority-substitution shape.
+    //
+    // WHY THIS IS NOT OPTIONAL, measured rather than anticipated: 6 identities sit in both this
+    // roster and `floor_expected_red` at the restoration. Leaving both claims standing blocks the
+    // run in EITHER direction, which is what makes this a real fork and not a tidy-up. Withheld
+    // and still enrolled, the expected-red reverse join reports them as stale (enrolled but never
+    // executed) and refuses. Un-withheld so the enrollment stays observable, they execute, exceed
+    // the 500ms ceiling, and `ExpectedRedArm` explicitly REFUSES to hold an interrupted budget
+    // outcome -- so they land as ordinary failures and refuse too. All 6 measure 521-3865ms of
+    // MARGINAL cpu, so none of them can execute inside the ceiling.
+    //
+    // COST DEBT WINS, and the direction follows from what each roster asserts. Enrollment in
+    // `floor_expected_red` asserts, in that module's own words, that the identity REACHES ITS
+    // SUBJECT AND ANSWERS. A withheld row answers nothing, so while it is withheld that assertion
+    // is not merely unobserved -- it is untrue, and the roster that must yield is the one making
+    // a claim the run cannot support. The enrollment is dormant, not deleted: the moment the row
+    // leaves the cost-debt roster its expected-red claim is live again and observed again.
+    //
+    // SUPPRESSION IS COUNTED, NEVER SILENT. A roster quietly shrinking is how a skip list is
+    // born, so the count is printed per roster and the population is recoverable by intersecting
+    // the two authorities. This is a narrowing of what those joins observe, declared as one.
+    let suppress_withheld = |roster: &mut HashSet<String>, name: &str| {
+        let before = roster.len();
+        roster.retain(|identity| !cost_debt_roster.contains(identity));
+        let suppressed = before - roster.len();
+        if suppressed > 0 {
+            eprintln!(
+                "[floor-cost-debt] {name}: {suppressed} enrolled identity(ies) suppressed because \
+                 the cost-debt roster withholds them; their enrollment is dormant, not deleted, \
+                 and becomes observable again when they leave that roster"
+            );
+        }
+    };
+
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
     let mut fixture_declined = 0usize;
+    let mut cost_debt_declined = 0usize;
+    let mut cost_debt_seen: HashSet<String> = HashSet::new();
+    let mut outcome_withheld_cost_debt: Vec<String> = Vec::new();
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
     let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
@@ -46960,6 +47077,28 @@ pub fn run_required_floor(
                     disposition: RequiredFloorDisposition::DeclinedFixtureMember {
                         matched_prefix: prefix.clone(),
                     },
+                });
+                continue;
+            }
+            // THE THIRD DECLINE, APPLIED ONLY TO A SITE THE TWO ABOVE ADMITTED. The precedence
+            // is `required_floor_site_disposition`'s, not this loop's — cost debt is last, so a
+            // rostered identity that ALSO declines for a home reason keeps its home decline and
+            // never lands here. That is what makes such a roster line show up as stale (it never
+            // enters `cost_debt_seen`) instead of as a withhold nobody can tell from a real one.
+            //
+            // DECLINED AT BUILD, NEVER SKIPPED AT EXECUTION. A withheld row must not become a
+            // planned claim: `claims_planned == claims_executed + not_attempted` and the terminal
+            // ledger's identity join both require every planned identity to reach a verdict, so a
+            // skip inside the fold would refuse on both. Declining here keeps all three partition
+            // checks exact and costs the fold nothing — no scope is built and no frame allocated
+            // for a row that will not run.
+            if cost_debt_roster.contains(&identity) {
+                cost_debt_declined += 1;
+                cost_debt_seen.insert(identity.clone());
+                outcome_withheld_cost_debt.push(identity.clone());
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedCostDebt,
                 });
                 continue;
             }
@@ -47010,10 +47149,11 @@ pub fn run_required_floor(
     // it is the construction's own statement of what it guarantees, and it fails loudly the
     // first time an edit adds a third arm that quietly swallows rows, which is precisely how
     // the live-tree decline arrived and stayed invisible.
-    if sites_offered != claims.len() + long_declined + fixture_declined {
+    if sites_offered != claims.len() + long_declined + fixture_declined + cost_debt_declined {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={sites_offered} \
-             routed={} declined_long={long_declined} declined_fixture={fixture_declined} — every \
+             routed={} declined_long={long_declined} declined_fixture={fixture_declined} \
+             declined_cost_debt={cost_debt_declined} — every \
              discovered site must be either routed to a claim or declined with a stated \
              disposition; a gap here is a roster that narrowed without saying so",
             claims.len()
@@ -47021,13 +47161,14 @@ pub fn run_required_floor(
     }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
-         claims={} declined_long={} declined_fixture={}",
+         claims={} declined_long={} declined_fixture={} declined_cost_debt={}",
         projection_started.elapsed().as_millis(),
         sites_offered,
         files.len(),
         claims.len(),
         long_declined,
-        fixture_declined
+        fixture_declined,
+        cost_debt_declined
     );
 
     // THE EXPECTED-RED ROSTER, read from its .dag authority in the policy module's frame — it
@@ -47096,6 +47237,8 @@ pub fn run_required_floor(
         }
         out
     };
+    let mut expected_red_roster = expected_red_roster;
+    suppress_withheld(&mut expected_red_roster, "floor_expected_red");
     eprintln!(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
@@ -47148,6 +47291,8 @@ pub fn run_required_floor(
         }
         out
     };
+    let mut route_gap_roster = route_gap_roster;
+    suppress_withheld(&mut route_gap_roster, "floor_route_gap");
     eprintln!(
         "[floor-route-gap] roster carries {} enrolled identity(ies)",
         route_gap_roster.len()
@@ -47315,6 +47460,8 @@ pub fn run_required_floor(
         }
         out
     };
+    let mut non_verdict_roster = non_verdict_roster;
+    suppress_withheld(&mut non_verdict_roster, "floor_non_verdict");
     eprintln!(
         "[floor-non-verdict] roster carries {} enrolled identity(ies)",
         non_verdict_roster.len()
@@ -47493,6 +47640,8 @@ pub fn run_required_floor(
         stale_quarantine: Vec::new(),
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
+        withheld_cost_debt: outcome_withheld_cost_debt,
+        stale_cost_debt: Vec::new(),
         known_red_runtime_errored: Vec::new(),
         non_verdict_unenrolled: Vec::new(),
         stale_non_verdict: Vec::new(),
@@ -48513,6 +48662,33 @@ pub fn run_required_floor(
             });
         }
     }
+
+    // THE COST-DEBT ROSTER IS A TWO-WAY JOIN FOR THE SAME REASON, and the reverse direction is
+    // the whole thing that stops this contract becoming a permission slip. Forward, the roster
+    // only ever answers "is this planned claim withheld". Reverse, it must answer "does every
+    // withheld identity still exist as a planned claim" — because a rostered row whose witness
+    // was renamed, deleted, or declined by home policy withholds NOTHING while still counting
+    // toward the debt, which overstates what is frozen in the direction that flatters and
+    // survives every repair of the rows around it.
+    //
+    // BLOCKING, unlike the withhold itself. A withheld row is declared debt; a stale row is a
+    // roster that has stopped describing the tree, and the contract's monotone claim is only
+    // worth anything while its universe is the discovered one.
+    {
+        let mut stale: Vec<&String> = cost_debt_roster
+            .iter()
+            .filter(|q| reverse_joins_answerable && !cost_debt_seen.contains(*q))
+            .collect();
+        stale.sort();
+        for identity in stale {
+            outcome.stale_cost_debt.push(format!(
+                "{identity} is enrolled in v2.workflow.floor_cost_debt but was not planned, so \
+                 nothing was withheld for it. It was renamed, deleted, or declined by home \
+                 policy. Delete the row — a withhold over an identity the tree does not carry \
+                 counts as debt while costing nothing and can never ask to be removed."
+            ));
+        }
+    }
     // THE ROSTER IS A TWO-WAY JOIN, NOT A ONE-WAY LOOKUP. Enrollment as written above only ever
     // asks "is this executing claim enrolled". The reverse question — is every enrolled identity
     // still executing — has no consumer unless it is asked here, and without it the roster rots
@@ -48610,6 +48786,18 @@ pub fn run_required_floor(
     // for a reader to compare. A run that planned more claims than it executed has silently
     // narrowed, which is the failure this whole path exists to make unwritable; reporting the
     // pair and letting a human notice is exactly how the deferred bucket survived.
+    // WITHHELD ROWS DO NOT APPEAR IN THIS SUM, and that is a consequence of where the withhold
+    // happens rather than an exemption carved into it. A cost-debt row is declined at claim
+    // BUILD time, alongside the long-home and live-tree declines, so it never becomes a planned
+    // claim and this partition never sees it. The site-level partition upstream
+    // (`SitePartitionInexact`) is what accounts for it.
+    //
+    // A FIRST CUT OF THIS CHANGE WITHHELD INSIDE THE EXECUTION LOOP INSTEAD, and it would have
+    // red the floor on this very check -- 320 planned claims that never executed and never
+    // published as not-attempted. Recorded because the lesson generalises past this diff: a
+    // `continue` at the top of a fold is exactly the shape that leaves a partition behind, and
+    // the three partition checks in this file are the only thing that says so. A code review
+    // approved the loop-skip form; the partition would have refused it on the first run.
     if outcome.claims_planned != outcome.claims_executed + outcome.not_attempted_after_abort
         || outcome.claims_executed != outcome.receipt_identities
     {
@@ -48724,7 +48912,33 @@ pub fn run_required_floor(
         .filter(|row| row.verdict_reached && observed_cost_ms(row, cost_basis) > row.cost_line_ms)
         .collect();
     outcome.over_cost_line_diagnostic = over_cost_members.len();
-    for row in &over_cost_members {
+    // THE WARNING TIER, RESTORED AT 100ms BY OPERATOR RULING (2026-08-27) AND PRINTED RANKED.
+    //
+    // WHY THIS IS NOT THE WARN TIER DELETED ON 2026-08-20, because it will otherwise be deleted
+    // again by a reader who recognises the shape. That tier was a second threshold ON THE SAFETY
+    // DEADLINE -- an admission mechanism -- and "over a threshold, reported, allowed to finish"
+    // is the widen DESIGN section 5 forbids of a FAILURE ARM. This line is not a failure arm and
+    // sits nowhere near admission: `exceeds_completed_cost_line` judges only COMPLETED claims,
+    // nothing reads `over_cost_line_diagnostic` to fail a run, and a row named here has already
+    // been admitted and has already answered. The pairing the operator asked for is a warning at
+    // 100ms and a hard error at 500ms, and those are two different mechanisms rather than two
+    // tiers of one: the hard error is `required_floor_claim_cpu_safety_limit_ms`, which refuses.
+    //
+    // RANKED AND BOUNDED, WITH THE REMAINDER STATED. At a 100ms line the population is ~924 rows
+    // on the measured corpus, and this file already carries the receipt for what that does to a
+    // log -- the prior 5000ms/10000ms pair "fired on the MEDIAN witness (several hundred
+    // `[floor-witness-slow]` lines)", and a signal at that volume is read by nobody. So the print
+    // is the 25 most expensive rows, which is the actionable head of a distribution whose median
+    // is ~1ms.
+    //
+    // THE CAP IS NOT SILENT (DESIGN section 5, no silent caps): the dropped count is printed and
+    // the FULL population is in the per-claim cost TSV, which is written unconditionally a few
+    // lines below and uploaded as a run artifact. A reader who needs row 26 has it; a reader
+    // skimming the log gets the head instead of 835 lines that hide every other diagnostic.
+    let mut ranked: Vec<&WitnessExecutionOccurrence> = over_cost_members.clone();
+    ranked.sort_by_key(|row| std::cmp::Reverse(observed_cost_ms(row, cost_basis)));
+    const OVER_COST_PRINT_LIMIT: usize = 25;
+    for row in ranked.iter().take(OVER_COST_PRINT_LIMIT) {
         eprintln!(
             "[over-cost] {} wall_ms={} cpu_ms={} line_ms={} outcome={}",
             row.identity,
@@ -48732,6 +48946,19 @@ pub fn run_required_floor(
             row.cpu_nanos / 1_000_000,
             row.cost_line_ms,
             row.outcome
+        );
+    }
+    if ranked.len() > OVER_COST_PRINT_LIMIT {
+        eprintln!(
+            "[over-cost] ... and {} further row(s) over the {}ms line, not printed. The complete \
+             population is in the per-claim cost TSV uploaded by this run; this list is the {} \
+             most expensive, ranked on the declared cost basis.",
+            ranked.len() - OVER_COST_PRINT_LIMIT,
+            over_cost_members
+                .first()
+                .map(|row| row.cost_line_ms)
+                .unwrap_or(0),
+            OVER_COST_PRINT_LIMIT
         );
     }
     if let Some(path) = claim_cost_path {
@@ -48826,6 +49053,7 @@ fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
         RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
+        RequiredFloorDisposition::DeclinedCostDebt => "declined_cost_debt",
     }
 }
 
@@ -48833,7 +49061,7 @@ fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposit
     match disposition {
         RequiredFloorDisposition::DeclinedLongModule { matched_prefix }
         | RequiredFloorDisposition::DeclinedFixtureMember { matched_prefix } => matched_prefix,
-        RequiredFloorDisposition::Planned => "",
+        RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedCostDebt => "",
     }
 }
 
@@ -48910,20 +49138,24 @@ fn write_required_floor_disposition_tsv(
     let mut planned = 0usize;
     let mut declined_long = 0usize;
     let mut declined_fixture = 0usize;
+    let mut declined_cost_debt = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
+            RequiredFloorDisposition::DeclinedCostDebt => declined_cost_debt += 1,
         }
     }
     writeln!(
         file,
-        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}",
+        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
+         \tdeclined_cost_debt={}",
         rows.len(),
         planned,
         declined_long,
-        declined_fixture
+        declined_fixture,
+        declined_cost_debt
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix")
