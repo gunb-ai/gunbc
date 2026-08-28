@@ -380,6 +380,23 @@ fn first_module_prefix_match(module_path: String, prefixes: List<String>) -> Mod
 // review 57235; the divergence is closed by giving the model the input it was missing rather than
 // by teaching the census to special-case the host.
 //
+// THE COST ARM BRANCHES WITH `if`, NOT WITH A VARIANT MATCH, AND THAT IS LOAD-BEARING RATHER THAN
+// STYLE. `floor_cost_debt_holds` returns the corpus `Bool`, which is realized NATIVELY as a machine
+// scalar; `v2.std.algebra` `any` itself matches it as lowercase `true`/`false`. The interpreter's
+// `match_pattern` carries VariantPattern arms for Variant, Record, List, Str, Int and Null and NO
+// arm for a native bool, so a `True`/`False` variant pattern over this value matches nothing and
+// falls through at RUNTIME -- it parses, it typechecks, and it dies with
+// `cause=pattern-match-failure`.
+//
+// AN EARLIER REVISION OF THIS FUNCTION MATCHED `True {}` / `False {}` AND ERRORED 11 OF 19
+// WITNESSES in `discovery_census_witness_test`, several of which never call this function and went
+// down through the shared census fold. The braces were NOT the defect: measured by still-cat-738
+// through the real binary, the bare `True` spelling fails identically, and a record pattern against
+// a genuine nullary variant (`A {}` over `type T = A | B`) matches perfectly well. So the class is
+// not pattern arity -- it is a declaration offering arms no value can present, the same family as
+// the interpreter's named StringRealizationStraddle. Branching with `if` sidesteps the straddle
+// instead of depending on it.
+//
 // PRECEDENCE IS DECIDED HERE AND MIRRORED THERE. Cost debt is LAST, so a rostered identity that
 // also declines for a home reason keeps its home decline. That is what makes such a roster line
 // surface as STALE -- it never enters the cost-debt seen set -- instead of as a withhold
@@ -394,9 +411,10 @@ fn required_floor_site_disposition(
       match first_module_prefix_match(module_path: module_path, prefixes: fixture_home_prefixes()) {
         ModulePrefixMatched { prefix: p } => DeclinedFixtureMember { matched_prefix: p }
         ModulePrefixUnmatched =>
-          match floor_cost_debt_holds(name: identity) {
-            True => DeclinedCostDebt {}
-            False => Planned {}
+          if floor_cost_debt_holds(name: identity) {
+            DeclinedCostDebt {}
+          } else {
+            Planned {}
           }
       }
   }

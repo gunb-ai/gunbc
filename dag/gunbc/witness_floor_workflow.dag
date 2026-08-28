@@ -732,8 +732,17 @@ data long_home_storage_agreement_artifact_name: String = "long-home-storage-agre
 //
 // WHAT THAT COSTS, and it is a measurement the corpus could not take rather than a file it
 // could not read. The floor carries TWO INDEPENDENT BLOCKING DEADLINES on two different clocks:
-// `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms` (500) and
-// `required_floor_claim_wall_safety_limit_ms` (2000), deliberately different so a hermetic
+// `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms` and
+// `required_floor_claim_wall_safety_limit_ms` -- NEITHER VALUE IS TRANSCRIBED HERE, because this
+// clause carried a parenthesised value beside each name and the wall one was simply wrong -- it
+// disagreed with the constant set by the very change that wrote the note, and with the preemption
+// fixture one file away. Two numerals, one authority, and the copy rotted inside its own diff.
+//
+// THE FIRST REPAIR OF THIS CLAUSE RE-TRANSCRIBED THE VALUES WHILE EXPLAINING WHY NOT TO, which is
+// why no figure appears above: writing "the wall limit is set to N" to document the rot recreates
+// exactly the coupling that produced it, one sentence later. A rot receipt names the constant. The
+// constants are named; a reader who needs a value reads the function. They are deliberately
+// different from each other so a hermetic
 // in-process claim descheduled by a co-tenant host does not read as a runaway. The only
 // per-claim two-clock output any run actually emits is the `[over-cost]` log line -- and that
 // population is selected by `required_floor_cost_basis`, which is the constant `CpuCost`. So a
