@@ -66,6 +66,59 @@ type RetirementProgress
 // RETIREMENT SPLITS THE SAME WAY AND FOR THE SAME REASON: Retired carries NOTHING, because it
 // means both populations are empty and a value that has to be inspected to find out whether it
 // means that is not a terminal state.
+// ABSORPTION IS A THIRD CONTINUATION AND IT WAS FUSED INTO AuthorityTransferred, which is this
+// carrier committing its own subject's defect one level in. An obligation can survive while
+// ceasing to be an INDEPENDENTLY NAMED operation -- performed as one inseparable part of a broader
+// transaction. That is not an authority transfer: a transfer hands one operation to a successor
+// that still answers for it by name, while absorption dissolves the name and owes a COVERAGE
+// receipt instead of an equivalence one -- every old input population, ordering guarantee, refusal
+// and consumer obligation must map to a named arm of the broader operation.
+//
+// WHY THE COMPLETED ARM ALONE WOULD HAVE BEEN A DECORATION, stated because the first draft of this
+// split was exactly that. A completed absorption has the SAME deletion truth table as an authority
+// transfer -- the absorber is canonical, so both files go -- so an Absorbed arm on its own changes
+// no predicate outcome and no witness over it can go red for the right reason. It would be a
+// richer name over an unchanged wall, which SS4b calls out directly.
+//
+// THE INCOMPLETE STATE IS WHAT MAKES IT A WALL, and it is the same move retirement already made
+// here: a coverage that has not been demonstrated admits NEITHER deletion, which authority
+// transfer does not. That difference is authorable by a fixture and refuses.
+//
+// AbsorptionGap NAMES ONE UNCOVERED CLASS, NOT THE SET, deliberately. A `List<AbsorptionGap>`
+// would readmit the empty-list state review 57020 removed from retirement -- a prepared absorption
+// carrying no gap is neither prepared nor absorbed. The decision both predicates make turns on
+// EXISTENCE of a gap, never on which ones or how many, so a single witness carries everything read
+// and nothing that can rot.
+type AbsorptionGap
+  = InputPopulationUncovered
+  | OrderingGuaranteeUncovered
+  | RefusalUncovered
+  | ConsumerObligationUncovered
+
+// INCOMPLETENESS ITSELF SPLITS, AND COLLAPSING IT WOULD BE NOT-APPLICABLE RENDERED AS MALFORMED --
+// DESIGN's most-repeated conflation form, one reason symbol over "no evidence yet" and "the
+// evidence says no", which have OPPOSITE OWNERS AND OPPOSITE REPAIRS. Nobody has produced the
+// coverage receipt is an ABSENT OBSERVATION: the absorber may cover everything, the remedy is to
+// produce the receipt, and it is owned by whoever is landing the absorption. A receipt that SHOWS a
+// gap is an observation with a negative result: the remedy is to widen the absorber or refuse the
+// absorption, it is owned by whoever owns the broader operation, and the design is wrong.
+//
+// THE TWO AGREE ON BOTH DELETION PREDICATES, which is exactly why collapsing them is tempting and
+// exactly why it is the trap -- a truth-table test cannot see this split, and a carrier whose whole
+// subject is a fused disposition must not fuse one two levels in.
+//
+// THE PRECEDENT IS IN THIS FILE, TWICE, WHICH IS WHY THIS IS NOT SYMMETRY-SEEKING: `RouteStatus`
+// separates `RouteRefuted` from `RouteUnexamined`, and `RealizationConformance` separates an
+// unobserved conformance from an observed one. Both encode absent-observation against
+// negative-result. Collapsing absorption's would leave this module using one vocabulary for that
+// distinction in three places and a different one in the fourth.
+//
+// NOT AN ARM: "absorber not yet identified". An obligation with no named absorber is not being
+// absorbed, it is Active, and the carrier already has somewhere to put that.
+type AbsorptionCoverage
+  = CoverageReceiptUnproduced
+  | CoverageReceiptShowsGap { uncovered: AbsorptionGap }
+
 type ObligationLifecycle
   = Active
   | RealizationTransferred { successor_realization: DeclarationRef }
@@ -73,6 +126,8 @@ type ObligationLifecycle
       successor_authority: DeclarationRef
       successor_realization: DeclarationRef
     }
+  | AbsorptionPrepared { coverage: AbsorptionCoverage }
+  | AbsorbedIntoBroaderOperation { absorber: DeclarationRef }
   | RetirementPrepared { outstanding: RetirementProgress }
   | Retired
 
@@ -93,6 +148,8 @@ fn host_deletion_admitted(lifecycle: ObligationLifecycle) -> Bool {
     Active => false
     RealizationTransferred { successor_realization: _ } => true
     AuthorityTransferred { successor_authority: _, successor_realization: _ } => true
+    AbsorptionPrepared { coverage: _ } => false
+    AbsorbedIntoBroaderOperation { absorber: _ } => true
     RetirementPrepared { outstanding: _ } => false
     Retired => true
   }
@@ -103,6 +160,8 @@ fn carrier_deletion_admitted(lifecycle: ObligationLifecycle) -> Bool {
     Active => false
     RealizationTransferred { successor_realization: _ } => false
     AuthorityTransferred { successor_authority: _, successor_realization: _ } => true
+    AbsorptionPrepared { coverage: _ } => false
+    AbsorbedIntoBroaderOperation { absorber: _ } => true
     RetirementPrepared { outstanding: _ } => false
     Retired => true
   }
@@ -264,3 +323,16 @@ data required_regen_obligation_authorities: List<DeclarationRef> = [
   decl_ref(module_path: "v2.workflow.required_regen", decl_name: "RequiredRegenRefusal"),
   decl_ref(module_path: "gunbc.plans.cli_run_hollowing_plan", decl_name: "cli_run_hollowing_plan_body")
 ]
+
+// THE SPLIT IS READ, not merely declared. Without a consumer, `AbsorptionCoverage` would be the
+// richer name over an unchanged wall that this module objects to elsewhere -- so the distinction
+// answers the question whose two states have different owners: is the absorption UNPROVEN, or has
+// it been REFUTED? A refuted absorption is a design defect owned by the broader operation; an
+// unproven one is an outstanding receipt owned by whoever is landing it. Shaped exactly like
+// `some_derivation_route_remains_unexamined` above, and for the same reason.
+fn absorption_coverage_is_refuted(coverage: AbsorptionCoverage) -> Bool {
+  match coverage {
+    CoverageReceiptUnproduced => false
+    CoverageReceiptShowsGap { uncovered: _ } => true
+  }
+}

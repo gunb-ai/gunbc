@@ -5,6 +5,17 @@ import gunbc.required_regen_obligation_disposition {
   Active,
   RealizationTransferred,
   AuthorityTransferred,
+  AbsorptionPrepared,
+  AbsorbedIntoBroaderOperation,
+  AbsorptionGap,
+  AbsorptionCoverage,
+  CoverageReceiptUnproduced,
+  CoverageReceiptShowsGap,
+  absorption_coverage_is_refuted,
+  InputPopulationUncovered,
+  OrderingGuaranteeUncovered,
+  RefusalUncovered,
+  ConsumerObligationUncovered,
   RetirementPrepared,
   Retired,
   RetirementProgress,
@@ -45,6 +56,18 @@ data authority_transferred_example: ObligationLifecycle = AuthorityTransferred {
 
 // Retired carries nothing: the arm IS the claim that both populations are empty.
 data fully_retired_example: ObligationLifecycle = Retired
+
+data absorbed_example: ObligationLifecycle = AbsorbedIntoBroaderOperation {
+  absorber: decl_ref(module_path: "v2.workflow.required_regen", decl_name: "required_regen_run")
+}
+
+data absorption_unproven_example: ObligationLifecycle = AbsorptionPrepared {
+  coverage: CoverageReceiptUnproduced
+}
+
+data absorption_refuted_example: ObligationLifecycle = AbsorptionPrepared {
+  coverage: CoverageReceiptShowsGap { uncovered: RefusalUncovered }
+}
 
 data partially_retired_example: ObligationLifecycle = RetirementPrepared {
   outstanding: RequiredConsumersRemain
@@ -155,4 +178,78 @@ test fn witness_imported_modules_are_emitted() -> Bool {
 test fn witness_control_table_populates_both_arms() -> Bool {
   length(xs: required_regen_closure_membership_controls |> filter(o => o.seed_reachable == false)) > 0
     && length(xs: required_regen_closure_membership_controls |> filter(o => o.seed_reachable)) > 0
+}
+
+// ABSORPTION'S PREPARED ARM IS WHAT MAKES THE SPLIT A WALL, and this is the witness that would
+// have gone red against the naive version. A COMPLETED absorption shares its deletion truth table
+// with an authority transfer -- both files go -- so no assertion over the completed arm alone can
+// discriminate the two. The INCOMPLETE arm does: an absorption whose coverage is not demonstrated
+// admits neither deletion, which authority transfer never does. Asserted as a disagreement for the
+// same reason the two transfers are: a pair answering false to everything would satisfy separate
+// assertions and re-fuse the arms in typed clothing.
+test fn witness_prepared_absorption_and_authority_transfer_disagree_on_both_deletions() -> Bool {
+  host_deletion_admitted(lifecycle: absorption_unproven_example)
+      != host_deletion_admitted(lifecycle: authority_transferred_example)
+    && carrier_deletion_admitted(lifecycle: absorption_unproven_example)
+      != carrier_deletion_admitted(lifecycle: authority_transferred_example)
+}
+
+// NO GAP ADMITS A DELETION, over the closed gap vocabulary rather than one sampled member -- the
+// arm's meaning is that SOME coverage class is outstanding, so any inhabitant must refuse both.
+test fn witness_no_absorption_gap_admits_any_deletion() -> Bool {
+  ([InputPopulationUncovered, OrderingGuaranteeUncovered, RefusalUncovered,
+    ConsumerObligationUncovered]
+    |> all(g => host_deletion_admitted(
+                  lifecycle: AbsorptionPrepared {
+                    coverage: CoverageReceiptShowsGap { uncovered: g }
+                  }) == false
+             && carrier_deletion_admitted(
+                  lifecycle: AbsorptionPrepared {
+                    coverage: CoverageReceiptShowsGap { uncovered: g }
+                  }) == false))
+}
+
+// THE TWO INCOMPLETENESS STATES AGREE ON EVERY DELETION AND DISAGREE ON WHO OWES THE REMEDY, which
+// is the whole reason they are separate arms and the reason a truth-table test cannot see the
+// split. Asserted as agreement AND disagreement together: either half alone is satisfied by a
+// vocabulary that fused them.
+// THIS NAME IS SHORTER THAN THE CONCEPT WANTS, AND THE REASON IS A FILED PARSER DEFECT RATHER THAN
+// STYLE. The parser will not accept a newline between the parameter list and the return arrow: a
+// signature written as `fn g()` then `  -> Bool {` refuses with "expected return type annotation
+// (-> Type)", and the whole module goes unparseable. Executed both ways by warm-hawk-909 on a
+// controlled pair -- a ONE-CHARACTER name with the break refuses, and the same name with the arrow
+// on one line compiles clean -- so LENGTH IS NOT THE TRIGGER, the break is. The name is therefore
+// short in order to keep the ARROW on one line, which is the only fact that makes this form parse;
+// stating it as "keep names short" would be false and would send the next author looking at naming.
+test fn witness_unproven_and_refuted_absorption_differ_only_on_refutation() -> Bool {
+  host_deletion_admitted(lifecycle: absorption_unproven_example)
+      == host_deletion_admitted(lifecycle: absorption_refuted_example)
+    && carrier_deletion_admitted(lifecycle: absorption_unproven_example)
+      == carrier_deletion_admitted(lifecycle: absorption_refuted_example)
+    && absorption_coverage_is_refuted(coverage: CoverageReceiptUnproduced)
+      != absorption_coverage_is_refuted(
+           coverage: CoverageReceiptShowsGap { uncovered: RefusalUncovered })
+}
+
+// AN ABSENT OBSERVATION IS NOT A NEGATIVE RESULT. The named direction matters: an unproduced
+// receipt must not read as refuting the absorption, which is the arm that would wrongly indict the
+// broader operation's owner.
+test fn witness_an_unproduced_receipt_does_not_refute_the_absorption() -> Bool {
+  absorption_coverage_is_refuted(coverage: CoverageReceiptUnproduced) == false
+}
+
+// AND EVERY GAP REFUTES, over the closed vocabulary rather than one sampled member.
+test fn witness_every_demonstrated_gap_refutes_the_absorption() -> Bool {
+  ([InputPopulationUncovered, OrderingGuaranteeUncovered, RefusalUncovered,
+    ConsumerObligationUncovered]
+    |> all(g => absorption_coverage_is_refuted(
+                  coverage: CoverageReceiptShowsGap { uncovered: g })))
+}
+
+// THE COMPLETED ARM STILL NEEDS ITS CONTROL, even though it cannot discriminate: without it the
+// prepared witness above is satisfied by an absorption vocabulary that refuses everything, which
+// would make absorption unreachable rather than distinguished.
+test fn witness_completed_absorption_admits_both_deletions() -> Bool {
+  host_deletion_admitted(lifecycle: absorbed_example)
+    && carrier_deletion_admitted(lifecycle: absorbed_example)
 }
