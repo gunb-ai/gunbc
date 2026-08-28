@@ -836,10 +836,18 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // failed=47, and these are those 47.
 //
 // WHY THEY BELONG HERE AND NOT SOMEWHERE ELSE, which is the question this roster's header says
-// to ask before enrolling anything. Every one of them EXECUTES, REACHES ITS SUBJECT AND ANSWERS
-// FALSE -- the run classifies each as `FAIL ... returned Bool(false)`, which is the semantic
-// verdict this roster is defined over. None of them route-gaps (no overlap with
-// `v2.workflow.floor_route_gap`), none produces a non-verdict, and none is a budget outcome.
+// to ask before enrolling anything. Every one of them EXECUTES AND ANSWERS FALSE -- the run
+// classifies each as `FAIL ... returned Bool(false)`, which is the semantic verdict this roster
+// is defined over. None of them route-gaps (no overlap with `v2.workflow.floor_route_gap`), none
+// produces a non-verdict, and none is a budget outcome.
+//
+// AN EARLIER REVISION OF THAT SENTENCE ALSO CLAIMED EACH ROW "REACHES ITS SUBJECT", AND THE RUN
+// DOES NOT ESTABLISH THAT. `Bool` has no spelling for "I could not observe my subject", so an
+// unreached subject and a genuine NO render identically as `returned Bool(false)`. Execution is
+// established; subject-reachability is not, and the difference is exactly the class this
+// document names as execution-provenance loss. The clause is removed rather than softened,
+// because a reader quoting it would have been quoting a property nothing measured. The live
+// candidate is named in the follow-ups below.
 // That last exclusion is load-bearing and it is the reason this chunk closes two of the run's
 // four causes rather than all four. The same run reports 44 `interrupted_before_verdict` and 2
 // `completed_over_cost_requirement`, and NONE of them is here.
@@ -906,6 +914,60 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // four of these rows (the three `quarantine_probe_disposition_witness_test` claims and the
 // `legacy_test_behavior` one they join against) are expected to leave this chunk on the first
 // run after it lands, by this roster's own removal path rather than by an edit.
+//
+// THE 47 ARE NOT ONE CAUSE, AND THREE GROUPS INSIDE THEM CARRY A REMEDY THIS ROSTER CANNOT
+// STATE. A row here is a bare identity string with no reason field, so enrolment says exactly
+// one thing -- this is expected to fail -- about rows that fail for at least six distinct
+// causes with different remedies. That is a real limit of the mechanism, not of this chunk, and
+// the three groups are named here so the next reader does not conclude one cause. All three are
+// FOLLOW-UPS rather than reasons to withhold enrolment, because enrolment is a REVERSIBLE
+// HOLDING STATE WITH A LOUD EXIT: the floor refuses on an enrolled row that starts passing and
+// names it, which is the same path by which this very change removes one.
+//
+//   1. THE THREE `guarantee_floor_class_probe_witness` GENERIC-INSTANTIATION ROWS FAIL BECAUSE
+//      A WALL LANDED, NOT BECAUSE THE HOLE IS OPEN. They assert a hole is still open; it is
+//      not. The discriminating evidence is that BOTH of that hole's controls PASS
+//      (`floor_generic_instantiation_monomorphic_control_refuses`,
+//      `floor_generic_instantiation_green_control_is_clean`) and the SIBLING hole probe
+//      `floor_field_through_generics_is_still_silently_accepted` also passes -- so the harness
+//      reached the judgment and the other hole is genuinely still open. A harness that saw
+//      nothing would have taken the sibling down too. That module's own
+//      `guarantee_floor_class_probe_scope_note` prescribes the remedy verbatim: such a probe
+//      "flip[s] RED on the day the wall lands, which is the signal to rewrite the row as
+//      `ExpectBlockingRefusal` rather than to delete the probe" -- which is DESIGN 4b(4)'s rule
+//      that a greened expecting-red probe becomes a permanent regression control. Enrolment
+//      holds them honestly (they do fail) while recording nothing about WHY, so the rewrite is
+//      owed and the roster's stale-quarantine arm is what will demand it.
+//
+//   2. THE FOUR `sole_constructor_completeness_audit_probe` f10 ROWS ANSWERED AN OPEN QUESTION
+//      THE FIRST TIME THEY RAN. Their block annotation states a question rather than a marked
+//      red -- "to test whether resolution of an unqualified bare-name construction depends on
+//      import statement order" -- and the answer is YES: `_ab` fails while `_ba` passes on
+//      identical source with the imports swapped, and the two direct probes fail in OPPOSITE
+//      directions, both predicted by last-import-wins. That is the census-AMBIGUOUS resolution
+//      hole DESIGN 4b already records as decidable once scoped. The distinction is decidable in
+//      the file rather than a matter of judgement: f13 and f19, which ARE enrolled here on the
+//      same footing, carry an explicit "Deliberately RED" marking and the f10 four do not.
+//
+//   3. THE THREE `cost_coverage_witness` ROWS ARE THE SUBJECT-REACHABILITY CANDIDATE. That
+//      module has 10 test fns; the 7 that pass are the ones that survive an empty subject (one
+//      reads `(receipt.files_attempted == 0) || ...`) and the 3 that fail are the ones demanding
+//      non-zero content. That is consistent with a genuine NO and equally consistent with a
+//      subject that was never reached, and no run distinguishes them. Enrolled as failing, which
+//      is what was observed; NOT asserted to be semantic.
+//
+// The classification, controls and per-row execution behind all three are crisp-newt-899's
+// triage, verified here against the cited files rather than accepted on report.
+//
+// ONE STALE PREMISE FOUND WHILE CHECKING THE ABOVE, recorded because it is load-bearing for a
+// carrier this chunk overlaps. `gunbc.declined_live_tree_defect_classification` states that it
+// "is not an expected-red enrolment and must never become one: enrolling a row here would assert
+// that the floor runs it and that it fails, and the floor does not run it at all." Eight of the
+// modules it classifies contain rows enrolled here, and the floor DOES now run them -- they are
+// in run 33145062452's FAIL lines. So that clause's REASON has been overtaken by #9106; the
+// clause is not wrong about authority substitution in general, it is premised on a
+// non-execution that no longer holds. Not edited here, because it is that carrier's to correct
+// and a second account of one fact is the defect either way -- reported to its owner instead.
 //
 // WHAT THIS CHUNK IS NOT. It is not a coverage claim and it is not a disposition. Each row is a
 // defect somebody owns, visible at identity grain, and the chunk can only shrink under an
