@@ -367,40 +367,21 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             );
             *any_failed = true;
         }
-        // The clock is named because a cpu-budget kill and a wall-budget kill have different
-        // remedies — and `completion` is named because whether the number BOUNDS the cost or
-        // MEASURES it differs by arm. This line used to say "killed ... elapsed is a ceiling"
-        // unconditionally, which is true of an interrupted row and false of one that ran to
-        // completion, passed, and was reclassified on cost. Same fabrication as the executor's
-        // renderer carried; fixed in the same motion so the two transports cannot disagree
-        // about one outcome.
-        ClaimOutcome::BudgetInterrupted {
-            elapsed_at_least_ms,
-            budget_ms,
-            kind,
-        } => {
+        // BOTH BUDGET ARMS RENDER THROUGH `ClaimOutcome::budget_figure_phrase`, the single
+        // authority for a budget figure, so this transport and the required floor's cannot
+        // disagree about one outcome — they have before. This site used to hand-write "at least
+        // {n}ms elapsed against a {budget}ms budget", which puts a right-censored BOUND in the
+        // field a reader scans for a cost; the renderer never does that, and no local format
+        // string here can reintroduce it.
+        ClaimOutcome::BudgetInterrupted { .. } | ClaimOutcome::CompletedOverBudget { .. } => {
             println!(
-                "FAIL {} (killed at its {} budget: at least {}ms elapsed against a {}ms budget \
-                 (interrupted, so elapsed bounds the cost and does not measure it))",
+                "FAIL {} ({})",
                 function,
-                kind.label(),
-                elapsed_at_least_ms,
-                budget_ms
-            );
-            *any_failed = true;
-        }
-        ClaimOutcome::CompletedOverBudget {
-            elapsed_ms,
-            budget_ms,
-            kind,
-        } => {
-            println!(
-                "FAIL {} (completed over its {} budget: exactly {}ms elapsed against a {}ms \
-                 budget (ran to completion and passed, then was reclassified on cost))",
-                function,
-                kind.label(),
-                elapsed_ms,
-                budget_ms
+                // Unreachable: the two arms matched here are exactly the two the renderer
+                // answers `Some` for.
+                outcome
+                    .budget_figure_phrase()
+                    .unwrap_or_else(|| "budget outcome carried no figure".to_string())
             );
             *any_failed = true;
         }

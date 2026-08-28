@@ -30,6 +30,13 @@ data rfc_8118_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// THE CONVENTIONAL ANCHOR NAME IS A BINDING, NOT A SECOND URI -- the extdeps.cpu_attachment
+// modules do the same thing. The mandatory-tag corpus wall reads a module's authority under this
+// exact name, and consumers import the document-specific name because THAT one does not collide:
+// a witness citing two modules' authorities cannot import both under the conventional spelling.
+// So the locator is typed once above and named twice, once for each reader.
+data extdeps_external_authority_anchor: ExternalAuthority = rfc_8118_external_authority_anchor
+
 data iso_32000_2_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

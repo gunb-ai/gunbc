@@ -2,6 +2,15 @@ module extdeps.languages.json.member_conservation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import extdeps.languages.json.emit { JsonArray, JsonBool, JsonKeyValue, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.rfc-editor.org/rfc/rfc8259#section-4",
+  },
+}
 
 // THE WALL A SEMANTIC DECODER HAS TO PASS, BUILT BEFORE ANY FAN VOCABULARY EXISTS. A decoder over a
 // captured configuration reads the members it understands and returns a typed record. Nothing in
@@ -16,9 +25,11 @@ import extdeps.languages.json.emit { JsonArray, JsonBool, JsonKeyValue, JsonNull
 // about fans, PIDs or OpenBMC.
 //
 // IT SITS BESIDE THE JSON GRAMMAR RATHER THAN IN THE CONSUMER THAT NEEDED IT FIRST, because its
-// subject is a JSON object and nothing about it is specific to any one decoder. It claims no
-// upstream fact -- this is a discipline for READING documents, not a model of RFC 8259 -- so it
-// carries no citation of its own and adds none to the JSON authority's.
+// subject is a JSON object and nothing about it is specific to any one decoder. The discipline is
+// ours rather than upstream's -- this is a rule for READING documents, not a second model of the
+// grammar -- but the thing it partitions is not: the anchor cites RFC 8259 section 4 for the one
+// upstream fact it rests on, that an object is a sequence of members, which is what an occurrence
+// is an occurrence OF.
 //
 // WHY IDENTITY AND NOT COUNT, WHICH IS THE WHOLE POINT. A conservation check written as
 // `source.length() == consumed.length() + unmodeled.length() + defective.length()` passes this:
