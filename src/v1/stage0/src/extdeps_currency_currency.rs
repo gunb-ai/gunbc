@@ -2,12 +2,29 @@
 // Source module: extdeps.currency.currency
 
 use self::CurrencyCode::*;
+pub use crate::extdeps_external_authority::ExternalAuthority;
+use crate::extdeps_uri::UriScheme::Https;
+pub use crate::extdeps_uri::{Uri, UriScheme};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+
+pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "www.iso.org/iso-4217-currency-codes.html".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,

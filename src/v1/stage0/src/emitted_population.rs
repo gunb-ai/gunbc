@@ -4,6 +4,7 @@
 // src/extdeps_cargo.rs
 // src/extdeps_cargo_version.rs
 // src/extdeps_container_oci_digest.rs
+// src/extdeps_currency_currency.rs
 // src/extdeps_external_authority.rs
 // src/extdeps_languages_dag_emit.rs
 // src/extdeps_languages_dag_syntax.rs
@@ -41,7 +42,6 @@
 // src/std_computation.rs
 // src/std_constructors.rs
 // src/std_content_hash.rs
-// src/extdeps_currency_currency.rs
 // src/std_decl_ref.rs
 // src/std_disposition.rs
 // src/std_dissolution.rs
