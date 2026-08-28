@@ -1,0 +1,206 @@
+module extdeps.bmc.pid_control_semantic_identity
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decimal { ExactDecimal, exact_decimal_wire }
+import std.measure { measure_count }
+import std.content_hash { ContentHash, content_hash_of_value }
+import extdeps.languages.json.emit {
+  JsonKeyValue,
+  JsonValue,
+  json_array,
+  json_kv,
+  json_object,
+  json_string,
+  serialize_json,
+}
+import extdeps.bmc.pid_control_program {
+  ActuatorController,
+  BmcFanControlProgram,
+  DbusBoundsDisposition,
+  DbusBoundsIgnored,
+  DbusBoundsUnstated,
+  DbusBoundsUsed,
+  DemandCurvePoint,
+  FanTachometerSensor,
+  ProgramSensor,
+  ProgramSensorRole,
+  ProgramZone,
+  SensorBoundsDeclared,
+  SensorBoundsUnstated,
+  SensorDrivesOutput,
+  SensorReadOnly,
+  SensorReadingBounds,
+  SensorTimeoutDeclared,
+  SensorTimeoutUnstated,
+  TemperatureSensor,
+  ThermalDemandController,
+  ZoneDemandValue,
+}
+
+// A PROGRAM'S SEMANTIC IDENTITY: WHAT THE MACHINE RUNS, NOT WHAT SOMEBODY TYPED. Two hosts running
+// the identical program must produce the identical identity even when their configuration files
+// differ in every way a file can differ without the daemon noticing -- member order, whitespace,
+// `30` against `30.0`. Digesting the captured bytes answers a different question, and it is a
+// question already answered: the capture receipt carries the byte digest, and it is the right
+// identity for "did this file change". This is the identity for "did the PROGRAM change".
+//
+// THE RENDERING IS THE DIGEST'S SUBJECT AND IS DEFINED HERE RATHER THAN BORROWED. It walks the
+// model in a fixed field order, renders every magnitude through the exact decimal's canonical wire,
+// and emits the coproduct arms as their own names -- so a field that is absent in one document and
+// present-and-unstated in another render identically only if they mean the same thing. It is a
+// projection of the semantic model and deliberately NOT a re-emission of the source document: it
+// carries no member order, no key spellings, and no field the model does not hold.
+
+fn decimal_json(value: ExactDecimal) -> JsonValue {
+  json_string(s: exact_decimal_wire(d: value))
+}
+
+fn demand_json(value: ZoneDemandValue) -> JsonValue {
+  decimal_json(value: value.magnitude)
+}
+
+// EVERY MAGNITUDE RENDERS AS A STRING, WHICH LOOKS ODD AND IS THE POINT. A JSON number in the
+// rendering would be a second numeral for a value this tree already decided is carried exactly,
+// and it would reintroduce the `30` against `30.0` question inside the very artifact built to
+// settle it. The canonical wire is one spelling per value by construction.
+fn sensor_role_json(role: ProgramSensorRole) -> JsonValue {
+  match role {
+    FanTachometerSensor => json_string(s: "fan_tachometer")
+    TemperatureSensor => json_string(s: "temperature")
+  }
+}
+
+fn dbus_bounds_json(disposition: DbusBoundsDisposition) -> JsonValue {
+  match disposition {
+    DbusBoundsIgnored => json_string(s: "ignored")
+    DbusBoundsUsed => json_string(s: "used")
+    DbusBoundsUnstated => json_string(s: "unstated")
+  }
+}
+
+fn sensor_bounds_json(bounds: SensorReadingBounds) -> JsonValue {
+  match bounds {
+    SensorBoundsUnstated => json_string(s: "unstated")
+    SensorBoundsDeclared { minimum, maximum } =>
+      json_object(members: [
+        json_kv(key: "minimum", value: decimal_json(value: minimum)),
+        json_kv(key: "maximum", value: decimal_json(value: maximum)),
+      ])
+  }
+}
+
+fn sensor_timeout_json(timeout: SensorTimeout) -> JsonValue {
+  match timeout {
+    SensorTimeoutUnstated => json_string(s: "unstated")
+    SensorTimeoutDeclared { seconds } => decimal_json(value: measure_count(m: seconds))
+  }
+}
+
+fn sensor_actuation_json(sensor: ProgramSensor) -> JsonValue {
+  match sensor.actuation {
+    SensorReadOnly => json_string(s: "read_only")
+    SensorDrivesOutput { write_path } => json_string(s: write_path)
+  }
+}
+
+fn sensor_json(sensor: ProgramSensor) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: sensor.name as String)),
+    json_kv(key: "role", value: sensor_role_json(role: sensor.role)),
+    json_kv(key: "read_path", value: json_string(s: sensor.read_path as String)),
+    json_kv(key: "actuation", value: sensor_actuation_json(sensor: sensor)),
+    json_kv(key: "bounds", value: sensor_bounds_json(bounds: sensor.bounds)),
+    json_kv(key: "dbus_bounds", value: dbus_bounds_json(disposition: sensor.dbus_bounds)),
+    json_kv(key: "timeout", value: sensor_timeout_json(timeout: sensor.timeout)),
+  ])
+}
+
+fn curve_point_json(point: DemandCurvePoint) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "index", value: json_string(s: to_string(point.index))),
+    json_kv(key: "reading", value: decimal_json(value: measure_count(m: point.reading))),
+    json_kv(key: "output", value: demand_json(value: point.output)),
+  ])
+}
+
+fn inputs_json(inputs: List<NonEmptyStr>) -> JsonValue {
+  json_array(elements: map(inputs, input => json_string(s: input as String)))
+}
+
+fn thermal_controller_json(controller: ThermalDemandController) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: controller.name as String)),
+    json_kv(key: "inputs", value: inputs_json(inputs: controller.inputs)),
+    json_kv(key: "setpoint", value: decimal_json(value: measure_count(m: controller.setpoint))),
+    json_kv(key: "failsafe_output", value: demand_json(value: controller.failsafe_output)),
+    json_kv(key: "sample_period", value: decimal_json(value: measure_count(m: controller.sample_period))),
+    json_kv(key: "positive_hysteresis", value: decimal_json(value: measure_count(m: controller.positive_hysteresis))),
+    json_kv(key: "negative_hysteresis", value: decimal_json(value: measure_count(m: controller.negative_hysteresis))),
+    json_kv(key: "is_ceiling", value: json_string(s: if controller.is_ceiling { "true" } else { "false" })),
+    json_kv(key: "curve", value: json_array(elements: map(controller.curve, point => curve_point_json(point: point)))),
+  ])
+}
+
+fn actuator_controller_json(controller: ActuatorController) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: controller.name as String)),
+    json_kv(key: "inputs", value: inputs_json(inputs: controller.inputs)),
+    json_kv(
+      key: "configured_setpoint_unused_by_runtime",
+      value: decimal_json(value: controller.configured_setpoint_unused_by_runtime),
+    ),
+    json_kv(key: "sample_period", value: decimal_json(value: measure_count(m: controller.sample_period))),
+    json_kv(key: "proportional", value: decimal_json(value: controller.gains.proportional)),
+    json_kv(key: "integral", value: decimal_json(value: controller.gains.integral)),
+    json_kv(key: "derivative", value: decimal_json(value: controller.gains.derivative)),
+    json_kv(key: "feed_forward_gain", value: decimal_json(value: controller.feed_forward.gain)),
+    json_kv(key: "feed_forward_offset", value: demand_json(value: controller.feed_forward.offset)),
+    json_kv(key: "integral_limit_minimum", value: decimal_json(value: controller.integral_limits.minimum)),
+    json_kv(key: "integral_limit_maximum", value: decimal_json(value: controller.integral_limits.maximum)),
+    json_kv(key: "output_limit_minimum", value: demand_json(value: controller.output_limits.minimum)),
+    json_kv(key: "output_limit_maximum", value: demand_json(value: controller.output_limits.maximum)),
+    json_kv(key: "slew_negative", value: decimal_json(value: controller.slew.negative_coefficient)),
+    json_kv(key: "slew_positive", value: decimal_json(value: controller.slew.positive_coefficient)),
+  ])
+}
+
+fn zone_json(zone: ProgramZone) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "id", value: json_string(s: to_string(zone.id))),
+    json_kv(key: "minimum_thermal_output", value: demand_json(value: zone.minimum_thermal_output)),
+    json_kv(key: "failsafe_output", value: demand_json(value: zone.failsafe_output)),
+    json_kv(key: "cycle_interval_ms", value: decimal_json(value: measure_count(m: zone.cycle_interval))),
+    json_kv(key: "update_thermals_ms", value: decimal_json(value: measure_count(m: zone.update_thermals_interval))),
+    json_kv(
+      key: "thermal_demand_controllers",
+      value: json_array(elements: map(zone.thermal_demand_controllers, c => thermal_controller_json(controller: c))),
+    ),
+    json_kv(
+      key: "actuator_controllers",
+      value: json_array(elements: map(zone.actuator_controllers, c => actuator_controller_json(controller: c))),
+    ),
+  ])
+}
+
+// THE PROGRAM'S OWN LISTS ARE RENDERED IN THE ORDER THE MODEL HOLDS THEM AND ARE NOT SORTED, which
+// is a different decision from the curve's and rests on a different fact. A curve's positions are
+// named by the document's own integer keys, so its order is recoverable and reordering the members
+// cannot change it. A zone's sensor list and controller list have no such names -- the document
+// gives them only array position -- so their order IS their identity as far as anything here can
+// tell, and sorting them would assert an equivalence between two documents that nothing has
+// established. If upstream turns out to load them order-independently, that is a fact to read and
+// cite, and this is the site that changes.
+fn program_json(program: BmcFanControlProgram) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "sensors", value: json_array(elements: map(program.sensors, s => sensor_json(sensor: s)))),
+    json_kv(key: "zones", value: json_array(elements: map(program.zones, z => zone_json(zone: z)))),
+  ])
+}
+
+fn semantic_program_rendering(program: BmcFanControlProgram) -> String {
+  serialize_json(v: program_json(program: program))
+}
+
+fn semantic_program_digest(program: BmcFanControlProgram) -> ContentHash {
+  content_hash_of_value(value: semantic_program_rendering(program: program) as NonEmptyStr)
+}
