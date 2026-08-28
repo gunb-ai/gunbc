@@ -16278,6 +16278,13 @@ mod shell_completion_trace_tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    // GATED ON UNIX BECAUSE AUTHORING THE RED REQUIRES A SYMLINK. `std::os::unix::fs::symlink`
+    // is the only API here that can construct the present-but-unresolvable state this test
+    // discriminates, and an unguarded reference breaks test COMPILATION on non-unix targets
+    // (review 57247). The guard is on the test, not on the wall: the peel loop's symlink
+    // refusal in `hermetic_checkout_input_disposition_under` is unconditional, so no platform
+    // loses the refusal -- only this platform loses the ability to author its witness.
+    #[cfg(unix)]
     #[test]
     fn hermetic_checkout_refuses_a_dangling_symlink_rather_than_peeling_it_as_absent() {
         // A DANGLING SYMLINK IS PRESENT AND UNRESOLVABLE, WHICH IS NOT ABSENCE.
