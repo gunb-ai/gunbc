@@ -10,21 +10,12 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 // live specimen's SHAPE -- one module, two entries, reexport rows differing by exactly one member,
 // declaration rows identical -- so the discrimination survives the repair.
 
-fn reexport_row(source_module: String, members: List<String>) -> gunbc.stage0_emitted_export_surface_observation.EmittedExportSurfaceRow {
-  gunbc.stage0_emitted_export_surface_observation.EmittedExportSurfaceRow {
+fn surface(source_module: String, reexports: List<String>, declarations: List<String>) -> gunbc.stage0_emitted_export_surface_observation.EmittedModuleExportSurface {
+  gunbc.stage0_emitted_export_surface_observation.EmittedModuleExportSurface {
     source_module: source_module,
     target_filename: "v2_std_node",
-    kind: gunbc.stage0_emitted_export_surface_observation.ReexportRow,
-    members: members
-  }
-}
-
-fn declaration_row(source_module: String, members: List<String>) -> gunbc.stage0_emitted_export_surface_observation.EmittedExportSurfaceRow {
-  gunbc.stage0_emitted_export_surface_observation.EmittedExportSurfaceRow {
-    source_module: source_module,
-    target_filename: "v2_std_node",
-    kind: gunbc.stage0_emitted_export_surface_observation.DeclarationRow,
-    members: members
+    reexports: reexports,
+    declarations: declarations
   }
 }
 
@@ -34,9 +25,8 @@ fn entry_with_cardinality() -> v2.compiler.self_host.emitted_surface_join.EntryO
   v2.compiler.self_host.emitted_surface_join.EntryObservation {
     entry: "dag/gunbc/native_scm_interaction_contract.dag",
     observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved {
-      rows: [
-        declaration_row(source_module: "v2.std.node", members: ["Node", "Edge"]),
-        reexport_row(source_module: "v2.std.node", members: ["Cardinality", "ContentHash"])
+      modules: [
+        surface(source_module: "v2.std.node", reexports: ["Cardinality", "ContentHash"], declarations: ["Node", "Edge"])
       ]
     }
   }
@@ -46,9 +36,8 @@ fn entry_without_cardinality() -> v2.compiler.self_host.emitted_surface_join.Ent
   v2.compiler.self_host.emitted_surface_join.EntryObservation {
     entry: "src/v2/std/node.dag",
     observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved {
-      rows: [
-        declaration_row(source_module: "v2.std.node", members: ["Node", "Edge"]),
-        reexport_row(source_module: "v2.std.node", members: ["ContentHash"])
+      modules: [
+        surface(source_module: "v2.std.node", reexports: ["ContentHash"], declarations: ["Node", "Edge"])
       ]
     }
   }
@@ -58,9 +47,8 @@ fn entry_agreeing() -> v2.compiler.self_host.emitted_surface_join.EntryObservati
   v2.compiler.self_host.emitted_surface_join.EntryObservation {
     entry: "src/v2/std/node.dag",
     observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved {
-      rows: [
-        declaration_row(source_module: "v2.std.node", members: ["Node", "Edge"]),
-        reexport_row(source_module: "v2.std.node", members: ["Cardinality", "ContentHash"])
+      modules: [
+        surface(source_module: "v2.std.node", reexports: ["Cardinality", "ContentHash"], declarations: ["Node", "Edge"])
       ]
     }
   }
@@ -84,17 +72,14 @@ fn build(observations: List<v2.compiler.self_host.emitted_surface_join.EntryObse
 // observed under one entry, would have nothing to disagree with, and would be ADMITTED as clean --
 // a failed read rendering as agreement.
 
-// A MODULE THE MANIFEST MENTIONS ONLY THROUGH DECLARATION ROWS.
-//
-// This is the shape that used to be invisible. Discovery folded over reexport rows alone, so a
-// module with no reexport row under any entry never became a census row at all -- and a module that
-// is not in the census cannot disagree with anything.
+// A PRESENT MODULE WITH AN EMPTY LINKAGE SURFACE. Presence is now explicit in the module envelope;
+// no consumer must infer it from declaration rows.
 fn entry_declarations_only(entry: String) -> v2.compiler.self_host.emitted_surface_join.EntryObservation {
   v2.compiler.self_host.emitted_surface_join.EntryObservation {
     entry: entry,
     observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved {
-      rows: [
-        declaration_row(source_module: "v2.std.node", members: ["Node", "Edge"])
+      modules: [
+        surface(source_module: "v2.std.node", reexports: [], declarations: ["Node", "Edge"])
       ]
     }
   }
@@ -109,11 +94,9 @@ fn entry_with_entry_specific_module() -> v2.compiler.self_host.emitted_surface_j
   v2.compiler.self_host.emitted_surface_join.EntryObservation {
     entry: "a.dag",
     observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved {
-      rows: [
-        declaration_row(source_module: "v2.std.node", members: ["Node", "Edge"]),
-        reexport_row(source_module: "v2.std.node", members: ["ContentHash"]),
-        declaration_row(source_module: "v2.std.only_here", members: ["OnlyHere"]),
-        reexport_row(source_module: "v2.std.only_here", members: ["Elsewhere"])
+      modules: [
+        surface(source_module: "v2.std.node", reexports: ["ContentHash"], declarations: ["Node", "Edge"]),
+        surface(source_module: "v2.std.only_here", reexports: ["Elsewhere"], declarations: ["OnlyHere"])
       ]
     }
   }
@@ -123,9 +106,8 @@ fn entry_sharing_one_module() -> v2.compiler.self_host.emitted_surface_join.Entr
   v2.compiler.self_host.emitted_surface_join.EntryObservation {
     entry: "b.dag",
     observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved {
-      rows: [
-        declaration_row(source_module: "v2.std.node", members: ["Node", "Edge"]),
-        reexport_row(source_module: "v2.std.node", members: ["ContentHash"])
+      modules: [
+        surface(source_module: "v2.std.node", reexports: ["ContentHash"], declarations: ["Node", "Edge"])
       ]
     }
   }

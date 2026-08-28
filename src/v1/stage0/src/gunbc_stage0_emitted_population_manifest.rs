@@ -53,6 +53,15 @@ pub fn emitted_export_surface_manifest_field_separator() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn emitted_export_surface_module_tag() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "module".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn emitted_export_surface_reexport_tag() -> String {
     thread_local! {
         static CACHED: String = {

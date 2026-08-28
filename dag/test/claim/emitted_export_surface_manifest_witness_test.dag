@@ -34,59 +34,59 @@ fn manifest(rows: List<String>) -> String {
 
 fn two_module_manifest() -> String {
   manifest(rows: [
+    row(source_module: "v2.std.node", target_filename: "v2_std_node", tag: gunbc.stage0_emitted_population_manifest.emitted_export_surface_module_tag, members: []),
     row(source_module: "v2.std.node", target_filename: "v2_std_node", tag: gunbc.stage0_emitted_population_manifest.emitted_export_surface_reexport_tag, members: ["Cardinality", "Symbol"]),
     row(source_module: "v2.std.node", target_filename: "v2_std_node", tag: gunbc.stage0_emitted_population_manifest.emitted_export_surface_declaration_tag, members: ["Behavior", "Edge", "Node"]),
+    row(source_module: "std.logic", target_filename: "std_logic", tag: gunbc.stage0_emitted_population_manifest.emitted_export_surface_module_tag, members: []),
     row(source_module: "std.logic", target_filename: "std_logic", tag: gunbc.stage0_emitted_population_manifest.emitted_export_surface_reexport_tag, members: []),
     row(source_module: "std.logic", target_filename: "std_logic", tag: gunbc.stage0_emitted_population_manifest.emitted_export_surface_declaration_tag, members: ["Bool"])
   ])
 }
 
-fn observed_rows(content: String) -> List<gunbc.stage0_emitted_export_surface_observation.EmittedExportSurfaceRow> {
+fn observed_modules(content: String) -> List<gunbc.stage0_emitted_export_surface_observation.EmittedModuleExportSurface> {
   match gunbc.stage0_emitted_export_surface_observation.observe_emitted_export_surface(content: content) {
     gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => []
-    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: rows } => rows
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { modules: modules } => modules
   }
 }
 
-// The round trip: four authored rows go in, four rows come back, and the fields land where the
-// grammar says they land. Asserted on the CONTENT of a specific row rather than on the count
-// alone, because a count survives a reader that puts every field one position off.
-fn witness_rows_round_trip() -> Bool {
-  let rows = observed_rows(content: two_module_manifest())
-  v2.std.algebra.length(xs: rows) == 4
-    && v2.std.algebra.any(xs: rows, predicate: r =>
-      r.source_module == "v2.std.node"
-        && r.target_filename == "v2_std_node"
-        && match r.kind {
-          gunbc.stage0_emitted_export_surface_observation.ReexportRow => true
-          gunbc.stage0_emitted_export_surface_observation.DeclarationRow => false
-        }
-        && v2.std.algebra.length(xs: r.members) == 2)
+// The round trip: six wire rows go in and two producer-shaped module envelopes come back, with both
+// projections attached to the right identity. The content assertion matters because a count alone
+// survives a reader that puts every field one position off.
+fn witness_module_envelopes_round_trip() -> Bool {
+  let modules = observed_modules(content: two_module_manifest())
+  v2.std.algebra.length(xs: modules) == 2
+    && v2.std.algebra.any(xs: modules, predicate: surface =>
+      surface.source_module == "v2.std.node"
+        && surface.target_filename == "v2_std_node"
+        && v2.std.algebra.length(xs: surface.reexports) == 2
+        && v2.std.algebra.length(xs: surface.declarations) == 3)
 }
 
 // DECLARED EMPTY IS NOT NOT-OBSERVED, and this is the witness that keeps the two apart.
 //
-// `std.logic` declares an EMPTY reexport row. It must come back as a present row carrying zero
-// members -- not as a missing row, and not as an absent observation. If the writer ever stopped
-// emitting empty rows, or the reader ever dropped them, a consumer's coverage check would read the
-// missing module as agreement, which is the fail-open the consuming census exists to refuse.
+// `std.logic` declares an EMPTY reexport projection. It must come back as a present module envelope
+// carrying zero linkage members -- not as a missing module, and not as an absent observation.
 fn witness_declared_empty_row_survives_the_round_trip() -> Bool {
-  let rows = observed_rows(content: two_module_manifest())
-  v2.std.algebra.any(xs: rows, predicate: r =>
-    r.source_module == "std.logic"
-      && match r.kind {
-        gunbc.stage0_emitted_export_surface_observation.ReexportRow => true
-        gunbc.stage0_emitted_export_surface_observation.DeclarationRow => false
-      }
-      && v2.std.algebra.length(xs: r.members) == 0)
+  let modules = observed_modules(content: two_module_manifest())
+  v2.std.algebra.any(xs: modules, predicate: surface =>
+    surface.source_module == "std.logic"
+      && v2.std.algebra.length(xs: surface.reexports) == 0
+      && v2.std.algebra.length(xs: surface.declarations) == 1)
 }
 
-// The linkage surface is the half that can vary; the declaration half cannot. This asserts the
-// projection selects exactly the reexport rows, so a consumer asking for the linkage surface never
-// silently receives declarations mixed in with it.
-fn witness_reexport_projection_selects_only_reexport_rows() -> Bool {
-  let rows = observed_rows(content: two_module_manifest())
-  v2.std.algebra.length(xs: gunbc.stage0_emitted_export_surface_observation.reexport_rows(rows: rows)) == 2
+// RED: projection rows without their module envelope are not a smaller valid observation. Before
+// the envelope existed this exact content was accepted and every consumer had to infer presence.
+fn witness_projection_rows_without_module_envelope_refuse() -> Bool {
+  match gunbc.stage0_emitted_export_surface_observation.observe_emitted_export_surface(
+    content: manifest(rows: [
+      row(source_module: "std.logic", target_filename: "std_logic", tag: gunbc.stage0_emitted_population_manifest.emitted_export_surface_reexport_tag, members: []),
+      row(source_module: "std.logic", target_filename: "std_logic", tag: gunbc.stage0_emitted_population_manifest.emitted_export_surface_declaration_tag, members: ["Bool"])
+    ])
+  ) {
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { modules: _ } => false
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => true
+  }
 }
 
 // RED 1: AN UNRECOGNIZED TAG REFUSES RATHER THAN BEING SKIPPED.
@@ -100,7 +100,7 @@ fn witness_unknown_tag_refuses() -> Bool {
       row(source_module: "v2.std.node", target_filename: "v2_std_node", tag: "reexports", members: ["Symbol"])
     ])
   ) {
-    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => false
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { modules: _ } => false
     gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => true
   }
 }
@@ -117,7 +117,7 @@ fn witness_row_missing_fixed_fields_refuses() -> Bool {
       )
     ])
   ) {
-    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => false
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { modules: _ } => false
     gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => true
   }
 }
@@ -130,7 +130,7 @@ fn witness_content_without_rows_is_unobserved() -> Bool {
   match gunbc.stage0_emitted_export_surface_observation.observe_emitted_export_surface(
     content: "fn main() {}\n"
   ) {
-    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => false
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { modules: _ } => false
     gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => true
   }
 }
@@ -141,7 +141,7 @@ fn witness_well_formed_manifest_is_observed() -> Bool {
   match gunbc.stage0_emitted_export_surface_observation.observe_emitted_export_surface(
     content: two_module_manifest()
   ) {
-    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => true
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { modules: _ } => true
     gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => false
   }
 }
@@ -164,7 +164,7 @@ fn witness_unexpected_nonempty_line_refuses() -> Bool {
       concat("a line that is not a row", gunbc.stage0_emitted_population_manifest.emitted_population_manifest_line_separator)
     )
   ) {
-    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => false
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { modules: _ } => false
     gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => true
   }
 }
@@ -178,15 +178,15 @@ fn witness_unexpected_nonempty_line_refuses() -> Bool {
 // rather than universal.
 fn witness_trailing_empty_line_still_observes() -> Bool {
   match gunbc.stage0_emitted_export_surface_observation.observe_emitted_export_surface(content: two_module_manifest()) {
-    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { rows: _ } => true
+    gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { modules: _ } => true
     gunbc.stage0_emitted_export_surface_observation.ExportSurfaceUnobserved { detail: _ } => false
   }
 }
 
 test fn emitted_export_surface_manifest_witnesses() -> Bool {
-  witness_rows_round_trip()
+  witness_module_envelopes_round_trip()
     && witness_declared_empty_row_survives_the_round_trip()
-    && witness_reexport_projection_selects_only_reexport_rows()
+    && witness_projection_rows_without_module_envelope_refuse()
     && witness_unknown_tag_refuses()
     && witness_row_missing_fixed_fields_refuses()
     && witness_content_without_rows_is_unobserved()

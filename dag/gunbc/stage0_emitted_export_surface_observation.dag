@@ -1,6 +1,7 @@
 module gunbc.stage0_emitted_export_surface_observation
 
 import gunbc.stage0_emitted_population_manifest {
+  emitted_export_surface_module_tag,
   emitted_export_surface_declaration_tag,
   emitted_export_surface_manifest_field_separator,
   emitted_export_surface_reexport_tag,
@@ -13,8 +14,8 @@ import v2.std.collection { List }
 
 // THE READ IS THE STRUCTURAL INVERSE OF THE WRITE, NOT A SECOND PARSER.
 //
-// `v1.compiler.emit_rust` `emit_emitted_export_surface_manifest` renders one row per (module, row
-// kind) as `line_prefix ++ source_module ++ FS ++ target_filename ++ FS ++ tag ++ (FS ++ member)*`, joined by the line
+// `v1.compiler.emit_rust` `emit_emitted_export_surface_manifest` renders one envelope row and two
+// projection rows per module as `line_prefix ++ source_module ++ FS ++ target_filename ++ FS ++ tag ++ (FS ++ member)*`, joined by the line
 // separator. This recovers them by splitting on that separator, stripping that prefix, and
 // splitting the payload on that field separator -- reading every literal from the same authority
 // the writer reads (`gunbc.stage0_emitted_population_manifest`). No Rust grammar is involved
@@ -37,7 +38,8 @@ import v2.std.collection { List }
 // make an unrecognized tag indistinguishable from a recognized one until someone compared it by
 // hand.
 type ExportSurfaceRowKind
-  = ReexportRow
+  = ModuleRow
+  | ReexportRow
   | DeclarationRow
 
 // One module's declaration of one axis of its export surface.
@@ -58,6 +60,17 @@ type EmittedExportSurfaceRow {
   members: List<String>
 }
 
+// The producer's per-module envelope, preserved across the manifest boundary. Consumers reason
+// about this value; rows are only the wire representation used by the structural inverse below.
+// In particular, an empty `reexports` list is attached to a PRESENT module and cannot be confused
+// with a module absent from `modules`.
+type EmittedModuleExportSurface {
+  source_module: String
+  target_filename: String
+  reexports: List<String>
+  declarations: List<String>
+}
+
 // WHETHER THE ARTIFACT WAS READ AT ALL IS A DIFFERENT QUESTION FROM WHAT IT SAID.
 //
 // A bare `List<EmittedExportSurfaceRow>` cannot distinguish "the emit declared no surfaces" from
@@ -66,7 +79,7 @@ type EmittedExportSurfaceRow {
 // could not express its subject is read as the verdict that the subject is absent. Each refusal
 // carries its own detail so the remedy is decidable from the value.
 type ExportSurfaceObservation
-  = ExportSurfaceObserved { rows: List<EmittedExportSurfaceRow> }
+  = ExportSurfaceObserved { modules: List<EmittedModuleExportSurface> }
   | ExportSurfaceUnobserved { detail: String }
 
 type ExportSurfaceRowParse
@@ -74,7 +87,9 @@ type ExportSurfaceRowParse
   | ExportSurfaceRowRefused { detail: String }
 
 fn export_surface_row_kind_for_tag(tag: String) -> ExportSurfaceRowKindLookup {
-  if tag == emitted_export_surface_reexport_tag {
+  if tag == emitted_export_surface_module_tag {
+    ExportSurfaceRowKindFound { kind: ModuleRow }
+  } else if tag == emitted_export_surface_reexport_tag {
     ExportSurfaceRowKindFound { kind: ReexportRow }
   } else if tag == emitted_export_surface_declaration_tag {
     ExportSurfaceRowKindFound { kind: DeclarationRow }
@@ -215,6 +230,71 @@ fn export_surface_rows_from_payloads(content: String) -> ExportSurfaceRowAccumul
   )
 }
 
+fn rows_of_kind_for_module(rows: List<EmittedExportSurfaceRow>, source_module: String, kind: ExportSurfaceRowKind) -> List<EmittedExportSurfaceRow> {
+  filter(xs: rows, predicate: row =>
+    row.source_module == source_module
+      && match kind {
+        ModuleRow => match row.kind { ModuleRow => true  _ => false }
+        ReexportRow => match row.kind { ReexportRow => true  _ => false }
+        DeclarationRow => match row.kind { DeclarationRow => true  _ => false }
+      })
+}
+
+fn no_surface_members() -> List<String> {
+  []
+}
+
+fn members_of_rows(rows: List<EmittedExportSurfaceRow>) -> List<String> {
+  fold_list(xs: rows, empty: no_surface_members(), cons: fn(acc, row) {
+    fold_list(xs: row.members, empty: acc, cons: fn(inner, member) { list_snoc_item(xs: inner, item: member) })
+  })
+}
+
+type ExportSurfaceModuleAccumulator
+  = ExportSurfaceModulesSoFar { modules: List<EmittedModuleExportSurface> }
+  | ExportSurfaceModulesRefused { detail: String }
+
+// Rebuild the typed envelope at the reader boundary exactly once. Every module must carry one
+// envelope row and one row for each projection. The total-row equality rejects orphan projection
+// rows as well as duplicates; per-module cardinalities keep one module's surplus from masking
+// another's deficit.
+fn export_surface_modules(rows: List<EmittedExportSurfaceRow>) -> ExportSurfaceModuleAccumulator {
+  let module_rows = filter(xs: rows, predicate: row => match row.kind { ModuleRow => true  _ => false })
+  let expected_row_count = length(xs: module_rows) + length(xs: module_rows) + length(xs: module_rows)
+  if length(xs: rows) != expected_row_count {
+    ExportSurfaceModulesRefused { detail: "export-surface manifest must carry exactly one module, reexport, and declaration row per module" }
+  } else {
+    fold_list(
+      xs: module_rows,
+      empty: ExportSurfaceModulesSoFar { modules: [] },
+      cons: fn(acc, module_row) {
+        match acc {
+          ExportSurfaceModulesRefused { detail: detail } => ExportSurfaceModulesRefused { detail: detail }
+          ExportSurfaceModulesSoFar { modules: modules } => {
+            let envelopes = rows_of_kind_for_module(rows: rows, source_module: module_row.source_module, kind: ModuleRow)
+            let reexports = rows_of_kind_for_module(rows: rows, source_module: module_row.source_module, kind: ReexportRow)
+            let declarations = rows_of_kind_for_module(rows: rows, source_module: module_row.source_module, kind: DeclarationRow)
+            let module_rows_all = filter(xs: rows, predicate: row => row.source_module == module_row.source_module)
+            let wrong_locator = filter(xs: module_rows_all, predicate: row => row.target_filename != module_row.target_filename)
+            if length(xs: envelopes) != 1 || length(xs: reexports) != 1 || length(xs: declarations) != 1 || length(xs: wrong_locator) != 0 || length(xs: module_row.members) != 0 {
+              ExportSurfaceModulesRefused { detail: concat("export-surface module envelope is incomplete, duplicated, or inconsistent: ", module_row.source_module) }
+            } else {
+              ExportSurfaceModulesSoFar {
+                modules: list_snoc_item(xs: modules, item: EmittedModuleExportSurface {
+                  source_module: module_row.source_module,
+                  target_filename: module_row.target_filename,
+                  reexports: members_of_rows(rows: reexports),
+                  declarations: members_of_rows(rows: declarations)
+                })
+              }
+            }
+          }
+        }
+      }
+    )
+  }
+}
+
 // THE OBSERVATION, WITH ITS TWO IGNORANCE STATES REFUSED BEFORE ANY SURFACE IS REPORTED.
 //
 // An artifact carrying no prefixed rows is not an emit that exported nothing -- it is not this
@@ -230,47 +310,10 @@ fn observe_emitted_export_surface(content: String) -> ExportSurfaceObservation {
           detail: "the content carried no declared export-surface rows -- it is not the emitted export-surface manifest"
         }
       } else {
-        ExportSurfaceObserved { rows: rows }
+        match export_surface_modules(rows: rows) {
+          ExportSurfaceModulesRefused { detail: detail } => ExportSurfaceUnobserved { detail: detail }
+          ExportSurfaceModulesSoFar { modules: modules } => ExportSurfaceObserved { modules: modules }
+        }
       }
   }
-}
-
-// The linkage surface specifically: the reexport rows, which are the axis that varies under
-// closure and the only axis that can. Declarations come from the module's own source, which no
-// closure touches, so a `decl` row is entry-invariant by construction -- it is evidence and
-// context beside a refusal, never the thing that discriminates one.
-//
-// IT TAKES ROWS, NOT AN OBSERVATION, AND THAT IS THE POINT. Given the observation it would have
-// to answer something for the unobserved arm, and the only available answer -- the empty list --
-// would say "this emit reexports nothing" about a read that never happened. Taking rows makes the
-// caller match first, so the ignorance state cannot reach this function to be flattened by it.
-fn reexport_rows(rows: List<EmittedExportSurfaceRow>) -> List<EmittedExportSurfaceRow> {
-  filter(xs: rows, predicate: fn(row) {
-    match row.kind {
-      ReexportRow => true
-      DeclarationRow => false
-    }
-  })
-}
-
-// The other half of the same partition, homed here rather than at either consumer.
-//
-// It exists because a caller wanted it, but it lives HERE because `ExportSurfaceRowKind` is this
-// module's coproduct and a partition over it is one fact. The first consumer to need declarations
-// authored its own copy while IMPORTING `reexport_rows` from this module -- half a partition
-// imported, half re-implemented -- which is the tell that the second half had no home rather than
-// that it belonged to the caller. With both halves here the match on `row.kind` occurs in exactly
-// one module, so a third variant fails to compile at one site instead of silently taking the
-// `false` arm at each hand-rolled consumer.
-//
-// It takes rows and not an observation, for the reason its sibling states: given an observation it
-// would owe the unobserved arm an answer, and the empty list would report "this emit declares
-// nothing" about a read that never happened.
-fn declaration_rows(rows: List<EmittedExportSurfaceRow>) -> List<EmittedExportSurfaceRow> {
-  filter(xs: rows, predicate: fn(row) {
-    match row.kind {
-      DeclarationRow => true
-      ReexportRow => false
-    }
-  })
 }

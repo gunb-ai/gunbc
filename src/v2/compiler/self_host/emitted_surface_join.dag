@@ -1,12 +1,10 @@
 module v2.compiler.self_host.emitted_surface_join
 
 import gunbc.stage0_emitted_export_surface_observation {
-  EmittedExportSurfaceRow,
+  EmittedModuleExportSurface,
   ExportSurfaceObservation,
   ExportSurfaceObserved,
-  ExportSurfaceUnobserved,
-  reexport_rows,
-  declaration_rows
+  ExportSurfaceUnobserved
 }
 import v2.compiler.self_host.emitted_surface_census {
   EmittedMemberIdentity,
@@ -20,7 +18,17 @@ import v2.compiler.self_host.emitted_surface_census {
 }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { contains, filter, fold_list, is_empty, length, list_map, list_snoc_item }
+import v2.std.algebra {
+  HeadAbsent,
+  HeadFound,
+  contains,
+  filter,
+  fold_list,
+  is_empty,
+  list_head,
+  list_map,
+  list_snoc_item
+}
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -75,20 +83,20 @@ fn surface_digest_of_members(members: List<String>) -> Fnv1a64Structural {
   content_hash_atom(value: concat("surface:", join(xs: members, separator: surface_member_separator)))
 }
 
-fn rows_for_module(rows: List<EmittedExportSurfaceRow>, source_module: String) -> List<EmittedExportSurfaceRow> {
-  filter(xs: rows, predicate: row => row.source_module == source_module)
+fn surfaces_for_module(modules: List<EmittedModuleExportSurface>, source_module: String) -> List<EmittedModuleExportSurface> {
+  filter(xs: modules, predicate: surface => surface.source_module == source_module)
 }
 
-fn observed_rows(entry_observation: EntryObservation) -> List<EmittedExportSurfaceRow> {
+fn observed_modules(entry_observation: EntryObservation) -> List<EmittedModuleExportSurface> {
   match entry_observation.observation {
-    ExportSurfaceObserved { rows: rows } => rows
+    ExportSurfaceObserved { modules: modules } => modules
     ExportSurfaceUnobserved { detail: _ } => []
   }
 }
 
 fn unreadable_entries(observations: List<EntryObservation>) -> List<EntryObservation> {
   filter(xs: observations, predicate: eo => match eo.observation {
-    ExportSurfaceObserved { rows: _ } => false
+    ExportSurfaceObserved { modules: _ } => false
     ExportSurfaceUnobserved { detail: _ } => true
   })
 }
@@ -130,13 +138,13 @@ fn distinct_source_modules(observations: List<EntryObservation>) -> List<String>
     empty: no_source_modules(),
     cons: fn(acc, eo) {
       fold_list(
-        xs: observed_rows(entry_observation: eo),
+        xs: observed_modules(entry_observation: eo),
         empty: acc,
-        cons: fn(inner, row) {
-          if contains(xs: inner, item: row.source_module, eq: fn(a, b) { a == b }) {
+        cons: fn(inner, surface) {
+          if contains(xs: inner, item: surface.source_module, eq: fn(a, b) { a == b }) {
             inner
           } else {
-            list_snoc_item(xs: inner, item: row.source_module)
+            list_snoc_item(xs: inner, item: surface.source_module)
           }
         }
       )
@@ -151,46 +159,29 @@ fn distinct_source_modules(observations: List<EntryObservation>) -> List<String>
 // census's coverage check is for: it refuses a module the sample did not observe under every entry
 // rather than letting the missing observation read as agreement. The ignorance state -- an entry
 // whose manifest could not be READ -- is refused earlier, before any row is built.
-// PRESENCE UNDER AN ENTRY IS DERIVED FROM ANY ROW, AND THE LINKAGE SURFACE IS ALLOWED TO BE EMPTY.
-//
-// The distinction this preserves is the one an earlier revision destroyed. Minting an observation
-// per REEXPORT row made "this entry emitted the module and it reexports nothing" and "this entry did
-// not emit the module" the same state -- both produced no observation -- so a module carrying only
-// declaration rows was absent from the census, and a module absent from the census cannot disagree
-// with anything. That is the empty-observation narrow: not-emitted is IGNORANCE and reexports-nothing
-// is an ANSWER, and the census must be able to tell them apart or its silence is uninformative.
-//
-// So presence is asked of the manifest as a whole -- any row naming the module under that entry --
-// while the surface is asked only of the reexport rows. A module emitted with an empty surface is now
-// OBSERVED with an empty surface, which agrees with another empty one (correctly admitted) and
-// disagrees with a non-empty one (correctly refused). Neither outcome was reachable before.
-//
-// It also mints ONE observation per (module, entry) rather than one per row. Two rows for one module
-// under one entry would otherwise become two observations that the variance check compares against
-// each other, so a purely intra-entry artifact of how the manifest was written could be read as a
-// surface that varies BETWEEN entries.
-fn module_rows_under_entry(eo: EntryObservation, source_module: String) -> List<EmittedExportSurfaceRow> {
-  rows_for_module(rows: observed_rows(entry_observation: eo), source_module: source_module)
+// Presence and both surfaces arrive in one producer-minted envelope. This module deliberately does
+// not recover the population by folding projection rows: the reader has already preserved the exact
+// per-module record the emitter produced, including an ordinary empty linkage list.
+fn module_surfaces_under_entry(eo: EntryObservation, source_module: String) -> List<EmittedModuleExportSurface> {
+  surfaces_for_module(modules: observed_modules(entry_observation: eo), source_module: source_module)
 }
 
 fn module_present_under_entry(eo: EntryObservation, source_module: String) -> Bool {
-  is_empty(xs: module_rows_under_entry(eo: eo, source_module: source_module)) == false
+  is_empty(xs: module_surfaces_under_entry(eo: eo, source_module: source_module)) == false
 }
 
 fn reexport_members_under_entry(eo: EntryObservation, source_module: String) -> List<String> {
-  fold_list(
-    xs: rows_for_module(rows: reexport_rows(rows: observed_rows(entry_observation: eo)), source_module: source_module),
-    empty: no_members(),
-    cons: fn(inner, row) { concat_lists(a: inner, b: row.members) }
-  )
+  match list_head(xs: module_surfaces_under_entry(eo: eo, source_module: source_module)) {
+    HeadFound { value: surface } => surface.reexports
+    HeadAbsent => no_members()
+  }
 }
 
 fn target_filename_under_entry(eo: EntryObservation, source_module: String) -> String {
-  fold_list(
-    xs: module_rows_under_entry(eo: eo, source_module: source_module),
-    empty: "",
-    cons: fn(inner, row) { row.target_filename }
-  )
+  match list_head(xs: module_surfaces_under_entry(eo: eo, source_module: source_module)) {
+    HeadFound { value: surface } => surface.target_filename
+    HeadAbsent => ""
+  }
 }
 
 fn observations_of_module(observations: List<EntryObservation>, source_module: String, vintage: String) -> List<EmittedMemberIdentity> {
@@ -223,17 +214,12 @@ fn declared_members_for(observations: List<EntryObservation>, entry: String, sou
     xs: filter(xs: observations, predicate: eo => eo.entry == entry),
     empty: no_members(),
     cons: fn(acc, eo) {
-      fold_list(
-        xs: rows_for_module(rows: declaration_rows(rows: observed_rows(entry_observation: eo)), source_module: source_module),
-        empty: acc,
-        cons: fn(inner, row) { concat_lists(a: inner, b: row.members) }
-      )
+      match list_head(xs: module_surfaces_under_entry(eo: eo, source_module: source_module)) {
+        HeadFound { value: surface } => surface.declarations
+        HeadAbsent => acc
+      }
     }
   )
-}
-
-fn concat_lists(a: List<String>, b: List<String>) -> List<String> {
-  fold_list(xs: b, empty: a, cons: fn(acc, item) { list_snoc_item(xs: acc, item: item) })
 }
 
 fn census_row_for_module(observations: List<EntryObservation>, source_module: String, vintage: String) -> SurfaceCensusRow {
@@ -251,11 +237,10 @@ fn target_filename_for(observations: List<EntryObservation>, source_module: Stri
     xs: observations,
     empty: "",
     cons: fn(acc, eo) {
-      fold_list(
-        xs: module_rows_under_entry(eo: eo, source_module: source_module),
-        empty: acc,
-        cons: fn(inner, row) { row.target_filename }
-      )
+      match list_head(xs: module_surfaces_under_entry(eo: eo, source_module: source_module)) {
+        HeadFound { value: surface } => surface.target_filename
+        HeadAbsent => acc
+      }
     }
   )
 }

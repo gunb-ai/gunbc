@@ -32,9 +32,9 @@ pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
 pub use crate::gunbc_stage0_emitted_population_manifest::{
     emitted_export_surface_declaration_tag, emitted_export_surface_manifest_basename,
-    emitted_export_surface_manifest_field_separator, emitted_export_surface_reexport_tag,
-    emitted_population_manifest_basename, emitted_population_manifest_line_prefix,
-    emitted_population_manifest_line_separator,
+    emitted_export_surface_manifest_field_separator, emitted_export_surface_module_tag,
+    emitted_export_surface_reexport_tag, emitted_population_manifest_basename,
+    emitted_population_manifest_line_prefix, emitted_population_manifest_line_separator,
 };
 pub use crate::std_algebra::trim;
 pub use crate::std_coercion::TypeCheckpoint;
@@ -5665,6 +5665,11 @@ pub fn emit_emitted_export_surface_manifest(
                 for surface in surfaces.iter().cloned() {
                     __result.extend(
                         (*Rc::new(vec![
+                            emitted_export_surface_row(
+                                surface.clone(),
+                                emitted_export_surface_module_tag(),
+                                Rc::new(vec![]),
+                            ),
                             emitted_export_surface_row(
                                 surface.clone(),
                                 emitted_export_surface_reexport_tag(),

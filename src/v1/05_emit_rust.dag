@@ -64,6 +64,7 @@ import gunbc.cli_dispatch_surface {
 }
 import std.measure { millisecond_count }
 import gunbc.stage0_emitted_population_manifest {
+  emitted_export_surface_module_tag,
   emitted_population_manifest_basename,
   emitted_population_manifest_line_prefix,
   emitted_population_manifest_line_separator,
@@ -2782,10 +2783,11 @@ fn emitted_population_manifest_path() -> String {
 // linkage surface depends on which entry requested it is not installable, and answering that needs
 // the export set rather than the path set.
 //
-// TWO ROWS PER MODULE, ALWAYS, even when a member list is empty. A grammar that omitted the empty
-// row would render DECLARED EMPTY and NOT OBSERVED identically, which is the empty-observation
-// narrow: an observation that could not express the fact, read as the verdict that the fact is
-// absent. The consuming census refuses on exactly that distinction, so the artifact must carry it.
+// ONE ENVELOPE ROW AND TWO PROJECTION ROWS PER MODULE, ALWAYS. The module row preserves the
+// population already present in `EmittedModuleExportSurface`; the reexport and declaration rows
+// carry its two variable-length projections. A consumer can therefore read module existence
+// directly instead of reconstructing it by unioning rows. Empty linkage is an ordinary value on a
+// present module, never the same state as a module the emitter did not produce.
 //
 // SORTED BY LINE, so the artifact is a function of the surface set and not of module traversal
 // order -- a second emit over the same input yields identical bytes, which is what lets it sit in
@@ -2793,6 +2795,7 @@ fn emitted_population_manifest_path() -> String {
 fn emit_emitted_export_surface_manifest(surfaces: List<EmittedModuleExportSurface>) -> TextFile {
   let lines = surfaces
     |> flat_map(surface => [
+      emitted_export_surface_row(surface: surface, tag: emitted_export_surface_module_tag, members: []),
       emitted_export_surface_row(surface: surface, tag: emitted_export_surface_reexport_tag, members: surface.reexports),
       emitted_export_surface_row(surface: surface, tag: emitted_export_surface_declaration_tag, members: surface.declarations)
     ])
