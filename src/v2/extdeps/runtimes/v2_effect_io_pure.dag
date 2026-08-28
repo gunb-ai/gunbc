@@ -1,5 +1,6 @@
 module v2.extdeps.runtimes.v2_effect_io_pure
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
 import v2.std.collection {
   Absent,
@@ -25,7 +26,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.model_core { EffectSignature, PrimitiveOperationRef }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence, Hash, content_hash }
+import v2.std.node { Atom, Node, Symbol, TypeNode, Hash, content_hash }
 import v2.std.runtime {
   EffectHandler,
   EffectHandlerBinding,
@@ -76,7 +77,7 @@ fn effect_io_pure_unit_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^effect_io_pure_unit_type } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -84,7 +85,7 @@ fn effect_io_pure_operation_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^effect_io_pure_operation } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -92,7 +93,7 @@ fn effect_io_pure_effect_signature_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^effect_io_pure_effect_signature } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

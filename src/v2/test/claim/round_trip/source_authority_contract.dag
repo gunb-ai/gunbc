@@ -11,7 +11,7 @@ data source_authority_contract_source: Medium<String> = Medium {
 data source_authority_contract_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^source_authority_contract_subject_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn contract_target_advertises_declared_loss() -> Bool {

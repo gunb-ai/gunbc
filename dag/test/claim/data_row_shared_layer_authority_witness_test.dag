@@ -13,13 +13,12 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // itself on exactly that finding, and guarantee_floor_class_probe_witness_test states the rule in
 // the direction that binds here -- do not dissolve the cost by relabelling the file.
 //
-// WHAT THAT COSTS, stated rather than left for a reader to discover: v2.workflow.required_floor
-// retains the DeclinedLiveTree arm, so this module is DISCOVERED and DECLINED by the required
-// floor and does not execute there today. It dissolves with that arm's staged deletion, at which
-// point these three become executing evidence with no further authorship. Until then the evidence
-// below is executed rather than enrolled: run it directly with
+// WHAT THAT COST BEFORE THE ROOT CUT, stated rather than left for a reader to reconstruct:
+// v2.workflow.required_floor's now-deleted DeclinedLiveTree arm discovered and declined this
+// module. These three now execute without changing the honest ReadsLiveTree declaration. Before
+// the cut, the evidence below was executed rather than enrolled by running it directly with
 // `gunbc run --source-root dag --source-root src/v2 --entry <this file> --function <test fn>`,
-// which is how both directions of its discriminating pair were taken.
+// which is how both directions of its discriminating pair were originally taken.
 //
 // THE POPULATION THIS CORRECTION DOES NOT REPAIR, named because the split is real and a reader
 // will find it: 24 further files under dag/test/claim call compile_dag_rust_emit_check while

@@ -1,5 +1,6 @@
 module v2.test.long.loop_eval_by_execution
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.test.complexity_gate.table_fixture_loop_subject_producer {
   table_fixture_loop_arrow_with_body,
   table_fixture_loop_wrong_value_arrow_with_body
@@ -73,7 +74,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  SyntheticOccurrence,
 }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.runtime {
@@ -115,7 +115,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn loop_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: []
   }
 }
@@ -276,7 +276,7 @@ fn loop_context() -> EvalContext {
 fn loop_pick_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: callee }
     ]
@@ -286,7 +286,7 @@ fn loop_pick_call(callee: Node) -> Node {
 fn loop_tree_root(call: Node, expected: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Named { name: ^loop_actual }, target: call },
       Edge { label: Named { name: ^loop_expected }, target: expected }

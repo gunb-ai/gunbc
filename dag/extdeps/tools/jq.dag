@@ -1,5 +1,6 @@
 module extdeps.tools.jq
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.types { NonEmptyStr, String, Bool, Int, List }
 import std.algebra { Cons, Empty, trim }
 import v2.std.algebra { list_append, list_snoc_item }
@@ -17,7 +18,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.optional { Absent, Optional, Present }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -443,7 +444,7 @@ fn jq_lowering_refused_diagnostic(cause: JqLoweringRefusal) -> Diagnostic {
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: ^jq_invocation_lowering } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }),
     correction: Unavailable { reason: ExternalContractUnknown }
   }

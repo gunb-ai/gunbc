@@ -6,7 +6,7 @@ fn branch_infer_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -30,7 +30,7 @@ fn branch_infer_if_body_from_arms(
       Edge { label: Positional, target: then_arm },
       Edge { label: Positional, target: else_arm }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

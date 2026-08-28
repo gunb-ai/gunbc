@@ -1,5 +1,6 @@
 module v2.test.lens_cost.arrow_body_cost_domain_excluded
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { SumCost, cost_lens, unit_cost }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -15,7 +16,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.witness { Holds }
 
@@ -29,17 +29,17 @@ data arrow_body_cost_domain_param: Node = Node {
       target: Node {
         kind: TypeNode { connective: Atom { identity: ^arrow_body_cost_domain_param_atom } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data arrow_body_cost_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data arrow_body_cost_arrow: Node = Node {
@@ -51,12 +51,12 @@ data arrow_body_cost_arrow: Node = Node {
       target: Node {
         kind: TypeNode { connective: Atom { identity: ^arrow_body_cost_return_type } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     },
     Edge { label: Named { name: ^arrow_body_edge }, target: arrow_body_cost_body }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn arrow_body_cost_domain_excluded_holds() -> Bool {

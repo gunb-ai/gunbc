@@ -1,5 +1,6 @@
 module v2.test.manual.solve_constraints_add
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.constraints {
   CanonicalGrounding,
   ConstraintGraph,
@@ -12,7 +13,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected
 }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.test.manual.infer_ground_add {
   fixture_add_resolved_node,
   fixture_add_resolved_tree
@@ -52,7 +53,7 @@ fn solve_constraints_witness_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^solve_constraints_witness_fail_atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 fn solve_constraints_claim_input(ok: Bool) -> Node {
