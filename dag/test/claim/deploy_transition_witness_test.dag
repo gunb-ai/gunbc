@@ -337,7 +337,7 @@ fn absent_observation() -> TransitionFileObservation {
   observe(
     listed: true,
     listing: "some-other-file.json",
-    read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+    read: read_refused(e: "No such file or directory (os error 2)"),
   )
 }
 
@@ -350,8 +350,23 @@ fn observation_arm(o: TransitionFileObservation) -> String {
   }
 }
 
+// THROUGH THE PRODUCER, NOT AROUND IT. These used to be hand-built `FilesystemReadSucceeded` /
+// `FilesystemReadRefused` literals, which meant the witnesses started one step DOWNSTREAM of where
+// production starts: `observe_transition_file` feeds the raw (content, success, error) channels to
+// `filesystem_read_outcome` and consumes what that returns. A literal skips the arm assignment
+// entirely, so the mapping production depends on was exercised by nothing here. Same
+// asserted-not-produced defect this PR found twice already; found the third time by checking every
+// imported producer for a call site rather than by tripping over it.
 fn good_bytes() -> FilesystemReadOutcome {
-  FilesystemReadSucceeded { content: transition_record_json(record: in_force_record()) }
+  filesystem_read_outcome(
+    content: transition_record_json(record: in_force_record()),
+    success: true,
+    error: "",
+  )
+}
+
+fn read_refused(e: String) -> FilesystemReadOutcome {
+  filesystem_read_outcome(content: "", success: false, error: e)
 }
 
 // ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ. This is the fail-open the
@@ -365,12 +380,12 @@ test fn a_marker_that_is_listed_and_unreadable_is_not_absent() -> Bool {
   observation_arm(o: observe(
     listed: true,
     listing: "transition-inhibition.json",
-    read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+    read: read_refused(e: "Permission denied (os error 13)"),
   )) == "indeterminate"
     && observation_arm(o: observe(
       listed: true,
       listing: "receipts\nbin",
-      read: FilesystemReadRefused { error: "No such file or directory" },
+      read: read_refused(e: "No such file or directory"),
     )) == "absent"
     && observation_arm(o: observe(
       listed: true,
@@ -386,7 +401,7 @@ test fn a_directory_that_cannot_be_listed_establishes_no_absence() -> Bool {
   observation_arm(o: observe(
     listed: false,
     listing: "",
-    read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+    read: read_refused(e: "Permission denied (os error 13)"),
   )) == "indeterminate"
 }
 
@@ -398,7 +413,7 @@ test fn an_unreadable_marker_refuses_belt_actuation_rather_than_admitting_it() -
     observed: observe(
       listed: true,
       listing: "transition-inhibition.json",
-      read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+      read: read_refused(e: "Permission denied (os error 13)"),
     ),
   )))
     && admission_admits(a: actuation_admission(standing: actuation_standing_of(
@@ -433,7 +448,7 @@ test fn a_listing_match_is_line_exact_and_not_a_substring() -> Bool {
   observation_arm(o: observe(
     listed: true,
     listing: "transition-inhibition.json.tmp",
-    read: FilesystemReadRefused { error: "No such file or directory" },
+    read: read_refused(e: "No such file or directory"),
   )) == "absent"
     && transition_lease_file_name != transition_inhibition_file_name
 }
@@ -760,4 +775,22 @@ test fn the_phase_round_trips_through_its_wire_spelling_and_refuses_anything_els
             }
       }
   }
+}
+
+
+// THE READ PRODUCER'S OWN ARMS. `filesystem_read_outcome` is what production feeds the raw channels
+// to, and until this witness the whole file consumed hand-built variants instead, so an inverted
+// success mapping -- a FAILED read rendered as succeeded -- would have gone undetected here. That is
+// the fail-open this module exists to close, one layer below where the module can see it.
+fn read_arm(o: FilesystemReadOutcome) -> String {
+  match o {
+    FilesystemReadSucceeded { content: _ } => "succeeded"
+    FilesystemReadRefused { error: _ } => "refused"
+  }
+}
+
+test fn the_read_producer_maps_a_failed_read_to_refused() -> Bool {
+  read_arm(o: filesystem_read_outcome(content: "bytes", success: true, error: "")) == "succeeded"
+    && read_arm(o: filesystem_read_outcome(content: "", success: false, error: "EACCES")) == "refused"
+    && read_arm(o: filesystem_read_outcome(content: "stale", success: false, error: "EACCES")) == "refused"
 }
