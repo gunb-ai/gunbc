@@ -176,3 +176,46 @@ stops contaminating sessions with dead premises.
   count unchanged vs main (164). NEXT CANDIDATE ROUND: delete the 48 stale
   authority-only plan carriers themselves (imports/rosters/doc_graph edits), and
   the docs/plans doc-to-doc islands.
+
+## Finding — per-invocation whole-tree tax (2026-08-28, handoff to operator)
+
+Every `gunbc run` executed with cwd INSIDE a git checkout pays ~60–99s before
+the entry's own compile begins; the identical invocation outside a checkout, or
+against a replica tree, costs <0.5s. Measured matrix (same binary, entry
+`dag/std/abi.dag`, warm):
+
+- full roots `dag + src/v2` (4187 modules): 81–99s
+- `--source-root dag` only (2962): 63s
+- byte-identical replica of `dag/` in a non-repo dir (2962): 0.13s
+- cwd outside the repo, absolute source-root INTO the repo: 0.08s
+- every partial-tree combination tried (up to 4103 modules): <0.5s
+
+Cost is entry-INDEPENDENT: the widest closure (`src/v2/compiler/00_compile`)
+costs 110s vs the smallest entry's 81s against the same roots.
+
+MECHANISM (established by a git-shim count and gdb stack samples, not by code
+read alone): exactly one git subprocess runs — `rev-parse --show-toplevel` in
+`cli_run.rs resolve_process_workspace_root` — and its SUCCESS is a switch.
+Inside a checkout, `resolve_entry_graph` routes through
+`try_process_shared_index_for_pool → new_multi_entry_index_shell →
+build_module_graph_facts_live_uncached`, which runs
+`reference_resolution_facts` with a tolerant parse over EVERY module, plus
+`build_module_path_index_uncached` (a second whole-tree parse). The CI floor's
+own `[floor-phase] whole-tree-graph-facts wall_ms=44579` is the same pass at
+the runner. Outside a checkout that pool path is skipped and the run is
+correct anyway (the probe entry still compiled and reached evaluation).
+
+HOT LEAVES (from the samples): `v1_std_core::build_newline_index` builds each
+file's line index by `im::Vector::push_back` from_iter (Arc::make_mut churn
+per element — plain Vec shape); `v1_std_core::intern` clones Strings inside
+`pre_intern_tokens`.
+
+NOT ESTABLISHED here: why the pool needs whole-tree facts for a single-entry
+run; whether the floor's 22-min `compile.reconcile`
+(`typecheck_with_census_extra`) shares any of this or is a separate subject;
+whether the cwd-outside behavior differs semantically for entries that need
+workspace-relative facts (the probe did not).
+
+REPRO: shim `git` onto PATH logging argv (1 call observed); `gdb -p <pid>
+-batch -ex "thread apply all bt"` during the slow window; replica trees under
+a non-repo directory for the A/B.
