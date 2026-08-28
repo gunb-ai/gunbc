@@ -4,6 +4,7 @@ module extdeps.entropy
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority }
 import std.types { Int }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -39,6 +40,17 @@ data entropy_password_count_chars_unit_debt: Disposition = Scaffold {
     field: WholeDeclaration
   }
 }
+
+data entropy_read_password_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.entropy",
+    decl_name: "Urandom",
+    field: WholeDeclaration
+  }
+}
+
+data entropy_read_password_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: extdeps.entropy Urandom.ReadPassword — the character-class draws, exact-length refusals, concatenation, and truncation remain an opaque shell transport string. DISSOLVES WHEN the ReadPassword process is modeled as Bash grammar Nodes and its transport is derived through v2.workflow.bash_emit bash_emit_program (or a typed host-effect realization), leaving no hand-authored medium-as-string process logic in this operation.")
 
 service Urandom {
   operation ReadBytes {
