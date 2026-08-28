@@ -5,6 +5,7 @@ import std.layout { render }
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap_publish { RoadmapPublicationSubject }
 import gunbc.roadmap_publication_helper {
+  publication_helper_disposition_detail,
   PublicationSpoolAddress, SpoolAddressed, SpoolUnaddressable,
   publication_spool_address,
   publication_spool_entry_name,
@@ -16,7 +17,10 @@ import gunbc.roadmap_publication_helper {
   PublicationHelperOutcome,
   HelperAnswered, HelperRequestNotConsumed, HelperRequestUnreadable,
   HelperAnswerWriteFailed, HelperSpoolRefused,
-  publication_helper_outcome_is_fault,
+  PublicationHelperDisposition, OutcomeRecorded, OutcomeStopsTheLine,
+  publication_helper_outcome_disposition,
+  PublicationHelperRunStanding, HelperRunCompleted, HelperRunStopped,
+  publication_helper_run_standing,
   publication_helper_answer_request,
   publication_helper_credential_env_var,
 }
@@ -202,23 +206,68 @@ test fn a_request_document_that_does_not_decode_is_refused_rather_than_skipped()
   }
 }
 
-// ── The fault partition is exact ─────────────────────────────────────────────────────────────────
+// ── The stopping partition is exact, and the run standing carries what stopped it ───────────────
 //
-// The helper's exit status is derived from this predicate, so a new outcome arm silently classified
-// as non-fault would be a helper that exits 0 having done nothing. Both poles are asserted, because
-// a predicate that answered true for everything would satisfy a one-sided check.
+// The helper's exit status is derived from this classification, so an outcome silently classified
+// as recorded would be a helper that exits 0 having failed. Both poles are asserted, because a
+// classifier that answered `stops` for everything would satisfy a one-sided check just as well.
 //
-// HelperRequestNotConsumed IS A FAULT and that is not obvious: the answer was written, so the
-// requester is served and the run looks successful. It is a fault because the request survives, so
-// the subject is re-observed on every run from then on with nothing recording why -- a cost that
-// grows silently, which is exactly the shape a non-fault classification would hide.
+// HelperRequestNotConsumed STOPS THE LINE and that is not obvious: the answer was written, so the
+// requester is served and the run looks successful. It stops because the request survives, so the
+// subject is re-observed on every run from then on with nothing recording why -- a cost that grows
+// silently, which is exactly what a recorded classification would hide.
 
-test fn only_the_helpers_own_failures_are_faults() -> Bool {
-  !publication_helper_outcome_is_fault(o: HelperAnswered { key: "k", outcome_key: "branch-not-published" })
-  && publication_helper_outcome_is_fault(o: HelperRequestNotConsumed { key: "k", detail: "d" })
-  && publication_helper_outcome_is_fault(o: HelperRequestUnreadable { entry: "e", detail: "d" })
-  && publication_helper_outcome_is_fault(o: HelperAnswerWriteFailed { key: "k", detail: "d" })
-  && publication_helper_outcome_is_fault(o: HelperSpoolRefused { detail: "d" })
+fn disposition_stops(o: PublicationHelperOutcome) -> Bool {
+  match publication_helper_outcome_disposition(o: o) {
+    OutcomeStopsTheLine { detail: _ } => true
+    OutcomeRecorded { detail: _ } => false
+  }
+}
+
+test fn only_the_helpers_own_failures_stop_the_line() -> Bool {
+  !disposition_stops(o: HelperAnswered { key: "k", outcome_key: "branch-not-published" })
+  && disposition_stops(o: HelperRequestNotConsumed { key: "k", detail: "d" })
+  && disposition_stops(o: HelperRequestUnreadable { entry: "e", detail: "d" })
+  && disposition_stops(o: HelperAnswerWriteFailed { key: "k", detail: "d" })
+  && disposition_stops(o: HelperSpoolRefused { detail: "d" })
+}
+
+// A STOPPED RUN NAMES WHAT STOPPED IT, which is the whole reason the classification is typed rather
+// than a Bool: the exit can say which outcome refused instead of handing back one bit and making a
+// reader walk the ledger. The mixed case is the discriminating one -- a run carrying BOTH a good
+// answer and a refusal must stop, and must name the refusal rather than the answer.
+test fn a_run_of_answers_completes_and_counts_them() -> Bool {
+  match publication_helper_run_standing(outcomes: [
+    HelperAnswered { key: "a", outcome_key: "branch-not-published" },
+    HelperAnswered { key: "b", outcome_key: "publication-bound" },
+  ]) {
+    HelperRunCompleted { answered: n } => n == 2
+    HelperRunStopped { first: _, more: _ } => false
+  }
+}
+
+test fn a_mixed_run_stops_and_names_the_outcome_that_stopped_it() -> Bool {
+  match publication_helper_run_standing(outcomes: [
+    HelperAnswered { key: "a", outcome_key: "branch-not-published" },
+    HelperSpoolRefused { detail: "the request directory could not be listed" },
+    HelperAnswerWriteFailed { key: "c", detail: "read-only file system" },
+  ]) {
+    HelperRunCompleted { answered: _ } => false
+    HelperRunStopped { first, more } =>
+      publication_helper_disposition_detail(d: publication_helper_outcome_disposition(o: first))
+        == "the request directory could not be listed"
+      && count(more) == 1
+  }
+}
+
+// AN EMPTY RUN IS COMPLETED, NOT STOPPED. A helper whose spool holds nothing has done its job; the
+// unlistable spool is a different state and is a HelperSpoolRefused outcome rather than an absence,
+// which is what keeps `nothing to do` from standing in for `I could not find out`.
+test fn an_empty_run_completes_rather_than_stopping() -> Bool {
+  match publication_helper_run_standing(outcomes: []) {
+    HelperRunCompleted { answered: n } => n == 0
+    HelperRunStopped { first: _, more: _ } => false
+  }
 }
 
 // ── The credential is bound to one unit, and it is the one that dispatches no session ────────────

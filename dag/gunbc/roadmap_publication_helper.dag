@@ -481,14 +481,83 @@ fn publication_helper_outcome_key(o: PublicationHelperOutcome) -> String {
   }
 }
 
-fn publication_helper_outcome_is_fault(o: PublicationHelperOutcome) -> Bool {
+// WHETHER AN OUTCOME STOPS THE LINE IS TYPED, NOT A `Bool`, and the earlier revision of this
+// module got that wrong. It carried `publication_helper_outcome_is_fault(o) -> Bool`, which is the
+// predicate-dissolution violation this repository has already ruled on twice
+// (gunbc.build_target `required_gate_decision` carries the argument): a `Bool` over a coproduct is
+// a second, lossy naming of a vocabulary that already answers, and the loss is exactly what the
+// caller needs. A run that learns only `true` has to walk the outcomes again to say ANYTHING about
+// why it stopped.
+//
+// THE CONCRETE HAZARD IS THE SIXTH ARM, and it is this module's own future. A new
+// PublicationHelperOutcome added to the coproduct would have to be classified in the Bool, and the
+// classification a careless author reaches for is `false` -- a helper that exits 0 having failed,
+// which is the fail-open this whole boundary exists to prevent. The typed disposition does not
+// remove the obligation to classify, but it makes the classification carry a reason, so an arm
+// added without one cannot be written as a silent non-fault.
+//
+// THE AUTHORITY IS NOT DELETED, only its return type corrected, for the reason the build_target
+// precedent gives: WHICH outcomes stop the line is a real single authority -- an unreadable request
+// and an unwritable answer must stop it, and an answer recording GitHub's refusal must not -- and
+// pushing that match into each caller would let them drift.
+type PublicationHelperDisposition
+  = OutcomeRecorded { detail: String }
+  | OutcomeStopsTheLine { detail: String }
+
+fn publication_helper_outcome_disposition(o: PublicationHelperOutcome) -> PublicationHelperDisposition {
   match o {
-    HelperAnswered { key: _, outcome_key: _ } => false
-    HelperRequestNotConsumed { key: _, detail: _ } => true
-    HelperRequestUnreadable { entry: _, detail: _ } => true
-    HelperAnswerWriteFailed { key: _, detail: _ } => true
-    HelperSpoolRefused { detail: _ } => true
+    HelperAnswered { key, outcome_key } =>
+      OutcomeRecorded { detail: join([key, " → ", outcome_key], "") }
+    HelperRequestNotConsumed { key, detail } =>
+      OutcomeStopsTheLine { detail: join([key, ": ", detail], "") }
+    HelperRequestUnreadable { entry, detail } =>
+      OutcomeStopsTheLine { detail: join([entry, ": ", detail], "") }
+    HelperAnswerWriteFailed { key, detail } =>
+      OutcomeStopsTheLine { detail: join([key, ": ", detail], "") }
+    HelperSpoolRefused { detail } =>
+      OutcomeStopsTheLine { detail: detail }
   }
+}
+
+fn publication_helper_disposition_detail(d: PublicationHelperDisposition) -> String {
+  match d {
+    OutcomeRecorded { detail } => detail
+    OutcomeStopsTheLine { detail } => detail
+  }
+}
+
+// THE STOPPING POPULATION CARRIES ITS MEMBERS, and an EMPTY stopped run has no constructor -- the
+// first-plus-rest shape gunbc.fleet_posix_accounts uses for allocation conflicts, for the same
+// reason: `stopped, with nothing that stopped it` is not a state. That is what lets the exit name
+// what went wrong instead of dumping the whole ledger and leaving a reader to find it.
+type PublicationHelperRunStanding
+  = HelperRunCompleted { answered: Int }
+  | HelperRunStopped {
+      first: PublicationHelperOutcome
+      more: List<PublicationHelperOutcome>
+    }
+
+fn publication_helper_run_standing(
+  outcomes: List<PublicationHelperOutcome>,
+) -> PublicationHelperRunStanding {
+  fold(
+    outcomes,
+    init: HelperRunCompleted { answered: 0 },
+    f: (acc, o) =>
+      match publication_helper_outcome_disposition(o: o) {
+        OutcomeRecorded { detail: _ } =>
+          match acc {
+            HelperRunCompleted { answered: n } => HelperRunCompleted { answered: n + 1 }
+            HelperRunStopped { first, more } => HelperRunStopped { first: first, more: more }
+          }
+        OutcomeStopsTheLine { detail: _ } =>
+          match acc {
+            HelperRunCompleted { answered: _ } => HelperRunStopped { first: o, more: [] }
+            HelperRunStopped { first, more } =>
+              HelperRunStopped { first: first, more: concat(more, [o]) }
+          }
+      },
+  )
 }
 
 // THE ANSWER IS WRITTEN AT AN ADDRESS THE HELPER DERIVES FROM THE SUBJECT IT JUST DECODED, never at
@@ -648,20 +717,15 @@ fn publication_helper_run_json(outcomes: List<PublicationHelperOutcome>) -> Stri
       key: "outcomes",
       value: json_array(elements: map(outcomes, o => json_object(members: [
         json_kv(key: "outcome", value: json_string(s: publication_helper_outcome_key(o: o))),
-        json_kv(key: "detail", value: json_string(s: publication_helper_outcome_detail(o: o))),
+        json_kv(
+          key: "detail",
+          value: json_string(s: publication_helper_disposition_detail(
+            d: publication_helper_outcome_disposition(o: o),
+          )),
+        ),
       ]))),
     ),
   ]))
-}
-
-fn publication_helper_outcome_detail(o: PublicationHelperOutcome) -> String {
-  match o {
-    HelperAnswered { key, outcome_key } => join([key, " → ", outcome_key], "")
-    HelperRequestNotConsumed { key, detail } => join([key, ": ", detail], "")
-    HelperRequestUnreadable { entry, detail } => join([entry, ": ", detail], "")
-    HelperAnswerWriteFailed { key, detail } => join([key, ": ", detail], "")
-    HelperSpoolRefused { detail } => detail
-  }
 }
 
 // EXIT SEMANTICS, on the belt's own precedent (belt_run_once_cli_note): a recorded refusal is a
@@ -672,10 +736,10 @@ fn publication_helper_outcome_detail(o: PublicationHelperOutcome) -> String {
 // GitHub said no`.
 fn publication_helper_run_once_cli_in(instance_root: String) -> ProcessExit {
   let outcomes = publication_helper_run_once(instance_root: instance_root)
-  if any(outcomes, o => publication_helper_outcome_is_fault(o: o)) {
-    exit_failure(reason: publication_helper_run_json(outcomes: outcomes))
-  } else {
-    ExitSuccess
+  match publication_helper_run_standing(outcomes: outcomes) {
+    HelperRunCompleted { answered: _ } => ExitSuccess
+    HelperRunStopped { first: _, more: _ } =>
+      exit_failure(reason: publication_helper_run_json(outcomes: outcomes))
   }
 }
 
