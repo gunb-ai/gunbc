@@ -2,14 +2,8 @@ module test.claim.roadmap_publication_helper_witness
 
 import std.types { Bool, String, NonEmptyStr, CommitSha }
 import std.layout { render }
-import extdeps.github.github { Repository }
 import gunbc.repository { gunbc_repository }
-import gunbc.roadmap_publish {
-  RoadmapPublicationSubject,
-  PublicationReceipt,
-  publication_receipt_of,
-  PublicationBranchNotPublished,
-}
+import gunbc.roadmap_publish { RoadmapPublicationSubject }
 import gunbc.roadmap_publication_helper {
   PublicationSpoolAddress, SpoolAddressed, SpoolUnaddressable,
   publication_spool_address,

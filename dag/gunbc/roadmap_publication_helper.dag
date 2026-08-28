@@ -11,6 +11,7 @@ import extdeps.languages.json.emit {
   JsonValue,
   json_string,
   json_object,
+  json_array,
   json_kv,
   serialize_json,
 }
