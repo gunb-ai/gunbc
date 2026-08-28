@@ -1,5 +1,6 @@
 module v2.test.execution.branch_eval_by_execution
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.test.complexity_gate.table_fixture_branch_subject_producer {
   table_fixture_pick_if_arrow_with_body,
   table_fixture_pick_if_arrow_with_body_swapped_arms,
@@ -68,7 +69,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  SyntheticOccurrence,
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -108,7 +108,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn branch_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: []
   }
 }
@@ -336,7 +336,7 @@ fn branch_context() -> EvalContext {
 fn branch_pick_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: callee }
     ]
@@ -346,7 +346,7 @@ fn branch_pick_call(callee: Node) -> Node {
 fn branch_tree_root(call: Node, expected: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Named { name: ^branch_actual }, target: call },
       Edge { label: Named { name: ^branch_expected }, target: expected }

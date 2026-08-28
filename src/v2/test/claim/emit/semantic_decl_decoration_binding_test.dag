@@ -1,5 +1,6 @@
 module v2.test.emit.semantic_decl_decoration_binding_test
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclDecorationLine,
@@ -8,7 +9,7 @@ import v2.std.compilers.semantic_decl_emission {
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Conj, Disj, Edge, Named, Node, SyntheticOccurrence, TypeNode }
+import v2.std.node { Conj, Disj, Edge, Named, Node, TypeNode }
 import v2.std.collection { List, fold_list }
 import v2.std.text { is_empty }
 import std.algebra { Empty }
@@ -17,10 +18,10 @@ fn bool_coproduct() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Named { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } },
-      Edge { label: Named { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } }
+      Edge { label: Named { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
+      Edge { label: Named { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

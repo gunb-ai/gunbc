@@ -1,11 +1,12 @@
 module v2.test.claim.operand_flow_witness
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.measure { byte_size, byte_size_count }
 import std.content_hash { ContentHash, Fnv1a64 }
 import v2.std.algebra { length }
 import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode, content_hash }
+import v2.std.node { Atom, Node, TypeNode, content_hash }
 import v2.workflow.operand_flow {
   OperandFlow,
   OperandFlowFootprintMissingRow,
@@ -27,19 +28,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data operand_flow_shared_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^operand_flow_shared } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data operand_flow_consumer_a_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^operand_flow_consumer_a } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data operand_flow_consumer_b_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^operand_flow_consumer_b } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data operand_flow_shared_hash: ContentHash = Fnv1a64(content_hash(n: operand_flow_shared_node))

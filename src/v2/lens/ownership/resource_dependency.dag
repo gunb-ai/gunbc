@@ -7,7 +7,7 @@ data ownership_root: Node = Node {
   children: [
     Edge { label: Named { name: ^ownership_edge_symbol }, target: ownership_child }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data ownership_dependency: DependencyView = DependencyView {

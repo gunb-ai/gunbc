@@ -1,5 +1,6 @@
 module v2.lens.production_qualification_origin_probe
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.self_host.emitter_producer_provenance {
   CargoGreen,
   EmissionQualification,
@@ -36,9 +37,8 @@ import v2.std.node {
   NodeFold,
   Positional,
   Symbol,
-  SyntheticOccurrence,
   TypeNode,
-  fold_node
+  fold_node,
 }
 import v2.std.text { String }
 
@@ -447,7 +447,7 @@ fn probe_mint_callee_atom_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: mint_written_callee) } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -460,7 +460,7 @@ fn unknown_origin_red_control_planted_decl() -> FnArrowDecl {
       children: [
         Edge { label: Positional, target: probe_mint_callee_atom_node() }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     params: []
   }
@@ -472,7 +472,7 @@ fn probe_mint_provenanced_callee_atom_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: mint_provenanced_callee) } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -485,7 +485,7 @@ fn parameter_borne_fixture_mint_planted_decl() -> FnArrowDecl {
       children: [
         Edge { label: Positional, target: probe_mint_provenanced_callee_atom_node() }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     params: []
   }
@@ -499,7 +499,7 @@ fn probe_fixture_tree_atom_node() -> Node {
       }
     },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -511,7 +511,7 @@ fn probe_target_model_callee_atom_node() -> Node {
       }
     },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -525,7 +525,7 @@ fn structural_red_control_planted_decl() -> FnArrowDecl {
         Edge { label: Positional, target: probe_mint_callee_atom_node() },
         Edge { label: Positional, target: probe_fixture_tree_atom_node() }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     params: []
   }
@@ -543,7 +543,7 @@ fn target_without_fixture_tree_red_control_planted_decl() -> FnArrowDecl {
         Edge { label: Positional, target: probe_mint_callee_atom_node() },
         Edge { label: Positional, target: probe_target_model_callee_atom_node() }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     params: []
   }

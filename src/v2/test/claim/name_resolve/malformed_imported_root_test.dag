@@ -1,5 +1,6 @@
 module v2.test.name_resolve.malformed_imported_root
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.name_resolve {
   AdmissionAccepted,
   AdmissionRejected,
@@ -18,7 +19,7 @@ import v2.extdeps.languages.dag {
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_node }
 import v2.std.collection { empty_map }
-import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode }
 import v2.std.qualified_name { QualifiedName }
 
 fn malformed_qn_node() -> Node {
@@ -26,7 +27,7 @@ fn malformed_qn_node() -> Node {
     xs: Cons { head: ^malformed_seg, tail: Empty },
     item_node: fn(sym) {
       Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
     }
   )
@@ -49,11 +50,11 @@ fn malformed_root_node() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^malformed_child_sym } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

@@ -1,5 +1,6 @@
 module v2.test.lens_complexity.typescript_type_alias_task
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.typescript { ts_task_type_alias_emitted }
 import v2.lens.complexity { ComplexityBound, complexity_lens, linear_complexity }
 import v2.lens.cost { LinearCost, SizeVariable, SymbolicCost, cost_lens }
@@ -10,7 +11,7 @@ import v2.std.diagnostic {
   Unavailable,
   WholeFile
 }
-import v2.std.node { Cardinality, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Cardinality, Edge, Node, Positional, Symbol, TypeNode }
 import v2.std.witness { Witness }
 
 type LensComplexityClaim {
@@ -25,7 +26,7 @@ data ts_task_complexity_input: Node = Node {
   children: [
     Edge { label: Positional, target: ts_task_type_alias_emitted() }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data ts_task_complexity_claim: LensComplexityClaim = LensComplexityClaim {

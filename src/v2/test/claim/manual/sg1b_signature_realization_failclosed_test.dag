@@ -1,9 +1,10 @@
 module v2.test.manual.sg1b_signature_realization_failclosed
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.rust { rust_sg2_type_expr_target_model }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Edge, Node, Positional, Symbol, TypeNode }
 import v2.std.compilers.target_model {
   FunctionBoundaryParam,
   target_atom_realization_lookup_in_catalog_node,
@@ -15,7 +16,7 @@ fn sg1b_fc_probe_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg1b_fc_probe_sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -25,7 +26,7 @@ fn sg1b_fc_boundary_param_with_children() -> Node {
     children: [
       Edge { label: Positional, target: sg1b_fc_probe_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -33,7 +34,7 @@ fn sg1b_fc_boundary_param_nullary() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: discriminant(v: FunctionBoundaryParam) } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -41,7 +42,7 @@ fn sg1b_fc_non_conj_catalog() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg1b_fc_probe_sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

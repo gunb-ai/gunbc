@@ -1,5 +1,6 @@
 module v2.test.lens_synthesis.synthesis_gap_information_theoretic
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.complexity { ComplexityBound, ConstantComplexity, SizedComplexity, UnknownComplexity, complexity_lens }
 import v2.lens.synthesis {
   InformationTheoretic,
@@ -20,14 +21,13 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.report { SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
 
 data synthesis_gap_it_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_gap_it_atom_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data synthesis_gap_it_body: Node = Node {
@@ -35,7 +35,7 @@ data synthesis_gap_it_body: Node = Node {
   children: [
     Edge { label: Positional, target: synthesis_gap_it_leaf }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data synthesis_gap_it_inner: Node = Node {
@@ -43,7 +43,7 @@ data synthesis_gap_it_inner: Node = Node {
   children: [
     Edge { label: Positional, target: synthesis_gap_it_body }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data synthesis_gap_it_input: Node = Node {
@@ -51,13 +51,13 @@ data synthesis_gap_it_input: Node = Node {
   children: [
     Edge { label: Positional, target: synthesis_gap_it_inner }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data synthesis_gap_it_sentinel: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_gap_it_sentinel_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 test fn synthesis_gap_it_lens_non_empty() -> Bool {

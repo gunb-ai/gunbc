@@ -1,7 +1,7 @@
 module gunbc.plans.idea_machine
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol }
 
@@ -47,6 +47,7 @@ fn idea_machine_body() -> List<MarkdownBlock> {
 }
 
 data idea_machine_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "idea-machine",
   title: "Plan — idea → idea compiler (the idea-machine)",
   body: idea_machine_body(),

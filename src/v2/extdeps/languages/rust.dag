@@ -1,4 +1,5 @@
 module v2.extdeps.languages.rust
+import std.occurrence_identity { OccurrenceSynthetic }
 import extdeps.languages.rust.capabilities {
   RustCapability,
   RustDebug,
@@ -299,7 +300,6 @@ import v2.std.node {
   Symbol,
   TypeNode,
   Instantiation,
-  SyntheticOccurrence
 }
 import v2.std.logic {
   Bool,
@@ -685,7 +685,7 @@ fn rust_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -773,7 +773,7 @@ fn rust_overflow_disposition_node(disposition: RustIntegerOverflowDisposition<Ru
         target: rust_overflow_node(overflow: disposition.checked_arithmetic_overflow_checks_disabled)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -789,7 +789,7 @@ fn rust_scalar_node(scalar: RustScalar) -> Node {
         rust_named_edge(name: ^rust_scalar_field_kind, target: rust_int_kind_node(kind: kind)),
         rust_named_edge(name: ^rust_scalar_field_width, target: rust_int_width_node(width: width))
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
     FloatScalar { width } => Node {
       kind: TypeNode { connective: Conj },
@@ -800,7 +800,7 @@ fn rust_scalar_node(scalar: RustScalar) -> Node {
         ),
         rust_named_edge(name: ^rust_scalar_field_width, target: rust_float_width_node(width: width))
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
     BoolScalar => rust_inhabitant_atom(id: ^rust_tag_scalar_bool)
     CharScalar => rust_inhabitant_atom(id: ^rust_tag_scalar_char)
@@ -859,7 +859,7 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -885,7 +885,7 @@ fn rust_float_facts_node(facts: RustFloatPrimitiveFacts) -> Node {
         target: rust_scalar_node(scalar: FloatScalar { width: facts.width })
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -912,7 +912,7 @@ fn rust_noninteger_facts_node(facts: RustNonIntegerPrimitiveFacts) -> Node {
         target: rust_inhabitant_atom(id: facts.representation)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -923,7 +923,7 @@ fn rust_inhabitant_node(id: Symbol, facts: Node) -> Node {
       rust_named_edge(name: ^rust_inhabitant_field_atom, target: rust_inhabitant_atom(id: id)),
       rust_named_edge(name: ^rust_inhabitant_field_facts, target: facts)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -971,7 +971,7 @@ fn rust_declared_inhabitants_root() -> Node {
       rust_named_edge(name: ^rust_inhabitant_field_unit, target: rust_noninteger_inhabitant_node(id: ^rust_inhabitant_unit, facts: rust_facts_unit)),
       rust_named_edge(name: ^rust_inhabitant_field_never, target: rust_noninteger_inhabitant_node(id: ^rust_inhabitant_never, facts: rust_facts_never))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1004,7 +1004,7 @@ data rust_fixture_emitted_add_fn: Node = Node {
     Edge { label: Positional, target: rust_fixture_i32_inhabitant },
     Edge { label: Positional, target: rust_fixture_i32_inhabitant }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn rust_i32_overflow_disposition_node() -> Node {
@@ -1081,7 +1081,7 @@ fn rust_add_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_coercion_candidate_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1133,7 +1133,7 @@ fn rust_add_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_serialize_source_children(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1200,7 +1200,7 @@ fn rust_grammar_relation_row_node(row: RustGrammarRelationRow) -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1567,7 +1567,7 @@ fn rust_translation_rules_node() -> Node {
         target: rust_fn_add_bodied_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1890,11 +1890,11 @@ fn rust_collection_repr_bundle_node(form: TargetRepresentation) -> Node {
               target: rust_inhabitant_atom(id: form.apply.close)
             )
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1911,7 +1911,7 @@ fn rust_collection_witness_bundle_node(requirement: TargetCapabilityRequirement)
         target: rust_inhabitant_atom(id: requirement.representation_parameter)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1943,7 +1943,7 @@ fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Nod
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1963,7 +1963,7 @@ fn rust_capability_eligibility_row_node(row: TargetCapabilityEligibilityRow) -> 
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -2034,7 +2034,7 @@ fn rust_set_collection_realization_bundle_node() -> Node {
         target: rust_capability_eligibility_bundle_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -2070,7 +2070,7 @@ fn rust_free_monoid_collection_realization_bundle_node() -> Node {
         target: rust_capability_eligibility_bundle_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -2087,7 +2087,7 @@ fn rust_free_monoid_text_carrier_bundle_node() -> Node {
         target: rust_target_atom_type_form(spelling: ^rust_target_atom_type_spelling_string).node
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -2177,7 +2177,7 @@ fn rust_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_target_model_core_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -2199,7 +2199,7 @@ fn rust_emit_host_runtime_primitive_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^rust_emit_host_runtime_primitive_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -2337,7 +2337,7 @@ fn rust_target_model_node() -> Node {
         )
       )
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -2769,7 +2769,7 @@ fn rust_enum_general_decl_productions_only_translation_rules() -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -2913,7 +2913,7 @@ fn rust_enum_general_decl_structural_target_model() -> TargetModel {
           target: rust_enum_general_decl_productions_only_translation_rules()
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     lex: rust_decl_general_lex(),
     binding_spellings: rust_decl_derive_binding_spellings(),
@@ -2971,7 +2971,7 @@ fn rust_struct_general_decl_productions_only_translation_rules() -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -2986,7 +2986,7 @@ fn rust_struct_general_decl_structural_target_model() -> TargetModel {
           target: rust_struct_general_decl_productions_only_translation_rules()
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     lex: rust_decl_general_lex(),
     binding_spellings: rust_decl_derive_binding_spellings(),
@@ -3102,7 +3102,7 @@ fn rust_integer_algebra_witness_node(facts: RustIntegerPrimitiveFacts) -> Node {
       rust_named_edge(name: ^rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection)),
       rust_named_edge(name: ^rust_facts_field_overflow_disposition, target: rust_overflow_disposition_node(disposition: facts.overflow_disposition))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3114,7 +3114,7 @@ fn rust_float_algebra_witness_node(facts: RustFloatPrimitiveFacts) -> Node {
       rust_named_edge(name: ^rust_facts_field_ieee754_binary, target: rust_symbol_node(id: facts.ieee754_binary)),
       rust_named_edge(name: ^rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3125,7 +3125,7 @@ fn rust_bool_algebra_witness_node() -> Node {
       rust_named_edge(name: ^rust_witness_bool_boolean_algebra, target: rust_symbol_node(id: ^rust_witness_bool_boolean_algebra)),
       rust_named_edge(name: ^rust_facts_field_std_projection, target: rust_symbol_node(id: rust_facts_bool.std_projection))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3203,7 +3203,7 @@ fn rust_model_core_law_node(witness: Node, algebra: Node, key: RustModelCoreLawK
         target: rust_inhabitant_atom(id: discriminant(v: key))
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -4664,7 +4664,7 @@ fn rust_sg2_type_expr_bundle_core_base() -> List<Edge> {
       target: Node {
         kind: TypeNode { connective: Conj },
         children: Empty,
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     ),
     rust_named_edge(
@@ -4686,7 +4686,7 @@ fn rust_sg2_type_expr_bundle_core(trailing: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: list_append(left: rust_sg2_type_expr_bundle_core_base(), right: trailing),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4723,7 +4723,7 @@ fn rust_sg2_type_expr_target_model_node() -> Node {
             )
           )
         ),
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     _ => rust_sg2_type_expr_target_model_bundle_core()
   }
@@ -4742,7 +4742,7 @@ fn rust_sg2_serialize_source_node() -> Node {
         target: rust_inhabitant_atom(id: ^rust_sg2_type_alias_literal)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -4789,7 +4789,7 @@ fn rust_sg5_non_ordable_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^rust_binding_sg5_non_ordable } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -4800,7 +4800,7 @@ fn rust_sg5_set_non_ordable_source_type_node() -> Node {
       Edge { label: Positional, target: target_collection_set_carrier_node() },
       Edge { label: Positional, target: rust_sg5_non_ordable_type_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -4842,7 +4842,7 @@ fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_foobar } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       },
       Edge {
@@ -4850,7 +4850,7 @@ fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_x } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       },
       Edge {
@@ -4858,11 +4858,11 @@ fn rust_sg2_foobar_xy_inner_instantiation_node() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_y } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -4875,7 +4875,7 @@ fn rust_sg2_instantiation_source_type_node() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^rust_binding_sg2_rc } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       },
       Edge {
@@ -4883,7 +4883,7 @@ fn rust_sg2_instantiation_source_type_node() -> Node {
         target: rust_sg2_foobar_xy_inner_instantiation_node()
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -4895,7 +4895,7 @@ fn rust_sg2_atom_node(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: binding } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -4923,7 +4923,7 @@ fn rust_sg2_arrow_source_type_node() -> Node {
       Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) },
       Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -4940,7 +4940,7 @@ fn rust_sg2_arrow_malformed_source_type_node() -> Node {
     children: [
       Edge { label: Positional, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -4973,7 +4973,7 @@ fn rust_sg2_conj_source_type_node() -> Node {
       rust_named_edge(name: ^rust_binding_sg2_x, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_x)),
       rust_named_edge(name: ^rust_binding_sg2_y, target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -5022,7 +5022,7 @@ fn rust_sg2_emitted_without_named_edge(base: Node, field: Symbol) -> Node {
         Positional => list_snoc_item(xs: acc, item: e)
       }
     }),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -5049,7 +5049,7 @@ fn rust_sg2_malformed_atom_duplicate_surface_emitted() -> Node {
         surface: rust_type_expression_projection().atom_form.surface
       )
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -5064,7 +5064,7 @@ fn rust_sg2_malformed_atom_wrong_surface_emitted() -> Node {
       xs: rust_sg2_emitted_without_named_edge(base: base, field: ^target_type_expr_field_surface).children,
       item: target_type_expr_surface_edge(surface: ^rust_binding_sg2_bogus_meta)
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -5082,7 +5082,7 @@ fn rust_sg2_malformed_atom_extra_named_emitted() -> Node {
         target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
       )
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -5100,7 +5100,7 @@ fn rust_sg2_malformed_atom_extra_positional_emitted() -> Node {
         target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
       }
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -5117,7 +5117,7 @@ fn rust_sg2_malformed_atom_zero_positional_emitted() -> Node {
         _ => list_snoc_item(xs: acc, item: e)
       }
     }),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -5151,7 +5151,7 @@ fn rust_sg2_malformed_record_extra_positional_emitted() -> Node {
         target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
       }
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -5166,6 +5166,6 @@ fn rust_sg2_malformed_sum_extra_positional_emitted() -> Node {
         target: rust_sg2_atom_node(binding: ^rust_binding_sg2_y)
       }
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }

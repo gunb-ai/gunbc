@@ -1,5 +1,6 @@
 module v2.std.integer_value_set
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -15,7 +16,7 @@ import v2.std.diagnostic {
   Unavailable
 }
 import v2.std.integer { integer_interval_spec_node_contains }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 import v2.std.node_query { find_named_child }
 
 type IntegerValueSet
@@ -26,7 +27,7 @@ fn integer_value_set_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -39,7 +40,7 @@ fn integer_unbounded_value_set_node() -> Node {
         target: integer_value_set_atom(id: ^integer_value_set_kind_unbounded)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -56,7 +57,7 @@ fn integer_interval_value_set_node(interval: Node) -> Node {
         target: interval
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
