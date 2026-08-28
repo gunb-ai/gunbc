@@ -425,7 +425,10 @@ fn run() -> Result<ExitCode, ExitCode> {
                     // identically is the failure DESIGN §5 names, not a tidy report.
                     eprintln!(
                         "required-ci: declarations modules={} declared={} import_members={} \
-                         citations={} debt={} in_fixtures={} outside_index={} kernel_named={} lens_modules={}",
+                         citations={} debt={} in_fixtures={} outside_index={} kernel_named={} lens_modules={} \
+                         cited_authorities_without_import_edges={} retained={:?} \
+                         cited_and_called={} called_retained={:?} cited_not_called={} not_called_retained={:?} \
+                         primary_dag_entries={} primary_dag_retained={:?} src_v2_pool_only={} pool_only_retained={:?}",
                         population.modules,
                         population.declarations,
                         population.import_members,
@@ -435,6 +438,16 @@ fn run() -> Result<ExitCode, ExitCode> {
                         population.citations_outside_index,
                         population.import_members_kernel_named,
                         population.lens_modules,
+                        population.cited_authorities_without_import_edges.len(),
+                        population.cited_authorities_without_import_edges,
+                        population.cited_and_called_without_import_edges.len(),
+                        population.cited_and_called_without_import_edges,
+                        population.cited_not_called_without_import_edges.len(),
+                        population.cited_not_called_without_import_edges,
+                        population.cited_authorities_under_primary_dag_entry_root.len(),
+                        population.cited_authorities_under_primary_dag_entry_root,
+                        population.cited_authorities_in_src_v2_dependency_pool_only.len(),
+                        population.cited_authorities_in_src_v2_dependency_pool_only,
                     );
                     for finding in &findings {
                         eprintln!(
