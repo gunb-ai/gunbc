@@ -24,7 +24,6 @@ import v2.lens.enforcement.lens_module_gate {
   lens_module_gate_unenrolled_count_from_facts,
   lens_module_gate_unjustified_count_from_facts,
   lens_module_gate_redundant_blocking_count_from_surfaces,
-  lens_module_gate_audit_residue_count_from_surfaces,
   lens_module_gate_surfaces
 }
 import v2.lens.enforcement.standing_intent {
@@ -40,14 +39,12 @@ type QuestionZeroVerdict {
   unenrolled: LegVerdict
   unjustified: LegVerdict
   redundant_claim: LegVerdict
-  audit_residue_counted: LegVerdict
 }
 
 fn question_zero_verdict_holds(v: QuestionZeroVerdict) -> Bool {
   leg_holds(l: v.unenrolled)
     && leg_holds(l: v.unjustified)
     && leg_holds(l: v.redundant_claim)
-    && leg_holds(l: v.audit_residue_counted)
 }
 
 fn lens_closure_question_zero_verdict(
@@ -68,12 +65,7 @@ fn lens_closure_question_zero_verdict(
     ),
     redundant_claim: leg_of(
       ok: lens_module_gate_redundant_blocking_count_from_surfaces(surfaces: surfaces) == 0,
-      reason: "lens module claims a genuinely-new invariant but shares verdict-authority and remedy with an enrolled peer"
-    ),
-    audit_residue_counted: leg_of(
-      ok: lens_module_gate_audit_residue_count_from_surfaces(surfaces: surfaces) > 0
-        || lens_module_gate_redundant_blocking_count_from_surfaces(surfaces: surfaces) == 0,
-      reason: "undecidable meaning-residue must be counted on the audit roster, never silently absorbed"
+      reason: "the same registry invariant identity is declared genuinely new more than once with the same verdict authority and remedy"
     )
   }
 }

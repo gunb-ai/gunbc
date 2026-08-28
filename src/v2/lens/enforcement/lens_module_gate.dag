@@ -87,11 +87,6 @@ type VerdictRemedyPair {
   remedy: LensInvariantRemedy
 }
 
-type LensModuleGateResidueRow {
-  left_module: String
-  right_module: String
-}
-
 fn lens_module_gate_string_eq(a: String, b: String) -> Bool {
   a == b
 }
@@ -646,8 +641,6 @@ data lens_module_gate_consolidated_surfaces: List<LensInvariantSurface> = [
 
 data lens_module_gate_redundancy_key_note: String = "A verdict carrier and remedy classify how an invariant reports and repairs; a module can own several independently repaired invariants. Neither identifies the invariant. The registry entry's LensIdV0 is the canonical invariant identity, so it joins the reporting pair here. ComplexityDerivedKernel and ComplexityOptimality therefore remain distinct by construction even though both bind v2.lens.complexity. Cross-module sharing remains explicit in LensModuleAdmission.HandlerOnKernel instead of being guessed from coincidentally equal reporting metadata."
 
-data lens_module_gate_audit_residue_rows: List<LensModuleGateResidueRow> = []
-
 fn lens_module_gate_surfaces() -> List<LensInvariantSurface> {
   let enrolled = fold_list(
     xs: lens_registry_v0,
@@ -689,18 +682,6 @@ fn lens_module_gate_unjustified_count_from_facts(
   })
 }
 
-fn lens_module_gate_residue_pair_covers(left: String, right: String, row: LensModuleGateResidueRow) -> Bool {
-  (row.left_module == left && row.right_module == right)
-    || (row.left_module == right && row.right_module == left)
-}
-
-fn lens_module_gate_is_audit_residue_pair(left: String, right: String) -> Bool {
-  any(
-    xs: lens_module_gate_audit_residue_rows,
-    predicate: fn(row) { lens_module_gate_residue_pair_covers(left: left, right: right, row: row) }
-  )
-}
-
 type RedundantBlockingAcc {
   redundant: Int
   seen: List<LensInvariantSurface>
@@ -723,17 +704,10 @@ fn lens_module_gate_redundant_blocking_step(
       }
     )
     match list_head(xs: prior) {
-      HeadFound { value: earlier } =>
-        if lens_module_gate_is_audit_residue_pair(left: earlier.module, right: surface.module) {
-          RedundantBlockingAcc {
-            redundant: acc.redundant,
-            seen: list_snoc_item(xs: acc.seen, item: surface)
-          }
-        } else {
-          RedundantBlockingAcc {
-            redundant: acc.redundant + 1,
-            seen: list_snoc_item(xs: acc.seen, item: surface)
-          }
+      HeadFound { value: _ } =>
+        RedundantBlockingAcc {
+          redundant: acc.redundant + 1,
+          seen: list_snoc_item(xs: acc.seen, item: surface)
         }
       HeadAbsent =>
         RedundantBlockingAcc {
@@ -757,16 +731,6 @@ fn lens_module_gate_redundant_blocking_count_from_surfaces(surfaces: List<LensIn
   ).redundant
 }
 
-fn lens_module_gate_audit_residue_count_from_surfaces(surfaces: List<LensInvariantSurface>) -> Int {
-  count_where(
-    xs: lens_module_gate_audit_residue_rows,
-    predicate: fn(row) {
-      lens_module_gate_surface_for_module(module: row.left_module, surfaces: surfaces)
-        && lens_module_gate_surface_for_module(module: row.right_module, surfaces: surfaces)
-    }
-  )
-}
-
 fn lens_module_gate_unenrolled_count() -> Int {
   lens_module_gate_unenrolled_count_from_facts(
     facts: lens_registry_completeness_live_facts(),
@@ -783,10 +747,6 @@ fn lens_module_gate_unjustified_count() -> Int {
 
 fn lens_module_gate_redundant_blocking_count() -> Int {
   lens_module_gate_redundant_blocking_count_from_surfaces(surfaces: lens_module_gate_surfaces())
-}
-
-fn lens_module_gate_audit_residue_count() -> Int {
-  lens_module_gate_audit_residue_count_from_surfaces(surfaces: lens_module_gate_surfaces())
 }
 
 fn lens_module_gate_blocking_holds() -> Bool {

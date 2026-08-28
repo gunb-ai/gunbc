@@ -320,7 +320,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "red_control_unenrolled_lens_refused", "red_control_redundant_verdict_remedy_refused",
       "red_control_genuinely_new_distinct_surface_passes",
       "red_control_fully_authorized_fixture_clean",
-      "no_stale_audit_residue_remains", "question_zero_fixture_redundant_leg_fails",
+      "question_zero_fixture_redundant_leg_fails",
       "lens_closure_question_zero_live_matches_gate"
     ]
   },

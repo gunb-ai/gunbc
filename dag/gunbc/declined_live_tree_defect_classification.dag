@@ -158,33 +158,15 @@ data doc_reachability_rows: List<ClassifiedRow> = [
 // GROUP A -- the seven exact identities.
 // ---------------------------------------------------------------------------
 
-// THE LENS-GATE PAIR, AND THIS IS THE ONE WRONG WITNESS IN THE THIRTEEN.
-// Decomposed by execution: unenrolled == 0 and unjustified == 0 both PASS, so
-// the two legs the gate is named for are clean. The failing leg is
-// redundant_blocking, and it is not a regression -- it is 42 refusals out of 58
-// enrolled lenses, because the criterion keys redundancy on the pair
-// (verdict_authority, remedy), two coarse closed enums, over 58 lenses. Two
-// lenses sharing "reports a LensVerdict" and "the remedy is a report" is the
-// common case, not evidence that one re-coined the other, and the exemption
-// mechanism (lens_module_gate_audit_residue_rows) carries two rows against a
-// population of 42. The first refusal it produces is v2.lens.complexity against
-// ITSELF -- two lens ids bound to one module path -- which no exemption row
-// could ever be written for. The gate has never held on the live corpus and
-// cannot be made to hold by adding residue rows.
-//
-// THE SELF-REFUSAL IS THE PROOF, NOT THE ILLUSTRATION: a check whose FIRST
-// refusal is structurally uncoverable by its own escape mechanism is not
-// under-exempted, it is wrong.
-//
-// ADDING EXEMPTION ROWS IS FORBIDDEN (manager ruling, swift-badger-524,
-// 2026-08-25). Growing lens_module_gate_audit_residue_rows toward 42 is the
-// one-sided ratchet over hand-authored rows DESIGN 5's oracle ruling rules out,
-// and it would be silencing a criterion nobody has established is right. The
-// remedy is at the CRITERION, and the carrier already names it: lens_module_gate's
-// own surface_table dissolve-on says the central table dissolves when each
-// enrolled lens declares its invariant surface ON ITS OWN MODULE. A surface
-// declared per lens is discriminating; a surface projected from a 58-arm table
-// over two coarse enums cannot be. Routed there rather than repaired here.
+// THE LENS-GATE PAIR, AND THIS WAS THE ONE WRONG WITNESS IN THE THIRTEEN.
+// Execution decomposed the failure to redundant_blocking: the old criterion
+// treated equal (verdict_authority, remedy) as invariant identity, producing 42
+// false refusals, including two independently repaired complexity invariants
+// owned by one module. The repair landed at the criterion: LensInvariantSurface
+// now carries the registry entry's LensIdV0, and redundancy requires that same
+// invariant identity in addition to equal reporting metadata. The audit-residue
+// escape mechanism was deleted at its root; every duplicate identity blocks,
+// and no hand-authored exemption roster can drift or absorb a new finding.
 data lens_module_gate_rows: List<ClassifiedRow> = [
   ClassifiedRow {
     identity: identity(module_path: "v2.test.claim.enforcement.lens_module_gate_witness", function: "lens_module_gate_holds_live"),
