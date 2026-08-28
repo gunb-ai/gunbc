@@ -345,8 +345,8 @@ import gunbc.roadmap_presentation {
 }
 import extdeps.gunbc
 import extdeps.shell
+import extdeps.filesystem.filesystem_io
 import extdeps.filesystem.filesystem_io {
-  Filesystem,
   FilesystemEntryAbsent,
   FilesystemEntryListed,
   FilesystemEntryPresenceIndeterminate,
