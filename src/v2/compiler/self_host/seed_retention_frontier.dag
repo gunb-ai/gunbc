@@ -121,6 +121,7 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_undeclared(path: "src/coproduct_reflection.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_elsewhere(path: "src/data_initializer_identity.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "data_initializer_identity_seed_retained_note"),
   retained_reason_elsewhere(path: "src/declaration_index.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.declaration_index_seed_growth", decl_name: "declaration_index_seed_growth_note"),
+  retained_reason_elsewhere(path: "src/namespace_wave_admission.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.namespace_wave_admission", decl_name: "namespace_wave_admission_note"),
   retained_reason_undeclared(path: "src/resolved_graph_cache.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/shared_typecheck_store.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/recorded_fixture.rs", cause: SeedRetainedIntrinsicSource),
@@ -138,6 +139,7 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_undeclared(path: "src/v2_compiler_use_site_verdict.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_elsewhere(path: "src/cssl_seed_linked_closure_assembly.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
   retained_reason_elsewhere(path: "src/required_regen_host.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
+  retained_reason_elsewhere(path: "src/behavioral_receipt_host.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.target_invocation_seed_growth", decl_name: "target_invocation_seed_growth_justification"),
   retained_reason_elsewhere(path: "src/v2_compiler_compile.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
   retained_reason_elsewhere(path: "src/v2_compiler_program_assembly.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
   retained_reason_elsewhere(path: "src/v2_compiler_source_authority.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
@@ -182,7 +184,6 @@ data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
   retained_test_harness(path: "tests/namespace_occurrence_serde.rs"),
   retained_test_harness(path: "tests/scoped_run_observation.rs"),
   retained_test_harness(path: "tests/tokenize_escape_receipt.rs"),
-  retained_test_harness(path: "tests/walk_plan_stage_fixture.rs"),
   retained_build_script(path: "build.rs")
 ]
 

@@ -181,7 +181,7 @@ fn rust_pick_translation_rules_node() -> Node {
         target: rust_pick_bodied_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -214,7 +214,7 @@ fn rust_pick_serialize_source_node() -> Node {
         )
       ]
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -306,7 +306,7 @@ fn rust_pick_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_pick_target_model_core_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -445,7 +445,7 @@ fn rust_match_translation_rules_node() -> Node {
         target: rust_match_bodied_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -478,7 +478,7 @@ fn rust_match_serialize_source_node() -> Node {
         )
       ]
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -654,7 +654,7 @@ fn rust_match_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_match_target_model_core_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -830,7 +830,7 @@ fn rust_loop_translation_rules_node() -> Node {
         target: rust_loop_bodied_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -863,7 +863,7 @@ fn rust_loop_serialize_source_node() -> Node {
         )
       ]
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -952,7 +952,7 @@ fn rust_loop_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_loop_target_model_core_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1097,7 +1097,7 @@ fn rust_classical_not_translation_rules_node() -> Node {
         target: rust_classical_not_bodied_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1128,7 +1128,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
         }
       }
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1272,7 +1272,7 @@ fn rust_field_access_translation_rules_node() -> Node {
         target: rust_field_access_bodied_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1305,7 +1305,7 @@ fn rust_field_access_serialize_source_node() -> Node {
         )
       ]
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1376,7 +1376,7 @@ fn rust_field_access_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_field_access_target_model_core_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1567,7 +1567,7 @@ fn rust_variant_construct_translation_rules_node() -> Node {
         target: rust_variant_construct_bodied_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1600,7 +1600,7 @@ fn rust_variant_construct_serialize_source_node() -> Node {
         )
       ]
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1694,7 +1694,7 @@ fn rust_variant_construct_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_variant_construct_target_model_core_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1875,7 +1875,7 @@ fn rust_logic_complement_translation_rules_node() -> Node {
         target: rust_logic_complement_bodied_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1908,7 +1908,7 @@ fn rust_logic_complement_serialize_source_node() -> Node {
         )
       ]
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -2000,7 +2000,7 @@ fn rust_logic_complement_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_logic_complement_target_model_core_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -2143,7 +2143,7 @@ fn rust_bool_fn_translation_rules_node(
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -2171,7 +2171,7 @@ fn rust_bool_fn_serialize_source_node(
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -2343,7 +2343,7 @@ fn rust_bool_fn_target_model(
           tokens: tokens
         )
       ),
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     lex: rust_bool_fn_lex(),
     binding_spellings: binding_spellings,
@@ -2826,7 +2826,7 @@ fn rust_rec_translation_rules_node() -> Node {
         target: rust_rec_bodied_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -2859,7 +2859,7 @@ fn rust_rec_serialize_source_node() -> Node {
         )
       ]
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -2936,7 +2936,7 @@ fn rust_rec_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_rec_target_model_core_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3084,7 +3084,7 @@ fn rust_rec_nine_translation_rules_node() -> Node {
         target: rust_rec_nine_bodied_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3117,7 +3117,7 @@ fn rust_rec_nine_serialize_source_node() -> Node {
         )
       ]
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3194,7 +3194,7 @@ fn rust_rec_nine_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_rec_nine_target_model_core_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3408,7 +3408,7 @@ fn rust_fold_call_translation_rules_node() -> Node {
         target: rust_fold_call_bodied_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3441,7 +3441,7 @@ fn rust_fold_call_serialize_source_node() -> Node {
         )
       ]
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3515,7 +3515,7 @@ fn rust_fold_call_target_model_bundle_core() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_fold_call_target_model_core_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3577,7 +3577,7 @@ fn rust_target_model_bundle_core_with_operators(operator_catalog: Node) -> Node 
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_target_model_core_edges_with_operators(operator_catalog: operator_catalog),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3647,7 +3647,7 @@ fn rust_type_atom_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3655,7 +3655,7 @@ fn rust_nullary_arrow_domain_conj_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3671,7 +3671,7 @@ fn rust_bind_let_body_node(
       Edge { label: Positional, target: rust_type_atom_node(identity: value_lit) },
       Edge { label: Positional, target: rust_type_atom_node(identity: body_binding) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3693,7 +3693,7 @@ fn rust_arrow_with_body_node(
       },
       Edge { label: Named { name: ^arrow_body_edge }, target: body }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3810,7 +3810,7 @@ fn rust_bind_literal_translation_rules_node() -> Node {
         target: rust_bind_literal_bodied_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3841,7 +3841,7 @@ fn rust_bind_literal_target_model_bundle() -> Node {
         }
       }
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3874,7 +3874,7 @@ fn rust_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
         }
       }
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3922,7 +3922,7 @@ fn rust_empty_translation_rules_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3939,7 +3939,7 @@ fn rust_relation_translation_rules_node(
         children: [
           rust_named_edge(name: rule_name, target: row)
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     Violates { diagnostic: _ } => rust_empty_translation_rules_node()
   }
@@ -3980,7 +3980,7 @@ fn rust_serialize_source_node(
         )
       ]
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3991,7 +3991,7 @@ fn rust_target_model_bundle(rules: Node, serialize_source: Node) -> Node {
       rust_named_edge(name: ^target_model_edge_translation_rules, target: rules),
       rust_named_edge(name: ^target_model_edge_serialize_source, target: serialize_source)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4111,7 +4111,7 @@ fn rust_type_alias_decl_productions_only_translation_rules() -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4142,7 +4142,7 @@ fn rust_type_alias_decl_structural_target_model() -> TargetModel {
           target: rust_type_alias_decl_productions_only_translation_rules()
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     lex: rust_type_alias_decl_structural_lex(),
     binding_spellings: empty_map(),

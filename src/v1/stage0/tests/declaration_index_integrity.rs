@@ -31,7 +31,9 @@ use v1_compiler::cli_run::declaration_index::{
     corpus_findings, index_findings, index_get, index_population, planted_control_findings_against,
     DeclarationIndex, DeclarationIntegrityKind, ModuleDeclarationRecord,
 };
-use v1_compiler::cli_run::run_dag_parse_sweep;
+use v1_compiler::cli_run::{
+    compile_dag_multi_module_fixture, run_dag_parse_sweep, MultiModuleCompileFixtureOutcome,
+};
 
 /// A scratch tree of our own, cleaned on the way IN so a run is deterministic whatever the
 /// previous one left behind.
@@ -400,6 +402,50 @@ fn stale_citation_is_refused() {
     assert!(found[0].1.contains("deleted_declaration"), "{}", found[0].1);
 }
 
+// ARM 2's THIRD RED, AND IT HAD NO FIXTURE UNTIL 2026-08-26. `CitedFieldAbsent` was the one
+// refusal arm of the cited-symbol wall with no controlled fixture anywhere: its only evidence
+// was a PLANTED_CONTROL_CITATIONS row whose citation was authored inside
+// `v2.lens.cited_symbol_resolution`. Deleting that lens deleted the citation, the row stopped
+// reproducing, and the arm would have been left with nothing executing against it — the
+// §4b(4) failure of deleting evidence along with the machinery it outlived. Measured, not
+// assumed: before this test the string `CitedFieldAbsent` did not occur in this file at all.
+//
+// A controlled fixture is also the STRONGER replacement, not merely an equal one. The planted
+// row asserted that one hand-authored citation in the live corpus still refuses; this authors
+// both the input and the expected population, which is the oracle DESIGN §5 actually asks for.
+//
+// THE PAIR IS THE POINT: `absent_field` must refuse and `present_field` must NOT, in one
+// fixture. A wall that refused every `NamedField` citation would satisfy the red alone.
+#[test]
+fn citation_to_an_absent_field_is_refused_and_a_present_field_is_not() {
+    let dir = scratch_root("citation_field");
+    author(
+        &dir,
+        "authority.dag",
+        "module probe.authority\n\ndata real_declaration: Bool = true\n\n\
+         type Carrier {\n  present_field: Bool\n}\n",
+    );
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, NamedField }\n\n\
+         data absent_field_citation: DeclarationRef = DeclarationRef {\n  \
+         module_path: \"probe.authority\",\n  decl_name: \"Carrier\",\n  \
+         field: NamedField { field_name: \"no_such_field\" }\n}\n\n\
+         data present_field_citation: DeclarationRef = DeclarationRef {\n  \
+         module_path: \"probe.authority\",\n  decl_name: \"Carrier\",\n  \
+         field: NamedField { field_name: \"present_field\" }\n}\n",
+    );
+    let found = findings_over(&dir);
+    assert_eq!(
+        found.len(),
+        1,
+        "the absent field refuses; the present one does not, got {found:?}"
+    );
+    assert_eq!(found[0].0, DeclarationIntegrityKind::CitedFieldAbsent);
+    assert!(found[0].1.contains("no_such_field"), "{}", found[0].1);
+}
+
 // ARM 2's second red: a citation whose MODULE is gone. It refuses because some swept
 // module declares the `probe` namespace root — the decidable line that separates a deleted
 // `.dag` module from a citation naming hand-Rust, which no `.dag` namespace covers.
@@ -433,6 +479,152 @@ fn citation_to_a_deleted_module_is_refused_and_a_foreign_namespace_is_not() {
     let population = index_population(&sweep.index);
     assert_eq!(population.citations, 2);
     assert_eq!(population.citations_outside_index, 1);
+}
+
+// DESIGN's third emit-stage escape mode is a JOIN, not a specimen count: a module is in
+// the retained population when an ordinary module cites it as an authority and no import
+// edge reaches it. Both directions are planted so a collector that merely counts citations,
+// or one that mistakes deliberately-false fixture text for authority demand, cannot pass.
+#[test]
+fn cited_authority_without_an_import_edge_is_named_until_an_edge_reaches_it() {
+    let dir = scratch_root("cited_authority_reachability");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data citation: DeclarationRef = DeclarationRef {\n  \
+         module_path: \"probe.authority\",\n  decl_name: \"real_declaration\",\n  \
+         field: WholeDeclaration\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    assert_eq!(
+        index_population(&sweep.index).cited_authorities_without_import_edges,
+        vec!["probe.authority"],
+        "the retained population carries its identity, not only one counted specimen"
+    );
+
+    author(
+        &dir,
+        "consumer.dag",
+        "module probe.consumer\n\nimport probe.authority { real_declaration }\n\n\
+         data consumes_authority: Bool = real_declaration\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    assert_eq!(
+        index_population(&sweep.index).cited_authorities_without_import_edges,
+        Vec::<String>::new(),
+        "one real import edge reaches and therefore removes the authority from the remainder"
+    );
+}
+
+#[test]
+fn retained_authorities_partition_by_a_call_to_the_cited_declaration() {
+    let dir = scratch_root("cited_authority_call_partition");
+    author(
+        &dir,
+        "invoked.dag",
+        "module probe.invoked\n\nfn probe_call() -> Bool { true }\n",
+    );
+    author(
+        &dir,
+        "data_only.dag",
+        "module probe.data_only\n\ndata authority: Bool = true\n",
+    );
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data called_ref: DeclarationRef = DeclarationRef { module_path: \"probe.invoked\", decl_name: \"probe_call\", field: WholeDeclaration }\n\n\
+         data data_ref: DeclarationRef = DeclarationRef { module_path: \"probe.data_only\", decl_name: \"authority\", field: WholeDeclaration }\n\n\
+         fn invokes() -> Bool { probe_call() }\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    let population = index_population(&sweep.index);
+    assert_eq!(
+        population.cited_and_called_without_import_edges,
+        vec!["probe.invoked"]
+    );
+    assert_eq!(
+        population.cited_not_called_without_import_edges,
+        vec!["probe.data_only"]
+    );
+}
+
+#[test]
+fn fixture_citation_does_not_claim_authority_reachability() {
+    let dir = scratch_root("fixture_citation_reachability");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "citer_test.dag",
+        "module probe.citer_test\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data citation: DeclarationRef = DeclarationRef {\n  \
+         module_path: \"probe.authority\",\n  decl_name: \"real_declaration\",\n  \
+         field: WholeDeclaration\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    assert_eq!(
+        index_population(&sweep.index).cited_authorities_without_import_edges,
+        Vec::<String>::new(),
+        "fixture text is evidence input, not a claim that its target is a live authority"
+    );
+}
+
+#[test]
+fn fixture_import_does_not_fabricate_production_authority_reachability() {
+    let dir = scratch_root("fixture_import_reachability");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data citation: DeclarationRef = DeclarationRef {\n  \
+         module_path: \"probe.authority\",\n  decl_name: \"real_declaration\",\n  \
+         field: WholeDeclaration\n}\n",
+    );
+    author(
+        &dir,
+        "consumer_test.dag",
+        "module probe.consumer_test\n\nimport probe.authority { real_declaration }\n\n\
+         data fixture_consumes_authority: Bool = real_declaration\n",
+    );
+
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    assert_eq!(
+        index_population(&sweep.index).cited_authorities_without_import_edges,
+        vec!["probe.authority"],
+        "a fixture import is evidence input, not production reachability"
+    );
+}
+
+// The live credentials defect is intentionally NOT this control: another change may repair it,
+// which must not make the evidence permanently green. These two caller-authored modules keep the
+// compiler's refusing and accepting directions under the fixture's control.
+#[test]
+fn orphan_entry_compile_has_a_controlled_red_and_clean_control() {
+    let bad = compile_dag_multi_module_fixture(
+        &["probe_bad.dag".to_string()],
+        &["module probe.bad\n\nfn broken() -> Bool { missing_value }\n".to_string()],
+        "probe_bad.dag",
+    );
+    assert!(
+        matches!(bad, MultiModuleCompileFixtureOutcome::CompileRefused { .. }),
+        "the controlled orphan with an undefined value must refuse, got {bad:?}"
+    );
+
+    let clean = compile_dag_multi_module_fixture(
+        &["probe_clean.dag".to_string()],
+        &["module probe.clean\n\ndata okay: Bool = true\n".to_string()],
+        "probe_clean.dag",
+    );
+    assert!(
+        matches!(
+            clean,
+            MultiModuleCompileFixtureOutcome::CompileCompleted { .. }
+        ),
+        "the controlled clean orphan must compile, got {clean:?}"
+    );
 }
 
 // ARM 3 — module authorship. The live corpus is 72 of 72 green, so this is the arm whose
@@ -478,8 +670,8 @@ fn lens_with_construction_justification_stays_clean() {
 // THE DEBT CONTRACT'S OWN DISCRIMINATING PAIR, AND WHY IT LIVES BEHIND A ROSTER PARAMETER.
 //
 // `review 55817` found that folding the debt arm into `index_findings` made every fixture in
-// this file receive 38 findings it did not plant — the production roster joined against a
-// tree of `probe.*` modules, where all 38 rows are trivially absent. That falsified the
+// this file receive 42 findings it did not plant — the production roster joined against a
+// tree of `probe.*` modules, where all 42 rows are trivially absent. That falsified the
 // §4b evidence in place: the planted-red and positive-control assertions could not pass.
 //
 // The repair splits the arm out into `corpus_findings`, whose denominator is this repository,
@@ -508,7 +700,13 @@ fn a_debt_row_whose_citation_still_refuses_is_live() {
         "probe.authority",
         "no_such_declaration",
     );
-    let roster = [("probe.authority", "no_such_declaration", "")];
+    let roster = [(
+        "probe.citer",
+        "probe_citation",
+        "probe.authority",
+        "no_such_declaration",
+        "",
+    )];
     assert_eq!(
         citation_debt_findings_against(&sweep.index, &roster),
         Vec::new(),
@@ -535,7 +733,13 @@ fn a_debt_row_whose_citation_stopped_refusing_is_spent_and_refuses() {
     author(&dir, "authority.dag", AUTHORITY);
     // Nothing cites the roster's target, so the row is spent.
     let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
-    let roster = [("probe.authority", "no_such_declaration", "")];
+    let roster = [(
+        "probe.citer",
+        "probe_citation",
+        "probe.authority",
+        "no_such_declaration",
+        "",
+    )];
     let spent = citation_debt_findings_against(&sweep.index, &roster);
     assert_eq!(spent.len(), 1, "the spent row must refuse, got {spent:?}");
     assert_eq!(
@@ -621,12 +825,17 @@ fn the_production_roster_does_not_reach_an_arbitrary_tree() {
 // evidenced at the fixture boundary and silently disableable at the only seam that matters —
 // pass `&[]` there instead of the production roster and nothing fails.
 //
-// The discriminating pair is authorable because a fixture may DECLARE a module the production
-// roster names. `std.bytes` `builtin_function_registry` is a real row of
+// The discriminating pair is authorable because a fixture may reproduce a production SITE.
+// `std.encoding` citing `std.bytes` `builtin_function_registry` is a real row of
 // `PRE_EXISTING_CITATION_DEBT`, so a fixture that declares `std.bytes` WITHOUT that
-// declaration, and cites it, must be refused by `index_findings` (empty roster: judge
-// everything) and suppressed by `corpus_findings` (production roster: enrolled). The two
-// answers over ONE tree are what prove the wiring rather than the fold.
+// declaration and cites it FROM A MODULE CALLING ITSELF `std.encoding` must be refused by
+// `index_findings` (empty roster: judge everything) and suppressed by `corpus_findings`
+// (production roster: enrolled). The two answers over ONE tree are what prove the wiring
+// rather than the fold.
+//
+// THE CITING MODULE IS PART OF THE FIXTURE NOW, and that is not incidental: a row exempts a
+// SITE, so naming the target alone no longer reaches the production roster. The companion
+// test below plants the same target from a different citer and requires it to REFUSE.
 #[test]
 fn corpus_findings_is_wired_to_the_production_suppression_roster() {
     let dir = scratch_root("seam_suppression");
@@ -638,8 +847,8 @@ fn corpus_findings_is_wired_to_the_production_suppression_roster() {
     author(
         &dir,
         "citer.dag",
-        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
-         data probe_citation: DeclarationRef = DeclarationRef {\n\
+        "module std.encoding\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data utf8_decode_bytes_host_realization_marker: DeclarationRef = DeclarationRef {\n\
          \u{20}\u{20}module_path: \"std.bytes\",\n\
          \u{20}\u{20}decl_name: \"builtin_function_registry\",\n\
          \u{20}\u{20}field: WholeDeclaration,\n}\n",
@@ -650,7 +859,7 @@ fn corpus_findings_is_wired_to_the_production_suppression_roster() {
     // "suppressed" reading below could just be a citation nobody extracted.
     plant_cites(
         &sweep.index,
-        "probe.citer",
+        "std.encoding",
         "std.bytes",
         "builtin_function_registry",
     );
@@ -710,7 +919,13 @@ fn a_planted_control_that_still_refuses_is_healthy() {
         "probe.authority",
         "deliberately_absent_RED",
     );
-    let roster = [("probe.authority", "deliberately_absent_RED", "")];
+    let roster = [(
+        "probe.citer",
+        "probe_citation",
+        "probe.authority",
+        "deliberately_absent_RED",
+        "",
+    )];
     assert_eq!(
         planted_control_findings_against(&sweep.index, &roster),
         Vec::new(),
@@ -745,7 +960,13 @@ fn a_planted_control_that_resolves_has_lost_its_power_and_refuses() {
         "probe.authority",
         "deliberately_absent_RED",
     );
-    let roster = [("probe.authority", "deliberately_absent_RED", "")];
+    let roster = [(
+        "probe.citer",
+        "probe_citation",
+        "probe.authority",
+        "deliberately_absent_RED",
+        "",
+    )];
     let lost = planted_control_findings_against(&sweep.index, &roster);
     assert_eq!(lost.len(), 1, "the spent control must refuse, got {lost:?}");
     assert_eq!(
@@ -792,7 +1013,13 @@ fn a_roster_row_on_the_wrong_identity_desynchronizes_both_arms() {
     );
 
     // THE MISMATCH: the row names the same declaration with NO field, the citation has one.
-    let mismatched = [("probe.authority", "absent_declaration", "")];
+    let mismatched = [(
+        "probe.citer",
+        "probe_citation",
+        "probe.authority",
+        "absent_declaration",
+        "",
+    )];
     let unsuppressed = cited_symbol_findings_against(&sweep.index, &mismatched);
     let spent = citation_debt_findings_against(&sweep.index, &mismatched);
     assert_eq!(
@@ -816,7 +1043,13 @@ fn a_roster_row_on_the_wrong_identity_desynchronizes_both_arms() {
     );
 
     // THE REPAIR: the row on the citation's real identity silences both arms at once.
-    let matched = [("probe.authority", "absent_declaration", "price")];
+    let matched = [(
+        "probe.citer",
+        "probe_citation",
+        "probe.authority",
+        "absent_declaration",
+        "price",
+    )];
     assert_eq!(
         cited_symbol_findings_against(&sweep.index, &matched),
         Vec::new(),
@@ -913,7 +1146,13 @@ fn a_fixture_citation_exemption_suppresses_only_its_own_identity() {
     );
     // Exempting ONE leaves the OTHER refusing. This is the whole content of the repair: the
     // exemption is keyed on the citation, so it cannot cover a sibling in the same module.
-    let roster = [("probe.authority", "deliberately_absent", "")];
+    let roster = [(
+        "probe.witness",
+        "planted",
+        "probe.authority",
+        "deliberately_absent",
+        "",
+    )];
     let findings = cited_symbol_findings_against(&sweep.index, &roster);
     assert_eq!(
         findings.len(),
@@ -953,7 +1192,13 @@ fn a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses() {
         Vec::new(),
         "PLANT MALFORMED: `real_declaration` must resolve for this to be a SPENT row"
     );
-    let roster = [("probe.authority", "real_declaration", "")];
+    let roster = [(
+        "probe.witness",
+        "cite",
+        "probe.authority",
+        "real_declaration",
+        "",
+    )];
     let spent = citation_debt_findings_named(&sweep.index, &roster, "FIXTURE_CARRIER_EXEMPTIONS");
     assert_eq!(
         spent.len(),
@@ -968,5 +1213,216 @@ fn a_fixture_exemption_whose_citation_resolves_is_spent_and_refuses() {
         spent[0].message.contains("FIXTURE_CARRIER_EXEMPTIONS"),
         "the diagnostic must name the roster holding the row, got {:?}",
         spent[0].message
+    );
+}
+
+// THE CLASS THIS CHANGE CLOSES, AND THE ONLY TEST THAT DISTINGUISHES SITE GRAIN FROM TARGET
+// GRAIN.
+//
+// Every roster row used to name a TARGET — `(module, decl, field)` — so one row suppressed
+// every citation of that target, corpus-wide and for as long as the row stood. Measured on the
+// live tree, the 70 rows covered 75 refusing sites and six targets were already cited from more
+// than one module (`gunbc.host_effect` `host_effect_apply` from three, `std.bytes`
+// `builtin_function_registry` from three). The consequence is the one this test plants: a patch
+// could author a BRAND NEW dangling citation to any enrolled target, from any module, and the
+// wall would silently decline to judge it — citation rot admitted by the mechanism built to
+// refuse it, and decidable from the patch alone.
+//
+// The fixture reproduces one production row exactly (`std.encoding` -> `std.bytes`
+// `builtin_function_registry`) and plants a SECOND citation of the same target from
+// `probe.newcomer`. Under the production roster the enrolled site is suppressed and the new one
+// must refuse. Revert the roster to target grain and this test goes green with zero findings,
+// which is precisely the state it exists to forbid.
+#[test]
+fn a_new_citation_of_an_enrolled_target_from_another_module_still_refuses() {
+    let dir = scratch_root("site_grain_newcomer");
+    author(
+        &dir,
+        "bytes.dag",
+        "module std.bytes\n\ndata something_else: Bool = true\n",
+    );
+    author(
+        &dir,
+        "enrolled.dag",
+        "module std.encoding\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data utf8_decode_bytes_host_realization_marker: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"std.bytes\",\n\
+         \u{20}\u{20}decl_name: \"builtin_function_registry\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    author(
+        &dir,
+        "newcomer.dag",
+        "module probe.newcomer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data fresh_citation: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"std.bytes\",\n\
+         \u{20}\u{20}decl_name: \"builtin_function_registry\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    // PRECONDITIONS: both citations are indexed, and the target really is absent — otherwise
+    // "one finding" below could be a citation nobody extracted rather than a wall that fired.
+    plant_cites(
+        &sweep.index,
+        "std.encoding",
+        "std.bytes",
+        "builtin_function_registry",
+    );
+    plant_cites(
+        &sweep.index,
+        "probe.newcomer",
+        "std.bytes",
+        "builtin_function_registry",
+    );
+    assert_eq!(
+        cited_symbol_findings_against(&sweep.index, &[]).len(),
+        2,
+        "unenrolled, both citations must refuse; otherwise the enrolled case proves nothing"
+    );
+
+    let found: Vec<_> = corpus_findings(&sweep.index)
+        .into_iter()
+        .filter(|f| f.kind == DeclarationIntegrityKind::CitedDeclarationAbsent)
+        .collect();
+    assert_eq!(
+        found.len(),
+        1,
+        "the enrolled SITE is suppressed and the new one is not, got {found:?}"
+    );
+    assert!(
+        found[0].message.contains("probe.newcomer"),
+        "the surviving finding must be the UNENROLLED citer, got {:?}",
+        found[0].message
+    );
+}
+
+// THE SAME DISTINCTION AT THE ARM BOUNDARY, so the site grain is not an accident of one
+// production row. A roster row exempting `probe.citer` may not shield an identical citation
+// authored in `probe.other`.
+#[test]
+fn a_roster_row_exempts_its_own_citer_and_no_other() {
+    let dir = scratch_root("site_grain_arm");
+    author(&dir, "authority.dag", AUTHORITY);
+    for (basename, module) in [("citer.dag", "probe.citer"), ("other.dag", "probe.other")] {
+        let source = format!(
+            "module {module}\n\nimport std.decl_ref {{ DeclarationRef, WholeDeclaration }}\n\ndata cite: DeclarationRef = DeclarationRef {{\n  module_path: \"probe.authority\",\n  decl_name: \"no_such_declaration\",\n  field: WholeDeclaration,\n}}\n"
+        );
+        author(&dir, basename, &source);
+    }
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    plant_cites(
+        &sweep.index,
+        "probe.citer",
+        "probe.authority",
+        "no_such_declaration",
+    );
+    plant_cites(
+        &sweep.index,
+        "probe.other",
+        "probe.authority",
+        "no_such_declaration",
+    );
+    let roster = [(
+        "probe.citer",
+        "cite",
+        "probe.authority",
+        "no_such_declaration",
+        "",
+    )];
+    let findings = cited_symbol_findings_against(&sweep.index, &roster);
+    assert_eq!(
+        findings.len(),
+        1,
+        "the row exempts one site, not the target, got {findings:?}"
+    );
+    assert!(
+        findings[0].message.contains("probe.other"),
+        "the surviving finding must be the unenrolled citer, got {:?}",
+        findings[0].message
+    );
+    // And the row is LIVE, not spent — its own citation still refuses.
+    assert_eq!(
+        citation_debt_findings_against(&sweep.index, &roster),
+        Vec::new(),
+        "the staleness arm must key on the same site the suppression arm does"
+    );
+}
+
+// THE RESIDUE THIS BRANCH FIRST DISCLOSED AND THEN CLOSED (review 56227).
+//
+// The citing MODULE alone was not a site: two citations of one target inside one module shared
+// a row, so a new dangling citation authored BESIDE an enrolled one stayed suppressed — the
+// same fail-open the module grain closed, one level in, and the reviewer was right that a
+// disclosed residue is not a closed one when the identity that closes it is available.
+//
+// It was available. `record_from_module` already iterates top-level items to build `declared`,
+// so the enclosing declaration's name costs one string at extraction and is a NAME rather than
+// an offset — reachable from the containment tree, and therefore not the positional citation
+// DESIGN §3 forbids.
+//
+// The fixture is the reviewer's scenario exactly: one module, one enrolled citation, and a
+// second dangling citation of the SAME target in a DIFFERENT declaration. Under the module
+// grain this test reports zero findings, which is the state it exists to forbid.
+#[test]
+fn a_second_citation_of_an_enrolled_target_in_another_declaration_still_refuses() {
+    let dir = scratch_root("decl_grain_sibling");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data enrolled: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"probe.authority\",\n\
+         \u{20}\u{20}decl_name: \"no_such_declaration\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n\n\
+         data authored_later: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"probe.authority\",\n\
+         \u{20}\u{20}decl_name: \"no_such_declaration\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    // PRECONDITION: both citations are indexed, and each is attributed to its OWN declaration.
+    // Without this, one finding below could be one citation the extractor missed.
+    let record = plant(&sweep.index, "probe.citer");
+    let homes: Vec<&str> = record
+        .cited
+        .iter()
+        .map(|c| c.in_declaration.as_str())
+        .collect();
+    assert_eq!(
+        homes,
+        vec!["enrolled", "authored_later"],
+        "PLANT MALFORMED: each citation must be attributed to the declaration that carries it"
+    );
+    assert_eq!(
+        cited_symbol_findings_against(&sweep.index, &[]).len(),
+        2,
+        "unenrolled, both citations must refuse"
+    );
+
+    let roster = [(
+        "probe.citer",
+        "enrolled",
+        "probe.authority",
+        "no_such_declaration",
+        "",
+    )];
+    let findings = cited_symbol_findings_against(&sweep.index, &roster);
+    assert_eq!(
+        findings.len(),
+        1,
+        "the sibling citation must still refuse — a row exempts one declaration's citation, not \
+         the module's, got {findings:?}"
+    );
+    assert_eq!(
+        findings[0].kind,
+        DeclarationIntegrityKind::CitedDeclarationAbsent
+    );
+    // And the row is LIVE, not spent, so the staleness arm reads the same declaration-grained
+    // identity the suppression arm does.
+    assert_eq!(
+        citation_debt_findings_against(&sweep.index, &roster),
+        Vec::new(),
+        "both inverse arms must key on the declaration too, or they desynchronize"
     );
 }

@@ -8,7 +8,7 @@ Home: ROADMAP §1 (CI as the substrate integration dogfood). This is the **▸ N
 
 srv1 + srv2 (128c / 125GiB each) sit at ~10-34% CPU, ~24-32% MEM, with only **~3 runner slots per host** — so PRs **queue while the cores idle**. The throttle is the runner-slot count, which is set by the per-host **memory budget allocation**, not by saturation, not by fleet capacity, not by OOM.
 
-The slot count is starved because the budget model (`dag/gunbc/fleet_host_budget.dag`) derives `runner_slice_cap ≈ 0`: build memory is subtracted as a `build_pool` **and** re-charged inside the per-job whole-tree-peak divisor. A GHA-CI runner job *is* a build — its `rustc` lives **inside** `system-actions-runner.slice` — so the build memory must be counted **once**, not twice.
+The slot count is starved because the budget model (`dag/gunbc/fleet/fleet_host_budget.dag`) derives `runner_slice_cap ≈ 0`: build memory is subtracted as a `build_pool` **and** re-charged inside the per-job whole-tree-peak divisor. A GHA-CI runner job *is* a build — its `rustc` lives **inside** `system-actions-runner.slice` — so the build memory must be counted **once**, not twice.
 
 ## oomd demoted (operator §5 insight)
 
@@ -65,12 +65,12 @@ T0 (un-zero the runner slice) → model derives sane N + per-slot caps → T1+T2
 
 ## Re-sequence 2026-06-24 (post-operator apply-transport redirect)
 
-The model side is **done**: T0 double-count fix, #5674 slot count, #5687 per-slot cap, #5706 cpu_weight + session-slice emit, and **PR2 #5720** (grounds `gunbc_fleet_oomd_evidence` from the `gunbc.oomd_install` seam + de-conflates the Regime2 spec from oomd evidence; fail-closed `OomdUnverified` until a live `ReadObserved`) all landed/ready. The remaining work is the **apply transport**, re-sequenced:
+The model side is **done**: T0 double-count fix, #5674 slot count, #5687 per-slot cap, #5706 cpu_weight + session-slice emit, and **PR2 #5720** (grounds oomd evidence from the `gunbc.oomd_install` seam + de-conflates the aggregate spec from oomd evidence (the fleet-wide `gunbc_fleet_oomd_evidence` row and the `Regime2AggregateOomd` variant this sentence originally named are both DELETED; evidence is now the per-host `gunbc_fleet_oomd_evidence_for`); fail-closed `OomdUnverified` until a live `ReadObserved`) all landed/ready. The remaining work is the **apply transport**, re-sequenced:
 
 - **A — converge-shell emit**: emit `.github/fleet-converge.sh` (regime-2 Doc-IR projection) = the §2 handler that inhabits the §6 carrier by emission (T5 above). `cpu_weight` + `build_tokens` fold in as rows. Byte-locks the receipt grammar. The host-converge policy folds runner + sessions targets into one host verdict; the per-(host, grounding-target) settle split (T1 caps / T2 membership / T3 runner) is a documented dissolve-on. (wise-eagle-664, #5725.)
 - **B — thin consume/run**: fetch the script, run per-host, parse the fail-closed `Reconciliation` receipt, content-fingerprint the re-run trigger. Zero converge logic. The reviewed/tested consumer core is #1805; the live privileged run-path (root systemctl on the fleet) is a gated, operator-visible follow-on held by bright-stag-194, gated on (a) the ctrl pin-bump to #5725 and (b) the runner plan flipping sound.
 - **G — membership conjunct** (dispatched model-first, off critical path): the soundness prereq guarding the empty-managed-slice fiction (sessions parented in AND non-empty AND not-100%-legacy). Models the conjunct + **defines** the membership-signal contract (consumer-defines-the-signal). MUST keep gating the sessions-protection verdict — decoupling membership without splitting the host fingerprint is a §5 fail-open (a host reports converged while sessions.slice has zero members for oomd to evict). MUST land before any live read grounds `OomdEnforced`. (stern-dove-499, #5726.)
-- **Grounding order** (fail-closed): caps applied (A+B) → slice populated (#1804, stays JS — spawn-path runtime, no .dag analog) → membership conjunct verifies non-empty (G) → verify-read enabled → `gunbc_fleet_oomd_evidence` grounds `OomdEnforced` → plan SOUND → ctrl converges N + caps. bright-stag holds the actuation test + `(host, oomd_ver, slice)` receipt until that point.
+- **Grounding order** (fail-closed): caps applied (A+B) → slice populated (#1804, stays JS — spawn-path runtime, no .dag analog) → membership conjunct verifies non-empty (G) → verify-read enabled → `gunbc_fleet_oomd_evidence_for` grounds `OomdEnforced` → plan SOUND → ctrl converges N + caps. bright-stag holds the actuation test + `(host, oomd_ver, slice)` receipt until that point.
 
 ## Dissolution trigger (DESIGN §6)
 

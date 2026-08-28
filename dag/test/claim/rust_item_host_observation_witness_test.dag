@@ -1,0 +1,613 @@
+module test.claim.rust_item_host_observation_witness_test
+
+import gunbc.rust_item_host_observation {
+  HunkRangeParsed,
+  HunkRangeRefused,
+  ItemDeclarationRefProjected,
+  ItemDeclarationRefRefused,
+  ItemDeclarationRefUncitable,
+  LineRange,
+  LiveHandRustObserved,
+  RustFileChangeInput,
+  RustItemChangeObserved,
+  RustItemChangeHostRefused,
+  RustItemChangeScanRefused,
+  RustItemChangeUnattributed,
+  RustModulePathProjected,
+  RustModulePathRefused,
+  item_declaration_ref,
+  observe_live_hand_rust,
+  observe_rust_item_change,
+  parse_hunk_header,
+  rust_module_path_for_repo_path
+}
+import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_key }
+import gunbc.seed_growth_admission {
+  SeedGrowthAdmissionComplete,
+  SeedGrowthAdmissionRefused,
+  seed_growth_admit_change
+}
+import gunbc.capability_origin {
+  AuthorizedTemporarySeedBridge,
+  CapabilityIntroducedInModelEpoch,
+  CapabilityPresentOnBase,
+  ExistingCapabilityMigration,
+  AdmissionEvidence,
+  AuthorityHoldsInModelEpoch,
+  AuthoredAgainstModelContract,
+  GeneratedByRealization,
+  ModelEpochSubject,
+  ModelOnlyContentIdentity,
+  RealizationMutationRefused,
+  RealizationMutationUnnoticed,
+  no_admission_evidence
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.algebra { any, length, list_map }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURES ARE SOURCE AND DIFF TEXT, NOT CONSTRUCTED OBSERVATIONS, wherever the property under
+// test belongs to the reader rather than to the join. A witness that hands the join a hand-built
+// item list proves the join and nothing about whether the items would ever have been found.
+data cli_run_path: String = "src/v1/stage0/src/cli_run.rs"
+
+data base_cli_run: String = "use std::fmt;\n\npub fn existing_helper() -> u32 {\n    1\n}\n"
+
+data head_with_justified_addition: String = "use std::fmt;\n\npub fn existing_helper() -> u32 {\n    1\n}\n\npub fn parse_stage0_cargo_manifest_bin_paths() -> u32 {\n    2\n}\n"
+
+data head_with_unjustified_addition: String = "use std::fmt;\n\npub fn existing_helper() -> u32 {\n    1\n}\n\npub fn totally_unjustified_probe() -> u32 {\n    2\n}\n"
+
+data head_with_modified_existing_item: String = "use std::fmt;\n\npub fn existing_helper() -> u32 {\n    7\n}\n"
+
+data head_with_macro_block_addition: String = "use std::cell::RefCell;\n\npub fn existing_helper() -> u32 {\n    1\n}\n\nthread_local! {\n    static COUNTER: RefCell<u32> = RefCell::new(0);\n}\n"
+
+data head_with_unreadable_region: String = "use std::fmt;\n\npub fn existing_helper() -> u32 {\n    1\n}\n\n{\n    1\n}\n"
+
+fn added_change(head_content: String, new_ranges: List<LineRange>) -> List<RustFileChangeInput> {
+  [
+    RustFileChangeInput {
+      repo_path: cli_run_path,
+      base_content: base_cli_run,
+      head_content: head_content,
+      present_at_base: true,
+      present_at_head: true,
+      old_ranges: [],
+      new_ranges: new_ranges
+    }
+  ]
+}
+
+fn live_of(head_content: String) -> LiveHandRustObserved {
+  observe_live_hand_rust(
+    sources: added_change(head_content: head_content, new_ranges: []),
+    generated_repo_paths: []
+  )
+}
+
+// THE HUNK HEADER IS GIT'S FORMAT AND THE ELIDED COUNT MEANS ONE. A reader that defaulted the count
+// to zero would report every single-line change as touching nothing, which is the empty-observation
+// narrow arriving through arithmetic rather than through a failure arm.
+test fn hunk_header_with_elided_count_means_one_line() -> Bool {
+  match parse_hunk_header(header: "@@ -20,0 +21 @@ fn helper() -> bool { true }") {
+    HunkRangeParsed { old_range: old_range, new_range: new_range } =>
+      new_range.start == 21 && new_range.count == 1 && old_range.start == 20 && old_range.count == 0
+    HunkRangeRefused { header: _, detail: _ } => false
+  }
+}
+
+test fn an_undecodable_hunk_header_refuses_rather_than_yielding_no_range() -> Bool {
+  match parse_hunk_header(header: "@@ not a range at all @@") {
+    HunkRangeRefused { header: _, detail: _ } => true
+    HunkRangeParsed { old_range: _, new_range: _ } => false
+  }
+}
+
+// LONGEST PREFIX WINS. src/v1/stage0/src/bin/ is a subtree of src/v1/stage0/src/, so a first-match
+// reader gives every binary the library's namespace and the authored row order becomes silently
+// load-bearing.
+test fn the_bin_subtree_does_not_inherit_the_library_namespace() -> Bool {
+  match rust_module_path_for_repo_path(repo_path: "src/v1/stage0/src/bin/claim_executor.rs") {
+    RustModulePathProjected { module_path: path } => path == "v1_compiler.bin.claim_executor"
+    RustModulePathRefused { repo_path: _, detail: _ } => false
+  }
+}
+
+test fn a_path_no_namespace_row_claims_refuses_rather_than_acquiring_one() -> Bool {
+  match rust_module_path_for_repo_path(repo_path: "src/v2/somewhere/else.rs") {
+    RustModulePathRefused { repo_path: _, detail: _ } => true
+    RustModulePathProjected { module_path: _ } => false
+  }
+}
+
+test fn a_nested_source_path_keeps_its_directory_as_a_namespace_segment() -> Bool {
+  match rust_module_path_for_repo_path(repo_path: "src/v1/stage0/src/cli_run/bare_reference_scanner.rs") {
+    RustModulePathProjected { module_path: path } => path == "v1_compiler.cli_run.bare_reference_scanner"
+    RustModulePathRefused { repo_path: _, detail: _ } => false
+  }
+}
+
+test fn an_impl_method_is_reported_uncitable_rather_than_dropped_or_forced() -> Bool {
+  match item_declaration_ref(
+    item: RustItemIdentity {
+      repo_path: cli_run_path,
+      kind: RustImplMethod,
+      name: "fmt",
+      impl_subject: "std::fmt::Display for Stage0CargoBinManifestParseRefusal",
+      enclosing_module: "",
+      start_line: 10,
+      loc: 3
+    }
+  ) {
+    ItemDeclarationRefUncitable { item_key: _, detail: _ } => true
+    ItemDeclarationRefProjected { ref: _ } => false
+    ItemDeclarationRefRefused { item_key: _, detail: _ } => false
+  }
+}
+
+fn change_of(head_content: String, new_ranges: List<LineRange>) -> RustItemChangeObserved {
+  observe_rust_item_change(
+    generated_repo_paths: [],
+    inputs: added_change(head_content: head_content, new_ranges: new_ranges)
+  )
+}
+
+test fn an_added_item_is_reported_added_and_an_untouched_item_is_not_modified() -> Bool {
+  match change_of(head_content: head_with_unjustified_addition, new_ranges: [LineRange { start: 6, count: 4 }]) {
+    RustItemChangeObserved {
+      added_hand_items: added,
+      modified_hand_items: modified,
+      deleted_hand_items: deleted,
+      generated_changes: generated
+    } =>
+      length(xs: added) == 1
+        && length(xs: modified) == 0
+        && length(xs: deleted) == 0
+        && length(xs: generated) == 0
+    RustItemChangeUnattributed { repo_path: _, line: _, detail: _ } => false
+    RustItemChangeScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustItemChangeHostRefused { detail: _ } => false
+  }
+}
+
+// A CHANGE INSIDE AN EXISTING ITEM IS A MODIFICATION AND NOT AN ADDITION, which is the arm that
+// decides whether this construction does anything: a worker can add a whole capability inside an
+// existing function without creating one item, and a reader that reported nothing there would
+// leave the freeze open through the largest functions in the seed.
+test fn a_body_edit_inside_an_existing_item_is_reported_modified() -> Bool {
+  match change_of(head_content: head_with_modified_existing_item, new_ranges: [LineRange { start: 4, count: 1 }]) {
+    RustItemChangeObserved {
+      added_hand_items: added,
+      modified_hand_items: modified,
+      deleted_hand_items: deleted,
+      generated_changes: _
+    } =>
+      length(xs: added) == 0
+        && length(xs: deleted) == 0
+        && any(
+          xs: list_map(xs: modified, f: fn(i) { rust_item_identity_key(item: i) }),
+          predicate: fn(k) { k == "src/v1/stage0/src/cli_run.rs::fn::existing_helper" }
+        )
+    RustItemChangeUnattributed { repo_path: _, line: _, detail: _ } => false
+    RustItemChangeScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustItemChangeHostRefused { detail: _ } => false
+  }
+}
+
+// A CHANGED HAND-RUST FILE THE READER CANNOT PLACE REFUSES. It does not report an empty delta, and
+// this is the arm the whole carrier exists for: an unattributed change rendered as "nothing
+// changed" is silently uncovered, where a widen would merely be expensive.
+test fn a_changed_region_the_reader_cannot_attribute_refuses() -> Bool {
+  match change_of(head_content: head_with_unreadable_region, new_ranges: [LineRange { start: 7, count: 3 }]) {
+    RustItemChangeScanRefused { repo_path: path, line: _, line_text: _, detail: _ } => path == cli_run_path
+    RustItemChangeObserved {
+      added_hand_items: _,
+      modified_hand_items: _,
+      deleted_hand_items: _,
+      generated_changes: _
+    } => false
+    RustItemChangeUnattributed { repo_path: _, line: _, detail: _ } => false
+    RustItemChangeHostRefused { detail: _ } => false
+  }
+}
+
+// A CHANGE INSIDE A MACRO BLOCK REFUSES, AND THIS IS THE ARM MOST LIKELY TO HAVE BEEN A FAIL-OPEN.
+// The macro block scans cleanly -- the file is not refused, the following items are found -- so the
+// tempting answer for a line inside it is "no item changed", which is exactly the empty-observation
+// narrow: a `static` added inside `thread_local!` is hand-Rust growth that no roster row names. The
+// reader has no name for it, so the join stops the line rather than reporting nothing.
+test fn a_change_inside_a_macro_block_refuses_rather_than_reporting_no_item() -> Bool {
+  match change_of(head_content: head_with_macro_block_addition, new_ranges: [LineRange { start: 8, count: 1 }]) {
+    RustItemChangeUnattributed { repo_path: path, line: line, detail: _ } =>
+      path == cli_run_path && line == 8
+    RustItemChangeObserved {
+      added_hand_items: _,
+      modified_hand_items: _,
+      deleted_hand_items: _,
+      generated_changes: _
+    } => false
+    RustItemChangeScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustItemChangeHostRefused { detail: _ } => false
+  }
+}
+
+test fn a_generated_path_change_is_classified_and_never_scanned_for_items() -> Bool {
+  match observe_rust_item_change(
+    generated_repo_paths: [cli_run_path],
+    inputs: added_change(head_content: head_with_unreadable_region, new_ranges: [LineRange { start: 7, count: 3 }])
+  ) {
+    RustItemChangeObserved {
+      added_hand_items: added,
+      modified_hand_items: _,
+      deleted_hand_items: _,
+      generated_changes: generated
+    } => length(xs: added) == 0 && length(xs: generated) == 1
+    RustItemChangeUnattributed { repo_path: _, line: _, detail: _ } => false
+    RustItemChangeScanRefused { repo_path: _, line: _, line_text: _, detail: _ } => false
+    RustItemChangeHostRefused { detail: _ } => false
+  }
+}
+
+test fn an_unjustified_addition_refuses_and_names_the_item() -> Bool {
+  match seed_growth_admit_change(
+    change: change_of(head_content: head_with_unjustified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
+    live: live_of(head_content: head_with_unjustified_addition),
+    bridges: [],
+    evidence: no_admission_evidence()
+  ) {
+    SeedGrowthAdmissionRefused { unjustified_additions: unjustified, detail: _ } =>
+      any(xs: unjustified, predicate: fn(k) { string_contains(s: k, pattern: "totally_unjustified_probe") })
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => false
+  }
+}
+
+// THE ORIGIN RELATION'S FIXTURES. The item the roster already justifies, stated three ways: with a
+// bridge whose capability was already on base (prior by construction, no probe needed), with a
+// bridge whose capability was introduced in this very change (prior only if a probe says the model
+// epoch holds without the Rust), and with no bridge at all.
+data justified_addition_item: DeclarationRef = DeclarationRef {
+  module_path: "v1_compiler.cli_run" as NonEmptyStr,
+  decl_name: "parse_stage0_cargo_manifest_bin_paths" as NonEmptyStr,
+  field: WholeDeclaration
+}
+
+data justified_addition_authority: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.stage0_rust_host_observation" as NonEmptyStr,
+  decl_name: "stage0_rust_observation_seed_growth_justification" as NonEmptyStr,
+  field: WholeDeclaration
+}
+
+data justified_addition_bridge: AuthorizedTemporarySeedBridge = AuthorizedTemporarySeedBridge {
+  item: justified_addition_item,
+  dag_authority: justified_addition_authority,
+  origin: CapabilityPresentOnBase { authority: justified_addition_authority },
+  realization_role: "host observation of a committed manifest",
+  owning_lane: "loyal-ram-883",
+  deletion_trigger: "the manifest read becomes a modeled filesystem operation",
+  current_boundary: "reads one committed file at a path the authority names"
+}
+
+data retro_modeled_addition_bridge: AuthorizedTemporarySeedBridge = AuthorizedTemporarySeedBridge {
+  item: justified_addition_item,
+  dag_authority: justified_addition_authority,
+  origin: CapabilityIntroducedInModelEpoch {
+    authority: justified_addition_authority,
+    model_epoch: ModelOnlyContentIdentity { content_hash: "e1-model-only-fixture" },
+    ground: ExistingCapabilityMigration {
+      predecessor: justified_addition_authority,
+      preserved_contract: justified_addition_authority
+    }
+  },
+  realization_role: "host observation of a committed manifest",
+  owning_lane: "loyal-ram-883",
+  deletion_trigger: "the manifest read becomes a modeled filesystem operation",
+  current_boundary: "reads one committed file at a path the authority names"
+}
+
+// A CAPABILITY INTRODUCED IN THIS CHANGE IS NOT PRIOR UNTIL A PROBE SAYS SO, AND AN ABSENT PROBE IS
+// NOT A NEUTRAL ANSWER. This is the arm that makes the origin relation more than a field: the
+// bridge is well formed, its ground is a real migration, the roster names the item, and the
+// addition still refuses -- because nothing executed the test that would establish the model held
+// without the Rust beside it. A probe that did not run rendering as a passed one is the
+// execution-provenance loss the design document names, and here it has no spelling.
+test fn a_capability_modeled_in_the_same_change_refuses_until_a_probe_runs() -> Bool {
+  match seed_growth_admit_change(
+    change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
+    live: live_of(head_content: head_with_justified_addition),
+    bridges: [retro_modeled_addition_bridge],
+    evidence: no_admission_evidence()
+  ) {
+    SeedGrowthAdmissionRefused { unjustified_additions: refusals, detail: _ } =>
+      any(xs: refusals, predicate: fn(k) { string_contains(s: k, pattern: "origin test did not execute") })
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => false
+  }
+}
+
+// ROSTER MEMBERSHIP IS NOT SUFFICIENT, and this arm is the difference between the two tests. The
+// same addition the positive control admits refuses when no bridge states its capability origin:
+// the SeedGrowthJustification row is identical in both runs, so what separates them is the origin
+// relation and nothing else.
+test fn a_roster_named_addition_still_refuses_when_no_bridge_states_its_origin() -> Bool {
+  match seed_growth_admit_change(
+    change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
+    live: live_of(head_content: head_with_justified_addition),
+    bridges: [],
+    evidence: no_admission_evidence()
+  ) {
+    SeedGrowthAdmissionRefused { unjustified_additions: refusals, detail: _ } =>
+      any(xs: refusals, predicate: fn(k) { string_contains(s: k, pattern: "no AuthorizedTemporarySeedBridge") })
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => false
+  }
+}
+
+// THE CONFORMANCE EVIDENCE. A realization mutation that the predicted evidence REFUSED, with
+// fixtures authored against the model contract rather than recorded from the implementation.
+data model_epoch_fixture: ModelEpochSubject = ModelEpochSubject {
+  base_revision: "base-rev",
+  head_revision: "head-rev",
+  epoch_ref: ModelOnlyContentIdentity { content_hash: "e1-model-only-fixture" },
+  excluded_hand_item_keys: []
+}
+
+data conforming_evidence: AdmissionEvidence = AdmissionEvidence {
+  observed_base_revision: "base-rev",
+  observed_head_revision: "head-rev",
+  model_epoch_probes: [],
+  conformance_probes: [
+    RealizationMutationRefused {
+      authority: justified_addition_authority,
+      epoch: model_epoch_fixture,
+      fixture_provenance: AuthoredAgainstModelContract { contract: justified_addition_authority }
+    }
+  ]
+}
+
+// THE CIRCULAR-GREEN FIXTURE: the mutation went red, and the fixtures were recorded from the very
+// implementation they check. Redness is necessary and provenance is what makes it evidence.
+data realization_derived_evidence: AdmissionEvidence = AdmissionEvidence {
+  observed_base_revision: "base-rev",
+  observed_head_revision: "head-rev",
+  model_epoch_probes: [],
+  conformance_probes: [
+    RealizationMutationRefused {
+      authority: justified_addition_authority,
+      epoch: model_epoch_fixture,
+      fixture_provenance: GeneratedByRealization { detail: "expected outputs captured from the new host function" }
+    }
+  ]
+}
+
+// THE MUTATION NOTHING NOTICED: the model agrees with the Rust and constrains nothing.
+data unconstrained_evidence: AdmissionEvidence = AdmissionEvidence {
+  observed_base_revision: "base-rev",
+  observed_head_revision: "head-rev",
+  model_epoch_probes: [],
+  conformance_probes: [
+    RealizationMutationUnnoticed {
+      authority: justified_addition_authority,
+      epoch: model_epoch_fixture,
+      detail: "every predicted observation stayed green under a mutated realization"
+    }
+  ]
+}
+
+// AN EXPIRED EPOCH: the probe was taken against a base the change was never proposed against, which
+// is the reversed-diff class stated as evidence rather than as advice.
+data expired_epoch_evidence: AdmissionEvidence = AdmissionEvidence {
+  observed_base_revision: "base-rev",
+  observed_head_revision: "head-rev",
+  model_epoch_probes: [
+    AuthorityHoldsInModelEpoch {
+      authority: justified_addition_authority,
+      epoch: ModelEpochSubject {
+        base_revision: "some-other-base",
+        head_revision: "head-rev",
+        epoch_ref: ModelOnlyContentIdentity { content_hash: "e1-model-only-fixture" },
+        excluded_hand_item_keys: []
+      }
+    }
+  ],
+  conformance_probes: [
+    RealizationMutationRefused {
+      authority: justified_addition_authority,
+      epoch: model_epoch_fixture,
+      fixture_provenance: AuthoredAgainstModelContract { contract: justified_addition_authority }
+    }
+  ]
+}
+
+// FIXTURES RECORDED FROM THE REALIZATION REFUSE EVEN THOUGH THE MUTATION WENT RED. This is the arm
+// that separates "the model constrains the Rust" from "the fixtures follow the Rust": a fixture
+// pinned to an implementation breaks under any change to it, so redness alone proves nothing about
+// where the expectation came from.
+test fn conformance_fixtures_generated_by_the_realization_refuse_despite_a_red_mutation() -> Bool {
+  match seed_growth_admit_change(
+    change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
+    live: live_of(head_content: head_with_justified_addition),
+    bridges: [justified_addition_bridge],
+    evidence: realization_derived_evidence
+  ) {
+    SeedGrowthAdmissionRefused { unjustified_additions: refusals, detail: _ } =>
+      any(xs: refusals, predicate: fn(k) { string_contains(s: k, pattern: "generated by the realization") })
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => false
+  }
+}
+
+// A MUTATION NOTHING NOTICED IS NOT A PASS. The model agreeing with the Rust is the state this test
+// exists to distinguish from the model predicting it.
+test fn a_realization_mutation_no_evidence_noticed_refuses() -> Bool {
+  match seed_growth_admit_change(
+    change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
+    live: live_of(head_content: head_with_justified_addition),
+    bridges: [justified_addition_bridge],
+    evidence: unconstrained_evidence
+  ) {
+    SeedGrowthAdmissionRefused { unjustified_additions: refusals, detail: _ } =>
+      any(xs: refusals, predicate: fn(k) { string_contains(s: k, pattern: "does not constrain") })
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => false
+  }
+}
+
+// EVIDENCE TAKEN AGAINST A DIFFERENT BASE IS EVIDENCE ABOUT A DIFFERENT CHANGE. A probe whose epoch
+// names a base the admitting observer did not observe expires, and an expired epoch is not a weaker
+// form of a current one -- E1 is reconstructed rather than re-cited.
+test fn a_probe_taken_against_another_base_expires_rather_than_admitting() -> Bool {
+  match seed_growth_admit_change(
+    change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
+    live: live_of(head_content: head_with_justified_addition),
+    bridges: [retro_modeled_addition_bridge],
+    evidence: expired_epoch_evidence
+  ) {
+    SeedGrowthAdmissionRefused { unjustified_additions: refusals, detail: _ } =>
+      any(xs: refusals, predicate: fn(k) { string_contains(s: k, pattern: "epoch has expired") })
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => false
+  }
+}
+
+// THE POSITIVE CONTROL. Without it the refusal above is satisfied by a join that refuses
+// everything, which is a wall that stops the line for every change and therefore stops nothing.
+test fn an_addition_the_roster_already_names_is_admitted() -> Bool {
+  match seed_growth_admit_change(
+    change: change_of(head_content: head_with_justified_addition, new_ranges: [LineRange { start: 6, count: 4 }]),
+    live: live_of(head_content: head_with_justified_addition),
+    bridges: [justified_addition_bridge],
+    evidence: conforming_evidence
+  ) {
+    SeedGrowthAdmissionComplete {
+      justified_items: justified,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: duplicates,
+      uncitable_items: _
+    } => length(xs: justified) == 1 && length(xs: duplicates) == 0
+    SeedGrowthAdmissionRefused { unjustified_additions: _, detail: _ } => false
+  }
+}
+
+// DELETIONS OFFSET NOTHING, AND IT IS EXECUTED RATHER THAN ASSERTED. This lane has deleted many
+// thousands of lines of Rust and that buys exactly zero admission credit; the robust form of that
+// rule is that the verdict has no access to the deleted population at all. The same unjustified
+// addition is run against a change that also deletes a hand item, and the verdict must not move.
+// A MODIFICATION IS REPORTED, BY NAME, AND IS NOT SILENTLY ABSENT. Nothing refuses it yet -- the
+// disposition roster closes with the final claim_executor cut -- so the only thing standing between
+// a capability added inside an existing function and total invisibility is that the population is
+// carried and named. If this list were empty for a body edit, the modification arm would be
+// decorative and the addition-only gate would be the whole mechanism.
+test fn a_modified_item_is_reported_by_name_for_disposition() -> Bool {
+  match seed_growth_admit_change(
+    change: change_of(head_content: head_with_modified_existing_item, new_ranges: [LineRange { start: 4, count: 1 }]),
+    live: live_of(head_content: head_with_modified_existing_item),
+    bridges: [],
+    evidence: no_admission_evidence()
+  ) {
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: modified,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } =>
+      any(
+        xs: modified,
+        predicate: fn(k) { k == "src/v1/stage0/src/cli_run.rs::fn::existing_helper" }
+      )
+    SeedGrowthAdmissionRefused { unjustified_additions: _, detail: _ } => false
+  }
+}
+
+test fn seed_growth_deletions_offset_nothing() -> Bool {
+  let with_deletion = observe_rust_item_change(
+    generated_repo_paths: [],
+    inputs: [
+      RustFileChangeInput {
+        repo_path: cli_run_path,
+        base_content: base_cli_run,
+        head_content: head_with_unjustified_addition,
+        present_at_base: true,
+        present_at_head: true,
+        old_ranges: [],
+        new_ranges: [LineRange { start: 6, count: 4 }]
+      },
+      RustFileChangeInput {
+        repo_path: "src/v1/stage0/src/departing.rs",
+        base_content: "pub fn departing_helper() -> u32 {\n    1\n}\n",
+        head_content: "",
+        present_at_base: true,
+        present_at_head: false,
+        old_ranges: [LineRange { start: 1, count: 3 }],
+        new_ranges: []
+      }
+    ]
+  )
+  match seed_growth_admit_change(change: with_deletion, live: live_of(head_content: head_with_unjustified_addition), bridges: [], evidence: no_admission_evidence()) {
+    SeedGrowthAdmissionRefused { unjustified_additions: unjustified, detail: _ } =>
+      any(xs: unjustified, predicate: fn(k) { string_contains(s: k, pattern: "totally_unjustified_probe") })
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => false
+  }
+}
+
+// A REFUSED OBSERVATION IS A REFUSED ADMISSION. The join may never render an unobservable change as
+// a complete verdict with an empty addition list -- that is the exact shape by which a broken
+// reader reads as coverage.
+test fn an_unobservable_change_cannot_produce_a_complete_verdict() -> Bool {
+  match seed_growth_admit_change(
+    bridges: [],
+    evidence: no_admission_evidence(),
+    change: RustItemChangeHostRefused { detail: "git refused" },
+    live: live_of(head_content: base_cli_run)
+  ) {
+    SeedGrowthAdmissionRefused { unjustified_additions: _, detail: detail } =>
+      string_contains(s: detail, pattern: "not observed")
+    SeedGrowthAdmissionComplete {
+      justified_items: _,
+      modified_items_requiring_disposition: _,
+      stale_justifications: _,
+      duplicate_justifications: _,
+      uncitable_items: _
+    } => false
+  }
+}

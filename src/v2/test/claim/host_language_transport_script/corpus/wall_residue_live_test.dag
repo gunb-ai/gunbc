@@ -9,31 +9,31 @@ data wall_residue_roster_note: String = "The roster is the non-test corpus set o
 
 test fn residue_host_effect_realize_clean() -> Bool {
   transport_script_live_literal_violation_count_for_path(
-    path: "dag/gunbc/host_effect_realize.dag"
+    path: "dag/gunbc/host/host_effect_realize.dag"
   ) == 0
 }
 
 test fn residue_host_converge_slice1_clean() -> Bool {
   transport_script_live_literal_violation_count_for_path(
-    path: "dag/gunbc/host_converge_slice1.dag"
+    path: "dag/gunbc/host/host_converge_slice1.dag"
   ) == 0
 }
 
 test fn residue_host_identity_adopt_clean() -> Bool {
   transport_script_live_literal_violation_count_for_path(
-    path: "dag/gunbc/host_identity_adopt.dag"
+    path: "dag/gunbc/host/host_identity_adopt.dag"
   ) == 0
 }
 
 test fn residue_host_identity_assimilation_clean() -> Bool {
   transport_script_live_literal_violation_count_for_path(
-    path: "dag/gunbc/host_identity_assimilation.dag"
+    path: "dag/gunbc/host/host_identity_assimilation.dag"
   ) == 0
 }
 
 test fn residue_host_runner_memory_cap_verify_clean() -> Bool {
   transport_script_live_literal_violation_count_for_path(
-    path: "dag/gunbc/host_runner_memory_cap_verify.dag"
+    path: "dag/gunbc/host/host_runner_memory_cap_verify.dag"
   ) == 0
 }
 
@@ -52,12 +52,6 @@ test fn residue_tools_review_clean() -> Bool {
 test fn residue_emit_host_gate_clean() -> Bool {
   transport_script_live_literal_violation_count_for_path(
     path: "dag/tools/emit_host_gate.dag"
-  ) == 0
-}
-
-test fn residue_gunbc_ci_clean() -> Bool {
-  transport_script_live_literal_violation_count_for_path(
-    path: "dag/tools/gunbc_ci.dag"
   ) == 0
 }
 

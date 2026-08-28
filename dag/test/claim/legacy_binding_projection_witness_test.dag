@@ -1,0 +1,657 @@
+module test.claim.legacy_binding_projection_witness
+
+import std.types { String, Bool, Int, List, SourceSpan }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.content_hash { Fnv1a64Structural, structural_content_hash }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIndex,
+  OccurrenceIndexEntry,
+  OccurrenceProjection,
+  OccurrenceContainmentPath,
+  LexicalValueOccurrence,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceTransport,
+  ValidatedOccurrenceTransport,
+  OccurrenceTransportValidation,
+  OccurrenceTransportValidated,
+  OccurrenceTransportRefused,
+  occurrence_transport_validate,
+  NodeOccurrenceIdentity,
+  OccurrenceMinted,
+  OccurrenceSynthetic,
+  OccurrenceProjected,
+  ScopedOccurrenceRef
+}
+import v2.workflow.legacy_binding_observation {
+  LegacyBindingObservationSubject,
+  LegacyBindingObservation,
+  LegacyBindingObservationRow,
+  CompleteLegacyObservation,
+  LegacyObservationAdmission,
+  ObservationAdmitted,
+  ObservationRefused,
+  admit_complete_observation,
+  ImportScopedPolicy,
+  NamespaceOnlyPolicy,
+  legacy_subject_identity
+}
+import v2.workflow.legacy_binding_delta {
+  ProjectionProvenance,
+  ProjectionProvenanceEntry,
+  ProjectedFromSource,
+  ProjectedAsInsertion
+}
+import v2.workflow.legacy_binding_projection {
+  ProjectionCarryDecision,
+  CarriedForward,
+  DroppedByProjection,
+  ProjectionEmission,
+  ProvenanceEmitted,
+  ProjectionDecisionMissing,
+  ProjectionDecisionForked,
+  ProjectionDecisionForeign,
+  ProjectionInsertionCauseLost,
+  CauseLostSite,
+  ProjectionCandidateNotInsertion,
+  ProjectionTargetRepeated,
+  ProjectionDroppedOccurrence,
+  DeclaredProjectionInsertion,
+  emit_projection_provenance
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EACH FIXTURE VIOLATES EXACTLY ONE LAW, and that is a construction rule here rather than reviewer
+// diligence. The arms are ordered inside the emitter, so a fixture violating two laws would test
+// the ORDERING and pass while saying nothing about the law in its own name -- and worse, it would
+// decay: correct later work on an earlier law silently changes which arm such a fixture reaches.
+// This lane has already been bitten by that once, so every fixture below starts from the admitted
+// shape and applies exactly one typed mutation.
+//
+// EVERY ARM ALSO PERTURBS EXACTLY ONE AXIS, for the sharper reason: a two-axis perturbation cannot
+// discriminate which axis the emitter reads, so its green is the same green whether the second axis
+// is consulted at all. It is uninformative by construction.
+fn lbp_base_subject() -> LegacyBindingObservationSubject {
+  LegacyBindingObservationSubject {
+    semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
+    source_set_digest: structural_content_hash(digest: "2222222222222222"),
+    compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+    resolver_identity: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId"),
+    resolver_policy: ImportScopedPolicy,
+    occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
+    declaration_index_digest: structural_content_hash(digest: "5555555555555555")
+  }
+}
+
+fn lbp_projected_subject() -> LegacyBindingObservationSubject {
+  LegacyBindingObservationSubject {
+    semantic_source_digest: structural_content_hash(digest: "9999999999999999"),
+    source_set_digest: structural_content_hash(digest: "2222222222222222"),
+    compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+    resolver_identity: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId"),
+    resolver_policy: NamespaceOnlyPolicy,
+    occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
+    declaration_index_digest: structural_content_hash(digest: "5555555555555555")
+  }
+}
+
+fn lbp_carry(base: Int, projected: Int) -> ProjectionCarryDecision {
+  CarriedForward { base: OccurrenceId { value: base }, projected: OccurrenceId { value: projected } }
+}
+
+type LbpTestOutcome
+  = LbpObserved
+  | LbpUnobserved
+
+// THE FIXTURE CANNOT HAND THE EMITTER A DENOMINATOR IT CHOSE, which is the point of the signature
+// change rather than a cost of it. The base population now arrives inside CompleteLegacyObservation,
+// which is sole_constructor and minted only by an admission that derived the population from the
+// subject's own transport -- so this file authors a transport whose reference occurrences ARE the
+// expected population, and the shortened list it used to pass has no spelling anywhere here.
+fn lbp_span() -> SourceSpan {
+  SourceSpan { file: "legacy-binding-projection-fixture.dag", start: 1, end: 2 }
+}
+
+fn lbp_path(id: Int) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath { ancestors: [OccurrenceId { value: 900 }], terminal: OccurrenceId { value: id } }
+}
+
+fn lbp_transport_of(expected: List<Int>) -> OccurrenceTransportValidation {
+  occurrence_transport_validate(transport: OccurrenceTransport {
+    index: OccurrenceIndex { entries: concat(
+      [OccurrenceIndexEntry {
+        projection: OccurrenceProjection {
+          occurrence: OccurrenceId { value: 900 },
+          authored_name: "root",
+          diagnostic_span: lbp_span()
+        },
+        containment: OccurrenceContainmentPath { ancestors: [], terminal: OccurrenceId { value: 900 } }
+      }],
+      expected |> map(id => OccurrenceIndexEntry {
+        projection: OccurrenceProjection {
+          occurrence: OccurrenceId { value: id },
+          authored_name: "r",
+          diagnostic_span: lbp_span()
+        },
+        containment: lbp_path(id: id)
+      })
+    ) },
+    declarations: [DeclarationOccurrence {
+      occurrence: OccurrenceId { value: 900 },
+      containment: OccurrenceContainmentPath { ancestors: [], terminal: OccurrenceId { value: 900 } },
+      category: LexicalValueOccurrence,
+      diagnostic_span: lbp_span()
+    }],
+    references: expected |> map(id => ReferenceOccurrence {
+      occurrence: OccurrenceId { value: id },
+      containment: lbp_path(id: id),
+      category: LexicalValueOccurrence,
+      diagnostic_span: lbp_span()
+    })
+  })
+}
+
+fn lbp_observation_of(ids: List<Int>) -> LegacyBindingObservation<LbpTestOutcome> {
+  LegacyBindingObservation {
+    subject: lbp_base_subject(),
+    rows: ids |> map(id => LegacyBindingObservationRow {
+      occurrence: OccurrenceId { value: id },
+      outcome: LbpObserved
+    })
+  }
+}
+
+// A THIRD AND FOURTH ARM, BECAUSE THE FIXTURE'S OWN SETUP CAN FAIL BEFORE THE EMITTER RUNS.
+// Collapsing a refused transport or a refused admission into an emission verdict would make a
+// fixture that never reached the subject read exactly like one that reached it and got an answer --
+// execution-provenance loss inside the harness, which is the easiest place to leave it uncaught.
+type LbpEmitOutcome
+  = EmissionComputed { emission: ProjectionEmission }
+  | EmitAdmissionRefused
+  | EmitFixtureTransportRefused
+
+fn lbp_emit(
+  expected_base: List<Int>,
+  decisions: List<ProjectionCarryDecision>,
+  insertions: List<DeclaredProjectionInsertion>
+) -> LbpEmitOutcome {
+  match lbp_transport_of(expected: expected_base) {
+    OccurrenceTransportRefused { refusal: _ } => EmitFixtureTransportRefused
+    OccurrenceTransportValidated { transport: t } => match admit_complete_observation(
+      observation: lbp_observation_of(ids: expected_base),
+      transport: t
+    ) {
+      ObservationRefused { completeness: _ } => EmitAdmissionRefused
+      ObservationAdmitted { admitted: a } => EmissionComputed {
+        emission: emit_projection_provenance(
+          base_admitted: a,
+          projected_subject: lbp_projected_subject(),
+          decisions: decisions,
+          insertions: insertions
+        )
+      }
+    }
+  }
+}
+
+fn lbp_minted_insertion(id: Int) -> DeclaredProjectionInsertion {
+  DeclaredProjectionInsertion { identity: OccurrenceMinted { id: OccurrenceId { value: id } }, diagnostic_span: none }
+}
+
+fn lbp_synthetic_insertion() -> DeclaredProjectionInsertion {
+  DeclaredProjectionInsertion { identity: OccurrenceSynthetic, diagnostic_span: Present { value: lbp_span() } }
+}
+
+fn lbp_projected_insertion(id: Int, caused_by: Int) -> DeclaredProjectionInsertion {
+  DeclaredProjectionInsertion {
+    identity: OccurrenceProjected {
+      id: OccurrenceId { value: id },
+      caused_by: ScopedOccurrenceRef {
+        scope: legacy_subject_identity(subject: lbp_base_subject()),
+        occurrence: OccurrenceId { value: caused_by }
+      }
+    },
+    diagnostic_span: none
+  }
+}
+
+// THE ADMITTED SHAPE, AND THE ORDINALS ALL SHIFT ON PURPOSE. If any part of the emitter compared a
+// base ordinal against a projected one rather than reading the decision, this arm would refuse --
+// which is the whole reason the correspondence is emitted rather than computed.
+test fn a_total_set_of_carry_decisions_emits_one_entry_per_occurrence() -> Bool {
+  match lbp_emit(
+    expected_base: [10, 20, 30],
+    decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 21), lbp_carry(base: 30, projected: 31)],
+    insertions: []
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProvenanceEmitted { provenance: p } => (p.entries |> count) == 3
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// THE EMITTED REFS CARRY THEIR OWN SUBJECT'S ADDRESS, which is what makes the relation indexable
+// across two allocator domains at all. Without it the delta's scope law has nothing to check and
+// the accidental equality of two independently-allocated ordinals reads as a correspondence.
+test fn each_emitted_entry_addresses_its_own_side_of_the_projection() -> Bool {
+  match lbp_emit(
+    expected_base: [10],
+    decisions: [lbp_carry(base: 10, projected: 11)],
+    insertions: []
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProvenanceEmitted { provenance: p } => p.entries |> all(entry => match entry {
+        ProjectedFromSource { source: s, target: t } =>
+          s.scope.digest == legacy_subject_identity(subject: lbp_base_subject()).digest
+            && t.scope.digest == legacy_subject_identity(subject: lbp_projected_subject()).digest
+            && s.occurrence.value == 10
+            && t.occurrence.value == 11
+        ProjectedAsInsertion { target: _, caused_by: _ } => false
+      })
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// LAW 1 -- DENOMINATOR: every expected base occurrence has a decision. Population: the base
+// observation's expected occurrences. One mutation from the admitted shape: drop 30's decision.
+test fn an_occurrence_with_no_carry_decision_refuses() -> Bool {
+  match lbp_emit(
+    expected_base: [10, 20, 30],
+    decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 21)],
+    insertions: []
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionDecisionMissing { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 30))
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// LAW 2 -- MULTIPLICITY: exactly one decision per base occurrence. Population: the same. One
+// mutation: 20 decided twice. This refuses HERE rather than reaching the delta as a repeated
+// source, because the two refusals mean different things -- the delta's says the provenance is not
+// total, this one says the emitter contradicted itself about one occurrence.
+test fn an_occurrence_decided_twice_refuses_as_a_fork() -> Bool {
+  match lbp_emit(
+    expected_base: [10, 20],
+    decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 21), lbp_carry(base: 20, projected: 22)],
+    insertions: []
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionDecisionForked { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 20))
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// LAW 3 -- MEMBERSHIP, THE OTHER DIRECTION: a decision about an occurrence outside the base
+// denominator. One mutation: a decision for 99, which the base never expected. Note the fixture
+// keeps 10 and 20 decided, so the missing law is satisfied and only this one separates it.
+test fn a_decision_about_a_non_base_occurrence_refuses() -> Bool {
+  match lbp_emit(
+    expected_base: [10, 20],
+    decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 21), lbp_carry(base: 99, projected: 91)],
+    insertions: []
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionDecisionForeign { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 99))
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// LAW 4 -- THE THREE INSERTION DISPOSITIONS, WHICH REPLACE ONE REFUSAL WITH TWO REFUSALS AND AN
+// EMISSION. This module used to refuse every declared insertion, because the substrate had no arm
+// carrying a cause. `OccurrenceProjected` landed, so the refusal's stated reason stopped being true
+// and the wiring is now what decides. The three arms below are the three the carrier defines, and
+// keeping them apart is the whole content: an insertion that derives, a created node that never
+// said what it was created FOR, and a node that is not a created node at all.
+//
+// THE NAME CHANGED WITH THE PAYLOAD. It read `..._is_counted_not_located`, which was true while the
+// refusal carried a scope and a count; the arm now carries the authored span too, so the name
+// asserted an absence the change had just closed -- the same additive-invalidation shape this file
+// keeps finding, this time in my own test name one commit after fixing it in someone else's.
+//
+// THE OLD REFUSAL DID NOT RETIRE, IT NARROWED. Its population was every declared insertion; it is
+// now exactly the cause-lost one, and that arm is still an executing red -- which is what §4b asks
+// of evidence when a class climbs: the production machinery that refused the whole population is
+// gone, the discriminating RED that proved the refusal executed stays enrolled. Deleting it because
+// the capability arrived would have recreated specification-without-execution one rung up.
+test fn a_created_node_that_never_stated_its_cause_refuses_carrying_its_scope_and_authored_span() -> Bool {
+  match lbp_emit(
+    expected_base: [10],
+    decisions: [lbp_carry(base: 10, projected: 11)],
+    insertions: [lbp_synthetic_insertion()]
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionInsertionCauseLost { sites: sites } => (sites |> count) == 1 && (sites |> all(site =>
+        site.scope.digest == legacy_subject_identity(subject: lbp_projected_subject()).digest
+          && match site.diagnostic_span {
+            Present { value: sp } => sp.file == "legacy-binding-projection-fixture.dag"
+            Absent => false
+          }))
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// LAW 5 -- A DROP IS NAMED WHERE IT IS KNOWN. The delta would refuse an omitted occurrence as
+// ProvenanceSourceMissing, which is true but is a statement about the provenance rather than about
+// the projection. This arm requires the emitter to say the projection dropped the reference, which
+// is the fact it actually holds.
+test fn a_dropped_occurrence_refuses_at_the_emitter_rather_than_downstream() -> Bool {
+  match lbp_emit(
+    expected_base: [10, 20],
+    decisions: [lbp_carry(base: 10, projected: 11), DroppedByProjection { base: OccurrenceId { value: 20 } }],
+    insertions: []
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionDroppedOccurrence { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 20))
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+    }
+  }
+}
+
+// AND THE DISTINCTION THAT PAIR EXISTS FOR: a declared drop and an undeclared omission are
+// DIFFERENT REFUSALS over the same occurrence. Without both arms, one symbol would answer for "the
+// projection dropped this" and "the emitter said nothing about this", which have different owners
+// and different repairs.
+test fn a_declared_drop_and_an_undeclared_omission_are_different_refusals() -> Bool {
+  let declared = match lbp_emit(
+    expected_base: [10, 20],
+    decisions: [lbp_carry(base: 10, projected: 11), DroppedByProjection { base: OccurrenceId { value: 20 } }],
+    insertions: []
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionDroppedOccurrence { occurrences: _ } => true
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+    }
+  }
+  let omitted = match lbp_emit(
+    expected_base: [10, 20],
+    decisions: [lbp_carry(base: 10, projected: 11)],
+    insertions: []
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionDecisionMissing { occurrences: _ } => true
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+  declared && omitted
+}
+
+// THE POSITIVE CONTROL OVER AN EMITTED INSERTION, AND IT IS WHAT THE OLD REFUSAL BECAME. While the
+// carrier had no cause-bearing arm, this arm could not exist and its absence was the honest state.
+// It exists now, and it asserts the two facts that make the emitted row usable rather than merely
+// present: the row is a ProjectedAsInsertion, and its two refs address DIFFERENT subjects -- target
+// in the projected scope, cause in the base scope. If the cause carried the projected scope the
+// delta's own scope law would refuse every insertion this module emits, so checking only that a row
+// appeared would be a green that says nothing.
+test fn a_created_node_with_a_cause_emits_an_insertion_addressed_across_both_subjects() -> Bool {
+  match lbp_emit(
+    expected_base: [10],
+    decisions: [lbp_carry(base: 10, projected: 11)],
+    insertions: [lbp_projected_insertion(id: 41, caused_by: 10)]
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProvenanceEmitted { provenance: p } => (p.entries |> count) == 2 && (p.entries |> any(entry => match entry {
+        ProjectedAsInsertion { target: t, caused_by: c } =>
+          t.occurrence.value == 41
+            && t.scope.digest == legacy_subject_identity(subject: lbp_projected_subject()).digest
+            && c.occurrence.value == 10
+            && c.scope.digest == legacy_subject_identity(subject: lbp_base_subject()).digest
+        ProjectedFromSource { source: _, target: _ } => false
+      }))
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// AND THE THIRD DISPOSITION, WHICH IS MALFORMED INPUT RATHER THAN A LOST CAUSE. A minted node is a
+// perfectly good node; what is wrong is the CALLER'S ASSERTION that it was created by the
+// projection. Collapsing this into the cause-lost arm would tell an author to go looking for a
+// missing cause on a node that never needed one -- the not-applicable-versus-malformed conflation,
+// with the repairs pointing in opposite directions. This one CAN be located, because a minted node
+// has an id, which is exactly why the two arms carry different payloads.
+test fn a_carried_forward_node_declared_as_an_insertion_refuses_as_malformed_input() -> Bool {
+  match lbp_emit(
+    expected_base: [10],
+    decisions: [lbp_carry(base: 10, projected: 11)],
+    insertions: [lbp_minted_insertion(id: 41)]
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionCandidateNotInsertion { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 41))
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// LAW 6 -- TARGET MULTIPLICITY, CHECKED WHERE THE PRODUCER KNOWS IT. Two carry decisions claiming
+// one projected occurrence is a fault in what this module emitted. The delta's own target law would
+// also catch it, and that is precisely the argument for catching it here: the delta can say only
+// that two rows claim one target, while this module knows which two claims it produced and from
+// what. Leaving it downstream hands a consumer a defect the producer already had in hand.
+test fn two_carry_decisions_claiming_one_target_refuse_at_the_producer() -> Bool {
+  match lbp_emit(
+    expected_base: [10, 20],
+    decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 11)],
+    insertions: []
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionTargetRepeated { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 11))
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// AND THE CROSS-KIND CASE, WHICH IS THE ONE A CARRIED-ONLY CHECK WOULD MISS. An insertion claiming
+// the same projected occurrence as a carry is the collision most likely to occur in practice --
+// the projector allocates a new node and reuses an ordinal it already handed out -- and it is
+// invisible to any law whose denominator is only the carry decisions. The denominator here is the
+// EMITTED ROWS, carried and inserted alike, which is why this arm and the one above are separate
+// fixtures rather than one.
+test fn an_insertion_claiming_a_carried_target_refuses() -> Bool {
+  match lbp_emit(
+    expected_base: [10],
+    decisions: [lbp_carry(base: 10, projected: 11)],
+    insertions: [lbp_projected_insertion(id: 11, caused_by: 10)]
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionTargetRepeated { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 11))
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// AND THE ARM THAT MAKES THE PAYLOAD'S DENOMINATOR VISIBLE. The refusal lists OFFENDING
+// OCCURRENCES, never CLAIMS -- and with two claims on one target those two readings both produce a
+// list of length 2 before deduplication and 1 after, so an arm asserting 1 already separates them.
+// This fixture pushes to THREE claims because the two readings then differ by more than one, which
+// is what makes the assertion legible: a payload counting claims reports 3, a payload counting
+// offenders reports 1, and no arithmetic accident relates them. One occurrence was claimed too
+// often; that is one defect, not three.
+test fn three_claims_on_one_target_report_one_offending_occurrence() -> Bool {
+  match lbp_emit(
+    expected_base: [10, 20, 30],
+    decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 11), lbp_carry(base: 30, projected: 11)],
+    insertions: []
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionTargetRepeated { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 11))
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// THE TWO SIBLING PAYLOADS GET THE SAME DISCRIMINATOR THE TARGET LAW GOT, because they were the two
+// laws whose `occurrences` field could return ROW grain. Both fixtures repeat the offence three
+// times rather than twice, for the reason the target arm already records: at two the two readings
+// differ by one and the assertion reads as an off-by-one, at three a row-counting payload reports 3
+// against an offender-counting 1 with no arithmetic accident between them.
+//
+// THE FOREIGN CASE IS THE ONE THAT SURPRISED ME. A base id decided more than once is normally caught
+// by the fork law -- but that law's denominator is the base's EXPECTED occurrences, so it is blind to
+// an id the base never expected. A foreign id decided three times therefore reaches this arm and
+// nothing upstream deduplicates it.
+test fn three_decisions_about_one_non_base_occurrence_report_one_offender() -> Bool {
+  match lbp_emit(
+    expected_base: [10],
+    decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 99, projected: 91), lbp_carry(base: 99, projected: 92), lbp_carry(base: 99, projected: 93)],
+    insertions: []
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionDecisionForeign { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 99))
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionCandidateNotInsertion { occurrences: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}
+
+// AND THE MALFORMED-CANDIDATE CASE: one carried-forward node declared as an insertion three times is
+// one offending occurrence, not three. The caller made three bad declarations about ONE node, and
+// the repair is the same repair once.
+test fn one_node_declared_an_insertion_three_times_reports_one_offender() -> Bool {
+  match lbp_emit(
+    expected_base: [10],
+    decisions: [lbp_carry(base: 10, projected: 11)],
+    insertions: [lbp_minted_insertion(id: 41), lbp_minted_insertion(id: 41), lbp_minted_insertion(id: 41)]
+  ) {
+    EmitFixtureTransportRefused => false
+    EmitAdmissionRefused => false
+    EmissionComputed { emission: e } => match e {
+      ProjectionCandidateNotInsertion { occurrences: o } => (o |> count) == 1 && (o |> any(id => id == 41))
+      ProvenanceEmitted { provenance: _ } => false
+      ProjectionDecisionMissing { occurrences: _ } => false
+      ProjectionDecisionForked { occurrences: _ } => false
+      ProjectionDecisionForeign { occurrences: _ } => false
+      ProjectionInsertionCauseLost { sites: _ } => false
+      ProjectionTargetRepeated { occurrences: _ } => false
+      ProjectionDroppedOccurrence { occurrences: _ } => false
+    }
+  }
+}

@@ -1,7 +1,6 @@
 module v2.std.node
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -12,40 +11,6 @@ import std.content_hash {
 
 type Symbol
 type Hash = Fnv1a64Structural
-
-data node_occurrence_id_v2_facade_note: String = "TEMPORARY COMPATIBILITY: v2 callers still construct and match this source-compatible coproduct while std.occurrence_identity.NodeOccurrenceId is the sole shared semantic authority. The total conversions below are the only bridge; new consumers use the shared carrier directly."
-
-type NodeOccurrenceId
-  = SyntheticOccurrence
-  | MintedOccurrence { id: std.occurrence_identity.OccurrenceId }
-
-fn node_occurrence_id_to_shared(
-  occurrence: NodeOccurrenceId
-) -> std.occurrence_identity.NodeOccurrenceIdentity {
-  match occurrence {
-    SyntheticOccurrence =>
-      std.occurrence_identity.OccurrenceSynthetic
-    MintedOccurrence { id: id } =>
-      std.occurrence_identity.OccurrenceMinted { id: id }
-  }
-}
-
-fn node_occurrence_id_from_shared(
-  occurrence: std.occurrence_identity.NodeOccurrenceIdentity
-) -> NodeOccurrenceId {
-  match occurrence {
-    std.occurrence_identity.OccurrenceSynthetic =>
-      SyntheticOccurrence
-    std.occurrence_identity.OccurrenceMinted { id: id } =>
-      MintedOccurrence { id: id }
-  }
-}
-
-fn node_occurrence_minted(id: std.occurrence_identity.OccurrenceId) -> NodeOccurrenceId {
-  node_occurrence_id_from_shared(
-    occurrence: std.occurrence_identity.node_occurrence_identity_minted(id: id)
-  )
-}
 
 type Connective
   = Atom { identity: Symbol }
@@ -147,7 +112,7 @@ type NodeShape {
 fn node_with_occurrence_id(
   kind: NodeKind,
   children: List<Edge>,
-  occurrence_id: NodeOccurrenceId
+  occurrence_id: NodeOccurrenceIdentity
 ) -> Node {
   Node { kind: kind, children: children, occurrence_id: occurrence_id }
 }
@@ -164,7 +129,7 @@ fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
   node_with_occurrence_id(
     kind: kind,
     children: children,
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   )
 }
 
@@ -172,7 +137,7 @@ fn node_for_structural_equality(n: Node) -> Node {
   node_with_occurrence_id(
     kind: n.kind,
     children: n.children,
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   )
 }
 
@@ -201,7 +166,7 @@ fn canonicalize_node_strip_provenance(n: Node) -> Node {
 type Node {
   kind: NodeKind
   children: List<Edge>
-  occurrence_id: NodeOccurrenceId
+  occurrence_id: NodeOccurrenceIdentity
 }
 type NodeFold<R> {
   init: fn(Node) -> R
@@ -780,7 +745,7 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
   Node {
     kind: base.kind,
     children: canonicalize_edges_for_content_hash(kind: base.kind, children: base.children),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1679,5 +1644,3 @@ type Edit {
 type Diff {
   edits: List<Edit>
 }
-
-data node_occurrence_id_v2_facade_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: the counted v2.std.node imports of NodeOccurrenceId, SyntheticOccurrence, and MintedOccurrence reach zero after the bounded v2 import migration; then delete this compatibility coproduct and its two conversions.")

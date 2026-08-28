@@ -3,7 +3,7 @@ module v2.test.branch_dispatch.rung_0_to_2_three_targets
 data phase4_branch_dispatch_rung_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^phase4_branch_dispatch_rung_subject_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn phase4_branch_dispatch_rung_compiles_claim(label: String) -> TestClaim {

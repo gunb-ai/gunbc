@@ -40,7 +40,7 @@ fn main() {
         Err(e) => {
             eprintln!("CSSL_ASSEMBLE: REFUSED {e}");
             std::process::exit(match e {
-                AssemblyError::RefusedDep { .. } => 2,
+                AssemblyError::RefusedDeclaredMember { .. } => 2,
                 _ => 1,
             });
         }

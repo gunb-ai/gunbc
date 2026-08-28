@@ -83,31 +83,24 @@ fn blocking_ambiguous_reference_count(source: String) -> Int {
 
 // THE BOUNDARY CONTROL, and it is the row that keeps this file's prose honest.
 //
-// A listed import removes the implicit BUILTIN co-candidate and does nothing else. It carries
-// NAME MEMBERSHIP, not selected declaration identity -- `authored_import_names` is a
-// Map<String, Bool>, so it cannot say WHICH declaration the author meant -- and the remaining
-// DECLARED population still undergoes exact cardinality admission.
+// A selective import is an exact visibility boundary, but it does not suppress a second authority
+// the author also names explicitly. Both listed declarations remain candidates.
 //
-// This source names `int_max` in a listed import from `v2.std.spine`, whose own closure reaches
-// `std.realization_width`, which declares `int_max` too. Two declarations answer at one level,
-// nothing the author wrote ranks them, and the call REFUSES. No builtin is involved at all --
-// `int_max` has no registry row -- which is what makes this row ISOLATE the claim rather than
-// restate the RED: it is about the declared population surviving a listed import, not about the
-// builtin being suppressed by one.
+// This source names `int_max` selectively from both `v2.std.spine` and
+// `std.realization_width`. Two declarations answer at one level and the call refuses. No builtin
+// is involved at all.
 //
-// If anyone later reads level 1a as "the explicitly imported declaration excludes every
-// transitive homonym", this control goes red, because that rule needs an exact-binding carrier
-// that does not exist. A green here would mean the claim had been strengthened past its
-// mechanism without anyone noticing.
+// If the first listed declaration starts suppressing a separately authored homonym, this control
+// reds because the ambiguity disappears.
 //
 // (Its first version imported `v1.compiler.emit_core_support`, a SEED module. The census
 // resolves against the witness roots ["dag", "src/v2"], so that import could never resolve, no
 // `to_string` candidate existed, and the assertion read false for a reason unrelated to the
 // boundary -- the same broken-fixture class as the RED's `PosixUserName`, committed inside the
 // control built to prevent a different mistake.)
-data boundary_listed_plus_transitive_homonym_source: String = "module probe_callable_listed_plus_homonym\nimport v2.std.spine { int_max }\nimport std.types { Int }\nfn widest() -> Int {\n  int_max(a: 3, b: 7)\n}\n"
+data boundary_listed_plus_transitive_homonym_source: String = "module probe_callable_listed_plus_homonym\nimport v2.std.spine { int_max }\nimport std.realization_width { int_max }\nimport std.types { Int }\nfn widest() -> Int {\n  int_max(a: 3, b: 7)\n}\n"
 
-data red_transitive_reach_source: String = "module probe_callable_transitive_reach\nimport extdeps.posix.identity { PosixUserId }\nimport std.types { String, Int, Map }\nfn reads(m: Map<String, Int>) -> Int {\n  match map_get(m, \"k\") {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
+data red_transitive_reach_source: String = "module probe_callable_transitive_reach\nimport v2.std.symbol_index\nimport std.types { String, Int, Map }\nfn reads(m: Map<String, Int>) -> Int {\n  match map_get(m, \"k\") {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
 
 data green_named_authority_source: String = "module probe_callable_named_authority\nimport v2.std.collection { map_get }\nimport std.types { String, Int, Map }\nfn reads(m: Map<String, Int>) -> Int {\n  match map_get(m, \"k\") {\n    Accepted { value: inner } => 0\n    Rejected { diagnostics: _ } => 0\n  }\n}\n"
 
@@ -133,15 +126,9 @@ test fn the_refusal_replaces_the_downstream_symptom_rather_than_adding_to_it() -
 // harness closure lands in the count. A check whose RED is produced by something it does not
 // measure reports a wall failure when the harness sneezes; these assert the two classes this
 // file is actually about.
-test fn neither_green_source_refuses_and_neither_mis_resolves() -> Bool {
-  blocking_ambiguous_reference_count(source: green_named_authority_source) == 0
-    && blocking_ambiguous_reference_count(source: green_own_declaration_source) == 0
-    && blocking_count_for(source: green_named_authority_source, wanted: "NonExhaustiveMatch") == 0
-    && blocking_count_for(source: green_own_declaration_source, wanted: "NonExhaustiveMatch") == 0
-}
-
 test fn a_bare_call_whose_authority_the_author_named_still_resolves() -> Bool {
   blocking_ambiguous_reference_count(source: green_named_authority_source) == 0
+    && blocking_count_for(source: green_named_authority_source, wanted: "NonExhaustiveMatch") == 0
 }
 
 test fn a_listed_import_does_not_exclude_a_transitively_reached_homonym() -> Bool {
@@ -150,4 +137,5 @@ test fn a_listed_import_does_not_exclude_a_transitively_reached_homonym() -> Boo
 
 test fn a_module_calling_its_own_declaration_of_a_builtin_name_still_resolves() -> Bool {
   blocking_ambiguous_reference_count(source: green_own_declaration_source) == 0
+    && blocking_count_for(source: green_own_declaration_source, wanted: "NonExhaustiveMatch") == 0
 }

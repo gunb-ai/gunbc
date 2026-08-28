@@ -35,6 +35,8 @@
 //!   2. the cited-symbol wall — an authored `DeclarationRef` naming a symbol that
 //!      does not resolve (§3: cite the symbol, not the position)
 //!   3. module authorship — a top-level lens with no `construction_justification`
+//!   4. cited-authority reachability — a non-fixture module cited as a fact's home by
+//!      another non-fixture module, while no authored import edge reaches that home
 //!
 //! WHAT THIS IS NOT. It is not a widening of the required floor's source roots, and
 //! the objection `gunbc.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder`
@@ -46,6 +48,57 @@
 //! module paths are looked up, and a module path is unique or it is a duplicate the
 //! index reports.
 //!
+//! WHY EVERY ROSTER ROW NAMES ITS CITING MODULE, AND NOT ONLY ITS TARGET.
+//! The three suppression rosters below used to be keyed `(module, decl, field)` — the TARGET
+//! of the citation. One row therefore exempted EVERY citation of that target, corpus-wide, for
+//! as long as the row stood. That is not a narrower wall, it is an open one in a direction
+//! nothing could observe: a patch could author a BRAND NEW dangling `DeclarationRef` naming any
+//! enrolled target, from any module, and the wall would silently decline to judge it. The
+//! violation is decidable from that patch alone — the site is new, and no row named it — so the
+//! class was rot admitted by the mechanism built to refuse rot.
+//!
+//! IT WAS OCCUPIED, NOT MERELY REACHABLE, which is what settled the grain rather than the
+//! argument. Measured over the live corpus through `DAG_PARSE_SWEEP_ROOTS`, the 70 target-keyed
+//! rows covered 87 refusing sites, and seven targets were already cited from more than one
+//! module: `gunbc.host_effect` `host_effect_apply` from three (`extdeps.github.actions_runner`,
+//! `gunbc.executor_privileged_operation`, `gunbc.runner_slot_provision`), `std.bytes`
+//! `builtin_function_registry` from three, `extdeps.network.mac` `parse_mac_address` from two
+//! (`extdeps.dhcp.v4` and a witness), and four more from two apiece. (That measurement stands as
+//! taken; the `parse_mac_address` example has since been DISCHARGED rather than falsified — the
+//! module landed, so the witness citations resolve and their rows are deleted, and `extdeps.dhcp.v4`
+//! stopped citing it when its frontier trigger was re-pointed off the artifact and onto the
+//! capability. Noted here so a reader does not grep for a two-site collision that is gone.) Every one of those extra
+//! sites was being suppressed by a row authored about a different module.
+//!
+//! THE ROSTERS ARE RE-DERIVED FROM THAT MEASUREMENT, AND THE FIRST DERIVATION WAS TAKEN OVER THE
+//! WRONG DENOMINATOR — recorded because it is the same class this module keeps catching. The
+//! sweep's roots are `src/v1`, `dag` and `src/v2`; the first measurement used only the last two,
+//! so five sites authored in modules the narrow walk never read were absent from the rosters and
+//! the required run refused them. A roster derived from a subset of the subject it governs is
+//! not a smaller roster, it is a wrong one.
+//!
+//! So a row is `(citing_module, in_declaration, module, decl, field)` and it exempts THE SITE
+//! THAT AUTHORED IT.
+//! Both inverse arms read that same identity, because a suppression arm and a staleness arm
+//! keyed differently is the desynchronization `corpus_findings` already carries a receipt for.
+//!
+//! THE DECLARATION IN THE ROW IS THE SECOND HALF OF THE SAME REPAIR, AND IT WAS A DISCLOSED
+//! RESIDUE BEFORE IT WAS A CLOSED ONE (review 56227). Keyed on the citing MODULE alone, a row
+//! still covered every citation of that target ANYWHERE IN THAT MODULE, so a new dangling
+//! citation authored BESIDE an enrolled one was suppressed — the same fail-open one level in.
+//! The reviewer's objection was that a residue with an available identity is not a residue, and
+//! that is right: `record_from_module` already iterates top-level items, so the enclosing
+//! declaration's name costs one string at extraction. It is a NAME, reachable from the
+//! containment tree, and therefore not the positional citation DESIGN §3 forbids — an offset
+//! would be finer and would rot on any edit above the line.
+//!
+//! WHAT REMAINS, stated because a closed residue must not be reported as a total one: two
+//! citations of ONE target inside ONE declaration still share a row. Nothing short of a
+//! position separates those, and a position is the thing this grain exists not to be, so this
+//! is a ceiling rather than a stall — the class's next rung is a citation carrying an
+//! occurrence ordinal within its declaration, which the ingestion record could hold but which
+//! no measured site needs today.
+//!
 //! It is also not the compiler's own name resolution. `v1.03_resolve` already refuses
 //! `MissingExport` for an import member inside a COMPILE CLOSURE; this index answers the
 //! same question over the whole authored corpus, which is where the difference lives —
@@ -53,13 +106,15 @@
 //! hard errors because NO CLOSURE REACHES IT. An orphan module's import claims are
 //! checked here and nowhere else.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
+use crate::std_occurrence_identity::{OccurrenceCategory, OccurrenceTransport};
 use crate::v1_rt::VecCompat;
 use crate::v1_std_core::{
     authored_name_at, expr_literal_string_optional, import_is_all, import_specific_names_at,
-    module_imports, module_items, Connective, ExprData, NewlineIndex, Node, SourceSpan,
+    module_imports, module_items, Connective, ExprData, MatchPattern, NewlineIndex, Node,
+    SourceSpan,
 };
 
 /// A span COPIED OUT of the parse tree rather than referenced into it.
@@ -94,6 +149,15 @@ const DECL_FIELD_REF_FN: &str = "decl_field_ref";
 /// One authored citation, located in the module whose source carries it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CitedSymbol {
+    /// The top-level declaration in the CITING module whose subtree carries this citation.
+    ///
+    /// It is the finest STABLE site identity an ingestion record can hold. A byte offset would
+    /// be finer and is refused on principle: DESIGN §3 forbids a positional citation precisely
+    /// because it rots on any edit above the line, and a suppression roster keyed on one would
+    /// go stale without anyone touching either end. A declaration name is reachable from the
+    /// containment tree the namespace authority already walks, so it is the same kind of
+    /// identity a citation itself is.
+    pub in_declaration: String,
     pub module_path: String,
     pub decl_name: String,
     /// `Some(field)` for a `NamedField` citation, `None` for `WholeDeclaration`.
@@ -128,6 +192,55 @@ pub struct ModuleDeclarationRecord {
     pub decl_fields: BTreeMap<String, BTreeSet<String>>,
     pub imports: Vec<ImportClaim>,
     pub cited: Vec<CitedSymbol>,
+    /// Callee spellings authored in this module. Used only to partition cited authorities by
+    /// whether the citing module also calls the cited declaration; it is not a resolver.
+    pub called: BTreeSet<String>,
+    /// The authored NAME OCCURRENCES in this module's own tree that name something the module
+    /// reaches, paired with the top-level declaration whose subtree carries it:
+    /// `(in_declaration, spelling)`.
+    ///
+    /// WHY A NAME OCCURRENCE AND NOT A SEMANTIC REFERENCE. This is derived by walking the
+    /// parsed tree — parse-then-derive, the mechanism DESIGN prescribes after the raw-text
+    /// scanner family was ruled a heuristic — but it is deliberately NOT a resolution: a
+    /// parameter name and a `let` binder still land here beside a genuine reference, because
+    /// telling THOSE apart is the resolver's job and this index resolves nothing across files.
+    ///
+    /// THE OVER-COLLECTION IS BOUNDED RATHER THAN UNLIMITED, and the earlier reasoning for
+    /// leaving it unbounded is refuted rather than merely narrowed. That reasoning was: the
+    /// over-collection is SYMMETRIC across the two trees the one consumer
+    /// (`namespace_wave_admission`) compares, so a spelling that denotes nothing on both sides
+    /// contributes no delta. A symmetric COLLECTOR does not give a symmetric VERDICT — the
+    /// supplier set the wall computes is a function of the CORPUS, so deleting an unrelated
+    /// declaration moves it under every site that merely spells the same word. The measured
+    /// specimen and the two kinds now excluded are on `collect_reference_occurrences`, which is
+    /// also where the remaining members of that class are named.
+    ///
+    /// Dotted spellings are recorded WHOLE as well as by segment, so a reference to
+    /// `v2.std.node.Hash` is observable as naming the module `v2.std.node` and not only as
+    /// four unrelated segments.
+    pub referenced: BTreeSet<(String, String)>,
+    /// AUTHORED TYPE REFERENCES, TAKEN FROM THE PARSER'S OWN `OccurrenceTransport` RATHER THAN
+    /// RE-DERIVED FROM THE `Node`. A peer of `referenced`, deliberately not a widening of it:
+    /// the two have different authorities and different precision, and fusing them would hide
+    /// which is which behind one name.
+    ///
+    /// `referenced` is this module's lossy walk over the final tree -- it cannot see a type
+    /// parked in the `inferred` slot at all, and it over-collects binders and labels it cannot
+    /// tell apart from references. This set is the parser's answer: `stamp_parsed_inferred`
+    /// stamps a declared type as `ParsedOccurrenceReference { TypeOccurrence }` with a minted
+    /// identity, the authored spelling, and containment, and that is what is read back here.
+    ///
+    /// WHY A PEER AND NOT A MERGE. A Node-reading projection that reproduced these entries
+    /// would be a second authority for a fact the parser already owns exactly -- it would agree
+    /// today and could silently diverge tomorrow, which is a worse failure than being wrong
+    /// once because nothing would detect it. Keeping the transport's answer in its own field
+    /// means a future reader can tell what was authored from what was reconstructed, and the
+    /// remaining Node walk can shrink toward zero as more positions gain transport entries.
+    ///
+    /// Keyed `(enclosing declaration, authored spelling)`, the same shape as `referenced`, so a
+    /// consumer that wants every authored reference takes the union and nothing needs to know
+    /// which channel supplied which row.
+    pub authored_type_references: BTreeSet<(String, String)>,
     pub declares_construction_justification: bool,
     /// Whether this module is a witness or fixture carrier. See `module_is_fixture_carrier`.
     pub is_fixture_carrier: bool,
@@ -254,6 +367,41 @@ fn for_each_node(node: &Rc<Node>, visit: &mut impl FnMut(&Rc<Node>)) {
     })
 }
 
+/// The whole dotted spelling a field-access spine authors, or `None` when the node is not
+/// the head of one.
+///
+/// `a.b.c` parses as a receiver `a` under two `ExprFieldAccess` nodes, so the SEGMENTS are
+/// each visible to an ordinary walk and the SPELLING is not. A module reference is a
+/// spelling — `v2.std.node` names a module and `node` alone names nothing — so a reader that
+/// only ever sees segments cannot observe which modules a body reaches. The spine stops at
+/// the first receiver that is not itself a name or another field access, which is what makes
+/// `foo(x).bar` yield nothing rather than a fabricated `foo.bar`.
+fn dotted_chain(
+    node: &Rc<Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    if !matches!(&*node.expr_data, ExprData::ExprFieldAccess { .. }) {
+        return None;
+    }
+    let field = authored_name_at(source_indices.clone(), node.clone());
+    if field.is_empty() {
+        return None;
+    }
+    let receiver = node.children.first()?;
+    let prefix = match &*receiver.expr_data {
+        ExprData::ExprFieldAccess { .. } => dotted_chain(receiver, source_indices)?,
+        ExprData::ExprVar { .. } => {
+            let name = authored_name_at(source_indices.clone(), receiver.clone());
+            if name.is_empty() {
+                return None;
+            }
+            name
+        }
+        _ => return None,
+    };
+    Some(format!("{prefix}.{field}"))
+}
+
 fn is_record_literal(node: &Rc<Node>) -> bool {
     matches!(&*node.expr_data, ExprData::ExprRecordLit { .. })
 }
@@ -274,7 +422,7 @@ fn bound_value(node: &Rc<Node>) -> Option<&Rc<Node>> {
 /// can resolve, and refusing it would refuse a construction the substrate allows. It is
 /// recorded as a coverage boundary rather than as a silent skip — `citation_sites` and
 /// `resolvable_citations` are reported separately so a green names both denominators.
-fn citation_from_record_literal(node: &Rc<Node>) -> Option<CitedSymbol> {
+fn citation_from_record_literal(node: &Rc<Node>, in_declaration: &str) -> Option<CitedSymbol> {
     if node.name != DECLARATION_REF_TYPE || !is_record_literal(node) {
         return None;
     }
@@ -291,6 +439,7 @@ fn citation_from_record_literal(node: &Rc<Node>) -> Option<CitedSymbol> {
         }
     }
     Some(CitedSymbol {
+        in_declaration: in_declaration.to_string(),
         module_path: module_path?,
         decl_name: decl_name?,
         field,
@@ -313,7 +462,7 @@ fn named_field_name(value: &Rc<Node>) -> Option<String> {
 
 /// `decl_ref(m, n)` / `decl_field_ref(m, n, f)` — the constructors `std.decl_ref` owns.
 /// Arguments are read positionally OR by name, because both spellings are authored.
-fn citation_from_constructor_call(node: &Rc<Node>) -> Option<CitedSymbol> {
+fn citation_from_constructor_call(node: &Rc<Node>, in_declaration: &str) -> Option<CitedSymbol> {
     if !is_call(node) {
         return None;
     }
@@ -331,6 +480,7 @@ fn citation_from_constructor_call(node: &Rc<Node>) -> Option<CitedSymbol> {
             .and_then(|v| expr_literal_string_optional(v.clone()))
     };
     Some(CitedSymbol {
+        in_declaration: in_declaration.to_string(),
         module_path: arg(0, "module_path")?,
         decl_name: arg(1, "decl_name")?,
         field: if with_field {
@@ -383,11 +533,234 @@ fn declaration_field_names(
     out
 }
 
+/// One declaration's REFERENCE occurrences, recorded into `out` as `(in_declaration, spelling)`.
+///
+/// WHY THIS IS SELECTIVE BY NODE KIND AND THE FIRST VERSION WAS NOT. The first version walked
+/// every node and took its authored name with no filter, on the argument that over-collection
+/// is harmless because it is SYMMETRIC across the two trees the wave wall compares — a spelling
+/// that denotes nothing on both sides contributes no delta. THAT ARGUMENT IS REFUTED BY A
+/// MEASURED SPECIMEN, and it is refuted in the one direction that matters: symmetry of the
+/// COLLECTOR does not give symmetry of the VERDICT, because the supplier set the wall asks for
+/// is a function of the corpus, not of the site. On gunbc#9106 a witness module deleted a
+/// helper `fn live_tree_declined_entries` and kept twelve RECORD FIELD LABELS spelling the same
+/// word. The labels never bound to the helper and need no supplier at all, yet each one was
+/// collected as a reference, so each one reported base `{that module}` -> head `{}` and the wall
+/// raised twelve `NewUnresolvedness` rows against a correct cut. A delta true about the
+/// declaration and false about every site it names.
+///
+/// THE FIX IS THE SHAPE THE `cited` COLLECTOR ON THE SAME TREE ALREADY USES — decide by node
+/// kind, not by name — and exactly two kinds are excluded here:
+///
+///   * A RECORD LITERAL'S FIELD LABELS. `ExprRecordLit`'s children are its field initializers
+///     and nothing else, so the label is decidable from the parent's kind with no guessing. The
+///     initializer's VALUE is still walked, because that is where a reference lives.
+///   * A FIELD PROJECTION'S MEMBER NAME. `f.widget` names a field of the value `f`; it does not
+///     name a declaration `widget`. The SPELLING is not lost — `dotted_chain` still records
+///     `f.widget` whole, which is what `module_prefix_of` needs to tell a module-qualified
+///     reference (`probe.home.widget`) from an ordinary projection, and the wall keys on the
+///     last segment either way, so a qualified reference keeps its leaf.
+///
+/// WHAT THIS DELIBERATELY DOES NOT EXCLUDE, named rather than left to be discovered, because
+/// each is the SAME CLASS reached from a different position and none of them is repaired here:
+/// a record TYPE declaration's field labels, a named call argument's label, a parameter binder,
+/// and a coproduct's variant names are all still collected as references. Measured on a fixture,
+/// not predicted: `type Row { tag: String }` contributes `tag`, and `call_it(tag: "z")`
+/// contributes `tag`. Each can fabricate the same refusal the record-literal case did, and each
+/// needs its own structural discriminator — the parent kinds that carry them (`Connective::Conj`,
+/// `ExprCall`) also carry children that ARE real references (a refinement's base type expression
+/// is a `Conj` child with a real type name), so a parent-kind rule that covers them cannot be
+/// lifted from this one and must be derived against its own fixture. Excluding them by guessing
+/// would risk the opposite defect, which is worse: a wall that stops seeing genuine
+/// unresolvedness is a decoration.
+fn collect_reference_occurrences(
+    node: &Rc<Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<NewlineIndex>>>,
+    in_declaration: &str,
+    ident_is_a_field_label: bool,
+    out: &mut BTreeSet<(String, String)>,
+) {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let is_projection_member = matches!(&*node.expr_data, ExprData::ExprFieldAccess { .. });
+        if !ident_is_a_field_label && !is_projection_member {
+            let name = authored_name_at(source_indices.clone(), node.clone());
+            if !name.is_empty() {
+                out.insert((in_declaration.to_string(), name));
+            }
+        }
+        if let Some(chain) = dotted_chain(node, source_indices) {
+            out.insert((in_declaration.to_string(), chain));
+        }
+        let children_are_field_labels = is_record_literal(node);
+        for c in node.children.iter() {
+            collect_reference_occurrences(
+                c,
+                source_indices,
+                in_declaration,
+                children_are_field_labels,
+                out,
+            );
+        }
+        for c in node.params.iter() {
+            collect_reference_occurrences(c, source_indices, in_declaration, false, out);
+        }
+        for c in node.properties.iter() {
+            collect_reference_occurrences(c, source_indices, in_declaration, false, out);
+        }
+        for c in node.uses.iter() {
+            collect_reference_occurrences(c, source_indices, in_declaration, false, out);
+        }
+        if let Some(b) = node.body.as_ref() {
+            collect_reference_occurrences(b, source_indices, in_declaration, false, out);
+        }
+        if let Some(t) = node.transport.as_ref() {
+            collect_reference_occurrences(t, source_indices, in_declaration, false, out);
+        }
+        if let Some(t) = node.type_annotation.as_ref() {
+            collect_reference_occurrences(t, source_indices, in_declaration, false, out);
+        }
+
+        // THE VARIANT-PATTERN CONSTRUCTOR NAME -- THE ONE AUTHORED REFERENCE WITH NO
+        // TRANSPORT ENTRY TO CONSUME, AND THE ONLY REASON THIS FUNCTION READS A NAME AT ALL.
+        //
+        // The operator ruling is that authored references come from the parser's
+        // `OccurrenceTransport`, never from re-reading the final `Node` -- because the parser
+        // already stamps the fact exactly, so a Node-reading projection is a SECOND AUTHORITY
+        // free to diverge from the first. `authored_type_references` below obeys that.
+        //
+        // THAT RATIONALE HAS NO REFERENT HERE, and it was checked rather than argued:
+        //   `MatchPattern::VariantPattern { name: String, .. }` -- the head is a String
+        //   `stamp_parsed_pattern`'s VariantPattern arm stamps `field_bindings` ONLY
+        //   `ConstructorOccurrence` is stamped NOWHERE in `v1_compiler_parse`
+        //   occurrence ids are minted per `Node`, so a String can never carry one
+        // The parser mints nothing for this position, so there is no first authority to be
+        // second to: reading the authored String is not re-derivation, it is the ONLY
+        // derivation. A prohibition whose stated reason does not apply is not extended by its
+        // letter -- doing so would forbid the only available construction in favour of one that
+        // does not exist.
+        //
+        // THE TRANSPORT REPAIR IS BLOCKED ON A RULING, NOT ON A RISK, and that distinction is
+        // the useful part of this comment. The obvious objection to stamping the head was that
+        // occurrence ids come from a sequential allocator threaded across a parse, so a new
+        // stamp shifts every id allocated after it. That objection is ANSWERED: `v2.std.node`
+        // `content_hash` folds node kind, edge labels and child hashes and NOT the occurrence
+        // id, so a shifted id cannot move a content hash; and
+        // `v2.workflow.legacy_binding_delta` states outright that an `OccurrenceId` is not a
+        // stable cross-compile name BECAUSE the counter is consumed in DFS order and an id
+        // therefore encodes position in the walk -- naming inserted tokens as exactly the edit
+        // that shifts ids. The corpus does not merely lack a dependency on id stability, it
+        // declares that dependency illegitimate.
+        //
+        // What remains is not a hazard but an authority question: stamping a new occurrence is
+        // a change to the parser. So this block is provisional pending that ruling, and when it
+        // comes the deletion is this `if` and nothing else -- the name then arrives in
+        // `authored_type_references` with every other authored reference, and the consumer that
+        // already reads the union does not change at all.
+        //
+        // A pattern head is a reference the seven-slot walk above cannot reach even in principle,
+        // because it is a raw `String` on `MatchPattern` rather than a `Node`. So a module whose
+        // only use of an imported coproduct is naming its variants in match arms contributed
+        // NOTHING to `referenced`, and the gate concluded no name here resolved into the target.
+        //
+        // ONLY `name`. NOT `parent_enum`, and that exclusion is the whole care in this block:
+        // v1.02_parse writes `parent_enum: none` at parse time and INFERENCE fills it in later, so
+        // collecting it would mint a membership fact out of a compiler consequence rather than out
+        // of authored source -- the precise failure the operator ruling forbids, arriving through
+        // the one field of this enum that looks like an authored name and is not.
+        //
+        // NOT `field_bindings` either. Those are BINDERS -- they declare names, they do not
+        // reference them -- and the recursion below would otherwise report a pattern's own bound
+        // variables as references into whatever module happens to spell them the same way.
+        if let Some(pattern) = node.match_pattern.as_ref() {
+            if let MatchPattern::VariantPattern { name, .. } = &**pattern {
+                if !name.is_empty() {
+                    out.insert((in_declaration.to_string(), name.clone()));
+                }
+            }
+        }
+    })
+}
+
+/// The parser's own authored type references, read back out of the transport it already
+/// produced for this file.
+///
+/// THIS RECONSTRUCTS NOTHING. `stamp_parsed_inferred` stamps a declared type as
+/// `ParsedOccurrenceReference { TypeOccurrence }`; the spelling is on the index entry's
+/// `OccurrenceProjection.authored_name`, and the enclosing declaration is the second element of
+/// the reference's own `containment.ancestors`. Every value below is looked up, none is derived
+/// from the `Node` tree.
+///
+/// WHY `ancestors[1]` IS THE ENCLOSING DECLARATION AND NOT A GUESS. `stamp_parsed_node` pushes
+/// its own occurrence onto the ancestor list before descending, so ancestors run outermost-first
+/// from the stamp root. The sweep stamps one file per transport, rooted at that file's module
+/// node, so `[0]` is the module and `[1]` is the module-scope item containing the reference.
+/// A reference with fewer than two ancestors is not inside a module-scope declaration at all and
+/// contributes nothing -- it is SKIPPED rather than attributed to the empty string, because an
+/// empty enclosing name would key a row that no consumer can join and would read as a real
+/// authored reference belonging to a declaration that does not exist.
+///
+/// THE CATEGORY FILTER IS THE POINT. Only `TypeOccurrence` references are taken. The transport
+/// also carries lexical-value, field and namespace-segment occurrences, and folding those in
+/// would reintroduce exactly the over-collection `referenced` is criticised for, with the
+/// parser's authority attached to it -- which would be worse than the walk, not better.
+fn authored_type_references_from_transport(
+    transport: &Rc<OccurrenceTransport>,
+    declared: &BTreeSet<String>,
+) -> BTreeSet<(String, String)> {
+    let mut by_id: HashMap<i64, String> = HashMap::new();
+    for entry in transport.index.entries.iter() {
+        by_id.insert(
+            entry.projection.occurrence.value,
+            entry.projection.authored_name.clone(),
+        );
+    }
+
+    let mut out = BTreeSet::new();
+    for reference in transport.references.iter() {
+        if reference.category != OccurrenceCategory::TypeOccurrence {
+            continue;
+        }
+        let spelling = match by_id.get(&reference.occurrence.value) {
+            Some(name) if !name.is_empty() => name.clone(),
+            _ => continue,
+        };
+        let enclosing = match reference.containment.ancestors.get(1) {
+            Some(ancestor) => match by_id.get(&ancestor.value) {
+                Some(name) if !name.is_empty() => name.clone(),
+                _ => continue,
+            },
+            None => continue,
+        };
+        // ONLY REFERENCES ENCLOSED BY A DECLARATION THIS MODULE DECLARES, and this filter is
+        // load-bearing rather than tidiness -- it was added because its absence broke a live
+        // arm, and the break was in the dangerous direction.
+        //
+        // The transport stamps an IMPORT MEMBER NAME as a `TypeOccurrence` reference too,
+        // enclosed by the import's own target. Measured on the fixture that caught it,
+        // `import probe.other { gadget }` yields `("probe.other", "gadget")`. Folding that in
+        // would mean every import is "bound through" by its own member, so
+        // `UnusedSubjectMembershipRemoved` could never be reached again -- the wall would go
+        // permanently quiet about unused membership while looking like it had gained precision.
+        // That is a strictly worse failure than the false green this change exists to close:
+        // one wrong verdict versus a disposition that can no longer fire.
+        //
+        // A module-scope declaration name is the right filter and not a proxy for one: the key
+        // this set contributes to IS `(enclosing declaration, spelling)`, and an import is not a
+        // declaration. Anything enclosed by something this module does not declare is not a row
+        // this key shape can express, so it is dropped rather than attributed.
+        if !declared.contains(&enclosing) {
+            continue;
+        }
+        out.insert((enclosing, spelling));
+    }
+    out
+}
+
 /// One module's record, from that one module's parse tree. No corpus, no resolution.
 pub fn record_from_module(
     module: &Rc<Node>,
     source_indices: &Rc<im::HashMap<String, Rc<NewlineIndex>>>,
     rel_path: &str,
+    transport: &Rc<OccurrenceTransport>,
 ) -> ModuleDeclarationRecord {
     let module_path = authored_name_at(source_indices.clone(), module.clone());
     let mut declared = BTreeSet::new();
@@ -447,16 +820,44 @@ pub fn record_from_module(
 
     let mut cited = Vec::new();
     for item in module_items(module.clone()).iter() {
+        // The enclosing declaration is known HERE and nowhere deeper: this loop already
+        // iterates top-level items, so carrying its name into the subtree walk costs one
+        // string and closes the "two citations in one module share one row" residue.
+        let in_declaration = authored_name_at(source_indices.clone(), item.clone());
         for_each_node(item, &mut |node| {
-            if let Some(c) =
-                citation_from_record_literal(node).or_else(|| citation_from_constructor_call(node))
+            if let Some(c) = citation_from_record_literal(node, &in_declaration)
+                .or_else(|| citation_from_constructor_call(node, &in_declaration))
             {
                 cited.push(c);
             }
         });
     }
 
+    let mut referenced = BTreeSet::new();
+    let mut called = BTreeSet::new();
+    for item in module_items(module.clone()).iter() {
+        let in_declaration = authored_name_at(source_indices.clone(), item.clone());
+        collect_reference_occurrences(
+            item,
+            source_indices,
+            &in_declaration,
+            false,
+            &mut referenced,
+        );
+        for_each_node(item, &mut |node| {
+            if is_call(node) && !node.name.is_empty() {
+                called.insert(node.name.clone());
+                if let Some(tail) = node.name.rsplit('.').next() {
+                    called.insert(tail.to_string());
+                }
+            }
+        });
+    }
+
     ModuleDeclarationRecord {
+        referenced,
+        called,
+        authored_type_references: authored_type_references_from_transport(transport, &declared),
         declares_construction_justification: declared.contains(CONSTRUCTION_JUSTIFICATION_DECL),
         is_fixture_carrier: module_is_fixture_carrier(&module_path, rel_path),
         module_path,
@@ -492,6 +893,15 @@ pub struct DeclarationIndexPopulation {
     pub citations: usize,
     /// Citations suppressed by an enumerated `PRE_EXISTING_CITATION_DEBT` row. Counted, so
     /// a reader can watch the contract shrink rather than take the roster on trust.
+    ///
+    /// THE `!is_fixture_carrier` FILTER THAT USED TO GUARD THIS IS GONE, and its absence is a
+    /// property of the row grain rather than of the current roster's contents. A row now names
+    /// its citing module, so "is this citation enrolled in the debt roster" is answered by the
+    /// row itself; a carrier-shaped pre-filter could only ever change the answer by disagreeing
+    /// with the rows, which is the paired-arm desynchronization this module already carries a
+    /// receipt for. It is not safe merely because today's debt rows happen to name no fixture
+    /// citer: were one enrolled there tomorrow, counting it is the CORRECT reading of this
+    /// field, whose subject is the roster and not the carrier.
     pub citations_pre_existing_debt: usize,
     /// Citations authored inside a witness or fixture carrier, where deliberately false
     /// text is the evidence rather than a defect. Counted, never silently dropped.
@@ -499,6 +909,24 @@ pub struct DeclarationIndexPopulation {
     /// Citations naming a namespace no swept module declares — hand-Rust and other
     /// universes. Counted rather than dropped, so a green names what it did NOT cover.
     pub citations_outside_index: usize,
+    /// Distinct in-corpus modules cited as authorities from ordinary authored modules, but
+    /// reached by no authored import edge. A citation asserts that the target is a fact's
+    /// home; without an import edge no consumer closure typechecks that home. Identities are
+    /// carried rather than only a count so the unobserved remainder cannot be mistaken for a
+    /// specimen list or a percentage (DESIGN's third emit-stage escape mode).
+    pub cited_authorities_without_import_edges: Vec<String>,
+    /// The retained identities split by whether any citing module syntactically calls the cited
+    /// declaration. The called arm is an under-declaration candidate, not proof: indirection can
+    /// hide a call and a same-spelled callee can be unrelated. Both arms still lack compile
+    /// coverage; gunbc#9453 demonstrates the import-edge repair for one called specimen only.
+    pub cited_and_called_without_import_edges: Vec<String>,
+    pub cited_not_called_without_import_edges: Vec<String>,
+    /// Retained citees under `dag/`, the FIRST and therefore entry-producing root of the
+    /// existing `--source-root dag --source-root src/v2` corpus compile.
+    pub cited_authorities_under_primary_dag_entry_root: Vec<String>,
+    /// Retained citees under `src/v2/`, which that invocation indexes only as a dependency
+    /// pool. With no inbound import edge these identities are structurally unreachable there.
+    pub cited_authorities_in_src_v2_dependency_pool_only: Vec<String>,
     /// Import members admitted ONLY because they name a kernel type, over a target that
     /// declares no such name. Counted rather than skipped — see `import_member_findings`.
     pub import_members_kernel_named: usize,
@@ -535,6 +963,70 @@ pub fn index_records(index: &DeclarationIndex) -> Vec<&ModuleDeclarationRecord> 
 }
 
 pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation {
+    let imported_modules: BTreeSet<String> = index
+        .modules
+        .values()
+        .filter(|record| !record.is_fixture_carrier)
+        .flat_map(|record| record.imports.iter())
+        .filter_map(|import| {
+            resolve_cited_module(index, &import.target).map(|target| target.module_path.clone())
+        })
+        .collect();
+    let retained_citations: Vec<(&ModuleDeclarationRecord, &CitedSymbol, String)> = index
+        .modules
+        .values()
+        .filter(|record| !record.is_fixture_carrier)
+        .flat_map(|record| record.cited.iter().map(move |cited| (record, cited)))
+        .filter_map(|(record, cited)| {
+            resolve_cited_module(index, &cited.module_path)
+                .filter(|target| {
+                    !target.is_fixture_carrier
+                        && target.module_path != record.module_path
+                        && !imported_modules.contains(&target.module_path)
+                })
+                .map(|target| (record, cited, target.module_path.clone()))
+        })
+        .collect();
+    let cited_authorities_without_import_edges: Vec<String> = retained_citations
+        .iter()
+        .map(|(_, _, target)| target.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let cited_and_called_without_import_edges: Vec<String> = retained_citations
+        .iter()
+        .filter(|(record, cited, _)| record.called.contains(&cited.decl_name))
+        .map(|(_, _, target)| target.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let cited_not_called_without_import_edges: Vec<String> = cited_authorities_without_import_edges
+        .iter()
+        .filter(|target| !cited_and_called_without_import_edges.contains(target))
+        .cloned()
+        .collect();
+    let cited_authorities_under_primary_dag_entry_root: Vec<String> =
+        cited_authorities_without_import_edges
+            .iter()
+            .filter(|module_path| {
+                index
+                    .modules
+                    .get(*module_path)
+                    .is_some_and(|record| record.rel_path.starts_with("dag/"))
+            })
+            .cloned()
+            .collect();
+    let cited_authorities_in_src_v2_dependency_pool_only: Vec<String> =
+        cited_authorities_without_import_edges
+            .iter()
+            .filter(|module_path| {
+                index
+                    .modules
+                    .get(*module_path)
+                    .is_some_and(|record| record.rel_path.starts_with("src/v2/"))
+            })
+            .cloned()
+            .collect();
     DeclarationIndexPopulation {
         modules: index.modules.len(),
         declarations: index.modules.values().map(|r| r.declared.len()).sum(),
@@ -548,9 +1040,8 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
         citations_pre_existing_debt: index
             .modules
             .values()
-            .filter(|r| !r.is_fixture_carrier)
-            .flat_map(|r| r.cited.iter())
-            .filter(|c| citation_in_roster(c, PRE_EXISTING_CITATION_DEBT))
+            .flat_map(|r| r.cited.iter().map(move |c| (r, c)))
+            .filter(|(r, c)| citation_in_roster(&r.module_path, c, PRE_EXISTING_CITATION_DEBT))
             .count(),
         citations_in_fixtures: index
             .modules
@@ -564,6 +1055,11 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
             .flat_map(|r| r.cited.iter())
             .filter(|c| citation_is_outside_index(index, &c.module_path))
             .count(),
+        cited_authorities_without_import_edges,
+        cited_and_called_without_import_edges,
+        cited_not_called_without_import_edges,
+        cited_authorities_under_primary_dag_entry_root,
+        cited_authorities_in_src_v2_dependency_pool_only,
         import_members_kernel_named: import_member_kernel_named_count(index),
         lens_modules: index
             .modules
@@ -708,14 +1204,14 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
     out
 }
 
-/// THE PRE-EXISTING CITATION DEBT, ENUMERATED AT IDENTITY GRAIN.
+/// THE PRE-EXISTING CITATION DEBT, ENUMERATED AT SITE GRAIN.
 ///
 /// WHY A ROSTER EXISTS AT ALL. Nothing has checked an authored citation since 2026-08-23,
 /// when the operator removed the `cited-symbol` job (DESIGN records that drop and states its
 /// future exposure as unbounded). This wall's first execution therefore lands on a corpus
 /// that has been accumulating the exact class §3's rule names, and every row below is a REAL
 /// DEFECT: a citation naming a declaration that does not exist. Measured on the live tree,
-/// they are 38 distinct targets across 46 sites.
+/// they are 42 sites, each named by the module and declaration that authored it.
 ///
 /// WHY THEY ARE NOT REPAIRED HERE. The repair for a citation is a judgement about what its
 /// author MEANT, and guessing it is how a stale citation becomes a confidently wrong one.
@@ -749,16 +1245,27 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// tidier corner of this one: debt shrinks to empty, controls never retire, and the two arms
 /// read the same trigger in opposite directions. See that constant.
 
-/// WHY THE LENS IS NOT DELETED IN THIS CHANGE, stated plainly rather than left as an
-/// omission. `v2.lens.cited_symbol_resolution` is invoked by nothing: the operator removed
-/// its CI job on 2026-08-23 and this change removes `--required-cited-symbol`, its last
-/// caller. So it is dead code, not a competing authority — §3's attractor argument is about
-/// a live X answering the same question, and after this change nothing asks it anything.
-/// Its deletion cascades through sixteen witnesses, the lens registry, the deferral freeze
-/// and the doc-graph population, which is a second cut with its own review surface, and
-/// bundling it here would put the wall and its predecessor's funeral in one unreviewable
-/// diff. That is the staged form §3's replacement doctrine admits, and these four rows are
-/// its declared residue: they delete with the lens, not before it.
+/// THE LENS IS DELETED AS OF 2026-08-26, AND THE HAND-OFF THIS COMMENT LEFT WAS HALF RIGHT.
+/// It read "its deletion cascades through sixteen witnesses ... they delete with the lens,
+/// not before it", and the staged form it invoked was correct — the wall and its
+/// predecessor's funeral did belong in separate diffs. What it got wrong is the population.
+///
+/// SIXTEEN WAS THE COUNT AT #7707, when the lens landed. The file grew twice after that
+/// (#8673 enrolled roster_registry, #8775 the two instance-gap carriers) and carried 27
+/// `test fn` identities by the time this comment was written beside it.
+///
+/// AND "DEAD" WAS TRUE OF THE LENS AND FALSE OF ITS WITNESSES. Measured against the seven
+/// symbols the witness file imported FROM the lens, only 6 of the 27 touch one. Six more
+/// call `resolve_declaration_ref` directly — which lives in `v2.std.decl_ref_resolution`,
+/// a module that SURVIVES with four other consumers — so they are the only executing
+/// evidence for a live authority's five-arm refusal, and §4b(4) keeps them enrolled rather
+/// than deleting them with the machinery that climbed. They moved to
+/// `test.claim.long.decl_ref_resolution_witness_test`. The remaining 15 are population and
+/// projection claims about the carriers that PROJECT `DeclarationRef`s, and they moved to
+/// `test.claim.long.carrier_reference_integrity_witness_test`.
+///
+/// So the disposition is three-way and this comment admitted only two arms: the lens dies,
+/// six witnesses die with it, twelve rehome onto subjects that outlive it.
 /// Citations INSIDE fixture and witness carriers that do not resolve, enumerated at identity
 /// grain because carrier identity is not a licence.
 ///
@@ -811,212 +1318,589 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// MEANT is the judgement §5 warns turns a stale citation into a confidently wrong one. The
 /// next rung is a witness declaring its planted controls as typed rows, at which point the
 /// deliberate half becomes derivable and only the genuine half survives here as debt.
-const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str)] = &[
+const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &[
     (
-        "dag.test.claim.witness_purpose_taxonomy_witness",
-        "witness_purpose_taxonomy_witness_note",
-        "",
-    ),
-    (
-        "extdeps.languages.nonexistent.subject",
-        "nonexistent_language",
-        "",
-    ),
-    ("extdeps.network.mac", "already_deleted_frontier_unit", ""),
-    ("extdeps.network.mac", "parse_mac_addres", ""),
-    ("extdeps.network.max", "parse_mac_address", ""),
-    ("gunbc.capability_binding", "x", ""),
-    (
-        "gunbc.publication_policy",
-        "G1_planted_instance_gap_producer_control_RED",
-        "",
-    ),
-    (
+        "test.claim.altra_placement_witness",
+        "w_a_plan_from_another_design_is_refused_as_incomparable",
         "product.altra_motherboard.minimal_design",
         "some_other_board",
         "",
     ),
-    ("std.disposition", "Disposition", "marker"),
-    ("std.primitive_identity", "missing_handler", ""),
-    ("synthetic.g1_module_absent_RED", "any", ""),
-    ("synthetic.mod", "HostConfig", ""),
-    ("synthetic.mod", "HostConfig", "memory_swap"),
     (
+        "test.claim.annotation_carrier",
+        "bound_condition_does_not_fire_on_a_near_miss_ref",
+        "extdeps.network.mac",
+        "parse_mac_addres",
+        "",
+    ),
+    (
+        "test.claim.annotation_carrier",
+        "bound_condition_does_not_fire_on_a_near_miss_ref",
+        "extdeps.network.max",
+        "parse_mac_address",
+        "",
+    ),
+    (
+        "test.claim.annotation_carrier",
+        "frontier_expiry_fired_trigger_absent_from_rows_is_clean",
+        "extdeps.network.mac",
+        "already_deleted_frontier_unit",
+        "",
+    ),
+    (
+        "test.claim.capability_binding_witness",
+        "witness_the_bob_requirement_is_still_provisional",
+        "gunbc.capability_binding",
+        "x",
+        "",
+    ),
+    (
+        "test.claim.dissolution_census_mechanism_witness_test",
+        "live_discriminator_rows",
         "test.claim.dissolution_census_mechanism_witness_test",
         "absent_subject_row",
         "",
     ),
     (
         "test.claim.dissolution_census_mechanism_witness_test",
+        "live_discriminator_rows",
+        "test.claim.dissolution_census_mechanism_witness_test",
+        "present_subject_row",
+        "",
+    ),
+    (
+        "test.claim.dissolution_census_mechanism_witness_test",
+        "live_discriminator_rows",
+        "test.fixture.dissolution_live_discriminator.subject",
+        "absent_subject_declaration",
+        "",
+    ),
+    (
+        "test.claim.dissolution_census_mechanism_witness_test",
+        "planted_bound_ref",
+        "test.claim.dissolution_census_mechanism_witness_test",
         "planted_bound_target",
         "",
     ),
     (
+        "test.claim.dissolution_census_mechanism_witness_test",
+        "planted_retires_ref",
         "test.claim.dissolution_census_mechanism_witness_test",
         "planted_retires_target",
         "",
     ),
     (
         "test.claim.dissolution_census_mechanism_witness_test",
+        "planted_rows",
+        "test.claim.dissolution_census_mechanism_witness_test",
         "planted_unbound_target",
         "",
     ),
     (
-        "test.claim.dissolution_census_mechanism_witness_test",
-        "present_subject_row",
+        "test.claim.keyed_roster_witness",
+        "frontier_rows_keyed_build_admits_distinct_decl_fields",
+        "synthetic.mod",
+        "HostConfig",
         "",
     ),
     (
-        "test.claim.repository_census_observation_witness",
-        "census_witness_classifier",
-        "rows",
-    ),
-    ("test.fixture", "planted", ""),
-    (
-        "test.fixture.decl_facts_reflection.specimens",
-        "named_field_anchor",
-        "dissolves_to",
+        "test.claim.keyed_roster_witness",
+        "frontier_rows_keyed_build_admits_distinct_decl_fields",
+        "synthetic.mod",
+        "HostConfig",
+        "memory_swap",
     ),
     (
-        "test.fixture.dissolution_live_discriminator.subject",
-        "absent_subject_declaration",
+        "test.claim.language_target_subject_registration",
+        "red_unregistered_subject_ref_is_not_reported_as_present",
+        "extdeps.languages.nonexistent.subject",
+        "nonexistent_language",
         "",
     ),
     (
-        "test.fixture.scaffold_disposition_census.pool.specimens",
-        "no_such_declaration_G1_dangling_bind_control_RED",
+        "test.claim.long.carrier_reference_integrity_witness_test",
+        "carrier_ref_refusal_count_red_on_dangling_fixture",
+        "v2.std.node",
+        "NoSuchDecl_G1_RED",
         "",
     ),
-    ("v1.compiler.complexity", "Derived", ""),
     (
+        "test.claim.long.decl_ref_resolution_witness_test",
+        "decl_ref_refuses_ambiguous_binding",
+        "v2.std.node",
+        "g1_ambiguous",
+        "",
+    ),
+    (
+        "test.claim.long.decl_ref_resolution_witness_test",
+        "decl_ref_refuses_declaration_absent",
+        "v2.std.node",
+        "NoSuchDecl_G1_RED",
+        "",
+    ),
+    (
+        "test.claim.long.decl_ref_resolution_witness_test",
+        "decl_ref_refuses_module_absent",
+        "synthetic.g1_module_absent_RED",
+        "any",
+        "",
+    ),
+    (
+        "test.claim.long.decl_ref_resolution_witness_test",
+        "decl_ref_refuses_named_field_absent",
+        "v2.std.node",
+        "NodeKind",
+        "NoSuchField_G1_RED",
+    ),
+    (
+        "test.claim.long.carrier_reference_integrity_witness_test",
+        "instance_gap_carrier_dangling_caller_red_control_refuses",
+        "v2.compiler.parse",
+        "G1_planted_instance_gap_caller_control_RED",
+        "",
+    ),
+    (
+        "test.claim.long.carrier_reference_integrity_witness_test",
+        "instance_gap_membership_dangling_producer_red_control_refuses",
+        "gunbc.publication_policy",
+        "G1_planted_instance_gap_producer_control_RED",
+        "",
+    ),
+    (
+        "test.claim.long.v1_complexity_capability_census_resolution_test",
+        "census_absent_declaration_refuses",
         "v1.compiler.complexity",
         "this_declaration_does_not_exist_in_the_seed",
         "",
     ),
     (
+        "test.claim.long.v1_complexity_capability_census_resolution_test",
+        "census_absent_module_refuses",
         "v1.compiler.this_module_does_not_exist",
         "classify_complexity",
         "",
     ),
     (
-        "v2.compiler.parse",
-        "G1_planted_instance_gap_caller_control_RED",
+        "test.claim.long.v1_complexity_capability_census_resolution_test",
+        "census_prose_only_name_does_not_resolve",
+        "v1.compiler.complexity",
+        "Derived",
         "",
     ),
-    ("v2.std.node", "NoSuchDecl_G1_RED", ""),
-    ("v2.std.node", "NodeKind", "NoSuchField_G1_RED"),
-    ("v2.std.node", "g1_ambiguous", ""),
     (
+        "test.claim.primitive_identity_join_witness_test",
+        "w_unknown_realization_refuses",
+        "std.primitive_identity",
+        "missing_handler",
+        "",
+    ),
+    (
+        "test.claim.primitive_projection_authority_witness_test",
+        "planted_registry_row",
+        "test.fixture",
+        "planted",
+        "",
+    ),
+    (
+        "test.claim.repository_census_observation_witness",
+        "witness_a_declaration_field_selector_reaches_the_identity",
+        "test.claim.repository_census_observation_witness",
+        "census_witness_classifier",
+        "rows",
+    ),
+    (
+        "test.claim.witness_purpose_taxonomy_witness",
+        "fixture_population_ref",
+        "dag.test.claim.witness_purpose_taxonomy_witness",
+        "witness_purpose_taxonomy_witness_note",
+        "",
+    ),
+    (
+        "test.fixture.decl_facts_reflection.specimens",
+        "scaffold_named_field_bind",
+        "test.fixture.decl_facts_reflection.specimens",
+        "named_field_anchor",
+        "dissolves_to",
+    ),
+    (
+        "test.fixture.scaffold_disposition_census.pool.specimens",
+        "dangling_bind_target_specimen",
+        "test.fixture.scaffold_disposition_census.pool.specimens",
+        "no_such_declaration_G1_dangling_bind_control_RED",
+        "",
+    ),
+    (
+        "v2.test.lens_cost.valuation",
+        "effect_operation",
         "v2.test.lens_cost.valuation",
         "unmodelled_effect_specimen",
         "",
     ),
+    (
+        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "redundancy_present_successor_locator",
+        "std.disposition",
+        "Disposition",
+        "marker",
+    ),
+    (
+        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "redundancy_red_scaffold",
+        "std.disposition",
+        "Disposition",
+        "marker",
+    ),
+    (
+        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "redundancy_region1_real_successor_present",
+        "extdeps.llm.anthropic",
+        "AnthropicTextBlock",
+        "cache_control",
+    ),
+    (
+        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "redundancy_region_budget_per_service_overhead_locator",
+        "gunbc.ci_floor_measurement",
+        "gunbc_ci_managed_host_quiescent_meminfo_read",
+        "",
+    ),
+    (
+        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "redundancy_region_bytes_synthetic_present",
+        "std.bytes",
+        "builtin_function_registry",
+        "",
+    ),
+    (
+        "v2.test.lens_disposition_redundancy.disposition_redundancy_test",
+        "redundancy_region_rust_gates_synthetic_present",
+        "tools.rust_stage0_gates",
+        "per_unit_test_selector",
+        "",
+    ),
 ];
 
-const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str)] = &[
-    ("extdeps.cloud.gcp.secret_manager", "AccessVersion", ""),
-    ("extdeps.cloud.gcp.secret_manager", "AddVersion", ""),
-    ("extdeps.docker.container_inspect", "Inspect", ""),
+const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
     (
+        "extdeps.docker.container_inspect",
+        "container_inspect_error_responses_frontier_rows",
+        "extdeps.docker.container_inspect",
+        "Inspect",
+        "",
+    ),
+    (
+        "extdeps.docker.container_stats",
+        "container_stats_error_responses_frontier_rows",
+        "extdeps.docker.container_stats",
+        "Stats",
+        "",
+    ),
+    (
+        "extdeps.docker.container_stats",
+        "cpu_percent_ratio_carrier_frontier_rows",
         "extdeps.docker.container_stats",
         "ContainerStats",
         "cpu_percent",
     ),
-    ("extdeps.docker.container_stats", "Stats", ""),
     (
+        "extdeps.github.actions_runner",
+        "actions_runner_base_dir_ensure_script_scaffold",
+        "gunbc.host_effect",
+        "host_effect_apply",
+        "",
+    ),
+    (
+        "extdeps.github.actions_runner",
+        "actions_runner_slot_extract_script_scaffold",
+        "gunbc.host_effect",
+        "host_effect_apply",
+        "",
+    ),
+    (
+        "extdeps.git.publication_transport",
+        "extdeps_model_scope",
         "extdeps.git.publication_transport",
         "PublicationTransport",
         "",
     ),
     (
         "extdeps.llm.anthropic",
+        "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
+        "extdeps.llm.anthropic",
         "AnthropicImageBlock",
         "cache_control",
     ),
     (
         "extdeps.llm.anthropic",
+        "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
+        "extdeps.llm.anthropic",
         "AnthropicTextBlock",
         "cache_control",
     ),
-    ("extdeps.llm.anthropic", "AnthropicTextBlock", "citations"),
     (
+        "extdeps.llm.anthropic",
+        "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
+        "extdeps.llm.anthropic",
+        "AnthropicTextBlock",
+        "citations",
+    ),
+    (
+        "extdeps.llm.anthropic",
+        "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
         "extdeps.llm.anthropic",
         "AnthropicToolReferenceBlock",
         "cache_control",
     ),
-    ("extdeps.llm.anthropic", "CacheControl", "ttl"),
-    ("extdeps.mediawiki", "extdeps_external_authority_anchor", ""),
-    ("extdeps.network.ipv6", "parse_ipv6_address", ""),
-    ("extdeps.network.mac", "parse_mac_address", ""),
-    ("extdeps.tcgplayer.store", "UpdateSkuPrice", "price"),
     (
+        "extdeps.llm.anthropic",
+        "structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads",
+        "extdeps.llm.anthropic",
+        "CacheControl",
+        "ttl",
+    ),
+    (
+        "extdeps.network.ipv6",
+        "ipv6_text_codec_staged_frontier_rows",
+        "extdeps.network.ipv6",
+        "parse_ipv6_address",
+        "",
+    ),
+    (
+        "extdeps.tcgplayer.store",
+        "tcgplayer_store_money_measure_grounding_disposition",
+        "extdeps.tcgplayer.store",
+        "UpdateSkuPrice",
+        "price",
+    ),
+    (
+        "gunbc.ci_floor_measurement",
+        "gunbc_ci_legacy_host_fixed_overhead_disposition",
         "gunbc.ci_floor_measurement",
         "gunbc_ci_legacy_host_modeled_residents",
         "",
     ),
     (
         "gunbc.ci_floor_measurement",
+        "gunbc_ci_managed_host_fixed_overhead_disposition",
+        "gunbc.ci_floor_measurement",
         "gunbc_ci_managed_host_quiescent_meminfo_read",
         "",
     ),
     (
+        "gunbc.ci_heal_credential",
+        "ci_heal_job_ref",
+        "gunbc.ci_workflow",
+        "ci_heal_generated_artifacts_job",
+        "",
+    ),
+    (
+        "gunbc.ci_heal_credential",
+        "ci_heal_workflow_ref",
+        "gunbc.ci_workflow",
+        "ci_workflow",
+        "",
+    ),
+    (
+        "gunbc.claude_setup_token_enrollment",
+        "claude_enrollment_exact_version_read_back_scaffold",
+        "extdeps.cloud.gcp.secret_manager",
+        "AccessVersion",
+        "",
+    ),
+    (
+        "gunbc.claude_setup_token_enrollment",
+        "claude_enrollment_secret_manager_add_version_scaffold",
+        "extdeps.cloud.gcp.secret_manager",
+        "AddVersion",
+        "",
+    ),
+    (
+        "gunbc.emit_summary_map_consumer_partition",
+        "emit_summary_map_consumers",
+        "v1.compiler.infer_emit_info",
+        "type_summary_reaches_fn",
+        "",
+    ),
+    (
+        "gunbc.empty_decl_file_checkpoint_bypass",
+        "empty_decl_file_bypass_instances",
+        "v1.compiler.05_emit",
+        "emit_literal",
+        "",
+    ),
+    (
+        "gunbc.executor_privileged_operation",
+        "executor_privileged_operation_shell_scaffold",
+        "gunbc.host_effect",
+        "host_effect_apply",
+        "",
+    ),
+    (
+        "gunbc.fabric_capacity_class_gap",
+        "no_class_carrier",
+        "product.fabric.supply",
+        "Offer",
+        "",
+    ),
+    (
+        "gunbc.fabric_capacity_class_gap",
+        "protection_has_no_reach",
         "gunbc.ci_runner_placement",
         "ci_runner_placement_authority",
         "",
     ),
-    ("gunbc.ci_workflow", "ci_heal_generated_artifacts_job", ""),
-    ("gunbc.ci_workflow", "ci_workflow", ""),
-    ("gunbc.fleet_host_budget", "fleet_host_budget_authority", ""),
     (
+        "gunbc.fabric_capacity_class_gap",
+        "protection_has_no_reach",
+        "gunbc.fleet_host_budget",
+        "fleet_host_budget_authority",
+        "",
+    ),
+    (
+        "gunbc.host_budget_source",
+        "host_budget_source_seed_mirror_disposition",
         "gunbc.host_budget_source",
         "host_budget_source_emitted_into_stage0",
         "",
     ),
-    ("gunbc.host_effect", "host_effect_apply", ""),
-    ("gunbc.roadmap_authority", "roadmap_document", ""),
-    ("gunbc.runner_lifecycle", "EnsureRunnerJitWrapper", ""),
     (
+        "gunbc.language_source_scaffold_index",
+        "compiler_tests_harness_trigger",
+        "v2.test.workflow.claim_witness_corpus_ci_runner",
+        "ClaimWitnessCorpusClaimRunRow",
+        "",
+    ),
+    (
+        "gunbc.runner_connectivity_repair_plan",
+        "runner_jit_installation_token_cache_scaffold",
+        "gunbc.runner_lifecycle",
+        "EnsureRunnerJitWrapper",
+        "",
+    ),
+    (
+        "gunbc.runner_slot_provision",
+        "runner_slot_provision_scaffold",
+        "gunbc.host_effect",
+        "host_effect_apply",
+        "",
+    ),
+    (
+        "gunbc.self_host_promotion_obligations",
+        "frontier_numerator_admits_seed_evidence",
+        "v2.compiler.self_host.emitter_producer_provenance",
+        "v2_self_hosted_promotions",
+        "",
+    ),
+    (
+        "gunbc.srv3_os_install_actuate_scope",
+        "srv3_os_install_actuate_credential_source_scaffold",
+        "gunbc.roadmap_authority",
+        "roadmap_document",
+        "",
+    ),
+    (
+        "gunbc.tailscale_acl_phase2_credential",
+        "tailscale_acl_phase2_live_write_disposition",
         "gunbc.tailscale_acl_phase2_credential",
         "tailscale_acl_upsert_wet",
         "",
     ),
     (
         "product.build_selection",
+        "bandwidth_axis",
+        "product.build_selection",
+        "build_memory_bandwidth_axis",
+        "",
+    ),
+    (
+        "product.build_selection",
+        "capacity_axis",
+        "product.build_selection",
+        "build_memory_capacity_axis",
+        "",
+    ),
+    (
+        "product.build_selection",
+        "cash_axis",
+        "product.build_selection",
+        "build_incremental_cash_axis",
+        "",
+    ),
+    (
+        "product.build_selection",
+        "ceiling_axis",
+        "product.build_selection",
         "build_constructible_ceiling_axis",
         "",
     ),
-    ("product.build_selection", "build_incremental_cash_axis", ""),
-    ("product.build_selection", "build_memory_bandwidth_axis", ""),
-    ("product.build_selection", "build_memory_capacity_axis", ""),
-    ("product.build_selection", "build_wall_power_axis", ""),
-    ("product.fabric.supply", "Offer", ""),
-    ("std.bytes", "builtin_function_registry", ""),
-    ("tools.rust_stage0_gates", "per_unit_test_selector", ""),
-    ("v1.compiler.05_emit", "emit_literal", ""),
-    ("v1.compiler.infer_emit_info", "type_summary_reaches_fn", ""),
     (
-        "v2.compiler.self_host.emitter_producer_provenance",
-        "v2_self_hosted_promotions",
+        "product.build_selection",
+        "wall_power_axis",
+        "product.build_selection",
+        "build_wall_power_axis",
         "",
     ),
     (
-        "v2.test.workflow.claim_witness_corpus_ci_runner",
-        "ClaimWitnessCorpusClaimRunRow",
+        "std.bytes",
+        "bytes_seam_host_realization_marker",
+        "std.bytes",
+        "builtin_function_registry",
+        "",
+    ),
+    (
+        "std.citation",
+        "citation_cit2_mediawiki_provider_observation_scaffold",
+        "extdeps.mediawiki",
+        "extdeps_external_authority_anchor",
+        "",
+    ),
+    (
+        "std.encoding",
+        "utf8_decode_bytes_host_realization_marker",
+        "std.bytes",
+        "builtin_function_registry",
+        "",
+    ),
+    (
+        "tools.rust_stage0_gates",
+        "unit_must_run_staged_note",
+        "tools.rust_stage0_gates",
+        "per_unit_test_selector",
         "",
     ),
 ];
 
 /// Whether a citation names one of the enumerated pre-existing targets.
-/// Whether a citation is enrolled in `roster`, at identity grain.
+/// Whether a citation is enrolled in `roster`, at SITE grain — the citing module included.
+/// See the module header for why the target alone is not an identity a roster may key on.
 ///
 /// The roster is a parameter for the reason both callers now state: an enrolled-debt roster
 /// is a fact about ONE corpus, and a predicate that reads it from module scope makes its own
 /// behaviour unauthorable by any fixture.
-fn citation_in_roster(cited: &CitedSymbol, roster: &[(&str, &str, &str)]) -> bool {
-    let field = cited.field.as_deref().unwrap_or("");
-    roster.iter().any(|(module, decl, f)| {
-        *module == cited.module_path && *decl == cited.decl_name && *f == field
-    })
+fn citation_in_roster(
+    citing_module: &str,
+    cited: &CitedSymbol,
+    roster: &[(&str, &str, &str, &str, &str)],
+) -> bool {
+    roster
+        .iter()
+        .any(|row| *row == citation_site(citing_module, cited))
+}
+
+/// A citation's SITE identity — who cites, and what is cited. Every roster row is one of
+/// these, and the first field is the whole content of this change: a row exempts the site
+/// that authored it, never the target it names.
+fn citation_site<'a>(
+    citing_module: &'a str,
+    cited: &'a CitedSymbol,
+) -> (&'a str, &'a str, &'a str, &'a str, &'a str) {
+    (
+        citing_module,
+        cited.in_declaration.as_str(),
+        cited.module_path.as_str(),
+        cited.decl_name.as_str(),
+        cited.field.as_deref().unwrap_or(""),
+    )
 }
 
 /// THE CONTRACT'S OWN REFUSAL — a roster row that no longer reproduces.
@@ -1051,22 +1935,29 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// discriminating, and the mechanism it exists to prove has quietly lost its evidence. Same
 /// trigger, opposite meaning, so they are two carriers rather than one with a flag.
 ///
-/// THIS IS A SECOND REPRESENTATION OF FOUR IDENTITIES THE DEAD LENS ALSO CARRIES, AND THE
-/// DUPLICATION IS DELIBERATE, TRANSIENT, AND HAS A NAMED TERMINUS. `v2.lens.cited_symbol_resolution`
-/// holds the same four controls as `cited_symbol_planted_controls`. Measured rather than assumed,
-/// because "it is dead" is exactly the claim shape this branch already got wrong once: of the 27
-/// symbols unique to that lens, the only references outside it are one prose row in
-/// `gunbc.roster_registry`, two prose mentions in fast witnesses (a `String` note and a `//`
-/// comment), and nine real uses in `test.claim.long.cited_symbol_resolution_witness_test` — which
-/// is a `long/` home and is declined before the fold, so it never executes. NO EXECUTING witness
-/// calls any function that lens declares. So it is dead, not competing, and §3's attractor
-/// argument does not bite.
+/// THE NAMED TERMINUS HAS FIRED, 2026-08-26, AND THIS PARAGRAPH RECORDS IT RATHER THAN STILL
+/// PREDICTING IT. What stood here said the four identities were a deliberate, transient second
+/// representation of controls `v2.lens.cited_symbol_resolution` also held, and named that lens's
+/// deletion as the terminus. This change IS that deletion, so the duplication is over: the lens
+/// is gone and these rows are the sole authority, exactly as the clause below anticipated.
 ///
-/// WHAT THIS ROSTER OWES THE CUT THAT DELETES IT: these four identities are the SURVIVING
-/// authority. The lens's deletion is a removal of the dead copy, never of the evidence — DESIGN
-/// §4b(4) keeps a discriminating control enrolled when its machinery goes, and deleting the lens
-/// while treating its controls as part of the funeral would erase the four probes that prove this
-/// wall's refusal arms are real. They live here now; that is the point of moving them.
+/// THE DEADNESS MEASUREMENT IS KEPT, because it is what licensed the cut and it held up. Of the
+/// 27 symbols unique to that lens, the only references outside it were one prose row in
+/// `gunbc.roster_registry`, two prose mentions in fast witnesses (a `String` note and a `//`
+/// comment), and nine real uses in its own `long/`-homed witness — declined before the fold, so
+/// never executing. NO EXECUTING witness called any function that lens declared. It was dead, not
+/// competing, and §3's attractor argument did not bite.
+///
+/// WHAT THE CUT OWED THIS ROSTER, AND PAID: the four identities are the SURVIVING authority. The
+/// lens's deletion removed the dead copy and none of the evidence — DESIGN §4b(4) keeps a
+/// discriminating control enrolled when its machinery goes, and treating those controls as part
+/// of the funeral would have erased the four probes that prove this wall's refusal arms are real.
+/// The seven debt rows below were RE-POINTED rather than deleted in the same change, for the same
+/// reason: their citations are deliberately false and moved with their witnesses into
+/// `test.claim.long.decl_ref_resolution_witness_test` and
+/// `test.claim.long.carrier_reference_integrity_witness_test`. A deleted row would have been a
+/// silently dropped obligation; a stale one would have refused, which is how the contract is
+/// supposed to catch exactly this.
 ///
 /// FOUND BY MEASUREMENT, AND THE PROSE THAT SHOULD HAVE SAID SO WAS FALSE. The roster's own
 /// doc comment claimed "FOUR ROWS AT THE END ARE NOT DEBT ... the deleted census's own planted
@@ -1075,20 +1966,39 @@ pub fn citation_debt_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
 /// how the claim was caught. A false statement inside the carrier built to stop false
 /// statements is the specimen this whole change exists to make impossible, and it is recorded
 /// here rather than quietly corrected.
-const PLANTED_CONTROL_CITATIONS: &[(&str, &str, &str)] = &[
-    ("synthetic.g1_planted_module_absent_control_RED", "any", ""),
-    (
-        "v2.std.node",
-        "G1_planted_declaration_absent_control_RED",
-        "",
-    ),
-    ("v2.std.node", "G1_planted_ambiguous_control_RED", ""),
-    (
-        "v2.std.node",
-        "NodeKind",
-        "G1_planted_field_absent_control_RED",
-    ),
-];
+/// EMPTY AS OF 2026-08-26, AND EMPTY IS NOT DEAD. All four rows named citations authored
+/// inside `v2.lens.cited_symbol_resolution`, and the comment above them said in terms that
+/// they "delete with the lens, not before it". This change is that deletion, so emptying the
+/// roster is the scheduled event rather than a judgement call: with the lens gone the
+/// citations are gone, and every row would report `PlantedControlNoLongerRefuses` — the
+/// inverse arm working, not a regression.
+///
+/// THE ROSTER STAYS AND THE ARM STAYS. DESIGN's reachability-read-as-occupancy row asks three
+/// questions and only the first two decide whether a guard should exist: the mechanism can
+/// still produce this state (any future control row), and it can still classify an element of
+/// this operation's denominator (every authored citation). Current occupancy is zero. Yes /
+/// yes / zero is a healthy guard being quiet, and deleting the arm because nothing lands in
+/// it today would remove a live wall while looking principled.
+///
+/// THE ARM'S OWN EVIDENCE DOES NOT LIVE IN THIS ROSTER, which is what makes emptying it
+/// cheap rather than a loss. `planted_control_findings_against` takes the roster as a
+/// parameter, and `a_planted_control_that_still_refuses_is_healthy` /
+/// `a_planted_control_that_resolves_has_lost_its_power_and_refuses` drive both directions
+/// from controlled fixtures that author their own rows. So the RED that proves this arm
+/// works stays enrolled and executing with an empty constant (§4b(4): a climb dissolves the
+/// production machinery, never the evidence).
+///
+/// WHAT REPLACED THE REFUSAL COVERAGE the four rows carried. Each named one refusal arm of
+/// the cited-symbol wall. Three of those arms already had controlled fixtures in
+/// `tests/declaration_index_integrity.rs` (`import_member_absent_is_refused_and_located`,
+/// `stale_citation_is_refused`,
+/// `citation_to_a_deleted_module_is_refused_and_a_foreign_namespace_is_not`). The FOURTH,
+/// `CitedFieldAbsent`, had none — measured, the string did not occur in that file — so
+/// `citation_to_an_absent_field_is_refused_and_a_present_field_is_not` was authored in the
+/// same change that empties this roster. A controlled fixture that authors both input and
+/// expected population is the stronger oracle anyway (§5); a planted row over the live corpus
+/// only ever asserted that one hand-authored citation still refuses.
+const PLANTED_CONTROL_CITATIONS: &[(&str, &str, &str, &str, &str)] = &[];
 
 /// A control that has STOPPED refusing has lost its discriminating power, and that is a red in
 /// its own right — the inverse of a spent debt row, and the reason these are a separate roster.
@@ -1098,33 +2008,20 @@ pub fn planted_control_findings(index: &DeclarationIndex) -> Vec<DeclarationInte
 
 pub fn planted_control_findings_against(
     index: &DeclarationIndex,
-    roster: &[(&str, &str, &str)],
+    roster: &[(&str, &str, &str, &str, &str)],
 ) -> Vec<DeclarationIntegrityFinding> {
-    let mut still_refusing: BTreeSet<(String, String, String)> = BTreeSet::new();
-    for record in index.modules.values() {
-        for cited in &record.cited {
-            if citation_resolution_refusal(index, record, cited).is_some() {
-                still_refusing.insert((
-                    cited.module_path.clone(),
-                    cited.decl_name.clone(),
-                    cited.field.clone().unwrap_or_default(),
-                ));
-            }
-        }
-    }
+    let still_refusing = refusing_sites(index);
     roster
         .iter()
-        .filter(|(module, decl, field)| {
-            !still_refusing.contains(&(module.to_string(), decl.to_string(), field.to_string()))
-        })
-        .map(|(module, decl, field)| DeclarationIntegrityFinding {
+        .filter(|row| !still_refusing.contains(&site_owned(row)))
+        .map(|(citer, in_decl, module, decl, field)| DeclarationIntegrityFinding {
             kind: DeclarationIntegrityKind::PlantedControlNoLongerRefuses,
             rel_path: "src/v1/stage0/src/declaration_index.rs".to_string(),
             offset: None,
             message: format!(
-                "PLANTED_CONTROL_CITATIONS lists `{module}` `{decl}`{} as a control that must \
-                 NOT resolve, and it no longer refuses — the control has lost its \
-                 discriminating power and the mechanism it proves is now unevidenced",
+                "PLANTED_CONTROL_CITATIONS lists `{citer}` `{in_decl}` citing `{module}` `{decl}`{} as a \
+                 control that must NOT resolve, and it no longer refuses — the control has \
+                 lost its discriminating power and the mechanism it proves is now unevidenced",
                 if field.is_empty() {
                     String::new()
                 } else {
@@ -1139,7 +2036,7 @@ pub fn planted_control_findings_against(
 ///
 /// The roster is a parameter rather than a constant read from inside, and that is what makes
 /// this arm's red authorable at the fixture boundary at all. A fixture tree contains a
-/// handful of `probe.*` modules; joined against the 38-row production roster, every row is
+/// handful of `probe.*` modules; joined against the 42-row production roster, every row is
 /// trivially absent and the arm reports 38 stale rows that say nothing about the fixture.
 /// Passing the roster lets a fixture author a ONE-ROW roster and plant both directions of the
 /// contract — a row whose citation still refuses (live, no finding) and a row whose citation
@@ -1147,7 +2044,7 @@ pub fn planted_control_findings_against(
 /// while the roster is baked in.
 pub fn citation_debt_findings_against(
     index: &DeclarationIndex,
-    roster: &[(&str, &str, &str)],
+    roster: &[(&str, &str, &str, &str, &str)],
 ) -> Vec<DeclarationIntegrityFinding> {
     citation_debt_findings_named(index, roster, "PRE_EXISTING_CITATION_DEBT")
 }
@@ -1157,34 +2054,21 @@ pub fn citation_debt_findings_against(
 /// file that does not contain the row.
 pub fn citation_debt_findings_named(
     index: &DeclarationIndex,
-    roster: &[(&str, &str, &str)],
+    roster: &[(&str, &str, &str, &str, &str)],
     roster_name: &str,
 ) -> Vec<DeclarationIntegrityFinding> {
-    let mut live: BTreeSet<(String, String, String)> = BTreeSet::new();
-    for record in index.modules.values() {
-        for cited in &record.cited {
-            if citation_resolution_refusal(index, record, cited).is_some() {
-                live.insert((
-                    cited.module_path.clone(),
-                    cited.decl_name.clone(),
-                    cited.field.clone().unwrap_or_default(),
-                ));
-            }
-        }
-    }
+    let live = refusing_sites(index);
     roster
         .iter()
-        .filter(|(module, decl, field)| {
-            !live.contains(&(module.to_string(), decl.to_string(), field.to_string()))
-        })
-        .map(|(module, decl, field)| DeclarationIntegrityFinding {
+        .filter(|row| !live.contains(&site_owned(row)))
+        .map(|(citer, in_decl, module, decl, field)| DeclarationIntegrityFinding {
             kind: DeclarationIntegrityKind::CitationDebtRowStale,
             rel_path: "src/v1/stage0/src/declaration_index.rs".to_string(),
             offset: None,
             message: format!(
-                "{roster_name} still lists `{module}` `{decl}`{} — that citation \
-                 no longer refuses, so the row is spent and must be deleted; the roster only \
-                 shrinks",
+                "{roster_name} still lists `{citer}` `{in_decl}` citing `{module}` `{decl}`{} — that \
+                 citation no longer refuses, so the row is spent and must be deleted; the \
+                 roster only shrinks",
                 if field.is_empty() {
                     String::new()
                 } else {
@@ -1240,12 +2124,12 @@ pub fn cited_symbol_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegri
 /// roster names and requires the same tree to be refused unenrolled and suppressed enrolled.
 pub fn cited_symbol_findings_against(
     index: &DeclarationIndex,
-    roster: &[(&str, &str, &str)],
+    roster: &[(&str, &str, &str, &str, &str)],
 ) -> Vec<DeclarationIntegrityFinding> {
     let mut out = Vec::new();
     for record in index.modules.values() {
         for cited in &record.cited {
-            if citation_in_roster(cited, roster) {
+            if citation_in_roster(&record.module_path, cited, roster) {
                 continue;
             }
             if let Some(finding) = citation_resolution_refusal(index, record, cited) {
@@ -1351,12 +2235,12 @@ pub fn duplicate_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityF
 /// one is answered by the modules in front of it, so the answer is meaningful over any tree.
 /// `PRE_EXISTING_CITATION_DEBT` is a fact about ONE SPECIFIC CORPUS — the repository's own —
 /// and joining it against some other tree does not produce a weaker answer, it produces an
-/// answer to a question nobody asked: a fixture tree of `probe.*` modules makes all 38 rows
+/// answer to a question nobody asked: a fixture tree of `probe.*` modules makes all 42 rows
 /// trivially absent, so the arm reports 38 spent rows that say nothing about the fixture and
 /// drown every real finding beside them.
 ///
 /// That is the failure `review 55817` found, and it was a real one: with the debt arm folded
-/// in here, every fixture in `tests/declaration_index_integrity.rs` received 38 findings it
+/// in here, every fixture in `tests/declaration_index_integrity.rs` received 42 findings it
 /// did not plant, so the planted-red and positive-control assertions could not pass and the
 /// §4b fixture-boundary evidence this change rests on did not execute. The repair is not to
 /// gate the arm on a corpus-shape signal — that would be a smuggled heuristic (§4: a
@@ -1463,5 +2347,40 @@ pub fn render_finding(
         integrity_kind_label(&finding.kind),
         located,
         finding.message
+    )
+}
+
+/// Every citation SITE in the corpus that currently refuses, as owned identities.
+///
+/// ONE SET, BOTH INVERSE ARMS. The debt arm and the planted-control arm read it in opposite
+/// directions and must read the SAME subject set — the desynchronization receipt on
+/// `corpus_findings` is what happens when two locally-correct arms disagree about one
+/// citation, and two separately-built sets are the easiest way to reintroduce it.
+fn refusing_sites(index: &DeclarationIndex) -> BTreeSet<(String, String, String, String, String)> {
+    let mut out = BTreeSet::new();
+    for record in index.modules.values() {
+        for cited in &record.cited {
+            if citation_resolution_refusal(index, record, cited).is_some() {
+                let (a, b, c, d, e) = citation_site(&record.module_path, cited);
+                out.insert((
+                    a.to_string(),
+                    b.to_string(),
+                    c.to_string(),
+                    d.to_string(),
+                    e.to_string(),
+                ));
+            }
+        }
+    }
+    out
+}
+
+fn site_owned(row: &(&str, &str, &str, &str, &str)) -> (String, String, String, String, String) {
+    (
+        row.0.to_string(),
+        row.1.to_string(),
+        row.2.to_string(),
+        row.3.to_string(),
+        row.4.to_string(),
     )
 }

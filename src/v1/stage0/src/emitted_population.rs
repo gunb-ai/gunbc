@@ -28,6 +28,7 @@
 // src/extdeps_version.rs
 // src/extdeps_version_semver.rs
 // src/gunbc_cli_dispatch_surface.rs
+// src/gunbc_namespace_reference_derived_closure_admission.rs
 // src/gunbc_rust_decl_type_overlay.rs
 // src/gunbc_stage0_crate_layout_generated.rs
 // src/gunbc_stage0_crate_partition_generated.rs
@@ -131,7 +132,9 @@
 // src/v1_rt.rs
 // src/v1_std_core.rs
 // src/v1_test_non_ascii_perf_fixture.rs
+// src/v1_tests_claim_bare_variant_reference_occurrence_control_test.rs
 // src/v1_tests_claim_checkpoint_identity_keying_witness_test.rs
+// src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs
 // src/v1_tests_claim_transport_roster_closure_witness_test.rs
 // src/wt_a.rs
 // src/wt_b.rs

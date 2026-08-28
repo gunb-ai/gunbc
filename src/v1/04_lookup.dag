@@ -3,7 +3,7 @@ module v1.compiler.infer_lookup
 import std.induction { SubValueRelation }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_projection {
-  PrimitiveProjection,
+  PrimitiveProjection, PrimitiveIdentity, primitive_identity_runtime_name,
   ProjectionFidelity, HostRealizedSeam, ModeledProjection, DivergentProjection,
   primitive_projection_row_for_declaration
 }
@@ -15,6 +15,7 @@ import v1.std.core {
   InferredNode, Resolved, TypeVariable,
   Cardinality, Required,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
+  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
   FieldAccessStyle, OptionalUnwrap,
   FieldValueShape, PlainValue, OptionalValue,
   FieldSummary,
@@ -57,7 +58,7 @@ import v1.compiler.infer_emit_info {
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, lookup_resolved_sig,
   FuncSigLookup, FuncSigResolved, FuncSigUnresolved, FuncSigAmbiguous,
-  CallableCandidate, CallableIdentity, DeclaredCallable, BuiltinCallable,
+  CallableCandidate, CallableIdentity, DeclaredCallableIdentity, DeclaredCallable, BuiltinCallable,
   parent_closure_callable_candidates, decide_callable_candidates
 }
 
@@ -126,8 +127,7 @@ fn builtin_callable_candidates(name: String) -> List<CallableCandidate> {
           is_async: false,
           output_provenance: [],
           variant_provenance: empty_map()
-        },
-        is_builtin: true
+        }
       }]
     Absent => []
   }
@@ -212,9 +212,9 @@ fn author_named_visibility(type_env: TypeEnv, name: String) -> AuthorNamedVisibi
 fn declared_candidate_rivals_the_builtin(candidate: CallableCandidate) -> Bool {
   match candidate.identity {
     BuiltinCallable { primitive_name: _ } => false
-    DeclaredCallable { owner_module_path: owner, decl_name: decl } =>
+    DeclaredCallable { identity: identity } =>
       match primitive_projection_row_for_declaration(
-        declaration: decl_ref(module_path: owner, decl_name: decl)
+        declaration: decl_ref(module_path: identity.owner_module_path, decl_name: identity.decl_name)
       ) {
         Present { value: row } =>
           match row.fidelity {
@@ -229,6 +229,54 @@ fn declared_candidate_rivals_the_builtin(candidate: CallableCandidate) -> Bool {
 
 fn builtin_is_a_rival_authority(declared: List<CallableCandidate>) -> Bool {
   declared |> any(c => declared_candidate_rivals_the_builtin(candidate: c))
+}
+
+// TARGET SELECTION, DECIDED HERE AND CONSUMED VERBATIM BY EMISSION.
+//
+// A call's target is chosen once, from the declaration resolution actually bound, and 05_emit
+// reads the answer instead of re-deriving one from the authored leaf spelling. The projection
+// roster is the authority for whether a declaration IS a primitive: HostRealizedSeam and
+// ModeledProjection both mean the declaration and the primitive are one authority, so the call
+// lowers through the v1_rt bridge; DivergentProjection means they are genuinely two, and the
+// declaration is what the author called, so it stays a source call.
+//
+// The runtime NAME comes from the roster row's primitive identity, never from the call's leaf
+// spelling. That is the whole repair: a bare `contains` resolving to a v2 declaration no longer
+// reaches the bridge merely because `contains` is also a v1_rt name.
+fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallTargetIdentity {
+  match primitive_projection_row_for_declaration(
+    declaration: decl_ref(module_path: declared.owner_module_path, decl_name: declared.decl_name)
+  ) {
+    Present { value: row } =>
+      match row.fidelity {
+        HostRealizedSeam => RuntimePrimitiveCall { primitive_name: primitive_identity_runtime_name(identity: row.primitive) }
+        ModeledProjection => RuntimePrimitiveCall { primitive_name: primitive_identity_runtime_name(identity: row.primitive) }
+        DivergentProjection { divergence: _ } =>
+          SourceDeclarationCall { owner_module_path: declared.owner_module_path, decl_name: declared.decl_name }
+      }
+    Absent => SourceDeclarationCall { owner_module_path: declared.owner_module_path, decl_name: declared.decl_name }
+  }
+}
+
+// THE UNRESOLVED ARM IS NOT A FALLBACK TO NAME MATCHING. A registered builtin is the one thing a
+// bare name may legitimately BE when no declaration answered -- `infer_builtin_call_type` is the
+// same registry the ExprCall arm already routes such calls through -- and anything else is
+// genuinely undetermined. Ambiguity is refused upstream and carries no single target, so it is
+// Undetermined here rather than a guess at which candidate emission should prefer.
+fn resolved_plain_call_target(func_name: String, sig_lookup: FuncSigLookup) -> CallTargetIdentity {
+  match sig_lookup {
+    FuncSigResolved { sig: _, declared: declared } =>
+      resolved_declaration_call_target(declared: declared)
+    FuncSigUnresolved => builtin_call_target_or_undetermined(func_name: func_name)
+    FuncSigAmbiguous { candidates: _ } => CallableTargetUndetermined
+  }
+}
+
+fn builtin_call_target_or_undetermined(func_name: String) -> CallTargetIdentity {
+  match infer_builtin_call_type(name: func_name) {
+    Present { value: _ } => RuntimePrimitiveCall { primitive_name: func_name }
+    Absent => CallableTargetUndetermined
+  }
 }
 
 // COLLECT EVERY ADMISSIBLE CANDIDATE, THEN DECIDE.
@@ -298,7 +346,8 @@ fn callable_lookup_over_candidates(
   name: String
 ) -> FuncSigLookup {
   match map_get(func_env.local, name) {
-    Present { value: sig } => FuncSigResolved { sig: sig }
+    Present { value: sig } =>
+      FuncSigResolved { sig: sig, declared: DeclaredCallableIdentity { owner_module_path: func_env.name, decl_name: name } }
     Absent =>
       let declared = parent_closure_callable_candidates(env: func_env, name: name)
       let builtin_admissible = match author_named_visibility(type_env: type_env, name: name) {
@@ -313,7 +362,7 @@ fn callable_lookup_over_candidates(
       }
       let admissible = concat(declared, builtin_admissible)
       match decide_callable_candidates(candidates: admissible) {
-        FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
+        FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
         FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
         FuncSigUnresolved =>
           if (admissible |> count) == 0 {
@@ -339,7 +388,7 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
       callable_lookup_over_candidates(func_env: func_env, type_env: type_env, name: name)
     } else {
       match lookup_resolved_sig(env: func_env, name: name) {
-        FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
+        FuncSigResolved { sig: sig, declared: declared } => FuncSigResolved { sig: sig, declared: declared }
         FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
         FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
       }
@@ -512,7 +561,7 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
     excluded: excluded
   )
   CallableCandidate {
-    identity: DeclaredCallable { owner_module_path: candidate.module_path, decl_name: name },
+    identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: candidate.module_path, decl_name: name } },
     sig: ResolvedFuncSig {
       name: name,
       params: node.params,
@@ -520,8 +569,7 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
       is_async: false,
       output_provenance: [],
       variant_provenance: empty_map()
-    },
-    is_builtin: false
+    }
   }
 }
 
@@ -558,7 +606,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
-          } }
+          }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: name } }
         } else {
           let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
           FuncSigResolved { sig: ResolvedFuncSig {
@@ -568,7 +616,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
-          } }
+          }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: name } }
         }
       }
     BorrowedCensusDeclAmbiguous { candidates: cands } =>

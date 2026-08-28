@@ -1,0 +1,177 @@
+module gunbc.plans.import_namespace_program
+
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
+
+// WHY THIS ROSTER IS SHORT. The bindings at the foot of this module are the only claims here
+// joined to a symbol the ingestion-time citation wall resolves. Everything else in this plan is
+// PROSE, and is marked as prose in the text rather than dressed as a citation. That is the
+// owning session's own instruction, and it is the right one: a long half-bound roster asserts
+// that a machine is checking claims it is not checking.
+
+fn status_block() -> MarkdownBlock {
+  quote(blocks: [
+    p(text: "**Status: ACTIVE anchor**, opened 2026-08-26. Peer plan to `v2-corpus-self-host`; the two answer different questions and neither is a section of the other. Material supplied by the owning session (snappy-dove-250) on request. Where a number is not currently re-derivable it is marked STALE AS A POPULATION rather than quoted in the present tense."),
+  ])
+}
+
+fn section_1() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. The end state"),
+    p(text: "**The import concept does not exist.** Not narrowed, not simplified — absent. Four consequences, each of which is a separate thing to build:"),
+    ul(items: [
+      li(text: "A module's dependency set is **derived** from the resolved targets of the references it actually makes. It is never declared."),
+      li(text: "Every name is spelled as the **fully qualified declaring identity** — the namespace where the declaration lives, not the namespace a reader reached it through."),
+      li(text: "`visible_through` is **provenance**, never the qualifier. It records how a name became reachable; it never participates in spelling that name."),
+      li(text: "`import` is a **parse error**. The grammar does not admit it."),
+    ]),
+    p(text: "The last of those is the one people reach for first and it is the one that lands LAST — see section 3."),
+  ]
+}
+
+fn section_2() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. Two documents, two questions — neither superseded whole"),
+    p(text: "This has been misread in both directions, so it is stated as a table. The distinction is that one document answers SEMANTICS and the other answers EXECUTION, and the execution document is superseded on exactly one axis."),
+    TableBlock {
+      header: row(cells: [cell(text: "document"), cell(text: "answers"), cell(text: "standing")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "`namespace-resolution-design.md`"), cell(text: "SEMANTICS — what resolution means"), cell(text: "Live. Operator ruling 2026-07-06. NOT superseded.")]),
+        row(cells: [cell(text: "`namespace-cut-replacement-plan.md`"), cell(text: "EXECUTION — root, census, order"), cell(text: "Live as to ROOT and CENSUS. **Superseded on ORDER** by operator ruling 2026-08-25.")]),
+      ],
+    },
+    p(text: "**Do not repair the order by editing the document.** The ordering fact has a carrier, and the carrier is the authority — the document's `SupersedesOnOrderOnly` marking exists so that a reader who finds the stale ordering sentence knows to go to the carrier instead of trusting it. Any ordering claim in this plan or downstream of it binds to `current_landing_order`, never to a document sentence."),
+  ]
+}
+
+fn section_3() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. The landing order, and why grammar is last"),
+    p(text: "Ordering per `gunbc.namespace_cut_landing_order` `current_landing_order`; the grammar-last constraint per `namespace_cut_grammar_last_ruling` (operator, 2026-08-25). These two are BOUND — the roster at the foot of this module cites them, so a rename or deletion refuses at ingestion."),
+    TableBlock {
+      header: row(cells: [cell(text: "step"), cell(text: "content"), cell(text: "state")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "0"), cell(text: "Strip measurement"), cell(text: "DONE 2026-08-15")]),
+        row(cells: [cell(text: "1"), cell(text: "Delete the import-name universe — the semantic root"), cell(text: "open")]),
+        row(cells: [cell(text: "2"), cell(text: "Host and emit machinery"), cell(text: "open")]),
+        row(cells: [cell(text: "3"), cell(text: "Repoints"), cell(text: "open, CONTESTED")]),
+        row(cells: [cell(text: "4"), cell(text: "Fix forward at class grain"), cell(text: "open")]),
+        row(cells: [cell(text: "5"), cell(text: "Grammar and parse deletion"), cell(text: "**LAST**")]),
+      ],
+    },
+    p(text: "**Why grammar-last is not a hedge.** Deleting the grammar first makes every unrepaired module unparseable at once, which converts a fix-forward program into a flag day. Deleting the semantic root first (step 1) makes every real dependent refuse LOUDLY while the source still parses — which is exactly the delete-first census DESIGN.md §3 prescribes, run at the level where the refusals are readable. The grammar deletion at the end is then a no-op over a corpus that already spells nothing that way, and its RED is that some construct still does."),
+  ]
+}
+
+fn section_4() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. Ownership — one measured, one assumed"),
+    p(text: "Stated with provenance because a wrong owner costs a wave:"),
+    ul(items: [
+      li(text: "**crisp-crab-430 owns Step 4** (fix-forward at class grain). Reported by the owning session."),
+      li(text: "**smart-wolf-868 is placed at Step 2** (host/emit machinery) — **ASSUMED, not measured.** The owning session flagged this themselves. Confirm directly with that session before any sequencing decision rests on it; do not carry it forward as fact."),
+    ]),
+    p(text: "PROSE, both — no carrier records step ownership today. That absence is itself a gap: ownership of a wave is exactly the kind of fact that goes stale in silence."),
+  ]
+}
+
+fn section_5() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. The strip measurement — what survives of it"),
+    p(text: "Receipts at `docs/plans/import-strip-measurement/`. The reconciliation was exact: stripped-hard equals control-hard plus attributable, over eleven classes."),
+    p(text: "**The corpus sha256 is the anchor, not the commit line.** A measurement of this kind is only rejoinable if the exact input can be identified, and the commit is a weaker identifier than the hash of what was measured."),
+    p(text: "**Standing: STALE AS A POPULATION — now MEASURED, not merely presumed.** The owning session re-ran the receipt's own anchor recipe (2026-08-26) and got a different corpus hash than the receipts record, on a worktree BEHIND main; since the corpus only moves forward, main differs at least as much. So the receipts describe no current tree, and this is a measurement rather than a precaution. The eleven classes are what SURVIVES; whether they are still COMPLETE is unverified, and nothing has re-run to test it — a class of breakage introduced since the measurement would not appear in the taxonomy at all. The taxonomy is usable as a partition of the work that was measured, never as a coverage claim over the work that exists now. The row counts are a photograph of one corpus at one moment and must not be quoted in the present tense — including in a PR body, a status line, or a ratchet. Anyone needing a live population re-runs the instrument against current main; anyone needing to know WHAT SHAPES OF BREAKAGE EXIST reads the taxonomy and is correctly served."),
+  ]
+}
+
+fn section_6() -> List<MarkdownBlock> {
+  [
+    h2(text: "6. Falsifiers"),
+    p(text: "Two, both supplied by the owning session, both stated so that a real answer can kill the program rather than merely delay it:"),
+    ul(items: [
+      li(text: "**(a) Spelling.** If there is a real construct whose declaring identity cannot be fully qualified, the end state in section 1 is unreachable as stated and needs an amendment, not a workaround."),
+      li(text: "**(b) Cost.** If deriving the dependency set costs more at corpus scale than declaring it, the derivation is the wrong trade and the program needs an operator decision, not a faster implementation."),
+    ]),
+    p(text: "Neither has fired. Neither has been tested. **(b) is measurable now** and nothing is measuring it — that is the cheapest open item in this plan."),
+  ]
+}
+
+fn section_7() -> List<MarkdownBlock> {
+  [
+    h2(text: "7. The sequencing relation — RULED, and carried elsewhere"),
+    p(text: "This section was an open question for the operator. It was answered on 2026-08-26, and the answer is that **the question was posed at the wrong grain**: neither program blocks the other whole, and the relation is a braid between MILESTONES rather than an order over PROGRAMS. A reader who collapses it back to a program order gets a different plan whichever direction they collapse it in."),
+    p(text: "**THE EDGES ARE NOT ENUMERATED HERE, DELIBERATELY, AND THIS TEXT IS NOT AUTHORITY FOR THEM.** Read them from `gunbc.compiler_frontend_program_interlock` `milestone_prerequisites`, which is a total function over a closed milestone variant — so a newly declared milestone fails to compile until its prerequisites are stated, rather than silently having none. This section RENDERS the relation for a human reader; it does not own it, and where the two disagree the carrier is correct and this prose is a defect. An earlier revision of this section restated both edges in full while claiming the carrier was their only home (review 56363): a symbol citation verifies that a declaration EXISTS, never that prose about it still AGREES with it, so enumerated edges beside a citation are exactly the drift a single authority is supposed to prevent."),
+    h3(text: "What this changes for THIS plan, concretely"),
+    ul(items: [
+      li(text: "**Step 1 is gated**, and on what is stated by `milestone_prerequisites` at `NamespaceFirstSemanticWave` rather than here. Read it there; it is one call."),
+      li(text: "**Section 9's disclosed CI gap is now a BLOCKER, not a disclosure.** No namespace change that can alter which modules enter a subject, or what an occurrence denotes, may merge before that wall exists."),
+      li(text: "**Preparatory work is explicitly unaffected** — measurement, port-locus, instruments, lexical de-forking that preserves the exact set, typed carriers, dry-run projections. Step 1 is not preparatory."),
+      li(text: "**The wall admits on UNADJUDICATED delta being empty, never on delta being empty.** Expected cut motion may occur; unevaluated or unexplained motion may not. A wall demanding zero delta would refuse the cut itself and would then be repaired by weakening it."),
+      li(text: "**A pre-cut census is not wasted.** When a wave changes the subject constructor or the name authority, a prior population becomes HISTORICAL rather than false. It is not erased and the ratchet baseline is not silently reset; intentional namespace-induced debt is carried by exact typed transition admissions."),
+    ]),
+  ]
+}
+
+fn section_8() -> List<MarkdownBlock> {
+  [
+    h2(text: "8. Adjacent, deliberately not a wave"),
+    p(text: "**Port-locus (gunbc#9313) is a branch, not the spine.** It is a usability dependency for steps 3 and 4 — it makes the repoint and fix-forward work tractable to author. It is recorded here so that it is not mistaken for a wave and not mistaken for optional; it is neither."),
+    h3(text: "A source not to cite"),
+    p(text: "The namespace-cut postmortem sits on an open PR (gunbc#9201). Do not cite it as a source for anything in this plan while it is unmerged — cite the carrier. An open PR is a proposal, and citing one as authority manufactures a standing it does not have."),
+  ]
+}
+
+fn section_9() -> List<MarkdownBlock> {
+  [
+    h2(text: "9. What this plan does NOT claim"),
+    ul(items: [
+      li(text: "**No CI mechanism enforces any of this** — no ratchet, no phase, no gate over the import population. **As of the 2026-08-26 ruling this is a BLOCKER rather than a disclosure**: it now gates Step 1 by name. A plan that reads as governed when it is not is worse than one that reads as unguarded, and this gap has since been given an executable consequence rather than left as candour."),
+      li(text: "**No population figure here is live.** Section 5 says why."),
+      li(text: "**Step ownership is not carried by any authority.** Section 4 says which half is assumed."),
+      li(text: "**The ordering relation to self-host is RULED and is no longer a gap** — section 7 projects `gunbc.compiler_frontend_program_interlock`. It is listed here only so a reader of an older revision does not go looking for the open question."),
+    ]),
+    p(text: "**Three live gaps and one retired question**, each named at the grain at which someone could close it. The ordering bullet above is the retired one and is kept only so a reader of an earlier revision does not go hunting for an open question that has been answered. That is the deliverable for a first anchor — not the appearance of a finished program."),
+  ]
+}
+
+// Only two claims in this plan are bound to a symbol. Both were vouched for by the owning
+// session and both were verified to resolve before this module was authored. The measurement
+// receipts, the step ownership and the port-locus item rest on no symbol and are marked as
+// prose in the text above rather than given a citation they cannot support.
+// WHAT THE INTERLOCK ROWS BELOW ARE: the cross-program precedence ruling (operator,
+// 2026-08-26), carried once in its own carrier and cited by both plans rather than
+// restated in either.
+data import_namespace_program_bindings: List<DeclarationRef> = [
+  decl_ref(module_path: "gunbc.namespace_cut_landing_order", decl_name: "current_landing_order"),
+  decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "milestone_prerequisites"),
+  decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "NamespaceChangeClass"),
+  decl_ref(module_path: "gunbc.compiler_frontend_program_interlock", decl_name: "NamespaceDeltaDisposition"),
+  decl_ref(module_path: "gunbc.namespace_cut_landing_order", decl_name: "namespace_cut_grammar_last_ruling"),
+]
+
+fn import_namespace_program_body() -> List<MarkdownBlock> {
+  concat([status_block()],
+  concat(section_1(),
+  concat(section_2(),
+  concat(section_3(),
+  concat(section_4(),
+  concat(section_5(),
+  concat(section_6(),
+  concat(section_7(),
+  concat(section_8(), section_9())))))))))
+}
+
+data import_namespace_program_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: "gunbc.plans.import_namespace_program — no markdown for this slug has ever been committed at docs/plans/import-namespace-program.md; the .dag carrier is the authority, as a295e17415 ruled for its sibling." },
+  slug: "import-namespace-program",
+  title: "Plan — the import/namespace program",
+  body: import_namespace_program_body(),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Delete this plan when the import concept does not exist: dependency sets are derived from resolved reference targets, every name is spelled as its fully qualified declaring identity, visible_through carries provenance only, and import is a parse error — at which point step 5 of current_landing_order has landed and the plan's subject no longer exists.")
+  },
+}

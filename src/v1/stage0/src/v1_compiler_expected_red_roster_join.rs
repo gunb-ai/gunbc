@@ -272,16 +272,24 @@ pub fn classify_verdict(verdict: Rc<WitnessEvalVerdict>) -> Rc<VerdictClassifica
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat("exceeded ".to_string(), kind.clone()),
-                                " budget (".to_string(),
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat("exceeded ".to_string(), kind.clone()),
+                                        " budget ".to_string(),
+                                    ),
+                                    crate::v1_compiler_emit_core_support::to_string(
+                                        budget_ms.clone(),
+                                    ),
+                                ),
+                                "ms; cost=UNMEASURED — interrupted before ".to_string(),
                             ),
-                            (elapsed_ms.clone()).to_string(),
+                            "any verdict, so the cost is above the ".to_string(),
                         ),
-                        "ms elapsed against ".to_string(),
+                        "budget with no upper bound. interrupt_point=".to_string(),
                     ),
-                    (budget_ms.clone()).to_string(),
+                    crate::v1_compiler_emit_core_support::to_string(elapsed_ms.clone()),
                 ),
-                "ms; interrupted — no subject verdict)".to_string(),
+                "ms is a property of the ceiling, not of this row".to_string(),
             ),
         }),
         WitnessEvalVerdict::BudgetExceeded {
@@ -297,16 +305,22 @@ pub fn classify_verdict(verdict: Rc<WitnessEvalVerdict>) -> Rc<VerdictClassifica
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat("passed then exceeded ".to_string(), kind.clone()),
-                                " budget (".to_string(),
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "passed then exceeded ".to_string(),
+                                        kind.clone(),
+                                    ),
+                                    " budget ".to_string(),
+                                ),
+                                crate::v1_compiler_emit_core_support::to_string(budget_ms.clone()),
                             ),
-                            (elapsed_ms.clone()).to_string(),
+                            "ms; cost=".to_string(),
                         ),
-                        "ms against ".to_string(),
+                        crate::v1_compiler_emit_core_support::to_string(elapsed_ms.clone()),
                     ),
-                    (budget_ms.clone()).to_string(),
+                    "ms EXACT — ran to completion. Stale roster ".to_string(),
                 ),
-                "ms; stale roster row — prune enrollment, cost debt is separate)".to_string(),
+                "row: prune enrollment, cost debt is separate".to_string(),
             ),
         }),
     }

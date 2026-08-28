@@ -129,9 +129,65 @@ type HardRequirements { threads: HardwareThreadCount }
 // (moved there from gunbc.fleet_container, which now consumes it too), so threads keep their own
 // cited home in HardRequirements while every other axis arrives through the one envelope authority
 // rather than growing this record an axis at a time.
+type CapacityClass
+  = ControlPlaneCapacity
+  | CustomerExecutableCapacity
+
+fn capacity_class_eq(left: CapacityClass, right: CapacityClass) -> Bool {
+  match left {
+    ControlPlaneCapacity =>
+      match right {
+        ControlPlaneCapacity => true
+        CustomerExecutableCapacity => false
+      }
+    CustomerExecutableCapacity =>
+      match right {
+        ControlPlaneCapacity => false
+        CustomerExecutableCapacity => true
+      }
+  }
+}
+
+fn capacity_class_wire(c: CapacityClass) -> NonEmptyStr {
+  match c {
+    ControlPlaneCapacity => "control-plane"
+    CustomerExecutableCapacity => "customer-executable"
+  }
+}
+
 type Shape { hard: HardRequirements, envelope: ResourceEnvelope }
 
+// THE CAPACITY CLASS, AND WHY IT IS HERE RATHER THAN ON Shape.
+//
+// Without it nothing structurally prevents CONTROL-PLANE capacity -- the cells
+// running our own scheduler, reconciliation, admission and receipt work -- from
+// satisfying customer-executable demand, or the reverse. That was a measured gap
+// (gunbc.fabric_capacity_class_gap), and the state was not merely unguarded: it
+// sat BELOW mitigatable, the invalid state simply representable and unremarked.
+//
+// TWO PLACEMENTS WERE RULED OUT AND A THIRD LOOKED RIGHT AND IS NOT. On
+// SupplierOffer alone it asks the party with the least knowledge and the most
+// incentive to say yes to make the safety assertion. Encoded in TrustDomainRef
+// it is a magic string agreed between producer and consumer. And on `Shape` --
+// which the gap carrier's own trigger text names -- it becomes the FIRST of
+// those by accident, because Shape is one type carried by BOTH
+// ExecutionRequirements and SupplierOffer, so the supplier would state its own
+// class. The rationale governs over the name: we originate the DEMAND, so the
+// fact lives on the demand's requirement carrier and nowhere a supplier can
+// author it.
+//
+// A SECOND, INDEPENDENT REASON Shape WAS WRONG: shape_material renders threads
+// and envelope and does not enumerate fields structurally, so a class added
+// there would be SILENTLY ABSENT from the material identity -- two shapes of
+// different class sharing one identity, with the collapse-guard witness varying
+// the envelope and staying green over it. A field missing from an identity
+// render is worse than an absent one, because it reads as carried.
+//
+// WHAT THIS FIELD IS NOT: it is not the executor's class. It is what THIS WORK
+// REQUIRES. What a given executor is sanctioned for is our own fleet knowledge,
+// never a supplier claim, and it is joined against this at admission.
 type ExecutionRequirements {
+  capacity_class: CapacityClass
   shape: Shape
   capabilities: CapabilityManifestRef
   trust_domain: TrustDomainRef
@@ -169,6 +225,7 @@ fn work_identity_material(contract: WorkContract, requirements: ExecutionRequire
     contract.runtime_closure, "\u{1f}",
     contract.effect_contract, "\u{1f}",
     contract.output_contract, "\u{1f}",
+    capacity_class_wire(c: requirements.capacity_class), "\u{1f}",
     requirements.capabilities, "\u{1f}",
     requirements.trust_domain, "\u{1f}",
     isolation_material(profile: requirements.isolation), "\u{1f}",

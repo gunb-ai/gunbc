@@ -16,10 +16,11 @@ import v1.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn, make_expr_node, FieldSummary,
   StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, OptionalValue,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding,
-  MatchBoundBinding, CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
+  MatchBoundBinding, CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
+  CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
-  UnlistedImportUse, AmbiguousAnonymousRecordLiteral, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
+  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded, ParameterDefaultFormNotAdmitted, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
@@ -89,6 +90,7 @@ import v1.compiler.trait_derive_emit {
   v1_generic_params_needing_clone_bound,
   v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds,
   v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
+  v1_item_wf_propagated_clone_bounded_param_names,
   v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
   v1_clone_impl_required_type_params,
   v1_trait_derive_refuse,
@@ -176,7 +178,7 @@ import v1.compiler.languages {
 }
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
-  escape_json_string, module_to_filename, make_indent,
+  escape_json_string, module_to_filename, module_filename_collision_diagnostics, make_indent,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   sanitize_service_name, capitalize_first, service_var_name, to_pascal,
   escape_string_literal_body, unique_strings, to_string, to_string_helper,
@@ -1345,8 +1347,13 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
         Present { value: carrier } => carrier
         Absent => {
           let leaf = qualified_last_segment(name: name)
-          let rendered = rust_render_type_leaf_name(name: leaf, variant_to_enum: variant_to_enum)
-          render_rust_shared_type_if_needed(type_name: leaf, rendered: rendered, shared_types: shared_types)
+          match rust_scalar_checkpoint_reference_base(dag_name: leaf, decl_file: type_reference_decl_file(n: n)) {
+            Present { value: scalar } => scalar
+            Absent => {
+              let rendered = rust_render_type_leaf_name(name: leaf, variant_to_enum: variant_to_enum)
+              render_rust_shared_type_if_needed(type_name: leaf, rendered: rendered, shared_types: shared_types)
+            }
+          }
         }
       }
     }
@@ -2525,7 +2532,93 @@ fn merged_module_source_indices(modules: List<TypedModule>) -> Map<String, Newli
   modules |> fold(init: empty_map(), f: (acc, m) => map_merge(acc, m.type_env.source_indices))
 }
 
-fn emit_rust(typed: ResolvedGraph) -> EmitResult {
+// A CONTROL OVER A PROBABILISTIC SUBJECT NEEDS A STATED SAMPLE SIZE BEFORE IT CONCLUDES ANYTHING.
+// TWO AGREEING DRAWS ARE NOT DETERMINISM. That is the durable content of this annotation, it is why
+// an earlier revision of it asserted a cause that was never established, and it generalises far past
+// this file -- so it is stated first rather than as a lesson appended to a finding.
+//
+// The receipt for it is immediately below: the same binary compiling the same unchanged corpus six
+// consecutive times produces a differing-file count of 2, 0, 1, 0, 2. A same-source control run
+// TWICE against a flip with roughly those odds agrees about half the time, and agreeing twice was
+// read as "the emitter is deterministic". It is not. The control could not have detected the very
+// thing it was controlling for, and nothing about running it was wrong except that no sample size
+// was stated before it was allowed to conclude.
+//
+// WHAT AN EARLIER REVISION CLAIMED, AND WHAT IS RETRACTED. It said that factoring this preamble --
+// moving workflow_funcs, the two diagnostic guards and test_projections after export_sets and
+// module_index -- moved emitted bytes; that "the emitter is stable given its source and NOT
+// invariant under this reordering"; and that restoring the original order restored byte-identity.
+// The first half of that sentence is FALSE: the emitter is not stable given its source. The rest is
+// UNSUPPORTED, because the mechanism measured below fully explains the observation that was
+// attributed to the reordering, and nothing run at the time distinguished them.
+//
+// THE REORDERING WAS NEVER SHOWN TO MOVE A BYTE. It was also never shown innocent, and those are
+// different claims -- holding them apart is the whole content of this retraction. So: KEEPING THE
+// ORIGINAL BINDING ORDER IS NOT JUSTIFIED BY THE SPECIMEN THAT WAS GIVEN FOR IT. The order below is
+// simply the order that was already there. This annotation is not an argument against regrouping
+// these bindings; it is a record that the question was asked and answered wrongly once, and that any
+// measurement settling it must control for a per-run flip in the two files named below rather than
+// diffing a single pair.
+//
+// WHAT IS ACTUALLY HAPPENING, measured on one binary compiling one unchanged corpus six consecutive
+// times (scoped emit of src/v2/compiler/00_compile.dag, 175 files, roots dag + src/v2):
+//   - the differing-file count VARIES BY RUN: 2, 0, 1, 0, 2 against the first run;
+//   - exactly two files ever differ, v2_lens_enforcement_vocab.rs and v2_std_cross_tree_resolution.rs;
+//   - each has EXACTLY TWO distinct outputs across the six runs;
+//   - sorted lines are IDENTICAL in every differing pair, so this is REORDERING, not value
+//     nondeterminism;
+//   - every changed line is a `pub use` line (2 of 2, and 4 of 4);
+//   - and after rustfmt both files are NORMALIZED-IDENTICAL.
+//
+// So this is the known import-set ordering class: a set or map iterated in nondeterministic order
+// inside use-line synthesis. It was characterised and closed once (#5913, which grounded the
+// variant-owner pick and the import-set ordering in the .dag authority, taking a corpus-x2 churn of
+// 36 files to 0), and measured again on the 03_ingest closure on 2026-08-22 with the same signature.
+// It was reported independently by another lane on main at 38a127bd60, naming THESE TWO FILES, with
+// no contact between the lanes.
+//
+// THE CONSEQUENCE FOR THE GATES, corrected in the direction that matters. The retracted revision
+// warned that an emitter which does not produce the same bytes twice undermines every byte-comparison
+// gate downstream, regen's fixed point included. That is true in general and FALSE OF THIS MECHANISM
+// AGAINST THAT GATE: the emitted artifact is stored as a fixed point of the formatter, so the
+// compared population is normalized, and normalization is precisely what removes pure use-statement
+// reordering -- measured above, not argued. required-regen reported first_generation_equal=true on
+// every run throughout.
+//
+// THE OPEN QUESTION IS NOT "IS THE EMITTER NONDETERMINISTIC", which is answered. It is WHY A SITE
+// GROUNDED IN JUNE IS VARYING AGAIN IN AUGUST -- whether that grounding regressed, never covered this
+// site, or a second mechanism exists. NOTHING HERE EXPLAINS THAT, and this annotation deliberately
+// offers no theory: a correct retraction must not become a second causal story. What it contributes
+// is the localisation -- two named files, pure `pub use` order, two outputs each.
+//
+// A SECOND, OLDER LESSON ALSO STANDS. The structural argument "the use-lines ARE the survived arm of
+// the same decision the census counts, so bytes cannot move unless the decision moves" is TRUE, and
+// silent about evaluation order, memoisation and interning. A valid argument with an unstated scope
+// passes review precisely because each half checks out.
+
+// THE INPUTS EVERY MODULE'S EMISSION IS COMPUTED AGAINST, built once and named once.
+//
+// This record is a pure extraction of emit_rust's own preamble and changes nothing about what it
+// contains -- it exists so that a SECOND reader of the same emission (the reference-derived census
+// below) consumes the identical inputs rather than re-deriving them from a near-copy of these
+// lines. A near-copy is the shape that drifts: the census would then be measuring an emission
+// nobody performed, which is the execution-provenance failure DESIGN records, arrived at from the
+// input side rather than the output side.
+type EmitRustContext {
+  emit_info: EmitGraphInfo
+  registry: Map<String, ItemInfo>
+  data_items: Map<String, Node>
+  workflow_funcs: List<WorkflowFunc>
+  workflow_default_diags: List<ErrorNode>
+  anonymous_record_diags: List<ErrorNode>
+  svc_module_map: Map<String, String>
+  test_projections: List<TestProjection>
+  export_sets: Map<String, Map<String, Bool>>
+  module_index: ModuleIndex
+  unlisted_type_names_by_module: Map<String, List<String>>
+}
+
+fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
   let base_info = build_emit_graph_info(modules: typed.modules)
   let ownership = build_ownership_results(modules: typed.modules)
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
@@ -2564,7 +2657,6 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     fn_type_env: base_info.fn_type_env,
     fn_return_type: none
   }
-  let shared_types = emit_info.shared_types
   let registry = merge_item_registries(
     bare: typed.item_registry,
     qualified: build_qualified_item_registry(modules: typed.modules)
@@ -2572,13 +2664,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let data_items = build_data_item_index(modules: typed.modules)
   let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry, read_only_params_index: emit_info.read_only_params_index)
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
-  if workflow_default_diags |> count > 0 {
-    return EmitResult { files: [], diagnostics: workflow_default_diags }
-  }
   let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
-  if anonymous_record_diags |> count > 0 {
-    return EmitResult { files: [], diagnostics: anonymous_record_diags }
-  }
   let svc_module_map = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
     let svc_items = tm.items |> filter(item => is_service_item(item: item))
     let mod_filename = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
@@ -2590,7 +2676,69 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let export_sets = build_module_export_sets(modules: typed.modules)
   let module_index = build_module_index(modules: typed.modules)
   let unlisted_type_names_by_module = group_unlisted_type_names(diags: typed.diagnostics)
-  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index, unlisted_type_names: match map_get(unlisted_type_names_by_module, authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)) { Present { value: v } => v  Absent => [] }))
+  EmitRustContext {
+    emit_info: emit_info,
+    registry: registry,
+    data_items: data_items,
+    workflow_funcs: workflow_funcs,
+    workflow_default_diags: workflow_default_diags,
+    anonymous_record_diags: anonymous_record_diags,
+    svc_module_map: svc_module_map,
+    test_projections: test_projections,
+    export_sets: export_sets,
+    module_index: module_index,
+    unlisted_type_names_by_module: unlisted_type_names_by_module
+  }
+}
+
+// THE CENSUS'S PRODUCER. One emission, read for its decisions instead of for its bytes: every row
+// here is a decision reference_derived_use_line_plan actually made while emitting this graph, so
+// the census cannot report a population the emitter did not decide, and the emitter cannot decide a
+// population the census does not see.
+fn emit_rust_reference_derived_rows(typed: ResolvedGraph) -> List<ReferenceDerivedCandidateRow> {
+  let ctx = build_emit_rust_context(typed: typed)
+  typed.modules |> flat_map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules).reference_rows)
+}
+
+fn emit_rust_reference_derived_census(typed: ResolvedGraph) -> ReferenceDerivedCensus {
+  reference_derived_census(rows: emit_rust_reference_derived_rows(typed: typed))
+}
+
+// THE MODULE-FILENAME COLLISION GUARD SITS BESIDE ITS PEER DIAGNOSTIC GUARDS BELOW, AND
+// DELIBERATELY NOT AHEAD OF build_emit_rust_context. The collision is decidable from `typed`
+// alone, so an earlier position would refuse sooner -- but the annotation on the preamble above
+// records a MEASURED order-dependence in this region, where independent-looking bindings move
+// emitted bytes. Reading every module's authored name before the preamble runs is exactly the
+// kind of perturbation that finding warns about, and no refusal is worth reopening it. The guard
+// therefore joins the two diagnostic guards that already sit after the context, and the
+// preamble's binding order is untouched.
+fn emit_rust(typed: ResolvedGraph) -> EmitResult {
+  let ctx = build_emit_rust_context(typed: typed)
+  let emit_info = ctx.emit_info
+  let registry = ctx.registry
+  let data_items = ctx.data_items
+  let svc_module_map = ctx.svc_module_map
+  let export_sets = ctx.export_sets
+  let module_index = ctx.module_index
+  let unlisted_type_names_by_module = ctx.unlisted_type_names_by_module
+  let shared_types = emit_info.shared_types
+  let workflow_funcs = ctx.workflow_funcs
+  let workflow_default_diags = ctx.workflow_default_diags
+  if workflow_default_diags |> count > 0 {
+    return EmitResult { files: [], diagnostics: workflow_default_diags }
+  }
+  let anonymous_record_diags = ctx.anonymous_record_diags
+  if anonymous_record_diags |> count > 0 {
+    return EmitResult { files: [], diagnostics: anonymous_record_diags }
+  }
+  let filename_collisions = module_filename_collision_diagnostics(typed: typed)
+  if filename_collisions |> count > 0 {
+    return EmitResult { files: [], diagnostics: filename_collisions }
+  }
+  let test_projections = ctx.test_projections
+  let module_emissions = typed.modules |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules))
+  let module_files = module_emissions |> map(e => e.file)
+  let import_refusals = module_emissions |> flat_map(e => e.import_refusals)
   let test_files = typed.modules
     |> map(tm => emit_test_file(
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
@@ -2626,7 +2774,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let emitted_files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
   let population_manifest = emit_emitted_population_manifest(files: emitted_files)
   let files = concat(emitted_files, [population_manifest])
-  EmitResult { files: files, diagnostics: [] }
+  EmitResult { files: files, diagnostics: import_refusals }
 }
 
 // THE EMITTER DECLARES THE POPULATION IT PRODUCED. This is the one place in the repository
@@ -2846,7 +2994,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
   let module_index = build_module_index(modules: [typed_module])
-  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index, unlisted_type_names: [])
+  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index, unlisted_type_names: []).file
 }
 
 fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<String, Bool>> {
@@ -3316,7 +3464,7 @@ fn imported_names_in_use_line(line: String) -> List<String> {
   }
 }
 
-data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_item_emit_surface_names (collect_item_type_surface_names + collect_value_emit_type_surface_names over data bodies) over each item's type_annotation, param types, inferred Resolved return/signature, AND value-position record-literal / variant-parent-enum surfaces the emitter will qualify (e.g. UriScheme::Https in a data anchor) — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. CONSTRUCTION WALL (ROOT 3, §5): a candidate that registry-resolves to a provider module MUST also pass provider_proven_exports_symbol (name_in_transitive_export_surface) before any use-line is synthesized — never a plausible guess from the bare-name registry alone (the v1_rt::member fabrication class: registry homonym without export proof). NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider AND export-proven). A candidate that registry-resolves to nothing, or resolves but fails export proof, is left unsynthesized (typed refusal at step-2 is future work); it never fabricates a use-line. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. SUPERSEDED-MECHANISM, THIS CUT (eager-deer-389): the two sentences that follow describe the corpus_repr_is_faithful / HostNative gate, which NO LONGER EXISTS -- RustCorpusRepr and both its variants are deleted and the gate is gone, so import-bearing modules are no longer split by corpus mode. They are retained as the history of WHY the walk was gated at all (the spurious-use-line and seed zero-drift hazards below are real and still constrain any future gating), not as a live description; reference_use_lines_representation_invariant_note in this module carries the post-cut statement. Read them as quarry. AS WRITTEN BEFORE THE CUT: Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen."
+data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_item_emit_surface_names (collect_item_type_surface_names + collect_value_emit_type_surface_names over data bodies) over each item's type_annotation, param types, inferred Resolved return/signature, AND value-position record-literal / variant-parent-enum surfaces the emitter will qualify (e.g. UriScheme::Https in a data anchor) — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. CONSTRUCTION WALL (ROOT 3, §5): a candidate that registry-resolves to a provider module MUST also pass provider_proven_exports_symbol (name_in_transitive_export_surface) before any use-line is synthesized — never a plausible guess from the bare-name registry alone (the v1_rt::member fabrication class: registry homonym without export proof). NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider AND export-proven). A candidate that registry-resolves to nothing, or resolves but fails export proof, is left unsynthesized, and it never fabricates a use-line. STEP 2 HAS LANDED: the reason is no longer silent. Each such candidate carries a ReferenceDerivedCandidateDisposition -- CandidateRegistryAbsent or CandidateExportProofFailed, distinct because the remedies are opposite -- and CandidateExportProofFailed emits the typed, located, counted ReferenceDerivedImportExportUnproven. THE EMISSION IS NOT REFUSED, and the distinction matters because a reader of the phrase typed refusal will otherwise expect one: the diagnostic is ADVISORY, so emission completes and produces its files beside it. Measured on the required build lane at this branch head, entry:src/v2/compiler/00_compile.dag: emitted=175 blocking=0 -- so what step 2 closed is the SILENCE, not the emission. Whether the line stops is the severity question, and v1.compiler.core reference_derived_import_refusal_severity_note owns it, including why the blocking flip was executed and then falsified by its own first run over a second closure. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. SUPERSEDED-MECHANISM, THIS CUT (eager-deer-389): the two sentences that follow describe the corpus_repr_is_faithful / HostNative gate, which NO LONGER EXISTS -- RustCorpusRepr and both its variants are deleted and the gate is gone, so import-bearing modules are no longer split by corpus mode. They are retained as the history of WHY the walk was gated at all (the spurious-use-line and seed zero-drift hazards below are real and still constrain any future gating), not as a live description; reference_use_lines_representation_invariant_note in this module carries the post-cut statement. Read them as quarry. AS WRITTEN BEFORE THE CUT: Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen."
 
 fn expand_variant_payload_struct_imports(names: List<String>, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>) -> List<String> {
   names |> flat_map(n =>
@@ -3468,7 +3616,448 @@ fn collect_item_realized_surface_names(item: Node, shared_types: Set<String>, so
   unique_strings(items: concat(from_ann, concat(from_params, from_inferred)))
 }
 
-fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
+// A coproduct's VARIANT names are declared by the module that declares the coproduct -- bound in
+// scope by the `use self::Enum::*;` line emit_module_full writes for every local coproduct, or,
+// for a grounded native alias (Optional/Diagnostics/List), rendered as the host's own constructor.
+// Either way the name is NOT an import candidate. But local_decl_names harvests exactly ONE name
+// per top-level item (the enum's own), so a bare self-reference to a local variant was never
+// in the already-filter. It then fell through to the closure-global bare-name registry, which is
+// last-write-wins across the whole corpus, and a homonym variant in another module would win the
+// row -- synthesizing a `pub use crate::other::Variant;` for a name this module already binds
+// itself (the E0255/E0252 self-collision class local_decl_names exists to close, one level down).
+// The variant set is read from the item's OWN children rather than from emit_info.type_summaries,
+// because that map is keyed by bare type name and is subject to the same homonym last-write-wins:
+// a module-local question must be answered from module-local structure.
+fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  items
+    |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
+    |> flat_map(item => item.children |> flat_map(child =>
+      let vn = authored_name_at(source_indices: source_indices, node: child)
+      if vn == "" { [] } else { [vn] }
+    ))
+}
+
+// THE DECLARED RUNG FOR THIS CLASS. It is an ANNOTATION and not a `data ... : String` row, and the
+// difference is load-bearing rather than stylistic: a rung, a trigger, a receipt and a dissolution
+// condition are exactly the facts DESIGN section 4c orders into typed carriers, and a String datum
+// carrying them is the #6262 hoisted-prose shape that section names as the measured failure -- intent
+// mechanically indistinguishable from program data. There is no typed rung carrier to route these to
+// today: DESIGN's own declared rung drops sit as prose in its Building-&-checks section, and the
+// executable claims carrier that would hold them is Stage 1 of the compiler-guarantee recovery plan
+// and is unbuilt. So this sits in the quarantine boundary section 4c provides for exactly that case,
+// where no `Accepted` program can read it -- which is the point, because it means nothing here can
+// ever be cited as machine evidence that the rung holds. It migrates to the claims carrier when that
+// carrier lands, and the migration is the dissolution rather than a rewrite.
+//
+// DECLARED RUNG, AND IT IS MITIGATABLE. The per-candidate decision below is now a four-armed
+// typed disposition and the population is COUNTED, at (module, name, disposition), by
+// reference_derived_census over the rows every Rust emit already produces. It is NOT SURFACED
+// during an ordinary build: emit_module_full carries the rows out beside the file,
+// emit_rust_reference_derived_census projects them, and no compile prints them, no gate reads
+// them and no diagnostic is raised. That is DELIBERATE AND TEMPORARY, and the reason is
+// sequencing rather than comfort. Making the value-position case loud -- withdrawing the
+// emitter's silent synthesis, or promoting the reference to a refusal beside UnlistedImportUse --
+// is a DESIGN 4b rung change that must declare a BOUNDED POPULATION, and that population is
+// exactly what this census exists to measure. Counting first is the precondition for the
+// promotion, not caution about it.
+//
+// WHAT IS STILL SILENT, stated so this row is not read as a climb it is not. A value-position
+// cross-module reference with no import produces no diagnostic of any kind: the resolver declines
+// to refuse it, the emitter synthesizes the use-line the author did not write, and the author is
+// never told. NOTHING HERE CHANGES THAT. The emitted bytes are identical by construction -- the
+// use-lines are the survived arm of the same decision the census counts, so there is no second
+// copy of the decision to drift from -- and the deficit's frequency is now observable instead of
+// zero.
+//
+// EVERY COUNT THIS CENSUS REPORTS IS A LOWER BOUND. The denominator is the candidates that REACH
+// the decision; a name already provided by an authored import, the prelude, a carrier use-line or
+// the module's own declarations is filtered before it, as is a kernel type and any name no
+// attestation admitted as a candidate at all. So registry_absent and export_proof_failed are
+// at-least counts of the references that reach emission with no use-line, never the whole of that
+// population, and the gap between the two is itself unmeasured. A consumer quoting a figure says
+// 'at least N' and names emit_rust_reference_derived_census as its producer; a transcribed number
+// with no named producer is unreachable from the thing that owns it and rots without anyone
+// touching either end.
+//
+// NO EXECUTING CONSUMER FOR THE EVIDENCE YET, AND NO PRODUCER FOR A CORPUS FIGURE EITHER. THIS IS
+// THE HONEST HALF OF THE ROW AND IT HAS TWO PARTS. FIRST, THE EVIDENCE. The discriminating probes
+// live in v1.tests.claim.reference_derived_disposition_census_witness_test -- five rows, four
+// naming the decision's four arms and one pinning the census to being a projection of retained
+// rows. Their RED is authorable at the fixture boundary and all five pass when run directly on
+// 2026-08-27. They are NOT run by CI: gunbc.ci_layer_roots records that the scoped witness batch
+// was deleted with the 2026-08-15 floor cut and that every entry under src/v1/tests/claim has no
+// executing consumer, since ordinary discovery's roots are dag plus src/v2 and could not resolve
+// an import of v1.compiler.emit_rust in any case. Direct execution is evidence the assertions
+// HOLD, never evidence that CI runs them, and conflating those two is rung inflation.
+//
+// NEXT-RUNG TRIGGERS, TWO, INDEPENDENT. (1) For the class: the value-position case joins the
+// fail-closed wall -- the resolver refusing an unlisted value use, or emitting the use-line
+// intent directly -- at which point this census, the synthesis pass it counts and this row retire
+// together. (2) For the evidence: one prepared subject spanning dag, src/v1 and src/v2, the
+// restoration gunbc.ci_layer_roots already names for the deleted batch, at which point the
+// witness above executes and that paragraph deletes.
+//
+// SECOND, AND SEPARATELY: THE CENSUS HAS NO EXECUTABLE ROUTE TO A CORPUS FIGURE, so this row
+// deliberately quotes NO number. emit_rust_reference_derived_census is the projection, but
+// reaching it needs a resolved graph, and the only .dag route to one is a nested compile that the
+// interpreter refuses -- compile_to_resolved over an authored source vector errors with
+// NoSuchField Node.ident during the nested pipeline, measured 2026-08-27 on three subjects. That
+// is why the two nested-compile instruments the corpus already has
+// (gunbc.compile_diagnostic_census, tools.multi_module_compile_fixture) both route through a host
+// builtin. A CLI or builtin surface that hands the census a graph is capability growth in a
+// frozen seed and is not taken here. THIRD NEXT-RUNG TRIGGER, therefore: a nested-compile builtin
+// returning the resolved graph -- the shape tools.multi_module_compile_fixture already has,
+// widened to carry these rows -- at which point a figure becomes producible and this paragraph is
+// replaced by the producer's name. Until then the population is COUNTABLE BY CONSTRUCTION AND
+// UNCOUNTED IN FACT, and saying otherwise would be the rung inflation this row exists to avoid.
+
+// WHY A CANDIDATE GOT A USE-LINE, OR DID NOT. The decision below was inline in
+// reference_derived_use_lines' flat_map, where every non-surviving arm returned the empty list and
+// the three reasons for returning it were indistinguishable from each other and from having asked
+// nothing. reference_derived_use_lines_note recorded the consequence in its own words, and the
+// wording quoted here is that note AS IT STOOD BEFORE THIS CHANGE -- a candidate that
+// registry-resolves to nothing, or resolves but fails export proof, is left unsynthesized, typed
+// refusal at step-2 being future work, and it never fabricates a use-line. This coproduct is that
+// future work's first half: the reason becomes a value, and a candidate that gets no use-line stops
+// being silent about which of six things happened to it. The note itself no longer says future work;
+// it was updated in this same change and now names the disposition and the diagnostic. The old
+// wording is retained HERE, marked as superseded, because it is what motivated the coproduct and a
+// reader needs the before-state to see what the arms are for -- but a quotation that silently tracked
+// the edited note would be a citation of a text that no longer exists.
+//
+// FOUR ARMS, NOT THREE, AND THE FOURTH IS THE NOT-APPLICABLE ONE. CandidateOwnModule is the name the
+// module itself provides: no import was ever owed, so nothing is missing and no rustc error follows.
+// CandidateRegistryAbsent and CandidateExportProofFailed are the opposite -- a cross-module reference
+// that reaches emission with NO use-line, which is an unqualified path in the emitted crate and E0425
+// downstream. Folding own-module in with either of them would put "nothing was owed" and "something
+// is missing" under one symbol, which is the state-space conflation DESIGN records as its
+// most-repeated failure: not-applicable rendered as malformed, opposite owners, opposite repairs.
+//
+// CandidateSurvived and CandidateExportProofFailed both carry the provider module because both are
+// facts ABOUT a provider -- one proven to export the symbol, one not -- and a census that could not
+// name the provider could not tell anyone where to look.
+// CandidateVariantDelegatedToParent is the fifth arm and it exists BECAUSE IT WAS MEASURED, not
+// because it was reasoned. The first census of the two failing arms over the regen seed closure
+// returned a population dominated by bare VARIANT names -- Absent, Cons, Eq, ExprCall, Bind -- every
+// one of them landing in CandidateRegistryAbsent, because the bare-name registry holds DECLARATIONS
+// and a variant is not one. Classifying them there answers "I could not find a provider for this"
+// where the truth is "this name never had a provider of its own", which is the
+// not-applicable-rendered-as-malformed class, and it made the registry-absent column count mostly
+// names whose binding is already correct.
+//
+// THE ARM CARRIES ITS PARENT, AND THAT IS THE WHOLE DESIGN. The tempting shape -- one arm meaning
+// "variants need no import" -- is FALSE and reproduces the very conflation this arm repairs, one
+// level down: a variant whose parent enum is declared HERE is bound by the module's own
+// `use self::E::*` and owes nothing, while a variant whose parent lives in another module needs that
+// PARENT imported. Opposite remedies. So the arm does not claim "nothing is owed"; it claims the
+// obligation is DELEGATED, and names the delegate. The parent then answers for itself as its own
+// candidate row -- filtered as CandidateOwnModule when local, judged by the registry and the export
+// wall when not -- so the two cases separate where they are decidable instead of being asserted here.
+//
+// THE PARENT MAY BE UNRESOLVABLE, AND THAT IS ITS OWN ARM RATHER THAN A COLLAPSE INTO
+// CandidateRegistryAbsent. Reaching the unresolvable case means: THIS IS KNOWN TO BE A VARIANT and
+// its parent is not established. Registry-absent says something else entirely -- that the bare-name
+// REGISTRY holds no entry -- which is a statement about a different map, reached by a different
+// route, with a different remedy, and a reader auditing it would go looking at the registry where
+// the missing fact does not live. Two states distinguishable at the point of collapse must not be
+// collapsed (found in review by clever-boar-140, who owns the coproduct).
+//
+// Checking its reachability surfaced the sharper half. derive_variant_to_enum inserts the EMPTY
+// STRING as the parent when one variant name appears in two enums -- an ambiguity sentinel -- so the
+// lookup answers Present with a parent that names nothing, and the naive arm would have produced
+// CandidateVariantDelegatedToParent { parent_enum: "" }: a delegation to no one, which is the
+// top-as-ignorance shape wearing the payload that was supposed to make this arm honest. That case is
+// REACHABLE (variant-name collision across coproducts is real enough that the compiler carries a
+// VariantCollision diagnostic for it), unlike the Absent case, which cannot occur while both this
+// predicate and the parent map derive from the same EnumRepr summaries. Both route here, because a
+// quiet guard should still say what it means rather than borrow another arm's name.
+//
+// WHAT IS NOT ESTABLISHED, stated rather than assumed: this delegation is sound only if every parent
+// named by a routed row is ITSELF a candidate. collect_value_ref_names harvests a record literal's
+// parent_enum and expand_variant_payload_struct_imports expands payload structs, but no invariant
+// says that covers every reference form. The check is mechanical and is the arm's next rung: no
+// parent_enum may appear in a routed row without appearing as a row of its own. Until that is
+// measured, a routed row is a claim about WHERE the obligation went, never that it was discharged.
+type ReferenceDerivedCandidateDisposition
+  = CandidateSurvived { provider_module: String }
+  | CandidateOwnModule
+  | CandidateVariantDelegatedToParent { parent_enum: String }
+  | CandidateVariantParentUnresolved
+  | CandidateRegistryAbsent
+  | CandidateExportProofFailed { provider_module: String }
+
+// One decided candidate, at the grain the census reports: (module, name, disposition). The module is
+// the REFERENCING module, never the provider -- the provider rides on the disposition where it is
+// known, and for CandidateRegistryAbsent there is no provider to name, which is exactly the fact
+// that arm carries.
+type ReferenceDerivedCandidateRow {
+  module_name: String
+  name: String
+  disposition: ReferenceDerivedCandidateDisposition
+}
+
+// THE ONE DECISION, WITH TWO CONSUMERS (DESIGN section 2, one concept derived twice rather than
+// modelled twice). reference_derived_use_lines takes the survivors and emits exactly the use-lines it
+// emitted before; the census takes the same rows and counts them. Byte-identity of the emitted crate
+// is therefore STRUCTURAL rather than asserted: the emitted use-lines cannot move unless this
+// function's answer moves, because there is no second copy of the decision to drift from.
+fn reference_derived_candidate_disposition(name: String, this_module_name: String, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>) -> ReferenceDerivedCandidateDisposition {
+  if is_known_variant(type_summaries: type_summaries, name: name) {
+    match map_get(variant_to_enum, name) {
+      Present { value: parent } =>
+        if parent == "" { CandidateVariantParentUnresolved }
+        else { CandidateVariantDelegatedToParent { parent_enum: parent } }
+      Absent => CandidateVariantParentUnresolved
+    }
+  } else {
+  match map_get(registry, name) {
+    Present { value: info } =>
+      if info.module_name == this_module_name {
+        CandidateOwnModule
+      } else if provider_proven_exports_symbol(name: name, provider_module: info.module_name, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+        CandidateSurvived { provider_module: info.module_name }
+      } else {
+        CandidateExportProofFailed { provider_module: info.module_name }
+      }
+    Absent => CandidateRegistryAbsent
+  }
+  }
+}
+
+// THE SURFACING HALF, AND IT SURFACES EXACTLY ONE OF THE TWO FAILING ARMS. #9439 factored this
+// decision into a typed disposition and COUNTED it; its own note records that the census "is NOT
+// SURFACED during an ordinary build". So both failing arms still vanished from the emission -- no
+// diagnostic, no location, nothing a build could report -- which is the empty-observation narrow
+// DESIGN names: the emitter answers "this name is not part of the interface" where the truth is "I
+// could not prove that it was". Downstream the emitted crate references a name it never imported and
+// rustc says E0422/E0425/E0433 far from the cause; upstream the deficit's frequency is zero by
+// construction, so the wall's own gaps never rank for repair.
+//
+// This is a THIRD projection of rows that already exist -- beside the use-lines and the census -- and
+// not a second decision. Nothing here re-derives the disposition, so the emitted crate cannot move.
+//
+// ONLY CandidateExportProofFailed BECOMES A DIAGNOSTIC, AND THAT IS A MEASUREMENT RESULT RATHER THAN
+// A DESIGN PREFERENCE. Both arms were instrumented and run over the regen seed closure (the census
+// invocation is recorded on the carrier note). Export-proof-failed returned ZERO. Registry-absent
+// returned 473 rows over 63 distinct names across 110 modules -- and that population is MIXED, which
+// an earlier revision of this comment got wrong by generalising from the head of a sorted list:
+//
+//   (a) EXTINGUISHED    Vec 88, bool 73, i64 48, BTreeSet -- no .dag declaration exists or can. The
+//                       producer is collect_item_realized_surface_names, rust_identifier_tokens over
+//                       render_rust_type, which emits target-language SPELLINGS by construction;
+//                       reference_is_host_realized_builtin misses them because it is keyed on .dag
+//                       vocabulary, so Vec and BTreeSet -- the Rust spellings of List and Set --
+//                       slip a filter built to remove exactly this.
+//   (b) OUT-OF-CLOSURE  empty_map 33, Optional 25, and Optional's VARIANTS Present 47 and Absent 13
+//                       -- REAL .dag declarations in v2.std.collection and v2.std.optional whose
+//                       providers were not selected into the measured closure. Movable, and
+//                       precisely the closure-conditioned class this change exists to surface.
+//
+// The proportion is UNMEASURED IN BOTH DIRECTIONS, and the two ways of counting point OPPOSITE ways.
+// BY ROW the immovable names dominate (88 + 73 + 50 + 48 of 473). BY DISTINCT NAME the examined
+// sample is 4 of 63 and all four are movable. High counts at the immovable head, movable names in the
+// tail with small counts -- the structure that hid the signal, and the reason a sorted head answered
+// the wrong question here twice. Fifty-nine names are unexamined. Neither figure is a proportion. Class (b) is present because the census invocation's
+// --source-root flags are NOT the regen SUBJECT: regen_input_sources is rooted at SeedV1 and
+// DagCorpus and excludes src/v2 entirely, because stage0 IS the v1 seed and a seed reaching into
+// src/v2 would depend on the successor it bootstraps toward. So registry-absent is ENTRY-RELATIVE,
+// not a fixed target, and a reader treating the count as stable has made the denominator error.
+//
+// The arm stays unwired anyway, and the reason is (a) rather than the whole population: a diagnostic
+// there would be permanently false on every class-(a) row, printed on every build in every module,
+// and that is worse than shipping nothing because IT TRAINS READERS TO IGNORE THE CHANNEL -- an
+// absent diagnostic is at least honest about its coverage. The trigger for wiring it is that class
+// (a) LEAVE the arm; the residue is then class (b), which is worth reporting.
+//
+// A PREDICTION WAS REFUTED HERE AND IT IS RECORDED BECAUSE IT WAS DECISION-RELEVANT. Registry-absent
+// was expected to overlap heavily with UnlistedImportUse -- both said to mean "referenced but never
+// imported" -- and if it did not, one of the two mechanisms was not what anyone thought. Measured on
+// the same run: 63 registry-absent names, 36 UnlistedImportUse names, INTERSECTION ZERO. The
+// mechanisms have near-disjoint vocabularies, because UnlistedImportUse names `.dag` types masked at
+// resolve time while registry-absent is dominated by Rust tokens that never passed through the
+// resolver at all. They are not two views of one population.
+//
+// NO WILDCARD ARM, DELIBERATELY. Every non-reporting disposition is enumerated, so a SIXTH arm added
+// to the coproduct fails to compile here rather than silently inheriting "produces no diagnostic".
+// That matters because the coproduct now holds three not-applicable arms against two genuine drops,
+// and a `_` would make the next drop arm silent by default -- total at the level examined, blind one
+// level down, which is the shape this whole change exists to repair.
+//
+// LOCATION GRAIN, stated rather than implied: the referencing MODULE's declaration span, because a
+// row carries (module, name, disposition) and the reference SITES are reduced to bare names by the
+// candidate walk before any disposition is assigned. Carrying the originating span on the row is the
+// named next rung.
+fn reference_derived_row_diagnostics(rows: List<ReferenceDerivedCandidateRow>, module_span: SourceSpan) -> List<ErrorNode> {
+  rows |> flat_map(r =>
+    match r.disposition {
+      CandidateExportProofFailed { provider_module: p } => [make_error_node(
+        diagnostic: ReferenceDerivedImportExportUnproven {
+          name: r.name,
+          referencing_module: r.module_name,
+          provider_module: p,
+          span: module_span
+        },
+        module_name: r.module_name
+      )]
+      CandidateSurvived { provider_module: _ } => []
+      CandidateOwnModule => []
+      CandidateVariantDelegatedToParent { parent_enum: _ } => []
+      CandidateVariantParentUnresolved => []
+      CandidateRegistryAbsent => []
+    }
+  )
+}
+
+fn reference_derived_candidate_survived(disposition: ReferenceDerivedCandidateDisposition) -> Bool {
+  match disposition {
+    CandidateSurvived { provider_module: _ } => true
+    _ => false
+  }
+}
+
+// The disposition's name as one stable token, for a census line and for a witness oracle. It is a
+// projection of the coproduct and never a second vocabulary: a new arm above that is not spelled
+// here fails to compile, because this match carries no wildcard.
+fn reference_derived_disposition_name(disposition: ReferenceDerivedCandidateDisposition) -> String {
+  match disposition {
+    CandidateSurvived { provider_module: _ } => "survived"
+    CandidateOwnModule => "own-module"
+    CandidateVariantDelegatedToParent { parent_enum: _ } => "variant-delegated-to-parent"
+    CandidateVariantParentUnresolved => "variant-parent-unresolved"
+    CandidateRegistryAbsent => "registry-absent"
+    CandidateExportProofFailed { provider_module: _ } => "export-proof-failed"
+  }
+}
+
+// WHY THIS CARRIES NO COMPLETENESS ENVELOPE, checked against the one that exists rather than assumed.
+//
+// v2.workflow.legacy_binding_observation carries the corpus's completeness envelope for observation
+// populations: a denominator DERIVED from the subject's own transport, a four-arm identity join
+// (LegacyObservationComplete / MissingExpected / ForeignObserved / RepeatedObserved), and a
+// sole_constructor admission so a downstream law cannot run over an unproven population. That shape
+// is right and this census does not fork it.
+//
+// IT DOES NOT FIT HERE YET, FOR ONE REASON: that envelope joins an observation against an INDEPENDENT
+// expected denominator, keyed on reference-occurrence ids. This census has no such denominator. Its
+// denominator is the candidates that reached the decision, produced by the same pass that decides
+// them -- which is precisely the "complete by construction" shape that module's own comment warns
+// about, and it is why the row below is stated as a LOWER BOUND and claims no completeness at all.
+// A census that made no completeness claim and then wore a completeness envelope would be worse than
+// one without: it would read as a proven population.
+//
+// SO THE HONEST POSITION IS: no completeness claim, therefore no envelope, therefore no nickname for
+// that module. WHEN THIS CENSUS GAINS AN INDEPENDENT EXPECTED DENOMINATOR -- a reference-occurrence
+// roster derived from the subject rather than from the producer -- legacy_binding_observation is
+// where the join belongs, and these dispositions travel INSIDE it as the WHY that its four arms have
+// no vocabulary for: its arms answer WHICH occurrences went unanswered, never why a candidate was
+// dropped.
+
+// THE POPULATION THIS CENSUS COUNTS IS A LOWER BOUND ON THE POPULATION IT IS ABOUT, AND THE FIELD
+// NAMES ARE NOT ALLOWED TO SUGGEST OTHERWISE. `candidates` counts the names that REACHED the
+// decision: a name is already gone by then if an authored import, the prelude, a carrier line or the
+// module's own declarations provide it, if it is a kernel type, or if no attestation admitted it as a
+// candidate at all. So registry_absent and export_proof_failed are at-least counts of the
+// value-position references that reach emission with no use-line, never the whole of that population,
+// and the gap between the two is itself unmeasured. Anyone quoting these numbers says "at least".
+type ReferenceDerivedCensus {
+  candidates: Int
+  survived: Int
+  own_module: Int
+  variant_delegated_to_parent: Int
+  variant_parent_unresolved: Int
+  registry_absent: Int
+  export_proof_failed: Int
+}
+
+// ONE FOLD THAT DISPATCHES ON THE COPRODUCT, so that adding an arm BREAKS THIS FUNCTION rather than
+// being silently uncounted. An earlier cut counted each field with its own filter over the
+// disposition's rendered NAME. That kept the arm-naming honest -- reference_derived_disposition_name
+// carries no wildcard, so a new arm fails to compile there -- and it left the COUNTERS able to
+// compile unchanged while answering for a population they no longer covered: `candidates` would have
+// exceeded the sum of the four counts, and nothing would have said so. In a change whose entire
+// subject is a population that goes uncounted in silence, that is the defect this file exists to
+// close, reintroduced one level up (review 56672).
+//
+// Counting through the match rather than beside it also makes `candidates` the SUM of the arms by
+// construction instead of a second, independently computed total that happens to agree -- so a census
+// whose parts do not add up to its whole is unrepresentable rather than merely unlikely.
+fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> ReferenceDerivedCensus {
+  rows |> fold(
+    init: ReferenceDerivedCensus { candidates: 0, survived: 0, own_module: 0, variant_delegated_to_parent: 0, variant_parent_unresolved: 0, registry_absent: 0, export_proof_failed: 0 },
+    f: (acc, r) =>
+      match r.disposition {
+        CandidateSurvived { provider_module: _ } =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived + 1,
+            own_module: acc.own_module,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent,
+            variant_parent_unresolved: acc.variant_parent_unresolved,
+            registry_absent: acc.registry_absent,
+            export_proof_failed: acc.export_proof_failed
+          }
+        CandidateOwnModule =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived,
+            own_module: acc.own_module + 1,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent,
+            variant_parent_unresolved: acc.variant_parent_unresolved,
+            registry_absent: acc.registry_absent,
+            export_proof_failed: acc.export_proof_failed
+          }
+        CandidateVariantDelegatedToParent { parent_enum: _ } =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived,
+            own_module: acc.own_module,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent + 1,
+            variant_parent_unresolved: acc.variant_parent_unresolved,
+            registry_absent: acc.registry_absent,
+            export_proof_failed: acc.export_proof_failed
+          }
+        CandidateVariantParentUnresolved =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived,
+            own_module: acc.own_module,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent,
+            variant_parent_unresolved: acc.variant_parent_unresolved + 1,
+            registry_absent: acc.registry_absent,
+            export_proof_failed: acc.export_proof_failed
+          }
+        CandidateRegistryAbsent =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived,
+            own_module: acc.own_module,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent,
+            variant_parent_unresolved: acc.variant_parent_unresolved,
+            registry_absent: acc.registry_absent + 1,
+            export_proof_failed: acc.export_proof_failed
+          }
+        CandidateExportProofFailed { provider_module: _ } =>
+          ReferenceDerivedCensus {
+            candidates: acc.candidates + 1,
+            survived: acc.survived,
+            own_module: acc.own_module,
+            variant_delegated_to_parent: acc.variant_delegated_to_parent,
+            variant_parent_unresolved: acc.variant_parent_unresolved,
+            registry_absent: acc.registry_absent,
+            export_proof_failed: acc.export_proof_failed + 1
+          }
+      }
+  )
+}
+
+// The use-lines and the decisions that produced them, returned together so that no consumer can read
+// one without the other having been computed by the same pass.
+type ReferenceDerivedUseLinePlan {
+  lines: List<String>
+  rows: List<ReferenceDerivedCandidateRow>
+}
+
+fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
       Present { value: tm } => module_authored_source_text(module: tm.module, source_indices: source_indices)
@@ -3491,28 +4080,30 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
       let nm = authored_name_at(source_indices: source_indices, node: item)
       if nm == "" { [] } else { [nm] }
     )
-    let already = concat(already_imported_names, concat(local_type_names, local_decl_names))
+    let local_variant_names = local_coproduct_variant_names(items: items, source_indices: source_indices)
+    let already = concat(already_imported_names, concat(local_type_names, concat(local_decl_names, local_variant_names)))
       |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
-    let unlisted = candidates |> flat_map(name =>
+    let rows = candidates |> flat_map(name =>
       if emit_map_has(m: already, key: name) || is_kernel_type(name: name) {
         []
       } else {
-        match map_get(registry, name) {
-          Present { value: info } =>
-            if info.module_name != this_module_name
-              && provider_proven_exports_symbol(name: name, provider_module: info.module_name, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-            { [name] } else { [] }
-          Absent => []
-        }
+        [ReferenceDerivedCandidateRow {
+          module_name: this_module_name,
+          name: name,
+          disposition: reference_derived_candidate_disposition(name: name, this_module_name: this_module_name, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
+        }]
       }
     )
+    let unlisted = rows
+      |> filter(r => reference_derived_candidate_survived(disposition: r.disposition))
+      |> map(r => r.name)
     let providers = unique_strings(items: unlisted |> flat_map(name =>
       match map_get(registry, name) {
         Present { value: info } => [info.module_name]
         Absent => []
       }
     ))
-    providers |> flat_map(provider =>
+    let lines = providers |> flat_map(provider =>
       let names = unlisted |> filter(name =>
         match map_get(registry, name) {
           Present { value: info } => info.module_name == provider
@@ -3533,10 +4124,41 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
       )
       concat(block_lines, fallback)
     )
+    ReferenceDerivedUseLinePlan { lines: lines, rows: rows }
   }
 }
 
-fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, unlisted_type_names: List<String>) -> TextFile {
+fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
+  let plan = reference_derived_use_line_plan(items: items, unlisted_type_names: unlisted_type_names, this_module_name: this_module_name, registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, shared_types: shared_types, emitted_source: emitted_source)
+  plan.lines
+}
+
+// One module's emission and the import decisions that produced it, returned together. The file is
+// what emit_rust writes; the rows are what the census counts. Nothing here changes what the file
+// contains -- reference_rows is the plan's OTHER projection of a computation the emitter already
+// performed, so a reader can no longer get the bytes without the decisions behind them existing.
+type ModuleEmission {
+  file: TextFile
+  reference_rows: List<ReferenceDerivedCandidateRow>
+  import_refusals: List<ErrorNode>
+}
+
+fn emit_module_full_with_dispositions(typed_module: TypedModule, ctx: EmitRustContext, typed_modules: List<TypedModule>) -> ModuleEmission {
+  emit_module_full(
+    typed_module: typed_module,
+    registry: ctx.registry,
+    emit_info: ctx.emit_info,
+    shared_types: ctx.emit_info.shared_types,
+    svc_module_map: ctx.svc_module_map,
+    data_items: ctx.data_items,
+    export_sets: ctx.export_sets,
+    typed_modules: typed_modules,
+    module_index: ctx.module_index,
+    unlisted_type_names: match map_get(ctx.unlisted_type_names_by_module, authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module)) { Present { value: v } => v  Absent => [] }
+  )
+}
+
+fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, unlisted_type_names: List<String>) -> ModuleEmission {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
@@ -3591,7 +4213,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     prelude_imported_names,
     concat(dag_import_lines, concat(carrier_import_lines, prelude |> split(delimiter: "\n"))) |> flat_map(l => imported_names_in_use_line(line: l))
   )
-  let reference_use_lines = reference_derived_use_lines(
+  let reference_plan = reference_derived_use_line_plan(
       items: typed_module.items,
       unlisted_type_names: unlisted_type_names,
       this_module_name: authored_name(env: scope.type_env, node: m),
@@ -3606,6 +4228,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       shared_types: shared_types,
       emitted_source: items_str
     )
+  let reference_use_lines = reference_plan.lines
   let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines)) |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
@@ -3647,7 +4270,11 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     "// Source module: ", authored_name(env: scope.type_env, node: m), "\n\n",
     module_attrs, prelude, imports_section, svc_imports_str, local_uses_str, "\n\n",
     coproduct_wire_contract_validation_section, items_str, phantom_section, "\n")
-  TextFile { path: concat(rust_source_root(), filename, rust_source_ext()), content: content }
+  ModuleEmission {
+    file: TextFile { path: concat(rust_source_root(), filename, rust_source_ext()), content: content },
+    reference_rows: reference_plan.rows,
+    import_refusals: reference_derived_row_diagnostics(rows: reference_plan.rows, module_span: m.span)
+  }
 }
 
 fn emit_import_name(n: String, registry: Map<String, ItemInfo>) -> String {
@@ -5406,6 +6033,49 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
   (names |> count) > (unique_strings(items: names) |> count)
 }
 
+// The header-bound decision, taken ONCE per item and rendered by whoever needs it. The item
+// header and its supplemental impl headers are one fact -- Rust requires an impl's generics to
+// satisfy the type's own bounds -- so `emit_item_header_clone_param_names` is the single place
+// that answers it and both surfaces read the same list. Splitting `has_fn_fields` without this
+// would have put the two out of step: the header would gain a WF bound the impl header did not,
+// which does not compile.
+fn emit_item_header_clone_param_names(
+  item: Node,
+  item_name: String,
+  has_fn_fields: Bool,
+  generic_param_names: List<String>,
+  emit_info: EmitGraphInfo,
+  source_indices: Map<String, NewlineIndex>
+) -> List<String> {
+  if has_fn_fields {
+    v1_item_wf_propagated_clone_bounded_param_names(
+      item_name: item_name,
+      item: item,
+      generic_param_names: generic_param_names,
+      bounds: emit_info.clone_bounded_type_params,
+      source_indices: source_indices
+    )
+  } else {
+    v1_item_clone_bounded_param_names(
+      item_name: item_name,
+      generic_param_names: generic_param_names,
+      bounds: emit_info.clone_bounded_type_params
+    )
+  }
+}
+
+fn emit_type_params_from_clone_param_names(
+  params: List<Node>,
+  clone_param_names: List<String>,
+  source_indices: Map<String, NewlineIndex>
+) -> String {
+  if (clone_param_names |> count) > 0 {
+    v1_emit_type_params_with_clone_bounds(params: params, clone_param_names: clone_param_names, source_indices: source_indices)
+  } else {
+    emit_type_params(params: params, source_indices: source_indices)
+  }
+}
+
 fn emit_item_type_params_with_clone_bounds(item_name: String, params: List<Node>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   let generic_param_names = params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
   let clone_param_names = v1_item_clone_bounded_param_names(
@@ -5494,26 +6164,53 @@ fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitG
 // declared type, and `PartialFunction<K, V>` is itself emitted bare, so it carries no obligation.
 // The exposing population is therefore EMPTY. That is a closed enumeration, not a spot check.
 //
-// WHY THIS IS DEFERRED, and it is NOT that evidence is unavailable: the new arm is provable by a
-// controlled fixture, and the regression risk — re-bounding the 16 derive carriers that correctly
-// stay bare — is testable against the real corpus by regenerating to a fixed point over the live
-// 17. Both are available today. The reason is §6 displaced cost: with the population empty the
-// benefit is ZERO, while the change carries nonzero regression risk against 17 live carriers and
-// consumes the one scarce slot on this file, ahead of work with a live population. It is worth
-// less than what it displaces, today — not unverifiable.
+// THE TRIGGER FIRED, AND THE SPLIT LANDED. This paragraph is rewritten rather than annotated,
+// because the deferral it recorded was priced against an EMPTY exposing population and that
+// premise is now false — leaving it standing in the present tense would tell the next reader the
+// benefit is still zero.
 //
-// NEXT-RUNG TRIGGER: the first carrier with a callable field that ALSO names a
-// well-formedness-bounded declared type (the `AmbiguousBindingCandidates` shape with a callable
-// field added — the callable field is irrelevant to why the bound is owed). The repair is the same
-// move as above: split `has_fn_fields` into the two questions it answers, so the derive half keeps
-// suppressing the header bound and the WF half is never consulted about callable fields at all.
-// EVIDENCE IT OWES, both halves: a controlled fixture for the new arm, PLUS a regen fixed point
-// over the existing 17 callable-field carriers as the regression control. A fixture alone is thin.
+// The trigger read: "the first carrier with a callable field that ALSO names a
+// well-formedness-bounded declared type". `std.interval` IntervalConstructionFold<T, R> is that
+// carrier — its field is `fn(OrderedClosedInterval<T>) -> R`, and OrderedClosedInterval<T: Clone>
+// is bounded from its own bare `low: T`. The emitted header went bare and rustc refused with
+// E0277, which is the same failure this note already records for AmbiguousBindingCandidates<N>,
+// reached through the callable field instead of through `Rc`.
+//
+// The repair is the one this note prescribed and no other: `has_fn_fields` no longer gates the
+// WELL-FORMEDNESS half. `emit_item_header_clone_param_names` takes the header decision once and
+// subtracts, for a callable-field struct, exactly the item's OWN derive-seed contribution — so the
+// derive half keeps suppressing the header bound on `Monoid<T> { identity: T }` while a bound
+// PROPAGATED from a field's declared type survives. A subtraction rather than a second fixpoint,
+// because propagation must still see every other item's seed to have anything to propagate from.
+//
+// ONE CORRECTION TO THE PRESCRIPTION, made because implementing it exposed the error: the clause
+// "the WF half is never consulted about callable fields at all" was written while the WF walk was
+// structurally blind to callables (`v1_type_expr_wf_needs_clone_param` opened on a zero-children
+// test, and a Callable node carries its components on `.params`/`.inferred`, never `.children`).
+// That blindness is what made a callable field LOOK obligation-free. It is not: an arrow realizes
+// as `Rc<dyn Fn(A) -> R>` and naming a bounded declared type at A or R is ill-formed exactly as at
+// a plain field. So the WF half must be consulted about callable fields, and
+// `v1_callable_type_expr_component_type_exprs` is what lets it see them. Suppressing the header
+// bound alone would not have been enough; neither half closes this carrier without the other.
+//
+// EVIDENCE, both halves the note demanded: a controlled fixture
+// (test.claim.clone_bound_callable_field_witness, four arms — argument position, return position,
+// a plain-field positive control, and a converse control requiring that a callable over UNBOUNDED
+// parameters still emits bare), PLUS the regen fixed point over the live callable-field carriers
+// as the regression control that the 16 derive carriers did not gain a header bound.
 fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
   if is_product {
     let has_fn_fields = type_has_fn_fields(name: item_text, emit_info: emit_info)
+    let header_clone_param_names = emit_item_header_clone_param_names(
+      item: item,
+      item_name: item_text,
+      has_fn_fields: has_fn_fields,
+      generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
+      emit_info: emit_info,
+      source_indices: env.source_indices
+    )
     let sealed = item_seals_construction(item: item)
     let deserialize_forbidden = item_forbids_deserialize(item: item, emit_info: emit_info, source_indices: env.source_indices)
     let capability_surface = v1_emit_struct_from_capability_table(
@@ -5525,19 +6222,15 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
       map_key_required: set_contains(emit_info.map_key_required_type_names, item_text),
       generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
       source_indices: env.source_indices,
-      carrier_param_needs_clone: v1_carrier_param_needs_clone_bound(
-        item_name: item_text,
-        generic_param_names: item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices)),
-        emit_info: emit_info
-      ),
+      carrier_param_needs_clone: (header_clone_param_names |> count) > 0,
       deserialize_forbidden: deserialize_forbidden,
       type_decl_items: emit_info.type_decl_items
     )
-    let type_params = if !has_fn_fields {
-      emit_item_type_params_with_clone_bounds(item_name: item_text, params: item.params, emit_info: emit_info, source_indices: env.source_indices)
-    } else {
-      emit_type_params(params: item.params, source_indices: env.source_indices)
-    }
+    let type_params = emit_type_params_from_clone_param_names(
+      params: item.params,
+      clone_param_names: header_clone_param_names,
+      source_indices: env.source_indices
+    )
     let generic_param_names = item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
     let clone_bound_refusal = emit_item_clone_bound_refusal(item: item, item_name: item_text, emit_info: emit_info, source_indices: env.source_indices)
     let struct_text = emit_struct_from_children(name: item_text, type_params: type_params, generic_param_names: generic_param_names, children: item.children, recursive_types: recursive_types, shared_types: shared_types, sealed: sealed, deserialize_forbidden: deserialize_forbidden, env: env, emit_info: emit_info)
@@ -8067,11 +8760,19 @@ fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
 // rt_function_registry, a miss stops meaning "spelled the same" and this arm
 // becomes a fabrication, so that change invalidates this argument.
 // An unknown name cannot reach either use of the result, which a reader of this
-// function alone cannot see: emit_typed_call consumes runtime_name only inside
-// `if is_rt`, and is_rt requires map_contains_key(rt_functions(), func); and
-// emit_rust_generic_method_call computes bridge_name only in the else of a guard
-// that already refuses when rt_functions() misses. Registry-vs-derivation
-// agreement is held by test.claim.rt_bridge_registry_witness_test
+// function alone cannot see. THE MECHANISM CHANGED WITH CallTargetIdentity and
+// the argument is restated rather than kept, because the old wording named the
+// two name-matching guards that no longer exist: emit_typed_call consumed
+// runtime_name only inside `if is_rt`, and is_rt was
+// map_contains_key(rt_functions(), func). It now consumes runtime_primitive_name,
+// which exists ONLY on a RuntimePrimitiveCall target -- produced by builtin
+// resolution or by a projection roster row, never by a leaf spelling -- and is
+// "" on every other arm. emit_rust_generic_method_call likewise takes
+// runtime_bridge from its caller's own method resolution rather than testing the
+// name. So the guard is stronger than it was: the name reaching this function is
+// a primitive's own identity rather than whatever the author happened to spell.
+// Registry-vs-derivation agreement is held by
+// test.claim.rt_bridge_registry_witness_test
 // rt_bridge_name_agrees_with_registry_on_every_row.
 fn rust_runtime_bridge_name(function_name: String) -> String {
   match map_get(rt_bridge_function_names(), function_name) {
@@ -8154,27 +8855,45 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
   }
 }
 
-fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) -> Bool {
-
+// ONE ROSTER ANSWERS FOR THE POSITION IT LOWERS, AND FOR NO OTHER. The predicate replaced here was
+// the union of two rosters -- rt_wraps_result (v1_rt bridge functions) and rust_method_wraps_result
+// (the simple-method templates) -- consulted at four positions, only two of which lower through the
+// roster they were asking. The wrap is not a fact about a NAME: it is a fact about the TEXT the
+// emitter just produced, because a template that ends in `.collect::<Vec<_>>()` yields a bare Vec
+// that the shared reference layer then has to lift. Asking by name lets a roster answer for a
+// position it never lowered, and then the Rc level DISAGREES ACROSS THE CALL BOUNDARY: the callee's
+// own declaration already returns the wrapped level, the caller wraps it a second time, and the
+// emitted program carries a type error no stage located. MEASURED specimen, on the 01_tokenize
+// closure: v2.std.compilers.lexing token_stream_remaining is `skip(xs: stream.all, n: stream.pos)`,
+// a PLAIN CALL to the declared v2.std.algebra skip, which emits as an ordinary declared call and
+// returns Rc<Vec<Rc<Token>>>; `skip` is also a simple-method template name, so the plain-call site
+// wrapped it again and rustc reported `expected Vector<Rc<Token>>, found Rc<Vector<Rc<Token>>>`.
+// The method roster had no template on that path -- nothing was lowered by it -- so its wrap was
+// unpaired by construction. The repair is to pair each wrap with the roster that produced the text
+// beside it, and at the plain-call position to derive the gate from the SAME predicate that chose
+// the emission form (rust_plain_call_emits_as_runtime_bridge, read by emit_typed_call for is_rt and
+// by emit_typed_call_expr for the wrap), so no second opinion about the form exists to drift.
+// RUNG (DESIGN 4b): this moves the plain-call half of the class from silent wrongness -- emitted,
+// compiled by us, refused only by rustc downstream -- to STRUCTURALLY IMPOSSIBLE for the
+// cross-roster direction specifically: after this change no method-roster row can reach a plain
+// call, because the fused predicate that carried it there does not exist. It does NOT make every
+// wrapping-level disagreement unwritable; a row misdeclaring wraps_result against its own template
+// is still writable, and that residue's next rung is the modeled layer transition
+// v2.compiler.wrap_decision wrap_decision_flow_gate names.
+fn rust_runtime_bridge_result_wraps_in_rc(function_name: String) -> Bool {
   map_contains_key(rt_wraps_result(), function_name)
-    || map_contains_key(rust_method_wraps_result(), function_name)
 }
 
-fn rust_runtime_bridge_collection_result_needs_rc_elements(function_name: String, result_type: InferredNode?) -> Bool {
-
-  false
+fn rust_method_template_result_wraps_in_rc(method_name: String) -> Bool {
+  map_contains_key(rust_method_wraps_result(), method_name)
 }
 
-fn rust_wrap_runtime_collection_result(call_str: String, function_name: String, result_type: InferredNode?) -> String {
-  if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: function_name) {
-    if rust_runtime_bridge_collection_result_needs_rc_elements(function_name: function_name, result_type: result_type) {
-      concat("Rc::new((", call_str, ").into_iter().map(Rc::new).collect::<Vec<_>>())")
-    } else {
-      rust_shared_wrap_ctor(inner_expr: call_str)
-    }
-  } else {
-    call_str
-  }
+// The emission-form predicate, read at both ends of the plain-call seam: emit_typed_call routes the
+// call through v1_rt exactly when this holds, and emit_typed_call_expr wraps its result only when
+// it holds. A function value is excluded at both ends because a value call names a binding, never a
+// bridge.
+fn rust_plain_call_emits_as_runtime_bridge(func: String, callee_is_function_value: Bool) -> Bool {
+  callee_is_function_value == false && map_contains_key(rt_functions(), func)
 }
 
 fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>, module_name: String) -> String {
@@ -8211,11 +8930,39 @@ fn call_semantics_is_function_value(cs: CallSemantics?) -> Bool {
   }
 }
 
+// THE TARGET INFERENCE CHOSE, READ RATHER THAN RE-DERIVED.
+//
+// Every seam below that used to ask `is this name in rt_functions()` is asking a question the
+// resolver already answered with the imports in hand. A function value has no callable
+// declaration to name, and a call that reached emission with no recorded semantics predates the
+// carrier -- both are Undetermined, and Undetermined refuses at the one seam that must produce
+// an identifier rather than silently reverting to name matching.
+fn call_semantics_target(cs: CallSemantics?) -> CallTargetIdentity {
+  match cs {
+    Present { value: PlainCallSemantics { target: target } } => target
+    Present { value: LookupCallSemantics { target: target } } => target
+    Present { value: FunctionValueCallSemantics } => CallableTargetUndetermined
+    Absent => CallableTargetUndetermined
+  }
+}
+
+fn call_target_runtime_primitive_name(target: CallTargetIdentity) -> String? {
+  match target {
+    RuntimePrimitiveCall { primitive_name: primitive_name } => Present { value: primitive_name }
+    SourceDeclarationCall { owner_module_path: _, decl_name: _ } => none
+    CallableTargetUndetermined => none
+  }
+}
+
+fn call_target_is_runtime_primitive(target: CallTargetIdentity) -> Bool {
+  call_target_runtime_primitive_name(target: target) != none
+}
+
 fn emit_rust_expr_call(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: expr, source_indices: scope.type_env.source_indices)
-      emit_typed_call_expr(func: f, args: expr.children, inferred: expr.inferred, callee_is_function_value: call_semantics_is_function_value(cs: cs), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+      emit_typed_call_expr(func: f, args: expr.children, inferred: expr.inferred, callee_is_function_value: call_semantics_is_function_value(cs: cs), call_target: call_semantics_target(cs: cs), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_call expected ExprCall", target: Rust)
   }
 }
@@ -8523,8 +9270,9 @@ fn emit_discriminant_call_scrutinee_lowering(arg: Node, registry: Map<String, It
   }
 }
 
-fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?, callee_is_function_value: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
-  let call_str = if func == "empty_map" {
+fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+  let target_is_runtime = call_target_is_runtime_primitive(target: call_target)
+  let call_str = if target_is_runtime && func == "empty_map" {
     match inferred {
       Present { value: Resolved { node: ret_type } } =>
         let kv_type_str = rust_empty_map_kv_type_str(map_type: ret_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
@@ -8535,17 +9283,21 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
         }
       _ => rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: empty_map return type unresolved */")
     }
-  } else if func == "empty_set" {
+  } else if target_is_runtime && func == "empty_set" {
     match inferred {
       Present { value: Resolved { node: ret_type } } =>
         emit_rust_empty_set_expr(set_type: ret_type, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
       _ => "v1_rt::rc_empty_set::<_>()"
     }
   } else {
-    emit_typed_call(func: func, args: args, callee_is_function_value: callee_is_function_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    emit_typed_call(func: func, args: args, callee_is_function_value: callee_is_function_value, call_target: call_target, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
 
-  if callee_is_function_value == false && rust_runtime_bridge_wraps_collection_result_in_rc(function_name: func) {
+  let wraps_in_rc = match call_target_runtime_primitive_name(target: call_target) {
+    Present { value: primitive_name } => rust_runtime_bridge_result_wraps_in_rc(function_name: primitive_name)
+    Absent => false
+  }
+  if callee_is_function_value == false && wraps_in_rc {
     rust_shared_wrap_ctor(inner_expr: call_str)
   } else { call_str }
 }
@@ -8677,11 +9429,18 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
   }
 }
 
-fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+// `func_ident` BELOW IS THE ONE SEAM THAT MUST PRODUCE AN IDENTIFIER, AND THEREFORE THE ONE
+// THAT REFUSES. The owner carried on a SourceDeclarationCall is exact, so no registry
+// disambiguation is needed and none is consulted: the duplicate-qualified-key marker exists
+// because a BARE leaf can name two modules, which is precisely the state a resolved owner rules
+// out. An undetermined target has no identifier to emit and gets a located refusal rather than
+// a fall back to the authored spelling, which is the re-lookup this carrier exists to remove.
+fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if callee_is_function_value {
     return emit_typed_function_value_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
-  if func == "get" {
+  let target_is_runtime = call_target_is_runtime_primitive(target: call_target)
+  if target_is_runtime && func == "get" {
     let get_args = order_typed_call_args(args: args, func: func, scope: scope)
     let get_list = get_args |> first
     let get_idx = get_args |> skip(1) |> first
@@ -8698,7 +9457,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
     }
     return get_result
   }
-  if func == "with" {
+  if target_is_runtime && func == "with" {
     let with_args = order_typed_call_args(args: args, func: func, scope: scope)
     if with_args |> count == 0 { return "compile_error!(\"with call missing base record\")" }
     let base_arg = arg_value(n: (with_args |> first).value)
@@ -8723,7 +9482,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
     if needs_rc { return rust_shared_wrap_ctor(inner_expr: raw) }
     else { return raw }
   }
-  if func == "to_string" {
+  if target_is_runtime && func == "to_string" {
     let to_string_args = order_typed_call_args(args: args, func: func, scope: scope)
     let ts_result = match to_string_args |> first {
       Present { value: value_arg } =>
@@ -8733,7 +9492,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
     return ts_result
   }
 
-  if func == "utf8_decode_bytes" {
+  if target_is_runtime && func == "utf8_decode_bytes" {
     let decode_args = order_typed_call_args(args: args, func: func, scope: scope)
     let decode_result = match decode_args |> first {
       Present { value: value_arg } =>
@@ -8746,7 +9505,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
     }
     return decode_result
   }
-  if func == "discriminant" {
+  if target_is_runtime && func == "discriminant" {
     let disc_args = order_typed_call_args(args: args, func: func, scope: scope)
     let disc_result = match disc_args |> first {
       Present { value: value_arg } =>
@@ -8756,10 +9515,18 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
     return disc_result
   }
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
-  let callee = lookup_item(registry: registry, name: qualified_last_segment(name: func))
+  let callee = match call_target {
+    SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
+      lookup_item(registry: registry, name: concat(owner, ".", decl))
+    _ => none
+  }
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-  let is_rt = callee_is_function_value == false && map_contains_key(rt_functions(), func)
-  let is_rt_ref_map = callee_is_function_value == false && map_contains_key(rt_ref_map_functions(), func)
+  let runtime_primitive_name = match call_target_runtime_primitive_name(target: call_target) {
+    Present { value: primitive_name } => primitive_name
+    Absent => ""
+  }
+  let is_rt = callee_is_function_value == false && target_is_runtime
+  let is_rt_ref_map = is_rt && map_contains_key(rt_ref_map_functions(), runtime_primitive_name)
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second
@@ -8785,14 +9552,22 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
   }
   let all_args = concat(arg_strs, extra_args)
   let args_str = all_args |> join(separator: ", ")
-  let runtime_name = rust_runtime_bridge_name(function_name: func)
+  let runtime_name = rust_runtime_bridge_name(function_name: runtime_primitive_name)
   let si = scope.type_env.source_indices
 
   let callee_self_capture = if is_rt { false } else {
     filled_args |> any(a => expr_references_var(node: arg_value(n: a), var_name: func, source_indices: si))
   }
   let func_ident = if is_rt { concat("v1_rt::", emit_ident(name: runtime_name, target: Rust)) }
-    else { emit_value_ref_ident(name: func, registry: registry, emit_info: emit_info) }
+    else { match call_target {
+      SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
+        if owner == scope.module_name { emit_ident(name: decl, target: Rust) }
+        else { concat("crate::", module_to_filename(name: owner), "::", emit_ident(name: decl, target: Rust)) }
+      CallableTargetUndetermined =>
+        emit_error_expr(message: "call target identity was not established before Rust emission", target: Rust)
+      RuntimePrimitiveCall { primitive_name: _ } =>
+        emit_error_expr(message: "runtime call target lost its bridge identity", target: Rust)
+    } }
   let func_name = if callee_self_capture { concat(func_ident, ".clone()") } else { func_ident }
   let call_str = if is_rt && func == "concat" && all_args |> count > 2 {
     emit_nested_rt_concat(remaining: all_args, acc: "", shared_types: shared_types)
@@ -9480,13 +10255,18 @@ fn emit_rust_first_method_call(receiver: Node, registry: Map<String, ItemInfo>, 
   }
 }
 
-fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List<Node>, result_type: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+// `runtime_bridge` is passed by the caller, which knows from the method resolution it just
+// performed whether this is a v1_rt bridge. It used to be re-derived here by asking whether the
+// method's NAME appears in `rt_functions()`, which is the same leaf-spelling re-lookup the call
+// path above removed: a record field holding a callable named `contains` lost to the bridge
+// roster purely on spelling.
+fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List<Node>, result_type: InferredNode?, runtime_bridge: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let function_name = method_name
-  if rust_receiver_has_callable_method_field(receiver: receiver, method_name: function_name, scope: scope) {
+  if runtime_bridge == false && rust_receiver_has_callable_method_field(receiver: receiver, method_name: function_name, scope: scope) {
     let recv_str = emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     let arg_strs = args |> map(a => emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
     concat("(", recv_str, ".", emit_ident(name: function_name, target: Rust), ")(", arg_strs |> join(separator: ", "), ")")
-  } else if map_contains_key(rt_functions(), function_name) == false {
+  } else if runtime_bridge == false {
     let spec = language_spec(target: Rust)
     apply_type_template1(template: spec.error_type_template, arg0: concat("method ", function_name, " is neither a resolved callable receiver field nor a registered v1_rt bridge function"))
   } else {
@@ -9499,7 +10279,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
   let all_strs = concat([recv_str], arg_strs)
   let bridge_name = rust_runtime_bridge_name(function_name: function_name)
   let lowered = concat("v1_rt::", emit_ident(name: bridge_name, target: Rust), "(", all_strs |> join(separator: ", "), ")")
-  if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: function_name) {
+  if rust_runtime_bridge_result_wraps_in_rc(function_name: function_name) {
     rust_shared_wrap_ctor(inner_expr: lowered)
   } else { lowered }
   }
@@ -9559,7 +10339,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
       } else if method_name == "with" {
         emit_rust_with_method_call(receiver: receiver, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else if method_name == "string_contains" {
-        emit_rust_generic_method_call(method_name: "string_contains", receiver: receiver, args: args, result_type: result_type, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+        emit_rust_generic_method_call(method_name: "string_contains", receiver: receiver, args: args, result_type: result_type, runtime_bridge: true, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
       } else if method_name == "concat" {
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
         let arg_strs = args |> map(a => emit_typed_expr(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
@@ -9578,11 +10358,11 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
           Present { value: tmpl } =>
             let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
             let raw = apply_named_template(template: tmpl, bindings: bindings)
-            if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method_name) {
+            if rust_method_template_result_wraps_in_rc(method_name: method_name) {
               rust_shared_wrap_ctor(inner_expr: raw)
             } else { raw }
           Absent =>
-            emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+            emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, runtime_bridge: true, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
         }
       }
     }
@@ -9598,7 +10378,7 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
           let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
           let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
           let raw = apply_named_template(template: tmpl, bindings: bindings)
-          if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method) {
+          if rust_method_template_result_wraps_in_rc(method_name: method) {
             rust_shared_wrap_ctor(inner_expr: raw)
           } else { raw }
         Absent =>
@@ -10125,14 +10905,13 @@ fn rust_record_field_needs_fn_rc(scope: InferScope, struct_name: String, field_n
   )
 }
 
+// The rt_functions() name guard that stood here is gone: the ONE caller now passes
+// `runtime_bridge` from the resolution that decided it, so this answers only the question it is
+// named for -- does the receiver have a callable field by this name.
 fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, scope: InferScope) -> Bool {
-  if map_contains_key(rt_functions(), method_name) {
-    false
-  } else {
-    let receiver_type = resolved_type(n: receiver)
-    let receiver_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: receiver_type)
-    rust_record_field_needs_fn_rc(scope: scope, struct_name: receiver_type_name, field_name: method_name)
-  }
+  let receiver_type = resolved_type(n: receiver)
+  let receiver_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: receiver_type)
+  rust_record_field_needs_fn_rc(scope: scope, struct_name: receiver_type_name, field_name: method_name)
 }
 
 fn rust_struct_field_type_node_variant_aware(scope: InferScope, emit_info: EmitGraphInfo, struct_name: String, field_name: String) -> Node? {
@@ -10810,7 +11589,7 @@ fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>,
   match frame.expr.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: frame.expr, source_indices: frame.scope.type_env.source_indices)
-      let call_str = emit_typed_call(func: f, args: frame.expr.children, callee_is_function_value: call_semantics_is_function_value(cs: cs), registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
+      let call_str = emit_typed_call(func: f, args: frame.expr.children, callee_is_function_value: call_semantics_is_function_value(cs: cs), call_target: call_semantics_target(cs: cs), registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       concat("break ", call_str, ";")
     _ => emit_error_expr(message: "emit_rust_tco_non_self_call expected ExprCall", target: Rust)
   }
@@ -12854,6 +13633,21 @@ fn cli_default_literal_value(expr: Node) -> String? {
   }
 }
 
+// THE CAUSE THIS MODULE ARGUES FOR FOUR TYPES DEEP IS RENDERED HERE, AND FOR A WHILE IT WAS NOT.
+// DataReferenceUnresolvableCause, DataRefAmbiguous, ConstantFoldAmbiguousDataReference and
+// ParamDefaultAmbiguousDataReference all carry the distinction faithfully, and then all three
+// terminal arms below emitted InternalError -- so an author's ambiguous data reference surfaced as
+// "the compiler has a bug", which misdirects the repair and leaves the class no identity to key on.
+//
+// EACH ARM NOW NAMES ITS OWN CLASS, AND NONE OF THE THREE IS A NEW SPELLING OF A CAUSE THAT
+// ALREADY HAD ONE. The ambiguity routes to AmbiguousReference, which v1.compiler.infer has owned
+// all along and which already renders the candidate list and the remedy -- minting a fifth
+// data-reference-flavoured ambiguity would have been the nickname DESIGN section 3 forbids. The
+// exhausted visibility walk is not an authoring error and does not become one: it says no verdict
+// is asserted about how many declarations answer to the name, which is the honest report of a walk
+// that stopped before it finished looking. The absent arm is a different question entirely -- the
+// default's FORM was never admitted -- and it carries the admitted forms as data rather than
+// baking them into a sentence.
 fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<ErrorNode> {
   workflow_funcs |> flat_map(wf =>
     wf.params |> flat_map(param =>
@@ -12872,23 +13666,21 @@ fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<
             match map_get(wf.unresolvable_default_data_references, param_name) {
               Present { value: unresolvable } =>
                 match unresolvable.cause {
-                  DataReferenceAmbiguous { modules: mods } => [make_error_node(diagnostic: InternalError { message: concat(
-                      "workflow CLI default for parameter `", param_name,
-                      "` names `", unresolvable.name,
-                      "`, which more than one visible data declaration answers to (",
-                      mods |> join(separator: ", "),
-                      "); qualify the reference or narrow the import"
-                    ), span: param.span }, module_name: wf.module_name)]
-                  DataReferenceVisibilityBudgetExhausted => [make_error_node(diagnostic: InternalError { message: concat(
-                      "workflow CLI default for parameter `", param_name,
-                      "` names `", unresolvable.name,
-                      "`, whose visible declarations could not be enumerated: the import re-export walk exceeded its depth bound, so this is a compiler limit and not an authoring error"
-                    ), span: param.span }, module_name: wf.module_name)]
+                  DataReferenceAmbiguous { modules: mods } => [make_error_node(diagnostic: AmbiguousReference {
+                      name: unresolvable.name,
+                      candidates: mods,
+                      span: param.span
+                    }, module_name: wf.module_name)]
+                  DataReferenceVisibilityBudgetExhausted => [make_error_node(diagnostic: DataReferenceVisibilityBudgetExceeded {
+                      name: unresolvable.name,
+                      span: param.span
+                    }, module_name: wf.module_name)]
                 }
-              Absent => [make_error_node(diagnostic: InternalError { message: concat(
-                  "workflow CLI default for parameter `", param_name,
-                  "` must be a string, int, float, bool literal, or data reference"
-                ), span: param.span }, module_name: wf.module_name)]
+              Absent => [make_error_node(diagnostic: ParameterDefaultFormNotAdmitted {
+                  parameter: param_name,
+                  admitted: ["string literal", "int literal", "float literal", "bool literal", "data reference"],
+                  span: param.span
+                }, module_name: wf.module_name)]
             }
           }
         Absent => []
@@ -12950,7 +13742,8 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
   let mod_uses = emit_main_mod_uses(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline, crate_name: crate_name)
   let binary_name = if has_pipeline { "gunbc" } else { crate_name }
   let cli_about = if has_pipeline { "A causal compiler: write .dag, get Rust/Python/Go." } else { "" }
-  let cli_struct = emit_cli_struct(workflow_funcs: workflow_funcs, binary_name: binary_name, about: cli_about)
+  let cli_version_attr = if has_pipeline { ", version = env!(\"GUNBC_BUILD_IDENTITY\")" } else { "" }
+  let cli_struct = emit_cli_struct(workflow_funcs: workflow_funcs, binary_name: binary_name, about: cli_about, version_attr: cli_version_attr)
   let subcommand_enum = emit_subcommand_enum(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline)
   let pipeline_fns = if has_pipeline { emit_main_pipeline_fns(crate_name: crate_name) } else { "" }
   let main_fn = emit_main_fn(workflow_funcs: workflow_funcs, has_services: has_services, has_pipeline: has_pipeline, crate_name: crate_name)
@@ -12990,11 +13783,11 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
   }
 }
 
-fn emit_cli_struct(workflow_funcs: List<WorkflowFunc>, binary_name: String, about: String) -> String {
+fn emit_cli_struct(workflow_funcs: List<WorkflowFunc>, binary_name: String, about: String, version_attr: String) -> String {
   let about_attr = if about != "" { concat(", about = \"", about, "\"") } else { "" }
   concat(
     "#[derive(Parser)]\n",
-    "#[command(name = \"", binary_name, "\"", about_attr, ")]\n",
+    "#[command(name = \"", binary_name, "\"", about_attr, version_attr, ")]\n",
     "struct Cli {\n",
     "    #[command(subcommand)]\n",
     "    command: Commands,\n",

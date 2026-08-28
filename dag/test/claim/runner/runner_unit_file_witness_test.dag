@@ -1,0 +1,199 @@
+module test.claim.runner_unit_file_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression, UbuntuLatest }
+import extdeps.systemd.unit_file { ExitTypeMain, KillModeProcess }
+import gunbc.runner_unit {
+  RunnerUnitLifecycleIntent,
+  gunbc_runner_lifecycle_intent,
+  gunbc_runner_listener_is_main_process,
+  lifecycle_intent_cannot_orphan,
+}
+import gunbc.runner_host_deploy { srv1_runner_host_deploy }
+import gunbc.host_converge { gunbc_runner_jobserver_default_fifo }
+import gunbc.runner_unit_file {
+  RunnerUnitFileRendered,
+  RunnerUnitFileRefused,
+  RunnerUnitText,
+  RunnerUnitTextRefused,
+  runner_unit_file,
+  gunbc_runner_unit_file,
+  runner_unit_text,
+  runner_unit_system_path,
+}
+
+// Every claim here is a function of declared substrate rows -- a render and its serialization -- so
+// nothing reads the live tree and the floor routes rather than declines it.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The label set is the one gunbc.ci_deploy_target_host derives for srv1 -- self-hosted, the kernel,
+// the architecture, then the host pin. It is written out here rather than imported so that a change
+// to the derivation shows up as a failure here instead of being absorbed by both sides moving
+// together, which is the tree-copied-oracle failure DESIGN section 5 forbids.
+fn srv1_spec() -> RunnerSpec {
+  SelfHosted { labels: ["self-hosted", "linux", "arm64", "srv1"] }
+}
+
+fn rendered_text(intent: RunnerUnitLifecycleIntent) -> String {
+  match runner_unit_text(
+    rendering: runner_unit_file(
+      deploy: srv1_runner_host_deploy,
+      spec: srv1_spec(),
+      jobserver_fifo: gunbc_runner_jobserver_default_fifo,
+      intent: intent,
+    ),
+  ) {
+    RunnerUnitText { text: t } => t
+    RunnerUnitTextRefused { reason: _ } => ""
+  }
+}
+
+// THE AS-INSTALLED TEARDOWN, WHICH IS WHAT srv1 CARRIES TODAY. `KillMode=process` is live and there
+// is no `ExitType=` at all, which is systemd's `main` default -- so this is the fleet's current pair
+// written as the model represents it, and it is the RED this witness needs in order to be a check
+// rather than a decoration.
+fn as_installed_intent() -> RunnerUnitLifecycleIntent {
+  RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeProcess }
+}
+
+// ── The teardown fix, and the control that shows the check can fail ─────────────────────────────
+
+test fn the_rendered_unit_carries_the_declared_teardown_pair() -> Bool {
+  let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
+  string_contains(s: text, pattern: "\nExitType=cgroup\n")
+    && string_contains(s: text, pattern: "\nKillMode=control-group\n")
+}
+
+test fn the_as_installed_teardown_renders_differently_and_cannot_be_mistaken_for_the_fix() -> Bool {
+  let live = rendered_text(intent: as_installed_intent())
+  string_contains(s: live, pattern: "\nKillMode=process\n")
+    && !string_contains(s: live, pattern: "control-group")
+    && live != rendered_text(intent: gunbc_runner_lifecycle_intent)
+}
+
+// The property the unit exists to hold, joined to the render rather than asserted beside it: the
+// intent this module renders satisfies it on this fleet, and the pair the fleet currently runs does
+// not. Both arms are needed -- without the second, an intent that guaranteed nothing would pass.
+test fn the_rendered_intent_is_the_one_that_cannot_orphan() -> Bool {
+  lifecycle_intent_cannot_orphan(
+    intent: gunbc_runner_lifecycle_intent,
+    listener_is_main_process: gunbc_runner_listener_is_main_process,
+  )
+    && !lifecycle_intent_cannot_orphan(
+      intent: as_installed_intent(),
+      listener_is_main_process: gunbc_runner_listener_is_main_process,
+    )
+}
+
+// ── The behaviors a first-principles redesign could have silently dropped ───────────────────────
+
+// The ordering dependency was found ABSENT from the live srv1 unit, so this is not a directive
+// asserted for completeness: it is the one whose absence makes a runner's first cargo invocation
+// fail against a FIFO nobody is serving.
+test fn the_jobserver_ordering_dependency_survives_the_redesign() -> Bool {
+  let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
+  string_contains(s: text, pattern: "\nAfter=ctrl-jobserver.service\n")
+    && string_contains(s: text, pattern: "\nWants=ctrl-jobserver.service\n")
+    && string_contains(s: text, pattern: "\nAfter=network-online.target\n")
+}
+
+// An ephemeral runner exits after every job; systemd's default start rate limiter would leave a busy
+// slot FAILED. Dropping this line would look like tidying and would stop the fleet under load.
+test fn the_start_rate_limiter_is_disabled_for_a_restart_per_job_unit() -> Bool {
+  string_contains(s: rendered_text(intent: gunbc_runner_lifecycle_intent), pattern: "\nStartLimitIntervalSec=0\n")
+}
+
+// Both jobserver lines are derived from one path, so they cannot name different FIFOs -- the
+// silent-misconfig boundary ctrl's own template warned about, made unwritable rather than warned
+// about again.
+test fn both_jobserver_lines_name_the_same_fifo() -> Bool {
+  let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
+  string_contains(s: text, pattern: "\nEnvironment=CTRL_JOBSERVER_FIFO=/var/lib/ctrl/jobserver/host.fifo\n")
+    && string_contains(s: text, pattern: "\nEnvironment=MAKEFLAGS=--jobserver-auth=fifo:/var/lib/ctrl/jobserver/host.fifo\n")
+}
+
+// THE per-slot TASK CEILING IS NOT HERE, AND ITS ABSENCE IS THE CLAIM. gunbc.host_converge converges
+// it as a drop-in and reads it back; a copy in the unit would be the silent loser of a disagreement,
+// because a drop-in wins. An author restoring it out of caution would be reopening that fork, so the
+// absence is pinned.
+test fn the_unit_does_not_restate_the_converged_task_ceiling() -> Bool {
+  !string_contains(s: rendered_text(intent: gunbc_runner_lifecycle_intent), pattern: "TasksMax")
+}
+
+// ── Identity, registration and placement ────────────────────────────────────────────────────────
+
+test fn the_advertised_labels_are_the_selector_workflows_pin_against() -> Bool {
+  string_contains(
+    s: rendered_text(intent: gunbc_runner_lifecycle_intent),
+    pattern: "\nEnvironment='LABELS_JSON=[\"self-hosted\", \"linux\", \"arm64\", \"srv1\"]'\n",
+  )
+}
+
+test fn the_app_identity_reaches_the_wrapper_from_its_own_authority() -> Bool {
+  let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
+  string_contains(s: text, pattern: "\nEnvironment=APP_ID=2653532\n")
+    && string_contains(s: text, pattern: "\nEnvironment=INSTALLATION_ID=104134109\n")
+    && string_contains(s: text, pattern: "\nEnvironment=ORG=gunb-ai\n")
+    && string_contains(s: text, pattern: "\nEnvironment=PEM=/etc/actions-runner/app.pem\n")
+}
+
+// The instance specifier is systemd's, and every per-slot path in the unit is a template rather than
+// a fixed slot -- a unit that named one slot would install one runner on a host that carries twenty.
+test fn every_per_slot_path_is_written_as_a_template_instance() -> Bool {
+  let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
+  string_contains(s: text, pattern: "\nWorkingDirectory=/opt/actions-runner/%i\n")
+    && string_contains(s: text, pattern: "\nEnvironment=RUNNER_DIR=/opt/actions-runner/%i\n")
+    && string_contains(s: text, pattern: "\nEnvironment=RUNNER_NAME_PREFIX=%i\n")
+    && string_contains(s: text, pattern: "Description=Ephemeral GitHub Actions Runner (%i)\n")
+}
+
+test fn the_unit_is_installed_where_the_drop_in_directory_hangs_off() -> Bool {
+  runner_unit_system_path == "/etc/systemd/system/actions-runner@.service"
+}
+
+// THE DE-PRIVILEGE INVARIANT, ASSERTED AGAINST THE BASE UNIT ALONE -- WHICH IS THE ARM THAT CAN
+// ACTUALLY FAIL DANGEROUSLY.
+//
+// The de-privilege drop-in this fleet carries overrides User= to root and hands the job to an
+// unprivileged user through the wrapper's setpriv, and a drop-in merges OVER the unit. Two renders
+// would satisfy the MERGED result and only one is safe, so a witness that checked the merged file
+// would pass on a base unit that itself says root.
+//
+// So both halves are asserted here about the base unit and nothing else. It names the runner user,
+// and it does NOT name root. The second conjunct is the load-bearing one: the failure it forecloses
+// happens by OMISSION rather than by edit -- a host whose drop-in is missing, removed, or not yet
+// installed falls back to whatever the base unit says, and a base unit saying root would run
+// untrusted approved-fork-PR code as root with read on the GitHub App private key. Rendering root
+// here would also defeat the reversibility that made de-privilege a drop-in in the first place.
+test fn the_base_unit_leaves_the_privilege_drop_to_its_drop_in() -> Bool {
+  let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
+  string_contains(s: text, pattern: "\nUser=briansrls\n")
+    && !string_contains(s: text, pattern: "\nUser=root\n")
+}
+
+// ── The two refusals, which are separate facts with separate remedies ───────────────────────────
+
+fn refusal_reason(spec: RunnerSpec) -> String {
+  match gunbc_runner_unit_file(
+    deploy: srv1_runner_host_deploy,
+    spec: spec,
+    jobserver_fifo: gunbc_runner_jobserver_default_fifo,
+  ) {
+    RunnerUnitFileRefused { reason: r } => r as String
+    RunnerUnitFileRendered { file: _ } => ""
+  }
+}
+
+test fn a_hosted_runner_spec_refuses_rather_than_rendering_an_empty_label_set() -> Bool {
+  let reason = refusal_reason(spec: HostedRunner { label: UbuntuLatest })
+  string_contains(s: reason, pattern: "GitHub-hosted")
+    && string_contains(s: reason, pattern: "wrong host")
+}
+
+test fn an_unresolved_runs_on_expression_refuses_as_unknown_not_as_absent() -> Bool {
+  let reason = refusal_reason(spec: RunsOnExpression { expression: "${{ matrix.runner }}" })
+  string_contains(s: reason, pattern: "unknown rather than empty")
+    && string_contains(s: reason, pattern: "matrix.runner")
+    && reason != refusal_reason(spec: HostedRunner { label: UbuntuLatest })
+}

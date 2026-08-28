@@ -1,12 +1,13 @@
 module v2.test.emit.semantic_decl_routing
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.rust { rust_target_model }
 import extdeps.languages.rust.emit { rust_enum_derives_copy, rust_struct_derives }
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -22,7 +23,7 @@ data semantic_record_golden: String = concat(rust_struct_derives, "\nstruct Occu
 data semantic_record_wrong_golden: String = concat(rust_struct_derives, "\nstruct OccurrenceIdAllocator { next_id: Bool }")
 
 fn sdr_empty_conj() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
 fn sdr_variant_edge(name: Symbol) -> Edge {
@@ -33,7 +34,7 @@ fn semantic_bool_coproduct() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [ sdr_variant_edge(name: ^True), sdr_variant_edge(name: ^False) ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -57,7 +58,7 @@ fn semantic_bool_matches(golden: String) -> Bool {
 }
 
 fn sdr_atom_type(name: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
 fn sdr_field_edge(name: Symbol, type_name: Symbol) -> Edge {
@@ -68,7 +69,7 @@ fn semantic_record_type() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [ sdr_field_edge(name: ^next_id, type_name: ^Int) ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -105,7 +106,7 @@ fn semantic_arrow_type() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [ Edge { label: Positional, target: sdr_atom_type(name: ^Int) } ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

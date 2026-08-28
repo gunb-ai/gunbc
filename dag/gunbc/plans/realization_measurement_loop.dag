@@ -1,7 +1,7 @@
 module gunbc.plans.realization_measurement_loop
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone, ThematicBreak }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote, hr }
 
@@ -116,7 +116,7 @@ fn realization_measurement_loop_body() -> List<MarkdownBlock> {
     ]),
     hr(),
     h2(text: "Phase 3 — Infra / deployment onto `.dag` (srv1 / srv2)  ·  the second ask"),
-    p(text: "**Goal:** model the actual infra/deployment — runner config, access, host config — as **data**, dissolving bespoke `ci.yml` shell + manual runner setup. **\"Get CI onto `.dag`\" = instantiate the fabric for srv1/srv2:** `gunbc.ci_fleet` `ComputeOffer` models self-hosted offers; `gunbc.fleet_intent` `ContainerRuntime` enumerates cloud realizations. This meets note 1 at the placement carrier — the offer the runner *declares* is the budget Phase 1's scheduler *consumes*."),
+    p(text: "**Goal:** model the actual infra/deployment — runner config, access, host config — as **data**, dissolving bespoke `ci.yml` shell + manual runner setup. **\"Get CI onto `.dag`\" = instantiate the fabric for srv1/srv2:** `gunbc.ci_fleet` `ComputeOffer` models self-hosted offers; `extdeps.container.engine` models the container engine a surface deploys, and cloud suppliers are their own authorities (`extdeps.cloud.ubicloud`, `product.supplier`). This meets note 1 at the placement carrier — the offer the runner *declares* is the budget Phase 1's scheduler *consumes*."),
     p(text: "**§3 boundary — THREE tiers, not two (refined after the #5177 review).** The operator's rule: keep the *generic* \"CI runner\" cleanly apart from *our* CI runner; CI does not need to know our fleet. So:"),
     ul(items: [
       li(text: "**3a-generic — \"CI runner\" in the abstract (any project).** What we expect *any* CI runner to do, project-agnostic: **a workflow triggered by an event** (`trigger → workflow`), realized per platform. The GHA realization already exists — `extdeps.github.actions` `Workflow`, `WorkflowTrigger`, and `RunnerSpec`. The **generic `offer → RunnerSpec` projection** (`gunbc.runner_spec_from_offer` `runner_spec_from_offer`, kernel/arch → labels) belongs HERE, next to `RunnerSpec` in the generalized layer — it works for *any* fleet offer. **This tier MUST NOT import a concrete SKU (`extdeps.cpu.ampere`) or name srv1/srv2.** (GitLab/Buildkite/etc. would be sibling platform handlers — one generic interface, N realizations, §2/§4.)"),
@@ -180,6 +180,7 @@ fn realization_measurement_loop_body() -> List<MarkdownBlock> {
 }
 
 data realization_measurement_loop_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "realization-measurement-loop",
   title: "Plan — Realization & Measurement: closing the cost → schedule loop (+ infra onto `.dag`)",
   body: realization_measurement_loop_body(),

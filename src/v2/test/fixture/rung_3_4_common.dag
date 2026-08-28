@@ -13,7 +13,7 @@ fn rung34_algebra_evidence_node() -> Node {
         target: claim_atom_node(s: ^rung34_inferred_algebra_symbol)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -52,7 +52,7 @@ fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
         target: fixture_subject
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

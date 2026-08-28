@@ -1,7 +1,8 @@
 module extdeps.systemd.loginctl
 
 import std.types { NonEmptyStr, String, List }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.systemd { systemd_binary_path }
 
@@ -14,6 +15,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "www.freedesktop.org/software/systemd/man/latest/loginctl.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systemd.loginctl",
+      decl_name: "loginctl_binary_name",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data loginctl_authority: ExternalAuthority = extdeps_external_authority_anchor

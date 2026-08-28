@@ -4,7 +4,7 @@ fn int_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^fixture_int_atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 fn int_source_grounding_fixture() -> CanonicalGrounding {

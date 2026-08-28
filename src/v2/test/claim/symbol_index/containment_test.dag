@@ -9,7 +9,7 @@ fn si_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   )
@@ -34,7 +34,7 @@ fn si_module_root(
       ],
       exports
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -52,12 +52,12 @@ fn si_type_with_variants(type_sym: Symbol, variants: List<Symbol>) -> Edge {
             target: Node {
               kind: TypeNode { connective: Atom { identity: variant_sym } },
               children: [],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: OccurrenceSynthetic
             }
           }
         ])
       }),
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   }
 }
@@ -276,13 +276,13 @@ data si_shadow_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string
 data si_shadow_outer_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ShadowDup } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data si_shadow_inner_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ShadowDup } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data si_shadow_nested_qn: FreeMonoid<Symbol> = qualified_name_snoc(
@@ -336,7 +336,7 @@ data si_orphan_module_root_node: Node = si_module_root(
       target: Node {
         kind: TypeNode { connective: Atom { identity: ^OrphanPilotOnly } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   ]
@@ -355,7 +355,7 @@ test fn symbol_index_global_unique_lookup_resolves_globally_unique_holds() -> Bo
     index: si_multi_root_index,
     name: ^OrphanPilotOnly
   ) {
-    GlobalBareHit { node: _ } => true
+    GlobalBareHit { node: _, path: _ } => true
     _ => false
   }
 }
@@ -364,12 +364,12 @@ test fn symbol_index_global_unique_lookup_ambiguous_leaf_holds() -> Bool {
   let yes_a = Node {
     kind: TypeNode { connective: Atom { identity: ^Yes } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
   let yes_b = Node {
     kind: TypeNode { connective: Atom { identity: ^Yes } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
   let mood_yes = qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Mood.Yes")
   let classical_yes = qualified_name_from_dotted_string(dotted: "v2.test.symbol_index_pilot.Classical.Yes")
@@ -409,13 +409,13 @@ test fn symbol_index_track_global_bare_idempotent_on_same_node_holds() -> Bool {
   let bound = Node {
     kind: TypeNode { connective: Atom { identity: ^OrphanPilotOnly } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
   let path = qualified_name_snoc(qn: si_orphan_module_qn, segment: ^OrphanPilotOnly)
   let once = symbol_index_insert(index: empty_symbol_index(), qualified_path: path, resolved: bound)
   let twice = symbol_index_insert(index: once, qualified_path: path, resolved: bound)
   match symbol_index_global_unique_lookup(index: twice, name: ^OrphanPilotOnly) {
-    GlobalBareHit { node: hit } => hit == bound
+    GlobalBareHit { node: hit, path: _ } => hit == bound
     _ => false
   }
 }
@@ -427,7 +427,7 @@ data si_alias_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
 data si_alias_target_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^AliasTargetType } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn si_alias_decl_node(binding: Symbol, target_qn: QualifiedName) -> Node {
@@ -443,7 +443,7 @@ fn si_alias_decl_node(binding: Symbol, target_qn: QualifiedName) -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: binding } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       ),
       dag_named_edge(
@@ -451,7 +451,7 @@ fn si_alias_decl_node(binding: Symbol, target_qn: QualifiedName) -> Node {
         target: si_qn_spine(segments: target_qn)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -464,7 +464,7 @@ fn si_alias_decl_wrapped(binding: Symbol, target_qn: QualifiedName) -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^dag_surface_alias_decl } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       ),
       dag_named_edge(
@@ -472,7 +472,7 @@ fn si_alias_decl_wrapped(binding: Symbol, target_qn: QualifiedName) -> Node {
         target: si_alias_decl_node(binding: binding, target_qn: target_qn)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

@@ -1,0 +1,226 @@
+module gunbc.host_effect
+
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import std.types { String, Int, NonEmptyStr, List }
+import std.content_hash { ContentHash }
+import std.access { AccessDecision }
+import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.bmc.types { RedfishSystemAction }
+import extdeps.dns.domain_name { DnsLabel }
+import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import extdeps.sudo.nopasswd_execute_probe {
+  SudoNopasswdExecuteProbeShape,
+  SudoNopasswdGrantListProbeShape,
+}
+import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
+import extdeps.llm.codex_app_server_stdio_session { CodexAppServerStdioSessionIntent }
+import gunbc.fleet_intent { ComputeHost }
+import gunbc.host_converge { HostConverge }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep }
+import gunbc.build_cache_instance { RunnerSlotIdentity, BuildCacheInstance }
+import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
+import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
+import gunbc.runner_lifecycle { RunnerReplacementCause }
+import gunbc.auth.github_apps { gunbai_ci_declared }
+import gunbc.live_deploy.candidate { CandidateRelease }
+import std.effects {
+  EffectShape,
+  KeySource,
+  ReadEffect,
+  AppendEffect,
+  IdempotencyEvidence,
+  LatticeEffect,
+  IdentityEffect,
+  NonIdempotent,
+}
+
+type HostEffect =
+    ShellCommand { script: String }
+  | RedfishAction { action: RedfishSystemAction }
+  | ConvergePlan { policy: HostConverge }
+  | OsInstallActuatorToolchainEnsure {}
+  | EnsureBuildCacheInstance { desired: BuildCacheInstance }
+  | ProvisionCodexRuntime {}
+  | EnsureCompilePoolSlice {}
+  | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
+  | ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead }
+  | SudoNopasswdExecuteProbe { probe: SudoNopasswdExecuteProbeShape }
+  | SudoNopasswdGrantListProbe { probe: SudoNopasswdGrantListProbeShape }
+  | Srv3InstallMediaFetch
+  | Srv3SeededInstallMediaRemaster
+  | Srv3SeededInstallMediaToolchainEnsure
+  | Srv3BmcwebSessionLogin
+  | Srv3BmcwebTokenExtract
+  | Srv3NbdProxyServe {
+      intent: NbdProxyServeTransportIntent,
+      lease_key: NonEmptyStr,
+    }
+  | CodexSupervisedWorkerTurn {
+      intent: CodexAppServerStdioSessionIntent,
+      lease_key: NonEmptyStr,
+    }
+  | Srv3BootOnceReadBackSleep
+  | Srv3ReceiptEmit { lines: List<String> }
+  | HostIdentityShortHostnameRead
+  | LiveDeployApply { spec: DeploymentSpec, candidate: CandidateRelease }
+  | LiveDeployRetract { spec: DeploymentSpec }
+  | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
+  | LiveDeployDigestReadback { port: Int }
+  | DeployAccessPreflight {}
+  | EnsureActionsRunnerRelease { runner_release: ActionsRunnerRelease }
+  | EnsureRunnerSlotDirectory { slot: RunnerSlotIdentity, artifact: ActionsRunnerBinaryArtifact }
+  | EnsureRunnerJitWrapper { host_label: NonEmptyStr }
+  | EnsureRunnerSystemdTemplate { host_label: NonEmptyStr }
+  | EnsureRunnerMemoryCaps { slot: RunnerSlotIdentity }
+  | ActivateRunnerSlot { slot: RunnerSlotIdentity }
+  | ReplaceRunnerIncarnation { from: LocalRunnerSlotIncarnation, cause: RunnerReplacementCause }
+  | ObserveRunnerLocalState { slot: RunnerSlotIdentity }
+  | ObserveGitHubRunnerRegistration { slot: RunnerSlotIdentity, organization: NonEmptyStr }
+  | ProbeToolchainHomeInterference {}
+
+type NodeControlPlane =
+    HostOs { node: ComputeHost }
+  | BmcController { node: ComputeHost }
+  | RunnerLocalHost
+
+type Drive = OneShot | ConvergeLoop
+
+type BootstrapFragment {
+  script: String
+}
+
+type ThinInvocation {
+  argv: List<String>
+}
+
+// FleetSsh CARRIES THE SEALED EXECUTION CONTEXT, and lands beside SshShell rather than replacing it
+// so the migration is a counted population the compiler enumerates rather than one edit reddening
+// every consumer at once.
+//
+// The difference is not cosmetic. SshShell carries a bare endpoint, so every realizer holding one
+// assembles its own ssh invocation -- which is how the corpus came to hold one site requiring
+// host-key verification and another disabling it, spelled as indistinguishable text. A FleetSsh
+// carries a context constructible ONLY from a known-hosts materialization whose readback
+// hash-equalled the enrolled registry, plus a bound client credential, so a realizer cannot assemble
+// a weaker invocation: no options parameter to widen, no endpoint reachable without the anchor that
+// verified it.
+//
+// It also carries the PRINCIPAL, which SshShell could not. An occurrence is (host x principal), so a
+// transport naming only a host cannot say which account it acts as -- the exact distinction the
+// Spark work turned on, where one key reaches a human bootstrap account and a managed executor with
+// different authority.
+//
+// 🟡 dissolve-on: SshShell is DELETED when its consumers migrate. Each is a counted row, not an
+// open-ended intention: host_effect_realize, live_deploy apply/readiness, systemctl_show_read,
+// systemctl_status_read, hostname_read, hostname_set, roadmap_verify,
+// roadmap_dashboard_instance_apply, host_reach_identity_probe, fleet_receipt_collector.
+type HostEffectTransport =
+    LocalShell
+  | SshShell { ssh_host: NonEmptyStr }
+  | FleetSsh { target: SshTarget, context: FleetSshExecutionContext }
+  | EmitArtifactThenThinRun { bootstrap: BootstrapFragment, invocation: ThinInvocation }
+
+// THE FLEETSSH LEAF FRONTIER. A leaf that BUILDS an invocation cannot be migrated by routing FleetSsh
+// to the SshShell body: that body reaches ssh with an endpoint and no trust context, so the arm would
+// hold a sealed context and ignore it -- a variant lying about what it does, which is worse than not
+// having the arm, because the type would read verified while the leg was not.
+//
+// So every unmigrated leaf routes here, as ONE NAMED authority rather than seventeen anonymous
+// `false`s, making the frontier countable by name.
+//
+// STATED PLAINLY BECAUSE THE SHAPE IS INHERITED AND BAD: these leaves return Bool, so a refusal is
+// indistinguishable from "it ran and failed" -- the fabricated-negative class. That is already true
+// of the EmitArtifactThenThinRun arm beside it; this does not fix it and declines to make it worse
+// anonymously. The name is the only thing carrying the distinction.
+//
+// THE REMAINING POPULATION IS ONE CLASS, NOT A REMAINDER, and naming it is the difference between a
+// frontier and a backlog. Six leaves migrated cleanly because they already spoke TYPED ARGV: their
+// invocation was a List<String> that portable_remote_words could admit or refuse, so routing them
+// through the sealed context was a change of producer and nothing else.
+//
+// CORRECTED (2026-08-19, gunbc.host_effect_realize migration): this doc block previously read "the
+// ten that remain (all in host_effect_realize, plus one in ci_deploy_target_host) call ssh_session_exec
+// with a CONCATENATED SHELL COMMAND STRING" -- that population claim was already stale when found (a
+// grep against the live tree turned up exactly five call sites, all in host_effect_realize, and
+// ci_deploy_target_host's FleetSsh arms never called this function at all -- they resolve a typed
+// identity proof, an unrelated concern). Those five (the toolchain bin-witness, test-executable,
+// which-based tool-present, which-based tool-bin-path and chown leaves reachable from
+// realize_os_install_actuator_toolchain_ensure) now carry typed operation_argv rows and route
+// SshShell and FleetSsh through gunbc.typed_argv_exec, same as the six above -- so this function has
+// no live call site left in the corpus. It is not deleted here: it is still imported (unused) by
+// systemctl_show_read, hostname_read and systemctl_status_read, and removing it would force an edit
+// to those unrelated files' import lists, outside this migration's named cluster. Left as a zero-caller
+// backstop rather than silently re-growing a population; the next session touching one of those three
+// imports should drop the dead reference, and this function deletes once none remain.
+//
+// 🟡 dissolve-on: each leaf takes a FleetSshExecutionContext and calls the context-aware exec, at
+// which point its FleetSsh arm does real work and stops routing here. DELETED when the last one
+// migrates -- it must never acquire a permanent population. No std.disposition.Scaffold row here:
+// DESIGN §5 requires an operator verdict bound to head for net-new dissolution obligations; the
+// migration target is gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh (see inline note above).
+fn fleet_ssh_leaf_unmigrated_refused() -> Bool {
+  false
+}
+
+data host_effect_emit_artifact_transport_scope_disposition: Disposition = Terminal {
+  reason: "EmitArtifactThenThinRun transport mint (shell-emission slice 1+2): fresh-standup bootstrap routes through emit(intent,Bash) (bootstrap_fragment_script_carrier_scaffold dissolved); ThinInvocation.argv remains a medium-as-string scaffold until steady-state typed argv dispatch dissolves thin_invocation_argv_carrier_scaffold."
+}
+
+data bootstrap_fragment_script_carrier_scaffold: Disposition = Terminal {
+  reason: "fresh-standup bootstrap emits through orch_emit_pipeline(intent,Bash) on fresh_standup_bootstrap_intent; BootstrapFragment.script is no longer a hand-spelled concat surface for the fleet-converge bootstrap arm (fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger dissolved)"
+}
+
+data thin_invocation_argv_carrier_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_converge_apply",
+    decl_name: "fleet_converge_thin_invocation",
+    field: WholeDeclaration,
+  }
+}
+
+
+type HostEffectIntent {
+  target: NodeControlPlane
+  effect: HostEffect
+  evidence: IdempotencyEvidence
+  transport: HostEffectTransport
+  privilege_denial: AccessDecision?
+}
+
+type HostEffectEvidence =
+    ShellEffectApplied { exit_code: Int, stdout: String, stderr: String }
+  | ConvergePlanApplied { exit_code: Int, stdout: String }
+  | ToolchainHomeInterferenceDiscriminated
+
+fn host_effect_drive_from_evidence(evidence: IdempotencyEvidence) -> Drive {
+  if host_effect_is_converge_loop_evidence(evidence: evidence) {
+    ConvergeLoop
+  } else {
+    OneShot
+  }
+}
+
+fn host_effect_drive(intent: HostEffectIntent) -> Drive {
+  host_effect_drive_from_evidence(evidence: intent.evidence)
+}
+
+data host_effect_converge_loop_reason: String = "converge to fixpoint — external redrive until observed state matches desired"
+
+data host_effect_identity_evidence: IdempotencyEvidence = IdentityEffect
+
+data host_effect_read_evidence: IdempotencyEvidence = LatticeEffect { shape: ReadEffect }
+
+data host_effect_converge_loop_evidence: IdempotencyEvidence = NonIdempotent {
+  shape: AppendEffect,
+  reason: host_effect_converge_loop_reason,
+}
+
+fn host_effect_is_converge_loop_evidence(evidence: IdempotencyEvidence) -> Bool {
+  evidence == host_effect_converge_loop_evidence
+}
+
+fn host_effect_lattice_evidence(shape: EffectShape<KeySource>) -> IdempotencyEvidence {
+  LatticeEffect { shape: shape }
+}

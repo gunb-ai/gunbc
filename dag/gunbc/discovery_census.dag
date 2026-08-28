@@ -12,7 +12,7 @@ import gunbc.build_target {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedLiveTree,
+  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
   required_floor_site_disposition,
 }
 import v2.std.live_tree { LiveTreeDisposition }
@@ -52,6 +52,8 @@ import std.integer { Int }
 // on the ENTRY PATH a witness was found in and carries no authored module name at all. The two
 // are different keys for different questions — where a declaration was found, versus which
 // identity it is — and the disposition below can only be computed from the second.
+// `reads_live_tree` now serves selection-eligibility consumers only. Required-floor disposition
+// no longer consumes it, and retaining the field here must not recreate the deleted decline.
 type DiscoveredSite {
   module_path: String
   function: String
@@ -198,7 +200,7 @@ fn census_fold_site(state: CensusFoldState, site: DiscoveredSite) -> CensusFoldS
               label: l,
               disposition: required_floor_site_disposition(
                 module_path: site.module_path,
-                reads_live_tree: site.reads_live_tree
+                identity: identity
               )
             }
           ], state.rows_reversed),
@@ -232,13 +234,19 @@ fn discovery_census(sites: List<DiscoveredSite>) -> SiteCensus {
 // without the other, so the roster and its exclusions cannot drift apart.
 //
 // It also removes the `Bool` over a closed coproduct (review 55984): the partition descends over
-// `RequiredFloorDisposition` here, wildcard-free, so a fifth arm must be classified rather than
+// `RequiredFloorDisposition` here, wildcard-free, so a fourth arm must be classified rather than
 // silently absorbed into the declined side by a predicate that answered `false`.
 type CensusPartition {
   planned: List<CensusRow>
   declined: List<CensusRow>
 }
 
+// WITHHELD BY THE COST-DEBT ROSTER IS A DECLINE, and it lands on the declined side for the
+// reason the other two do: the census's question is whether a site was routed to a claim, and a
+// withheld site was not. It is a DISTINCT ARM rather than folded into either existing decline
+// because the remedies differ -- a long-home row needs a cadence, a live-tree row needs a
+// hermetic route, and a cost-debt row needs to be made cheaper -- and collapsing them would be
+// the total-at-the-level-examined defect DESIGN names.
 fn census_partition_step(acc: CensusPartition, row: CensusRow) -> CensusPartition {
   match row.disposition {
     Planned => CensusPartition { planned: concat([row], acc.planned), declined: acc.declined }
@@ -246,7 +254,7 @@ fn census_partition_step(acc: CensusPartition, row: CensusRow) -> CensusPartitio
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
     DeclinedFixtureMember { matched_prefix: _ } =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
-    DeclinedLiveTree =>
+    DeclinedCostDebt =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
   }
 }
@@ -298,12 +306,12 @@ fn required_aggregate_from_census(census: SiteCensus) -> RequiredAggregateDeriva
 
 // THE COUNTS ARE DERIVED AND THE PARTITION IS EXACT BY CONSTRUCTION, so there is no
 // partition-exactness check here. Each row holds exactly one disposition and the fold below
-// matches it with no wildcard, so `offered` is the sum of the four arms because there is nowhere
+// matches it with no wildcard, so `offered` is the sum of the three arms because there is nowhere
 // else for a row to go — a check restating that would be validation standing where construction
 // already holds (DESIGN §5). The floor's own host-side partition check exists because THERE the
 // counters are incremented independently and can drift; here they cannot.
 //
-// A FIFTH DISPOSITION ARM MUST FAIL TO COMPILE IN THIS FOLD. That is the reason the match is
+// A FOURTH DISPOSITION ARM MUST FAIL TO COMPILE IN THIS FOLD. That is the reason the match is
 // written out rather than counted as "planned and everything else": a new decline reason
 // silently joining the non-planned remainder would leave the census reporting a population it no
 // longer distinguishes.
@@ -312,7 +320,7 @@ type CensusCounts {
   planned: Int
   declined_long_module: Int
   declined_fixture_member: Int
-  declined_live_tree: Int
+  declined_cost_debt: Int
 }
 
 fn census_counts_zero() -> CensusCounts {
@@ -321,7 +329,7 @@ fn census_counts_zero() -> CensusCounts {
     planned: 0,
     declined_long_module: 0,
     declined_fixture_member: 0,
-    declined_live_tree: 0
+    declined_cost_debt: 0
   }
 }
 
@@ -333,7 +341,7 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         planned: counts.planned + 1,
         declined_long_module: counts.declined_long_module,
         declined_fixture_member: counts.declined_fixture_member,
-        declined_live_tree: counts.declined_live_tree
+        declined_cost_debt: counts.declined_cost_debt
       }
     DeclinedLongModule { matched_prefix: _ } =>
       CensusCounts {
@@ -341,7 +349,7 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         planned: counts.planned,
         declined_long_module: counts.declined_long_module + 1,
         declined_fixture_member: counts.declined_fixture_member,
-        declined_live_tree: counts.declined_live_tree
+        declined_cost_debt: counts.declined_cost_debt
       }
     DeclinedFixtureMember { matched_prefix: _ } =>
       CensusCounts {
@@ -349,15 +357,15 @@ fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> Censu
         planned: counts.planned,
         declined_long_module: counts.declined_long_module,
         declined_fixture_member: counts.declined_fixture_member + 1,
-        declined_live_tree: counts.declined_live_tree
+        declined_cost_debt: counts.declined_cost_debt
       }
-    DeclinedLiveTree =>
+    DeclinedCostDebt =>
       CensusCounts {
         offered: counts.offered + 1,
         planned: counts.planned,
         declined_long_module: counts.declined_long_module,
         declined_fixture_member: counts.declined_fixture_member,
-        declined_live_tree: counts.declined_live_tree + 1
+        declined_cost_debt: counts.declined_cost_debt + 1
       }
   }
 }

@@ -1,5 +1,6 @@
 module v2.test.execution.rust_record_construct_emit_host_equals_eval
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
@@ -61,9 +62,8 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  SyntheticOccurrence,
   Transform,
-  TypeNode
+  TypeNode,
 }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.runtime {
@@ -82,7 +82,7 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict }
+import v2.std.verdict { verdict_establishes_divergence, verdict_establishes_equivalence }
 import v2.std.verification {
   EqualsClaim,
   Integration,
@@ -114,7 +114,7 @@ fn rust_rec_nine_field_access_body_node() -> Node {
         target: dag_type_atom_node(identity: ^dag_binding_rec_v)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -359,23 +359,11 @@ fn rust_rec_nine_eval_run(
 }
 
 fn rust_rec_nine_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    Pass => true
-    SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+  verdict_establishes_equivalence(v: run.verdict)
 }
 
 fn rust_rec_nine_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    SemanticMismatch { actual: _, falsification: _ } => true
-    Pass => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+  verdict_establishes_divergence(v: run.verdict)
 }
 
 test fn rust_record_construct_emit_host_equals_eval_holds() -> Bool {

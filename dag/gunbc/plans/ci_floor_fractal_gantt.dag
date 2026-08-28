@@ -1,7 +1,7 @@
 module gunbc.plans.ci_floor_fractal_gantt
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
 
@@ -100,6 +100,7 @@ fn ci_floor_fractal_gantt_body() -> List<MarkdownBlock> {
 }
 
 data ci_floor_fractal_gantt_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "ci-floor-fractal-gantt",
   title: "CI floor fractal Gantt — profiling receipt on #5757 baseline",
   body: ci_floor_fractal_gantt_body(),

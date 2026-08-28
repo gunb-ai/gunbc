@@ -1,0 +1,259 @@
+module gunbc.runner_deploy_emit
+
+import gunbc.ci_runner_placement {
+  RunnerDeploymentPlan,
+  HostRunnerDeploymentStanding, HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
+  HostRunnerDeploymentRefusal,
+  PrimaryCpuUnavailable, UsableRamUnavailable, SessionReservationUnestablished,
+  FixedOverheadUnavailable, CompilePoolUnavailable,
+  HostAllocationOversubscribedOnHost, HostAllocationUnchargeableOnHost,
+  ZeroRunnerWidth, HostNotEnrolledInFleet,
+  FleetDeploymentComplete, FleetDeploymentIncomplete, fleet_deployment_completion,
+  host_deployment_refusal_text,
+  RunnerHostDeployment,
+  runner_deployment_plan,
+  SessionReservationPlan,
+  SessionReservationDerived,
+  SessionReservationUnsound,
+  SessionHostReservation,
+  session_reservation_plan,
+  OperatingPointRow,
+  operating_curve,
+  WorkloadClass,
+  BatchLatencyTolerant,
+  InteractiveLatencySensitive,
+  workload_class_cpu_weight,
+}
+import gunbc.session_admission_policy {
+  gunbc_session_admission_policy, session_admission_oomd_ceiling,
+}
+import gunbc.session_reservation_policy {
+  ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
+  session_reservation_bytes,
+}
+import gunbc.ci_fleet { fleet_intent_offers }
+import gunbc.oomd_install { gunbc_oomd_sessions_policy }
+import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
+import std.measure { byte_size_count, hardware_thread_count_value, percent_count }
+import std.types { String, List, Bool }
+import std.layout {
+  Doc, DocConcat, DocLine,
+  LayoutProtocol,
+  doc_text, doc_concat, doc_line_of,
+  render
+}
+import std.languages { SerializationKnobs, SerialField, SerialValue, ScalarValue, json_record_knobs }
+import std.serialize { serial_scalar, serial_field, serialize_fields_doc, serialize_record_doc }
+
+data runner_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+
+data manifest_record_knobs: SerializationKnobs = {
+  assign: "=",
+  entry_separator: " ",
+  open: "",
+  close: "",
+  quote_keys: false,
+  value_quote: null
+}
+
+fn runner_labels_text(spec: RunnerSpec) -> String {
+  match spec {
+    SelfHosted { labels: labels } =>
+      fold(labels, init: "", f: (acc, l) => if acc == "" { l } else { concat(concat(acc, ","), l) })
+    HostedRunner { label: _ } => "hosted"
+    RunsOnExpression { expression: e } => e
+  }
+}
+
+fn manifest_host_fields(h: RunnerHostDeployment) -> List<SerialField> {
+  [
+    serial_field(key: "host", value: serial_scalar(text: h.identity)),
+    serial_field(key: "runner_count", value: serial_scalar(text: to_string(h.runner_count))),
+    serial_field(key: "runner_slice_cap_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.runner_slice_cap)))),
+    serial_field(key: "per_slot_memory_max_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.per_runner_memory_cap)))),
+    serial_field(key: "build_tokens", value: serial_scalar(text: to_string(hardware_thread_count_value(t: h.build_tokens)))),
+    serial_field(key: "labels", value: serial_scalar(text: runner_labels_text(spec: h.runner))),
+    serial_field(key: "cpu_weight", value: serial_scalar(text: to_string(workload_class_cpu_weight(wc: h.workload_class))))
+  ]
+}
+
+fn manifest_host_doc(h: RunnerHostDeployment) -> Doc {
+  serialize_fields_doc(knobs: manifest_record_knobs, fields: manifest_host_fields(h: h))
+}
+
+// THE MANIFEST RENDERS EVERY HOST, INCLUDING THE REFUSED ONES. The shape this replaces printed one
+// UNSOUND line for the whole fleet and dropped every host that HAD derived, so a reader could not
+// tell which host failed or what the other three would have deployed. Omitting a refused host
+// silently would be the opposite error: the roster must show that srv2 was considered and refused,
+// not that srv2 does not exist.
+fn runner_standing_doc(st: HostRunnerDeploymentStanding) -> Doc {
+  match st {
+    HostRunnerDeploymentDerived { deployment: h } =>
+      doc_concat(parts: [doc_text(text: "runner-deploy deployment=derived "), manifest_host_doc(h: h), DocLine])
+    HostRunnerDeploymentRefused { refusal: r } =>
+      doc_line_of(text: concat(concat("runner-deploy deployment=refused host=", r.host), concat(" cause=", host_deployment_refusal_text(c: r.cause))))
+  }
+}
+
+
+fn fleet_completion_line(p: RunnerDeploymentPlan) -> Doc {
+  match fleet_deployment_completion(p: p) {
+    FleetDeploymentComplete { deployments: _, fleet_concurrent_runs: total } =>
+      doc_line_of(text: concat("runner-deploy fleet-completion=complete fleet_concurrent_runs=", to_string(total)))
+    FleetDeploymentIncomplete { derived_hosts: _, refused_hosts: refused, known_derived_runs: known } =>
+      doc_line_of(text: concat(
+        concat("runner-deploy fleet-completion=incomplete known_derived_runs=", to_string(known)),
+        fold(refused, init: " refused_hosts=", f: (acc, r) => concat(acc, concat(r.host, " ")))
+      ))
+  }
+}
+
+fn runner_plan_doc() -> Doc {
+  let plan = runner_deployment_plan()
+  doc_concat(parts: append(
+    map(plan.hosts, st => runner_standing_doc(st: st)),
+    items: [fleet_completion_line(p: plan)]
+  ))
+}
+
+fn session_host_fields(h: SessionHostReservation) -> List<SerialField> {
+  [
+    serial_field(key: "host", value: serial_scalar(text: h.identity)),
+    serial_field(key: "sessions", value: serial_scalar(text: to_string(h.session_count))),
+    serial_field(key: "per_session_cap_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.per_session_reservation))))
+  ]
+}
+
+fn session_host_doc(h: SessionHostReservation) -> Doc {
+  serialize_fields_doc(knobs: manifest_record_knobs, fields: session_host_fields(h: h))
+}
+
+fn session_plan_doc() -> Doc {
+  match session_reservation_plan() {
+    SessionReservationUnsound { reason: reason } =>
+      doc_line_of(text: concat("session-reservation UNSOUND: ", reason))
+    SessionReservationDerived {
+      hosts: hosts,
+      fleet_concurrent_sessions: total,
+      per_session_reservation: _,
+      coverage_count: covered,
+      sample_count: samples
+    } =>
+      doc_concat(parts: append(
+        map(hosts, h => doc_concat(parts: [doc_text(text: "session-reservation "), session_host_doc(h: h), DocLine])),
+        items: [doc_line_of(text: concat(
+          concat("session-reservation fleet_concurrent_sessions=", to_string(total)),
+          concat(" measured_peak_coverage=", concat(to_string(covered), concat("/", to_string(samples))))
+        ))]
+      ))
+  }
+}
+
+fn operating_row_fields(r: OperatingPointRow) -> List<SerialField> {
+  [
+    serial_field(key: "per_session_cap_bytes", value: serial_scalar(text: to_string(byte_size_count(b: r.per_session_cap)))),
+    serial_field(key: "concurrency", value: serial_scalar(text: to_string(r.session_concurrency))),
+    serial_field(key: "sessions_slice_bytes", value: serial_scalar(text: to_string(byte_size_count(b: r.sessions_slice)))),
+    serial_field(key: "peak_coverage", value: serial_scalar(text: concat(concat(to_string(r.coverage_count), "/"), to_string(r.sample_count))))
+  ]
+}
+
+fn operating_row_doc(r: OperatingPointRow) -> Doc {
+  doc_concat(parts: [
+    doc_text(text: "  "),
+    serialize_fields_doc(knobs: manifest_record_knobs, fields: operating_row_fields(r: r)),
+    DocLine
+  ])
+}
+
+fn operating_curve_doc() -> Doc {
+  doc_concat(parts: concat(
+    [doc_line_of(text: "operating-curve (SESSION-side coverage only: operator selects one per-session operating point grounded in measured per-session peaks min 0.28 / median ~2.06 / max 8.27 GiB; sessions_slice = per_session_cap*concurrency. The per-host runner_count is budget-derived from runner_slice_cap and reported on the runner-deploy lines above, independent of this curve):")],
+    map(operating_curve(), r => operating_row_doc(r: r))
+  ))
+}
+
+// THE EMITTED SESSION-SLICE MANIFEST NAMED EVERY HOST AND ONE AGGREGATE. It mapped a single
+// agg_bytes across fleet_intent_offers, so the generated artifact could carry "srv2 UNSOUND" from
+// the host-keyed placement path and "20 GiB for every offer" from the fleet-wide row, in one file.
+// Each host now renders the reservation it actually owes, and a host that owes none or cannot be
+// sized renders that verdict instead of a number.
+fn session_slice_line(host: HostIdentity, ceiling: ByteSize) -> Doc {
+  match session_reservation_bytes(host: host) {
+    ReservationBytesNotApplicable =>
+      doc_line_of(text: concat("session-slice host=", host, " NOT_APPLICABLE residency observes no interactive sessions on this host, so it owes no sessions.slice reservation"))
+    ReservationBytesUnestablished { cause: why } =>
+      doc_line_of(text: concat("session-slice host=", host, " UNSIZED ", why))
+    ReservationBytes { bytes: agg_bytes } =>
+      doc_line_of(text: concat(
+        "session-slice ",
+        concat(
+          concat(
+            concat(
+              concat(
+                concat(concat("host=", host), concat(" slice_max_bytes=", to_string(byte_size_count(b: agg_bytes)))),
+                concat(" per_session_max_bytes=", to_string(byte_size_count(b: ceiling)))
+              ),
+              " oom_pressure_kill=true"
+            ),
+            concat(" oom_pressure_limit_pct=", to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)))
+          ),
+          concat(" cpu_weight=", to_string(workload_class_cpu_weight(wc: InteractiveLatencySensitive)))
+        )
+      ))
+  }
+}
+
+fn session_slice_doc() -> Doc {
+  match session_admission_oomd_ceiling(p: gunbc_session_admission_policy) {
+    Absent =>
+      doc_line_of(text: "session-slice UNSOUND: no per-session oomd eviction ceiling is established in gunbc.session_admission_policy")
+    Present { value: ceiling } =>
+      doc_concat(parts: map(fleet_intent_offers, o => session_slice_line(host: o.supply.physical.identity, ceiling: ceiling)))
+  }
+}
+
+fn project_runner_deploy_to_doc() -> Doc {
+  doc_concat(parts: [
+    runner_plan_doc(),
+    session_slice_doc(),
+    session_plan_doc(),
+    operating_curve_doc()
+  ])
+}
+
+fn expected_runner_deploy_manifest() -> String {
+  render(doc: project_runner_deploy_to_doc(), proto: runner_deploy_protocol)
+}
+
+fn runner_deploy_drifted(committed: String) -> Bool {
+  !(committed == expected_runner_deploy_manifest())
+}
+
+fn expected_runner_deploy_manifest_json() -> String {
+  runner_deploy_manifest_json_for(p: runner_deployment_plan())
+}
+
+// THE RENDERER TAKES ITS PLAN RATHER THAN READING THE LIVE ONE. It used to read
+// runner_deployment_plan() directly, which made the JSON shape unassertable the moment the live
+// fleet stopped being complete -- srv2's refusal sends every call down the INCOMPLETE arm, so the
+// only witness covering the JSON format had no subject that could produce JSON. Parameterising is
+// the single-authority move rather than a second renderer for tests: one function, two subjects,
+// so a change to the format cannot green a fixture while the live path diverges.
+fn runner_deploy_manifest_json_for(p: RunnerDeploymentPlan) -> String {
+  match fleet_deployment_completion(p: p) {
+    FleetDeploymentIncomplete { derived_hosts: _, refused_hosts: refused, known_derived_runs: _ } =>
+      render(doc: doc_line_of(text: fold(refused, init: "runner-deploy INCOMPLETE refused_hosts=", f: (acc, r) => concat(acc, concat(r.host, " ")))), proto: runner_deploy_protocol)
+    FleetDeploymentComplete { deployments: hosts, fleet_concurrent_runs: _ } =>
+      render(
+        doc: doc_concat(parts: map(hosts, h =>
+          doc_concat(parts: [
+            doc_text(text: "runner-deploy "),
+            serialize_record_doc(knobs: json_record_knobs, fields: manifest_host_fields(h: h)),
+            DocLine
+          ])
+        )),
+        proto: runner_deploy_protocol
+      )
+  }
+}

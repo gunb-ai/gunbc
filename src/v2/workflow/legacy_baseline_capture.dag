@@ -1,0 +1,280 @@
+module v2.workflow.legacy_baseline_capture
+
+import std.types { String, List, Int, Bool, NonEmptyStr }
+import std.occurrence_identity { ValidatedOccurrenceTransport }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_wire_hex }
+import v2.workflow.legacy_repair_observation { CompleteLegacyRepairObservation }
+import std.observation_completeness { ObservationCompleteness }
+import v2.workflow.legacy_binding_observation {
+  LegacyBindingObservation,
+  LegacyBindingObservationSubject,
+  CompleteLegacyObservation,
+  ObservationAdmitted,
+  ObservationRefused,
+  admit_complete_observation
+}
+
+// A COMMIT IDENTITY AND THE SEVEN SUBJECT DIGESTS ANSWER DIFFERENT QUESTIONS, AND NEITHER REPLACES
+// THE OTHER. The commit says WHICH REVISION WAS MATERIALIZED; the digests say WHAT SUBJECT WAS
+// ACTUALLY OBSERVED. A record carrying only the first is a claim about a checkout, a record carrying
+// only the second is evidence about an unidentified subject, and the namespace cut needs the JOIN --
+// issued by the producer, proven rather than asserted.
+//
+// So this module holds no denominator, no completeness rule and no observation logic. All of that is
+// v2.workflow.legacy_binding_observation's and is consumed here. What is added is the proof that a
+// complete observation was taken DURING the materialization of a named commit.
+
+// COMMIT AND TREE GROUND ON THE CITED GIT AUTHORITY RATHER THAN A LOCAL SPELLING. extdeps.git
+// object_store owns GitObjectId with per-family validating constructors -- length and syntax checked,
+// lowercase-only, an uppercase spelling refused rather than folded so two texts cannot name one
+// object. An earlier revision of this carrier grounded the base on std.types CommitSha, which is an
+// unvalidated String alias whose own note calls its companion predicate "a validating CHECK a caller
+// must remember to run, not a construction wall" and names this exact climb as its dissolve-on. Using
+// the constructor instead moves a malformed base from MECHANICALLY PREVENTABLE, where this mint had to
+// remember to check, to STRUCTURALLY IMPOSSIBLE, where no value exists to pass in. Nothing is added to
+// CommitSha: a second validating constructor for one concept is the nicknaming this whole shape exists
+// to refuse.
+
+// CONDITION 1 IS STRUCTURAL, NOT CHRONOLOGICAL. "The requested base commit was recorded BEFORE
+// materialization" cannot be witnessed by a pure fold, which sees no clock. What CAN be made
+// structural is that the request is not recoverable FROM the materialization: this receipt carries the
+// commit that was ASKED FOR beside the head that was OBSERVED, as two separate fields, so a producer
+// that never had a request has nothing to put in the first and a producer whose checkout drifted
+// cannot overwrite it with what it got. The temporal claim is then reduced to an equality the capture
+// checks, which is condition 2.
+type CheckoutMaterialization sole_constructor {
+  requested: GitObjectId
+  observed_head: GitObjectId
+  observed_tree: GitObjectId
+  commit_tree: GitObjectId
+}
+
+fn materialization_receipt(
+  requested: GitObjectId,
+  observed_head: GitObjectId,
+  observed_tree: GitObjectId,
+  commit_tree: GitObjectId
+) -> CheckoutMaterialization {
+  CheckoutMaterialization {
+    requested: requested,
+    observed_head: observed_head,
+    observed_tree: observed_tree,
+    commit_tree: commit_tree
+  }
+}
+
+// THIS TYPE HAS NO CONSTRUCTOR AND THAT IS THE ENTIRE POINT. A complete BINDING observation must not
+// stand in for a complete REPAIR observation: O_X(B) records which binding the legacy resolver
+// selected, R_X(B) records which use-line repair decisions it made, and they are separate facts that
+// may share one capture envelope. The repair census has a producer -- reference_derived_census over
+// the retained per-candidate disposition rows -- but no admission envelope with an independent
+// denominator, and that denominator is an open question in the census owner's subject rather than a
+// missing field here.
+//
+// Declaring the field with an unconstructable type made the accepted arm UNREACHABLE rather than
+// reachable-with-a-stub. A placeholder value would admit a capture whose repair half was never taken,
+// which is the fabricated-plausible-output failure at the exact seam the cut is authorised against.
+//
+// THAT PLACEHOLDER IS NOW GONE AND THE REAL CARRIER IS IMPORTED. It was a constructor-less, field-less
+// declaration standing in for v2.workflow.legacy_repair_observation before that authority existed, and
+// this module's own annotation committed to its deletion by whichever change landed second. #9440
+// landed first, so the deletion rides here -- in the same change that merges it, never as a follow-up,
+// because declaration names bind closure-globally and two declarations of one name on main is a
+// collision rather than a shadowing. THE ACCEPTED ARM IS NOW CONSTRUCTIBLE FOR THE FIRST TIME.
+//
+// WHY THE DELETION COULD NOT WAIT FOR A FOLLOW-UP, recorded because the reason is not obvious from
+// either side alone: neither author can observe this collision by compiling their own branch. Both
+// were green against main independently, and the breakage exists only once both are on one tree.
+// Measured receipt from this lane's own history -- a duplicate `SubjectRoster` minted in
+// legacy_repair_observation produced nine diagnostics, every one of them in v2.lens.enforcement
+// modules that change never touched. The place a defect is authored and the place it is observable
+// are different, and compiling your own branch only ever checks the first.
+//
+// THE SECOND TYPE PARAMETER SURVIVES THE SWAP AND MUST. O is what the legacy RESOLVER selected at each
+// occurrence; R is what the REPAIRER decided at each repair site. Binding them to one parameter would
+// force the emitter's repair vocabulary to equal the resolver's binding vocabulary -- the same
+// conflation the operator ruling exists to prevent, committed in the type parameters instead of the
+// fields. The imported carrier is generic for the same reason: the repair decision vocabulary belongs
+// to the tap inside the emitter, and neither envelope may name it.
+
+// NO PUBLIC CONSTRUCTOR. Every field is either a proven equality or a carrier that could only be
+// obtained by having done the work: the observation is `sole_constructor` and minted only by the
+// admission, the repair observation has no constructor at all, and the commit and tree are
+// constructor-validated git object ids.
+//
+// AND THERE IS NO RELABELING CONSTRUCTOR. Nothing in this module projects a capture into a plainer
+// record, because a projection carrying (base, identity) as ordinary fields is exactly a relabeling
+// constructor: it lets an identity captured at B be presented beside B+1, with the structural binding
+// surviving only inside the process that made it. An earlier revision of this carrier did precisely
+// that and shipped a witness asserting the mislabelled row was REPORTABLE -- coverage for a state
+// that must be unwritable. A structural guarantee that does not survive persistence is scoped to a
+// process nobody observes.
+type LegacyBaselineCapture<O, R> sole_constructor {
+  base_commit: GitObjectId
+  base_tree: GitObjectId
+  observation: CompleteLegacyObservation<O>
+  repair_observation: CompleteLegacyRepairObservation<R>
+}
+
+// WHICH STAGE FAILED IS NOT THE SAME FACT AS WHY, and collapsing them would leave a caller unable to
+// tell a checkout that never happened from an observation that never reached its decision stage.
+type LegacyBaselineCapturePhase
+  = MaterializationPhase
+  | BindingObservationPhase
+  | RepairCensusPhase
+
+type LegacyBaselineCaptureRefusal
+  = RepairObservationEnvelopeAbsent
+  | ObserverNeverReachedDecision
+
+// THE SUBJECT FIELD THAT DISAGREED IS NAMED RATHER THAN COUNTED, because the seven digests have
+// different owners and different repairs: a source-set mismatch means the tree was not the one
+// materialized, while a compiler-artifact mismatch means the instrument was not the one recorded.
+type LegacyObservationSubjectField
+  = SemanticSourceDigestField
+  | SourceSetDigestField
+  | CompilerArtifactDigestField
+  | OccurrenceTransportDigestField
+  | DeclarationIndexDigestField
+
+fn subject_field_label(f: LegacyObservationSubjectField) -> NonEmptyStr {
+  match f {
+    SemanticSourceDigestField => "semantic_source_digest" as NonEmptyStr
+    SourceSetDigestField => "source_set_digest" as NonEmptyStr
+    CompilerArtifactDigestField => "compiler_artifact_digest" as NonEmptyStr
+    OccurrenceTransportDigestField => "occurrence_transport_digest" as NonEmptyStr
+    DeclarationIndexDigestField => "declaration_index_digest" as NonEmptyStr
+  }
+}
+
+type LegacyBaselineCaptureOutcome<O, R>
+  = LegacyBaselineCaptured { capture: LegacyBaselineCapture<O, R> }
+  | LegacyBaselineHeadMismatch { requested: GitObjectId, materialized: GitObjectId }
+  | LegacyBaselineWorktreeMismatch { commit_tree: GitObjectId, observed_tree: GitObjectId }
+  | LegacyBaselineSubjectMismatch { field: LegacyObservationSubjectField }
+  | LegacyBaselineObservationIncomplete { completeness: ObservationCompleteness<Int> }
+  | LegacyBaselineExecutionRefused {
+      phase: LegacyBaselineCapturePhase,
+      cause: LegacyBaselineCaptureRefusal
+    }
+
+// THE SUBJECT THE MATERIALIZED TREE ENTITLES A CAPTURE TO CLAIM. Condition 4 asks that the digests
+// were DERIVED from that tree, which is a fact about the run rather than about any value reachable
+// here -- so the capture takes the tree-derived subject as a receipt from the producer and compares
+// the observation against it, field by field. That comparison is real: it catches a complete
+// observation of one source set being presented under another tree's identity, which is the
+// SubjectMismatch case. It does NOT establish that the receipt itself was honestly derived, and that
+// residue is a declared hole rather than a claim.
+type TreeDerivedSubjectReceipt sole_constructor {
+  tree: GitObjectId
+  subject: LegacyBindingObservationSubject
+}
+
+fn tree_derived_subject(tree: GitObjectId, subject: LegacyBindingObservationSubject) -> TreeDerivedSubjectReceipt {
+  TreeDerivedSubjectReceipt { tree: tree, subject: subject }
+}
+
+fn first_subject_disagreement(
+  expected: LegacyBindingObservationSubject,
+  observed: LegacyBindingObservationSubject
+) -> LegacyObservationSubjectField? {
+  if !(expected.source_set_digest == observed.source_set_digest) {
+    Present { value: SourceSetDigestField }
+  } else if !(expected.semantic_source_digest == observed.semantic_source_digest) {
+    Present { value: SemanticSourceDigestField }
+  } else if !(expected.compiler_artifact_digest == observed.compiler_artifact_digest) {
+    Present { value: CompilerArtifactDigestField }
+  } else if !(expected.occurrence_transport_digest == observed.occurrence_transport_digest) {
+    Present { value: OccurrenceTransportDigestField }
+  } else if !(expected.declaration_index_digest == observed.declaration_index_digest) {
+    Present { value: DeclarationIndexDigestField }
+  } else {
+    none
+  }
+}
+
+// THE CAPTURE MINTS THE OBSERVATION ITSELF -- it takes the raw observation and the transport and calls
+// the admission, rather than accepting an already-admitted carrier. That is condition 6, and the
+// signature is the whole of it: a capture that ACCEPTED a CompleteLegacyObservation could only ever
+// ASSERT that the observation was minted during this execution, because a carrier minted last week is
+// indistinguishable from one minted a microsecond ago once it is a parameter. Owning the production is
+// the only shape in which "taken against B" is execution-proven.
+//
+// THE ORDER IS THE RULING'S ORDER AND IT IS LOAD-BEARING (condition 8): every mismatch refuses BEFORE
+// the next comparison and before any promotion. Head before worktree, worktree before subject, subject
+// before admission, admission before the repair census -- so a dirty worktree can never be reported as
+// a subject disagreement, and an incomplete observation can never be reported as a repair gap.
+fn capture_legacy_baseline<O, R>(
+  materialization: CheckoutMaterialization,
+  tree_subject: TreeDerivedSubjectReceipt,
+  observation: LegacyBindingObservation<O>,
+  transport: ValidatedOccurrenceTransport
+) -> LegacyBaselineCaptureOutcome<O, R> {
+  if !git_object_id_eq(left: materialization.requested, right: materialization.observed_head) {
+    LegacyBaselineHeadMismatch {
+      requested: materialization.requested,
+      materialized: materialization.observed_head
+    }
+  } else if !git_object_id_eq(left: materialization.commit_tree, right: materialization.observed_tree) {
+    LegacyBaselineWorktreeMismatch {
+      commit_tree: materialization.commit_tree,
+      observed_tree: materialization.observed_tree
+    }
+  } else if !git_object_id_eq(left: tree_subject.tree, right: materialization.observed_tree) {
+    LegacyBaselineSubjectMismatch { field: SourceSetDigestField }
+  } else {
+    match first_subject_disagreement(expected: tree_subject.subject, observed: observation.subject) {
+      Present { value: f } => LegacyBaselineSubjectMismatch { field: f }
+      Absent =>
+        match admit_complete_observation(observation: observation, transport: transport) {
+          ObservationRefused { completeness: c } => LegacyBaselineObservationIncomplete { completeness: c }
+          ObservationAdmitted { admitted: _ } =>
+            LegacyBaselineExecutionRefused {
+              phase: RepairCensusPhase,
+              cause: RepairObservationEnvelopeAbsent
+            }
+        }
+    }
+  }
+}
+
+// THE MILESTONE'S POPULATION, AND IT IS DELIBERATELY NOT A ROSTER OF ROWS. There is no committed list
+// of captures, because a captured baseline has no relabel-safe durable form yet and a plain row would
+// be one. What a consumer can read is whether the capture operation is currently CAPABLE of producing
+// an accepted capture, and today it is not: the repair envelope is absent, so every execution refuses
+// at RepairCensusPhase.
+//
+// Any movement of the pre-cut base after capture invalidates enrolment, so this is a standing question
+// re-asked per base rather than a fact that accumulates. That is a second reason there is no roster.
+type LegacyBaselineCaptureCapability
+  = CaptureBlocked { phase: LegacyBaselineCapturePhase, cause: LegacyBaselineCaptureRefusal }
+  | CaptureAvailable
+
+fn legacy_baseline_capture_capability() -> LegacyBaselineCaptureCapability {
+  CaptureBlocked { phase: RepairCensusPhase, cause: RepairObservationEnvelopeAbsent }
+}
+
+fn capture_blocked_reason(c: LegacyBaselineCaptureCapability) -> List<String> {
+  match c {
+    CaptureAvailable => []
+    CaptureBlocked { phase: p, cause: cause } => [concat(
+      "legacy baseline capture is blocked at ",
+      concat(capture_phase_label(p: p), concat(": ", capture_refusal_label(cause: cause)))
+    )]
+  }
+}
+
+fn capture_phase_label(p: LegacyBaselineCapturePhase) -> String {
+  match p {
+    MaterializationPhase => "materialization"
+    BindingObservationPhase => "binding-observation"
+    RepairCensusPhase => "repair-census"
+  }
+}
+
+fn capture_refusal_label(cause: LegacyBaselineCaptureRefusal) -> String {
+  match cause {
+    RepairObservationEnvelopeAbsent => "R_X(B) has no admission envelope with an independent denominator"
+    ObserverNeverReachedDecision => "the observer never reached its decision stage"
+  }
+}

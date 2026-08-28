@@ -3,6 +3,7 @@ module std.occurrence_identity
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import std.algebra { FreeMonoid }
+import std.content_hash { Fnv1a64Structural }
 import std.types { Bool, Int, String, SourceSpan }
 
 data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs."
@@ -202,11 +203,103 @@ type OccurrenceTransportRefusal
     }
   | UnknownOccurrenceIdentity { occurrence: OccurrenceId }
 
-data occurrence_identity_constructor_spelling_note: String = "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global: the legacy v2 SyntheticOccurrence/MintedOccurrence facade and identically named shared constructors cannot coexist in one conversion closure. The constructor spelling is representation; this shared carrier and its allocator remain the semantic authority."
+// AN ORDINAL NAMES AN OCCURRENCE ONLY INSIDE THE ALLOCATOR THAT MINTED IT, SO A REFERENCE THAT
+// LEAVES THAT ALLOCATOR CARRIES THE SCOPE IT WAS LAWFUL IN.
+//
+// The scope law at the top of this module forbids filename, SourceSpan, authored name, structural
+// Node equality and content hash as identity INPUTS. It does not forbid pairing an ordinal with the
+// content address of the graph whose allocator minted it, and the distinction is the whole of why
+// this carrier is admissible: the pair does not DERIVE the occurrence's identity -- the parser
+// minted that -- it states the DOMAIN in which the ordinal is a lawful name. That is applicability,
+// not identity, and it is what makes an indexable cross-graph relation sound where a cross-graph
+// KEY is not.
+//
+// IT LIVES HERE BECAUSE THE LAW IT DISCHARGES LIVES HERE. It was first minted downstream, in
+// v2.workflow.legacy_binding_observation, as SubjectOccurrenceRef -- one concept named twice, with
+// the name stating that consumer's vocabulary (a comparison SUBJECT) rather than the fact (an
+// allocator SCOPE). The moment a second consumer needed it -- NodeOccurrenceIdentity's projected
+// arm below -- the fork would have been real, so the authority is hoisted to the module that owns
+// the law rather than copied beside it.
+type ScopedOccurrenceRef {
+  scope: Fnv1a64Structural
+  occurrence: OccurrenceId
+}
 
+// SCOPE EQUALITY IS ASKED THROUGH THIS FUNCTION AND NEVER THROUGH A BARE DIGEST COMPARISON, for the
+// ordinary single-authority reason: a consumer reaching into `.scope.digest` re-decides what makes
+// two allocator domains the same, and two such decisions are free to diverge from this one.
+fn scoped_occurrence_ref_same_scope(
+  left: ScopedOccurrenceRef,
+  right: ScopedOccurrenceRef
+) -> Bool {
+  left.scope.digest == right.scope.digest
+}
+
+fn scoped_occurrence_ref_in_scope(
+  occurrence_ref: ScopedOccurrenceRef,
+  scope: Fnv1a64Structural
+) -> Bool {
+  occurrence_ref.scope.digest == scope.digest
+}
+
+data occurrence_identity_constructor_spelling_note: String = "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global. The spelling was chosen while a second, identically named v2 coproduct still existed and could not coexist with these constructors in one closure; that coproduct and its conversions are deleted and this carrier is now the only occurrence-identity carrier a Node holds. The spelling is kept because renaming it would be a corpus-wide rewrite that buys nothing: the constructor spelling is representation, and this shared carrier and its allocator remain the semantic authority."
+
+// THE THIRD ARM IS A DECISION ABOUT THIS SHARED ALGEBRA, NOT A FIELD ON AN EXISTING ONE.
+//
+// A projector that rewrites a graph creates nodes that were never authored -- an inserted qualifier
+// segment is the motivating one. Before this arm the projector's only spelling for such a node was
+// OccurrenceSynthetic, which means "this node has no authored occurrence" and says nothing about
+// WHY it exists. So the cause was lost at construction, and no later pass could recover it: this
+// module's own scope law closes every route by which a finished tree could be re-keyed against the
+// one it was projected from. The consequence was concrete and it is what forced this change --
+// v2.workflow.legacy_binding_delta's ProjectedAsInsertion carries the causing reference and was
+// therefore UNEMITTABLE, a constructor no producer could reach.
+//
+// WHY NOT A FIELD. The obvious repair is `OccurrenceSynthetic { caused_by: ScopedOccurrenceRef? }`
+// and it is the wrong one twice over. It is state-space conflation: Absent would mean both "the
+// compiler synthesised this node and no cause exists" and "a projector created this node and the
+// cause was dropped", which have opposite owners and opposite repairs. And it retypes every
+// existing synthetic node in the corpus, so the change lands SILENTLY -- every current match arm
+// keeps compiling while its meaning widens. A third constructor does the reverse: every total match
+// on this coproduct refuses to compile until its author decides what a projector-created occurrence
+// means there, which is the deletion-as-census move applied to an addition.
+//
+// WHY IT CARRIES AN ID AS WELL AS A CAUSE. An inserted occurrence is a real occurrence in the graph
+// that contains it -- it is minted from that graph's allocator and it must be answerable in that
+// graph's denominator, or a completeness join over the projected side would refuse the projection
+// for succeeding. What it lacks is not an identity, it is an AUTHOR.
+//
+// AND WHY THE CAUSE IS SCOPED WHILE THE ID IS BARE. The id is minted by the allocator of the graph
+// this node lives in, so the containing graph IS its scope and pairing it with an address here
+// would store a fact the position already carries. The cause was minted in a DIFFERENT allocator --
+// the graph that was projected FROM -- so a bare ordinal there would be exactly the unscoped
+// cross-domain name the scope law refuses, and the accidental equality of two independently
+// allocated ordinals would be indistinguishable from a real cause.
+//
+// WHETHER THE CAUSE NAMES AN AUTHORED OCCURRENCE IS NOT DECIDABLE HERE, AND THIS CARRIER DOES NOT
+// PRETEND OTHERWISE. A ScopedOccurrenceRef names an ordinal inside a stated allocator domain; it
+// does not say whether that ordinal was minted for an authored token, and this module cannot find
+// out -- resolving it means holding the causing graph's transport, which is a join and not a
+// property of a node. So a chain, where a projector-created occurrence causes another, is
+// REPRESENTABLE and is not forbidden by construction. Forbidding it here would mean either
+// restricting the cause to a type this module cannot verify or writing a convention nothing
+// executes, and both are worse than saying where the check actually lives: the consumer that holds
+// both graphs. v2.workflow.legacy_binding_delta already refuses a cause that is out of the base
+// subject's scope, and refuses one that is in scope but names no occurrence in the base
+// denominator, so a cause naming a node that does not exist in the graph it claims to come from is
+// caught at the join with both denominators in hand. RUNG, HONESTLY: mitigatable at this carrier,
+// mechanically preventable at that join, and the next rung here would be a construction that can
+// only be reached from a resolved base transport.
+//
+// NOTE THE ASYMMETRY, WHICH IS DELIBERATE: a carried-forward node gets no arm here. Its
+// correspondence to its base counterpart relates two occurrences that BOTH exist, so the projector
+// can emit that pairing from the copy it performed and nothing needs to ride on the node. An
+// insertion has no base counterpart to be paired WITH, which is precisely why its cause has nowhere
+// else to live.
 type NodeOccurrenceIdentity
   = OccurrenceSynthetic
   | OccurrenceMinted { id: OccurrenceId }
+  | OccurrenceProjected { id: OccurrenceId, caused_by: ScopedOccurrenceRef }
 
 type OccurrenceIdAllocator {
   next_id: Int
@@ -254,6 +347,13 @@ fn authored_token_ordinal_space_from_allocator(
 
 fn node_occurrence_identity_minted(id: OccurrenceId) -> NodeOccurrenceIdentity {
   OccurrenceMinted { id: id }
+}
+
+fn node_occurrence_identity_projected(
+  id: OccurrenceId,
+  caused_by: ScopedOccurrenceRef
+) -> NodeOccurrenceIdentity {
+  OccurrenceProjected { id: id, caused_by: caused_by }
 }
 
 data occurrence_transport_validation_complexity_law: String = "occurrence_transport_refusal builds each graph-local identity/category index exactly once, then validates declaration and reference rows by indexed lookup. It must never rescan a full occurrence population per authored occurrence."

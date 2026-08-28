@@ -11,6 +11,7 @@ import gunbc.build_target {
   BuildTarget, target_identity, is_required_aggregate,
   required_aggregate_label,
   AggregateStanding, AggregateSatisfied, AggregateNoDependencies, AggregateRefused,
+  AggregateStandingsUnindexable,
   TargetStanding, BuildStanding, TargetCompleted,
   TestStanding, TestRunByFloor,
   required_aggregate_standing,
@@ -27,7 +28,7 @@ import gunbc.discovery_census {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedLiveTree,
+  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
   required_floor_site_disposition,
 }
 import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
@@ -60,16 +61,24 @@ fn live_tree_site(module_path: String, function: String) -> DiscoveredSite {
   }
 }
 
-// A MIXED POPULATION, ONE SITE PER DISPOSITION ARM. The fixture-home member also READS THE LIVE
-// TREE, which is what makes the admission-order assertion below discriminating rather than
-// incidental: reorder the two declines and this row changes arm.
+// A MIXED POPULATION spanning all FOUR disposition arms. Two members read the live tree; one is
+// fixture-declined and the ordinary witnesses are planned, proving live-tree access forms no
+// admission arm of its own.
+// THE LAST SITE IS A REAL MEMBER OF `floor_cost_debt_roster`, spelled as the module/function pair
+// whose qualified identity the roster holds. Without it every partition assertion over the fourth
+// arm would pass at 0 == 0 -- an empty arm makes its own guard vacuous, and the sum below would
+// balance whether or not the census could classify a withheld row at all.
 fn mixed_sites() -> List<DiscoveredSite> {
   [
     hermetic_site(module_path: "test.claim.alpha_witness", function: "w_alpha"),
     hermetic_site(module_path: "test.claim.alpha_witness", function: "w_beta"),
     hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow"),
     live_tree_site(module_path: "v2.test.fixture.walk_plan_stage.common", function: "w_member"),
-    live_tree_site(module_path: "test.claim.reads_tree_witness", function: "w_reads")
+    live_tree_site(module_path: "test.claim.reads_tree_witness", function: "w_reads"),
+    hermetic_site(
+      module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
+      function: "no_raw_lifecycle_string_survivors_remain"
+    )
   ]
 }
 
@@ -187,31 +196,28 @@ test fn w_empty_module_path_and_empty_function_refuse_apart() -> Bool {
 // THE DISPOSITION, AND ITS ORDER
 // ---------------------------------------------------------------------------------------------
 
-// THE FIXTURE MEMBER READS THE LIVE TREE AND MUST STILL REPORT `DeclinedFixtureMember`. Swap the
-// two decline tests and this arm becomes `DeclinedLiveTree` — a staged prediction standing where
-// a permanent ownership fact belongs, so the site would look like it rejoins the floor when the
-// live-tree arm is deleted. It does not.
-test fn w_fixture_home_dominates_live_tree() -> Bool {
+// A fixture member reports the exact prefix whose recipe owns its execution.
+test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
   match required_floor_site_disposition(
     module_path: "v2.test.fixture.walk_plan_stage.common",
-    reads_live_tree: ReadsLiveTree {}
+    identity: "v2.test.fixture.walk_plan_stage.common.some_member"
   ) {
     DeclinedFixtureMember { matched_prefix: p } => p == "v2.test.fixture.walk_plan_stage."
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
-    DeclinedLiveTree => false
+    DeclinedCostDebt => false
   }
 }
 
 test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
   match required_floor_site_disposition(
     module_path: "test.claim.long.slow_witness",
-    reads_live_tree: SubstrateInputsOnly {}
+    identity: "test.claim.long.slow_witness.a_claim"
   ) {
     DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
     Planned => false
     DeclinedFixtureMember { matched_prefix: _ } => false
-    DeclinedLiveTree => false
+    DeclinedCostDebt => false
   }
 }
 
@@ -221,24 +227,24 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
 test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
   match required_floor_site_disposition(
     module_path: "test.claim.not_test_claim_long.witness",
-    reads_live_tree: SubstrateInputsOnly {}
+    identity: "test.claim.not_test_claim_long.witness.a_claim"
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
-    DeclinedLiveTree => false
+    DeclinedCostDebt => false
   }
 }
 
-test fn w_live_tree_site_declines_when_no_home_matched() -> Bool {
+test fn w_site_is_planned_when_no_home_matched() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.reads_tree_witness",
-    reads_live_tree: ReadsLiveTree {}
+    module_path: "test.claim.ordinary_witness",
+    identity: "test.claim.ordinary_witness.a_claim"
   ) {
-    DeclinedLiveTree => true
-    Planned => false
+    Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedCostDebt => false
   }
 }
 
@@ -246,19 +252,84 @@ test fn w_live_tree_site_declines_when_no_home_matched() -> Bool {
 // THE PARTITION
 // ---------------------------------------------------------------------------------------------
 
-// THE FOUR ARMS SUM TO THE OFFERED POPULATION. The production fold has no partition check
+// THE THREE ARMS SUM TO THE OFFERED POPULATION. The production fold has no partition check
 // because a row holds exactly one disposition and the counting match has no wildcard, so this is
 // the executing evidence for that construction rather than a second wall beside it.
 test fn w_counts_partition_the_offered_population() -> Bool {
   let counts = census_counts(rows: census_rows_of(sites: mixed_sites()))
-  (counts.offered == 5)
-    && (counts.planned == 2)
+  (counts.offered == 6)
+    && (counts.planned == 3)
     && (counts.declined_long_module == 1)
     && (counts.declined_fixture_member == 1)
-    && (counts.declined_live_tree == 1)
+    && (counts.declined_cost_debt == 1)
     && (counts.offered ==
         counts.planned + counts.declined_long_module
-          + counts.declined_fixture_member + counts.declined_live_tree)
+          + counts.declined_fixture_member
+          + counts.declined_cost_debt)
+}
+
+// THE SITE FUNCTION NEVER RETURNS `DeclinedCostDebt`, AND THAT IS A CLAIM ABOUT WHERE THE
+// WITHHOLD IS DECIDED rather than a restatement of the coproduct. Cost debt is not a property
+// of a module's NAME, which is all this function can see; it is a property of a measured
+// identity, which only the caller holds. So the arm exists on the coproduct and is unreachable
+// from here, and this witness is what keeps that true: an edit that taught the site function to
+// answer cost debt from a prefix would go red on all three inputs at once.
+//
+// THE FOURTH ARM IS REACHABLE FROM THE MODEL, AND THESE ARE ITS DISCRIMINATING ROWS.
+//
+// AN EARLIER REVISION OF THIS FILE ASSERTED THE OPPOSITE -- `w_site_disposition_never_answers_cost_debt`
+// claimed the modeled disposition could never produce `DeclinedCostDebt`. That was TRUE of the
+// code and it was the DEFECT, not a property worth guarding: the fold declined 266 identities by
+// name while the model called every one of them `Planned`, so the witness was enshrining a §3
+// single-authority divergence as if it were a contract. Review 57235 named it. The function now
+// takes the qualified identity and consults the roster, so the assertion is inverted rather than
+// deleted: what is checked is that the arm IS produced, and produced in the right precedence.
+
+// A ROSTERED IDENTITY IN AN ORDINARY HOME DECLINES FOR COST. The identity is a real member of
+// `floor_cost_debt_roster`, so this row goes red the moment that roster stops holding it -- it is
+// not a fixture spelling that can drift away from the population it describes.
+test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
+    identity: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain"
+  ) {
+    DeclinedCostDebt => true
+    Planned => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL BESIDE IT: the same module, an identity the roster does not hold, is
+// planned. Without this the row above would pass under a disposition that declined the whole
+// module, which is exactly the module-grain reading the fourth arm exists to refuse.
+test fn w_unrostered_sibling_in_the_same_module_is_planned() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
+    identity: "dag.test.claim.lifecycle_survivor_corpus_census.a_sibling_the_roster_does_not_hold"
+  ) {
+    Planned => true
+    DeclinedCostDebt => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+  }
+}
+
+// PRECEDENCE: COST DEBT IS LAST. A rostered identity that ALSO declines for a home reason keeps
+// its HOME decline. That is what makes such a roster line surface as STALE -- it never enters the
+// fold's cost-debt seen set -- rather than as a withhold nobody can distinguish from a real one.
+// The host loop mirrors this order and cites this function for it; before review 57235 that
+// citation named a precedence the model did not carry.
+test fn w_home_decline_outranks_cost_debt() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "test.claim.long.slow_witness",
+    identity: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain"
+  ) {
+    DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
+    DeclinedCostDebt => false
+    Planned => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+  }
 }
 
 // EVERY DISCOVERED SITE GETS A ROW, DECLINED OR NOT. A census that dropped the declines would
@@ -286,10 +357,14 @@ test fn w_partition_returns_both_sides_and_loses_no_row() -> Bool {
 test fn w_declined_sites_are_rows_not_omissions() -> Bool {
   let rows = census_rows_of(sites: mixed_sites())
   let rendered = fold(rows, init: [], f: fn(acc, row) { concat([render_label(l: row.label)], acc) })
-  ((rows |> count) == 5)
+  ((rows |> count) == 6)
     && list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
     && list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
     && list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
+    && list_holds(
+         xs: rendered,
+         wanted: "//dag/test/claim/lifecycle_survivor_corpus_census:no_raw_lifecycle_string_survivors_remain"
+       )
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -302,13 +377,13 @@ test fn w_declined_sites_are_rows_not_omissions() -> Bool {
 // identity would make `//:required` name a dependency the standings list can answer twice.
 test fn w_duplicate_identity_refuses_even_when_declined() -> Bool {
   match discovery_census(sites: [
-    live_tree_site(module_path: "test.claim.dup_witness", function: "w"),
-    live_tree_site(module_path: "test.claim.dup_witness", function: "w")
+    hermetic_site(module_path: "test.claim.long.dup_witness", function: "w"),
+    hermetic_site(module_path: "test.claim.long.dup_witness", function: "w")
   ]) {
     CensusAccepted { rows: _ } => false
     CensusRefused { cause: c } =>
       match c {
-        DuplicateSiteIdentity { identity: i } => i == "//test/claim/dup_witness:w"
+        DuplicateSiteIdentity { identity: i } => i == "//test/claim/long/dup_witness:w"
         SiteModulePathEmpty { function: _ } => false
         SiteLabelRefused { module_path: _, function: _, cause: _ } => false
       }
@@ -333,7 +408,7 @@ test fn w_two_functions_in_one_module_are_two_identities() -> Bool {
 // ---------------------------------------------------------------------------------------------
 
 // THE AGGREGATE'S DEPENDENCIES ARE THE PLANNED SUBSET AND NOTHING ELSE — asserted as an identity
-// join over the rendered labels, not as a count. A count would pass on any two of the five.
+// join over the rendered labels, not as a count. A count would pass on any three of the five.
 test fn w_required_aggregate_dependencies_are_exactly_the_planned_subset() -> Bool {
   match required_aggregate_from_census(census: discovery_census(sites: mixed_sites())) {
     RequiredAggregateUnderivable { cause: _ } => false
@@ -341,12 +416,12 @@ test fn w_required_aggregate_dependencies_are_exactly_the_planned_subset() -> Bo
       let rendered = fold(a.dependencies, init: [], f: fn(acc, l) { concat([render_label(l: l)], acc) })
       is_required_aggregate(t: a)
         && (target_identity(t: a) == "//:required")
-        && ((a.dependencies |> count) == 2)
+        && ((a.dependencies |> count) == 3)
         && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_alpha")
         && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_beta")
         && !list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
         && !list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
-        && !list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
+        && list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
     }
   }
 }
@@ -374,8 +449,8 @@ test fn w_refused_census_yields_no_aggregate_and_keeps_the_cause() -> Bool {
 // away rather than reported as green here.
 test fn w_all_declined_derives_an_aggregate_that_blocks() -> Bool {
   let all_declined = [
-    live_tree_site(module_path: "test.claim.reads_tree_witness", function: "w_reads"),
-    hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow")
+    hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow"),
+    hermetic_site(module_path: "v2.test.fixture.walk_plan_stage.common", function: "w_member")
   ]
   match required_aggregate_from_census(census: discovery_census(sites: all_declined)) {
     RequiredAggregateUnderivable { cause: _ } => false
@@ -388,6 +463,7 @@ test fn w_all_declined_derives_an_aggregate_that_blocks() -> Bool {
           }
         AggregateSatisfied { dependency_count: _ } => false
         AggregateRefused { finding_count: _, findings: _ } => false
+        AggregateStandingsUnindexable { cause: _ } => false
       }
   }
 }
@@ -409,9 +485,10 @@ test fn w_derived_aggregate_is_satisfiable_against_standings() -> Bool {
         ], acc)
       })
       match required_aggregate_standing(aggregate: a, standings: standings) {
-        AggregateSatisfied { dependency_count: n } => n == 2
+        AggregateSatisfied { dependency_count: n } => n == 3
         AggregateNoDependencies => false
         AggregateRefused { finding_count: _, findings: _ } => false
+        AggregateStandingsUnindexable { cause: _ } => false
       }
     }
   }

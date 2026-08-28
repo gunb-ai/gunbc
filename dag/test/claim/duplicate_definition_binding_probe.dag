@@ -21,17 +21,22 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // binding to two definitions with no refusal is silent wrongness, which is outside the ladder,
 // not a weak rung on it.
 //
-// THIS ROW DOES NOT EXECUTE IN THE REQUIRED FLOOR TODAY, AND THAT IS DECLARED HERE RATHER THAN
-// LEFT TO BE DISCOVERED. `compile_dag_diagnostic_census` resolves the synthetic source against
+// THIS ROW DID NOT EXECUTE BEFORE THE ROOT CUT, AND THAT HISTORY IS DECLARED HERE RATHER THAN
+// LEFT TO BE RECONSTRUCTED. `compile_dag_diagnostic_census` resolves the synthetic source against
 // `build_module_path_index_from_witness_roots`, which walks the live tree, so the read is real and
-// the declaration below is `ReadsLiveTree`. `v1_compiler.cli_run` `run_required_floor` routes every
-// such site to `DeclinedLiveTree` -- discovered, counted, never run -- so this row is not enrolled
-// in `v2.workflow.floor_expected_red`: enrolling asserts that a row REACHES ITS SUBJECT AND
-// ANSWERS, and a declined row answers nothing. An enrolment here would have been a false assertion
-// wearing the shape of coverage, which is the exact failure this row exists to name.
-// EXECUTION TRIGGER: the deletion of the `DeclinedLiveTree` arm, which
-// `v2.workflow.required_floor` already carries as retained and staged for deletion at the root.
-// When that lands this row executes, reds, and belongs on the expected-red roster the same day.
+// the declaration below is `ReadsLiveTree`. Before the root cut, `run_required_floor` routed every
+// such site to `DeclinedLiveTree` -- discovered, counted, never run -- so enrolment would have
+// asserted a verdict that did not exist. The root deletion has now fired that execution trigger:
+// this row executes. It was enrolled in `v2.workflow.floor_expected_red` on that same change,
+// and that enrolment has since been REMOVED because the row now PASSES: the floor reported it as
+// a stale quarantine (enrolled as expected-red and PASSED, on the plain arm rather than the
+// PassedOverBudget one), with its single-definition positive control clean in the same run, so the
+// assertion discriminates rather than having gone green by the probe source breaking some other
+// way. What is NOT claimed here is the mechanism: the row asserts a blocking-diagnostic count and
+// the count is now met; which predicate produces that diagnostic has not been read, and naming one
+// from the row's passing alone would be a situation mistaken for a cause. Per DESIGN 4b(4) the
+// probe does not retire with its roster row -- it stays enrolled as a permanent regression control.
+// The honest ReadsLiveTree declaration remains the affected-set selection fact.
 // An earlier revision of this module WAS enrolled, justified by a sibling census probe that
 // declares no disposition and was inferred to route and pass. That inference was wrong twice over:
 // undeclared is `ReadsLiveTree` by the fail-closed default (`cli_run`
@@ -58,6 +63,25 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // the Rust emission path, `type`/`data` declarations, cross-module collisions, and whether a
 // `test fn` collides with a plain `fn` of the same name. Each is its own row when someone
 // measures it; none is claimed by this one.
+
+// THE WALL LANDED (2026-08-27, this lane). `v1.compiler.resolve` `check_duplicate_declarations`
+// folds each module's own item list and emits a blocking `DuplicateDeclaration` on the second
+// declaration of one name, so the two rows below assert the behaviour the compiler now has rather
+// than the behaviour it lacked. THE ROW STILL DOES NOT EXECUTE HERE: the disposition above is
+// unchanged and this site is still `DeclinedLiveTree`, so what flipped is the SUBJECT, not this
+// row's reach -- the execution trigger recorded above is still the only thing that retires it.
+// The executing evidence for the wall is `duplicate_declaration_wall_witness` in
+// `v1.compiler.compiler_tests_rust`, at the fixture boundary; that harness runs LOCALLY only,
+// which is stated in the gap-analysis row rather than claimed as CI coverage here.
+// WHERE THE WALL SITS vs where this row said it should: at RESOLVE, over each module's item list,
+// not at ingestion. It reads nothing outside the module it judges, so the "no corpus walk"
+// property that made the class decidable is preserved; what is NOT yet done is the R4 climb the
+// row above implies, a keyed declaration roster at ingestion that cannot HOLD two entries for one
+// name. That remains this class's next-rung trigger.
+// TWO SHAPES THIS ROW STILL DOES NOT MEASURE, and the second had LIVE exposure: a `data` and a
+// `fn` sharing one name (the wall refuses it; measured on `dag/gunbc/systemctl_list_units.dag`,
+// where a bare reference intended for a `data` String bound the function instead), and the Rust
+// emission path. Both are covered by the seed witness, neither by this module.
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)

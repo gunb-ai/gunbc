@@ -1,7 +1,8 @@
 module gunbc.cli_dispatch_surface
 
 import std.measure { Millisecond, millisecond_count }
-import std.types { Bool, Int, List, Port, String }
+import std.types { Bool, CommitSha, Int, List, Port, String }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE gunbc CLI'S OWN DISPATCH SURFACE, AS ROWS.
 //
@@ -95,16 +96,74 @@ type CliSurfaceEmission
   = EmittedByEmitMainRs
   | AbsentFromEmitMainRs
 
+// WHICH IDENTITY `gunbc --version` REPORTS.
+//
+// A package release number cannot identify a compiler binary built between releases, which is
+// the distinction this surface exists to preserve. The interface therefore promises the exact
+// source commit. How a target binds that commit at build time is realization; the Rust emitter
+// currently renders it from the build-script-provided `GUNBC_BUILD_IDENTITY` value.
+type CliVersionIdentity
+  = CliCleanSourceCommit { commit: CommitSha }
+  | CliDirtySourceCommit { commit: CommitSha }
+
 // WHAT THE ARM DOES, which is a THIRD fact beside the option list and the emission state.
 //
 // `CliRefusesUnwired` is not a missing arm. `converge`'s arm is a typed refusal naming a
 // successor that exists (the modeled convergence spine), and modeling it as absent would erase
 // the distinction between a verb nobody wired and a verb deliberately routed elsewhere -- the
 // not-applicable-rendered-as-malformed collapse DESIGN lists among the recurring failure modes.
+//
+// `CliInvokesBoundTargetProducer` CARRIES NO PAYLOAD, AND THE ABSENCE IS THE WHOLE POINT.
+// `CliDelegatesToHostFn` names an authored host function as a `String`, which is the stringly
+// typed hook this architecture exists to replace: the CLI authority would then be naming a Rust
+// symbol, and the binding between the two would hold only by spelling. A verb on this arm instead
+// declares that its subject is resolved through `gunbc.target_binding`'s registry and realized by
+// whatever that registry binds — so the CLI surface names no realization at all, and the dispatch
+// that selects one stays peripheral where DESIGN section 3 puts it.
 type CliArmRealization
   = CliDelegatesToHostFn { symbol: String }
   | CliRetainedHostKernel
   | CliRefusesUnwired { successor: String }
+  | CliInvokesBoundTargetProducer
+
+// THE OPERAND AXIS, AND WHY IT IS NOT AN OPTION ROW WITH A DIFFERENT SPELLING.
+//
+// `gunbc test //gunbc/instruments:heads-reading-differential` names its subject POSITIONALLY, and
+// the temptation this module has to refuse is respelling that as `gunbc test --target //...`
+// purely because `CliSubcommandRow` already carries an option list. That would be the carrier
+// dictating the interface: an operand and an option differ in what the CLI grammar admits, not in
+// what a row happens to be convenient to write, and collapsing them would make the surface unable
+// to state which of a verb's inputs is positional.
+//
+// WHAT THE OPERAND CARRIES IS AN AUTHORITY, NOT A SPELLING, which is the same rule
+// `CliOptionValue` already holds itself to. `CliAbsoluteLabelOperand` names `extdeps.bazel.label`
+// `Label` — so the admissible forms, and every refusal for a form outside them, are decided by the
+// cited label grammar and never re-decided here. Target PATTERNS (`...`, `:all`, `:*`) refuse
+// there, with their own cause, because a pattern denotes a SET and this operand denotes one
+// target; a second pattern test written at this layer would be a second authority for a question
+// that authority already answers.
+type CliOperandValue
+  = CliAbsoluteLabelOperand {}
+  | CliScmReadVerbOperand {}
+
+// EXACTLY ONE, AND THE ARITY IS ITS OWN COPRODUCT RATHER THAN `CliOptionArity` REUSED.
+//
+// The option arities are `CliRequired | CliAtMostOne | CliRepeated`, and two of the three are
+// meaningless positionally in the surface this verb needs: an omitted positional operand is not a
+// defaulted option, and a repeated one is the target-pattern question the label grammar already
+// refuses. A single arm is what is honestly admitted today; a verb taking a variadic operand list
+// adds an arm here and must then decide what it means, rather than inheriting an option's answer.
+type CliOperandArity
+  = CliExactlyOneOperand {}
+
+type CliOperandRow {
+  field: String
+  placeholder: String
+  value: CliOperandValue
+  arity: CliOperandArity
+  doc: List<String>
+  emission: CliSurfaceEmission
+}
 
 type CliOptionRow {
   field: String
@@ -119,6 +178,7 @@ type CliSubcommandRow {
   verb: String
   variant: String
   doc: List<String>
+  operands: List<CliOperandRow>
   options: List<CliOptionRow>
   realization: CliArmRealization
   emission: CliSurfaceEmission
@@ -131,6 +191,27 @@ fn gunbc_cli_binary_name() -> String {
 fn gunbc_cli_about() -> String {
   "A causal compiler: write .dag, get Rust/Python/Go."
 }
+
+fn gunbc_cli_version_identity(source_commit: CommitSha, source_dirty: Bool) -> CliVersionIdentity {
+  if source_dirty {
+    CliDirtySourceCommit { commit: source_commit }
+  } else {
+    CliCleanSourceCommit { commit: source_commit }
+  }
+}
+
+fn gunbc_cli_version_text(identity: CliVersionIdentity) -> String {
+  match identity {
+    CliCleanSourceCommit { commit: commit } => commit,
+    CliDirtySourceCommit { commit: commit } => concat(commit, "-dirty")
+  }
+}
+
+// §7 PURE-BOOTSTRAP RECEIPT FOR THE ONE SEED-RETAINED UNIT THIS SURFACE STILL NEEDS.
+// The policy and formatting are modeled above; `build.rs` remains the host observation that asks
+// Git for HEAD and observes whether the Rust inputs are dirty, then binds GUNBC_BUILD_IDENTITY for
+// the Rust realization. This is counted interim HAND-Rust growth, not a census shrink.
+data gunbc_cli_build_identity_seed_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the GUNBC_BUILD_IDENTITY observation block in src/v1/stage0/build.rs — exactly one removable seed unit. DISSOLVES WHEN the v1-zero-hand-maintained-rust ROADMAP lane (gunbc.roadmap_authority roadmap_nodes) emits the build-time Git observation from gunbc.cli_dispatch_surface, at which point git_output and the identity block delete together rather than leaving a second producer. Checkable until deletion: GUNBC_BUILD_IDENTITY has exactly one cargo:rustc-env producer in src/v1/stage0/build.rs and gunbc_cli_version_text is its sole formatting authority.")
 
 // WHAT IS DELIBERATELY NOT HERE: `--dry-run`.
 //
@@ -147,6 +228,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
       verb: "compile",
       variant: "Compile",
       doc: ["Compile .dag source files to a target language"],
+      operands: [],
       options: [
         CliOptionRow {
           field: "source_roots",
@@ -208,17 +290,10 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
       emission: EmittedByEmitMainRs
     },
     CliSubcommandRow {
-      verb: "ci",
-      variant: "Ci",
-      doc: [],
-      options: [],
-      realization: CliDelegatesToHostFn { symbol: "run_verb" },
-      emission: AbsentFromEmitMainRs
-    },
-    CliSubcommandRow {
       verb: "run",
       variant: "Run",
       doc: ["Execute a .dag program directly (interpreter)"],
+      operands: [],
       options: [
         CliOptionRow {
           field: "source_roots",
@@ -278,6 +353,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         "(`gunbc.fleet_converge_cli.converge_cli_run`) and print a",
         "`converge-receipt` line on the byte-locked receipt grammar."
       ],
+      operands: [],
       options: [
         CliOptionRow {
           field: "host",
@@ -292,6 +368,39 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
       emission: AbsentFromEmitMainRs
     },
     CliSubcommandRow {
+      verb: "scm",
+      variant: "Scm",
+      doc: [
+        "Read a gunbc repository: `gunbc scm log` lists its commits,",
+        "`gunbc scm status` reports what is checked out and staged.",
+        "Both answer from the repository document alone and mutate nothing."
+      ],
+      operands: [
+        CliOperandRow {
+          field: "verb",
+          placeholder: "VERB",
+          value: CliScmReadVerbOperand {},
+          arity: CliExactlyOneOperand {},
+          doc: ["Which read to perform: `log` or `status`"],
+          emission: AbsentFromEmitMainRs
+        }
+      ],
+      options: [
+        CliOptionRow {
+          field: "path",
+          long: "path",
+          value: CliTextValue { text_default: none },
+          arity: CliRequired,
+          doc: ["Path to the repository document to read"],
+          emission: AbsentFromEmitMainRs
+        }
+      ],
+      realization: CliRefusesUnwired {
+        successor: "unwired: gunbc.cli_wire CliWireResponse has no host renderer bound. MEASURED, not assumed -- `gunbc run --entry dag/gunbc/scm/read_command.dag --function scm_read_log --arg path=<p>` binds its argument and READS THE FILE, then the host refuses with `returned ScmReadResult, not ProcessExit`, so the answer is computed and discarded. There is therefore NO route a user can invoke today that yields this answer, and naming one would be a dead end dressed as a redirect."
+      },
+      emission: AbsentFromEmitMainRs
+    },
+    CliSubcommandRow {
       verb: "serve",
       variant: "Serve",
       doc: [
@@ -299,6 +408,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         "calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.",
         "The seam is parse/write only -- routing and handlers live in .dag."
       ],
+      operands: [],
       options: [
         CliOptionRow {
           field: "source_roots",
@@ -370,6 +480,31 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
       ],
       realization: CliDelegatesToHostFn { symbol: "handle_serve" },
       emission: AbsentFromEmitMainRs
+    },
+    CliSubcommandRow {
+      verb: "test",
+      variant: "Test",
+      doc: [
+        "Run one target by its absolute label and report the standing its own",
+        "producer answers in. The label is exact: a target PATTERN refuses, and",
+        "an unbound or unknown target refuses rather than reporting a pass."
+      ],
+      operands: [
+        CliOperandRow {
+          field: "target",
+          placeholder: "LABEL",
+          value: CliAbsoluteLabelOperand {},
+          arity: CliExactlyOneOperand {},
+          doc: [
+            "Absolute label of exactly one target, e.g.",
+            "`//gunbc/instruments:heads-reading-differential`."
+          ],
+          emission: AbsentFromEmitMainRs
+        }
+      ],
+      options: [],
+      realization: CliInvokesBoundTargetProducer,
+      emission: AbsentFromEmitMainRs
     }
   ]
 }
@@ -417,12 +552,20 @@ fn cli_emitter_gap_of(subcommands: List<CliSubcommandRow>) -> List<String> {
   fold(subcommands, init: [], f: fn(acc, sub) {
     match sub.emission {
       AbsentFromEmitMainRs => concat(acc, [sub.verb])
-      EmittedByEmitMainRs => concat(acc, fold(sub.options, init: [], f: fn(inner, opt) {
-        match opt.emission {
-          AbsentFromEmitMainRs => concat(inner, [concat(sub.verb, concat(".", opt.long))])
-          EmittedByEmitMainRs => inner
-        }
-      }))
+      EmittedByEmitMainRs => {
+        let with_operands = fold(sub.operands, init: acc, f: fn(inner, operand) {
+          match operand.emission {
+            AbsentFromEmitMainRs => concat(inner, [concat(sub.verb, concat(".", operand.placeholder))])
+            EmittedByEmitMainRs => inner
+          }
+        })
+        fold(sub.options, init: with_operands, f: fn(inner, opt) {
+          match opt.emission {
+            AbsentFromEmitMainRs => concat(inner, [concat(sub.verb, concat(".", opt.long))])
+            EmittedByEmitMainRs => inner
+          }
+        })
+      }
     }
   })
 }

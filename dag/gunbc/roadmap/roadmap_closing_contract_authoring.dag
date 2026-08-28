@@ -1,0 +1,178 @@
+module gunbc.roadmap_closing_contract_authoring
+
+import std.types { String, NonEmptyStr, Bool, List, FilePath }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap_execution_contract {
+  WorkItemExecutionContract,
+  ValidationOperation,
+  GunbcClaimValidation,
+  CargoTestValidation,
+  CargoFmtValidation,
+  ClosingContractAuthoringValidation,
+  ContractClosure,
+  ContractCloses,
+  ContractClosesNothing,
+  ContractDeclaresNoValidation,
+  contract_closure,
+}
+import gunbc.roadmap_validation_oracle {
+  ValidationOracleRef,
+  OracleObservation,
+  OracleFound,
+  OracleMissing,
+  OracleAmbiguous,
+  OracleDependsOnUnpinnedOracle,
+  OraclePinScope,
+  OraclePinnable,
+  OracleNotPinnable,
+  validation_oracle_scope,
+  validation_oracle_observe_from_source,
+  validation_oracle_first_incomplete,
+}
+
+data closing_contract_authoring_predicate_note: String = "THE COMPLETION PREDICATE FOR EVERY CLOSING-CONTRACT TASK, PARAMETERIZED BY ITS TARGET. gunbc.roadmap_authority closing_contract_task_naming_correction_note named this construction as the fix for the gap where a derived closing-contract task carried ExecutionContractUnspecified and dispatch therefore refused the row whose only job is to supply a contract.\\n\\nWHAT IT DECIDES, each arm with its own remedy: the target is a declared node (else the task names nothing); the target's contract is not unspecified and not empty (the two states gunbc.roadmap_execution_contract contract_closure already separates, kept separate here because one asks for a contract and the other asks for a validation inside the one you wrote); the contract does not close itself with another ClosingContractAuthoringValidation (a closing-contract task whose target is closed by another closing-contract task closes nothing, and the recursion is reachable because the derivation mints one for every unbound startable node); and every validation the contract names RESOLVES -- its oracle entry is readable and declares exactly the function named, through gunbc.roadmap_validation_oracle's existing observation rather than a second resolver.\\n\\nWHAT IT DOES NOT DECIDE, stated because a green here must not be read as more than it is. The note's wish list also asked that a PLANTED FAILURE show the authored validation can reject. That is not decidable by inspecting the model: it requires mutating the target's subject and running the validation against the mutation, which is an experiment rather than a predicate, and no arm below pretends to it. It remains the handback duty the derived ticket's own red_control states, carried by review. NEXT-RUNG TRIGGER: a modeled mutation harness that can plant a failure in a named subject and observe the declared validation reject it, at which point that clause becomes an arm here and this paragraph retires. The wish list's remaining clause -- that the contract name the same target identity -- is not checked because it is STRUCTURALLY UNWRITABLE otherwise: a contract is a field ON the target node, so there is no representation in which it names a different one, and a check for it would be the permanently-green decoration DESIGN section 4b forbids."
+
+type ClosingContractAuthoringVerdict
+  = ClosingContractAuthored { target: RoadmapNodeId }
+  | ClosingContractTargetNotDeclared { target: String }
+  | ClosingContractTargetUnspecified { target: RoadmapNodeId }
+  | ClosingContractTargetClosesNothing { target: RoadmapNodeId }
+  | ClosingContractTargetClosesItself { target: RoadmapNodeId }
+  | ClosingContractTargetOracleIncomplete {
+      target: RoadmapNodeId,
+      blocking: OracleObservation,
+    }
+
+fn closing_contract_target_node(target: String) -> RoadmapNode? {
+  declared_roadmap_nodes()
+    |> filter(n => (n.node as String) == target)
+    |> first
+}
+
+fn validation_is_closing_contract_authoring(validation: ValidationOperation) -> Bool {
+  match validation {
+    GunbcClaimValidation { entry: _, function: _ } => false
+    CargoTestValidation { filter: _ } => false
+    CargoFmtValidation => false
+    ClosingContractAuthoringValidation { target: _ } => true
+  }
+}
+
+fn closing_contract_oracle_observe(oracle: ValidationOracleRef) -> OracleObservation {
+  let read = Filesystem.Read(path: oracle.entry as String)
+  validation_oracle_observe_from_source(
+    oracle: oracle,
+    source_readable: read.success,
+    source: read.content,
+    read_error: read.error,
+  )
+}
+
+fn closing_contract_oracle_observations(
+  validations: List<ValidationOperation>,
+) -> List<OracleObservation> {
+  validations
+    |> flat_map(v => match validation_oracle_scope(validation: v) {
+      OraclePinnable { oracle } => [closing_contract_oracle_observe(oracle: oracle)]
+      OracleNotPinnable { validation_label: _, reason: _ } => []
+    })
+}
+
+fn closing_contract_verdict_for_observed(
+  node: RoadmapNodeId,
+  contract: WorkItemExecutionContract,
+  observations: List<OracleObservation>,
+) -> ClosingContractAuthoringVerdict {
+  match contract_closure(contract: contract) {
+    ContractDeclaresNoValidation =>
+      ClosingContractTargetUnspecified { target: node }
+    ContractClosesNothing =>
+      ClosingContractTargetClosesNothing { target: node }
+    ContractCloses { validations } =>
+      if any(validations, v => validation_is_closing_contract_authoring(validation: v)) {
+        ClosingContractTargetClosesItself { target: node }
+      } else {
+        match validation_oracle_first_incomplete(observations: observations) {
+          Present { value: blocking } =>
+            ClosingContractTargetOracleIncomplete {
+              target: node,
+              blocking: blocking,
+            }
+          Absent => ClosingContractAuthored { target: node }
+        }
+      }
+  }
+}
+
+fn closing_contract_authoring_verdict(target: String) -> ClosingContractAuthoringVerdict {
+  match closing_contract_target_node(target: target) {
+    Absent => ClosingContractTargetNotDeclared { target: target }
+    Present { value: node } =>
+      closing_contract_verdict_for_observed(
+        node: node.node,
+        contract: node.execution,
+        observations: closing_contract_oracle_observations(
+          validations: contract_validations(contract: node.execution),
+        ),
+      )
+  }
+}
+
+fn contract_validations(contract: WorkItemExecutionContract) -> List<ValidationOperation> {
+  match contract_closure(contract: contract) {
+    ContractDeclaresNoValidation => []
+    ContractClosesNothing => []
+    ContractCloses { validations } => validations
+  }
+}
+
+fn closing_contract_authoring_verdict_detail(
+  verdict: ClosingContractAuthoringVerdict,
+) -> String {
+  match verdict {
+    ClosingContractAuthored { target } =>
+      join([target as String, ": a closing contract is authored and every validation it names resolves"], "")
+    ClosingContractTargetNotDeclared { target } =>
+      join([target, ": names no declared roadmap node, so there is nothing to close"], "")
+    ClosingContractTargetUnspecified { target } =>
+      join([target as String, ": still carries ExecutionContractUnspecified — no closing contract has been authored"], "")
+    ClosingContractTargetClosesNothing { target } =>
+      join([target as String, ": carries a contract declaring no validation, so nothing checks its completion"], "")
+    ClosingContractTargetClosesItself { target } =>
+      join([target as String, ": is closed by a closing-contract-authoring validation, which closes nothing about the node's own work"], "")
+    ClosingContractTargetOracleIncomplete { target, blocking } =>
+      join(
+        [
+          target as String,
+          ": a declared validation names an oracle that does not resolve: ",
+          closing_contract_oracle_detail(observation: blocking),
+        ],
+        "",
+      )
+  }
+}
+
+fn closing_contract_oracle_detail(observation: OracleObservation) -> String {
+  match observation {
+    OracleFound { oracle, identity: _ } =>
+      join([oracle.entry as String, " ", oracle.function as String, " resolves"], "")
+    OracleMissing { oracle, detail } =>
+      join([oracle.entry as String, " ", oracle.function as String, " is not declared there: ", detail], "")
+    OracleAmbiguous { oracle, declaration_count: _ } =>
+      join([oracle.entry as String, " declares ", oracle.function as String, " more than once, so the contract does not determine which runs"], "")
+    OracleDependsOnUnpinnedOracle { oracle, imports } =>
+      join([oracle.entry as String, " imports unpinned oracle-side modules: ", join(imports, ", ")], "")
+  }
+}
+
+fn closing_contract_authored(target: String) -> Bool {
+  match closing_contract_authoring_verdict(target: target) {
+    ClosingContractAuthored { target: _ } => true
+    ClosingContractTargetNotDeclared { target: _ } => false
+    ClosingContractTargetUnspecified { target: _ } => false
+    ClosingContractTargetClosesNothing { target: _ } => false
+    ClosingContractTargetClosesItself { target: _ } => false
+    ClosingContractTargetOracleIncomplete { target: _, blocking: _ } => false
+  }
+}

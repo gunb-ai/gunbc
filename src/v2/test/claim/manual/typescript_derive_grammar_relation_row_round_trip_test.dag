@@ -1,5 +1,6 @@
 module v2.test.manual.typescript_derive_grammar_relation_row_round_trip
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.typescript {
   ts_eager_grammar_relation_row_witness,
   ts_exemplar_emitted_for_lhs,
@@ -28,7 +29,7 @@ import v2.std.grammar {
 
 import v2.std.logic { Bool }
 import v2.std.witness { Holds, Violates, Witness }
-import v2.std.node { Conj, Edge, Node, Positional, TypeNode, content_hash, SyntheticOccurrence }
+import v2.std.node { Conj, Edge, Node, Positional, TypeNode, content_hash }
 import v2.test.fixture.task_manager_demo { Task, create_task }
 
 fn ts_grammar_relation_tokens_root() -> Node {
@@ -62,7 +63,7 @@ fn ts_task_type_alias_emitted_surplus_conj_slot() -> Node {
       Edge { label: Positional, target: ts_type_annotation_task_record_emitted() },
       Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

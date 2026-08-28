@@ -2,9 +2,9 @@
 module gunbc.generated_artifact
 
 import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs, InstallServerSpec, fleet_install_server_specs }
-import gunbc.plan { Plan, plan_path }
+import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommittedMarkdown, PlanIsAuthorityOnly }
 import gunbc.plan_registry { all_plans }
-import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_path }
+import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
 
 type GeneratedArtifact
   = WitnessFloorYamlArtifact
@@ -47,29 +47,61 @@ type CommitPolicy
   = CommitRequired { consumer: RepoConsumer }
   | NotCommitted
 
-fn artifact_path(a: GeneratedArtifact) -> String {
+data artifact_location_note: String = "THE PATH IS A PROJECTION OF ITS PARTS, NOT THE OTHER WAY ROUND. Every row below CONSTRUCTS its path from a directory and an entry name -- some literal, some computed from a spec host or a plan slug -- and the joined string was the only thing this module published. A consumer that must LIST the directory and look for the entry inside that listing therefore had to split the string on its last separator, re-deriving by parsing exactly what the construction already knew. That is decompose-after-compose: redundant by DESIGN section 2, and asymmetric in failure, because a parse has error cases a construction does not. So artifact_location is the single match and artifact_path is derived from it. THE PATH BYTES ARE UNCHANGED and that is load-bearing rather than incidental: artifact_path feeds the drift gate's committed-file read, so a change here would silently repoint every adjudicated artifact.\n\nWHY THE ROOT DIRECTORY IS `.` AND NOT THE EMPTY STRING. A root-level artifact's directory is the repository root, which is a real directory that can be listed; the empty string is not a directory at all and would have to be special-cased at every consumer that wants to observe one. Carrying `.` means a listing consumer needs no arm for `this artifact has no directory`, and the join is the only place that knows the root renders without a prefix."
+
+type ArtifactLocation {
+  directory: String
+  name: String
+}
+
+fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
   match a {
-    WitnessFloorYamlArtifact => ".github/workflows/witnesses.yml"
-    FleetConvergeYamlArtifact => ".github/workflows/fleet-converge.yml"
-    FleetDesiredAdmissionYamlArtifact => ".github/workflows/fleet-desired.yml"
-    GitignoreArtifact => ".gitignore"
-    GitattributesArtifact => ".gitattributes"
-    RoadmapArtifact => "ROADMAP.md"
-    DesignArtifact => "DESIGN.md"
-    GithooksPrePushArtifact => ".githooks/pre-push"
-    GithooksPreCommitArtifact => ".githooks/pre-commit"
-    GeneratedArtifactMergeDriverArtifact => generated_artifact_merge_driver_script_path
-    RunnerDeployArtifact => ".github/fleet-runner-deploy.manifest"
-    Stage0CrateLayoutGeneratedDagArtifact => "dag/gunbc/stage0_crate_layout_generated.dag"
-    Stage0CrateLayoutGeneratedRsArtifact => "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
-    Stage0CratePartitionGeneratedDagArtifact => "dag/gunbc/stage0_crate_partition_generated.dag"
-    V1InterpreterDispatchGeneratedRsArtifact => "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs"
-    AutoinstallUserDataArtifact { spec } => concat(concat("provisioning/", spec.host), "/user-data")
-    ProxyDhcpDnsmasqArtifact { spec } => concat(concat("provisioning/", spec.host), "/dnsmasq.conf")
-    PlanArtifact { plan } => plan_path(p: plan)
+    WitnessFloorYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "witnesses.yml" }
+    FleetConvergeYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-converge.yml" }
+    FleetDesiredAdmissionYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-desired.yml" }
+    GitignoreArtifact => ArtifactLocation { directory: ".", name: ".gitignore" }
+    GitattributesArtifact => ArtifactLocation { directory: ".", name: ".gitattributes" }
+    RoadmapArtifact => ArtifactLocation { directory: ".", name: "ROADMAP.md" }
+    DesignArtifact => ArtifactLocation { directory: ".", name: "DESIGN.md" }
+    GithooksPrePushArtifact => ArtifactLocation { directory: ".githooks", name: "pre-push" }
+    GithooksPreCommitArtifact => ArtifactLocation { directory: ".githooks", name: "pre-commit" }
+    GeneratedArtifactMergeDriverArtifact =>
+      ArtifactLocation {
+        directory: generated_artifact_merge_driver_script_directory,
+        name: generated_artifact_merge_driver_script_name
+      }
+    RunnerDeployArtifact => ArtifactLocation { directory: ".github", name: "fleet-runner-deploy.manifest" }
+    Stage0CrateLayoutGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc", name: "stage0_crate_layout_generated.dag" }
+    Stage0CrateLayoutGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "bootstrap_stage0_crate_layout_generated.rs" }
+    Stage0CratePartitionGeneratedDagArtifact => ArtifactLocation { directory: "dag/gunbc", name: "stage0_crate_partition_generated.dag" }
+    V1InterpreterDispatchGeneratedRsArtifact => ArtifactLocation { directory: "src/v1/stage0/src", name: "v1_interpreter_dispatch_generated.rs" }
+    AutoinstallUserDataArtifact { spec } =>
+      ArtifactLocation { directory: concat("provisioning/", spec.host), name: "user-data" }
+    ProxyDhcpDnsmasqArtifact { spec } =>
+      ArtifactLocation { directory: concat("provisioning/", spec.host), name: "dnsmasq.conf" }
+    PlanArtifact { plan } =>
+      ArtifactLocation { directory: plan_doc_directory, name: plan_doc_name(slug: plan.slug) }
   }
 }
 
+fn artifact_directory(a: GeneratedArtifact) -> String {
+  artifact_location(a: a).directory
+}
+
+fn artifact_name(a: GeneratedArtifact) -> String {
+  artifact_location(a: a).name
+}
+
+fn artifact_path(a: GeneratedArtifact) -> String {
+  let l = artifact_location(a: a)
+  if l.directory == "." { l.name } else { concat(concat(l.directory, "/"), l.name) }
+}
+
+// THE PLAN DECIDES ITS OWN ARM, NOT THIS ROW. A plan whose markdown the repository removed on
+// purpose (gunbc.plan PlanIsAuthorityOnly) is still rostered, still generated, and still refused
+// if its generation refuses -- it is simply not expected on disk. Answering CommitRequired for
+// every plan is what let a deleted projection read as an absent one, and once a drift phase
+// adjudicates the population that reads as an obligation to recreate the deleted file.
 fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
   match a {
     GitignoreArtifact => CommitRequired { consumer: GitProtocol }
@@ -82,7 +114,11 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     FleetDesiredAdmissionYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
-    PlanArtifact { plan: _ } => CommitRequired { consumer: ProjectDocumentation }
+    PlanArtifact { plan } =>
+      match plan.projection {
+        PlanProjectsCommittedMarkdown => CommitRequired { consumer: ProjectDocumentation }
+        PlanIsAuthorityOnly { ruling: _ } => NotCommitted
+      }
     RunnerDeployArtifact => NotCommitted
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }

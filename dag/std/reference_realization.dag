@@ -1,0 +1,181 @@
+module std.reference_realization
+
+import std.coercion { TypeCheckpoint, TypeRealizationDecision, Realized, Unrealized, Refused }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
+import std.types { Bool, List, NonEmptyStr, String }
+
+// WHAT THIS MODULE ADDS, STATED AS THE FACT THAT WAS MISSING RATHER THAN AS A FEATURE.
+//
+// std.coercion already split ONE spelling question into two: TypeCheckpoint.target_type answers the
+// REFERENCE position and grounding_type answers the DECLARATION right-hand side, because one field
+// could only ever answer one of them. TypeRealizationDecision then joins a checkpoint to a
+// declaration identity, so the corpus can say WHICH declaration a spelling governs.
+//
+// Realized { checkpoint } still says WHAT the representation is and never says WHERE the reference
+// writes it. Reading it as "render checkpoint.target_type at every reference" is a THIRD policy
+// smuggled in as the absence of one, and it is unconditional: the consumer writes the provider's
+// implementation spelling in its own scope, where that spelling re-resolves to whatever the
+// consumer's own imports bind it to. Preserving the provider declaration and inlining the target
+// representation are two realization modes, not two spellings of one answer.
+//
+// MEASURED BY crisp-cat-384 AND CITED AS THEIRS RATHER THAN RE-DERIVED HERE. The instrument is
+// tools.opaque_realization_census (gunbc#9419), run over the emitted closure of
+// src/v2/compiler/05_eval.dag at grain (consumer module, imported name); ask that lane for the
+// per-row artifact rather than reconstructing it, since it is produced on demand and not committed.
+// What the model has to survive, at subject grain: of the fifteen subjects with any occurrence, SIX
+// are SPLIT between preserved and bypassed consumers -- NonEmptyStr, QualifiedName, Hash, Char, Int
+// and Symbol -- while two are uniform, Diagnostics uniformly bypassed and String uniformly
+// preserved. The uniform pair is what makes the split informative: the classifier can return a
+// uniform answer, so a split is a finding and not its default. Symbol splits 1 preserved against 39
+// bypassed within ONE closure, and Int splits 2 and 2, so there is no clean exemplar of either arm
+// anywhere in the artifact.
+//
+// THE CONCLUSION THAT DRAWS FROM, and it is the reason both arms below are DECLARED: the artifact
+// carries no policy at all, so no arm of this model can be read off it and "regularize toward
+// whichever the emitter already does" was never available. Nothing below infers intent from whether
+// the emitted artifact currently compiles.
+//
+// ONE ASYMMETRY IS RECORDED WITHOUT BEING CONCLUDED FROM (flagged by warm-hawk-909, 2026-08-27):
+// five of the six splits are majority-preserved with a small bypass tail, and Symbol inverts
+// completely. That is the shape that often means two causes wearing one classification. This module
+// does not model a second cause and does not smooth the asymmetry away by pretending it is absent --
+// it is an open question for the lane that measures it, not a state in this vocabulary.
+
+// The split. PreserveProviderDeclaration -- the consumer names the provider's emitted declaration,
+// so the provider owns its representation and a consumer's scope cannot rebind it.
+// InlineTargetRepresentation -- the target representation is written at the use site, which is
+// correct exactly where the declaration has nothing the representation lacks.
+type ReferenceRealization
+  = PreserveProviderDeclaration
+  | InlineTargetRepresentation
+
+// THE MODE IS DERIVED FROM A GROUND, NEVER AUTHORED BESIDE ONE. A mode authored directly is fiat: it
+// records a preference and nothing a reader can check, and a later author cannot tell a considered
+// row from a copied one. A ground is a fact about the PROVIDER DECLARATION -- whether it is opaque,
+// whether it refines its representation, whether it is the target primitive -- so it is checkable at
+// the declaration and it is declaration-intrinsic, which is what makes the per-declaration key sound:
+// a consumer cannot change whether Symbol carries something String does not by importing it.
+//
+// THE FOURTH ARM IS THE POINT OF THIS VOCABULARY, NOT A CATCH-ALL. The three deciding grounds are
+// positive assertions and their joint negation is a real, authorable state: a naming alias that
+// carries no invariant its representation does not AND is not itself the machine primitive. Stating
+// only the deciding grounds would be a dichotomy over a domain with three states (DESIGN's named
+// failure mode), and its cost is specific -- an author holding such a provider would have to assert
+// one of two false grounds to author any row, and the model would then record a fabricated
+// justification. ProviderGroundExaminedNeitherHolds says somebody looked and neither ground held,
+// which is a different fact from nobody having looked (ReferenceRealizationUndeclared below) and has
+// a different remedy: this one is answered by modeling the provider, that one by examining it.
+type ReferenceRealizationGround
+  = ProviderIsOpaque { note: NonEmptyStr }
+  | ProviderRefinesItsRepresentation { refinement: NonEmptyStr }
+  | ProviderIsTheTargetPrimitive { grounding: NonEmptyStr }
+  | ProviderGroundExaminedNeitherHolds { examined: NonEmptyStr }
+
+// Derivation, total over the ground and DELIBERATELY NOT total onto ReferenceRealization: the fourth
+// ground decides no mode, and answering one anyway would be the fabricated plausible output DESIGN
+// section 5 forbids. A caller that wants a mode must handle the state where none is derivable.
+type ReferenceRealizationDerivation
+  = ReferenceRealizationDerived { mode: ReferenceRealization }
+  | ReferenceRealizationNotDerivable { ground: ReferenceRealizationGround }
+
+fn reference_realization_from_ground(ground: ReferenceRealizationGround) -> ReferenceRealizationDerivation {
+  match ground {
+    ProviderIsOpaque { note: _ } =>
+      ReferenceRealizationDerived { mode: PreserveProviderDeclaration }
+    ProviderRefinesItsRepresentation { refinement: _ } =>
+      ReferenceRealizationDerived { mode: PreserveProviderDeclaration }
+    ProviderIsTheTargetPrimitive { grounding: _ } =>
+      ReferenceRealizationDerived { mode: InlineTargetRepresentation }
+    ProviderGroundExaminedNeitherHolds { examined: e } =>
+      ReferenceRealizationNotDerivable { ground: ProviderGroundExaminedNeitherHolds { examined: e } }
+  }
+}
+
+// One authored row: a provider declaration and the ground that decides how references to it are
+// realized. The key is std.decl_ref DeclarationRef -- the namespace layer's own declaration identity
+// -- so no second identity is minted here, and two declarations sharing a spelling never collapse.
+type ProviderReferenceRealizationRow {
+  provider: DeclarationRef
+  ground: ReferenceRealizationGround
+}
+
+// NOBODY HAS SAID is its own state and never renders as a mode. Today no declaration in the corpus
+// carries a reference-realization mode at all, which is exactly why this arm is the common one and
+// exactly why it must not default: a defaulting Undeclared would reproduce the current artifact's
+// silent inline-everywhere as though it were policy.
+type ReferenceRealizationStanding
+  = ReferenceRealizationDeclared { ground: ReferenceRealizationGround }
+  | ReferenceRealizationUndeclared { provider_key: String }
+
+fn provider_reference_realization_standing(
+  rows: List<ProviderReferenceRealizationRow>,
+  provider: DeclarationRef
+) -> ReferenceRealizationStanding {
+  match rows |> filter(r => declaration_ref_eq(a: r.provider, b: provider)) |> first {
+    Present { value: row } => ReferenceRealizationDeclared { ground: row.ground }
+    Absent => ReferenceRealizationUndeclared { provider_key: declaration_ref_display_key(ref: provider) }
+  }
+}
+
+// WHY A REFUSAL CARRIES ITS CAUSE AS A COPRODUCT AND NOT A STRING: the three causes have three
+// owners. Identity-unknown is the caller's -- it asked without saying which declaration it meant.
+// Undeclared is the policy carrier's -- the provider has no row. NeitherGroundHolds is the modeling
+// lane's -- the provider was examined and needs a shape neither ground fits. Collapsing them would
+// be one reason symbol over three repairs.
+type ReferenceRenderingRefusal
+  = ProviderIdentityUnknown { cause: String }
+  | ReferenceRealizationPolicyUndeclared { provider_key: String }
+  | ReferenceGroundDecidesNoMode { ground: ReferenceRealizationGround }
+
+// The reference-position answer. RenderProviderDeclarationByPolicy and RenderProviderDeclarationNoRealization
+// both put the provider's name at the reference and are kept apart because their causes differ: the
+// first is a declared preservation, the second is the absence of any checkpoint governing this
+// declaration, so nothing exists to inline. Rendering them as one arm would be a not-applicable
+// answer wearing a decision's name.
+type ReferencePositionRendering
+  = RenderProviderDeclarationByPolicy
+  | RenderProviderDeclarationNoRealization
+  | RenderTargetRepresentation { spelling: String }
+  | ReferenceRenderingRefused { refusal: ReferenceRenderingRefusal }
+
+// THE JOIN, and it is the whole point of the module: a realization decision says WHAT the
+// representation is, a standing says WHERE a reference to that provider writes it, and only the two
+// together answer what a reference position renders. No arm here reads the emitted artifact, and no
+// arm answers from whether anything currently compiles.
+fn reference_position_rendering(
+  decision: TypeRealizationDecision,
+  standing: ReferenceRealizationStanding
+) -> ReferencePositionRendering {
+  match decision {
+    Realized { checkpoint: cp } =>
+      match standing {
+        ReferenceRealizationDeclared { ground: g } =>
+          match reference_realization_from_ground(ground: g) {
+            ReferenceRealizationDerived { mode: m } =>
+              match m {
+                PreserveProviderDeclaration => RenderProviderDeclarationByPolicy
+                InlineTargetRepresentation => RenderTargetRepresentation { spelling: cp.target_type }
+              }
+            ReferenceRealizationNotDerivable { ground: ng } =>
+              ReferenceRenderingRefused { refusal: ReferenceGroundDecidesNoMode { ground: ng } }
+          }
+        ReferenceRealizationUndeclared { provider_key: k } =>
+          ReferenceRenderingRefused { refusal: ReferenceRealizationPolicyUndeclared { provider_key: k } }
+      }
+    Unrealized => RenderProviderDeclarationNoRealization
+    Refused { cause: c } => ReferenceRenderingRefused { refusal: ProviderIdentityUnknown { cause: c } }
+  }
+}
+
+// Convenience for a consumer that holds a roster and a provider identity rather than a standing. It
+// is a derivation of the two functions above, not a third answer.
+fn provider_reference_position_rendering(
+  rows: List<ProviderReferenceRealizationRow>,
+  provider: DeclarationRef,
+  decision: TypeRealizationDecision
+) -> ReferencePositionRendering {
+  reference_position_rendering(
+    decision: decision,
+    standing: provider_reference_realization_standing(rows: rows, provider: provider)
+  )
+}

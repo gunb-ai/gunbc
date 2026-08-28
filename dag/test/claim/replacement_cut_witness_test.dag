@@ -4,12 +4,13 @@ module test.claim.replacement_cut_witness
 // accidental-coverage class the import-strip diagnosis names: a module this
 // new is in nobody else's closure, so bare references would not bind.
 import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import gunbc.replacement_cut {
   ReplacementCutId,
   CoverageClaim, Covered, CoverageOpen,
   ConsumerDisposition,
   RetainSameContract, RetainChangedContract, ReplacedByY, EvidenceOnly, Retire, Undecided,
-  BoundaryConsumer,
+  BoundaryConsumer, BoundaryConsumerKey,
   BoundaryCensus, ConsumersEnumerated, BoundaryDeclaredEmpty,
   HigherBoundaryAnswer, OutermostBoundary, DescendedFromRefusedCut, DescentParentUnauthored,
   EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence, EvidenceUndecided,
@@ -24,13 +25,32 @@ import gunbc.replacement_cut {
   AdmittedReplacementCutPlan,
   PlanAdmission, PlanAdmitted, PlanRefused,
   admit_replacement_cut_plan, admitted_matches_plan,
+  CutRegistration, RegisteredExactCut, RegisteredCutRemeasureRequired,
+  CutRegistryStanding, CutRegistryAdmitted, CutRegistryRefused,
+  CutRegistryRefusalCause, RegistryDuplicateCutId, RegistryParentAbsent, RegistryParentRemeasureRequired,
+  LegacyConsumerSurveyRow, LegacyReplacementSurvey,
+  admit_cut_registry,
 }
 
 fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
 
+// Fixture identities. The carrier now keys the boundary relation on consumer x consumed-authority,
+// so a fixture must name BOTH sides; a synthetic module path keeps these out of any real namespace.
+fn fixture_ref(name: String) -> DeclarationRef {
+  decl_ref(module_path: "fixture.replacement_cut", decl_name: name)
+}
+
+fn fixture_authority() -> DeclarationRef {
+  decl_ref(module_path: "fixture.replacement_cut", decl_name: "old_root_declaration")
+}
+
+fn other_authority() -> DeclarationRef {
+  decl_ref(module_path: "fixture.replacement_cut", decl_name: "other_old_root_declaration")
+}
+
 fn covered_consumer() -> BoundaryConsumer {
   BoundaryConsumer {
-    consumer: nes(s: "surviving external interface"),
+    consumer: fixture_ref(name: "surviving external interface"), consumed_old_authority: fixture_authority(),
     disposition: RetainSameContract {
       justification: nes(s: "supported public surface"),
       coverage: Covered { by: nes(s: "new fold root") },
@@ -40,7 +60,7 @@ fn covered_consumer() -> BoundaryConsumer {
 
 fn open_consumer() -> BoundaryConsumer {
   BoundaryConsumer {
-    consumer: nes(s: "surviving invariant consumer"),
+    consumer: fixture_ref(name: "surviving invariant consumer"), consumed_old_authority: fixture_authority(),
     disposition: RetainChangedContract {
       terminal_contract: nes(s: "narrowed terminal contract"),
       justification: nes(s: "invariant survives with narrower surface"),
@@ -50,26 +70,26 @@ fn open_consumer() -> BoundaryConsumer {
 }
 
 fn undecided_consumer() -> BoundaryConsumer {
-  BoundaryConsumer { consumer: nes(s: "undispositioned caller"), disposition: Undecided }
+  BoundaryConsumer { consumer: fixture_ref(name: "undispositioned caller"), consumed_old_authority: fixture_authority(), disposition: Undecided }
 }
 
 fn retired_consumer() -> BoundaryConsumer {
   BoundaryConsumer {
-    consumer: nes(s: "workaround built to compensate for x"),
+    consumer: fixture_ref(name: "workaround built to compensate for x"), consumed_old_authority: fixture_authority(),
     disposition: Retire { reason: nes(s: "only justification was x itself") },
   }
 }
 
 fn replaced_consumer() -> BoundaryConsumer {
   BoundaryConsumer {
-    consumer: nes(s: "old dispatch client"),
+    consumer: fixture_ref(name: "old dispatch client"), consumed_old_authority: fixture_authority(),
     disposition: ReplacedByY { new_authority: nes(s: "y boundary authority") },
   }
 }
 
 fn evidence_consumer() -> BoundaryConsumer {
   BoundaryConsumer {
-    consumer: nes(s: "discriminating refusal witness"),
+    consumer: fixture_ref(name: "discriminating refusal witness"), consumed_old_authority: fixture_authority(),
     disposition: EvidenceOnly {
       surviving_claim: nes(s: "refusal y still claims"),
       reenrolled_witness: nes(s: "witness re-enrolled against y"),
@@ -95,11 +115,11 @@ fn typed_oracle() -> ExternalXAnswer {
   ExternalXRoles { roles: [ExternalDifferentialOracle, HistoricalMeasurementSource] }
 }
 
-fn two_region() -> List<NonEmptyStr> { [nes(s: "x root module"), nes(s: "x internal helper")] }
+fn two_region() -> List<DeclarationRef> { [fixture_ref(name: "x_root_module"), fixture_ref(name: "x_internal_helper")] }
 
 fn cut_full(
   consumers: List<BoundaryConsumer>,
-  region: List<NonEmptyStr>,
+  region: List<DeclarationRef>,
   evidence: List<EvidenceDisposition>,
   new_root: String,
   oracle: ExternalXAnswer,
@@ -120,7 +140,7 @@ fn cut_full(
 
 fn cut_with(
   consumers: List<BoundaryConsumer>,
-  region: List<NonEmptyStr>,
+  region: List<DeclarationRef>,
   evidence: List<EvidenceDisposition>,
 ) -> ReplacementCut {
   cut_full(consumers: consumers, region: region, evidence: evidence, new_root: "new fold root", oracle: typed_oracle())
@@ -133,16 +153,21 @@ fn causes_of(admission: PlanAdmission) -> List<CutRefusalCause> {
   }
 }
 
+fn key_is(k: BoundaryConsumerKey, consumer_name: String, authority: DeclarationRef) -> Bool {
+  declaration_ref_eq(a: k.consumer, b: fixture_ref(name: consumer_name))
+    && declaration_ref_eq(a: k.consumed_old_authority, b: authority)
+}
+
 fn cause_matches(c: CutRefusalCause, tag: String, subject: String) -> Bool {
   match c {
-    UndispositionedConsumer { consumer: w } => tag == "undispositioned-consumer" && (w as String) == subject
-    UncoveredSurvivingConsumer { consumer: w } => tag == "uncovered-surviving" && (w as String) == subject
+    UndispositionedConsumer { key: k } => tag == "undispositioned-consumer" && key_is(k: k, consumer_name: subject, authority: fixture_authority())
+    UncoveredSurvivingConsumer { key: k } => tag == "uncovered-surviving" && key_is(k: k, consumer_name: subject, authority: fixture_authority())
     UndispositionedEvidence { evidence: w } => tag == "undispositioned-evidence" && (w as String) == subject
-    CoveredByOldRoot { consumer: w } => tag == "covered-by-old-root" && (w as String) == subject
-    ReplacementNamesOldRoot { consumer: w } => tag == "replacement-names-old-root" && (w as String) == subject
-    ConsumerDuplicated { consumer: w } => tag == "consumer-duplicated" && (w as String) == subject
+    CoveredByOldRoot { key: k } => tag == "covered-by-old-root" && key_is(k: k, consumer_name: subject, authority: fixture_authority())
+    ReplacementNamesOldRoot { key: k } => tag == "replacement-names-old-root" && key_is(k: k, consumer_name: subject, authority: fixture_authority())
+    ConsumerDuplicated { key: k } => tag == "consumer-duplicated" && key_is(k: k, consumer_name: subject, authority: fixture_authority())
     EvidenceDuplicated { evidence: w } => tag == "evidence-duplicated" && (w as String) == subject
-    RegionMemberDuplicated { member: w } => tag == "region-member-duplicated" && (w as String) == subject
+    RegionMemberDuplicated { member: w } => tag == "region-member-duplicated" && declaration_ref_eq(a: w, b: fixture_ref(name: subject))
     EnumeratedCensusEmpty => tag == "enumerated-census-empty" && subject == ""
     ExternalRolesEnumeratedEmpty => tag == "external-roles-enumerated-empty" && subject == ""
     EmptyCoveredRegion => tag == "empty-covered-region" && subject == ""
@@ -266,7 +291,7 @@ test fn new_root_equal_to_old_root_refuses() -> Bool {
 
 test fn coverage_by_the_old_root_is_fallback_wearing_a_disposition() -> Bool {
   let fallback_consumer = BoundaryConsumer {
-    consumer: nes(s: "consumer leaning on x"),
+    consumer: fixture_ref(name: "consumer leaning on x"), consumed_old_authority: fixture_authority(),
     disposition: RetainSameContract {
       justification: nes(s: "claims retention"),
       coverage: Covered { by: nes(s: "old floor step") },
@@ -283,7 +308,7 @@ test fn coverage_by_the_old_root_is_fallback_wearing_a_disposition() -> Bool {
 
 test fn replacement_naming_the_old_root_refuses() -> Bool {
   let circular = BoundaryConsumer {
-    consumer: nes(s: "circular client"),
+    consumer: fixture_ref(name: "circular client"), consumed_old_authority: fixture_authority(),
     disposition: ReplacedByY { new_authority: nes(s: "old floor step") },
   }
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
@@ -325,11 +350,11 @@ test fn duplicate_evidence_subject_refuses() -> Bool {
 test fn duplicate_region_member_refuses() -> Bool {
   let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
     consumers: [covered_consumer()],
-    region: [nes(s: "x root module"), nes(s: "x root module")],
+    region: [fixture_ref(name: "x_root_module"), fixture_ref(name: "x_root_module")],
     evidence: dispositioned_evidence(),
   )))
   list_length(items: causes) == 1
-    && causes_include(causes: causes, tag: "region-member-duplicated", subject: "x root module")
+    && causes_include(causes: causes, tag: "region-member-duplicated", subject: "x_root_module")
 }
 
 test fn enumerated_empty_census_refuses_but_declared_empty_admits() -> Bool {
@@ -511,4 +536,272 @@ test fn probe_admits_outermost_claim() -> Bool {
     identity: "cut-outermost",
     answer: OutermostBoundary,
   )))
+}
+
+// ---------------------------------------------------------------------------
+// Relation-key controls. The boundary relation is consumer x consumed-authority,
+// and these two are the pair that establishes it is really a PAIR: the same
+// consumer twice under one authority is a duplicate, and the same consumer under
+// two different authorities is not. Without the second, keying on the consumer
+// alone would pass the first and let one disposition answer for two dependencies.
+// ---------------------------------------------------------------------------
+
+fn same_consumer_one_authority() -> List<BoundaryConsumer> {
+  [
+    BoundaryConsumer {
+      consumer: fixture_ref(name: "shared caller"), consumed_old_authority: fixture_authority(),
+      disposition: Retire { reason: nes(s: "leaves with x") },
+    },
+    BoundaryConsumer {
+      consumer: fixture_ref(name: "shared caller"), consumed_old_authority: fixture_authority(),
+      disposition: Retire { reason: nes(s: "leaves with x") },
+    },
+  ]
+}
+
+fn same_consumer_two_authorities() -> List<BoundaryConsumer> {
+  [
+    BoundaryConsumer {
+      consumer: fixture_ref(name: "shared caller"), consumed_old_authority: fixture_authority(),
+      disposition: Retire { reason: nes(s: "leaves with x") },
+    },
+    BoundaryConsumer {
+      consumer: fixture_ref(name: "shared caller"), consumed_old_authority: other_authority(),
+      disposition: Retire { reason: nes(s: "a different dependency of the same caller") },
+    },
+  ]
+}
+
+test fn one_consumer_twice_under_one_authority_is_a_duplicate() -> Bool {
+  let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
+    consumers: same_consumer_one_authority(),
+    region: two_region(),
+    evidence: dispositioned_evidence(),
+  )))
+  causes_include(causes: causes, tag: "consumer-duplicated", subject: "shared caller")
+}
+
+test fn one_consumer_under_two_authorities_is_two_relations_not_a_duplicate() -> Bool {
+  let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
+    consumers: same_consumer_two_authorities(),
+    region: two_region(),
+    evidence: dispositioned_evidence(),
+  )))
+  !causes_include(causes: causes, tag: "consumer-duplicated", subject: "shared caller")
+}
+
+// ---------------------------------------------------------------------------
+// Registry controls. These fire the parent-existence rung that
+// replacement_cut_unjoined_parent_rung_note declared, and they discriminate the
+// three parent states rather than collapsing them into present/absent.
+// ---------------------------------------------------------------------------
+
+fn fixture_survey() -> LegacyReplacementSurvey {
+  LegacyReplacementSurvey {
+    old_root_consumer: nes(s: "coarse old root"),
+    subject: nes(s: "coarse subject"),
+    contract: nes(s: "coarse contract"),
+    new_root: nes(s: "coarse new root"),
+    why_not_higher: OutermostBoundary,
+    covered_region_labels: [nes(s: "some module")],
+    consumer_rows: [
+      LegacyConsumerSurveyRow {
+        consumer_label: nes(s: "some module or binary"),
+        disposition: Retire { reason: nes(s: "recorded at module grain") },
+      },
+    ],
+    external_x: NoExternalOracleRequired { justification: nes(s: "historical record only") },
+    evidence_rows: [],
+    measured_revision: nes(s: "deadbeef"),
+    limitation: nes(s: "module-or-binary grain sample"),
+  }
+}
+
+fn registration_admitting_cut(identity: String, parent: HigherBoundaryAnswer) -> CutRegistration {
+  RegisteredExactCut {
+    cut: ReplacementCut {
+      identity: identity as ReplacementCutId,
+      old_root_consumer: nes(s: "old floor step"),
+      subject: nes(s: "exact subject population"),
+      contract: nes(s: "complete contract including refusals"),
+      new_root: nes(s: "new fold root"),
+      why_not_higher: parent,
+      covered_region: two_region(),
+      boundary_census: ConsumersEnumerated { consumers: [retired_consumer()] },
+      external_x: NoExternalOracleRequired { justification: nes(s: "no oracle needed") },
+      evidence_dispositions: dispositioned_evidence(),
+    },
+  }
+}
+
+fn remeasure_registration(identity: String) -> CutRegistration {
+  RegisteredCutRemeasureRequired {
+    identity: identity as ReplacementCutId,
+    prior_survey: fixture_survey(),
+    reason: nes(s: "authored at a coarser grain than the exact carrier requires"),
+  }
+}
+
+fn descends_from(parent: String) -> HigherBoundaryAnswer {
+  DescendedFromRefusedCut {
+    parent_cut: parent as ReplacementCutId,
+    refusal_summary: nes(s: "parent boundary refused"),
+  }
+}
+
+fn registry_causes(standing: CutRegistryStanding) -> List<CutRegistryRefusalCause> {
+  match standing {
+    CutRegistryAdmitted { exact_count: _, remeasure_required_count: _ } => []
+    CutRegistryRefused { causes: cs } => cs
+  }
+}
+
+fn registry_cause_matches(c: CutRegistryRefusalCause, tag: String, subject: String) -> Bool {
+  match c {
+    RegistryDuplicateCutId { identity: i } =>
+      tag == "duplicate-id" && (i as String) == subject
+    RegistryParentAbsent { cut: _, named_parent: p } =>
+      tag == "parent-absent" && (p as String) == subject
+    RegistryParentRemeasureRequired { cut: _, named_parent: p } =>
+      tag == "parent-remeasure-required" && (p as String) == subject
+  }
+}
+
+fn registry_includes(causes: List<CutRegistryRefusalCause>, tag: String, subject: String) -> Bool {
+  fold(causes, init: false, f: fn(acc, c) { acc || registry_cause_matches(c: c, tag: tag, subject: subject) })
+}
+
+test fn a_registry_of_distinct_cuts_is_admitted_and_counts_both_arms() -> Bool {
+  match admit_cut_registry(rs: [
+    registration_admitting_cut(identity: "cut-a", parent: OutermostBoundary),
+    remeasure_registration(identity: "cut-b"),
+  ]) {
+    CutRegistryAdmitted { exact_count: e, remeasure_required_count: r } => e == 1 && r == 1
+    CutRegistryRefused { causes: _ } => false
+  }
+}
+
+// THE RUNG THIS FIRES: before the registry, a branded string named any parent at all and the plan
+// was admitted, sealed and digest-bound. This is the discriminating RED.
+test fn a_parent_naming_no_registered_cut_refuses() -> Bool {
+  let causes = registry_causes(standing: admit_cut_registry(rs: [
+    registration_admitting_cut(identity: "cut-a", parent: descends_from(parent: "cut-that-exists-nowhere")),
+  ]))
+  registry_includes(causes: causes, tag: "parent-absent", subject: "cut-that-exists-nowhere")
+}
+
+// AND THE STATE BETWEEN present AND absent: descent claims the parent REFUSED, which a coarse
+// survey cannot establish. Reporting this as ParentAbsent would say the boundary is unknown when it
+// is merely unmeasured, and those have different remedies.
+test fn a_parent_resolving_only_to_a_remeasurement_obligation_refuses_distinctly() -> Bool {
+  let causes = registry_causes(standing: admit_cut_registry(rs: [
+    registration_admitting_cut(identity: "cut-a", parent: descends_from(parent: "cut-legacy")),
+    remeasure_registration(identity: "cut-legacy"),
+  ]))
+  registry_includes(causes: causes, tag: "parent-remeasure-required", subject: "cut-legacy")
+    && !registry_includes(causes: causes, tag: "parent-absent", subject: "cut-legacy")
+}
+
+test fn a_parent_resolving_to_an_exact_cut_is_admitted() -> Bool {
+  match admit_cut_registry(rs: [
+    registration_admitting_cut(identity: "cut-a", parent: descends_from(parent: "cut-parent")),
+    registration_admitting_cut(identity: "cut-parent", parent: OutermostBoundary),
+  ]) {
+    CutRegistryAdmitted { exact_count: e, remeasure_required_count: _ } => e == 2
+    CutRegistryRefused { causes: _ } => false
+  }
+}
+
+test fn an_exact_and_a_remeasurement_registration_sharing_an_id_refuse() -> Bool {
+  let causes = registry_causes(standing: admit_cut_registry(rs: [
+    registration_admitting_cut(identity: "cut-same", parent: OutermostBoundary),
+    remeasure_registration(identity: "cut-same"),
+  ]))
+  registry_includes(causes: causes, tag: "duplicate-id", subject: "cut-same")
+    && list_length(items: causes) == 1
+}
+
+// THE COUNT IS THE ASSERTION HERE, and it is enrolled because it was wrong before review caught it:
+// the fold used to re-fire for every occurrence of a duplicated id, so three registrations sharing
+// one identity produced three causes for one defect. `registry_includes` passed either way, which is
+// exactly why a membership-only witness could not see it. One duplicated identity is one defect no
+// matter how many rows carry it, so N rows yield N-1 causes and never N.
+test fn a_duplicated_identity_yields_one_cause_per_extra_row_not_one_per_row() -> Bool {
+  let two = registry_causes(standing: admit_cut_registry(rs: [
+    registration_admitting_cut(identity: "cut-dup", parent: OutermostBoundary),
+    remeasure_registration(identity: "cut-dup"),
+  ]))
+  let three = registry_causes(standing: admit_cut_registry(rs: [
+    registration_admitting_cut(identity: "cut-dup", parent: OutermostBoundary),
+    remeasure_registration(identity: "cut-dup"),
+    remeasure_registration(identity: "cut-dup"),
+  ]))
+  list_length(items: two) == 1 && list_length(items: three) == 2
+}
+
+// DescentParentUnauthored stays truthful while no exact parent exists: it names a boundary and
+// carries no id, so there is nothing for the registry to resolve and nothing to refuse.
+test fn descent_parent_unauthored_needs_no_registered_parent() -> Bool {
+  match admit_cut_registry(rs: [
+    registration_admitting_cut(identity: "cut-a", parent: DescentParentUnauthored {
+      intended_parent_boundary: nes(s: "an outer boundary nobody has authored"),
+      basis: nes(s: "no cut is authored there"),
+    }),
+  ]) {
+    CutRegistryAdmitted { exact_count: e, remeasure_required_count: r } => e == 1 && r == 0
+    CutRegistryRefused { causes: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The refusal must name WHICH RELATION refused, not just which consumer. The
+// carrier explicitly permits one declaration to consume two old authorities, so
+// a cause carrying only the consumer cannot say which of them is defective --
+// and a witness that checked only the consumer would certify that weaker grain.
+// Here one caller holds a valid row against authority A and a DEFECTIVE row
+// against authority B, and the cause must name B.
+// ---------------------------------------------------------------------------
+
+fn one_caller_two_authorities_only_second_defective() -> List<BoundaryConsumer> {
+  [
+    BoundaryConsumer {
+      consumer: fixture_ref(name: "dual caller"), consumed_old_authority: fixture_authority(),
+      disposition: Retire { reason: nes(s: "this dependency leaves with x") },
+    },
+    BoundaryConsumer {
+      consumer: fixture_ref(name: "dual caller"), consumed_old_authority: other_authority(),
+      disposition: Undecided,
+    },
+  ]
+}
+
+fn cause_names_key(causes: List<CutRefusalCause>, tag: String, consumer_name: String, authority: DeclarationRef) -> Bool {
+  fold(causes, init: false, f: fn(acc, c) {
+    acc || match c {
+      UndispositionedConsumer { key: k } => tag == "undispositioned-consumer" && key_is(k: k, consumer_name: consumer_name, authority: authority)
+      UncoveredSurvivingConsumer { key: k } => tag == "uncovered-surviving" && key_is(k: k, consumer_name: consumer_name, authority: authority)
+      CoveredByOldRoot { key: k } => tag == "covered-by-old-root" && key_is(k: k, consumer_name: consumer_name, authority: authority)
+      ReplacementNamesOldRoot { key: k } => tag == "replacement-names-old-root" && key_is(k: k, consumer_name: consumer_name, authority: authority)
+      ConsumerDuplicated { key: k } => tag == "consumer-duplicated" && key_is(k: k, consumer_name: consumer_name, authority: authority)
+      UndispositionedEvidence { evidence: _ } => false
+      EvidenceDuplicated { evidence: _ } => false
+      RegionMemberDuplicated { member: _ } => false
+      EnumeratedCensusEmpty => false
+      ExternalRolesEnumeratedEmpty => false
+      EmptyCoveredRegion => false
+      NewRootEqualsOldRoot => false
+      SelfReferentialDescent => false
+    }
+  })
+}
+
+test fn a_refusal_names_the_defective_relation_not_merely_the_consumer() -> Bool {
+  let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
+    consumers: one_caller_two_authorities_only_second_defective(),
+    region: two_region(),
+    evidence: dispositioned_evidence(),
+  )))
+  list_length(items: causes) == 1
+    && cause_names_key(causes: causes, tag: "undispositioned-consumer", consumer_name: "dual caller", authority: other_authority())
+    && !cause_names_key(causes: causes, tag: "undispositioned-consumer", consumer_name: "dual caller", authority: fixture_authority())
 }

@@ -9,6 +9,7 @@ use self::OccurrenceRole::*;
 use self::OccurrenceTransportRefusal::*;
 use self::OccurrenceTransportValidation::*;
 pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_content_hash::Fnv1a64Structural;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -360,10 +361,30 @@ pub enum OccurrenceTransportRefusal {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ScopedOccurrenceRef {
+    pub scope: Rc<Fnv1a64Structural>,
+    pub occurrence: OccurrenceId,
+}
+
+pub fn scoped_occurrence_ref_same_scope(
+    left: Rc<ScopedOccurrenceRef>,
+    right: Rc<ScopedOccurrenceRef>,
+) -> bool {
+    (left.scope.clone().digest.clone() == right.scope.clone().digest.clone())
+}
+
+pub fn scoped_occurrence_ref_in_scope(
+    occurrence_ref: Rc<ScopedOccurrenceRef>,
+    scope: Rc<Fnv1a64Structural>,
+) -> bool {
+    (occurrence_ref.scope.clone().digest.clone() == scope.digest.clone())
+}
+
 pub fn occurrence_identity_constructor_spelling_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global: the legacy v2 SyntheticOccurrence/MintedOccurrence facade and identically named shared constructors cannot coexist in one conversion closure. The constructor spelling is representation; this shared carrier and its allocator remain the semantic authority.".to_string()
+            "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global. The spelling was chosen while a second, identically named v2 coproduct still existed and could not coexist with these constructors in one closure; that coproduct and its conversions are deleted and this carrier is now the only occurrence-identity carrier a Node holds. The spelling is kept because renaming it would be a corpus-wide rewrite that buys nothing: the constructor spelling is representation, and this shared carrier and its allocator remain the semantic authority.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -373,13 +394,20 @@ pub fn occurrence_identity_constructor_spelling_note() -> String {
 #[serde(tag = "_variant")]
 pub enum NodeOccurrenceIdentity {
     OccurrenceSynthetic,
-    OccurrenceMinted { id: OccurrenceId },
+    OccurrenceMinted {
+        id: OccurrenceId,
+    },
+    OccurrenceProjected {
+        id: OccurrenceId,
+        caused_by: Rc<ScopedOccurrenceRef>,
+    },
 }
 impl NodeOccurrenceIdentity {
     pub fn id(&self) -> OccurrenceId {
         match self {
             NodeOccurrenceIdentity::OccurrenceSynthetic => panic!("no id on unit variant"),
             NodeOccurrenceIdentity::OccurrenceMinted { id: __val, .. } => __val.clone(),
+            NodeOccurrenceIdentity::OccurrenceProjected { id: __val, .. } => __val.clone(),
         }
     }
 }
@@ -442,6 +470,16 @@ pub fn node_occurrence_identity_minted(id: OccurrenceId) -> Rc<NodeOccurrenceIde
     Rc::new(NodeOccurrenceIdentity::OccurrenceMinted { id: id.clone() })
 }
 
+pub fn node_occurrence_identity_projected(
+    id: OccurrenceId,
+    caused_by: Rc<ScopedOccurrenceRef>,
+) -> Rc<NodeOccurrenceIdentity> {
+    Rc::new(NodeOccurrenceIdentity::OccurrenceProjected {
+        id: id.clone(),
+        caused_by: caused_by.clone(),
+    })
+}
+
 pub fn occurrence_transport_validation_complexity_law() -> String {
     thread_local! {
         static CACHED: String = {
@@ -490,14 +528,12 @@ pub fn occurrence_containment_path_contains_ancestor(
 pub fn occurrence_containment_ancestors_as_list(
     ancestors: Rc<Vec<OccurrenceId>>,
 ) -> Rc<Vec<OccurrenceId>> {
-    v1_rt::reverse(
-        ancestors
-            .iter()
-            .cloned()
-            .fold(Rc::new(vec![]), |acc: _, id: OccurrenceId| {
-                v1_rt::concat(Rc::new(vec![id.clone()]), acc)
-            }),
-    )
+    v1_rt::reverse(ancestors.iter().cloned().fold(
+        Rc::new(vec![]),
+        |acc: Rc<Vec<OccurrenceId>>, id: OccurrenceId| {
+            v1_rt::concat(Rc::new(vec![id.clone()]), acc)
+        },
+    ))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -924,7 +960,7 @@ pub fn occurrence_transport_refusal(
 pub fn authored_token_ordinal_typed_bridge_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            unbound_dissolution("feature:occurrence-ordinal-value-measure — DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows.".to_string())
+            crate::std_dissolution::unbound_dissolution("feature:occurrence-ordinal-value-measure — DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -933,7 +969,7 @@ pub fn authored_token_ordinal_typed_bridge_dissolve_on() -> Rc<DissolutionCondit
 pub fn authored_token_ordinal_value_bridge_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            unbound_dissolution("feature:occurrence-ordinal-value-measure — DISSOLVE-ON: same trigger as authored_token_ordinal_typed_bridge_dissolve_on; replace AuthoredTokenOrdinal.value with Measure<Count, One, Nat> (or the converged Nat inhabitant) and delete both value-bridge rows with the space-bridge rows.".to_string())
+            crate::std_dissolution::unbound_dissolution("feature:occurrence-ordinal-value-measure — DISSOLVE-ON: same trigger as authored_token_ordinal_typed_bridge_dissolve_on; replace AuthoredTokenOrdinal.value with Measure<Count, One, Nat> (or the converged Nat inhabitant) and delete both value-bridge rows with the space-bridge rows.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -942,7 +978,7 @@ pub fn authored_token_ordinal_value_bridge_dissolve_on() -> Rc<DissolutionCondit
 pub fn occurrence_containment_storage_projection_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            unbound_dissolution("DISSOLVE-ON: PR #7515 lands std_occurrence_binding on the stage0 roster and proves ContainmentPath<OccurrenceId> compiles without supplemental derive bounds; then replace OccurrenceContainmentPath with std.occurrence_binding.ContainmentPath<OccurrenceId> across consumers and delete both storage-projection rows.".to_string())
+            crate::std_dissolution::unbound_dissolution("DISSOLVE-ON: PR #7515 lands std_occurrence_binding on the stage0 roster and proves ContainmentPath<OccurrenceId> compiles without supplemental derive bounds; then replace OccurrenceContainmentPath with std.occurrence_binding.ContainmentPath<OccurrenceId> across consumers and delete both storage-projection rows.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

@@ -10,7 +10,7 @@ on:
       mode:
         description: plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks
         required: true
-        options: [plan, apply, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability]
+        options: [plan, apply, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability, dashboard_deploy]
         type: choice
       target:
         description: Spark target host for spark_linger mode (srv5 or srv6)
@@ -67,6 +67,7 @@ jobs:
           echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
       - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
         run: |
+          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
           rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
           if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
           if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
@@ -164,6 +165,7 @@ jobs:
           trap cleanup EXIT
           printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
           curl -sSf -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fleet-automation-ssh-key/versions/1:access" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]))' > "$KEY_FILE"
+          rm -f "$HDR_FILE"
           chmod 600 "$KEY_FILE"
           EXPECTED_FP="SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ"
           OBSERVED_FP="$(ssh-keygen -y -f "$KEY_FILE" | ssh-keygen -lf - | awk '{print $2}')"
@@ -183,7 +185,7 @@ jobs:
         id: plan
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_converge_plan_cli.dag --function fleet_converge_plan_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_plan_wet
         if: github.event.inputs.mode == 'plan'
         timeout-minutes: 5
       - name: Upload fleet converge plan artifact
@@ -214,7 +216,7 @@ jobs:
           ACTUAL="$(cat /tmp/fleet-converge-plan/plan_content.hex)"
           if [ -z "${EXPECTED_HASH:-}" ] || [ "$EXPECTED_HASH" != "$ACTUAL" ]; then echo "::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL" >&2; exit 1; fi
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_converge_plan_cli.dag --function fleet_converge_apply_wet
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_apply_wet
         env:
           EXPECTED_HASH: ${{ github.event.inputs.plan_artifact_hash }}
         if: github.event.inputs.mode == 'apply'
@@ -291,3 +293,38 @@ jobs:
           if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
         if: always()
         timeout-minutes: 5
+  dashboard-deploy:
+    runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
+    needs: [build]
+    timeout-minutes: 50
+    if: github.event.inputs.mode == 'dashboard_deploy'
+    concurrency:
+      group: srv1-dashboard-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        id: release_bins
+        run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        timeout-minutes: 5
+      - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)
+        id: dashboard_deploy
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
+          cat "$ROOT/target/live-deploy-srv1-receipt.txt"
+        timeout-minutes: 30

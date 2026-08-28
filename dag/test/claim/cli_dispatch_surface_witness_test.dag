@@ -31,6 +31,7 @@ fn fixture_subcommands() -> List<CliSubcommandRow> {
       verb: "alpha",
       variant: "Alpha",
       doc: [],
+      operands: [],
       options: [option_row(long: "kept", emission: EmittedByEmitMainRs), option_row(long: "missing", emission: AbsentFromEmitMainRs)],
       realization: CliRetainedHostKernel,
       emission: EmittedByEmitMainRs
@@ -39,6 +40,7 @@ fn fixture_subcommands() -> List<CliSubcommandRow> {
       verb: "beta",
       variant: "Beta",
       doc: [],
+      operands: [],
       options: [option_row(long: "one", emission: AbsentFromEmitMainRs), option_row(long: "two", emission: AbsentFromEmitMainRs)],
       realization: CliRetainedHostKernel,
       emission: AbsentFromEmitMainRs
@@ -65,6 +67,7 @@ test fn gap_is_empty_when_every_row_is_emitted() -> Bool {
       verb: "alpha",
       variant: "Alpha",
       doc: [],
+      operands: [],
       options: [option_row(long: "kept", emission: EmittedByEmitMainRs)],
       realization: CliRetainedHostKernel,
       emission: EmittedByEmitMainRs
@@ -92,6 +95,24 @@ test fn live_long_spellings_are_distinct_within_a_verb() -> Bool {
   })
 }
 
+test fn clean_version_identity_is_the_exact_commit() -> Bool {
+  let commit = "0123456789abcdef0123456789abcdef01234567" as CommitSha
+  gunbc_cli_version_text(
+    identity: gunbc_cli_version_identity(source_commit: commit, source_dirty: false)
+  )
+    == commit
+}
+
+// Discriminating control for the provenance lie this surface closes: changing only the dirty
+// observation must make the output cease to inhabit the 40-hex commit spelling.
+test fn dirty_version_identity_cannot_impersonate_the_commit() -> Bool {
+  let commit = "0123456789abcdef0123456789abcdef01234567" as CommitSha
+  gunbc_cli_version_text(
+    identity: gunbc_cli_version_identity(source_commit: commit, source_dirty: true)
+  )
+    == concat(commit, "-dirty")
+}
+
 // THE TOGGLE-DEFAULT CHECK IS DELETED, NOT MOVED.
 //
 // A witness here asserted that no toggle option declares a default. `CliToggleValue` now has no
@@ -108,4 +129,92 @@ test fn live_long_spellings_are_distinct_within_a_verb() -> Bool {
 test fn gap_is_non_empty_while_the_divergence_row_stands() -> Bool {
   gunbc_cli_emitter_gap() |> count > 0
     && emitter_produced_divergent_registrations |> any(row => row.basename == "main")
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE OPERAND AXIS
+// ---------------------------------------------------------------------------------------------
+
+// THE GAP FOLD REACHES OPERANDS UNDER A PRESENT VERB, AND THE FIXTURE PLANTS ONE. Without this
+// arm an operand the emitter does not render would be invisible to the one instrument that
+// reports what the committed CLI carries and the emitter does not -- a hole in a census that
+// exists precisely to have none.
+fn fixture_subcommands_with_an_operand() -> List<CliSubcommandRow> {
+  [
+    CliSubcommandRow {
+      verb: "alpha",
+      variant: "Alpha",
+      doc: [],
+      operands: [
+        CliOperandRow {
+          field: "subject",
+          placeholder: "LABEL",
+          value: CliAbsoluteLabelOperand {},
+          arity: CliExactlyOneOperand {},
+          doc: [],
+          emission: AbsentFromEmitMainRs
+        }
+      ],
+      options: [option_row(long: "kept", emission: EmittedByEmitMainRs)],
+      realization: CliRetainedHostKernel,
+      emission: EmittedByEmitMainRs
+    }
+  ]
+}
+
+test fn gap_lists_an_unemitted_operand_under_a_present_verb() -> Bool {
+  render_names(names: cli_emitter_gap_of(subcommands: fixture_subcommands_with_an_operand()))
+    == "alpha.LABEL"
+}
+
+fn test_verb_rows() -> List<CliSubcommandRow> {
+  gunbc_cli_subcommands() |> filter(sub => sub.verb == "test")
+}
+
+// THE VERB DECLARES EXACTLY ONE POSITIONAL LABEL OPERAND AND NO OPTIONS. The second conjunct is
+// the load-bearing one: it is what would go red if the interface were respelled as
+// `gunbc test --target //...` because the row carrier happened to have an option list ready.
+test fn the_test_verb_declares_one_absolute_label_operand_and_no_options() -> Bool {
+  test_verb_rows() |> all(sub =>
+    ((sub.operands |> count) == 1)
+      && ((sub.options |> count) == 0)
+      && (sub.operands |> all(operand =>
+           (operand.value == CliAbsoluteLabelOperand {})
+             && (operand.arity == CliExactlyOneOperand {})))
+  ) && ((test_verb_rows() |> count) == 1)
+}
+
+// THE CLI AUTHORITY NAMES NO HOST FUNCTION FOR THIS VERB.
+//
+// `CliDelegatesToHostFn` carries an authored Rust symbol as a `String`, and a verb on that arm
+// binds the model to a realization by SPELLING. The `test` verb resolves its subject through the
+// target-binding registry instead, so the surface names no realization at all and the dispatch
+// that selects one stays peripheral. This goes red the moment someone re-homes the verb onto the
+// stringly arm -- which is the shape the architecture exists to replace, and therefore the shape
+// most likely to be reached for by a later change wanting a quick hook.
+test fn the_test_verb_names_no_host_function() -> Bool {
+  test_verb_rows() |> all(sub => match sub.realization {
+    CliInvokesBoundTargetProducer => true
+    CliDelegatesToHostFn { symbol: _ } => false
+    CliRetainedHostKernel => false
+    CliRefusesUnwired { successor: _ } => false
+  })
+}
+
+// THE SCM VERB'S GAP IS COUNTED, NOT SILENT -- which is the whole reason the row was declared before
+// its handler exists.
+//
+// `gunbc scm` is declared in this surface and `AbsentFromEmitMainRs`, so the CLI authority states the
+// verb while the emitter renders nothing for it. That is only worth doing if the absence is OBSERVED:
+// a declared-but-unemitted verb that no consumer counted would be the parallel-ledger failure the
+// declaration exists to end -- the gap living in prose instead of on the carrier.
+//
+// The membership fold is INLINE rather than a top-level helper deliberately: this file's siblings
+// record that two separate top-level `string_contains` definitions already exist in witness files and
+// that top-level names are corpus-wide with silent duplicate selection (#8707), so a third would make
+// that binding arbitrary for every module in the shared scope.
+test fn the_scm_verb_is_listed_in_the_emitter_gap() -> Bool {
+  fold(gunbc_cli_emitter_gap(), init: false, f: fn(found, entry) {
+    if found { true } else { entry == "scm" }
+  })
 }

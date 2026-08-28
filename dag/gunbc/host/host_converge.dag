@@ -1,0 +1,756 @@
+module gunbc.host_converge
+
+import std.types { String, List, Int, Bool, NonEmptyStr }
+import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count, Second, second, second_count }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import gunbc.runner_unit {
+  runner_unit_template_name,
+  runner_all_slots_unit_glob,
+  runner_unit_dropin_path,
+  runner_host_slots_unit_glob,
+}
+import gunbc.package_delivery { codex_runtime_version_identity_marker }
+import gunbc.ci_runner_placement {
+  RunnerDeploymentPlan,
+  HostRunnerDeploymentDerived, HostRunnerDeploymentRefused,
+  RunnerHostDeployment,
+  runner_deployment_plan,
+  workload_class_cpu_weight,
+  WorkloadClass,
+  BatchLatencyTolerant,
+  InteractiveLatencySensitive,
+}
+import gunbc.session_admission_policy {
+  gunbc_session_admission_policy, session_admission_oomd_ceiling,
+}
+import gunbc.session_reservation_policy {
+  ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
+  session_reservation_bytes,
+}
+import gunbc.ci_fleet { fleet_intent_offers }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
+import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
+import extdeps.systemd {
+  systemd_memory_max_property,
+  systemd_memory_swap_max_property,
+  systemd_memory_high_property,
+  systemd_cpu_weight_property,
+  systemd_tasks_max_property,
+}
+import extdeps.systemd.oomd {
+  oomd_managed_oom_memory_pressure_property,
+  oomd_managed_oom_memory_pressure_limit_property,
+  managed_oom_action_value,
+  managed_oom_pressure_limit_show_value,
+}
+
+
+data gunbc_cgroup_v2_root: String = "/sys/fs/cgroup"
+data gunbc_sessions_legacy_parent_slice: String = "system.slice"
+
+// THE UNIT NAME AND ITS DROP-IN DIRECTORY COME FROM gunbc.runner_unit AND ARE NO LONGER SPELLED
+// HERE. Each of these six rows carried the template name as a literal -- four of them by embedding
+// it inside a path -- so the drop-in directory agreed with the unit it configures by convention
+// across six independent strings. Renaming the unit would have left four drop-ins writing into a
+// directory systemd no longer reads, with nothing to refuse it: a drop-in in the wrong directory is
+// not an error, it is simply never applied, so the caps would silently stop being enforced while
+// every row here still read correctly.
+//
+// The ROW NAMES stay, because the drop-in FILE names -- which knob is 20, which is 30 -- are this
+// module's own fact and not the unit contract's.
+data gunbc_runner_unit_template: String = runner_unit_template_name as String
+data gunbc_runner_all_slots_unit_glob: String = runner_all_slots_unit_glob as String
+data gunbc_runner_per_slot_dropin_path: String = runner_unit_dropin_path(file_name: "20-fleet-width.conf" as NonEmptyStr) as String
+data gunbc_runner_per_slot_swap_dropin_path: String = runner_unit_dropin_path(file_name: "30-fleet-swap.conf" as NonEmptyStr) as String
+data gunbc_runner_per_slot_high_dropin_path: String = runner_unit_dropin_path(file_name: "40-fleet-high.conf" as NonEmptyStr) as String
+data gunbc_runner_per_slot_tasks_dropin_path: String = runner_unit_dropin_path(file_name: "50-fleet-tasks.conf" as NonEmptyStr) as String
+data gunbc_runner_control_dropin_dir_prefix: String = "/etc/systemd/system.control/"
+data gunbc_runner_jobserver_env_file: String = "/etc/default/ctrl-jobserver"
+data gunbc_runner_jobserver_env_key: String = "CTRL_JOBSERVER_TOKENS"
+data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"
+
+// THE DAEMON'S FIFO PATH, WHICH THE RUNNER UNIT HAS TO NAME AND NOTHING HERE PREVIOUSLY DID.
+//
+// The jobserver's token count already lives beside the env file above; the FIFO those tokens are
+// handed out over did not, because no consumer in this repository had to name it until a runner unit
+// was rendered from gunbc. It sits here rather than in `extdeps.jobserver` for the reason that
+// module's own placement caveat states: the protocol shape is upstream's, this fleet's installed
+// daemon is ours.
+//
+// It is the DEFAULT. The daemon reads `/etc/default/ctrl-jobserver` and a host may override it
+// there, so a render that assumes this path on a host that overrode it would point MAKEFLAGS at a
+// FIFO nobody owns. That is why the unit render takes the path as a parameter and this row is what
+// the fleet passes, rather than the render reaching for a constant it cannot check.
+data gunbc_runner_jobserver_default_fifo: String = "/var/lib/ctrl/jobserver/host.fifo"
+
+data gunbc_runner_slot_unit_placeholder: NonEmptyStr = "system-actions-runner.slice"
+
+data gunbc_root_env_key: String = "GUNBC_ROOT"
+
+data gunbc_dag_root_submodule_path: String = "third_party/gunbc"
+
+data gunbc_host_ctrl_checkout_path: String = "$HOME/ctrl"
+
+data gunbc_host_gunbc_root_path: String = "$HOME/.local/share/gunbc/pinned"
+
+data gunbc_pinned_tree_desired_label: String = "ctrl:third_party/gunbc"
+
+data gunbc_fleet_pinned_binary_registry: String = "ghcr.io/gunb-ai/gunbc/bootstrap"
+
+data gunbc_fleet_pinned_binary_digest: String = "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER"
+
+data gunbc_fleet_pinned_binary_digest_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_converge",
+    decl_name: "gunbc_fleet_pinned_binary_digest",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_fleet_pinned_binary_name: String = "gunbc"
+
+data gunbc_ctrl_read_pin_script: String = "scripts/session-dashboard/container/read-gunbc-pin.sh"
+
+data gunbc_ctrl_placement_probe_script: String = "scripts/session-dashboard/lib/placement_query.mjs"
+
+data gunbc_ctrl_green_place_marker_path: String = ".dashboard/converge-green-place.marker"
+
+data gunbc_ctrl_green_place_marker_pin_prefix: String = "pin="
+
+data gunbc_ctrl_green_place_marker_ts_prefix: String = "first_green_at="
+
+data gunbc_ctrl_quiescent_reload_hook: String = "scripts/session-dashboard/bin/gunbc-pin-quiescent-reload.mjs"
+
+data gunbc_spawn_retry_backstop_cadence: Second = second(count: 600)
+
+type GreenPlaceReadinessMarker {
+  path: String
+  pin_prefix: String
+  timestamp_prefix: String
+}
+
+type SpawnRetryBackstop {
+  cadence: Second
+  role: String
+}
+
+type GunbcPinnedTreeDriftReceipt {
+  drift: Bool
+  reason: String
+  desired_gunbc_root: String
+  target_sha: String
+  dag_binding_mode: String
+}
+
+type ConvergeVerdict
+  = VerdictConverged
+  | Drifted
+  | Absent
+
+
+fn converge_verdict(effective: String, expected: String) -> ConvergeVerdict {
+  if effective == "" { Absent }
+  else { if effective == expected { VerdictConverged } else { Drifted } }
+}
+
+fn converge_verdict_label(v: ConvergeVerdict) -> String {
+  match v {
+    VerdictConverged => "converged"
+    Drifted => "drifted"
+    Absent => "absent"
+  }
+}
+
+// The convergence verdict lattice, meet: Absent < Drifted < VerdictConverged. A host's
+// verdict cannot outrank the WEAKEST evidence that grounds it — so a knob verdict is met
+// with the revision standing before it is reported, and any not-converged evidence pulls
+// the joint below converged. This is the construction that makes an empty-observation
+// narrow unwritable: verdict=converged is only reachable when BOTH inputs are converged
+// (fleet_converge_cli converge_cli_receipt_join_revision), never from applied=0/drifted=0
+// alone when the desired revision was never observed.
+fn converge_verdict_meet(a: ConvergeVerdict, b: ConvergeVerdict) -> ConvergeVerdict {
+  match a {
+    Absent => Absent
+    Drifted => match b {
+      Absent => Absent
+      Drifted => Drifted
+      VerdictConverged => Drifted
+    }
+    VerdictConverged => b
+  }
+}
+
+type ConvergeSlice
+  = GunbcSlice
+  | RunnerSlice
+  | SessionsSlice
+
+fn converge_slice_label(s: ConvergeSlice) -> String {
+  match s {
+    GunbcSlice => "gunbc"
+    RunnerSlice => "runner"
+    SessionsSlice => "sessions"
+  }
+}
+
+type ConvergeApplyMode
+  = FreshStandup
+  | ExistingHostQuiescentReload
+
+type ConvergeEffectiveSource
+  = FileOnDisk
+  | ProcessEffective
+
+type ConvergeDoneCondition
+  = EffectiveEqualsDesired
+  | PinCoherentAndGreenPlaceMarker
+
+type ConvergeLiveApplyPolicy {
+  restart: String
+  quiescent_window: Bool
+  backstop: SpawnRetryBackstop
+  reload_hook: String
+}
+
+type ConvergeNoOpPolicy
+  = BlindApply
+  | SkipApplyWhenConverged {
+      effective_source: ConvergeEffectiveSource
+      done: ConvergeDoneCondition
+    }
+
+type DagRootBinding
+  = DeferToSubmodule { submodule_path: String }
+  | HardPin { path: String }
+
+type GunbcBinaryProvenance
+  = PublishedArtifactPull { registry_uri: String, digest: String }
+  | BuildBinIfAbsent { bin_name: String }
+
+type GunbcBinaryProvenancePolicy {
+  steady: GunbcBinaryProvenance
+  bootstrap_fallback: GunbcBinaryProvenance
+}
+
+// PerSlotMemoryCap is the per-slot systemd drop-in/property mechanism (dropin_path x
+// instance_glob x property x value), and the per_slot_tasks_max knob (a pids-controller
+// count; desired value owned by gunbc.runner_slot_allocation) rides it because the mechanism is property-generic — forking a
+// parallel variant per property class would be the §2 duplication the shape exists to
+// avoid. The variant name and its bytes_value field over-narrow to the memory axis that
+// landed first: a §3 mislabel carried knowingly rather than a ~96-site mechanical rename
+// inside this change. dissolve-on: the HostAxisBundle axis framework
+// (gunbc.plans.host_convergence_circuit_residue P3), whose landing renames the variant to
+// the mechanism it names (PerSlotUnitProperty, value_raw) in one motion.
+type ConvergeTarget
+  = SliceProperty { unit: String, property: String, apply_value: String, expected_effective: String }
+  | PerSlotMemoryCap { dropin_path: String, instance_glob: String, property: String, bytes_value: String }
+  | RunnerWidth { instance_glob: String }
+  | JobserverTokens { env_file: String, env_key: String, service_unit: String }
+  | VerifyOnlyCap { slice_unit: String, property: String }
+  | GunbcPinnedTree {
+      gunbc_root_env_key: String
+      gunbc_root_path: String
+      dag_root: DagRootBinding
+      ctrl_checkout_path: String
+      binary: GunbcBinaryProvenancePolicy
+      pin_read_script: String
+      green_place_marker: GreenPlaceReadinessMarker
+      live_apply: ConvergeLiveApplyPolicy
+    }
+  | CodexRuntimeBundle { host_identity: HostIdentity }
+
+type ConvergeKnob {
+  slice: ConvergeSlice
+  name: String
+  desired: String
+  target: ConvergeTarget
+  apply_mode: ConvergeApplyMode
+  no_op: ConvergeNoOpPolicy
+}
+
+data gunbc_host_converge_knob_apply_semantics_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_converge",
+    decl_name: "ConvergeKnob",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_host_converge_runner_sessions_coupling_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_converge",
+    decl_name: "HostConverge",
+    field: WholeDeclaration
+  }
+}
+
+type SessionsMembershipProbe
+  = MembershipProbe { slice_cgroup: String, legacy_cgroup: String }
+  | NoMembershipProbe
+
+type HostConverge {
+  identity: HostIdentity
+  knobs: List<ConvergeKnob>
+  membership: SessionsMembershipProbe
+}
+
+fn find_by_identity<T>(items: List<T>, identity: HostIdentity, key: fn(T) -> HostIdentity) -> T? {
+  fold(
+    items,
+    init: none,
+    f: fn(acc, item) {
+      match acc {
+        Present { value: _ } => acc
+        _ =>
+          if key(item) == identity {
+            Present { value: item }
+          } else {
+            none
+          }
+      }
+    }
+  )
+}
+
+type ConvergePolicy
+  = ConvergePolicyDerived { hosts: List<HostConverge> }
+  | ConvergePolicyUnsound { reason: String }
+
+fn runner_instance_glob(host: HostIdentity) -> String {
+  runner_host_slots_unit_glob(host: host) as String
+}
+
+fn converge_apply_mode_label(m: ConvergeApplyMode) -> String {
+  match m {
+    FreshStandup => "fresh_standup"
+    ExistingHostQuiescentReload => "existing_host_quiescent"
+  }
+}
+
+fn converge_no_op_policy_label(p: ConvergeNoOpPolicy) -> String {
+  match p {
+    BlindApply => "blind_apply"
+    SkipApplyWhenConverged { effective_source: ProcessEffective, done: PinCoherentAndGreenPlaceMarker } =>
+      "skip_process_pin_coherent_and_marker"
+    SkipApplyWhenConverged { effective_source: _, done: _ } => "skip_when_converged"
+  }
+}
+
+fn converge_effective_source_label(s: ConvergeEffectiveSource) -> String {
+  match s {
+    FileOnDisk => "file_on_disk"
+    ProcessEffective => "process_effective"
+  }
+}
+
+fn converge_done_condition_label(d: ConvergeDoneCondition) -> String {
+  match d {
+    EffectiveEqualsDesired => "effective_equals_desired"
+    PinCoherentAndGreenPlaceMarker => "pin_coherent_and_green_place_marker"
+  }
+}
+
+fn gunbc_green_place_marker_spec() -> GreenPlaceReadinessMarker {
+  GreenPlaceReadinessMarker {
+    path: gunbc_ctrl_green_place_marker_path,
+    pin_prefix: gunbc_ctrl_green_place_marker_pin_prefix,
+    timestamp_prefix: gunbc_ctrl_green_place_marker_ts_prefix,
+  }
+}
+
+fn gunbc_dashboard_live_apply_policy() -> ConvergeLiveApplyPolicy {
+  ConvergeLiveApplyPolicy {
+    restart: "quiescent_window_systemd",
+    quiescent_window: true,
+    backstop: SpawnRetryBackstop {
+      cadence: gunbc_spawn_retry_backstop_cadence,
+      role: "acknowledged_auto_spawn_retry",
+    },
+    reload_hook: gunbc_ctrl_quiescent_reload_hook,
+  }
+}
+
+fn gunbc_sha_triple_coherent(binary_pin: String, dag_pin: String, ctrl_pin: String) -> Bool {
+  gunbc_pin_match(read_pin: binary_pin, desired_pin: ctrl_pin)
+    && gunbc_pin_match(read_pin: dag_pin, desired_pin: ctrl_pin)
+    && gunbc_pin_match(read_pin: binary_pin, desired_pin: dag_pin)
+}
+
+fn gunbc_binary_dag_skewed(binary_pin: String, dag_pin: String) -> Bool {
+  binary_pin != "" && dag_pin != "" && gunbc_pin_skewed(host_pin: binary_pin, ctrl_pin: dag_pin)
+}
+
+fn gunbc_pinned_drift_receipt(
+  reason: String,
+  gunbc_root_path: String,
+  target_sha: String,
+  dag_binding: DagRootBinding,
+) -> GunbcPinnedTreeDriftReceipt {
+  GunbcPinnedTreeDriftReceipt {
+    drift: true,
+    reason: reason,
+    desired_gunbc_root: gunbc_root_path,
+    target_sha: target_sha,
+    dag_binding_mode: dag_root_binding_mode(binding: dag_binding),
+  }
+}
+
+fn gunbc_process_effective_converged(process_pin: String, ctrl_pin: String) -> Bool {
+  gunbc_pin_match(read_pin: process_pin, desired_pin: ctrl_pin)
+}
+
+fn gunbc_green_place_marker_satisfied(marker_line: String, marker_pin: String, desired_pin: String) -> Bool {
+  marker_line != ""
+    && gunbc_pin_match(read_pin: marker_pin, desired_pin: desired_pin)
+    && string_contains(s: marker_line, pattern: gunbc_ctrl_green_place_marker_ts_prefix)
+}
+
+fn gunbc_pinned_noop_satisfied(
+  binary_pin: String,
+  dag_pin: String,
+  ctrl_pin: String,
+  process_pin: String,
+  marker_line: String,
+  marker_pin: String,
+) -> Bool {
+  gunbc_sha_triple_coherent(binary_pin: binary_pin, dag_pin: dag_pin, ctrl_pin: ctrl_pin)
+    && gunbc_process_effective_converged(process_pin: process_pin, ctrl_pin: ctrl_pin)
+    && gunbc_green_place_marker_satisfied(marker_line: marker_line, marker_pin: marker_pin, desired_pin: ctrl_pin)
+}
+
+fn dag_root_binding_mode(binding: DagRootBinding) -> String {
+  match binding {
+    DeferToSubmodule { submodule_path: _ } => "defer_submodule"
+    HardPin { path: _ } => "hard_pin"
+  }
+}
+
+fn dag_root_binding_path(binding: DagRootBinding) -> String {
+  match binding {
+    DeferToSubmodule { submodule_path: sp } => sp
+    HardPin { path: p } => p
+  }
+}
+
+fn gunbc_pinned_binary_provenance_policy() -> GunbcBinaryProvenancePolicy {
+  GunbcBinaryProvenancePolicy {
+    steady: PublishedArtifactPull {
+      registry_uri: gunbc_fleet_pinned_binary_registry,
+      digest: gunbc_fleet_pinned_binary_digest,
+    },
+    bootstrap_fallback: BuildBinIfAbsent { bin_name: gunbc_fleet_pinned_binary_name },
+  }
+}
+
+fn gunbc_apply_mode_for_host(host: HostIdentity) -> ConvergeApplyMode {
+  if host == operator_host_srv3 { FreshStandup } else { ExistingHostQuiescentReload }
+}
+
+fn gunbc_pinned_noop_policy() -> ConvergeNoOpPolicy {
+  SkipApplyWhenConverged {
+    effective_source: ProcessEffective,
+    done: PinCoherentAndGreenPlaceMarker,
+  }
+}
+
+fn legacy_converge_knob(slice: ConvergeSlice, name: String, desired: String, target: ConvergeTarget) -> ConvergeKnob {
+  ConvergeKnob {
+    slice: slice,
+    name: name,
+    desired: desired,
+    target: target,
+    apply_mode: ExistingHostQuiescentReload,
+    no_op: BlindApply,
+  }
+}
+
+fn slice_numeric_knob(slice: ConvergeSlice, name: String, unit: String, property: String, value: Int) -> ConvergeKnob {
+  let v = to_string(value)
+  legacy_converge_knob(
+    slice: slice,
+    name: name,
+    desired: v,
+    target: SliceProperty { unit: unit, property: property, apply_value: v, expected_effective: v }
+  )
+}
+
+fn gunbc_pinned_tree_knob(host: HostIdentity) -> ConvergeKnob {
+  ConvergeKnob {
+    slice: GunbcSlice,
+    name: "pinned_tree_sha",
+    desired: gunbc_pinned_tree_desired_label,
+    target: GunbcPinnedTree {
+      gunbc_root_env_key: gunbc_root_env_key,
+      gunbc_root_path: gunbc_host_gunbc_root_path,
+      dag_root: DeferToSubmodule { submodule_path: gunbc_dag_root_submodule_path },
+      ctrl_checkout_path: gunbc_host_ctrl_checkout_path,
+      binary: gunbc_pinned_binary_provenance_policy(),
+      pin_read_script: gunbc_ctrl_read_pin_script,
+      green_place_marker: gunbc_green_place_marker_spec(),
+      live_apply: gunbc_dashboard_live_apply_policy(),
+    },
+    apply_mode: gunbc_apply_mode_for_host(host: host),
+    no_op: gunbc_pinned_noop_policy(),
+  }
+}
+
+fn gunbc_pinned_tree_knobs(host: HostIdentity) -> List<ConvergeKnob> {
+  [gunbc_pinned_tree_knob(host: host)]
+}
+
+data codex_runtime_bundle_converge_knob_note: String = "RECURRING reconcile for the pinned Codex provider-runtime bundle — absent materialize, wrong identity replace, present noop. Registered on every fleet compute host in fleet_converge_policy; EXECUTION AUTHORITY is gunbc.fleet_converge_cli converge_provider_runtime_codex_receipt (ProvisionCodexRuntime via realize_provision_codex_runtime), not host_converge_realize interpret_converge_knob — slice1/knob-frontier routes bypass converge_apply today. host_standup P1c remains assimilation-time ensure."
+
+fn codex_runtime_bundle_knob(host: HostIdentity) -> ConvergeKnob {
+  legacy_converge_knob(
+    slice: GunbcSlice,
+    name: "codex_runtime_bundle",
+    desired: codex_runtime_version_identity_marker(),
+    target: CodexRuntimeBundle { host_identity: host },
+  )
+}
+
+fn codex_runtime_bundle_knobs(host: HostIdentity) -> List<ConvergeKnob> {
+  [codex_runtime_bundle_knob(host: host)]
+}
+
+fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
+  let glob = runner_instance_glob(host: h.identity)
+  [
+    slice_numeric_knob(
+      slice: RunnerSlice,
+      name: "runner_slice_cap_bytes",
+      unit: gunbc_runner_slot_unit_placeholder,
+      property: systemd_memory_max_property,
+      value: byte_size_count(b: h.runner_slice_cap)
+    ),
+    legacy_converge_knob(
+      slice: RunnerSlice,
+      name: "per_slot_memory_max_bytes",
+      desired: to_string(byte_size_count(b: h.per_runner_memory_cap)),
+      target: PerSlotMemoryCap {
+        dropin_path: gunbc_runner_per_slot_dropin_path,
+        instance_glob: glob,
+        property: systemd_memory_max_property,
+        bytes_value: to_string(byte_size_count(b: h.per_runner_memory_cap)),
+      }
+    ),
+    legacy_converge_knob(
+      slice: RunnerSlice,
+      name: "per_slot_memory_swap_max_bytes",
+      desired: to_string(byte_size_count(b: h.per_runner_memory_swap_cap)),
+      target: PerSlotMemoryCap {
+        dropin_path: gunbc_runner_per_slot_swap_dropin_path,
+        instance_glob: glob,
+        property: systemd_memory_swap_max_property,
+        bytes_value: to_string(byte_size_count(b: h.per_runner_memory_swap_cap)),
+      }
+    ),
+    legacy_converge_knob(
+      slice: RunnerSlice,
+      name: "per_slot_tasks_max",
+      desired: to_string(h.per_runner_tasks_max),
+      target: PerSlotMemoryCap {
+        dropin_path: gunbc_runner_per_slot_tasks_dropin_path,
+        instance_glob: glob,
+        property: systemd_tasks_max_property,
+        bytes_value: to_string(h.per_runner_tasks_max),
+      }
+    ),
+    legacy_converge_knob(
+      slice: RunnerSlice,
+      name: "per_slot_memory_high_bytes",
+      desired: to_string(byte_size_count(b: h.per_runner_memory_high_cap)),
+      target: PerSlotMemoryCap {
+        dropin_path: gunbc_runner_per_slot_high_dropin_path,
+        instance_glob: glob,
+        property: systemd_memory_high_property,
+        bytes_value: to_string(byte_size_count(b: h.per_runner_memory_high_cap)),
+      }
+    ),
+    slice_numeric_knob(
+      slice: RunnerSlice,
+      name: "cpu_weight",
+      unit: gunbc_runner_slot_unit_placeholder,
+      property: systemd_cpu_weight_property,
+      value: workload_class_cpu_weight(wc: h.workload_class)
+    ),
+    legacy_converge_knob(
+      slice: RunnerSlice,
+      name: "build_tokens",
+      desired: to_string(hardware_thread_count_value(t: h.build_tokens)),
+      target: JobserverTokens {
+        env_file: gunbc_runner_jobserver_env_file,
+        env_key: gunbc_runner_jobserver_env_key,
+        service_unit: gunbc_runner_jobserver_service,
+      }
+    ),
+    legacy_converge_knob(
+      slice: RunnerSlice,
+      name: "runner_count",
+      desired: to_string(h.runner_count),
+      target: RunnerWidth { instance_glob: glob }
+    ),
+  ]
+}
+
+fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<ConvergeKnob> {
+  let kill_value = managed_oom_action_value(a: gunbc_oomd_sessions_policy.managed_oom_memory_pressure)
+  let pct = to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit))
+  [
+    slice_numeric_knob(
+      slice: SessionsSlice,
+      name: "slice_max_bytes",
+      unit: gunbc_oomd_sessions_slice,
+      property: systemd_memory_max_property,
+      value: byte_size_count(b: slice_max)
+    ),
+    legacy_converge_knob(
+      slice: SessionsSlice,
+      name: "per_session_max_bytes",
+      desired: to_string(byte_size_count(b: per_session)),
+      target: VerifyOnlyCap {
+        slice_unit: gunbc_oomd_sessions_slice,
+        property: systemd_memory_max_property,
+      }
+    ),
+    legacy_converge_knob(
+      slice: SessionsSlice,
+      name: "oom_pressure_kill",
+      desired: "true",
+      target: SliceProperty {
+        unit: gunbc_oomd_sessions_slice,
+        property: oomd_managed_oom_memory_pressure_property,
+        apply_value: kill_value,
+        expected_effective: kill_value,
+      }
+    ),
+    legacy_converge_knob(
+      slice: SessionsSlice,
+      name: "oom_pressure_limit_pct",
+      desired: pct,
+      target: SliceProperty {
+        unit: gunbc_oomd_sessions_slice,
+        property: oomd_managed_oom_memory_pressure_limit_property,
+        apply_value: concat(pct, "%"),
+        expected_effective: to_string(managed_oom_pressure_limit_show_value(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)),
+      }
+    ),
+    slice_numeric_knob(
+      slice: SessionsSlice,
+      name: "cpu_weight",
+      unit: gunbc_oomd_sessions_slice,
+      property: systemd_cpu_weight_property,
+      value: workload_class_cpu_weight(wc: InteractiveLatencySensitive)
+    ),
+  ]
+}
+
+// ONE KNOB LIST WAS BEING WRITTEN TO EVERY HOST, AND THAT IS THE SHARP END OF THE AUTHORITY FORK.
+// The fleet-wide Regime-2 row carried a single 21474836480-byte aggregate, and this function handed
+// it to map(hosts, ...) below -- so a converge would have set sessions.slice MemoryMax to 20 GiB on
+// every host in the plan. srv1's live sessions.slice cap is 137438953472 and its slice has already
+// peaked at 55216033792, so applying the projection would have driven the cap to roughly 40% of an
+// already-observed peak on a host running 18 sessions. The projection was never applied, which is
+// why this was latent rather than an incident.
+//
+// The knobs are now derived per host from the reservation that host actually owes.
+//
+// THE THREE EMPTY ANSWERS WERE ONE EMPTY LIST, AND THEY ARE NOT THE SAME FACT. This function
+// returned [] for a host that legitimately owes no session knobs, for a host whose reservation is
+// UNKNOWN, and for a fleet with no admission ceiling -- three states with three remedies, rendered
+// identically. On the current plan path that was quiet: an unestablished host refuses upstream in
+// host_deployment_standing and never reaches a converge target. But the function is total and
+// public, so the next caller reaching it directly receives an empty knob list and cannot tell
+// "nothing to write here" from "I could not work out what to write" -- the empty-observation narrow
+// DESIGN names, the absorbing fallback's mirror, and strictly worse than a widen because a narrow
+// is silently uncovered rather than merely expensive.
+//
+// The standing is returned instead, so a new caller must decide. The plan path's behaviour is
+// unchanged: it converts the standing back to knobs and a non-derived standing contributes none.
+type SessionKnobStanding
+  = SessionKnobsDerived { knobs: List<ConvergeKnob> }
+  | SessionKnobsNotOwed { cause: String }
+  | SessionKnobsUngrounded { cause: String }
+
+fn session_knob_standing_for(host: HostIdentity) -> SessionKnobStanding {
+  match session_reservation_bytes(host: host) {
+    ReservationBytesNotApplicable =>
+      SessionKnobsNotOwed {
+        cause: "this host carries no sessions.slice, so it owes no session knobs and its existing configuration is left untouched",
+      }
+    ReservationBytesUnestablished { cause: why } =>
+      SessionKnobsUngrounded {
+        cause: concat("the session reservation for this host is unestablished, so no slice_max can be grounded: ", why),
+      }
+    ReservationBytes { bytes: agg_bytes } =>
+      match session_admission_oomd_ceiling(p: gunbc_session_admission_policy) {
+        Absent =>
+          SessionKnobsUngrounded {
+            cause: "the fleet admission policy declares no oomd eviction ceiling, so the per-session half of the slice cannot be written",
+          }
+        Present { value: ceiling } =>
+          SessionKnobsDerived { knobs: session_host_knobs(slice_max: agg_bytes, per_session: ceiling) }
+      }
+  }
+}
+
+fn session_knobs_for(host: HostIdentity) -> List<ConvergeKnob> {
+  match session_knob_standing_for(host: host) {
+    SessionKnobsDerived { knobs: ks } => ks
+    SessionKnobsNotOwed { cause: _ } => []
+    SessionKnobsUngrounded { cause: _ } => []
+  }
+}
+
+fn sessions_membership_probe(session_knobs: List<ConvergeKnob>) -> SessionsMembershipProbe {
+  if session_knobs.length() > 0 {
+    MembershipProbe {
+      slice_cgroup: concat(concat(gunbc_cgroup_v2_root, "/"), gunbc_oomd_sessions_slice),
+      legacy_cgroup: concat(concat(gunbc_cgroup_v2_root, "/"), gunbc_sessions_legacy_parent_slice),
+    }
+  } else {
+    NoMembershipProbe
+  }
+}
+
+fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) -> HostConverge {
+  HostConverge {
+    identity: h.identity,
+    knobs: concat(
+      concat(
+        concat(gunbc_pinned_tree_knobs(host: h.identity), runner_host_knobs(h: h)),
+        session_knobs,
+      ),
+      codex_runtime_bundle_knobs(host: h.identity),
+    ),
+    membership: sessions_membership_probe(session_knobs: session_knobs),
+  }
+}
+
+// CONVERGENCE IS A HOST-TARGETED TRANSACTION, so it selects the hosts that derived rather than
+// refusing the fleet because one host did not. The shape this replaces widened a fleet-level
+// PlanUnsound into ConvergePolicyUnsound before any host was chosen -- so srv2's unestablished
+// reservation would have blocked converging srv1, srv3 and srv4, none of which depend on it.
+//
+// A refused host contributes NO converge target, which is the point: it is not converged, and it is
+// not silently converged with a guessed size either. The refused roster stays readable through
+// fleet_deployment_completion for a consumer that needs to know the fleet is incomplete.
+fn fleet_converge_policy_from(plan: RunnerDeploymentPlan) -> ConvergePolicy {
+  ConvergePolicyDerived {
+    hosts: fold(plan.hosts, init: [], f: (acc, st) => match st {
+      HostRunnerDeploymentDerived { deployment: h } =>
+        concat(acc, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity))])
+      HostRunnerDeploymentRefused { refusal: _ } => acc
+    }),
+  }
+}
+
+fn fleet_converge_policy() -> ConvergePolicy {
+  fleet_converge_policy_from(plan: runner_deployment_plan())
+}

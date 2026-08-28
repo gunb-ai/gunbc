@@ -159,8 +159,97 @@ data emit_scope_line: String = "resolved 27 sources (reference-derived closure),
 
 data emit_whole_tree_scope_line: String = "resolved 3892 sources (transitive import closure)"
 
+fn complete_capture_of(s: String) -> CaptureExtent {
+  CaptureExtent {
+    truncated: false,
+    total: byte_size(count: s.length()),
+    retained: byte_size(count: s.length())
+  }
+}
+
+fn truncated_capture_of(s: String, retained: Int) -> CaptureExtent {
+  CaptureExtent {
+    truncated: true,
+    total: byte_size(count: s.length()),
+    retained: byte_size(count: retained)
+  }
+}
+
 fn emit_read_of(lines: List<String>) -> EmitDiagnosticRead {
-  read_emit_diagnostics(stderr: stream_of(lines: lines))
+  let s = stream_of(lines: lines)
+  read_emit_diagnostics(stderr: s, capture: complete_capture_of(s: s))
+}
+
+fn emit_read_of_truncated(lines: List<String>) -> EmitDiagnosticRead {
+  let s = stream_of(lines: lines)
+  read_emit_diagnostics(stderr: s, capture: truncated_capture_of(s: s, retained: 16384))
+}
+
+// THE DISCRIMINATING CONTROL FOR THE TRUNCATION ARM, and it is the one the reds alone cannot give.
+//
+// The two truncation claims below establish that a truncated capture REFUSES. They do not establish
+// that truncation is what fires the arm rather than SIZE -- and a refusal that fired on large
+// outputs would refuse every talkative subject whether or not anything was lost, which is the same
+// unmeasurable corpus for a different reason. The arm keys on the host's own `truncated` flag and
+// reads no length anywhere, so the control asserts exactly that: a stream LARGER THAN THE WINDOW,
+// reported COMPLETE, reads its population normally.
+//
+// THE SIZE IS ASSERTED, NOT ASSUMED. `a_large_complete_capture_fixture_exceeds_the_window` pins the
+// fixture above 16 KiB, so a later edit that shrinks the corpus cannot quietly turn the control
+// into a small-input test that passes for the wrong reason -- the guard goes red instead.
+// THE WINDOW IS A MAGNITUDE, NOT A NUMBER. `std.measure` already owns the byte quantity
+// (`ByteSize = Measure<Memory, One, Nat>`), so a bare `Int` here would be a second representation
+// of a concept the corpus has one authority for -- the anemic-leaf modeling DESIGN rules out, and
+// the same move `extdeps.memory` and `extdeps.git.object_store` already make by constructing with
+// `byte_size` and projecting with `byte_size_count` only where arithmetic needs a scalar.
+//
+// THE PROJECTION IS SOUND HERE FOR A STATED REASON RATHER THAN BY ASSUMPTION: `String.length()` is
+// a CHARACTER count, which equals the byte count only for ASCII, and every line composing this
+// fixture is ASCII. That is why the comparison below is a byte comparison at all; a fixture that
+// grew a non-ASCII line would make the two quantities diverge and this claim would be measuring
+// something other than what it says.
+data emit_capture_window: ByteSize = byte_size(count: 16384)
+
+data emit_large_population_count: Int = 400
+
+fn emit_large_complete_stream() -> String {
+  concat(
+    concat(emit_scope_line, "\n"),
+    concat(
+      repeat_string(s: concat(emit_advisory_line, "\n"), n: emit_large_population_count),
+      concat(
+        concat("compiled: 177 files emitted, ", to_string(emit_large_population_count)),
+        concat(
+          concat("\n0 blocking error(s), ", to_string(emit_large_population_count)),
+          " advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)\n"
+        )
+      )
+    )
+  )
+}
+
+test fn a_large_complete_capture_fixture_exceeds_the_window() -> Bool {
+  emit_large_complete_stream().length() > byte_size_count(emit_capture_window)
+}
+
+// THE CONTROL ITSELF: over the window, reported complete, read in full. If the arm keyed on size
+// this would refuse; it reports all 400 members instead.
+test fn a_large_but_complete_capture_is_read_and_not_refused_for_its_size() -> Bool {
+  match read_emit_diagnostics(stderr: emit_large_complete_stream(), capture: complete_capture_of(s: emit_large_complete_stream())) {
+    EmitDiagnosticsRead { diagnostics: ds, emitted_files: _, declared_total: n } =>
+      count(ds) == emit_large_population_count && n == emit_large_population_count
+    read => false
+  }
+}
+
+// AND THE SAME BYTES WITH THE FLAG SET STILL REFUSE, which is what makes the pair a discriminator
+// rather than two unrelated readings: identical input, one bit different, opposite verdicts. Only
+// the host's truncation report can account for the difference, because nothing else changed.
+test fn the_same_large_stream_refuses_when_the_host_reports_it_truncated() -> Bool {
+  match read_emit_diagnostics(stderr: emit_large_complete_stream(), capture: truncated_capture_of(s: emit_large_complete_stream(), retained: 16384)) {
+    EmitOutputTruncated { extent: _ } => true
+    read => false
+  }
 }
 
 fn emit_rows(lines: List<String>) -> List<String> {
@@ -259,6 +348,68 @@ test fn a_whole_tree_compile_is_not_read_as_an_entry_population() -> Bool {
   }
 }
 
+// RED: A TRUNCATED STREAM IS NOT A COMPILER THAT FAILED TO SCOPE. The input below is a WELL-FORMED,
+// entry-scoped, readable population -- the very lines the control beneath it reads normally -- and
+// the ONLY difference is the host's report that it kept a bounded tail. Without the pair, an arm
+// that simply refused everything would pass this and mean nothing.
+test fn a_truncated_capture_refuses_under_its_own_name() -> Bool {
+  match emit_read_of_truncated(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error]) {
+    EmitOutputTruncated { extent: _ } => true
+    read => false
+  }
+}
+
+// THE OTHER HALF OF THE DISCRIMINATION, and the one that keeps the arm from swallowing a real
+// finding: a stream that WAS truncated and ALSO lost its scope marker still refuses for truncation,
+// because truncation is the fact that explains the missing marker. Its opposite -- an untruncated
+// stream with no marker -- is the whole-tree substitution, and it must keep landing on
+// EmitScopeUnconfirmed. That claim is a_whole_tree_compile_is_not_read_as_an_entry_population above,
+// which is now this arm's control rather than merely its neighbour.
+test fn truncation_is_reported_ahead_of_a_missing_marker_it_explains() -> Bool {
+  match emit_read_of_truncated(lines: [emit_error_line, emit_severity_summary_one_error]) {
+    EmitOutputTruncated { extent: _ } => true
+    read => false
+  }
+}
+
+// THE REFUSAL REPORTS AN OVERAGE, NOT A VERDICT, and this claim is what stops the two new capture
+// keys being decoration. A refusal that merely said "truncated" would leave the reader knowing a
+// wall exists and not what it would take to move it; the numbers below are the difference. The
+// fixture pins an exact discarded count, so a decode that reported the total, the retained, or a
+// sign-flipped difference in that position would fail rather than merely read oddly.
+test fn the_truncation_refusal_carries_how_far_over_the_window_the_stream_ran() -> Bool {
+  let stream = emit_large_complete_stream()
+  let expected_discarded = stream.length() - 16384
+  match read_emit_diagnostics(stderr: stream, capture: truncated_capture_of(s: stream, retained: 16384)) {
+    EmitOutputTruncated { extent: e } =>
+      capture_overage_bytes(extent: e) == expected_discarded
+        && string_contains(
+             s: emit_diagnostic_read_refusal_reason(read: EmitOutputTruncated { extent: e }),
+             pattern: concat(to_string(expected_discarded), " byte(s) from the HEAD")
+           )
+    read => false
+  }
+}
+
+// THE CONTROL: the flag is the host's judgment and is CARRIED, never re-derived from the sizes.
+// A capture whose total equals its retained is not truncated, and a decode that inferred truncation
+// from `total > retained` would agree with this one by accident -- so the discriminating case is a
+// capture the host calls truncated whose sizes are EQUAL. It must still refuse.
+test fn truncation_follows_the_hosts_flag_and_not_a_size_comparison() -> Bool {
+  let stream = stream_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error])
+  match read_emit_diagnostics(
+    stderr: stream,
+    capture: CaptureExtent {
+      truncated: true,
+      total: byte_size(count: stream.length()),
+      retained: byte_size(count: stream.length())
+    }
+  ) {
+    EmitOutputTruncated { extent: e } => capture_overage_bytes(extent: e) == 0
+    read => false
+  }
+}
+
 test fn an_entry_scoped_compile_is_read_normally() -> Bool {
   match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error]) {
     EmitDiagnosticsRead { diagnostics: ds, emitted_files: _, declared_total: _ } => count(ds) == 1
@@ -271,7 +422,8 @@ test fn an_entry_scoped_compile_is_read_normally() -> Bool {
 // ---------------------------------------------------------------------------------------------
 
 data specimen_subject: EmissionMeasurementSubject = EmissionMeasurementSubject {
-  entry: "dag/extdeps/cpu/ampere.dag",
+  scope: EntryScope { entry: "dag/extdeps/cpu/ampere.dag" },
+  render_target: RustRender,
   source_revision: "c271b75829" as CommitSha,
   working_tree: WorkingTreeClean,
   compiler: sha256_digest(hex: "aa" as NonEmptyStr),
@@ -355,4 +507,109 @@ test fn no_report_states_an_emit_population_without_its_extent() -> Bool {
 test fn an_unestablished_subject_carries_no_provenance_and_no_population() -> Bool {
   !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "compiler\t")
     && !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "emit_population")
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SCOPE DECIDES THE ARGV. These exist because a String entry could not express the
+// primary/pool distinction, and three whole-corpus runs on 2026-08-28 were reported as
+// whole-corpus while measuring 3109 of 4170 sources -- the compiler said
+// `primary-root population root=dag ... 1061 indexed modules in the name census only` and nothing
+// downstream could contradict it. Asserting the ORDER is the point: primary-precedence means the
+// FIRST --source-root is the subject, so an argv that lists the pool first measures something
+// else under the same name.
+// ---------------------------------------------------------------------------------------------
+
+// ASSERTED AS THE WHOLE ARGV RATHER THAN AS A PREDICATE OVER IT, because ORDER is the fact under
+// test and a membership check cannot see order at all -- an argv listing the pool first contains
+// exactly the same elements and measures a different subject.
+test fn a_primary_root_scope_renders_the_primary_root_before_its_pools() -> Bool {
+  emission_compile_args(
+    scope: PrimaryRootScope { primary_root: "src/v2", dependency_pools: ["dag"] },
+    render_target: RustRender,
+    out_dir: "/tmp/o"
+  ) |> join(separator: " ")
+    == "compile --source-root src/v2 --source-root dag --output-dir /tmp/o --target rust --dependency-pool-index primary-precedence"
+}
+
+// THE MIRROR OF THE ABOVE, and the pair is the point: the SAME two roots in the other order is the
+// argv that produced 2026-08-28's misreported runs, and it must render differently.
+test fn swapping_which_root_is_primary_renders_a_different_argv() -> Bool {
+  emission_compile_args(
+    scope: PrimaryRootScope { primary_root: "src/v2", dependency_pools: ["dag"] },
+    render_target: RustRender, out_dir: "/tmp/o"
+  ) |> join(separator: " ")
+  != (emission_compile_args(
+    scope: PrimaryRootScope { primary_root: "dag", dependency_pools: ["src/v2"] },
+    render_target: RustRender, out_dir: "/tmp/o"
+  ) |> join(separator: " "))
+}
+
+test fn a_primary_root_scope_names_no_entry() -> Bool {
+  let args = emission_compile_args(
+    scope: PrimaryRootScope { primary_root: "src/v2", dependency_pools: ["dag"] },
+    render_target: RustRender,
+    out_dir: "/tmp/o"
+  )
+  !any(args, a => a == "--entry")
+}
+
+test fn an_entry_scope_names_its_entry() -> Bool {
+  let args = emission_compile_args(
+    scope: EntryScope { entry: "dag/std/node.dag" },
+    render_target: RustRender,
+    out_dir: "/tmp/o"
+  )
+  any(args, a => a == "--entry") && any(args, a => a == "dag/std/node.dag")
+}
+
+// THE TARGET REACHES THE ARGV RATHER THAN BEING DESCRIBED BESIDE IT. A subject field that did not
+// render into the invocation would be free to disagree with the run it claims to describe.
+test fn the_render_target_reaches_the_invocation() -> Bool {
+  let rust = emission_compile_args(scope: EntryScope { entry: "e" }, render_target: RustRender, out_dir: "/tmp/o")
+  let dag = emission_compile_args(scope: EntryScope { entry: "e" }, render_target: DagRender, out_dir: "/tmp/o")
+  any(rust, a => a == "rust") && any(dag, a => a == "dag") && !any(rust, a => a == "--target-dag")
+}
+
+// ASSEMBLY REFUSES RATHER THAN FABRICATING AN ENTRY. cssl_assemble takes one --entry-dag; handing
+// it the primary root would assemble a subject the measurement never named.
+test fn assembly_refuses_a_population_scope_instead_of_inventing_an_entry() -> Bool {
+  match emission_scope_entry(sc: PrimaryRootScope { primary_root: "src/v2", dependency_pools: [] }) {
+    ScopeEntry { entry: _ } => false
+    ScopeNamesNoEntry { why: w } => w != ""
+  }
+}
+
+test fn assembly_takes_the_entry_when_the_scope_has_one() -> Bool {
+  match emission_scope_entry(sc: EntryScope { entry: "dag/std/node.dag" }) {
+    ScopeEntry { entry: e } => e == "dag/std/node.dag"
+    ScopeNamesNoEntry { why: _ } => false
+  }
+}
+
+// THE LABEL DISTINGUISHES THE TWO SCOPES, so a persisted receipt cannot render a partial subject
+// as a whole one -- which is exactly what the prose around those three runs did.
+test fn the_scope_label_distinguishes_an_entry_from_a_population() -> Bool {
+  let e = emission_scope_label(sc: EntryScope { entry: "dag/std/node.dag" })
+  let p = emission_scope_label(sc: PrimaryRootScope { primary_root: "dag", dependency_pools: ["src/v2"] })
+  e != p && e != "" && p != "" && string_contains(s: p, pattern: "src/v2")
+}
+
+// THE JOIN KEY IS NOT THE LABEL, and this pair is the regression control for review 57181. The
+// label reads "entry foo.dag" -- correct prose, WRONG KEY, because it cannot equal a
+// repository-relative path, so a roster join answers Absent for exactly the entry the run was
+// about. measure_scope_emission stamps this key onto its subject-unestablished arms and
+// gunbc.emit_subject_clean_frontier joins on it, so the two must agree by construction.
+test fn an_entry_scopes_join_key_is_its_bare_path_and_not_its_label() -> Bool {
+  let sc = EntryScope { entry: "dag/std/node.dag" }
+  emission_scope_join_key(sc: sc) == "dag/std/node.dag"
+    && emission_scope_join_key(sc: sc) != emission_scope_label(sc: sc)
+}
+
+// AND THE POPULATION ARM PRESENTS THE LABEL DELIBERATELY: prefixed, so it cannot collide with any
+// path and joins to nothing -- the accurate answer, rather than a false match on whichever root it
+// names. Built unkind on purpose: the primary root IS a real entry path.
+test fn a_population_scopes_join_key_cannot_be_mistaken_for_its_primary_root() -> Bool {
+  let sc = PrimaryRootScope { primary_root: "dag/std/node.dag", dependency_pools: [] }
+  emission_scope_join_key(sc: sc) != "dag/std/node.dag"
+    && emission_scope_join_key(sc: sc) == emission_scope_label(sc: sc)
 }

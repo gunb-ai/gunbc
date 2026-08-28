@@ -1,0 +1,89 @@
+module gunbc.host_identity_observation
+
+import std.algebra { trim }
+
+
+type HostIdentityObservationRow {
+  short_hostname_raw: String
+  probed_at: NonEmptyStr
+}
+
+type HostIdentityObservation {
+  short_hostname: String
+  probed_at: NonEmptyStr
+}
+
+data gunbc_host_identity_observation_scope_disposition: Disposition = std.disposition.Terminal {
+  reason: "Slice-1 typed fixture/read carrier: hostname -s over host_effect transport -> HostIdentityObservation. Does NOT subsume gunbc.ci_deploy_target_host.deploy_target_host_observed_hostname (direct shell.Exec) — that path dissolves when live deploy routes target-host proof through this carrier."
+}
+
+data gunbc_srv1_host_identity_observation_fixture_row: HostIdentityObservationRow = HostIdentityObservationRow {
+  short_hostname_raw: "altrad8ud-1l2t-1",
+  probed_at: "2026-07-02",
+}
+
+data gunbc_srv2_host_identity_observation_fixture_row: HostIdentityObservationRow = HostIdentityObservationRow {
+  short_hostname_raw: "alstrad8d-1l2t-2",
+  probed_at: "2026-07-02",
+}
+
+fn host_identity_observation_typed(row: HostIdentityObservationRow) -> HostIdentityObservation {
+  HostIdentityObservation {
+    short_hostname: trim(row.short_hostname_raw),
+    probed_at: row.probed_at,
+  }
+}
+
+fn host_identity_observation_from_stdout(stdout: String, probed_at: NonEmptyStr) -> HostIdentityObservation? {
+  let trimmed = trim(stdout)
+  if trimmed == "" {
+    none
+  } else {
+    Present {
+      value: HostIdentityObservation {
+        short_hostname: trimmed,
+        probed_at: probed_at,
+      }
+    }
+  }
+}
+
+fn host_identity_observation_apply(
+  target: NodeControlPlane,
+  transport: HostEffectTransport,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  host_effect_apply(
+    target: target,
+    effect: HostIdentityShortHostnameRead,
+    evidence: host_effect_read_evidence,
+    transport: transport,
+  )
+}
+
+fn host_identity_observation_from_apply(
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  probed_at: NonEmptyStr,
+) -> HostIdentityObservation? {
+  match r {
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ShellEffectApplied { stdout: out, exit_code: _ } =>
+          host_identity_observation_from_stdout(stdout: out, probed_at: probed_at)
+        ConvergePlanApplied { stdout: _, exit_code: _ } => none
+        ToolchainHomeInterferenceDiscriminated => none
+      }
+    NotConverged { reason: _, applied: _ } => none
+  }
+}
+
+fn host_identity_observation_nonempty(obs: HostIdentityObservation) -> Bool {
+  obs.short_hostname != ""
+}
+
+fn fixture_host_identity_observation() -> HostIdentityObservation {
+  host_identity_observation_typed(row: gunbc_srv1_host_identity_observation_fixture_row)
+}
+
+fn fixture_host_identity_observation_srv2() -> HostIdentityObservation {
+  host_identity_observation_typed(row: gunbc_srv2_host_identity_observation_fixture_row)
+}

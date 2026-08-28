@@ -2,7 +2,7 @@ module v2.test.boundary.english_ingest_fail_closed
 
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -18,7 +18,7 @@ data arbitrary_english_prose_input: Node = Node {
       target: atom_node(s: ^english_arbitrary_prose_symbol)
     },
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data english_shape_b_docs_input: Node = Node {
@@ -33,7 +33,7 @@ data english_shape_b_docs_input: Node = Node {
       target: atom_node(s: ^english_doc_walker_symbol)
     },
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data english_shape_b_docs_output: Node = Node {
@@ -48,7 +48,7 @@ data english_shape_b_docs_output: Node = Node {
       target: atom_node(s: ^english_prose_output_symbol)
     },
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data test_english_prose_ingest_is_diagnostic: TestClaim = DiagnosticClaim {
