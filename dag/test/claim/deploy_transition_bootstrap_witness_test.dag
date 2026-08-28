@@ -42,6 +42,22 @@ import gunbc.deploy_transition_bootstrap {
   bootstrap_restore_commands,
   transition_step_advance,
   transition_step_label,
+  UnitInactiveStanding,
+  UnitObservedInactive,
+  UnitObservedActive,
+  UnitInactivityUnobserved,
+  UnitActivationInhibitedStanding,
+  ActivationObservedRefused,
+  ActivationObservedAdmitted,
+  ActivationInhibitionUnobserved,
+  ExternalQuiescence,
+  observe_unit_quiescence,
+  unit_inactive_standing,
+  unit_activation_standing,
+  unit_quiescence_admission,
+  roster_quiescence_admission,
+  quiescence_admits,
+  quiescence_probe_start_command,
 }
 
 fn names() -> DeploymentNames {
@@ -253,4 +269,91 @@ test fn no_step_reaches_past_the_lease_from_the_principal() -> Bool {
       StepAdmitted { step: _ } => false
       StepAfterCompletion { attempted: _ } => false
     }
+}
+
+
+// QUIESCENCE IS TWO FACTS AND EACH ONE ALONE ADMITS NOTHING. The four combinations are driven
+// through one fold so that a version answering from either arm alone is red: inactive-and-refused
+// is the only admission, and the other three each refuse with their own cause.
+fn q(unit: NonEmptyStr, inactive: UnitInactiveStanding, act: UnitActivationInhibitedStanding) -> Bool {
+  quiescence_admits(a: unit_quiescence_admission(
+    q: observe_unit_quiescence(unit: unit, inactive: inactive, activation: act),
+  ))
+}
+
+fn a_unit() -> NonEmptyStr {
+  "gunbc-roadmap-belt.timer" as NonEmptyStr
+}
+
+test fn quiescence_needs_both_inactive_and_activation_refused() -> Bool {
+  q(unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    act: ActivationObservedRefused { unit: a_unit(), detail: "Unit is masked." })
+    && !q(unit: a_unit(),
+      inactive: UnitObservedActive { unit: a_unit() },
+      act: ActivationObservedRefused { unit: a_unit(), detail: "Unit is masked." })
+    && !q(unit: a_unit(),
+      inactive: UnitObservedInactive { unit: a_unit() },
+      act: ActivationObservedAdmitted { unit: a_unit(), detail: "started" })
+}
+
+// A MASK EXIT CODE IS NOT A RECEIPT, and the unobserved arm is what says so. A caller that ran the
+// mask and never planted a start has NOT established activation inhibition, and this refuses --
+// which is the whole content of the ruling that the law is phrased on the observed refusal.
+test fn an_unplanted_probe_leaves_activation_unobserved_and_refuses() -> Bool {
+  !q(unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    act: unit_activation_standing(
+      unit: a_unit(), probe_ran: false, start_succeeded: false, detail: "mask exited 0"))
+}
+
+// THE ARMS ARE ASSIGNED AGAINST INTUITION AND THIS PINS THE DIRECTION. A start that FAILED is the
+// admitting evidence; a start that SUCCEEDED refuses. A fold that read the boolean the natural way
+// round would admit exactly the state this module exists to refuse.
+test fn a_failed_planted_start_admits_and_a_successful_one_refuses() -> Bool {
+  q(unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    act: unit_activation_standing(
+      unit: a_unit(), probe_ran: true, start_succeeded: false, detail: "Failed to start: unit is masked"))
+    && !q(unit: a_unit(),
+      inactive: UnitObservedInactive { unit: a_unit() },
+      act: unit_activation_standing(
+        unit: a_unit(), probe_ran: true, start_succeeded: true, detail: "started"))
+}
+
+// AN UNOBSERVED INACTIVITY IS NOT AN INACTIVE UNIT. The host not answering is not a permit.
+test fn an_unobserved_inactivity_refuses_rather_than_admitting() -> Bool {
+  !q(unit: a_unit(),
+    inactive: unit_inactive_standing(
+      unit: a_unit(), observed: false, active: false, cause: "ssh timed out"),
+    act: ActivationObservedRefused { unit: a_unit(), detail: "Unit is masked." })
+}
+
+// THE ROSTER IS AN IDENTITY JOIN. Three observations of two units must not pass, so a roster missing
+// one unit refuses even when every observation it DOES carry admits.
+test fn a_roster_missing_one_unit_refuses_even_when_the_rest_admit() -> Bool {
+  let units = bootstrap_quiesced_units(names: names())
+  let good = map(units, u => observe_unit_quiescence(
+    unit: u,
+    inactive: UnitObservedInactive { unit: u },
+    activation: ActivationObservedRefused { unit: u, detail: "Unit is masked." },
+  ))
+  match first(units) {
+    Absent => false
+    Present { value: dropped } =>
+      quiescence_admits(a: roster_quiescence_admission(names: names(), observed: good))
+        && !quiescence_admits(a: roster_quiescence_admission(
+          names: names(),
+          observed: filter(good, g => (g.unit as String) != (dropped as String)),
+        ))
+  }
+}
+
+// THE PROBE IS A DIRECT START, not a timer trigger, because the timer is itself quiesced and a probe
+// routed through it would measure the timer rather than the unit.
+test fn the_probe_is_a_direct_start_of_the_unit() -> Bool {
+  let c = quiescence_probe_start_command(unit: a_unit(), privileged: true)
+  string_contains(s: c, pattern: "start")
+    && string_contains(s: c, pattern: a_unit() as String)
+    && !string_contains(s: c, pattern: "mask")
 }

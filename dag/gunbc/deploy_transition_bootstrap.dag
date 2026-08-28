@@ -10,6 +10,7 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.operations {
   systemctl_mask_now_command,
   systemctl_unmask_command,
+  systemctl_start_command,
 }
 
 // THE FIRST TRANSITION IS NOT PROTECTED BY ANY MARKER, AND THAT IS NOT A GAP IN THE MARKER.
@@ -127,6 +128,175 @@ fn bootstrap_quiesce_commands(names: DeploymentNames, privileged: Bool) -> List<
 // started by its enablement at boot, so starting them by hand here would both duplicate that and
 // paper over the case where one of them was legitimately down. Unmasking returns the host to the
 // state the transition found; it does not decide what that state should be.
+// QUIESCENCE IS TWO INDEPENDENTLY OBSERVED FACTS, AND ONE COMMAND EXIT PROVES NEITHER.
+// (Operator ruling relayed 2026-08-28.) `stop` establishes CURRENTLY INACTIVE. `mask` is intended
+// to establish NOT STARTABLE. They are different propositions about different times -- "nothing is
+// running now" and "nothing can start while I am gone" -- and the transition needs BOTH. This is
+// the same lease/inhibition split this lane already accepted, applied one layer out to the units.
+//
+// AND THE ADMISSION LAW IS PHRASED ON THE OBSERVED REFUSAL, NEVER ON THE MECHANISM. It does not say
+// "a mask symlink was written": these units are installed as local /etc/systemd/system files, and
+// masking mechanics differ between persistent and runtime masks over locally-installed units, so
+// binding the law to a mechanism FORCES a realization and would refuse a valid systemd that chose
+// another. Binding it to the refusal lets systemd pick the mechanism while this gate consumes the
+// stronger fact.
+//
+// WHY A SUCCESSFUL EXIT CODE IS NOT THE RECEIPT. `systemctl mask` returning 0 says the request was
+// accepted, not that activation is refused -- it cannot distinguish a real mask from a unit that is
+// merely stopped and disabled, which is exactly the state this module shipped before the mask
+// correction and exactly the state that reads as quiesced while remaining startable. So the
+// activation standing is minted ONLY from the outcome of a PLANTED DIRECT START, and the arms are
+// assigned against intuition: a start that FAILED is the admitting evidence, and a start that
+// SUCCEEDED refuses the transition. There is no arm in which an exit code from the mask itself
+// reaches this standing.
+//
+// THE PLANTED START IS DESTRUCTIVE IF IT SUCCEEDS, AND THAT IS PART OF THE MEASUREMENT RATHER THAN
+// A HAZARD TO SUPPRESS. If the probe starts the belt service, an actuator has just run against a
+// tree mid-transition -- which is the failure this whole lane exists to prevent, now OBSERVED
+// instead of assumed. `ActivationObservedAdmitted` therefore refuses loudly and names the unit; the
+// caller re-quiesces and does not proceed. Suppressing the probe to avoid the risk would leave the
+// same state unobserved, which is how it got here.
+type UnitInactiveStanding
+  = UnitObservedInactive { unit: NonEmptyStr }
+  | UnitObservedActive { unit: NonEmptyStr }
+  | UnitInactivityUnobserved { unit: NonEmptyStr, cause: String }
+
+type UnitActivationInhibitedStanding
+  = ActivationObservedRefused { unit: NonEmptyStr, detail: String }
+  | ActivationObservedAdmitted { unit: NonEmptyStr, detail: String }
+  | ActivationInhibitionUnobserved { unit: NonEmptyStr, cause: String }
+
+// THE PROBE COMMAND IS A DIRECT START, deliberately bypassing the timer, because the timer is one of
+// the things being quiesced and a probe that went through it would test the timer's disablement
+// rather than the unit's activation.
+fn quiescence_probe_start_command(unit: NonEmptyStr, privileged: Bool) -> String {
+  systemctl_start_command(unit: unit, privileged: privileged)
+}
+
+fn unit_inactive_standing(
+  unit: NonEmptyStr,
+  observed: Bool,
+  active: Bool,
+  cause: String,
+) -> UnitInactiveStanding {
+  if !observed {
+    UnitInactivityUnobserved { unit: unit, cause: cause }
+  } else {
+    if active { UnitObservedActive { unit: unit } } else { UnitObservedInactive { unit: unit } }
+  }
+}
+
+fn unit_activation_standing(
+  unit: NonEmptyStr,
+  probe_ran: Bool,
+  start_succeeded: Bool,
+  detail: String,
+) -> UnitActivationInhibitedStanding {
+  if !probe_ran {
+    ActivationInhibitionUnobserved { unit: unit, cause: detail }
+  } else {
+    if start_succeeded {
+      ActivationObservedAdmitted { unit: unit, detail: detail }
+    } else {
+      ActivationObservedRefused { unit: unit, detail: detail }
+    }
+  }
+}
+
+// `sole_constructor`, so no caller can assert a quiescence it did not observe. The only mint takes
+// both standings, which is what makes "one command exit proves neither" structural rather than
+// advisory: there is no spelling of this record that carries a mask's exit status.
+type ExternalQuiescence sole_constructor {
+  unit: NonEmptyStr
+  inactive: UnitInactiveStanding
+  activation: UnitActivationInhibitedStanding
+}
+
+fn observe_unit_quiescence(
+  unit: NonEmptyStr,
+  inactive: UnitInactiveStanding,
+  activation: UnitActivationInhibitedStanding,
+) -> ExternalQuiescence {
+  ExternalQuiescence { unit: unit, inactive: inactive, activation: activation }
+}
+
+type QuiescenceAdmission
+  = QuiescenceInForce
+  | QuiescenceRefused { cause: String }
+
+// BOTH ARMS MUST BE THE OBSERVED-GOOD ONE, and each way of failing keeps its own cause because the
+// remedies differ: still active means stop it, still startable means the mask did not take, and
+// unobserved means the host did not answer -- which is not a permit.
+fn unit_quiescence_admission(q: ExternalQuiescence) -> QuiescenceAdmission {
+  match q.inactive {
+    UnitObservedActive { unit: u } =>
+      QuiescenceRefused {
+        cause: join(["gunbc.deploy_transition_bootstrap: ", u as String, " is still active"], ""),
+      }
+    UnitInactivityUnobserved { unit: u, cause: why } =>
+      QuiescenceRefused {
+        cause: join([
+          "gunbc.deploy_transition_bootstrap: whether ", u as String,
+          " is inactive was not observed -- ", why,
+        ], ""),
+      }
+    UnitObservedInactive { unit: _ } =>
+      match q.activation {
+        ActivationObservedAdmitted { unit: u, detail: d } =>
+          QuiescenceRefused {
+            cause: join([
+              "gunbc.deploy_transition_bootstrap: a planted direct start of ", u as String,
+              " SUCCEEDED, so activation is not inhibited and an actuator has just run against a",
+              " tree mid-transition -- re-quiesce before proceeding -- ", d,
+            ], ""),
+          }
+        ActivationInhibitionUnobserved { unit: u, cause: why } =>
+          QuiescenceRefused {
+            cause: join([
+              "gunbc.deploy_transition_bootstrap: no start was planted against ", u as String,
+              ", so activation inhibition is unobserved and a mask exit code is not a substitute -- ",
+              why,
+            ], ""),
+          }
+        ActivationObservedRefused { unit: _, detail: _ } => QuiescenceInForce
+      }
+  }
+}
+
+fn quiescence_admits(a: QuiescenceAdmission) -> Bool {
+  match a {
+    QuiescenceInForce => true
+    QuiescenceRefused { cause: _ } => false
+  }
+}
+
+// THE ROSTER LAW IS AN IDENTITY JOIN, NOT A COUNT. A quiescence record for some other unit cannot
+// stand in for a missing one, so the expected roster is walked and each unit must be BOTH present
+// in the observations and admitting. A count would let three observations of two units pass.
+fn roster_quiescence_admission(
+  names: DeploymentNames,
+  observed: List<ExternalQuiescence>,
+) -> QuiescenceAdmission {
+  fold(
+    bootstrap_quiesced_units(names: names),
+    init: QuiescenceInForce,
+    f: (acc, u) =>
+      match acc {
+        QuiescenceRefused { cause: why } => QuiescenceRefused { cause: why }
+        QuiescenceInForce =>
+          match first(filter(observed, q => (q.unit as String) == (u as String))) {
+            Absent =>
+              QuiescenceRefused {
+                cause: join([
+                  "gunbc.deploy_transition_bootstrap: no quiescence was observed for ", u as String,
+                ], ""),
+              }
+            Present { value: q } => unit_quiescence_admission(q: q)
+          }
+      },
+  )
+}
+
 fn bootstrap_restore_commands(names: DeploymentNames, privileged: Bool) -> List<String> {
   map(
     bootstrap_quiesced_units(names: names),
