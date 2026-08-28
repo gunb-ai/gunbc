@@ -1,5 +1,6 @@
 module v2.test.provenance.occurrence_id_model
 
+import std.occurrence_identity { node_occurrence_identity_minted }
 import v2.std.diagnostic { ByteRange, InvariantPortLocus, NodeLocus, SourcePortLocus, Textual, WholeFile }
 import v2.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold
@@ -13,9 +14,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   node_for_structural_equality,
-  node_occurrence_minted,
   node_synthetic,
-  node_with_occurrence_id
+  node_with_occurrence_id,
 }
 import v2.std.occurrence_id {
   alloc_occurrence_id,
@@ -172,12 +172,12 @@ test fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
   let left = node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [Edge { label: Positional, target: child }],
-    occurrence_id: node_occurrence_minted(id: m0.id)
+    occurrence_id: node_occurrence_identity_minted(id: m0.id)
   )
   let right = node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
     children: [Edge { label: Positional, target: child }],
-    occurrence_id: node_occurrence_minted(id: m1.id)
+    occurrence_id: node_occurrence_identity_minted(id: m1.id)
   )
   !occurrence_id_eq(left: m0.id, right: m1.id)
     && !(left == right)
@@ -191,12 +191,12 @@ test fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
   let child_left = node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: ^occurrence_eq_child } },
     children: [],
-    occurrence_id: node_occurrence_minted(id: m0.id)
+    occurrence_id: node_occurrence_identity_minted(id: m0.id)
   )
   let child_right = node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: ^occurrence_eq_child } },
     children: [],
-    occurrence_id: node_occurrence_minted(id: m1.id)
+    occurrence_id: node_occurrence_identity_minted(id: m1.id)
   )
   let left = node_synthetic(
     kind: TypeNode { connective: Conj },

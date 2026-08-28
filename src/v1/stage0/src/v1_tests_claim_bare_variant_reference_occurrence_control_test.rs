@@ -52,28 +52,10 @@ pub fn category_is_lexical_value(c: OccurrenceCategory) -> bool {
 }
 
 pub fn lexical_value_reference_count(source: String) -> i64 {
-    match (*parse_authored_occurrence_binding_source(
-        "bare_variant_control.dag".to_string(),
-        source.clone(),
-    ))
-    .clone()
-    {
-        ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => (0 - 1),
-        ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
-            transport: t, ..
-        } => {
-            (Rc::new({
-                let mut __result = Vec::new();
-                for r in t.references.clone().iter().cloned() {
-                    if category_is_lexical_value(r.category.clone()) {
-                        __result.push(r);
-                    }
-                }
-                __result
-            })
-            .len() as i64)
-        }
-    }
+    match (*crate::v1_gunbc_occurrence_binding_parser_walk::parse_authored_occurrence_binding_source("bare_variant_control.dag".to_string(), source.clone())).clone() {
+    ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => (0 - 1),
+    ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady { transport: t, .. } => (Rc::new({ let mut __result = Vec::new(); for r in t.references.clone().iter().cloned() { if category_is_lexical_value(r.category.clone()) { __result.push(r); } } __result }).len() as i64),
+}
 }
 
 pub fn bare_nullary_variant_references_are_carried_by_the_parser_transport_holds() -> bool {

@@ -1,5 +1,6 @@
 module v2.test.graph_invariant.lens_unit.reach_kernel_test
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.collection { List }
 import v2.std.dependency { Contains, DependencyView, dependency_lens }
 import v2.lens.common.graph_invariant {
@@ -13,8 +14,7 @@ import v2.std.node {
   Atom,
   Node,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -24,7 +24,7 @@ fn gi_atom(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

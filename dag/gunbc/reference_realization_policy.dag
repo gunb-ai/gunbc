@@ -1,0 +1,165 @@
+module gunbc.reference_realization_policy
+
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.reference_realization {
+  ProviderReferenceRealizationRow,
+  ReferenceRealizationGround,
+  ProviderIsOpaque,
+  ProviderIsTheTargetPrimitive,
+  ProviderRefinesItsRepresentation,
+  ReferencePositionRendering,
+  provider_reference_position_rendering
+}
+import std.coercion { TypeRealizationDecision }
+import std.types { List, NonEmptyStr, String }
+
+// THE CENSUS THIS CARRIER ANSWERS IS CITED IN PROSE AND NOT AS A TYPED DeclarationRef, deliberately:
+// tools.opaque_realization_census is gunbc#9419 and is not merged, so a typed citation to it would
+// name a declaration that does not resolve -- the exact class the ingestion-time citation wall
+// refuses. When that PR lands, this citation becomes authorable as a typed row.
+//
+// THE CORPUS-SIDE HALF. std.reference_realization declares the vocabulary and the derivation; this
+// carrier declares WHICH PROVIDERS have been examined and what was found at each. The split is
+// deliberate and follows DESIGN section 3: how a target spells a type is cited to the target
+// language (extdeps.languages.*.types), which of a declaration's possible renderings applies is a
+// corpus fact keyed on declaration identity (v1.compiler.coercion type_realization_decision), and
+// where a reference to that provider writes it is a corpus POLICY fact, which is this.
+//
+// EVERY ROW IS ESTABLISHED BY READING THE PROVIDER DECLARATION, never by matching a name and never
+// by observing what the emitter currently does. That direction matters here more than usual: the
+// emitted artifact has no policy to read: six of the fifteen subjects crisp-cat-384's census finds
+// with any occurrence are SPLIT between preserved and bypassed consumers, against two that are
+// uniform. std.reference_realization's header carries that measurement and its attribution; it is
+// not restated here. A row derived from current emitter behaviour would be modeling the defect.
+//
+// WHAT THIS CARRIER IS NOT, stated ahead of its rows so no reader takes it for coverage. Nothing in
+// the emit path consumes it. No emitter position moves in the change that lands it, by scope: the
+// five positions in v1.compiler.05_emit_rust that substitute the realization spelling for the
+// provider name are named in gunbc#9419's body as the repair lane's finding, and they stay exactly
+// as they are. The error class therefore sits at the rung the census left it at, and this carrier
+// raises it by nothing. What it changes is that the class now HAS a modeled answer to argue from,
+// which is the model-before-implement order this repository works in, not a wall.
+
+data reference_realization_decision_authority: DeclarationRef = decl_ref(module_path: "v1.compiler.coercion", decl_name: "type_realization_decision")
+
+// THE RECEIPT FOR THE PRESERVE ARM, and it is a measured cost rather than an assertion that
+// preserving is better. v2.std.node Hash is Fnv1a64Structural, whose public record constructors are
+// deleted precisely so its refinement IS its construction wall. A Rust checkpoint row rendered every
+// reference to that name as a bare String alias, which took the wall with it -- a DESIGN section 4b
+// construction rung demoted with no diagnostic anywhere, and, in the emitted 05_eval closure, 70
+// distinct E0308 sites where the same file disagreed with itself. That account is
+// extdeps.languages.rust.types rust_checkpoint_hash_row_retired_note's, cited here rather than
+// restated as this carrier's own finding.
+//
+// THE RETIREMENT REMOVED ONE WRONG SPELLING AND DID NOT STOP THE SUBSTITUTION, which is the reason
+// this receipt is written the long way round rather than as "and then it was fixed". crisp-cat-384's
+// census reports Hash SPLIT at head -- preserved in 3 consumers, bypassed in 1 -- and the surviving
+// bypass writes the STRUCTURAL realization, Rc<Fnv1a64Structural>, at the use site. So the reference
+// is still being realized at the consumer; only the spelling it is realized to changed. A row here
+// claiming the retirement restored the wall would be a stale citation with a green check beside it.
+//
+// THAT SURVIVING BYPASS IS ON THE PATH WHERE NO CHECKPOINT GOVERNS AT ALL, and the model already has
+// a name for what it should render: std.reference_realization RenderProviderDeclarationNoRealization,
+// the arm for a decision that is Unrealized because nothing exists to inline. It is kept apart from
+// the declared-preservation arm precisely so a reader can tell which of the two a future emitter
+// position is discharging.
+//
+// HASH IS STILL NOT A ROW BELOW, and the reason is narrower than it was: `type Hash =
+// Fnv1a64Structural` is an alias onto a carrier that holds its own construction wall, so which of
+// the grounds it takes is a modeling question this carrier has not answered, and authoring a row on
+// a ground nobody has established is the fiat the ground vocabulary exists to prevent. It is named
+// here as examined-and-unrowed rather than omitted silently.
+data reference_realization_preserve_receipt: DeclarationRef = decl_ref(module_path: "extdeps.languages.rust.types", decl_name: "rust_checkpoint_hash_row_retired_note")
+
+// THE RECEIPT FOR THE INLINE ARM. dag/std/nat.dag and dag/std/integer.dag are the two grounded
+// numeric authorities, and v1.compiler.coercion already carries the fact that a declaration in
+// either one IS the host numeric at the Rust target. The inline rows below assert nothing beyond
+// that existing roster; they say where a reference to such a declaration writes it, which is the
+// question the roster does not answer.
+data reference_realization_inline_receipt: DeclarationRef = decl_ref(module_path: "v1.compiler.coercion", decl_name: "numeric_realization_declaring_modules")
+
+fn provider_reference_realization_row(
+  module_path: String,
+  decl_name: String,
+  ground: ReferenceRealizationGround
+) -> ProviderReferenceRealizationRow {
+  ProviderReferenceRealizationRow {
+    provider: decl_ref(module_path: module_path, decl_name: decl_name),
+    ground: ground
+  }
+}
+
+// FOUR ROWS, BOTH ARMS, AND NEITHER ARM READ OFF THE ARTIFACT. crisp-cat-384's census reports that
+// no clean exemplar of either arm exists in the emitted tree today, so "regularize toward the
+// working case" was never available to this carrier. Each ground below is checkable at the cited
+// declaration and nowhere else:
+//
+//   v2.std.node Symbol      -- `type Symbol`, a declaration with NO body. There is no authored
+//                              representation to inline; whatever the target supplies is exactly
+//                              what the declaration withholds, so writing it at a use site publishes
+//                              the one thing opacity exists to keep.
+//   std.types NonEmptyStr   -- `String where non_empty`. The representation admits a value the
+//                              declaration refuses, so a reference spelling String is a reference to
+//                              a strictly wider type wearing the narrow one's name.
+//   std.nat Nat             -- the grounded numeric authority; the declaration IS the host integer
+//   std.integer Int            at the Rust target, so its representation carries nothing the
+//                              declaration adds and inlining loses nothing.
+//
+// The v2 numeric declarations are NOT here and must not be added by analogy: v2.std.nat Nat is the
+// Peano coproduct and v1.compiler.coercion numeric_realization_identity_note states in terms that it
+// must NOT realize natively. Two declarations sharing the spelling Nat take opposite rows, which is
+// the whole reason this roster is keyed on declaration identity rather than on a name.
+//
+// WHAT ADOPTING THESE ROWS WOULD COST AT THE REPAIR, stated here so no reader takes a row for a
+// free relabelling of what the emitter already does. The Symbol row is the expensive one: the census
+// finds that reference preserved in 1 consumer and bypassed in 39, so a preserve row is a decision
+// about 39 references, not about 1. The NonEmptyStr row runs the other way -- 7 of its 8 consumers
+// already preserve -- and the two numeric rows are 2 and 2. None of that decided any row above: the
+// grounds did, and the counts are recorded so the repair lane sizes the work from the model rather
+// than discovering it.
+fn reference_realization_policy_rows() -> List<ProviderReferenceRealizationRow> {
+  [
+    provider_reference_realization_row(
+      module_path: "v2.std.node",
+      decl_name: "Symbol",
+      ground: ProviderIsOpaque {
+        note: "type Symbol is declared with no body (src/v2/std/node.dag): the target supplies its whole representation, so a use site that writes that representation publishes exactly what the declaration withholds" as NonEmptyStr
+      }
+    ),
+    provider_reference_realization_row(
+      module_path: "std.types",
+      decl_name: "NonEmptyStr",
+      ground: ProviderRefinesItsRepresentation {
+        refinement: "String where non_empty: the representation admits the empty string and the declaration refuses it, so a reference spelled String names a strictly wider type" as NonEmptyStr
+      }
+    ),
+    provider_reference_realization_row(
+      module_path: "std.nat",
+      decl_name: "Nat",
+      ground: ProviderIsTheTargetPrimitive {
+        grounding: "dag/std/nat.dag is one of the two grounded numeric authorities v1.compiler.coercion numeric_realization_declaring_modules names as realizing natively; the declaration IS the host integer at the Rust target" as NonEmptyStr
+      }
+    ),
+    provider_reference_realization_row(
+      module_path: "std.integer",
+      decl_name: "Int",
+      ground: ProviderIsTheTargetPrimitive {
+        grounding: "dag/std/integer.dag is the second grounded numeric authority in the same roster; the declaration IS the host integer at the Rust target, so its representation carries nothing the declaration adds" as NonEmptyStr
+      }
+    )
+  ]
+}
+
+// The single entry point a consumer asks through, so a future emitter position reads the roster from
+// one place rather than re-deriving membership. It is a derivation of std.reference_realization's
+// join, not a second answer to it.
+fn reference_realization_rendering(
+  provider: DeclarationRef,
+  decision: TypeRealizationDecision
+) -> ReferencePositionRendering {
+  provider_reference_position_rendering(
+    rows: reference_realization_policy_rows(),
+    provider: provider,
+    decision: decision
+  )
+}

@@ -1,5 +1,6 @@
 module v2.compiler.translate
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.dag {
   dag_surface_operator_canonicalization_member,
   dag_value_expression_projection,
@@ -88,7 +89,6 @@ import v2.std.node {
   node_subtree_count,
   node_subtree_nodes,
   well_formed,
-  SyntheticOccurrence
 }
 import v2.std.node_query {
   find_named_child,
@@ -1107,7 +1107,7 @@ fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagn
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: token_class } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -1118,7 +1118,7 @@ fn translate_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnosti
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: binding } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -3209,7 +3209,7 @@ fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: binding } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3951,7 +3951,7 @@ fn translate_import_production_qn_node(import_node: Node) -> Outcome<Node> {
                 Node {
                   kind: TypeNode { connective: Atom { identity: sym } },
                   children: [],
-                  occurrence_id: SyntheticOccurrence
+                  occurrence_id: OccurrenceSynthetic
                 }
               }
             )
@@ -3980,14 +3980,14 @@ fn translate_import_production_block_node(import_node: Node) -> Outcome<Node> {
                     target: Node {
                       kind: TypeNode { connective: Atom { identity: sym } },
                       children: [],
-                      occurrence_id: SyntheticOccurrence
+                      occurrence_id: OccurrenceSynthetic
                     }
                   }
                 ]
               )
             }
           ),
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       )
     }

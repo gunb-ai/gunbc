@@ -1,5 +1,6 @@
 module v2.test.manual.find_witness_identity
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.coercion {
   CoercionCandidateSet,
   Exact,
@@ -33,7 +34,6 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.verification {
   CompilesClaim,
@@ -52,14 +52,14 @@ fn identity_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^identity_source_atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 fn identity_other_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^identity_other_atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 fn identity_closedness() -> StructuralPropertyWitness {

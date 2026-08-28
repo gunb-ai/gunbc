@@ -1,6 +1,7 @@
 module v2.std.effects
 
-import v2.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode, SyntheticOccurrence }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode }
 import std.effects {
   EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect,
   PostAlways, CreateIfAbsent, KeylessFallback
@@ -33,7 +34,7 @@ type IdempotentOperationSubject
 data sample_state: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^sample_state_value } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data sample_read_operation: IdempotentOperationRef = IdempotentOperationRef {
@@ -102,7 +103,7 @@ fn create_always_shape() -> EffectShape<SubstrateKeySource> {
 
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -121,7 +122,7 @@ fn key_source_node(key_source: SubstrateKeySource) -> Node {
             target: atom_node(s: p)
           },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     InputField { field: f } =>
       Node {
@@ -136,7 +137,7 @@ fn key_source_node(key_source: SubstrateKeySource) -> Node {
             target: atom_node(s: f)
           },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -154,7 +155,7 @@ fn keyed_shape_node(variant_marker: Symbol, key_source: SubstrateKeySource) -> N
         target: key_source_node(key_source: key_source)
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -190,7 +191,7 @@ fn classified_idempotent_effect_node(shape: EffectShape<SubstrateKeySource>) -> 
         target: effect_shape_node(shape: shape)
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -203,7 +204,7 @@ fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
         target: atom_node(s: operation.callable)
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -222,7 +223,7 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             target: idempotent_operation_ref_node(operation: operation)
           },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     UpsertIdempotentSample { operation: operation, key_source: key_source } =>
       Node {
@@ -237,7 +238,7 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             target: idempotent_operation_ref_node(operation: operation)
           },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     DeleteIdempotentSample { operation: operation, key_source: key_source } =>
       Node {
@@ -252,7 +253,7 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             target: idempotent_operation_ref_node(operation: operation)
           },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     CreateIfAbsentIdempotentSample { operation: operation, key_source: key_source } =>
       Node {
@@ -269,7 +270,7 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
             target: idempotent_operation_ref_node(operation: operation)
           },
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -287,7 +288,7 @@ fn idempotent_operation_apply_node(state: Node, subject: ComposableIdempotentOpe
         target: idempotent_operation_witness_node(subject: subject)
       },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

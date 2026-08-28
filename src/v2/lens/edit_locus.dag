@@ -23,7 +23,7 @@ fn edit_locus_no_match_diagnostic() -> Diagnostic {
     at: node_locus(node: Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -35,7 +35,7 @@ fn edit_locus_ambiguous_diagnostic() -> Diagnostic {
     at: node_locus(node: Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }),
     correction: Unavailable { reason: ExternalContractUnknown }
   }

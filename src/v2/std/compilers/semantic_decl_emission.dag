@@ -1,5 +1,6 @@
 module v2.std.compilers.semantic_decl_emission
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v2.std.compilers.coproduct_variant_shape {
@@ -69,8 +70,7 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.node_query { find_named_child }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
@@ -1315,7 +1315,7 @@ fn target_semantic_decl_surface_conj(children: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: children,
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1323,7 +1323,7 @@ fn target_semantic_decl_surface_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

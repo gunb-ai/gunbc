@@ -1,5 +1,6 @@
 module v2.test.manual.infer_ground_add
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
@@ -42,7 +43,6 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.verification {
   ManualAnchorAbsent,
@@ -94,7 +94,7 @@ fn fixture_int_type_node(atom: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: atom } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -102,7 +102,7 @@ fn infer_receipt_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -348,11 +348,11 @@ fn fixture_add_resolved_tree() -> ResolvedTree {
               target: fixture_int_type_node(atom: ^fixture_add_body_int_atom)
             }
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
 }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

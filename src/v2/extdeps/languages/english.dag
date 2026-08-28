@@ -1,4 +1,5 @@
 module v2.extdeps.languages.english
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.language_model { LanguageModel, language_model_empty_canonical_symbols }
 
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
@@ -22,8 +23,7 @@ import v2.std.node {
   Named,
   Node,
   Positional,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.text { String }
 import v2.std.grammar {
@@ -343,7 +343,7 @@ fn english_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -360,7 +360,7 @@ fn english_noun_facts_node() -> Node {
         target: english_inhabitant_atom(id: ^english_category_formal_noun_phrase)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -377,7 +377,7 @@ fn english_noun_inhabitant_node() -> Node {
         target: english_noun_facts_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -389,7 +389,7 @@ fn english_add_fn_emitted_node() -> Node {
       Edge { label: Positional, target: english_noun_inhabitant_node() },
       Edge { label: Positional, target: english_noun_inhabitant_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -548,7 +548,7 @@ fn english_grammar_relation_row_node(row: EnglishGrammarRelationRow) -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -561,7 +561,7 @@ fn english_add_fn_translation_rules_node() -> Node {
         target: english_grammar_relation_row_node(row: english_add_fn_relation_row())
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -585,7 +585,7 @@ fn english_add_fn_serialize_source_node() -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -626,7 +626,7 @@ fn english_declared_inhabitants_root() -> Node {
       ],
       right: english_add_fn_zip_fold_closure_edges()
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -643,7 +643,7 @@ fn english_add_fn_target_model_node() -> Node {
       english_named_edge(name: ^target_model_edge_translation_rules, target: english_add_fn_translation_rules_node()),
       english_named_edge(name: ^target_model_edge_serialize_source, target: english_add_fn_serialize_source_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
