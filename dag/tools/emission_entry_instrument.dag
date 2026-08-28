@@ -405,6 +405,25 @@ type EmissionScopeEntry
   = ScopeEntry { entry: String }
   | ScopeNamesNoEntry { why: String }
 
+// THE JOIN KEY A SCOPE PRESENTS, and it lives here because THREE callers need it and getting it
+// wrong is silent. gunbc.emit_subject_clean_frontier joins measurements to its roster on entry
+// identity; measure_scope_emission stamps the same key onto the arms where no subject could be
+// established; and both must agree or a run joins to nothing under a name that looks right.
+//
+// AN ENTRY SCOPE PRESENTS ITS BARE PATH, NEVER ITS LABEL. The label reads "entry foo.dag", which is
+// correct prose and a WRONG KEY: it cannot equal a repository-relative path, so the lookup answers
+// SubjectReadingAbsent for exactly the entry the run was about. That is the silent-subject class
+// this whole change exists to close, and review 57181 caught me reintroducing it on the one arm I
+// had not routed through this projection. A population scope presents its LABEL deliberately --
+// prefixed, so it cannot collide with any path and joins to nothing, which is the accurate answer
+// rather than a false match on whichever root it names.
+fn emission_scope_join_key(sc: EmissionScope) -> String {
+  match emission_scope_entry(sc: sc) {
+    ScopeEntry { entry: e } => e
+    ScopeNamesNoEntry { why: _ } => emission_scope_label(sc: sc)
+  }
+}
+
 fn emission_scope_entry(sc: EmissionScope) -> EmissionScopeEntry {
   match sc {
     EntryScope { entry: e } => ScopeEntry { entry: e }
@@ -561,7 +580,7 @@ fn measure_entry_emission(entry: String) -> EmissionMeasurement {
 // (DESIGN section 3 -- an entry measurement and a primary-root measurement are one operation at
 // two breadths, which is section 2's horizontal move, not two instruments).
 fn measure_scope_emission(scope: EmissionScope, render_target: EmissionRenderTarget) -> EmissionMeasurement {
-  let entry = emission_scope_label(sc: scope)
+  let entry = emission_scope_join_key(sc: scope)
   let root = git.Inspect.Toplevel()
   let out_dir = shell.Mktemp.Dir()
   if !out_dir.success {

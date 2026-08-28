@@ -778,24 +778,18 @@ fn emit_subject_outcome(m: EmissionMeasurement) -> EmitSubjectOutcome {
   }
 }
 
-// THE ENTRY A SUBJECT NAMES, DESCENDING INTO THE SCOPE RATHER THAN READING A FIELD. The subject
-// carried a `String entry` until 2026-08-28 and now carries an EmissionScope, because an entry
-// string could not say WHICH SOURCE ROOT WAS PRIMARY -- three runs were reported as whole-corpus
-// while measuring 3109 of 4170 sources.
+// THE ENTRY A SUBJECT NAMES, ASKED OF THE SCOPE'S OWN AUTHORITY RATHER THAN RE-DERIVED HERE. The
+// subject carried a `String entry` until 2026-08-28 and now carries an EmissionScope, because an
+// entry string could not say WHICH SOURCE ROOT WAS PRIMARY -- three runs were reported as
+// whole-corpus while measuring 3109 of 4170 sources.
 //
-// THIS FRONTIER IS ENTRY-SHAPED BY CONSTRUCTION: its measurements come from measure_entry_emission,
-// which always produces an EntryScope, so the population arm is a state this fold never receives.
-// It is still handled rather than defaulted, and it returns the SCOPE LABEL, which is prefixed
-// ("primary-root ...") and therefore cannot equal a repository-relative `.dag` path. So a
-// population measurement joins to NOTHING and the lookup answers SubjectReadingAbsent -- the
-// accurate answer for a measurement that is about no entry in the roster -- instead of matching a
-// row it was never about. Returning the raw primary root here would have been exactly that false
-// match, which is why the entry arm returns the bare path and this one does not.
+// tools.emission_entry_instrument emission_scope_join_key owns the answer, and it owns it because
+// the INSTRUMENT stamps the same key onto its own subject-unestablished arms. A local match here
+// would be a second derivation of one key, free to disagree with the producer that writes it --
+// and review 57181 caught exactly that disagreement in the other direction before this call
+// replaced it.
 fn emission_subject_entry_text(s: EmissionMeasurementSubject) -> String {
-  match emission_scope_entry(sc: s.scope) {
-    ScopeEntry { entry: e } => e
-    ScopeNamesNoEntry { why: _ } => emission_scope_label(sc: s.scope)
-  }
+  emission_scope_join_key(sc: s.scope)
 }
 
 // THE ENTRY A MEASUREMENT IS ABOUT, total over the coproduct so a measurement joins to the roster

@@ -593,3 +593,23 @@ test fn the_scope_label_distinguishes_an_entry_from_a_population() -> Bool {
   let p = emission_scope_label(sc: PrimaryRootScope { primary_root: "dag", dependency_pools: ["src/v2"] })
   e != p && e != "" && p != "" && string_contains(s: p, pattern: "src/v2")
 }
+
+// THE JOIN KEY IS NOT THE LABEL, and this pair is the regression control for review 57181. The
+// label reads "entry foo.dag" -- correct prose, WRONG KEY, because it cannot equal a
+// repository-relative path, so a roster join answers Absent for exactly the entry the run was
+// about. measure_scope_emission stamps this key onto its subject-unestablished arms and
+// gunbc.emit_subject_clean_frontier joins on it, so the two must agree by construction.
+test fn an_entry_scopes_join_key_is_its_bare_path_and_not_its_label() -> Bool {
+  let sc = EntryScope { entry: "dag/std/node.dag" }
+  emission_scope_join_key(sc: sc) == "dag/std/node.dag"
+    && emission_scope_join_key(sc: sc) != emission_scope_label(sc: sc)
+}
+
+// AND THE POPULATION ARM PRESENTS THE LABEL DELIBERATELY: prefixed, so it cannot collide with any
+// path and joins to nothing -- the accurate answer, rather than a false match on whichever root it
+// names. Built unkind on purpose: the primary root IS a real entry path.
+test fn a_population_scopes_join_key_cannot_be_mistaken_for_its_primary_root() -> Bool {
+  let sc = PrimaryRootScope { primary_root: "dag/std/node.dag", dependency_pools: [] }
+  emission_scope_join_key(sc: sc) != "dag/std/node.dag"
+    && emission_scope_join_key(sc: sc) == emission_scope_label(sc: sc)
+}
