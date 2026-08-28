@@ -154,23 +154,26 @@ fn assess_generated_artifact_population(expected: List<GeneratedArtifact>, obser
 fn expected_cardinality_finding_rendered(f: ExpectedArtifactCardinalityFinding) -> String {
   match f {
     ExpectedArtifactObservationMissing { artifact: _, path } =>
-      concat(path, " — expected exactly one observation, found 0")
+      concat(path, " — expected exactly one observation, found 0 → repair observer or population completeness; the artifact was never adjudicated")
     ExpectedArtifactObservationDuplicated { artifact: _, path, observation_count: _ } =>
-      concat(path, " — expected exactly one observation, found more than one")
+      concat(path, " — expected exactly one observation, found more than one → repair artifact identity or population construction")
   }
 }
 
 fn observation_finding_rendered(f: GeneratedArtifactObservationFinding) -> String {
   match f {
     GeneratedArtifactContentDiffers { artifact: _, path } =>
-      concat(path, " — committed content differs from authority")
+      concat(path, " — committed content differs from authority → this is a GENERATED projection; do not hand-edit, regenerate via main_wet on dag/tools/generated_artifact_gate.dag")
     GeneratedArtifactExtraValidationFailed { artifact: _, path } =>
-      concat(path, " — extra validation failed")
+      concat(path, " — extra validation failed → repair the generated artifact's structural validity at its authority; regeneration alone will reproduce the same invalid bytes")
   }
 }
 
 fn unadjudicated_finding_rendered(f: UnadjudicatedArtifactFinding) -> String {
-  concat(concat(f.path, " — rostered but no verdict reached: "), f.cause)
+  concat(
+    concat(concat(f.path, " — rostered but no verdict reached: "), f.cause),
+    " → repair the named authority, generator or filesystem refusal; NO agreement verdict was reached for this artifact, so it is neither clean nor drifted"
+  )
 }
 
 fn render_section(title: String, lines: List<String>) -> String {
@@ -194,7 +197,7 @@ fn generated_artifact_population_findings_rendered(f: GeneratedArtifactPopulatio
       concat(
         render_section(title: "expected observation cardinality:", lines: map(f.expected_cardinality, x => expected_cardinality_finding_rendered(f: x))),
         concat(
-          render_section(title: "unknown observations:", lines: map(f.unknown_observations, x => concat(x.path, " — observation identity is not in committed registry"))),
+          render_section(title: "unknown observations:", lines: map(f.unknown_observations, x => concat(x.path, " — observation identity is not in committed registry → repair the registry/scope disagreement; establish whether this artifact is meant to be committed at all before generating it"))),
           render_section(title: "unadjudicated:", lines: map(f.unadjudicated, x => unadjudicated_finding_rendered(f: x)))
         )
       )

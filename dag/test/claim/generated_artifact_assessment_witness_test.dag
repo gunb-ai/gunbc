@@ -9,7 +9,9 @@ import gunbc.generated_artifact_assessment {
   UnadjudicatedArtifactFinding,
   generated_artifact_population_findings,
   generated_artifact_population_findings_count,
+  generated_artifact_population_findings_empty,
   generated_artifact_population_findings_rendered,
+  expected_cardinality_finding_rendered,
   observation_finding_rendered
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -150,6 +152,25 @@ test fn duplicate_and_missing_are_distinct_findings() -> Bool {
   (f.expected_cardinality |> count) == 2
     && any(rendered, r => string_contains(s: r, pattern: "found 0"))
     && any(rendered, r => string_contains(s: r, pattern: "more than one"))
+}
+
+// EACH CLASS CARRIES ITS OWN REMEDY, AND THE SECOND CLAUSE IS THE WHOLE POINT. The gate body used
+// to append one closing instruction -- regenerate via main_wet -- to every nonempty population,
+// which is right for a content difference and wrong for every other class. Asserting only that the
+// drift line names the producer would stay green under that global sentence, because a universal
+// suffix satisfies it too; the discriminating half is that a MISSING-OBSERVATION line must NOT name
+// the producer, since regenerating cannot repair an observer that never adjudicated the artifact.
+// Reintroducing any run-level remedy makes this red.
+test fn remedies_are_class_specific_not_universal() -> Bool {
+  let f = generated_artifact_population_findings(
+    expected: [DesignArtifact, RoadmapArtifact],
+    observations: [drifted_observation(a: DesignArtifact, path: "DESIGN.md")]
+  )
+  let drift = map(f.observation_failures, x => observation_finding_rendered(f: x))
+  let missing = map(f.expected_cardinality, x => expected_cardinality_finding_rendered(f: x))
+  any(drift, d => string_contains(s: d, pattern: "main_wet"))
+    && !any(missing, m => string_contains(s: m, pattern: "main_wet"))
+    && any(missing, m => string_contains(s: m, pattern: "never adjudicated"))
 }
 
 // ---------------------------------------------------------------------------------------------
