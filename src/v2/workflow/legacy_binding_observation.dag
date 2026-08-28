@@ -3,6 +3,15 @@ module v2.workflow.legacy_binding_observation
 import std.types { String, Bool, Int, List, Map, NonEmptyStr }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_field_eq }
+import std.observation_completeness {
+  ObservationCompleteness,
+  ObservationComplete,
+  ObservationRepeatedExpected,
+  ObservationMissingExpected,
+  ObservationForeignObserved,
+  ObservationRepeatedObserved,
+  observation_completeness
+}
 import std.occurrence_identity {
   OccurrenceId,
   ReferenceOccurrence,
@@ -116,26 +125,17 @@ fn observed_occurrence_ids<O>(observation: LegacyBindingObservation<O>) -> List<
   observation.rows |> map(row => row.occurrence.value)
 }
 
-// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY, and the two refusals below are why.
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT EQUALITY, AND THE JOIN IS NOT DECLARED HERE.
 //
-// A count equality passes when an observation answers for N occurrences that are not the subject's
-// -- the exact oracle failure DESIGN section 5 forbids, and it fails in the direction that reads
-// as success. So the law is stated twice, once in each direction: nothing expected may be missing,
-// and nothing observed may be foreign. Either alone is satisfiable by a wrong answer set of the
-// right size.
-// AND ONE OCCURRENCE MAY BE ANSWERED FOR ONCE, which membership alone does not say.
+// The law -- nothing expected missing, nothing observed foreign, nothing expected answered twice --
+// is the same law for any key, and a second envelope now needs it over a key that is not an Int.
+// So it lives once, in std.observation_completeness, and this module supplies the key and its
+// equality rather than a second copy of the fold. The reasoning behind each of the three refusals
+// is recorded there, beside the declaration, rather than restated here where it would be free to
+// drift from the code it describes.
 //
-// Rows [11, 11, 22, 33] against expected [11, 22, 33] have every expected occurrence present and no
-// foreign one, so a two-direction MEMBERSHIP check calls them complete -- while the artifact carries
-// two, possibly conflicting, outcomes for occurrence 11. That is the one-outcome-per-occurrence
-// grain this module declares, admitted as a writable state by the very law that was supposed to
-// enforce it. It is also precisely the attempt-versus-occurrence grain confusion the row type warns
-// about: an unreconciled producer hands over attempt rows, and without this arm they pass.
-type LegacyObservationCompleteness
-  = LegacyObservationComplete
-  | LegacyObservationMissingExpected { occurrences: List<Int> }
-  | LegacyObservationForeignObserved { occurrences: List<Int> }
-  | LegacyObservationRepeatedObserved { occurrences: List<Int> }
+// WHAT THIS MODULE STILL OWNS IS THE DENOMINATOR: which occurrences the subject owed answers for.
+// That is the half a generic join cannot have, because only this envelope knows its transport.
 
 // THE JOIN TAKES THE DERIVED LIST, NOT THE TRANSPORT, AND THE SPLIT IS DELIBERATE. Two facts sit
 // here: WHAT the subject's questions are (a derivation, above) and WHETHER an answer set matches
@@ -145,15 +145,12 @@ type LegacyObservationCompleteness
 fn legacy_observation_completeness<O>(
   observation: LegacyBindingObservation<O>,
   expected: List<Int>
-) -> LegacyObservationCompleteness {
-  let observed = observed_occurrence_ids(observation: observation)
-  let missing = expected |> filter(id => !(observed |> any(o => o == id)))
-  let foreign = observed |> filter(id => !(expected |> any(e => e == id)))
-  let repeated = expected |> filter(id => (observed |> filter(o => o == id) |> count) > 1)
-  if (missing |> count) > 0 { LegacyObservationMissingExpected { occurrences: missing } }
-  else if (foreign |> count) > 0 { LegacyObservationForeignObserved { occurrences: foreign } }
-  else if (repeated |> count) > 0 { LegacyObservationRepeatedObserved { occurrences: repeated } }
-  else { LegacyObservationComplete }
+) -> ObservationCompleteness<Int> {
+  observation_completeness(
+    expected: expected,
+    observed: observed_occurrence_ids(observation: observation),
+    key_eq: (a, b) => a == b
+  )
 }
 
 // THE ADMITTED CARRIER, AND WHY THE PROSE OBLIGATION IT REPLACES WAS NOT ENOUGH.
@@ -187,13 +184,13 @@ type CompleteLegacyObservation<O> sole_constructor {
 
 type LegacyObservationAdmission<O>
   = ObservationAdmitted { admitted: CompleteLegacyObservation<O> }
-  | ObservationRefused { completeness: LegacyObservationCompleteness }
+  | ObservationRefused { completeness: ObservationCompleteness<Int> }
 
 // AND THE DENOMINATOR IS THE SUBJECT'S, WHICH THE FIRST CUT OF THIS BOUNDARY DID NOT ESTABLISH.
 //
 // The admission used to take `expected: List<Int>`. Nothing bound that list to the subject, so the
 // join was complete RELATIVE TO WHAT IT WAS HANDED: a caller passing a conveniently shortened
-// population, or one derived from a different transport, got LegacyObservationComplete and every
+// population, or one derived from a different transport, got ObservationComplete and every
 // downstream law then ran over a denominator nobody had proven. That is the same wrong-population
 // class the laws themselves are about, one level up -- the law correct, the set unproven -- and it
 // is exactly what an approving review misread as already closed, which is why the parameter is gone
@@ -222,12 +219,13 @@ fn admit_complete_observation<O>(
     observation: observation,
     expected: expected_reference_occurrence_ids(transport: transport)
   ) {
-    LegacyObservationComplete => ObservationAdmitted {
+    ObservationComplete => ObservationAdmitted {
       admitted: CompleteLegacyObservation { observation: observation }
     }
-    LegacyObservationMissingExpected { occurrences: o } => ObservationRefused { completeness: LegacyObservationMissingExpected { occurrences: o } }
-    LegacyObservationForeignObserved { occurrences: o } => ObservationRefused { completeness: LegacyObservationForeignObserved { occurrences: o } }
-    LegacyObservationRepeatedObserved { occurrences: o } => ObservationRefused { completeness: LegacyObservationRepeatedObserved { occurrences: o } }
+    ObservationRepeatedExpected { keys: k } => ObservationRefused { completeness: ObservationRepeatedExpected { keys: k } }
+    ObservationMissingExpected { keys: k } => ObservationRefused { completeness: ObservationMissingExpected { keys: k } }
+    ObservationForeignObserved { keys: k } => ObservationRefused { completeness: ObservationForeignObserved { keys: k } }
+    ObservationRepeatedObserved { keys: k } => ObservationRefused { completeness: ObservationRepeatedObserved { keys: k } }
   }
 }
 
@@ -302,19 +300,43 @@ fn legacy_resolution_policy_label(policy: LegacyResolutionPolicy) -> String {
 // is mechanical rather than a matter of taste: every field the comparison reads, the address folds.
 // Caught by review on the first cut of this module, where the address folded six of the eight
 // fields the comparison reads.
-// AND THE LABELLING MUST BE INJECTIVE, WHICH TOTALITY DOES NOT GIVE. A total match guarantees
-// every arm is considered; a hash fold needs the arms to map to DISTINCT values, which is a
-// property of the codomain rather than of the match. The first cut of this function returned the
-// field name bare, so NamedField { field_name: "whole_declaration" } and WholeDeclaration folded to
-// the same address while decl_field_eq correctly reported them different -- the comparison and the
-// address disagreeing about what a subject is, reproduced INSIDE the repair for that exact defect.
-// The arm tag makes a payload unable to impersonate the nullary arm, because ":" cannot appear
-// before it in a bare field name.
+//
+// AND THE LABELLING MUST BE INJECTIVE, WHICH TOTALITY DOES NOT GIVE. A total match guarantees every
+// arm is considered; a hash fold needs the arms to map to DISTINCT values, which is a property of the
+// codomain rather than of the match. The first cut of decl_field_label returned the field name bare,
+// so NamedField { field_name: "whole_declaration" } and WholeDeclaration folded to the same address
+// while decl_field_eq correctly reported them different -- the comparison and the address disagreeing
+// about what a subject is, reproduced INSIDE the repair for that exact defect. The arm tag makes a
+// payload unable to impersonate the nullary arm, because ":" cannot appear before it in a bare field
+// name.
+//
+// THE LABEL STAYS DECLARED HERE AND THE REPAIR ENVELOPE CONSUMES IT, WHICH IS ONE AUTHORITY AND NOT
+// ITS FINAL HOME. Beside the type it projects, in std.decl_ref, is where it belongs -- two consumers
+// now fold DeclField, which is exactly the condition that justifies the move. It is NOT moved in this
+// change, and the reason is REVIEWABILITY rather than any rule forbidding it.
+//
+// The first cut of this annotation said the wave-admission grain note forbade the move, reading its
+// "two change classes in one diff" clause as covering any refactor that also relocates a declaration.
+// That was a MIS-CITATION and it is corrected here rather than quietly dropped: the clause's subject
+// is a wave that BOTH REQUALIFIES AND MOVES a symbol, and this change requalifies nothing. The wall's
+// key is the reference LEAF, which is `decl_field_label` on both sides; what a move changes is the SET
+// OF DECLARING IDENTITIES that leaf admits -- the row's value, not its key. So TargetChanged firing on
+// a pure move is the wall correctly OBSERVING it, not refusing a mis-shaped wave (ruling by the
+// carrier's owner, 2026-08-27). Citing a clause without first checking its exact scope is the
+// too-wide-predicate error, and it is worth a line because it nearly deferred a correct move on an
+// invented prohibition.
+//
+// THE REASON THAT ACTUALLY APPLIES: bundling the move here makes one change carry two independent
+// adjudications, and the move's whole reviewable content is two TargetChanged rows that a reviewer of
+// a repair-census change has no reason to be looking at. It lands as its own change, where those rows
+// ARE the diff. Until then this is the single authority with no fork -- a holding pattern with a
+// named end, not a deferral.
 //
 // legacy_resolution_policy_label needs no such tag and it is worth saying why rather than leaving
 // the asymmetry unexplained: both of its arms are nullary with distinct literals, so nothing can
 // collide. DeclField is the only labelled type here carrying a payload, which is why it is the only
-// one exposed to this class.
+// one exposed to that class.
+
 fn decl_field_label(field: DeclField) -> String {
   match field {
     WholeDeclaration => "whole_declaration"

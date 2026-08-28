@@ -20,7 +20,7 @@ import v1.std.core {
   CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
-  UnlistedImportUse, AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded, ParameterDefaultFormNotAdmitted, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
+  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded, ParameterDefaultFormNotAdmitted, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
@@ -2718,7 +2718,9 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     return EmitResult { files: [], diagnostics: filename_collisions }
   }
   let test_projections = ctx.test_projections
-  let module_files = typed.modules |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules).file)
+  let module_emissions = typed.modules |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules))
+  let module_files = module_emissions |> map(e => e.file)
+  let import_refusals = module_emissions |> flat_map(e => e.import_refusals)
   let test_files = typed.modules
     |> map(tm => emit_test_file(
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
@@ -2754,7 +2756,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let emitted_files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
   let population_manifest = emit_emitted_population_manifest(files: emitted_files)
   let files = concat(emitted_files, [population_manifest])
-  EmitResult { files: files, diagnostics: [] }
+  EmitResult { files: files, diagnostics: import_refusals }
 }
 
 // THE EMITTER DECLARES THE POPULATION IT PRODUCED. This is the one place in the repository
@@ -3444,7 +3446,7 @@ fn imported_names_in_use_line(line: String) -> List<String> {
   }
 }
 
-data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_item_emit_surface_names (collect_item_type_surface_names + collect_value_emit_type_surface_names over data bodies) over each item's type_annotation, param types, inferred Resolved return/signature, AND value-position record-literal / variant-parent-enum surfaces the emitter will qualify (e.g. UriScheme::Https in a data anchor) — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. CONSTRUCTION WALL (ROOT 3, §5): a candidate that registry-resolves to a provider module MUST also pass provider_proven_exports_symbol (name_in_transitive_export_surface) before any use-line is synthesized — never a plausible guess from the bare-name registry alone (the v1_rt::member fabrication class: registry homonym without export proof). NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider AND export-proven). A candidate that registry-resolves to nothing, or resolves but fails export proof, is left unsynthesized (typed refusal at step-2 is future work); it never fabricates a use-line. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. SUPERSEDED-MECHANISM, THIS CUT (eager-deer-389): the two sentences that follow describe the corpus_repr_is_faithful / HostNative gate, which NO LONGER EXISTS -- RustCorpusRepr and both its variants are deleted and the gate is gone, so import-bearing modules are no longer split by corpus mode. They are retained as the history of WHY the walk was gated at all (the spurious-use-line and seed zero-drift hazards below are real and still constrain any future gating), not as a live description; reference_use_lines_representation_invariant_note in this module carries the post-cut statement. Read them as quarry. AS WRITTEN BEFORE THE CUT: Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen."
+data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_item_emit_surface_names (collect_item_type_surface_names + collect_value_emit_type_surface_names over data bodies) over each item's type_annotation, param types, inferred Resolved return/signature, AND value-position record-literal / variant-parent-enum surfaces the emitter will qualify (e.g. UriScheme::Https in a data anchor) — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. CONSTRUCTION WALL (ROOT 3, §5): a candidate that registry-resolves to a provider module MUST also pass provider_proven_exports_symbol (name_in_transitive_export_surface) before any use-line is synthesized — never a plausible guess from the bare-name registry alone (the v1_rt::member fabrication class: registry homonym without export proof). NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider AND export-proven). A candidate that registry-resolves to nothing, or resolves but fails export proof, is left unsynthesized, and it never fabricates a use-line. STEP 2 HAS LANDED: the reason is no longer silent. Each such candidate carries a ReferenceDerivedCandidateDisposition -- CandidateRegistryAbsent or CandidateExportProofFailed, distinct because the remedies are opposite -- and CandidateExportProofFailed emits the typed, located, counted ReferenceDerivedImportExportUnproven. THE EMISSION IS NOT REFUSED, and the distinction matters because a reader of the phrase typed refusal will otherwise expect one: the diagnostic is ADVISORY, so emission completes and produces its files beside it. Measured on the required build lane at this branch head, entry:src/v2/compiler/00_compile.dag: emitted=175 blocking=0 -- so what step 2 closed is the SILENCE, not the emission. Whether the line stops is the severity question, and v1.compiler.core reference_derived_import_refusal_severity_note owns it, including why the blocking flip was executed and then falsified by its own first run over a second closure. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. SUPERSEDED-MECHANISM, THIS CUT (eager-deer-389): the two sentences that follow describe the corpus_repr_is_faithful / HostNative gate, which NO LONGER EXISTS -- RustCorpusRepr and both its variants are deleted and the gate is gone, so import-bearing modules are no longer split by corpus mode. They are retained as the history of WHY the walk was gated at all (the spurious-use-line and seed zero-drift hazards below are real and still constrain any future gating), not as a live description; reference_use_lines_representation_invariant_note in this module carries the post-cut statement. Read them as quarry. AS WRITTEN BEFORE THE CUT: Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen."
 
 fn expand_variant_payload_struct_imports(names: List<String>, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>) -> List<String> {
   names |> flat_map(n =>
@@ -3694,11 +3696,16 @@ fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, 
 // WHY A CANDIDATE GOT A USE-LINE, OR DID NOT. The decision below was inline in
 // reference_derived_use_lines' flat_map, where every non-surviving arm returned the empty list and
 // the three reasons for returning it were indistinguishable from each other and from having asked
-// nothing. reference_derived_use_lines_note already recorded the consequence in its own words -- "a
-// candidate that registry-resolves to nothing, or resolves but fails export proof, is left
-// unsynthesized (typed refusal at step-2 is future work); it never fabricates a use-line" -- so this
-// coproduct is that future work's first half: the reason becomes a value, and a candidate that gets
-// no use-line stops being silent about which of four things happened to it.
+// nothing. reference_derived_use_lines_note recorded the consequence in its own words, and the
+// wording quoted here is that note AS IT STOOD BEFORE THIS CHANGE -- a candidate that
+// registry-resolves to nothing, or resolves but fails export proof, is left unsynthesized, typed
+// refusal at step-2 being future work, and it never fabricates a use-line. This coproduct is that
+// future work's first half: the reason becomes a value, and a candidate that gets no use-line stops
+// being silent about which of six things happened to it. The note itself no longer says future work;
+// it was updated in this same change and now names the disposition and the diagnostic. The old
+// wording is retained HERE, marked as superseded, because it is what motivated the coproduct and a
+// reader needs the before-state to see what the arms are for -- but a quotation that silently tracked
+// the edited note would be a citation of a text that no longer exists.
 //
 // FOUR ARMS, NOT THREE, AND THE FOURTH IS THE NOT-APPLICABLE ONE. CandidateOwnModule is the name the
 // module itself provides: no import was ever owed, so nothing is missing and no rustc error follows.
@@ -3711,9 +3718,53 @@ fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, 
 // CandidateSurvived and CandidateExportProofFailed both carry the provider module because both are
 // facts ABOUT a provider -- one proven to export the symbol, one not -- and a census that could not
 // name the provider could not tell anyone where to look.
+// CandidateVariantDelegatedToParent is the fifth arm and it exists BECAUSE IT WAS MEASURED, not
+// because it was reasoned. The first census of the two failing arms over the regen seed closure
+// returned a population dominated by bare VARIANT names -- Absent, Cons, Eq, ExprCall, Bind -- every
+// one of them landing in CandidateRegistryAbsent, because the bare-name registry holds DECLARATIONS
+// and a variant is not one. Classifying them there answers "I could not find a provider for this"
+// where the truth is "this name never had a provider of its own", which is the
+// not-applicable-rendered-as-malformed class, and it made the registry-absent column count mostly
+// names whose binding is already correct.
+//
+// THE ARM CARRIES ITS PARENT, AND THAT IS THE WHOLE DESIGN. The tempting shape -- one arm meaning
+// "variants need no import" -- is FALSE and reproduces the very conflation this arm repairs, one
+// level down: a variant whose parent enum is declared HERE is bound by the module's own
+// `use self::E::*` and owes nothing, while a variant whose parent lives in another module needs that
+// PARENT imported. Opposite remedies. So the arm does not claim "nothing is owed"; it claims the
+// obligation is DELEGATED, and names the delegate. The parent then answers for itself as its own
+// candidate row -- filtered as CandidateOwnModule when local, judged by the registry and the export
+// wall when not -- so the two cases separate where they are decidable instead of being asserted here.
+//
+// THE PARENT MAY BE UNRESOLVABLE, AND THAT IS ITS OWN ARM RATHER THAN A COLLAPSE INTO
+// CandidateRegistryAbsent. Reaching the unresolvable case means: THIS IS KNOWN TO BE A VARIANT and
+// its parent is not established. Registry-absent says something else entirely -- that the bare-name
+// REGISTRY holds no entry -- which is a statement about a different map, reached by a different
+// route, with a different remedy, and a reader auditing it would go looking at the registry where
+// the missing fact does not live. Two states distinguishable at the point of collapse must not be
+// collapsed (found in review by clever-boar-140, who owns the coproduct).
+//
+// Checking its reachability surfaced the sharper half. derive_variant_to_enum inserts the EMPTY
+// STRING as the parent when one variant name appears in two enums -- an ambiguity sentinel -- so the
+// lookup answers Present with a parent that names nothing, and the naive arm would have produced
+// CandidateVariantDelegatedToParent { parent_enum: "" }: a delegation to no one, which is the
+// top-as-ignorance shape wearing the payload that was supposed to make this arm honest. That case is
+// REACHABLE (variant-name collision across coproducts is real enough that the compiler carries a
+// VariantCollision diagnostic for it), unlike the Absent case, which cannot occur while both this
+// predicate and the parent map derive from the same EnumRepr summaries. Both route here, because a
+// quiet guard should still say what it means rather than borrow another arm's name.
+//
+// WHAT IS NOT ESTABLISHED, stated rather than assumed: this delegation is sound only if every parent
+// named by a routed row is ITSELF a candidate. collect_value_ref_names harvests a record literal's
+// parent_enum and expand_variant_payload_struct_imports expands payload structs, but no invariant
+// says that covers every reference form. The check is mechanical and is the arm's next rung: no
+// parent_enum may appear in a routed row without appearing as a row of its own. Until that is
+// measured, a routed row is a claim about WHERE the obligation went, never that it was discharged.
 type ReferenceDerivedCandidateDisposition
   = CandidateSurvived { provider_module: String }
   | CandidateOwnModule
+  | CandidateVariantDelegatedToParent { parent_enum: String }
+  | CandidateVariantParentUnresolved
   | CandidateRegistryAbsent
   | CandidateExportProofFailed { provider_module: String }
 
@@ -3732,7 +3783,15 @@ type ReferenceDerivedCandidateRow {
 // emitted before; the census takes the same rows and counts them. Byte-identity of the emitted crate
 // is therefore STRUCTURAL rather than asserted: the emitted use-lines cannot move unless this
 // function's answer moves, because there is no second copy of the decision to drift from.
-fn reference_derived_candidate_disposition(name: String, this_module_name: String, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> ReferenceDerivedCandidateDisposition {
+fn reference_derived_candidate_disposition(name: String, this_module_name: String, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, type_summaries: Map<String, TypeSummary>, variant_to_enum: Map<String, String>) -> ReferenceDerivedCandidateDisposition {
+  if is_known_variant(type_summaries: type_summaries, name: name) {
+    match map_get(variant_to_enum, name) {
+      Present { value: parent } =>
+        if parent == "" { CandidateVariantParentUnresolved }
+        else { CandidateVariantDelegatedToParent { parent_enum: parent } }
+      Absent => CandidateVariantParentUnresolved
+    }
+  } else {
   match map_get(registry, name) {
     Present { value: info } =>
       if info.module_name == this_module_name {
@@ -3744,6 +3803,91 @@ fn reference_derived_candidate_disposition(name: String, this_module_name: Strin
       }
     Absent => CandidateRegistryAbsent
   }
+  }
+}
+
+// THE SURFACING HALF, AND IT SURFACES EXACTLY ONE OF THE TWO FAILING ARMS. #9439 factored this
+// decision into a typed disposition and COUNTED it; its own note records that the census "is NOT
+// SURFACED during an ordinary build". So both failing arms still vanished from the emission -- no
+// diagnostic, no location, nothing a build could report -- which is the empty-observation narrow
+// DESIGN names: the emitter answers "this name is not part of the interface" where the truth is "I
+// could not prove that it was". Downstream the emitted crate references a name it never imported and
+// rustc says E0422/E0425/E0433 far from the cause; upstream the deficit's frequency is zero by
+// construction, so the wall's own gaps never rank for repair.
+//
+// This is a THIRD projection of rows that already exist -- beside the use-lines and the census -- and
+// not a second decision. Nothing here re-derives the disposition, so the emitted crate cannot move.
+//
+// ONLY CandidateExportProofFailed BECOMES A DIAGNOSTIC, AND THAT IS A MEASUREMENT RESULT RATHER THAN
+// A DESIGN PREFERENCE. Both arms were instrumented and run over the regen seed closure (the census
+// invocation is recorded on the carrier note). Export-proof-failed returned ZERO. Registry-absent
+// returned 473 rows over 63 distinct names across 110 modules -- and that population is MIXED, which
+// an earlier revision of this comment got wrong by generalising from the head of a sorted list:
+//
+//   (a) EXTINGUISHED    Vec 88, bool 73, i64 48, BTreeSet -- no .dag declaration exists or can. The
+//                       producer is collect_item_realized_surface_names, rust_identifier_tokens over
+//                       render_rust_type, which emits target-language SPELLINGS by construction;
+//                       reference_is_host_realized_builtin misses them because it is keyed on .dag
+//                       vocabulary, so Vec and BTreeSet -- the Rust spellings of List and Set --
+//                       slip a filter built to remove exactly this.
+//   (b) OUT-OF-CLOSURE  empty_map 33, Optional 25, and Optional's VARIANTS Present 47 and Absent 13
+//                       -- REAL .dag declarations in v2.std.collection and v2.std.optional whose
+//                       providers were not selected into the measured closure. Movable, and
+//                       precisely the closure-conditioned class this change exists to surface.
+//
+// The proportion is UNMEASURED IN BOTH DIRECTIONS, and the two ways of counting point OPPOSITE ways.
+// BY ROW the immovable names dominate (88 + 73 + 50 + 48 of 473). BY DISTINCT NAME the examined
+// sample is 4 of 63 and all four are movable. High counts at the immovable head, movable names in the
+// tail with small counts -- the structure that hid the signal, and the reason a sorted head answered
+// the wrong question here twice. Fifty-nine names are unexamined. Neither figure is a proportion. Class (b) is present because the census invocation's
+// --source-root flags are NOT the regen SUBJECT: regen_input_sources is rooted at SeedV1 and
+// DagCorpus and excludes src/v2 entirely, because stage0 IS the v1 seed and a seed reaching into
+// src/v2 would depend on the successor it bootstraps toward. So registry-absent is ENTRY-RELATIVE,
+// not a fixed target, and a reader treating the count as stable has made the denominator error.
+//
+// The arm stays unwired anyway, and the reason is (a) rather than the whole population: a diagnostic
+// there would be permanently false on every class-(a) row, printed on every build in every module,
+// and that is worse than shipping nothing because IT TRAINS READERS TO IGNORE THE CHANNEL -- an
+// absent diagnostic is at least honest about its coverage. The trigger for wiring it is that class
+// (a) LEAVE the arm; the residue is then class (b), which is worth reporting.
+//
+// A PREDICTION WAS REFUTED HERE AND IT IS RECORDED BECAUSE IT WAS DECISION-RELEVANT. Registry-absent
+// was expected to overlap heavily with UnlistedImportUse -- both said to mean "referenced but never
+// imported" -- and if it did not, one of the two mechanisms was not what anyone thought. Measured on
+// the same run: 63 registry-absent names, 36 UnlistedImportUse names, INTERSECTION ZERO. The
+// mechanisms have near-disjoint vocabularies, because UnlistedImportUse names `.dag` types masked at
+// resolve time while registry-absent is dominated by Rust tokens that never passed through the
+// resolver at all. They are not two views of one population.
+//
+// NO WILDCARD ARM, DELIBERATELY. Every non-reporting disposition is enumerated, so a SIXTH arm added
+// to the coproduct fails to compile here rather than silently inheriting "produces no diagnostic".
+// That matters because the coproduct now holds three not-applicable arms against two genuine drops,
+// and a `_` would make the next drop arm silent by default -- total at the level examined, blind one
+// level down, which is the shape this whole change exists to repair.
+//
+// LOCATION GRAIN, stated rather than implied: the referencing MODULE's declaration span, because a
+// row carries (module, name, disposition) and the reference SITES are reduced to bare names by the
+// candidate walk before any disposition is assigned. Carrying the originating span on the row is the
+// named next rung.
+fn reference_derived_row_diagnostics(rows: List<ReferenceDerivedCandidateRow>, module_span: SourceSpan) -> List<ErrorNode> {
+  rows |> flat_map(r =>
+    match r.disposition {
+      CandidateExportProofFailed { provider_module: p } => [make_error_node(
+        diagnostic: ReferenceDerivedImportExportUnproven {
+          name: r.name,
+          referencing_module: r.module_name,
+          provider_module: p,
+          span: module_span
+        },
+        module_name: r.module_name
+      )]
+      CandidateSurvived { provider_module: _ } => []
+      CandidateOwnModule => []
+      CandidateVariantDelegatedToParent { parent_enum: _ } => []
+      CandidateVariantParentUnresolved => []
+      CandidateRegistryAbsent => []
+    }
+  )
 }
 
 fn reference_derived_candidate_survived(disposition: ReferenceDerivedCandidateDisposition) -> Bool {
@@ -3760,6 +3904,8 @@ fn reference_derived_disposition_name(disposition: ReferenceDerivedCandidateDisp
   match disposition {
     CandidateSurvived { provider_module: _ } => "survived"
     CandidateOwnModule => "own-module"
+    CandidateVariantDelegatedToParent { parent_enum: _ } => "variant-delegated-to-parent"
+    CandidateVariantParentUnresolved => "variant-parent-unresolved"
     CandidateRegistryAbsent => "registry-absent"
     CandidateExportProofFailed { provider_module: _ } => "export-proof-failed"
   }
@@ -3799,6 +3945,8 @@ type ReferenceDerivedCensus {
   candidates: Int
   survived: Int
   own_module: Int
+  variant_delegated_to_parent: Int
+  variant_parent_unresolved: Int
   registry_absent: Int
   export_proof_failed: Int
 }
@@ -3808,6 +3956,8 @@ fn reference_derived_census(rows: List<ReferenceDerivedCandidateRow>) -> Referen
     candidates: rows |> count,
     survived: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "survived") |> count,
     own_module: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "own-module") |> count,
+    variant_delegated_to_parent: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "variant-delegated-to-parent") |> count,
+    variant_parent_unresolved: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "variant-parent-unresolved") |> count,
     registry_absent: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "registry-absent") |> count,
     export_proof_failed: rows |> filter(r => reference_derived_disposition_name(disposition: r.disposition) == "export-proof-failed") |> count
   }
@@ -3853,7 +4003,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
         [ReferenceDerivedCandidateRow {
           module_name: this_module_name,
           name: name,
-          disposition: reference_derived_candidate_disposition(name: name, this_module_name: this_module_name, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+          disposition: reference_derived_candidate_disposition(name: name, this_module_name: this_module_name, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
         }]
       }
     )
@@ -3903,6 +4053,7 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
 type ModuleEmission {
   file: TextFile
   reference_rows: List<ReferenceDerivedCandidateRow>
+  import_refusals: List<ErrorNode>
 }
 
 fn emit_module_full_with_dispositions(typed_module: TypedModule, ctx: EmitRustContext, typed_modules: List<TypedModule>) -> ModuleEmission {
@@ -4034,7 +4185,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     coproduct_wire_contract_validation_section, items_str, phantom_section, "\n")
   ModuleEmission {
     file: TextFile { path: concat(rust_source_root(), filename, rust_source_ext()), content: content },
-    reference_rows: reference_plan.rows
+    reference_rows: reference_plan.rows,
+    import_refusals: reference_derived_row_diagnostics(rows: reference_plan.rows, module_span: m.span)
   }
 }
 
