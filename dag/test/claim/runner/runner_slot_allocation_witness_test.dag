@@ -1,0 +1,352 @@
+module test.claim.runner_slot_allocation_witness
+
+import gunbc.runner_slot_allocation {
+  RunnerSlotPurpose,
+  SlotServesGitHubActions,
+  SlotServesFabricExecution,
+  RunnerSlotMembership,
+  CommittedSlotMember,
+  SlotOutsideCommittedPopulation,
+  runner_slot_membership,
+  srv3_fabric_canary_slot,
+  host_fabric_slot_count,
+  host_github_slot_count,
+  gunbc_runner_slot_allocation_wall_holds,
+  gunbc_runner_slot_oversubscription_within_slice,
+  gunbc_runner_slot_desired,
+  gunbc_runner_slots_per_host,
+  host_memory_admitted_width,
+  host_memory_width_is_established,
+  host_held_runner_width,
+  host_disk_admitted_width,
+  DiskAdmitsWidth,
+  DiskWidthUnconstrained,
+  gunbc_runner_slice_cap_declared,
+  gunbc_committed_runner_slot_allocations,
+  gunbc_runner_slot_enforcement_expected_cap,
+  gunbc_floor_minimum_viable_armed_budget_wall_holds,
+  gunbc_floor_minimum_viable_armed_budget_bytes,
+  gunbc_srv2_03_effective_cap_observation,
+  runner_slot_effective_memory_max_drifts_from_declaration,
+  runner_slot_effective_memory_high_drifts_from_declaration,
+  gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation,
+  srv2_03_floor_leaf_cgroup_events_at_entry_are_zero,
+  gunbc_readback_refusal_stays_witnessed_by_synthetic_drift,
+  gunbc_floor_measured_peak_observation,
+  gunbc_floor_measured_peak_armed_high,
+  gunbc_floor_measured_peak_is_uncensored,
+  FloorCgroupLeafEventAtEntry,
+  RunnerSlotEffectiveCapMeasured,
+}
+import std.measure { byte_size, byte_size_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn runner_slot_allocation_wall_holds() -> Bool {
+  gunbc_runner_slot_allocation_wall_holds()
+}
+
+test fn runner_slot_allocation_oversubscription_boundary_exact() -> Bool {
+  let per_slot = gunbc_runner_slot_desired()
+  all(
+    gunbc_committed_runner_slot_allocations(),
+    a =>
+      gunbc_runner_slot_oversubscription_within_slice(
+        slots: gunbc_runner_slots_per_host(host: a.host),
+        per_slot: per_slot.memory_max,
+        slice_cap: gunbc_runner_slice_cap_declared(host: a.host)
+      )
+  )
+}
+
+fn committed_allocation_for(host: HostIdentity) -> Int {
+  fold(
+    gunbc_committed_runner_slot_allocations(),
+    init: 0,
+    f: (n, a) => if (a.host as String) == (host as String) { n + 1 } else { n }
+  )
+}
+
+test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() -> Bool {
+  committed_allocation_for(host: operator_host_srv1) == 1
+    && committed_allocation_for(host: operator_host_srv2) == 1
+    && committed_allocation_for(host: operator_host_srv3) == 1
+    && committed_allocation_for(host: operator_host_srv4) == 1
+    && committed_allocation_for(host: "srv-does-not-exist") == 0
+}
+
+data widths_are_pinned_on_both_axes_note: String = "MEMORY ADMISSIONS AND COMMITTED WIDTHS ARE PINNED SEPARATELY, AND AS OF 2026-08-23 THEY FINALLY DISAGREE. The two rows below asserted the same four numbers twice for this module's entire history, because memory bound every host and the minimum had nothing else to choose from. That made the separation look like ceremony. It was not: the 2026-08-22 DIMM upgrade plus the CPU axis separated them, and the host-keyed session reservation then separated them further -- memory admission now reads 25 on srv1, 29 on srv3 and srv4, and NO WIDTH AT ALL on srv2, whose session denominator is unestablished so its axis is AxisUnmeasured rather than a number, while committed width is 21/5/21/21, and a single row pinning only one of them would now be silently blind to the other.\n\nWHICH IS THE POINT THIS PAIR WAS MAKING ALL ALONG. Asserting only committed width would miss a reintroduced disk pin or a memory regression hidden behind a CPU ceiling; asserting only memory admission would miss provisioning that skips the apply gate. srv4's historical disk row-pin stays retired and disk binding stays at apply-time gunbc.runner_lifecycle runner_width_disk_preflight."
+
+// srv1 MOVED 27 -> 25 AND srv2 NO LONGER STATES A MEMORY ADMISSION AT ALL. The first is the
+// synchronization of a derived literal after its input changed: srv1's ungrounded 20 GiB fleet-wide
+// session figure was replaced by an evidence-backed 52 GiB allowance, which removes three slots.
+// The second is the larger change -- srv2's session denominator is unestablished, so the memory
+// subtraction cannot run, and its axis is AxisUnmeasured rather than a number. The five it still
+// runs is a HELD allocation reached through host_held_runner_width, asserted below on its own terms.
+test fn runner_slot_allocation_memory_admissions_differ_by_host_class() -> Bool {
+  host_memory_admitted_width(host: operator_host_srv1) == 25
+    && host_memory_admitted_width(host: operator_host_srv3) == 29
+    && host_memory_admitted_width(host: operator_host_srv4) == 29
+    && !host_memory_width_is_established(host: operator_host_srv2)
+}
+
+// THE HELD WIDTH IS ASSERTED AS HELD, NOT AS AN ADMISSION. Without this row the hold would be
+// invisible: nothing else states that srv2 still runs five, and a reader would find only the
+// refusal and conclude the host was down to nothing.
+test fn srv2_width_is_held_rather_than_derived() -> Bool {
+  match host_held_runner_width(host: operator_host_srv2) {
+    Present { value: n } => n == 5
+    Absent => false
+  }
+    && match host_held_runner_width(host: operator_host_srv1) {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+// RENAMED 2026-08-23, because the old name asserted the very thing that stopped being true.
+// runner_slot_allocation_committed_widths_MATCH_MEMORY_ADMISSION was an accurate description of a
+// coincidence -- memory was the binding axis on every host, so committed equalled admitted -- and
+// a name that states a coincidence as a law is how the next reader learns the wrong invariant.
+// Committed width is the MINIMUM over memory, CPU and disk wherever it is DERIVED, and on the three
+// hosts that derive it, it is now strictly below what memory admits.
+//
+// srv2 IS DELIBERATELY NOT HELD TO THAT LAW, AND THE CONJUNCT ASSERTING IT WAS DELETED RATHER THAN
+// RETUNED. It read `committed == host_memory_admitted_width(srv2)`, which related srv2's width to a
+// subtraction the model now says CANNOT RUN on that host -- so whatever number came back was not a
+// fact about anything, and the conjunct would have gone green or red for reasons unconnected to the
+// property under test. An assertion whose oracle is an unestablished derivation is worse than a
+// missing one, because it reads as coverage. srv2's width is asserted on its own terms, as a hold,
+// by srv2_width_is_held_rather_than_derived above.
+test fn runner_slot_allocation_committed_widths_are_the_minimum_over_axes() -> Bool {
+  gunbc_runner_slots_per_host(host: operator_host_srv1) == 21
+    && gunbc_runner_slots_per_host(host: operator_host_srv2) == 5
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 21
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 21
+    && gunbc_runner_slots_per_host(host: operator_host_srv1) < host_memory_admitted_width(host: operator_host_srv1)
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) < host_memory_admitted_width(host: operator_host_srv3)
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) < host_memory_admitted_width(host: operator_host_srv4)
+}
+
+test fn runner_slot_allocation_srv4_disk_unconstrained_at_allocation() -> Bool {
+  match host_disk_admitted_width(host: operator_host_srv4) {
+    DiskWidthUnconstrained { reason: r } => string_contains(s: r, pattern: "runner_width_disk_preflight")
+    DiskAdmitsWidth { slots: _, provenance: _ } => false
+  }
+}
+
+test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
+  let per_slot = gunbc_runner_slot_desired()
+  all(
+    gunbc_committed_runner_slot_allocations(),
+    a =>
+      !gunbc_runner_slot_oversubscription_within_slice(
+        slots: gunbc_runner_slots_per_host(host: a.host) + 1,
+        per_slot: per_slot.memory_max,
+        slice_cap: gunbc_runner_slice_cap_declared(host: a.host)
+      )
+  )
+}
+
+test fn runner_slot_allocation_unknown_host_refuses_a_width() -> Bool {
+  gunbc_runner_slots_per_host(host: "srv-does-not-exist") == 0
+    && byte_size_count(b: gunbc_runner_slice_cap_declared(host: "srv-does-not-exist")) == 0
+}
+
+test fn runner_slot_allocation_memory_high_clears_the_measured_floor() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_desired().memory_high) > byte_size_count(b: gunbc_floor_minimum_viable_armed_budget)
+}
+
+test fn runner_slot_allocation_enforcement_expected_cap_is_desired_memory_max() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_enforcement_expected_cap()) == byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+}
+
+test fn runner_slot_allocation_minimum_viable_armed_budget_wall_holds() -> Bool {
+  gunbc_floor_minimum_viable_armed_budget_wall_holds()
+}
+
+test fn runner_slot_allocation_minimum_viable_armed_budget_is_12_gib() -> Bool {
+  byte_size_count(b: gunbc_floor_minimum_viable_armed_budget_bytes()) == byte_size_count(b: byte_size(12884901888))
+}
+
+data srv2_03_effective_cap_drift_note: String = "SUBJECT B (effective cap on srv2-03): binds 16GiB/15GiB and the declaration now MATCHES it, so the 2GiB drift this subject was written for is dissolved (gunbc.runner_slot_allocation gunbc_srv2_03_drift_dissolved_by_ruling_note). The witness below asserts the ABSENCE of drift; the readback-refusal predicate keeps its discriminating input from gunbc_synthetic_drifted_cap_observation instead, deliberately synthetic so no convergence can green it. Dissolve-on: post-apply readback replaces gunbc_srv2_03_effective_cap_observation."
+
+data declared_row_floor_peak_derivation_note: String = "SUBJECT A (declared row): 16GiB/15GiB derives from the 2026-08-17 floor-peak ruling superseding the 2026-08-05 calibration (gunbc_runner_slot_memory_max_ruling_note), NOT from srv2-03 live readback — that the two now coincide is a coincidence recorded as one in that ruling. This witness pins only the declared constants."
+
+data srv2_03_readback_refusal_note: String = "SUBJECT C (refusal): gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation is the structural predicate — effective readback must not become declaration authority when drift exists. Its discriminating input is now gunbc_synthetic_drifted_cap_observation, srv2-03 having stopped drifting; a synthetic fixture is used precisely so that a future converge cannot silently retire this predicate's only witness."
+
+data srv2_03_converge_floor_fit_note: String = "SUBJECT D (converge consequence): ANSWERED, not pending. Modeled-budget compliance under the superseded 14GiB/13GiB row is now MEASURED and it failed — an uncensored 15509315584-byte floor peak above that max, plus srv1 pinned at exactly 13.00GiB with 829 and 44803 memory.high events once it was actually converged there. The floor cgroup leaf events at T5 entry remain zero as the baseline they always were, and srv2-03 has no envelope left to enforce because the declaration moved to meet it. Superseded detail retained: converge would first enforce the modeled envelope against the CI floor consumer (gunbc_srv2_03_converge_floor_fit_note). No OOM outcome and no floor byte figure are asserted."
+
+test fn witness_declared_row_pins_16_15_gib_from_floor_peak_ruling() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_desired().memory_max) == byte_size_count(b: byte_size(17179869184))
+    && byte_size_count(b: gunbc_runner_slot_desired().memory_high) == byte_size_count(b: byte_size(16106127360))
+}
+
+test fn witness_declared_high_clears_measured_floor_peak() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_desired().memory_high)
+    >= byte_size_count(b: gunbc_floor_measured_peak_observation)
+}
+
+test fn witness_floor_peak_input_is_uncensored_not_a_throttle_pin() -> Bool {
+  gunbc_floor_measured_peak_is_uncensored()
+}
+
+test fn witness_RED_binary_unit_reading_would_exceed_the_armed_line() -> Bool {
+  byte_size_count(b: byte_size(16750372454)) > byte_size_count(b: gunbc_floor_measured_peak_armed_high)
+}
+
+test fn witness_srv2_03_observation_no_longer_drifts_after_ruling() -> Bool {
+  match gunbc_srv2_03_effective_cap_observation {
+    RunnerSlotEffectiveCapMeasured { runner_unit: unit, memory_max: max, memory_high: high, probed_at: _ } =>
+      unit == "actions-runner@srv2-03.service"
+        && byte_size_count(b: max) == byte_size_count(b: byte_size(17179869184))
+        && byte_size_count(b: high) == byte_size_count(b: byte_size(16106127360))
+        && !runner_slot_effective_memory_max_drifts_from_declaration(effective: max)
+        && !runner_slot_effective_memory_high_drifts_from_declaration(effective: high)
+    _ => false
+  }
+}
+
+test fn witness_readback_refusal_stays_witnessed_by_synthetic_drift() -> Bool {
+  gunbc_readback_refusal_stays_witnessed_by_synthetic_drift()
+}
+
+test fn witness_srv2_03_floor_leaf_cgroup_events_at_entry_are_zero() -> Bool {
+  srv2_03_floor_leaf_cgroup_events_at_entry_are_zero()
+}
+
+test fn witness_srv2_03_RED_converged_cap_would_not_refuse_readback_reconciliation() -> Bool {
+  !gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(
+    obs: RunnerSlotEffectiveCapMeasured {
+      runner_unit: "actions-runner@srv2-03.service",
+      memory_max: gunbc_runner_slot_desired().memory_max,
+      memory_high: gunbc_runner_slot_desired().memory_high,
+      probed_at: "synthetic-converged-control",
+    }
+  )
+}
+
+fn membership_is_fabric(m: RunnerSlotMembership) -> Bool {
+  match m {
+    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } => false
+    CommittedSlotMember { identity: _, purpose: p } =>
+      match p {
+        SlotServesFabricExecution => true
+        SlotServesGitHubActions => false
+      }
+  }
+}
+
+fn membership_is_outside(m: RunnerSlotMembership) -> Bool {
+  match m {
+    SlotOutsideCommittedPopulation { identity: _, committed_width: _ } => true
+    CommittedSlotMember { identity: _, purpose: _ } => false
+  }
+}
+
+// THE TWO SLOT POPULATIONS ARE DISJOINT BY CONSTRUCTION, AND THIS WITNESS IS WHAT KEEPS THAT
+// CLAIM HONEST RATHER THAN DECORATIVE. runner_slot_purpose is total over a host's index range and
+// returns exactly one variant, so a slot cannot be a member of both populations -- there is no
+// state in which GitHub believes srv3-06 is an idle registered runner while the fabric believes
+// it is an available SupplierOffer member, which is the double-allocation this partition exists to make
+// unwritable (two processes inside one 16GiB entitlement).
+//
+// THE SUMMANDS MUST ADD UP OR THE PARTITION IS NOT ONE. If github + fabric ever drifted from the
+// committed width, some slot would be in neither population or counted twice, and the arithmetic
+// below is the only thing standing between "purpose is a partition" and "purpose is a label."
+test fn slot_purposes_partition_every_host_committed_width() -> Bool {
+  host_github_slot_count(host: operator_host_srv1) + host_fabric_slot_count(host: operator_host_srv1) == gunbc_runner_slots_per_host(host: operator_host_srv1)
+    && host_github_slot_count(host: operator_host_srv2) + host_fabric_slot_count(host: operator_host_srv2) == gunbc_runner_slots_per_host(host: operator_host_srv2)
+    && host_github_slot_count(host: operator_host_srv3) + host_fabric_slot_count(host: operator_host_srv3) == gunbc_runner_slots_per_host(host: operator_host_srv3)
+    && host_github_slot_count(host: operator_host_srv4) + host_fabric_slot_count(host: operator_host_srv4) == gunbc_runner_slots_per_host(host: operator_host_srv4)
+}
+
+// THE CANARY SLOT IS srv3-06 AND NOTHING ELSE IS FABRIC (operator, 2026-08-21). srv4-06 is the
+// discriminating control and it is the whole point of the row: it is the SAME index on a host of
+// the SAME committed width, and it is a GitHub slot. So the partition is keyed on the host's
+// authored fabric count, not on the number 6 -- an implementation that special-cased the top index
+// fleet-wide would pass the srv3 assertion and fail here.
+// AN IDENTITY THAT IS NOT A COMMITTED SLOT IS NOT A FABRIC SLOT, AND THIS ROW EXISTS BECAUSE THE
+// FIRST VERSION SAID IT WAS. Purpose was derived by comparing the index against a count, so any
+// index above the GitHub ceiling answered "fabric" -- measured, srv1-06 and srv3-99 both did, though
+// srv1 is five wide and neither is a member of anything. Membership now precedes purpose and those
+// identities are refused with the width they were measured against.
+// THE OUT-OF-RANGE INDEX IS DERIVED, BECAUSE WRITING ONE DOWN IS HOW THIS ROW STOPPED CHECKING.
+//
+// It read slot 6 on srv1 and slot 7 on srv3. Both WERE outside the committed population -- at the
+// widths of the day, five and six. The 2026-08-23 CPU-axis change moved both hosts to twenty-one,
+// so both indices became ordinary committed members, the refusal correctly did not fire, and the
+// row went red. Nothing about the property it names had changed.
+//
+// Retyping 7 as 22 would re-arm exactly the same landmine one width later. A fixture that picks an
+// out-of-range index by writing down a number that happens to be out of range TODAY is a change
+// detector wearing a property's name (DESIGN section 5: a measurement copied from the same current
+// tree is not an oracle). Deriving committed + 1 makes the fixture discriminating at ANY width,
+// which is what it was always trying to say.
+//
+// The two clauses that did NOT need touching are the informative ones. srv3-99 stays outside at any
+// plausible width, and srv3-06 stays INSIDE and stays fabric, because runner_slot_allocation
+// AUTHORS that identity rather than deriving it from a count -- the defence in
+// the_fabric_member_is_an_authored_identity_not_a_top_index_rule, observed working through a real
+// width change rather than only asserted.
+test fn an_identity_outside_the_committed_population_is_refused_not_classified() -> Bool {
+  let srv1_past_end = gunbc_runner_slots_per_host(host: operator_host_srv1) + 1
+  let srv3_past_end = gunbc_runner_slots_per_host(host: operator_host_srv3) + 1
+  membership_is_outside(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_past_end))
+    && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 99))
+    && membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: srv3_past_end))
+    && !membership_is_outside(m: runner_slot_membership(host: operator_host_srv3, slot_index: 6))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: srv1_past_end))
+}
+
+// THE FABRIC MEMBER IS AN EXACT IDENTITY AND DOES NOT MOVE WITH THE WIDTH. The carve is authored as
+// srv3-06 rather than derived as "the top index", so the counts below are projections of it. If
+// this ever regresses to index arithmetic, a width change would silently relabel a slot that may be
+// running work -- which is why the identity is asserted directly here and not just its count.
+test fn the_fabric_member_is_an_authored_identity_not_a_top_index_rule() -> Bool {
+  srv3_fabric_canary_slot().slot_index == 6
+    && (srv3_fabric_canary_slot().host as String) == (operator_host_srv3 as String)
+    && host_fabric_slot_count(host: operator_host_srv3) == 1
+    && host_fabric_slot_count(host: operator_host_srv4) == 0
+}
+
+test fn srv3_slot_six_is_the_only_fabric_slot_in_the_fleet() -> Bool {
+  membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 6))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv4, slot_index: 6))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 5))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: 5))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv2, slot_index: 5))
+}
+
+// THE FIVE LIVE srv3 RUNNERS KEEP THEIR IDENTITIES. Fabric slots are taken from the TOP of the
+// index range, so srv3-01..05 -- the five registered runners that exist today -- are all still
+// GitHub slots and none is renamed or deregistered to pay for the canary. Taking the fabric slot
+// from the bottom would have renumbered every live runner on the host, and this row goes red if
+// anyone reverses that direction.
+// THE GITHUB COUNT IS THE COMMITTED WIDTH LESS THE FABRIC MEMBERS, NOT THE NUMBER FIVE.
+//
+// This row pinned 5, which was srv3's six committed slots less its one fabric member. At width
+// twenty-one the same relation yields twenty, so the literal went red while the property -- that
+// carving out srv3-06 costs GitHub exactly one slot and takes none of the five that were live --
+// held throughout.
+//
+// Stated as the relation it survives any width, and it still fails if the carve ever starts
+// deregistering a live runner: slots one through five are asserted individually, so a fabric role
+// that slid onto one of them would be caught here rather than absorbed into a count.
+//
+// The minus-one is deliberate rather than minus host_fabric_slot_count. Subtracting the measured
+// fabric count would make this row true for ANY number of fabric members, including zero, which is
+// the general conservation already asserted by
+// slot_purposes_partition_every_host_committed_width. THIS row is about the specific
+// carve: srv3 gives up exactly one slot to the fabric. Writing it as the general identity would
+// leave that claim asserted nowhere.
+test fn introducing_the_fabric_slot_deregisters_no_live_runner() -> Bool {
+  !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 1))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 2))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 3))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 4))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 5))
+    && host_github_slot_count(host: operator_host_srv3)
+         == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
+}

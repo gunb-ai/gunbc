@@ -35,6 +35,8 @@
 //!   2. the cited-symbol wall — an authored `DeclarationRef` naming a symbol that
 //!      does not resolve (§3: cite the symbol, not the position)
 //!   3. module authorship — a top-level lens with no `construction_justification`
+//!   4. cited-authority reachability — a non-fixture module cited as a fact's home by
+//!      another non-fixture module, while no authored import edge reaches that home
 //!
 //! WHAT THIS IS NOT. It is not a widening of the required floor's source roots, and
 //! the objection `gunbc.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder`
@@ -61,7 +63,11 @@
 //! module: `gunbc.host_effect` `host_effect_apply` from three (`extdeps.github.actions_runner`,
 //! `gunbc.executor_privileged_operation`, `gunbc.runner_slot_provision`), `std.bytes`
 //! `builtin_function_registry` from three, `extdeps.network.mac` `parse_mac_address` from two
-//! (`extdeps.dhcp.v4` and a witness), and four more from two apiece. Every one of those extra
+//! (`extdeps.dhcp.v4` and a witness), and four more from two apiece. (That measurement stands as
+//! taken; the `parse_mac_address` example has since been DISCHARGED rather than falsified — the
+//! module landed, so the witness citations resolve and their rows are deleted, and `extdeps.dhcp.v4`
+//! stopped citing it when its frontier trigger was re-pointed off the artifact and onto the
+//! capability. Noted here so a reader does not grep for a two-site collision that is gone.) Every one of those extra
 //! sites was being suppressed by a row authored about a different module.
 //!
 //! THE ROSTERS ARE RE-DERIVED FROM THAT MEASUREMENT, AND THE FIRST DERIVATION WAS TAKEN OVER THE
@@ -100,13 +106,15 @@
 //! hard errors because NO CLOSURE REACHES IT. An orphan module's import claims are
 //! checked here and nowhere else.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
+use crate::std_occurrence_identity::{OccurrenceCategory, OccurrenceTransport};
 use crate::v1_rt::VecCompat;
 use crate::v1_std_core::{
     authored_name_at, expr_literal_string_optional, import_is_all, import_specific_names_at,
-    module_imports, module_items, Connective, ExprData, NewlineIndex, Node, SourceSpan,
+    module_imports, module_items, Connective, ExprData, MatchPattern, NewlineIndex, Node,
+    SourceSpan,
 };
 
 /// A span COPIED OUT of the parse tree rather than referenced into it.
@@ -184,22 +192,55 @@ pub struct ModuleDeclarationRecord {
     pub decl_fields: BTreeMap<String, BTreeSet<String>>,
     pub imports: Vec<ImportClaim>,
     pub cited: Vec<CitedSymbol>,
-    /// Every authored NAME OCCURRENCE in this module's own tree, paired with the top-level
-    /// declaration whose subtree carries it: `(in_declaration, spelling)`.
+    /// Callee spellings authored in this module. Used only to partition cited authorities by
+    /// whether the citing module also calls the cited declaration; it is not a resolver.
+    pub called: BTreeSet<String>,
+    /// The authored NAME OCCURRENCES in this module's own tree that name something the module
+    /// reaches, paired with the top-level declaration whose subtree carries it:
+    /// `(in_declaration, spelling)`.
     ///
     /// WHY A NAME OCCURRENCE AND NOT A SEMANTIC REFERENCE. This is derived by walking the
     /// parsed tree — parse-then-derive, the mechanism DESIGN prescribes after the raw-text
     /// scanner family was ruled a heuristic — but it is deliberately NOT a resolution: a
-    /// parameter name, a field name and a `let` binder all land here beside a genuine
-    /// reference, because telling them apart is the resolver's job and this index resolves
-    /// nothing across files. The over-collection is SYMMETRIC across two trees, which is the
-    /// only property its one consumer (`namespace_wave_admission`) needs: a spelling that
-    /// denotes nothing on both sides contributes no delta.
+    /// parameter name and a `let` binder still land here beside a genuine reference, because
+    /// telling THOSE apart is the resolver's job and this index resolves nothing across files.
+    ///
+    /// THE OVER-COLLECTION IS BOUNDED RATHER THAN UNLIMITED, and the earlier reasoning for
+    /// leaving it unbounded is refuted rather than merely narrowed. That reasoning was: the
+    /// over-collection is SYMMETRIC across the two trees the one consumer
+    /// (`namespace_wave_admission`) compares, so a spelling that denotes nothing on both sides
+    /// contributes no delta. A symmetric COLLECTOR does not give a symmetric VERDICT — the
+    /// supplier set the wall computes is a function of the CORPUS, so deleting an unrelated
+    /// declaration moves it under every site that merely spells the same word. The measured
+    /// specimen and the two kinds now excluded are on `collect_reference_occurrences`, which is
+    /// also where the remaining members of that class are named.
     ///
     /// Dotted spellings are recorded WHOLE as well as by segment, so a reference to
     /// `v2.std.node.Hash` is observable as naming the module `v2.std.node` and not only as
     /// four unrelated segments.
     pub referenced: BTreeSet<(String, String)>,
+    /// AUTHORED TYPE REFERENCES, TAKEN FROM THE PARSER'S OWN `OccurrenceTransport` RATHER THAN
+    /// RE-DERIVED FROM THE `Node`. A peer of `referenced`, deliberately not a widening of it:
+    /// the two have different authorities and different precision, and fusing them would hide
+    /// which is which behind one name.
+    ///
+    /// `referenced` is this module's lossy walk over the final tree -- it cannot see a type
+    /// parked in the `inferred` slot at all, and it over-collects binders and labels it cannot
+    /// tell apart from references. This set is the parser's answer: `stamp_parsed_inferred`
+    /// stamps a declared type as `ParsedOccurrenceReference { TypeOccurrence }` with a minted
+    /// identity, the authored spelling, and containment, and that is what is read back here.
+    ///
+    /// WHY A PEER AND NOT A MERGE. A Node-reading projection that reproduced these entries
+    /// would be a second authority for a fact the parser already owns exactly -- it would agree
+    /// today and could silently diverge tomorrow, which is a worse failure than being wrong
+    /// once because nothing would detect it. Keeping the transport's answer in its own field
+    /// means a future reader can tell what was authored from what was reconstructed, and the
+    /// remaining Node walk can shrink toward zero as more positions gain transport entries.
+    ///
+    /// Keyed `(enclosing declaration, authored spelling)`, the same shape as `referenced`, so a
+    /// consumer that wants every authored reference takes the union and nothing needs to know
+    /// which channel supplied which row.
+    pub authored_type_references: BTreeSet<(String, String)>,
     pub declares_construction_justification: bool,
     /// Whether this module is a witness or fixture carrier. See `module_is_fixture_carrier`.
     pub is_fixture_carrier: bool,
@@ -492,11 +533,234 @@ fn declaration_field_names(
     out
 }
 
+/// One declaration's REFERENCE occurrences, recorded into `out` as `(in_declaration, spelling)`.
+///
+/// WHY THIS IS SELECTIVE BY NODE KIND AND THE FIRST VERSION WAS NOT. The first version walked
+/// every node and took its authored name with no filter, on the argument that over-collection
+/// is harmless because it is SYMMETRIC across the two trees the wave wall compares — a spelling
+/// that denotes nothing on both sides contributes no delta. THAT ARGUMENT IS REFUTED BY A
+/// MEASURED SPECIMEN, and it is refuted in the one direction that matters: symmetry of the
+/// COLLECTOR does not give symmetry of the VERDICT, because the supplier set the wall asks for
+/// is a function of the corpus, not of the site. On gunbc#9106 a witness module deleted a
+/// helper `fn live_tree_declined_entries` and kept twelve RECORD FIELD LABELS spelling the same
+/// word. The labels never bound to the helper and need no supplier at all, yet each one was
+/// collected as a reference, so each one reported base `{that module}` -> head `{}` and the wall
+/// raised twelve `NewUnresolvedness` rows against a correct cut. A delta true about the
+/// declaration and false about every site it names.
+///
+/// THE FIX IS THE SHAPE THE `cited` COLLECTOR ON THE SAME TREE ALREADY USES — decide by node
+/// kind, not by name — and exactly two kinds are excluded here:
+///
+///   * A RECORD LITERAL'S FIELD LABELS. `ExprRecordLit`'s children are its field initializers
+///     and nothing else, so the label is decidable from the parent's kind with no guessing. The
+///     initializer's VALUE is still walked, because that is where a reference lives.
+///   * A FIELD PROJECTION'S MEMBER NAME. `f.widget` names a field of the value `f`; it does not
+///     name a declaration `widget`. The SPELLING is not lost — `dotted_chain` still records
+///     `f.widget` whole, which is what `module_prefix_of` needs to tell a module-qualified
+///     reference (`probe.home.widget`) from an ordinary projection, and the wall keys on the
+///     last segment either way, so a qualified reference keeps its leaf.
+///
+/// WHAT THIS DELIBERATELY DOES NOT EXCLUDE, named rather than left to be discovered, because
+/// each is the SAME CLASS reached from a different position and none of them is repaired here:
+/// a record TYPE declaration's field labels, a named call argument's label, a parameter binder,
+/// and a coproduct's variant names are all still collected as references. Measured on a fixture,
+/// not predicted: `type Row { tag: String }` contributes `tag`, and `call_it(tag: "z")`
+/// contributes `tag`. Each can fabricate the same refusal the record-literal case did, and each
+/// needs its own structural discriminator — the parent kinds that carry them (`Connective::Conj`,
+/// `ExprCall`) also carry children that ARE real references (a refinement's base type expression
+/// is a `Conj` child with a real type name), so a parent-kind rule that covers them cannot be
+/// lifted from this one and must be derived against its own fixture. Excluding them by guessing
+/// would risk the opposite defect, which is worse: a wall that stops seeing genuine
+/// unresolvedness is a decoration.
+fn collect_reference_occurrences(
+    node: &Rc<Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<NewlineIndex>>>,
+    in_declaration: &str,
+    ident_is_a_field_label: bool,
+    out: &mut BTreeSet<(String, String)>,
+) {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let is_projection_member = matches!(&*node.expr_data, ExprData::ExprFieldAccess { .. });
+        if !ident_is_a_field_label && !is_projection_member {
+            let name = authored_name_at(source_indices.clone(), node.clone());
+            if !name.is_empty() {
+                out.insert((in_declaration.to_string(), name));
+            }
+        }
+        if let Some(chain) = dotted_chain(node, source_indices) {
+            out.insert((in_declaration.to_string(), chain));
+        }
+        let children_are_field_labels = is_record_literal(node);
+        for c in node.children.iter() {
+            collect_reference_occurrences(
+                c,
+                source_indices,
+                in_declaration,
+                children_are_field_labels,
+                out,
+            );
+        }
+        for c in node.params.iter() {
+            collect_reference_occurrences(c, source_indices, in_declaration, false, out);
+        }
+        for c in node.properties.iter() {
+            collect_reference_occurrences(c, source_indices, in_declaration, false, out);
+        }
+        for c in node.uses.iter() {
+            collect_reference_occurrences(c, source_indices, in_declaration, false, out);
+        }
+        if let Some(b) = node.body.as_ref() {
+            collect_reference_occurrences(b, source_indices, in_declaration, false, out);
+        }
+        if let Some(t) = node.transport.as_ref() {
+            collect_reference_occurrences(t, source_indices, in_declaration, false, out);
+        }
+        if let Some(t) = node.type_annotation.as_ref() {
+            collect_reference_occurrences(t, source_indices, in_declaration, false, out);
+        }
+
+        // THE VARIANT-PATTERN CONSTRUCTOR NAME -- THE ONE AUTHORED REFERENCE WITH NO
+        // TRANSPORT ENTRY TO CONSUME, AND THE ONLY REASON THIS FUNCTION READS A NAME AT ALL.
+        //
+        // The operator ruling is that authored references come from the parser's
+        // `OccurrenceTransport`, never from re-reading the final `Node` -- because the parser
+        // already stamps the fact exactly, so a Node-reading projection is a SECOND AUTHORITY
+        // free to diverge from the first. `authored_type_references` below obeys that.
+        //
+        // THAT RATIONALE HAS NO REFERENT HERE, and it was checked rather than argued:
+        //   `MatchPattern::VariantPattern { name: String, .. }` -- the head is a String
+        //   `stamp_parsed_pattern`'s VariantPattern arm stamps `field_bindings` ONLY
+        //   `ConstructorOccurrence` is stamped NOWHERE in `v1_compiler_parse`
+        //   occurrence ids are minted per `Node`, so a String can never carry one
+        // The parser mints nothing for this position, so there is no first authority to be
+        // second to: reading the authored String is not re-derivation, it is the ONLY
+        // derivation. A prohibition whose stated reason does not apply is not extended by its
+        // letter -- doing so would forbid the only available construction in favour of one that
+        // does not exist.
+        //
+        // THE TRANSPORT REPAIR IS BLOCKED ON A RULING, NOT ON A RISK, and that distinction is
+        // the useful part of this comment. The obvious objection to stamping the head was that
+        // occurrence ids come from a sequential allocator threaded across a parse, so a new
+        // stamp shifts every id allocated after it. That objection is ANSWERED: `v2.std.node`
+        // `content_hash` folds node kind, edge labels and child hashes and NOT the occurrence
+        // id, so a shifted id cannot move a content hash; and
+        // `v2.workflow.legacy_binding_delta` states outright that an `OccurrenceId` is not a
+        // stable cross-compile name BECAUSE the counter is consumed in DFS order and an id
+        // therefore encodes position in the walk -- naming inserted tokens as exactly the edit
+        // that shifts ids. The corpus does not merely lack a dependency on id stability, it
+        // declares that dependency illegitimate.
+        //
+        // What remains is not a hazard but an authority question: stamping a new occurrence is
+        // a change to the parser. So this block is provisional pending that ruling, and when it
+        // comes the deletion is this `if` and nothing else -- the name then arrives in
+        // `authored_type_references` with every other authored reference, and the consumer that
+        // already reads the union does not change at all.
+        //
+        // A pattern head is a reference the seven-slot walk above cannot reach even in principle,
+        // because it is a raw `String` on `MatchPattern` rather than a `Node`. So a module whose
+        // only use of an imported coproduct is naming its variants in match arms contributed
+        // NOTHING to `referenced`, and the gate concluded no name here resolved into the target.
+        //
+        // ONLY `name`. NOT `parent_enum`, and that exclusion is the whole care in this block:
+        // v1.02_parse writes `parent_enum: none` at parse time and INFERENCE fills it in later, so
+        // collecting it would mint a membership fact out of a compiler consequence rather than out
+        // of authored source -- the precise failure the operator ruling forbids, arriving through
+        // the one field of this enum that looks like an authored name and is not.
+        //
+        // NOT `field_bindings` either. Those are BINDERS -- they declare names, they do not
+        // reference them -- and the recursion below would otherwise report a pattern's own bound
+        // variables as references into whatever module happens to spell them the same way.
+        if let Some(pattern) = node.match_pattern.as_ref() {
+            if let MatchPattern::VariantPattern { name, .. } = &**pattern {
+                if !name.is_empty() {
+                    out.insert((in_declaration.to_string(), name.clone()));
+                }
+            }
+        }
+    })
+}
+
+/// The parser's own authored type references, read back out of the transport it already
+/// produced for this file.
+///
+/// THIS RECONSTRUCTS NOTHING. `stamp_parsed_inferred` stamps a declared type as
+/// `ParsedOccurrenceReference { TypeOccurrence }`; the spelling is on the index entry's
+/// `OccurrenceProjection.authored_name`, and the enclosing declaration is the second element of
+/// the reference's own `containment.ancestors`. Every value below is looked up, none is derived
+/// from the `Node` tree.
+///
+/// WHY `ancestors[1]` IS THE ENCLOSING DECLARATION AND NOT A GUESS. `stamp_parsed_node` pushes
+/// its own occurrence onto the ancestor list before descending, so ancestors run outermost-first
+/// from the stamp root. The sweep stamps one file per transport, rooted at that file's module
+/// node, so `[0]` is the module and `[1]` is the module-scope item containing the reference.
+/// A reference with fewer than two ancestors is not inside a module-scope declaration at all and
+/// contributes nothing -- it is SKIPPED rather than attributed to the empty string, because an
+/// empty enclosing name would key a row that no consumer can join and would read as a real
+/// authored reference belonging to a declaration that does not exist.
+///
+/// THE CATEGORY FILTER IS THE POINT. Only `TypeOccurrence` references are taken. The transport
+/// also carries lexical-value, field and namespace-segment occurrences, and folding those in
+/// would reintroduce exactly the over-collection `referenced` is criticised for, with the
+/// parser's authority attached to it -- which would be worse than the walk, not better.
+fn authored_type_references_from_transport(
+    transport: &Rc<OccurrenceTransport>,
+    declared: &BTreeSet<String>,
+) -> BTreeSet<(String, String)> {
+    let mut by_id: HashMap<i64, String> = HashMap::new();
+    for entry in transport.index.entries.iter() {
+        by_id.insert(
+            entry.projection.occurrence.value,
+            entry.projection.authored_name.clone(),
+        );
+    }
+
+    let mut out = BTreeSet::new();
+    for reference in transport.references.iter() {
+        if reference.category != OccurrenceCategory::TypeOccurrence {
+            continue;
+        }
+        let spelling = match by_id.get(&reference.occurrence.value) {
+            Some(name) if !name.is_empty() => name.clone(),
+            _ => continue,
+        };
+        let enclosing = match reference.containment.ancestors.get(1) {
+            Some(ancestor) => match by_id.get(&ancestor.value) {
+                Some(name) if !name.is_empty() => name.clone(),
+                _ => continue,
+            },
+            None => continue,
+        };
+        // ONLY REFERENCES ENCLOSED BY A DECLARATION THIS MODULE DECLARES, and this filter is
+        // load-bearing rather than tidiness -- it was added because its absence broke a live
+        // arm, and the break was in the dangerous direction.
+        //
+        // The transport stamps an IMPORT MEMBER NAME as a `TypeOccurrence` reference too,
+        // enclosed by the import's own target. Measured on the fixture that caught it,
+        // `import probe.other { gadget }` yields `("probe.other", "gadget")`. Folding that in
+        // would mean every import is "bound through" by its own member, so
+        // `UnusedSubjectMembershipRemoved` could never be reached again -- the wall would go
+        // permanently quiet about unused membership while looking like it had gained precision.
+        // That is a strictly worse failure than the false green this change exists to close:
+        // one wrong verdict versus a disposition that can no longer fire.
+        //
+        // A module-scope declaration name is the right filter and not a proxy for one: the key
+        // this set contributes to IS `(enclosing declaration, spelling)`, and an import is not a
+        // declaration. Anything enclosed by something this module does not declare is not a row
+        // this key shape can express, so it is dropped rather than attributed.
+        if !declared.contains(&enclosing) {
+            continue;
+        }
+        out.insert((enclosing, spelling));
+    }
+    out
+}
+
 /// One module's record, from that one module's parse tree. No corpus, no resolution.
 pub fn record_from_module(
     module: &Rc<Node>,
     source_indices: &Rc<im::HashMap<String, Rc<NewlineIndex>>>,
     rel_path: &str,
+    transport: &Rc<OccurrenceTransport>,
 ) -> ModuleDeclarationRecord {
     let module_path = authored_name_at(source_indices.clone(), module.clone());
     let mut declared = BTreeSet::new();
@@ -570,21 +834,30 @@ pub fn record_from_module(
     }
 
     let mut referenced = BTreeSet::new();
+    let mut called = BTreeSet::new();
     for item in module_items(module.clone()).iter() {
         let in_declaration = authored_name_at(source_indices.clone(), item.clone());
+        collect_reference_occurrences(
+            item,
+            source_indices,
+            &in_declaration,
+            false,
+            &mut referenced,
+        );
         for_each_node(item, &mut |node| {
-            let name = authored_name_at(source_indices.clone(), node.clone());
-            if !name.is_empty() {
-                referenced.insert((in_declaration.clone(), name));
-            }
-            if let Some(chain) = dotted_chain(node, source_indices) {
-                referenced.insert((in_declaration.clone(), chain));
+            if is_call(node) && !node.name.is_empty() {
+                called.insert(node.name.clone());
+                if let Some(tail) = node.name.rsplit('.').next() {
+                    called.insert(tail.to_string());
+                }
             }
         });
     }
 
     ModuleDeclarationRecord {
         referenced,
+        called,
+        authored_type_references: authored_type_references_from_transport(transport, &declared),
         declares_construction_justification: declared.contains(CONSTRUCTION_JUSTIFICATION_DECL),
         is_fixture_carrier: module_is_fixture_carrier(&module_path, rel_path),
         module_path,
@@ -636,6 +909,24 @@ pub struct DeclarationIndexPopulation {
     /// Citations naming a namespace no swept module declares — hand-Rust and other
     /// universes. Counted rather than dropped, so a green names what it did NOT cover.
     pub citations_outside_index: usize,
+    /// Distinct in-corpus modules cited as authorities from ordinary authored modules, but
+    /// reached by no authored import edge. A citation asserts that the target is a fact's
+    /// home; without an import edge no consumer closure typechecks that home. Identities are
+    /// carried rather than only a count so the unobserved remainder cannot be mistaken for a
+    /// specimen list or a percentage (DESIGN's third emit-stage escape mode).
+    pub cited_authorities_without_import_edges: Vec<String>,
+    /// The retained identities split by whether any citing module syntactically calls the cited
+    /// declaration. The called arm is an under-declaration candidate, not proof: indirection can
+    /// hide a call and a same-spelled callee can be unrelated. Both arms still lack compile
+    /// coverage; gunbc#9453 demonstrates the import-edge repair for one called specimen only.
+    pub cited_and_called_without_import_edges: Vec<String>,
+    pub cited_not_called_without_import_edges: Vec<String>,
+    /// Retained citees under `dag/`, the FIRST and therefore entry-producing root of the
+    /// existing `--source-root dag --source-root src/v2` corpus compile.
+    pub cited_authorities_under_primary_dag_entry_root: Vec<String>,
+    /// Retained citees under `src/v2/`, which that invocation indexes only as a dependency
+    /// pool. With no inbound import edge these identities are structurally unreachable there.
+    pub cited_authorities_in_src_v2_dependency_pool_only: Vec<String>,
     /// Import members admitted ONLY because they name a kernel type, over a target that
     /// declares no such name. Counted rather than skipped — see `import_member_findings`.
     pub import_members_kernel_named: usize,
@@ -672,6 +963,70 @@ pub fn index_records(index: &DeclarationIndex) -> Vec<&ModuleDeclarationRecord> 
 }
 
 pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation {
+    let imported_modules: BTreeSet<String> = index
+        .modules
+        .values()
+        .filter(|record| !record.is_fixture_carrier)
+        .flat_map(|record| record.imports.iter())
+        .filter_map(|import| {
+            resolve_cited_module(index, &import.target).map(|target| target.module_path.clone())
+        })
+        .collect();
+    let retained_citations: Vec<(&ModuleDeclarationRecord, &CitedSymbol, String)> = index
+        .modules
+        .values()
+        .filter(|record| !record.is_fixture_carrier)
+        .flat_map(|record| record.cited.iter().map(move |cited| (record, cited)))
+        .filter_map(|(record, cited)| {
+            resolve_cited_module(index, &cited.module_path)
+                .filter(|target| {
+                    !target.is_fixture_carrier
+                        && target.module_path != record.module_path
+                        && !imported_modules.contains(&target.module_path)
+                })
+                .map(|target| (record, cited, target.module_path.clone()))
+        })
+        .collect();
+    let cited_authorities_without_import_edges: Vec<String> = retained_citations
+        .iter()
+        .map(|(_, _, target)| target.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let cited_and_called_without_import_edges: Vec<String> = retained_citations
+        .iter()
+        .filter(|(record, cited, _)| record.called.contains(&cited.decl_name))
+        .map(|(_, _, target)| target.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let cited_not_called_without_import_edges: Vec<String> = cited_authorities_without_import_edges
+        .iter()
+        .filter(|target| !cited_and_called_without_import_edges.contains(target))
+        .cloned()
+        .collect();
+    let cited_authorities_under_primary_dag_entry_root: Vec<String> =
+        cited_authorities_without_import_edges
+            .iter()
+            .filter(|module_path| {
+                index
+                    .modules
+                    .get(*module_path)
+                    .is_some_and(|record| record.rel_path.starts_with("dag/"))
+            })
+            .cloned()
+            .collect();
+    let cited_authorities_in_src_v2_dependency_pool_only: Vec<String> =
+        cited_authorities_without_import_edges
+            .iter()
+            .filter(|module_path| {
+                index
+                    .modules
+                    .get(*module_path)
+                    .is_some_and(|record| record.rel_path.starts_with("src/v2/"))
+            })
+            .cloned()
+            .collect();
     DeclarationIndexPopulation {
         modules: index.modules.len(),
         declarations: index.modules.values().map(|r| r.declared.len()).sum(),
@@ -700,6 +1055,11 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
             .flat_map(|r| r.cited.iter())
             .filter(|c| citation_is_outside_index(index, &c.module_path))
             .count(),
+        cited_authorities_without_import_edges,
+        cited_and_called_without_import_edges,
+        cited_not_called_without_import_edges,
+        cited_authorities_under_primary_dag_entry_root,
+        cited_authorities_in_src_v2_dependency_pool_only,
         import_members_kernel_named: import_member_kernel_named_count(index),
         lens_modules: index
             .modules
@@ -976,28 +1336,7 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
     (
         "test.claim.annotation_carrier",
         "bound_condition_does_not_fire_on_a_near_miss_ref",
-        "extdeps.network.mac",
-        "parse_mac_address",
-        "",
-    ),
-    (
-        "test.claim.annotation_carrier",
-        "bound_condition_does_not_fire_on_a_near_miss_ref",
         "extdeps.network.max",
-        "parse_mac_address",
-        "",
-    ),
-    (
-        "test.claim.annotation_carrier",
-        "bound_condition_pends_until_its_declaration_appears",
-        "extdeps.network.mac",
-        "parse_mac_address",
-        "",
-    ),
-    (
-        "test.claim.annotation_carrier",
-        "frontier_expiry_fired_row_still_present_reds",
-        "extdeps.network.mac",
         "parse_mac_address",
         "",
     ),
@@ -1006,13 +1345,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
         "frontier_expiry_fired_trigger_absent_from_rows_is_clean",
         "extdeps.network.mac",
         "already_deleted_frontier_unit",
-        "",
-    ),
-    (
-        "test.claim.annotation_carrier",
-        "unbound_condition_cannot_be_forced_to_fire_by_any_present_decls",
-        "extdeps.network.mac",
-        "parse_mac_address",
         "",
     ),
     (
@@ -1249,13 +1581,6 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
 ];
 
 const PRE_EXISTING_CITATION_DEBT: &[(&str, &str, &str, &str, &str)] = &[
-    (
-        "extdeps.dhcp.v4",
-        "mac_address_anemic_brand_frontier_rows",
-        "extdeps.network.mac",
-        "parse_mac_address",
-        "",
-    ),
     (
         "extdeps.docker.container_inspect",
         "container_inspect_error_responses_frontier_rows",

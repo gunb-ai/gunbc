@@ -1,0 +1,166 @@
+module gunbc.bmc_fan_program_decode_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.decimal { exact_decimal_wire }
+import std.measure { measure_count }
+import extdeps.languages.json.emit { JsonValue, json_object }
+import extdeps.languages.json.member_conservation { MembersConserved, conservation_verdict }
+import extdeps.bmc.pid_control_program {
+  ActuatorController,
+  BmcFanControlProgram,
+  DbusBoundsIgnored,
+  DbusBoundsUnstated,
+  DbusBoundsUsed,
+  FanTachometerSensor,
+  ProgramSensor,
+  ProgramZone,
+  SensorDrivesOutput,
+  SensorReadOnly,
+  TemperatureSensor,
+  ThermalDemandController,
+}
+import extdeps.bmc.pid_control_decode {
+  ProgramDecodeRefused,
+  ProgramDecoded,
+  ProgramMembersNotConserved,
+  decode_program,
+}
+import gunbc.bmc_fan_program_observation {
+  ArtifactJsonValueObserved,
+  srv3_program_json,
+  srv4_program_json,
+}
+
+// THIS WITNESS READS THE COMMITTED CAPTURE ARTIFACTS THROUGH THE SUBSTRATE'S OWN CHECKOUT ROUTE,
+// so it declares the live-tree disposition its observation carrier already declares. It is
+// therefore DECLINED by the floor planner today and does not execute there -- the same standing
+// gunbc.bmc_fan_program_observation carries, and it changes when that planner veto is removed.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn srv3_programs() -> List<BmcFanControlProgram> {
+  match srv3_program_json {
+    ArtifactJsonValueObserved { artifact_path, byte_count, document } =>
+      match decode_program(document: document) {
+        ProgramDecoded { program, partitions, element_partitions } => [program]
+        other => []
+      }
+    other => []
+  }
+}
+
+fn srv4_programs() -> List<BmcFanControlProgram> {
+  match srv4_program_json {
+    ArtifactJsonValueObserved { artifact_path, byte_count, document } =>
+      match decode_program(document: document) {
+        ProgramDecoded { program, partitions, element_partitions } => [program]
+        other => []
+      }
+    other => []
+  }
+}
+
+fn actuator_named(program: BmcFanControlProgram, name: NonEmptyStr) -> List<ActuatorController> {
+  flat_map(program.zones, zone => filter(zone.actuator_controllers, c => c.name == name))
+}
+
+fn thermal_controllers(program: BmcFanControlProgram) -> List<ThermalDemandController> {
+  flat_map(program.zones, zone => zone.thermal_demand_controllers)
+}
+
+// BOTH CAPTURED DOCUMENTS DECODE WHOLE, WITH EVERY MEMBER ACCOUNTED FOR. A decode that read the
+// fields it knows and dropped an unmodelled member would not reach here: the conservation join
+// inside decode_program refuses first.
+fn both_hosts_decode_completely() -> Bool {
+  srv3_programs().length() == 1 && srv4_programs().length() == 1
+}
+
+// ONE DEMAND, TWO ACTUATORS -- the structural claim of the model, read off the deployed document
+// rather than asserted about it.
+fn the_shape_is_one_demand_feeding_two_actuators() -> Bool {
+  let program = srv3_programs().first()
+  thermal_controllers(program: program).length() == 1
+    && flat_map(program.zones, zone => zone.actuator_controllers).length() == 2
+}
+
+// THE TWO ACTUATORS DIFFER EXACTLY WHERE THE ACOUSTIC OUTCOME LIVES: the feed-forward offset and
+// the output floor. Everything else about them is the same. These are the numbers that made the
+// fleet quiet, so they are pinned by value.
+fn the_actuators_carry_the_offsets_that_made_it_quiet() -> Bool {
+  let program = srv3_programs().first()
+  let fan1 = actuator_named(program: program, name: "FAN1")
+  let chassis = actuator_named(program: program, name: "CHASSIS")
+  fan1.length() == 1
+    && chassis.length() == 1
+    && exact_decimal_wire(d: fan1.first().feed_forward.offset.magnitude) == "-8"
+    && exact_decimal_wire(d: fan1.first().output_limits.minimum.magnitude) == "3"
+    && exact_decimal_wire(d: chassis.first().feed_forward.offset.magnitude) == "35"
+    && exact_decimal_wire(d: chassis.first().output_limits.minimum.magnitude) == "40"
+    && exact_decimal_wire(d: chassis.first().slew.negative_coefficient) == "-3"
+}
+
+// THE CHASSIS ACTUATOR DRIVES THREE FANS AND FAN1 DRIVES ONE, which is the wiring fact the
+// document states and the reason one offset cannot serve both.
+fn the_actuator_endpoint_populations_differ() -> Bool {
+  let program = srv3_programs().first()
+  actuator_named(program: program, name: "FAN1").first().inputs.length() == 1
+    && actuator_named(program: program, name: "CHASSIS").first().inputs.length() == 3
+}
+
+fn the_deployed_curve_survives_the_whole_program_decode() -> Bool {
+  let program = srv3_programs().first()
+  let demand = thermal_controllers(program: program).first()
+  demand.curve.length() == 9
+    && demand.name == "TEMP_SOC"
+    && exact_decimal_wire(d: demand.failsafe_output.magnitude) == "75"
+}
+
+// THE TWO HOSTS AGREE ON THE COEFFICIENT THEY SPELL DIFFERENTLY. srv3 writes minThermalOutput as
+// 30.0 and srv4 writes it as 30; a decoder comparing lexemes would report two different programs.
+fn the_two_hosts_agree_on_the_coefficient_they_spell_differently() -> Bool {
+  let srv3_zone = srv3_programs().first().zones.first()
+  let srv4_zone = srv4_programs().first().zones.first()
+  exact_decimal_wire(d: srv3_zone.minimum_thermal_output.magnitude)
+    == exact_decimal_wire(d: srv4_zone.minimum_thermal_output.magnitude)
+}
+
+// THE THREE-STATE D-BUS BOUNDS FIELD IS EXERCISED BY THE REAL DOCUMENT, not only by a fixture: at
+// least one captured sensor entry does not state it, which is why the third state exists.
+fn a_captured_sensor_leaves_the_dbus_bounds_unstated() -> Bool {
+  let program = srv4_programs().first()
+  filter(program.sensors, sensor =>
+    match sensor.dbus_bounds {
+      DbusBoundsUnstated => true
+      DbusBoundsIgnored => false
+      DbusBoundsUsed => false
+    }).length() > 0
+}
+
+// A TEMPERATURE SENSOR HAS NOTHING TO DRIVE AND A FAN SENSOR DOES, which the model carries as a
+// coproduct rather than an absent string.
+fn writability_follows_the_sensor_role() -> Bool {
+  let program = srv3_programs().first()
+  let temps = filter(program.sensors, sensor =>
+    match sensor.role { TemperatureSensor => true  FanTachometerSensor => false })
+  let fans = filter(program.sensors, sensor =>
+    match sensor.role { FanTachometerSensor => true  TemperatureSensor => false })
+  temps.length() > 0
+    && fans.length() > 0
+    && all(temps, sensor => match sensor.actuation { SensorReadOnly => true  SensorDrivesOutput { write_path } => false })
+    && all(fans, sensor => match sensor.actuation { SensorDrivesOutput { write_path } => true  SensorReadOnly => false })
+}
+
+fn bmc_fan_program_decode_witness() -> ProcessExit {
+  if both_hosts_decode_completely()
+    && the_shape_is_one_demand_feeding_two_actuators()
+    && the_actuators_carry_the_offsets_that_made_it_quiet()
+    && the_actuator_endpoint_populations_differ()
+    && the_deployed_curve_survives_the_whole_program_decode()
+    && the_two_hosts_agree_on_the_coefficient_they_spell_differently()
+    && a_captured_sensor_leaves_the_dbus_bounds_unstated()
+    && writability_follows_the_sensor_role() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "captured fan program decode: completeness, the one-demand-two-actuator shape, the deployed offsets, or the cross-host coefficient agreement changed")
+  }
+}

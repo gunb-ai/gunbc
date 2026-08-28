@@ -1,0 +1,20 @@
+module v2.test.lens_cost.loop_unknown
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.lens.cost { cost_lens }
+import v2.std.logic { Bool }
+import v2.std.node { ComputationNode, Loop, Node, TypeNode }
+import v2.std.witness { Violates }
+
+data loop_unknown_input: Node = Node {
+  kind: ComputationNode { behavior: Loop },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn loop_unknown_claim_holds() -> Bool {
+  match cost_lens(n: loop_unknown_input) {
+    Violates { diagnostic: _ } => true
+    _ => false
+  }
+}

@@ -1,7 +1,7 @@
 module gunbc.plans.emission_ingestion_inverse
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
 
@@ -116,6 +116,7 @@ fn emission_ingestion_inverse_body() -> List<MarkdownBlock> {
 }
 
 data emission_ingestion_inverse_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "emission-ingestion-inverse",
   title: "Emission = Ingestion⁻¹ — extending the row-driven inverse past syntax to the intent layer",
   body: emission_ingestion_inverse_body(),

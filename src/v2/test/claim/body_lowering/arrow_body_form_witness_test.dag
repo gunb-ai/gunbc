@@ -1,5 +1,6 @@
 module v2.test.claim.body_lowering.arrow_body_form_witness
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
 import v2.compiler.resolve { resolve }
 import v2.extdeps.languages.dag {
@@ -38,8 +39,7 @@ import v2.std.node {
   arrow_body_target_is_valid_realization,
   classify_arrow_body_form,
   node_synthetic,
-  SyntheticOccurrence,
-  well_formed
+  well_formed,
 }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
@@ -103,7 +103,7 @@ fn arrow_body_form_id_arrow_fixture() -> Node {
 }
 
 fn arrow_body_form_zero_arrow_fixture() -> Optional<Node> {
-  match dag_int_literal_node_from_lexeme(lexeme: "0", occurrence_id: SyntheticOccurrence) {
+  match dag_int_literal_node_from_lexeme(lexeme: "0", occurrence_id: OccurrenceSynthetic) {
     Accepted { value: zero_lit, diagnostics: _ } =>
       optional_present(
         value: dag_arrow_with_body_node(

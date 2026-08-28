@@ -1,5 +1,6 @@
 module v2.std.integer
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, Ordering, Less, Equal, Greater }
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
 import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, length }
@@ -15,7 +16,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence, is_empty_conj_root }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, is_empty_conj_root }
 import v2.std.node_query { find_named_child }
 import std.integer { Signedness, Signed, Unsigned }
 import v2.std.machine {
@@ -723,7 +724,7 @@ fn integer_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -812,7 +813,7 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
           target: integer_inhabitant_atom(id: ^integer_tag_bound_zero)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
     IntegerConcreteBound { sign, magnitude } => Node {
       kind: TypeNode { connective: Conj },
@@ -830,7 +831,7 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
           target: integer_decimal_nonzero_node(magnitude: magnitude)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
     IntegerPointerWidthBound { signedness, endpoint } => Node {
       kind: TypeNode { connective: Conj },
@@ -848,7 +849,7 @@ fn integer_interval_bound_node(bound: IntegerIntervalBound) -> Node {
           target: integer_range_endpoint_node(endpoint: endpoint)
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 }
   }
 }
@@ -866,7 +867,7 @@ fn integer_interval_spec_node(spec: IntegerIntervalSpec) -> Node {
         target: integer_interval_bound_node(bound: spec.inclusive_max)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 fn int_add(a: Int, b: Int) -> Int {

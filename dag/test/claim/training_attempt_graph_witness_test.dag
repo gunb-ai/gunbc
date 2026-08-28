@@ -1,0 +1,355 @@
+module test.claim.training_attempt_graph_witness
+
+import product.training.attempt_graph {
+  TrainingRunAttemptGraph, AttemptGraphAdmission,
+  AttemptGraphAdmitted, AttemptGraphRefused,
+  AttemptGraphRefusal, AttemptWorkOutsideSubject, AttemptRootsInAnotherDemand,
+  AttemptPredecessorAbsent, DuplicateAttemptIdentity, AttemptLineageUnrooted,
+  admit_attempt_graph, graph_admits_attempt,
+}
+import product.training.readback { TrainingRunSubject, subject_of_desired }
+import product.training.resolution {
+  AxisResolution, AxisResolved, ResolvedAxis,
+  TrainingResolution, TrainingResolved, TrainingResolutionRefused,
+  TrainingResolutionObservations,
+  DropoutPermille, DropoutPermilleAdmitted, DropoutPermilleOutOfRange, dropout_permille,
+  Bf16, NoPacking, MaskPromptTokens,
+  TrainingRunDesired, TrainingRunDesiredAdmitted, TrainingRunDesiredRefused,
+  resolve_training, training_work_for, admit_training_run_desired,
+}
+import product.fabric.execution {
+  Attempt, ExecutionAttemptLineage,
+  InitialAttempt, InfrastructureRetry, CapabilityEscalation, RequestedReexecution,
+}
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.envelope { ResourceEnvelope }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
+import product.fabric.identity {
+  FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, fabric_identity_eq,
+}
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.currency { Usd }
+import std.measure { money_amount_micro, hardware_thread_count }
+import std.nat { Nat }
+import std.types { NonEmptyStr, Bool, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn h(s: NonEmptyStr) -> ContentHash {
+  content_hash_of_value(value: s)
+}
+
+fn ax<T>(v: T) -> AxisResolution<T> {
+  AxisResolved { resolved: ResolvedAxis { value: v, receipt: "obs-graph" } }
+}
+
+fn dp(n: Nat) -> DropoutPermille? {
+  match dropout_permille(permille: n) {
+    DropoutPermilleAdmitted { value: v } => Present { value: v }
+    DropoutPermilleOutOfRange { offered: _ } => none
+  }
+}
+
+data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
+  shape: Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+    envelope: ResourceEnvelope { cpu: none, gpu: none, memory: none, storage: none, network: none },
+  },
+  capabilities: "linux-arm64",
+  trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
+}
+
+fn fixture_observations(d: DropoutPermille) -> TrainingResolutionObservations {
+  TrainingResolutionObservations {
+    base_artifact: ax(v: h(s: "base-A")),
+    dataset_manifest: ax(v: h(s: "dataset-1")),
+    tokenizer: ax(v: h(s: "tok-1")),
+    chat_template: ax(v: h(s: "tmpl-1")),
+    trainer_closure: ax(v: h(s: "trainer-1")),
+    target_modules: ax(v: h(s: "qkv")),
+    optimizer_config: ax(v: h(s: "adamw-1")),
+    scheduler_config: ax(v: h(s: "cosine-1")),
+    learning_rate_schedule: ax(v: h(s: "lr-1")),
+    rank: ax(v: 16),
+    scaling: ax(v: 32),
+    dropout_permille: ax(v: d),
+    sequence_length: ax(v: 4096),
+    packing: ax(v: NoPacking),
+    loss_mask: ax(v: MaskPromptTokens),
+    mixture: ax(v: h(s: "mix-1")),
+    micro_batch: ax(v: 2),
+    gradient_accumulation: ax(v: 8),
+    numeric_format: ax(v: Bf16),
+    seed: ax(v: 7),
+    data_order_seed: ax(v: 99),
+    checkpoint_format: ax(v: h(s: "ckpt-v1")),
+    output_contract: ax(v: h(s: "adapter-out")),
+  }
+}
+
+fn demand_for(work_key: NonEmptyStr) -> Demand<NonEmptyStr> {
+  Demand {
+    id: FabricIdentity { principal: "brian", key: "demand-1" },
+    work: FabricIdentity { principal: "gunbai", key: work_key },
+    origin: "gunbc.observation.training-graph",
+    submitted_at: "2026-08-28T00:00:00Z",
+    admission: AdmissionTerms {
+      deadline: none,
+      buy: BuyTerms {
+        budget_account: "training",
+        currency: Usd,
+        reservation_price: money_amount_micro(count: 1),
+        maximum_buy_order: money_amount_micro(count: 1000),
+      },
+    },
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: false,
+      step_reuse_permitted: true,
+    },
+  }
+}
+
+fn subject_fixture() -> TrainingRunSubject<NonEmptyStr>? {
+  match dp(n: 50) {
+    none => none
+    Present { value: d } =>
+      match resolve_training(observations: fixture_observations(d: d), requirements: fixture_requirements) {
+        TrainingResolutionRefused { axis: _, cause: _ } => none
+        TrainingResolved { resolved: r } => {
+          let k = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+          match admit_training_run_desired(demand: demand_for(work_key: k as NonEmptyStr), resolved: r) {
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => none
+            TrainingRunDesiredAdmitted { desired: dd } => Present { value: subject_of_desired(desired: dd) }
+          }
+        }
+      }
+  }
+}
+
+fn attempt_id(k: NonEmptyStr) -> FabricIdentity<NonEmptyStr, ExecutionAttemptKey> {
+  FabricIdentity { principal: "gunbai", key: k }
+}
+
+fn attempt_of(
+  s: TrainingRunSubject<NonEmptyStr>,
+  k: NonEmptyStr,
+  lineage: ExecutionAttemptLineage<NonEmptyStr>,
+) -> Attempt<NonEmptyStr> {
+  Attempt { id: attempt_id(k: k), work: s.work, lineage: lineage, created_at: "2026-08-28T01:00:00Z" }
+}
+
+fn initial(s: TrainingRunSubject<NonEmptyStr>, k: NonEmptyStr) -> Attempt<NonEmptyStr> {
+  attempt_of(s: s, k: k, lineage: InitialAttempt { initiating_demand: s.demand })
+}
+
+fn retry_of(
+  s: TrainingRunSubject<NonEmptyStr>,
+  k: NonEmptyStr,
+  prior: NonEmptyStr,
+) -> Attempt<NonEmptyStr> {
+  attempt_of(
+    s: s,
+    k: k,
+    lineage: InfrastructureRetry {
+      prior_attempt: attempt_id(k: prior),
+      cause_receipt: "gunbc.observation.loss",
+    },
+  )
+}
+
+fn escalation_of(
+  s: TrainingRunSubject<NonEmptyStr>,
+  k: NonEmptyStr,
+  prior: NonEmptyStr,
+) -> Attempt<NonEmptyStr> {
+  attempt_of(
+    s: s,
+    k: k,
+    lineage: CapabilityEscalation {
+      prior_attempt: attempt_id(k: prior),
+      cause_receipt: "gunbc.observation.exceeded",
+    },
+  )
+}
+
+fn refusal_name(r: AttemptGraphRefusal<NonEmptyStr>) -> NonEmptyStr {
+  match r {
+    AttemptWorkOutsideSubject { attempt: _, declared_work: _ } => "foreign-work"
+    AttemptRootsInAnotherDemand { attempt: _, declared_demand: _ } => "foreign-demand"
+    AttemptPredecessorAbsent { attempt: _, predecessor: _ } => "absent-predecessor"
+    DuplicateAttemptIdentity { attempt: _ } => "duplicate-identity"
+    AttemptLineageUnrooted { attempt: _ } => "unrooted"
+  }
+}
+
+fn refusal_names(a: AttemptGraphAdmission<NonEmptyStr>) -> List<NonEmptyStr> {
+  match a {
+    AttemptGraphAdmitted { graph: _ } => []
+    AttemptGraphRefused { first: f, more: m } =>
+      [[refusal_name(r: f)], m.map(r => refusal_name(r: r))].flat_map(x => x)
+  }
+}
+
+fn admit(s: TrainingRunSubject<NonEmptyStr>, xs: List<Attempt<NonEmptyStr>>) -> AttemptGraphAdmission<NonEmptyStr> {
+  admit_attempt_graph(subject: s, attempts: xs)
+}
+
+// THE POSITIVE CONTROL, and it is what makes every refusal below load-bearing: an admitter that
+// refused everything would satisfy all of them. This is the ordinary escalation history the
+// programme is measured on -- an initial attempt, an infrastructure retry, then a capability
+// escalation -- and it must admit.
+test fn an_ordinary_escalation_chain_is_admitted() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } =>
+      match admit(
+        s: s,
+        xs: [initial(s: s, k: "e1"), retry_of(s: s, k: "e2", prior: "e1"), escalation_of(s: s, k: "e3", prior: "e2")],
+      ) {
+        AttemptGraphAdmitted { graph: g } =>
+          graph_admits_attempt(graph: g, attempt: attempt_id(k: "e3"))
+            && graph_admits_attempt(graph: g, attempt: attempt_id(k: "e1"))
+        AttemptGraphRefused { first: _, more: _ } => false
+      }
+  }
+}
+
+// A LINEAGE CYCLE, and it is the reason rootedness is a bounded fixpoint rather than a walk. Both
+// attempts are present, both name a predecessor that exists, every local check passes -- and
+// neither chain ever reaches the demand. A recursive walk over this pair does not terminate; the
+// fold does, and reports both as unrooted.
+test fn a_lineage_cycle_is_refused_rather_than_walked_forever() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } => {
+      let names = refusal_names(
+        a: admit(s: s, xs: [retry_of(s: s, k: "e1", prior: "e2"), retry_of(s: s, k: "e2", prior: "e1")]),
+      )
+      names.length() == 2 && names.all(n => n == "unrooted")
+    }
+  }
+}
+
+// A CHAIN THAT ROOTS IN ANOTHER RUN'S DEMAND IS UNROOTED HERE. Its predecessor exists, so the
+// absent-predecessor check passes; what fails is that following the chain never arrives at THIS
+// demand. Without the fixpoint this graph would be admitted and its members would then be joined
+// as evidence about a run they belong to only by resemblance.
+test fn a_chain_rooted_in_another_demand_is_refused() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } => {
+      let foreign_root = attempt_of(
+        s: s,
+        k: "e1",
+        lineage: InitialAttempt {
+          initiating_demand: FabricIdentity { principal: "brian", key: "demand-OTHER" },
+        },
+      )
+      let names = refusal_names(a: admit(s: s, xs: [foreign_root, retry_of(s: s, k: "e2", prior: "e1")]))
+      names.any(n => n == "foreign-demand") && names.any(n => n == "unrooted")
+    }
+  }
+}
+
+test fn an_attempt_under_another_work_is_refused() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } => {
+      let foreign = Attempt {
+        id: attempt_id(k: "e2"),
+        work: FabricIdentity { principal: "gunbai", key: "work-OTHER" },
+        lineage: InfrastructureRetry {
+          prior_attempt: attempt_id(k: "e1"),
+          cause_receipt: "gunbc.observation.loss",
+        },
+        created_at: "2026-08-28T01:00:00Z",
+      }
+      refusal_names(a: admit(s: s, xs: [initial(s: s, k: "e1"), foreign])).any(n => n == "foreign-work")
+    }
+  }
+}
+
+test fn an_attempt_whose_predecessor_is_absent_is_refused() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } =>
+      refusal_names(a: admit(s: s, xs: [initial(s: s, k: "e1"), retry_of(s: s, k: "e2", prior: "e-MISSING")]))
+        .any(n => n == "absent-predecessor")
+  }
+}
+
+// EVERY OCCURRENCE OF A DUPLICATED IDENTITY IS REPORTED, because which one is "the original" is
+// not a fact the graph has. Nominating one as legitimate would be the fold inventing a precedence
+// it cannot establish from an unordered population.
+test fn a_duplicated_attempt_identity_is_refused_at_every_occurrence() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } => {
+      let names = refusal_names(a: admit(s: s, xs: [initial(s: s, k: "e1"), initial(s: s, k: "e1")]))
+      names.filter(n => n == "duplicate-identity").length() == 2
+    }
+  }
+}
+
+// INDEPENDENT DEFECTS ARE ALL REPORTED. An ordered refusal would surface one and hide the rest, so
+// a graph with three problems would take three round trips to admit -- and the hidden defects
+// would look like new regressions each time the visible one was fixed.
+test fn independent_graph_defects_are_all_reported() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } => {
+      let foreign_work = Attempt {
+        id: attempt_id(k: "e2"),
+        work: FabricIdentity { principal: "gunbai", key: "work-OTHER" },
+        lineage: InitialAttempt { initiating_demand: s.demand },
+        created_at: "2026-08-28T01:00:00Z",
+      }
+      let names = refusal_names(
+        a: admit(s: s, xs: [initial(s: s, k: "e1"), foreign_work, retry_of(s: s, k: "e3", prior: "e-MISSING")]),
+      )
+      names.any(n => n == "foreign-work")
+        && names.any(n => n == "absent-predecessor")
+        && names.length() >= 2
+    }
+  }
+}
+
+// MEMBERSHIP IS IDENTITY, NOT RESEMBLANCE. Two attempts whose keys read the same under different
+// principals are different attempts, and a membership test keyed on the text alone would admit
+// another tenant's attempt into this run's evidence join.
+test fn an_attempt_key_under_another_principal_is_not_a_member() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } =>
+      match admit(s: s, xs: [initial(s: s, k: "e1")]) {
+        AttemptGraphRefused { first: _, more: _ } => false
+        AttemptGraphAdmitted { graph: g } =>
+          graph_admits_attempt(graph: g, attempt: attempt_id(k: "e1"))
+            && !graph_admits_attempt(
+                 graph: g,
+                 attempt: FabricIdentity { principal: "someone-else", key: "e1" },
+               )
+      }
+  }
+}
+
+// A REQUESTED RE-EXECUTION ROOTS DIRECTLY IN THE DEMAND, like an initial attempt and unlike a
+// retry. It is policy rather than infrastructure, so it has no prior attempt to name, and a
+// rootedness rule that only recognized InitialAttempt would report every rerun as unrooted.
+test fn a_requested_reexecution_roots_directly_in_the_demand() -> Bool {
+  match subject_fixture() {
+    none => false
+    Present { value: s } =>
+      match admit(
+        s: s,
+        xs: [attempt_of(s: s, k: "e1", lineage: RequestedReexecution { initiating_demand: s.demand })],
+      ) {
+        AttemptGraphAdmitted { graph: _ } => true
+        AttemptGraphRefused { first: _, more: _ } => false
+      }
+  }
+}

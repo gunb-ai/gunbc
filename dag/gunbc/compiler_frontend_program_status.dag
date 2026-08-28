@@ -30,6 +30,11 @@ import gunbc.compiler_frontend_program_interlock {
 import gunbc.cli_dispatch_surface { gunbc_cli_emitter_gap }
 import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
+import v2.workflow.legacy_baseline_capture {
+  CaptureAvailable,
+  CaptureBlocked,
+  legacy_baseline_capture_capability,
+}
 
 // WHY THIS IS A SEPARATE MODULE FROM THE INTERLOCK IT READS. The interlock carries a RELATION --
 // which milestone precedes which -- and that relation is a closed, pure fact with no dependency on
@@ -168,19 +173,36 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
 // the timing could make the memory worse. The word "budget" carried two resources and the arm was
 // being written by someone who had not checked which (retracted and corrected 2026-08-26, the
 // correction found by the lane that took the timing measurement).
+// A THIRD ARM, ADDED 2026-08-28 BECAUSE THE SECOND ONE BECAME FALSE AND THE FIRST WOULD HAVE HIDDEN
+// THAT. The WholeCorpusEmissionBoard row asserted a refusal and named the one thing that would
+// settle it: "it has not been attempted on one whose budget it admits ... THE FALSIFICATION MUST
+// RECORD EXIT STATUS AND PEAK RESIDENT SET TOGETHER". That falsification has now been performed and
+// the refusal did not hold. Collapsing the row to NotBuilt would have been correct about the remedy
+// and would have ERASED the execution that established it -- it would render identically to seven
+// instruments nobody has ever attempted, and the next reader would have no way to know the refusal
+// story had been TESTED rather than forgotten. So the state is its own arm: still unbuilt, but
+// unbuilt for a reason that has been measured rather than assumed.
+//
+// THIS ARM MUST NOT BE READ AS PROGRESS TOWARD THE MILESTONE. Falsifying an obstacle removes an
+// EXPLANATION; it does not produce a board. The milestone stays NotDerivable and its cause stays
+// needs(WholeCorpusEmissionBoard) -- which is exactly why the obstacle axis and the standing axis
+// are separate. A carrier where clearing an obstacle moved a milestone would let the removal of an
+// excuse render as the delivery of an instrument, which is the rung inflation DESIGN section 4b
+// names as worse than sitting low.
 type InstrumentObstacle
   = NotBuilt
   | RefusedByAuthority { authority: DeclarationRef, why: NonEmptyStr }
+  | NotBuiltRefusalFalsified { authority: DeclarationRef, falsified_by: NonEmptyStr }
 
 fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
   match i {
     WholeCorpusEmissionBoard =>
-      RefusedByAuthority {
+      NotBuiltRefusalFalsified {
         authority: decl_ref(
           module_path: "gunbc.whole_corpus_compile_admission",
           decl_name: "whole_corpus_compile_admission_at_budget"
         ),
-        why: "a whole-corpus compile is refused on HOST MEMORY -- the authority compares available memory against a measured peak demand, and its receipts are SIGKILLs, not timeouts. So this instrument is not unbuilt and the remedy is not to write a tool. THE HONEST STATE IS NARROWER THAN 'unaffordable': the predicate is a function of the HOST, it refused on the hosts its receipts were taken on, and it has not been attempted on one whose budget it admits. Admission is NOT FIT -- the authority's own admission means not provably doomed, and the demand figure is a lower bound taken by a different route at an older tree, so a host that admits may still be SIGKILLed. THE FALSIFICATION MUST RECORD EXIT STATUS AND PEAK RESIDENT SET TOGETHER: a SIGKILL renders as a fabricated zero to any harness that greps output without reading exit status, so a clean-looking empty population and a killed run are the same bytes. Three milestones wait on that one measurement." as NonEmptyStr
+        falsified_by: "THE REFUSAL THIS ARM USED TO CARRY HAS BEEN FALSIFIED BY EXECUTION, on exactly the terms it demanded. It said the predicate is a function of the HOST, that it had refused on the hosts its receipts were taken on, that it had NOT been attempted on one whose budget it admits, and that the falsification must record EXIT STATUS AND PEAK RESIDENT SET TOGETHER because a SIGKILL and a clean empty population are the same bytes.\n\nAttempted 2026-08-28 on srv1 (502 GiB total, ~334 GiB available, aarch64 -- a host the predicate admits by three orders of magnitude), three whole-corpus runs under /usr/bin/time -v with the exit status captured beside the peak: --target dag EXIT=1 peak 13008052 kB wall 25:04; --target rust EXIT=1 peak 13005964 kB wall 27:44; --target rust with the parameter-default gate cleared EXIT=1 peak 12986524 kB wall 25:05. NONE was SIGKILLed and NONE was refused by admission -- each ran frontend, normalize and reconcile and reached emit, then refused on DIAGNOSTICS. So the compile is not memory-refused on an admitting host, and the sentence three milestones were waiting on is answered.\n\nWHAT IS STILL MISSING IS THE BOARD, AND THAT IS WHY THIS IS STILL A NOT-BUILT. No completing whole-corpus run has been obtained on the rust route: clearing the three parameter-default sites revealed EIGHT anonymous-record refusals behind them, reproducing the three-then-eight prefix gunbc.emit_stage_blocking_population_census already records, so the blocking population is still unbounded. And no typed measurement is persisted anywhere a consumer can read, which is the condition milestone_status states in its own words. The remedy is now to WRITE THE INSTRUMENT AND ITS CARRIER -- two constructions, not one -- rather than to find a bigger machine.\n\nWHY THE OLD REFUSAL TEXT IS DELETED RATHER THAN KEPT BESIDE THIS. It argued that the instrument is not unbuilt and that the remedy is not to write a tool. Both halves are now false, and a superseded explanation retained next to its refutation is two accounts of one fact (DESIGN section 3). Its two corrections -- the routing story and the wall-clock authority substitution -- are preserved in this type's header, because those were lessons about how the row went wrong rather than claims about the compile." as NonEmptyStr
       }
     RequiredCiPhaseRoster => NotBuilt
     RatchetGateEnrolmentFact => NotBuilt
@@ -196,6 +218,7 @@ fn instrument_obstacle_label(o: InstrumentObstacle) -> String {
   match o {
     NotBuilt => "UNBUILT"
     RefusedByAuthority { authority: _, why: _ } => "REFUSED"
+    NotBuiltRefusalFalsified { authority: _, falsified_by: _ } => "UNBUILT (refusal falsified)"
   }
 }
 
@@ -203,6 +226,7 @@ fn instrument_obstacle_detail(o: InstrumentObstacle) -> String {
   match o {
     NotBuilt => "no such measurement is taken or persisted; the remedy is to build it"
     RefusedByAuthority { authority: _, why } => why
+    NotBuiltRefusalFalsified { authority: _, falsified_by: f } => f
   }
 }
 
@@ -329,9 +353,17 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
         cause: needs(i: NamespaceWaveAdmissionWall)
       }
     NamespaceBaselineObservationComplete =>
-      NotDerivable {
-        why: "v2.workflow.legacy_binding_observation can ADMIT a complete legacy observation, but whether one has been TAKEN over an exact base is a run fact and no carrier holds it. Derivable once an admitted CompleteLegacyObservation is persisted against a named base commit." as NonEmptyStr,
-        cause: needs(i: PersistedLegacyBaselineObservation)
+      match legacy_baseline_capture_capability() {
+        CaptureBlocked { phase: _, cause: _ } =>
+          NotDerivable {
+            why: "v2.workflow.legacy_baseline_capture can PROVE a binding observation was taken during the materialization of a named commit -- head, worktree and subject are checked in order and refuse before promotion -- but its accepted arm is unreachable while R_X(B) has no admission envelope. A complete BINDING observation must not stand in for a complete REPAIR observation. Derivable once the repair census carries an independent denominator and a capture can complete." as NonEmptyStr,
+            cause: needs(i: PersistedLegacyBaselineObservation)
+          }
+        CaptureAvailable =>
+          NotDerivable {
+            why: "a capture can now complete, but no capture has been taken against the current pre-cut base. Any movement of that base invalidates a prior enrolment, so this is asked per base rather than accumulated." as NonEmptyStr,
+            cause: needs(i: PersistedLegacyBaselineObservation)
+          }
       }
     NamespaceFirstSemanticWave =>
       NotDerivable {

@@ -1,0 +1,87 @@
+module test.claim.scm_repository_load_witness
+
+// THE LOAD BOUNDARY, ARM BY ARM. `load_repository` is the only place in gunbc.scm that touches the
+// host filesystem, and its whole reason for existing is that four different things can go wrong
+// with three different OWNERS. These claims exist to keep those four apart: each one drives a
+// DIFFERENT arm and asserts the arm it reached, so collapsing any two of them fails here.
+//
+// WHY EACH ARM IS DRIVEN BY A SEPARATE FIXTURE rather than by one document mutated in place: the
+// arms are reached at three different STAGES -- read, parse, decode -- and a single document
+// cannot be simultaneously absent, unparseable and well-formed-but-refused. The fixtures are
+// hand-authored rather than produced by `encode_repository`, so that a change to the encoder
+// cannot silently move what this file calls a valid document.
+//
+// THE ABSENT-PATH CLAIM IS DELIBERATELY UNDER THE CHECKOUT ROOT. A path outside it (say /tmp)
+// would be refused by the interpreter's hermetic carve-out as a host effect rather than answered
+// as a failed read, and the claim would be measuring the sandbox instead of this module.
+
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm.repository_load {
+  RepositoryLoad,
+  RepositoryLoaded,
+  RepositoryLoadRefused,
+  RepositoryLoadRefusal,
+  RepositoryFileUnreadable,
+  RepositoryDocumentUnparseable,
+  RepositoryDocumentRefused,
+  load_repository,
+}
+import gunbc.scm.repository_envelope {
+  RepositoryDecodeRefusal,
+  RepositoryFormatUnrecognized,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data scm_rl_empty_repository_path: String = "dag/test/fixture/scm_repository_load/empty_repository.json"
+data scm_rl_malformed_document_path: String = "dag/test/fixture/scm_repository_load/malformed_document.json"
+data scm_rl_unknown_format_path: String = "dag/test/fixture/scm_repository_load/unknown_format.json"
+
+// UNDER THE CHECKOUT ROOT AND NEVER CREATED. See the header: the location is the claim.
+data scm_rl_absent_path: String = "dag/test/fixture/scm_repository_load/this_file_is_never_created.json"
+
+test fn scm_rl_a_well_formed_document_loads() -> Bool {
+  match load_repository(path: scm_rl_empty_repository_path) {
+    RepositoryLoaded { path: p, envelope: _ } => p == scm_rl_empty_repository_path
+    _ => false
+  }
+}
+
+test fn scm_rl_an_absent_file_is_unreadable_not_empty() -> Bool {
+  match load_repository(path: scm_rl_absent_path) {
+    RepositoryLoadRefused { cause: RepositoryFileUnreadable { path: p, error: _ } } =>
+      p == scm_rl_absent_path
+    _ => false
+  }
+}
+
+test fn scm_rl_a_truncated_document_is_unparseable() -> Bool {
+  match load_repository(path: scm_rl_malformed_document_path) {
+    RepositoryLoadRefused { cause: RepositoryDocumentUnparseable { path: p, gap: _ } } =>
+      p == scm_rl_malformed_document_path
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING ONE. A document that PARSES cleanly and is still not a repository must reach
+// the decode arm and carry the schema's own refusal -- not the parse arm, whose remedy is "these
+// bytes are damaged" rather than "this is a repository of a version I do not know".
+test fn scm_rl_a_parseable_non_repository_is_refused_by_schema() -> Bool {
+  match load_repository(path: scm_rl_unknown_format_path) {
+    RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: p, cause: c } } =>
+      p == scm_rl_unknown_format_path &&
+        match c {
+          RepositoryFormatUnrecognized { found: f } => f == "gunbc-scm-repository-v99"
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn scm_repository_load_keystone_holds() -> Bool {
+  scm_rl_a_well_formed_document_loads() &&
+    scm_rl_an_absent_file_is_unreadable_not_empty() &&
+    scm_rl_a_truncated_document_is_unparseable() &&
+    scm_rl_a_parseable_non_repository_is_refused_by_schema()
+}

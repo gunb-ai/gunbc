@@ -41,7 +41,7 @@ fn ts_arc1_surplus_conj_emitted() -> Node {
       Edge { label: Positional, target: ts_type_annotation_task_record_emitted() },
       Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

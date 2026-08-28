@@ -17,13 +17,30 @@ import product.fabric.supply { OfferQuote }
 // prior attempt AND the receipt that classified the loss, so an attempt can
 // never claim infrastructure loss without evidence of it - the failure mode
 // that makes a real compile error retry forever is a classifier that discards
-// the termination reason. RequestedReexecution is a demand-driven rerun, which
+// the termination reason. CapabilityEscalation is that same shape for a
+// DIFFERENT cause: the prior attempt reached a terminal result its resolved
+// model could not carry, and a more capable model takes the next try. It is a
+// sibling of InfrastructureRetry rather than an arm of one generic Retry
+// because the two differ in exactly the ways lineage exists to record --
+// authorization, accounting, and what the edge licenses you to conclude. An
+// infrastructure loss says nothing about the work; an escalation says the work
+// exceeded the capability that was tried, which is the single observation the
+// resident-model thesis is measured on, and collapsing the two would erase it.
+// Like InfrastructureRetry it names the prior attempt AND the receipt that
+// established the prior result, so an attempt can never claim escalation
+// without evidence of what it escalated from: merely resolving a more
+// expensive model after a cheaper one is a selection fact, not an escalation.
+// RequestedReexecution is a demand-driven rerun, which
 // is policy rather than infrastructure. An attempt carries no host and no
 // mutable status: the host lives on the ExecutionGrant, and the position in the run is
 // DERIVED from accepted receipts, never stored.
 type ExecutionAttemptLineage<P>
   = InitialAttempt { initiating_demand: FabricIdentity<P, DemandKey> }
   | InfrastructureRetry {
+      prior_attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      cause_receipt: ObservationReceiptRef,
+    }
+  | CapabilityEscalation {
       prior_attempt: FabricIdentity<P, ExecutionAttemptKey>,
       cause_receipt: ObservationReceiptRef,
     }

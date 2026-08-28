@@ -8,6 +8,7 @@ import v2.std.integer { Int, int_gt }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
+import v2.workflow.floor_cost_debt { floor_cost_debt_roster, floor_cost_debt_holds }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
 import std.measure {
@@ -19,28 +20,19 @@ import std.measure {
   byte_size_count,
 }
 import std.types { NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
 //
 // Every discovered site gets exactly one `RequiredFloorDisposition`, keyed by its qualified
 // `module.function` identity. This is the single authority for that fact: the host loop in
 // `v1_compiler.cli_run` `run_required_floor` computes admission by testing a claim's authored
-// module name against `long_home_prefixes()` below, then REALIZES
+// module name against `long_home_prefixes()` and `fixture_home_prefixes()` below, then REALIZES
 // the arm this type already names — it does not invent a second admission concept. A `Declined*`
 // arm here is a fact about why a site's identity is excluded from the executed roster; it is
 // never itself the mechanism deciding execution order or eligibility for a DIFFERENT gate.
 //
-// `DeclinedLiveTree` IS RETAINED HERE AND STAGED FOR DELETION AT THE ROOT. Its premise is
-// already known to be stale (below), but the deletion is a behaviour change — 782 sites move
-// from declined to executed — and it lands with the measurement that prices it, not with this
-// change. This paragraph is written in the tense of what IS, because an earlier revision of it
-// asserted the deletion as done while the Rust realization still returned the arm: the .dag
-// named two arms, `v1_compiler.cli_run` `run_required_floor` emitted three, and the header
-// claiming a completed deletion was rung inflation on the exact axis this module argues for
-// (caught by review 54035, on this PR).
-//
-// WHAT IT WAS: a site whose FILE declared `data live_tree_disposition: LiveTreeDisposition =
+// `DeclinedLiveTree` IS DELETED HERE AND IN THE HOST REALIZATION AT THE ROOT. What it was: a
+// site whose FILE declared `data live_tree_disposition: LiveTreeDisposition =
 // ReadsLiveTree` was declined, on the premise that reaching the live tree implies "cannot run
 // in the hermetic frame this floor runs". 778 identities across 112 files sat in that arm, and
 // since the floor cut left `claim_executor --required-floor` as the only witness-executing
@@ -55,8 +47,8 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnl
 // "cannot run hermetically", and the decline was a prediction standing where the interpreter
 // already decides the same question exactly, per identity, at the effect boundary.
 //
-// WHAT WILL REPLACE IT: nothing here. Once the arm is deleted, every non-long identity is
-// routed and executed, its route carried by the claim that runs it
+// WHAT REPLACES IT: nothing here. Every non-long, non-fixture identity is routed and executed,
+// its route carried by the claim that runs it
 // (`RequiredFloorClaim.execution_mode` — one route per identity, not a second vocabulary
 // restating it), and the interpreter's own typed `HermeticHostEffectRefused` classifies the
 // residue that genuinely has no hermetic arm. That residue reaches the receipt as
@@ -67,19 +59,85 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnl
 // `SitePartitionInexact` wall all execute here, over the 101 identities that reached it
 // without this arm being touched at all.
 //
-// DELETION TRIGGER: the live-tree decline is removed when the cost measurement over its 782
-// sites lands (run 32345970386 measured 626/783 passing under execution), together with the
-// `witness_file_from_source` scan the split retained beside it.
+// DELETION RECEIPT: run 32345970386 measured 626/783 passing under execution, and the staged
+// blockers were closed before this root deletion. The `witness_file_from_source` scan remains:
+// live-tree disposition still feeds affected-set eligibility even though it no longer gates
+// floor admission.
 //
 // A NOTE ON WHAT DID *NOT* MOVE: `live_tree_disposition` itself is not deleted and is not
 // deprecated. It remains the declaration `reads_live_tree_effective` reads for AFFECTED-SET
 // SELECTION ELIGIBILITY, which is a different question from "can this execute" and keeps its
-// own single authority. What is staged for deletion is the floor's forked, syntactic second
-// copy of it.
+// own single authority. Only the floor's forked, syntactic second copy was deleted.
 type RequiredFloorDisposition =
     Planned
   | DeclinedLongModule { matched_prefix: String }
-  | DeclinedLiveTree
+  | DeclinedFixtureMember { matched_prefix: String }
+  | DeclinedCostDebt
+
+// ROSTER GROWTH IS BUDGET-BOUND AT THIS ADMISSION AUTHORITY.
+//
+// The required witnesses lane has no measured memory margin on the runner shape it consumes:
+// main reaches the runner's memory limiter, and gunbc#8982's unchanged-head rerun was cancelled
+// under sustained reclaim pressure after admission added a selected population. This is not a
+// correctness veto on those identities and it is not a numeric roster ceiling. A new identity
+// needs a named payment before admission grows; whether the payment is runner capacity, bounded
+// result retention, or staged growth is deliberately left undecided here.
+//
+// THE ATTRIBUTION IS CONFOUNDED, AND THE TYPE KEEPS IT THAT WAY. The observed change both grew
+// the roster and admitted the former declined-live population. That population was selected
+// because it reads the live tree and is not established to have the retention shape of an
+// average already-routed row. The receipt therefore cannot answer whether count alone reaches
+// the limiter or whether the selected population retains disproportionately. A proposal may not
+// turn either hypothesis into policy without a new instrument that separates them.
+//
+// THE INSTRUMENT IS NAMED, NOT TRANSCRIBED. Re-run the pull-request witnesses lane named below
+// and read its cgroup heartbeat and terminal ledger. No RSS value, pressure counter, partial
+// outcome count, or row ceiling is copied into this carrier. In particular, a cancelled fold's
+// visible outcomes are lower bounds from a truncated fold, never a terminal ledger.
+type RequiredFloorGrowthPayment =
+    MoreRunnerMemory
+  | BoundedTerminalResultRetention
+  | GrowthStagedAgainstMeasuredHeadroom
+
+type RequiredFloorGrowthAttribution =
+  CountAndSelectedLiveTreePopulationConfounded {}
+
+type RequiredFloorGrowthInstrument = RequiredCiWitnessesLane {
+  workflow_run: String,
+  invocation: String
+}
+
+type RequiredFloorLimiterStanding =
+    NoMeasuredMarginAtRunnerLimiter
+  | RequiredFloorMarginMeasured { instrument: String }
+
+type RequiredFloorGrowthBudgetStanding = RequiredFloorGrowthBudgetBound {
+  limiter: RequiredFloorLimiterStanding,
+  attribution: RequiredFloorGrowthAttribution,
+  candidate_payments: List<RequiredFloorGrowthPayment>,
+  instrument: RequiredFloorGrowthInstrument,
+  dissolution: DissolutionCondition
+}
+
+data required_floor_growth_budget_standing: RequiredFloorGrowthBudgetStanding = RequiredFloorGrowthBudgetBound {
+    limiter: NoMeasuredMarginAtRunnerLimiter {},
+    attribution: CountAndSelectedLiveTreePopulationConfounded {},
+    candidate_payments: Cons {
+      head: MoreRunnerMemory {},
+      tail: Cons {
+        head: BoundedTerminalResultRetention {},
+        tail: Cons {
+          head: GrowthStagedAgainstMeasuredHeadroom {},
+          tail: Empty {}
+        }
+      }
+    },
+    instrument: RequiredCiWitnessesLane {
+      workflow_run: "gunb-ai/gunbc actions run 33026738418",
+      invocation: "claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses"
+    },
+    dissolution: unbound_dissolution(description: "a dated required-lane receipt demonstrates margin for the admitted population, or admission structurally consumes a declared payment before roster growth")
+}
 
 // LONG-HOME STORAGE HYGIENE — A DIAGNOSTIC, NEVER AN ADMISSION INPUT.
 //
@@ -145,7 +203,20 @@ fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> Long
 // proceeding with an empty roster — and that polarity is what keeps this a build failure
 // instead of a silently permissive one. The structural repair is for the host's roster
 // evaluations to derive their own reachability from the qualified names they call, at which
-// point this import list and these three paragraphs delete together.
+// point this import list and these paragraphs delete together.
+//
+// `v2.workflow.floor_cost_debt.floor_cost_debt_roster` is the FOURTH, and it arrived by making
+// the same mistake a fourth time, with the paragraph directly above already naming it as a
+// mechanism defect and predicting exactly this. The prediction was exact, including the cost:
+// "the failure surfaces only from a full CI run". It cost a ~30-minute fold to learn, on a
+// change whose whole subject is the cost of folds.
+//
+// FOUR OCCURRENCES IS NOT FOUR CARELESS AUTHORS. Each of us read a file that says, in prose, at
+// the exact place we were editing, that this edge must be added by hand -- and the prose did not
+// stop any of us, because a reader adding a roster is thinking about the roster's CONTENT while
+// this edge is a fact about the FRAME the host will evaluate it in. The two live at different
+// grains, which is precisely why a note cannot hold the invariant and the derivation named above
+// can. Recorded as the fourth data point for that repair, not as a fourth apology.
 
 //
 // THREE PREFIXES, NOT ONE, and the count is what found that. A single `test.claim.long.` test
@@ -191,40 +262,72 @@ fn long_home_prefixes() -> List<String> {
   }
 }
 
+// THE THIRD DECLINE: A FIXTURE MEMBER IS NOT A WITNESS, AND ENROLLING ONE IS NOT DEBT.
+//
+// A `test fn` under `v2.test.fixture.walk_plan_stage.` is not a claim about the compiler. It is
+// an INPUT to another claim: `claim_executor --plan-entry
+// src/v2/test/fixture/walk_plan_stage/plan.dag --plan-function <recipe>` drives it as a
+// `RunnableSingleClaim` row authored in that fixture's own `common.dag`, and the recipes in
+// `plan.dag` are what assert on the result. The member is the specimen; the recipe is the
+// witness.
+//
+// WHY THE FOLD MUST NOT RUN THEM, and this is a correctness argument rather than a cost one.
+// Two of the nine are red BY CONSTRUCTION and can never green: `failure_red_member`'s body is
+// the literal `false`, and `recursion_refusal_member` calls itself so the interpreter's
+// call-depth refusal fires — that refusal IS what the recursion-refusal recipe observes. The
+// other seven perform the host effects the recipes are about, and `stage2_marker` is the sharp
+// one: it writes `target/walk_plan_stage_stage2_ran`, the exact path
+// `walk_plan_stage_failure_barrier_recipe` asserts "must stay absent" when stage 1 reds. Giving
+// that member a hermetic route would make the floor write the marker that another fixture's
+// oracle is defined by — a run corrupting the input of the test it is running.
+//
+// WHAT THIS COST WHILE IT WAS UNSTATED. All nine were discovered, planned and enrolled: two on
+// `v2.workflow.floor_expected_red` and seven on `v2.workflow.floor_route_gap`. Both rosters
+// declare themselves temporary, monotone and self-emptying, and neither can ever shed these
+// nine — the first two by construction, the seven because the honest route for them is no route
+// at all. Nine permanent rows on two shrinking ledgers is the skip list both headers are
+// carefully not, arrived at without anyone choosing it. The fixture's own `common.dag` note has
+// asserted the correct state of the world all along — "discovery-excluded at dir grain … and
+// declares no enrolled witness rows" — and that sentence stopped being true at the floor cut,
+// which is when a directory stopped being what discovery reads.
+//
+// THE MECHANISM IS THE ONE ALREADY SANCTIONED, deliberately and not by analogy: the test is on
+// the module's AUTHORED NAME, exactly as `long_home_prefixes` is, for the reason the 2026-08-04
+// ruling gives — a directory must not decide an admission question. `v2.test.fixture.` is NOT
+// the prefix, and the narrower one is not caution: 27 modules declare `v2.test.fixture.` and
+// only the walk_plan_stage family authors `test fn`s, so the broad prefix would pre-admit a
+// decline for 26 modules whose behaviour nobody has examined. A prefix earns its rows.
+//
+// THIS IS NOT A SELECTION SHRINK, which is the objection it will draw. The 2026-08-13 directive
+// forbids SELECTION from shrinking the roster; a home policy answers a different question, and
+// the difference here is that these nine LOSE NO COVERAGE — they keep the executing consumer
+// they have always had, the recipes, which is more than a route-gap row can say. Declining a
+// site whose only consumer is the fold deletes coverage; declining one the fold was never the
+// consumer of returns it to its owner.
+//
+// DISSOLVES when the fixture stops authoring `test fn`s — if `claim_executor` grows a claim form
+// that does not require one, this roster empties and the arm goes with it. There is no
+// empty-roster refusal here, for the same reason `long_home_prefixes` has none.
+fn fixture_home_prefixes() -> List<String> {
+  Cons {
+    head: "v2.test.fixture.walk_plan_stage.",
+    tail: Empty {}
+  }
+}
+
 // THE ADMISSION ORDER, HELD HERE RATHER THAN IN WHOEVER WALKS THE CORPUS.
 //
-// `RequiredFloorDisposition` above names the three arms; until now nothing in this module said
-// WHICH arm a given site gets, so the ordering — long home, then live tree, then planned — lived
-// only in the host loop that walks the discovered files (`v1_compiler.cli_run`
-// `run_required_floor`). That made the type an authority over the vocabulary and not over the
-// decision, and a second walker (the .dag census this function was added for) would have had to
-// re-author the order and could have re-authored it differently.
+// `RequiredFloorDisposition` above names the three arms. The ordering is long home, then fixture
+// home, then planned. This decision previously lived only in the host loop that walks the
+// discovered files
+// (`v1_compiler.cli_run` `run_required_floor`). That made the type an authority over the
+// vocabulary and not over the decision, and a second walker (the .dag census this function was
+// added for) would have had to re-author the order and could have re-authored it differently.
 //
-// THE SURVIVING ORDER HAS NO EXECUTING DISCRIMINATOR, AND THAT IS STATED RATHER THAN LEFT TO BE
-// REDISCOVERED. What made this ordering load-bearing was a fixture arm sitting between the long
-// home and the live tree: a fixture member that ALSO read the live tree had to report the
-// permanent ownership fact, not the staged prediction. That arm is DELETED (the plan/walk residue
-// cut, 2026-08-26) along with the one family that inhabited it, so the only remaining precedence
-// is long-home over live-tree — and no site can be both, because a long home is a path fact and a
-// live-tree read is a declared disposition that the long homes do not carry. The order is
-// therefore currently unfalsifiable by any authorable input: it is kept because a THIRD decline
-// added later would need a declared position, not because a witness holds it today. Do not cite
-// this ordering as covered.
-//
-// NEXT-RUNG TRIGGER, NAMED SO THIS READS AS NOBODY-BUILT-IT AND NOT AS CANNOT-COVER (DESIGN
-// section 4b(2)). This order becomes falsifiable again when a decline exists whose subject CAN
-// collide with an existing one — a site that legitimately satisfies two decline reasons at once,
-// so which reason it reports is a decision some input can get wrong. At that point the
-// discriminating witness is authorable and is owed. Until then the gap is that no such subject
-// exists, not that the property is unprovable, and the correct response to the absence is to
-// build the third decline's collision case rather than to re-point a witness at a subject that
-// cannot disagree with itself. A re-pointed discriminator here would be permanently green BY
-// CONSTRUCTION, which is worse than none: it would be cited as coverage.
-//
-// THE LIVE-TREE INPUT IS THE DECLARED `LiveTreeDisposition`, NOT A `Bool`. The host currently
-// hands this decision a `reads_live_tree` boolean it computed one level up; taking the declared
-// coproduct here means a third live-tree state added upstream fails to compile in this match
-// rather than being silently folded into whichever side of a boolean it was coerced to.
+// THE ORDER IS THE ONE THE HOST REALIZES AND IT IS LOAD-BEARING, not alphabetical: a fixture
+// member inside a long home reports the long-home storage disposition first; every other fixture
+// member reports the ownership fact that its own recipe already executes it. Live-tree standing
+// is absent from this API because the root cut makes it irrelevant to floor admission.
 type ModulePrefixMatch =
     ModulePrefixUnmatched
   | ModulePrefixMatched { prefix: String }
@@ -241,16 +344,78 @@ fn first_module_prefix_match(module_path: String, prefixes: List<String>) -> Mod
   }
 }
 
+// THE THIRD DECLINE ARRIVED (2026-08-27), AND WITH IT THE COLLISION THE ORDER ABOVE WAS KEPT
+// FOR. `DeclinedCostDebt` is claim-grain -- it is a membership test over
+// `v2.workflow.floor_cost_debt` on a qualified identity -- while the two declines above are
+// module-grain, so a single site CAN legitimately satisfy a cost-debt decline and a long-home or
+// live-tree decline at once. That is exactly the subject the next-rung trigger above named as
+// owed, and it is now authorable.
+//
+// COST DEBT IS ORDERED LAST, DELIBERATELY. A row that already declines for a home reason does
+// not execute for that reason, so a cost-debt row over it withholds nothing that was going to
+// run -- and reporting it as `DeclinedCostDebt` would tell a reader to make it cheaper when the
+// correct remedy is to delete the roster line. Ordering it last means such a row keeps its home
+// decline, never enters the cost-debt reverse join, and is reported as a STALE roster row by
+// `v1_compiler.cli_run` -- which blocks, and whose diagnostic says to delete the line. The order
+// is therefore load-bearing in a way the previous two-decline order never was: swapping it would
+// silently convert a stale roster row into a permanent, plausible-looking withhold.
+//
+// THIS FUNCTION TAKES ONLY THE MODULE-GRAIN INPUTS AND STAYS THAT WAY. The cost-debt decision is
+// applied by the caller, which holds the identity; folding a `qualified_identity` parameter in
+// here would make every module-grain caller invent one. The ORDER is what this function owns and
+// the order is what the caller must not re-author -- so the caller applies cost debt only to a
+// site this function already answered `Planned` for, which is the same precedence expressed at
+// the only grain each half can see.
+// THE DISPOSITION TAKES THE QUALIFIED IDENTITY, NOT ONLY THE MODULE PATH, AND THE REASON IS THE
+// FOURTH ARM. The two home declines are MODULE facts -- every `test fn` in a long or fixture home
+// shares its module's disposition -- so a `module_path` parameter was sufficient while those were
+// the only declines. The cost decline is not a module fact: it names ONE witness by its qualified
+// identity, and a module may hold a withheld row beside a running one.
+//
+// AN EARLIER REVISION OF THIS CHANGE LEFT THIS FUNCTION AT `module_path` ALONE while the host
+// declined by identity, and two Rust comments cited THIS function for a precedence it did not
+// carry. That is the §3 violation in its exact form: the executing floor and the modeled
+// `//:required` aggregate answering differently about one population, with `gunbc.discovery_census`
+// classifying all 266 withheld rows as `Planned` while the fold declined them. Caught by
+// review 57235; the divergence is closed by giving the model the input it was missing rather than
+// by teaching the census to special-case the host.
+//
+// THE COST ARM BRANCHES WITH `if`, NOT WITH A VARIANT MATCH, AND THAT IS LOAD-BEARING RATHER THAN
+// STYLE. `floor_cost_debt_holds` returns the corpus `Bool`, which is realized NATIVELY as a machine
+// scalar; `v2.std.algebra` `any` itself matches it as lowercase `true`/`false`. The interpreter's
+// `match_pattern` carries VariantPattern arms for Variant, Record, List, Str, Int and Null and NO
+// arm for a native bool, so a `True`/`False` variant pattern over this value matches nothing and
+// falls through at RUNTIME -- it parses, it typechecks, and it dies with
+// `cause=pattern-match-failure`.
+//
+// AN EARLIER REVISION OF THIS FUNCTION MATCHED `True {}` / `False {}` AND ERRORED 11 OF 19
+// WITNESSES in `discovery_census_witness_test`, several of which never call this function and went
+// down through the shared census fold. The braces were NOT the defect: measured by still-cat-738
+// through the real binary, the bare `True` spelling fails identically, and a record pattern against
+// a genuine nullary variant (`A {}` over `type T = A | B`) matches perfectly well. So the class is
+// not pattern arity -- it is a declaration offering arms no value can present, the same family as
+// the interpreter's named StringRealizationStraddle. Branching with `if` sidesteps the straddle
+// instead of depending on it.
+//
+// PRECEDENCE IS DECIDED HERE AND MIRRORED THERE. Cost debt is LAST, so a rostered identity that
+// also declines for a home reason keeps its home decline. That is what makes such a roster line
+// surface as STALE -- it never enters the cost-debt seen set -- instead of as a withhold
+// indistinguishable from a real one.
 fn required_floor_site_disposition(
   module_path: String,
-  reads_live_tree: LiveTreeDisposition,
+  identity: String,
 ) -> RequiredFloorDisposition {
   match first_module_prefix_match(module_path: module_path, prefixes: long_home_prefixes()) {
     ModulePrefixMatched { prefix: p } => DeclinedLongModule { matched_prefix: p }
     ModulePrefixUnmatched =>
-      match reads_live_tree {
-        ReadsLiveTree => DeclinedLiveTree {}
-        SubstrateInputsOnly => Planned {}
+      match first_module_prefix_match(module_path: module_path, prefixes: fixture_home_prefixes()) {
+        ModulePrefixMatched { prefix: p } => DeclinedFixtureMember { matched_prefix: p }
+        ModulePrefixUnmatched =>
+          if floor_cost_debt_holds(name: identity) {
+            DeclinedCostDebt {}
+          } else {
+            Planned {}
+          }
       }
   }
 }
@@ -260,7 +425,7 @@ fn required_floor_site_disposition(
 // rest of this branch dissolved three of (review 55984). Its only consumer filtered a roster with
 // it, keeping the routed side and discarding the declined one, which is the fact the census
 // exists to carry. `gunbc.discovery_census` `census_partition` now descends over these arms in one
-// pass and returns both sides, so a fourth arm must be classified rather than absorbed into
+// pass and returns both sides, so a fifth arm must be classified rather than absorbed into
 // `false`, and the roster cannot be produced without its exclusions.
 
 
@@ -369,30 +534,130 @@ fn required_floor_site_disposition(
 // (test.claim.transport_script_wall_compile_red.wall_red_string_join_into_retained_record_refuses)
 // under whole-corpus pressure while the per-witness median remains ~1ms — 1552ms is
 // measured-max plus one scheduler-quantum, retained as calibration evidence only.
+// RE-POINTED TO 100ms WITH THE CEILING RESTORATION (2026-08-27), because at 1552 it became
+// UNFIREABLE and therefore a decoration. Under a 500ms CPU ceiling no claim can complete above
+// 1552ms -- the safety limit stops it first -- so the comparison would have been permanently
+// green BY CONSTRUCTION while still being reported and counted, which DESIGN section 4b calls
+// worse than absent because it is cited as coverage. The figure keeps the value the operator
+// paired with 500 in the 2026-08-17 ruling.
+//
+// IT STILL DECIDES NOTHING, and that is unchanged by the re-point: it has no admission-path
+// consumer, and the only reader remains the diagnostic `exceeds_completed_cost_line`. What it
+// now does again is name the population between an ordinary row (~1ms median) and the ceiling --
+// the rows heading for the cliff that have not reached it, which is the population worth fixing
+// before it blocks anyone.
 fn required_floor_claim_cost_line_ms() -> Int {
-  1552
+  100
 }
 
-// TEMPORARY (operator ruling 2026-08-19, superseding correction): the CPU safety deadline.
-// 5000ms is the restoration envelope, stated as an explicitly temporary value rather than a
-// re-founded permanent ceiling. This is the TIGHTER of the two limits -- it protects against a
-// pure in-process claim running away on the CPU clock, and the wall limit below is deliberately
-// looser so that ordinary host scheduling delay cannot itself trip an interrupt on a
-// computation that is still within its CPU envelope.
+// THE CPU SAFETY DEADLINE: 500ms (operator ruling 2026-08-17, RESTORED 2026-08-27).
+//
+// THIS IS NOT A NEW NUMBER. It is the ruling that has stood since gunbc#8283 and was never
+// repealed. It is written here with its own provenance because the two raises that displaced it
+// each cited an authority that did not cover the value, and a reader who finds only the raises
+// will re-derive them as legitimate:
+//
+//   500  -> 1552  (gunbc#8514, 2026-08-19 01:26). NO OPERATOR RULING. The whole justification
+//                  was "the 2026-08-18 witnesses fold measured a 1527ms ceiling ... 1552ms is
+//                  measured-max plus one scheduler-quantum". That is a merge-blocking literal
+//                  grounded in a measurement of the same current tree -- the oracle DESIGN
+//                  section 5 forbids by name. The ceiling was set to whatever the slowest row
+//                  happened to cost, which is a change detector, not a budget. Its own comment
+//                  said "not an open slack ratchet"; it ratcheted 3.2x eleven hours later.
+//   1552 -> 5000  (gunbc#8533, 2026-08-19 12:24). Cited "operator ruling 2026-08-19, superseding
+//                  correction" on both clocks. That ruling was about the SPLIT -- that CPU and
+//                  wall are two independent deadlines rather than one scalar copied into both.
+//                  The operator's own quoted words in that diff, "DO NOT set CPU and wall to the
+//                  same 5000ms", PRESUPPOSE 5000 was already on the table: it is a ruling about
+//                  the mechanical copy, not about the magnitude. The value rode in as a
+//                  passenger on a ruling about something else, which is the AUTHORITY
+//                  SUBSTITUTION failure mode in DESIGN's recurring list -- both halves true,
+//                  only the arrow invented.
+//
+// Neither raise named a restoration trigger or a date, so "TEMPORARY" and "restoration
+// envelope" described nothing that could end. The population that had accumulated under the
+// 10x drift is frozen in `v2.workflow.floor_cost_debt` as a monotone debt contract and withheld
+// from execution; it is not granted a higher ceiling, because a row that broke the budget does
+// not get an exemption to keep spending it.
+//
+// This is the TIGHTER of the two limits. It protects a pure in-process claim against runaway
+// evaluation on the CPU clock; the wall limit below is independently derived and looser.
 fn required_floor_claim_cpu_safety_limit_ms() -> Int {
-  5000
+  500
 }
 
-// TEMPORARY (operator ruling 2026-08-19, superseding correction): the WALL safety deadline,
-// independently derived from the CPU deadline and deliberately LOOSER -- retired is the prior
-// "both clocks armed identically" figure, which the operator's message named directly as the
-// mechanical copy to stop making ("DO NOT set CPU and wall to the same 5000ms"). A Hermetic
-// pure in-process claim can be legitimately descheduled by a co-tenant CI host for stretches
-// that would wrongly read as a runaway if judged on the CPU-tight figure; 10000ms gives that
-// headroom while still catching a claim that is genuinely blocked or stuck. Also a restoration
-// envelope, not a re-founded permanent ceiling.
+// THE WALL SAFETY DEADLINE: 8000ms. Independently derived and deliberately LOOSER, and the
+// operator ruling that stands over it is still the 2026-08-19 one -- CPU and wall are never one
+// scalar copied into both clocks ("DO NOT set CPU and wall to the same 5000ms").
+//
+// THIS FIGURE WAS 2000ms FOR ONE CI RUN AND THAT WAS WRONG, recorded here because the mistake is
+// instructive and the corrected derivation is unreadable without it. 2000 was derived correctly
+// by method -- the worst wall observed among rows INSIDE the CPU budget, times a headroom factor
+// -- and from the wrong population: it was measured before the roster was rebased onto marginal
+// cost, on data where a first-touch fill payer carried a large CPU figure and was therefore
+// EXCLUDED from the "inside the CPU budget" population the derivation reads.
+//
+// WHAT THE REBASE EXPOSED, and it is an asymmetry in the measurement rather than in this
+// constant: `v1_compiler.cli_run` `run_claim_measured` subtracts shared-artifact fill from CPU
+// and DOES NOT subtract it from WALL. So a fill payer's marginal CPU goes to ~0 while its wall
+// keeps the whole shared build. Those rows then land inside the CPU budget and dominate the wall
+// population, which is exactly where the derivation reads. Measured on run 33136345225:
+// `test.claim.alias_identity_across_unwrap_witness`
+// `a_second_alias_still_emits_its_own_name_and_not_the_first` reports
+// `marginal_cpu_ms=0 fill_cpu_ms=3772` with `wall_ms=3782` -- the CPU clock exonerates it and a
+// 2000ms wall clock condemns it, for the same work, in the same run. Sixteen rows were in that
+// state.
+//
+// 8000ms TIGHTENS THIS LIMIT. Main carries 10000ms; this figure is a REDUCTION, and the two
+// figures beside it are reductions too (CPU 5000 -> 500, completed-cost line 1552 -> 100). An
+// earlier revision of this block framed 8000 as a loosening that needed a runway, on a reading
+// that it had been raised to accommodate rows a defect was inflating. It had not. The framing
+// was inverted and is deleted rather than annotated, because a constant described as a
+// concession ranks for removal while the same constant described as a tightening does not.
+//
+// THE DERIVATION IS STILL BLIND, INDEPENDENTLY OF THAT, and this half survives the correction
+// because it is a fact about the METHOD rather than about the direction of the change. The
+// method was: take the worst wall observed among rows inside the CPU budget, times headroom. A
+// first-touch payer's marginal CPU is netted to ~0 while its wall carries the whole shared
+// build, so the rows that dominate the wall population are precisely the rows whose wall figure
+// is not about them. The general form is worth more than this constant: A DERIVATION WHOSE
+// INPUT IS FILTERED BY THE QUANTITY BEING DERIVED CANNOT SEE ITS OWN WORST CASE. It will look
+// well-grounded, because the sample is real.
+//
+// WALL IS NOT NETTED OF FILL, AND MUST NOT BE. Netting was proposed and is REFUSED here, on the
+// carrier that owns the question. Two independent reasons, and the second is the load-bearing
+// one:
+//
+//   UNITS. The existing accumulator records `v1_interpreter::thread_cpu_nanos`. Subtracting it
+//   from a wall figure under-subtracts, because wall fill >= CPU fill always and strictly more
+//   under contention -- visible in this file's own specimen, cpu fill 3728 against wall 3782 --
+//   and it breaks the invariant that makes the split a measurement rather than a discount, since
+//   `marginal + fill = measured` holds on CPU by construction and would be false on wall.
+//
+//   SUBJECT. The wall deadline's job, declared above, is catching a claim that is genuinely
+//   BLOCKED OR STUCK. Cost accruing inside the shared build reaches no stride-poll checkpoint --
+//   that is exactly the region this file already carries a §4b rung drop for
+//   (`OpaqueHostCallUnbounded`) -- so the raw wall reading is the ONLY detector that region has.
+//   Netting it would delete the sole instrument over the sole blind spot, and would do it
+//   wearing an accounting label rather than announcing itself as a safety regression.
+//
+// SO THE 15 PAYERS ARE NOT A NETTING PROBLEM. Measured on run 33136345225, every row whose fill
+// alone exceeds 2000ms carries marginal CPU of 0-2ms, and NO row in that population has marginal
+// CPU above 500ms -- 15 of 15 are pure borrowed cost, zero are genuine own-work. They failed an
+// earlier 2000ms figure on this branch, which is abandoned; against 8000ms they are inside, and
+// the raw deadline still catches the case it exists for (the specimen it was written against
+// burned 504 SECONDS of wall while its CPU never approached its limit).
+//
+// DISSOLUTION TRIGGER, and it is NOT a wall accumulator. `gunbc.census_memo_seed_growth` rules
+// that the admissible repair is to STOP RECOMPUTING, never to raise the line, and that argument
+// is clock-agnostic. The occupancy these 15 rows exhibit is a shared build being recomputed, not
+// a claim being slow; when that recomputation is eliminated the occupancy disappears from wall
+// and CPU together, no netting is required anywhere, and this figure is re-derived against a
+// population that no longer contains a first-touch payer at all. The trigger is therefore the
+// elimination of the recomputation, not an instrument for attributing it more precisely --
+// attributing borrowed cost better still leaves the process occupied.
 fn required_floor_claim_wall_safety_limit_ms() -> Int {
-  10000
+  8000
 }
 
 // THE WARN TIER IS DELETED (2026-08-20). It is not lowered, not re-derived from the envelope,

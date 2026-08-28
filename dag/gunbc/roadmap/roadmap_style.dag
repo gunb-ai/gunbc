@@ -1,0 +1,1048 @@
+module gunbc.roadmap_style
+
+import std.types { List, String, Int, Bool }
+import gunbc.design.material {
+  BuildRule, StaticRule, CssDecl, decl, css_block,
+  serialize_rules, reduced_motion_block,
+}
+import extdeps.languages.css.properties { Cursor, CustomProperty, BorderStyle, Opacity, GridColumn, Outline }
+import extdeps.languages.css.values { CssLength, css_px, css_length_wire }
+import gunbc.design.scale {
+  scale_var, scale_pair, scale_triple, scale_border, scale_root_css,
+  space_0, space_1, space_2, space_3, space_4, space_6, space_8, space_12, space_16, space_20, space_24,
+  text_10, text_11, text_12, text_13, text_14, text_15, text_18,
+  font_sans, font_mono,
+  radius_3, radius_999, border_1, border_2, measure_page, height_control, width_status,
+}
+import gunbc.design.theme {
+  Theme, day_theme, night_theme, theme_root_css, theme_scoped_blocks, role_decl,
+  CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
+  FigureRole, FocusRole, BoundaryRole,
+}
+import gunbc.site.moodboard { figure_rules }
+import gunbc.roadmap_interaction {
+  roadmap_behavior_rules, roadmap_behaviors,
+  dispatch_state_family, dispatch_stateful_channels,
+}
+import gunbc.design.state_response {
+  StateVarRole, FillVar, InkVar, PressedVar,
+  state_var_name, state_var_ref, state_rest_decl, state_paint_rules,
+  RestBinding, StateClassBinding,
+}
+import gunbc.fleet_hardware_standing_panel {
+  hardware_subject_reserved_width, hardware_axis_reserved_width,
+  hardware_standing_reserved_width,
+}
+import gunbc.fleet_capacity_panel {
+  capacity_subject_reserved_width, capacity_metric_reserved_width,
+}
+import gunbc.roadmap_component {
+  dispatch_reserved_width, theme_toggle_class, theme_toggle_reserved_width,
+  sound_toggle_class, sound_toggle_reserved_width,
+  disclosure_mark_class, swatch_toggle_class, swatch_toggle_reserved_width,
+  roadmap_row_grid_template, roadmap_row_height, roadmap_row_gutter, roadmap_row_column_gutter, node_mid_class,
+  roadmap_row_head_column, row_region_key,
+  RowRegion, StatusChipRegion, TitleRegion, ActuatorRegion,
+  workflow_controls_class,
+  node_activity_class, activity_summary_class, activity_detail_class,
+  activity_ledger_class, activity_obligation_class,
+  activity_evidence_class, activity_evidence_row_class,
+  activity_located_reason_class, session_facts_class,
+  dashboard_instance_class,
+}
+import extdeps.color.srgb { Srgb8 }
+import std.integer { uint8_channel_inclusive_max_value_derived }
+import extdeps.accessibility.wcag_contrast { srgb8_contrast_ratio_x100_for_max }
+import gunbc.design.palette { Swatch, SwatchSet, SwatchSetForUse, swatch_filed, swatch_paint, swatches_of, for_use_combined_set }
+import gunbc.design.catalog {
+  island_pastel, island_mint, island_aqua, island_ivory, island_butter, island_loam,
+  okabe_ito, solarized,
+}
+
+data roadmap_style_note: String = "The srv1 roadmap dashboard re-grounded on the register (operator, tenth pass 2026-07-21: refactor the roadmap visualization to the visual themes). This makes the dashboard the SECOND CONSUMER of gunbc.design.material and gunbc.design.theme — the design-library lift's own justification bar (a layer earns extraction when its second consumer arrives). Day atlas is the base projection (an operational tool read in daylight), night via prefers-color-scheme — same Theme rows as the public site, zero new colors. The old hand-hex stylesheet (traffic-light status chips, #0969da links, #2da44e progress bar) is deleted: status is conveyed by the state WORD plus quiet material differences — done recedes to text-dim, review carries a brass BORDER mark (brass is never a text material — review finding 2: day brass is 3.96:1, clears the 3:1 graphical bar, fails the 4.5:1 text bar); the progress bar fill is the figure role (progress = derived fact, lit). This dissolves the css_rule props-as-String scaffold that lived here (css_rule_props_scaffold): the stylesheet is now typed CssDecl rows on the shared BuildRule machinery. Figure-class styling (.mark-point/.mark-sink/.mark-edge and friends) is IMPORTED from moodboard.figure_rules — the single authority for figure role rows, accent_study precedent — never re-minted here (review 40756); roadmap_rules() is the full serialized set (instance rules + figure rules + behavior rules) so the unthemed-color census and the brass-never-text check see exactly what the page ships. P2 (token migration): every length/font literal now routes through a gunbc.design.scale token var (spacing/type/font + dimension), with scale_root_css() emitted in :root alongside the theme vars — proven visually-neutral (resolving the tokens reproduces the pre-migration CSS byte-for-byte) and gated by the untokened-length census over roadmap_instance_rules(). Residue named: gunbc.site.moodboard.figure_rules (imported here) still carries raw border/radius px — its dimension-token lift is moodboard's own follow-on, the sibling of the color lift, so the length census scopes to this module's authored rules."
+
+data island_venom_note: String = "The workspace's danger completion (operator-directed 2026-07-24, remodel W1b): island-pastel carries no danger hue by design and the base set stays pure — the completion lives HERE, at the consuming layer (gunbc.design.palette swatch_set_for_use_note). venom is the ACNH scorpion's tail — a venom red-brown sampled from the tail stinger (inspiration, not citation, the same standing as the island set itself). It is a FILL material for the loud/fail bands with ivory ink (graded AAA by the palette witnesses); venom-on-loam grades DecorationOnly, so venom is never a text color on the workspace's dark inks. Consumed by the band→material binding (W1c) and the /sandbox swatch auditioner (W1f)."
+
+data island_venom: Swatch = Swatch { name: "venom", color: Srgb8 { r: 138, g: 47, b: 35 } }
+
+data in_family_ink_note: String = "The ink rule, generalized from loam (operator ruling 2026-07-24, after the first band cut shipped loam on every light fill and the operator read mint's warm-brown ink as venom-family): a fill's ink is the fill's OWN hue at ink depth, so ink never borrows another band's temperature — mint carries a deep green, butter a dark olive, aqua a deep teal, venom keeps ivory (a dark fill takes the light ink). Each is a Derived member anchored on its fill, and the palette witnesses hold every ink >= AA on its own fill by the WCAG kernel."
+
+data island_mint_ink: Swatch = Swatch { name: "mint-ink", color: Srgb8 { r: 26, g: 74, b: 43 } }
+data island_butter_ink: Swatch = Swatch { name: "butter-ink", color: Srgb8 { r: 74, g: 60, b: 10 } }
+data island_aqua_ink: Swatch = Swatch { name: "aqua-ink", color: Srgb8 { r: 14, g: 62, b: 66 } }
+
+data island_pastel_for_workspace: SwatchSetForUse = SwatchSetForUse {
+  name: "island-pastel-for-workspace",
+  base: island_pastel,
+  completions: [
+    swatch_filed(sw: island_venom),
+    swatch_derived(sw: island_mint_ink, anchor_name: "mint", note: "mint hue at ink depth (in_family_ink_note)"),
+    swatch_derived(sw: island_butter_ink, anchor_name: "butter", note: "butter hue at ink depth (in_family_ink_note)"),
+    swatch_derived(sw: island_aqua_ink, anchor_name: "aqua", note: "aqua hue at ink depth (in_family_ink_note)"),
+  ],
+  use_note: "roadmap workspace bands need a danger hue (fail/loud fills) and in-family inks for the light fills; the completions live at this layer",
+}
+
+data band_paint_note: String = "The instrument's band materials (remodel W1c/W1g, operator rulings 2026-07-24). Two laws meet here. FIRST, the instrument-area amendment: the glare envelope is a per-area L×C region, and a tactile instrument is louder than prose chrome BY LAW — island-pastel fills that the quiet envelope refuses for body chrome are lawful on the control, because a big satisfying button is supposed to out-speak body text (the operator's GitHub-merge-button archetype: the band is carried by the FILL). SECOND, per-theme routing: a band color is a (theme × band) -> swatch assignment emitted under the SAME :root / [data-theme] / prefers-color-scheme selector grammar theme_root_css uses, so the day/night toggle and the swatch auditioner both retune it without structural change. Today both themes assign the same island swatches — the declared retune point is band_paints_for_theme, one row per theme when the operator's eyes ask for it. Mapping: invite (the rest-state 'safe to act' fill) = mint on loam ink · in-progress = butter on loam · ok (the session chip) = aqua on loam · fail and loud = venom on ivory (ink pairings graded by the WCAG kernel in the palette witnesses: loam carries AA on mint/aqua/butter, ivory carries AAA on venom)."
+
+type BandPaint {
+  key: String
+  fill: Swatch
+  ink: Swatch
+}
+
+data workspace_chosen_set_note: String = "GRADUATION (operator choice 2026-07-24, after auditioning live: 'okabe-ito actually looks pretty good — could we use that somehow?'): okabe-ito is the workspace's chosen band set. The default paints ARE the audition derivation — fills from the okabe mapping rows, inks picked per fill by the WCAG kernel (black wins every light fill; the graduated-default witness raises the bar to AA normal text, which every pairing clears). island-pastel demotes to a one-click audition option, built over its for-use completion so venom and the in-family inks stay modeled — and the kernel derivation REPRODUCES the old hand ink rows exactly (mint-ink wins on mint, ivory on venom), which is the in-family rule shown to be derivable rather than hand-held. Flipping the choice back is this one fn body plus the toggle defaults."
+
+fn workspace_band_paints() -> List<BandPaint> {
+  audition_paints(a: audition_okabe_ito)
+}
+
+data pressed_stop_note: String = "The press stop, DERIVED and TOTAL (round-5 fix, root-caused by the management lane 2026-07-24: the receipt targeted the ONE pressed var that existed — invite's — on the base selector, so pressing a fail/loud pill flashed the green family for the press window: a fabricated 'ready' painted over a fault, the pixel-layer twin of the fabricated plausible output §5 forbids. Partial derivation presenting as total; the graduation obligation discharged at the wrong grain; no witness asked the totality question). One authority ratio applied to every band fill — a press deepens THE MATERIAL IT PRESSES, per family, by construction: band_var_decls emits --band-<key>-pressed for every BandPaint row, so the pressed family is total over the bands AND over every audition set for free, and the two hand-deepened swatches this replaces (mint-pressed, bluish-green-pressed) dissolve into the derivation. The receipt realizes per state family and the family-preservation witness holds with a RED on a cross-family press."
+
+data press_stop_per_mille: Int = 842
+
+fn pressed_stop(c: Srgb8) -> Srgb8 {
+  Srgb8 {
+    r: (c.r * press_stop_per_mille) / 1000,
+    g: (c.g * press_stop_per_mille) / 1000,
+    b: (c.b * press_stop_per_mille) / 1000,
+  }
+}
+
+fn band_pressed_paint(r: BandPaint) -> String {
+  swatch_paint(sw: Swatch { name: join([r.key, "-pressed"], ""), color: pressed_stop(c: r.fill.color) })
+}
+
+fn band_paints_for_theme(t: Theme) -> List<BandPaint> {
+  workspace_band_paints()
+}
+
+data band_var_grammar_note: String = "The band var NAMES route through gunbc.design.state_response.state_var_name with the family's own prefix (composition slice 1): the prefix and role-suffix grammar was previously spelled here AND in every consumer that referenced a var — the census, the receipt values, the paint rules — so a rename would have been a hunt. Now the family row owns the prefix and the role enum owns the suffixes; this fold and every reference derive from the same two authorities."
+
+fn band_var_decls(rows: List<BandPaint>) -> List<CssDecl> {
+  fold(rows, init: [], f: (acc, r) => concat(acc, [
+    decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: FillVar) }, value: swatch_paint(sw: r.fill)),
+    decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: InkVar) }, value: swatch_paint(sw: r.ink)),
+    decl(prop: CustomProperty { name: state_var_name(prefix: dispatch_state_family.var_prefix, key: r.key, role: PressedVar) }, value: band_pressed_paint(r: r)),
+  ]))
+}
+
+data auditioner_note: String = "The swatch auditioner (remodel W1f, operator 2026-07-24: deliberately undecided on swatches — so switching must cost a click, not a restructure). Each audition set emits its band vars under :root[data-swatch-set=NAME] — the data-theme selector grammar reused verbatim, emitted AFTER the band blocks so an audition choice overrides both themes uniformly. The FILL mapping per set is five hand rows (which hue plays danger is a design call); the INK per fill is DERIVED — the set's own swatch with the highest computed WCAG contrast against that fill, by the same cited kernel that grades the palette — so an audition set never ships an illegible pairing by construction. A set whose fill mapping fails to resolve emits NO block and the sandbox witness counts it red — absence is loud, never a fabricated color. The island default is the absent attribute. The former press-fill residue is DISSOLVED (round-5): band_var_decls emits a derived --band-<key>-pressed for every row, so audition sets carry their own in-family press stops by the same construction as the chosen set."
+
+type AuditionFillRow {
+  key: String
+  swatch_name: String
+}
+
+type AuditionSet {
+  set_name: String
+  set: SwatchSet
+  fills: List<AuditionFillRow>
+}
+
+data audition_okabe_ito: AuditionSet = AuditionSet {
+  set_name: "okabe-ito",
+  set: okabe_ito,
+  fills: [
+    AuditionFillRow { key: "invite", swatch_name: "bluish_green" },
+    AuditionFillRow { key: "in-progress", swatch_name: "yellow" },
+    AuditionFillRow { key: "ok", swatch_name: "sky_blue" },
+    AuditionFillRow { key: "fail", swatch_name: "vermillion" },
+    AuditionFillRow { key: "loud", swatch_name: "vermillion" },
+  ],
+}
+
+data audition_island: AuditionSet = AuditionSet {
+  set_name: "island-pastel",
+  set: for_use_combined_set(u: island_pastel_for_workspace),
+  fills: [
+    AuditionFillRow { key: "invite", swatch_name: "mint" },
+    AuditionFillRow { key: "in-progress", swatch_name: "butter" },
+    AuditionFillRow { key: "ok", swatch_name: "aqua" },
+    AuditionFillRow { key: "fail", swatch_name: "venom" },
+    AuditionFillRow { key: "loud", swatch_name: "venom" },
+  ],
+}
+
+data audition_solarized: AuditionSet = AuditionSet {
+  set_name: "solarized",
+  set: solarized,
+  fills: [
+    AuditionFillRow { key: "invite", swatch_name: "green" },
+    AuditionFillRow { key: "in-progress", swatch_name: "yellow" },
+    AuditionFillRow { key: "ok", swatch_name: "cyan" },
+    AuditionFillRow { key: "fail", swatch_name: "red" },
+    AuditionFillRow { key: "loud", swatch_name: "red" },
+  ],
+}
+
+data audition_sets: List<AuditionSet> = [audition_island, audition_solarized]
+
+fn swatch_named(s: SwatchSet, name: String) -> Swatch? {
+  swatches_of(s: s) |> filter(sw => sw.name == name) |> first
+}
+
+fn audition_ink_for(s: SwatchSet, fill: Swatch) -> Swatch? {
+  match uint8_channel_inclusive_max_value_derived() {
+    Absent => none
+    Present { value: maxv } => Present {
+      value: fold(swatches_of(s: s), init: fill, f: (best, sw) => {
+        let r_sw = srgb8_contrast_ratio_x100_for_max(a: sw.color, b: fill.color, maxv: maxv)
+        let r_best = srgb8_contrast_ratio_x100_for_max(a: best.color, b: fill.color, maxv: maxv)
+        if r_sw > r_best { sw } else { best }
+      })
+    }
+  }
+}
+
+fn audition_paints(a: AuditionSet) -> List<BandPaint> {
+  fold(a.fills, init: [], f: (acc, row) => match swatch_named(s: a.set, name: row.swatch_name) {
+    Absent => acc
+    Present { value: fill } => match audition_ink_for(s: a.set, fill: fill) {
+      Absent => acc
+      Present { value: ink } => concat(acc, [BandPaint { key: row.key, fill: fill, ink: ink }])
+    }
+  })
+}
+
+fn audition_set_resolved(a: AuditionSet) -> Bool {
+  count(audition_paints(a: a)) == count(a.fills)
+}
+
+fn audition_block_css(a: AuditionSet) -> String {
+  let paints = audition_paints(a: a)
+  if count(paints) == count(a.fills) {
+    css_block(
+      selector: join([":root[data-swatch-set=\"", a.set_name, "\"]"], ""),
+      decls: band_var_decls(rows: paints))
+  } else {
+    ""
+  }
+}
+
+fn auditioner_root_css() -> String {
+  join(map(audition_sets, a => audition_block_css(a: a)), "\n")
+}
+
+fn band_root_css() -> String {
+  theme_scoped_blocks(
+    base: day_theme,
+    alternate: night_theme,
+    decls_for: t => band_var_decls(rows: band_paints_for_theme(t: t)),
+  )
+}
+
+fn roadmap_rules() -> List<BuildRule> {
+  concat(roadmap_instance_rules(),
+    concat(figure_rules(), roadmap_behavior_rules(rows: roadmap_behaviors)))
+}
+
+// The instrument's base rule, with its rest-state paint DERIVED (composition slice 1): the ink/fill/border decls splice in from the family roster's rest member via state_rest_decl at the exact positions the authored order demands, so the rest-to-invite binding is spelled only in dispatch_state_family — the base rule can no longer disagree with the roster it used to restate. Geometry decls stay authored here; they are the button's own facts, not state functions.
+fn dispatch_btn_base_decls() -> List<CssDecl> {
+  concat([
+    decl(prop: FontSize, value: scale_var(t: text_13)),
+    decl(prop: FontFamily, value: scale_var(t: font_sans)),
+  ],
+  concat(state_rest_decl(f: dispatch_state_family, prop: Color, role: InkVar),
+  concat(state_rest_decl(f: dispatch_state_family, prop: Background, role: FillVar),
+  concat([
+    decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+    decl(prop: BorderRadius, value: scale_var(t: radius_999)),
+    decl(prop: Padding, value: scale_pair(a: space_8, b: space_16)),
+    decl(prop: MarginLeft, value: scale_var(t: space_6)),
+    decl(prop: Cursor, value: "pointer"),
+    decl(prop: Display, value: "inline-flex"),
+    decl(prop: AlignItems, value: "center"),
+    decl(prop: JustifyContent, value: "center"),
+    decl(prop: MinHeight, value: scale_var(t: height_control)),
+    decl(prop: MinWidth, value: dispatch_reserved_width()),
+    decl(prop: TextAlign, value: "center"),
+  ],
+  concat(state_rest_decl(f: dispatch_state_family, prop: BorderColor, role: FillVar), [
+    decl(prop: FontWeight, value: "600"),
+  ])))))
+}
+
+data instance_rules_splice_note: String = "roadmap_instance_rules composes head + the state-paint fold + tail at the exact position the four hand per-state rules occupied (composition slice 1): the per-state blocks now emit from state_paint_rules over dispatch_state_family x dispatch_stateful_channels — roster order, channel order — so the mapping lives once and a new family member paints itself. The split into head/tail is placement, not meaning: byte order is pinned by the digest oracle."
+
+data row_actuator_scale_note: String = "The in-row actuator at chip scale (composition slice 2, SIGNED ruling 2026-07-24: chip-scale in rows; instrument feel carried by press physics; full-size specimen in the sandbox gallery). DERIVED-NOT-SET: the row override's extent is the ROW's density token (min-height var(--h-row)) and its width ceiling is the same caption-derived reservation the base declares (min-width and max-width one authority, so the chip is fixed-width in rows and a caption morph can never reflow the row) — no fresh literal enters here, witnessed. The base .dispatch-btn keeps the h-control full-size grain, which is exactly what the sandbox gallery renders (row scope is .node-head descendant, gallery buttons sit outside it). Press physics untouched: the detent and receipt folds target .dispatch-btn and apply at both scales, per-family-honest. The three PROVISIONAL rows discharged at the operator's pass (2026-07-25): h-row 24px SIGNED KEPT (height_row_note); the gutter SPLIT — columns space-8, badge flow space-4 (roadmap_row_gutter_split_note); the ellipsis glyph DEFERRED with its trigger — the clip guard stands until the first caption able to exceed the reservation lands (likely W2's ticket vocabulary), at which point the caption span moves the client textContent target and text-overflow becomes honest."
+
+data activity_region_style_note: String = "The under-head activity region's materials (A2, replacing workflow lamps v0 — the lamp/stage chip rules deleted with their DOM): the summary is a text-role sentence, the ledger and evidence rows are dim mono lines, and obligation state paints by TEXT COLOR from the same band vocabulary the chips used (pending dims, active in-progress, failed fail-band, refused loud-band) — state stays text-and-material distinguishable without borders fighting the row rhythm. A refused or anomalous container carries the loud left border the reason surfaces already use, so anomaly reads at a glance without a new material. The workflow-controls wrapper remains the one ActuatorRegion grid item, now holding actions only."
+
+data workflow_controls_compact_breakpoint: CssLength = css_px(n: 640)
+
+fn workflow_controls_compact_css() -> String {
+  join([
+    "@media (max-width: ",
+    css_length_wire(l: workflow_controls_compact_breakpoint),
+    ") { ",
+    css_block(selector: ".node-head", decls: [
+      decl(prop: GridTemplateColumns, value: "auto minmax(0, 1fr)"),
+      decl(prop: AlignItems, value: "start"),
+    ]),
+    " ",
+    css_block(selector: join([".", workflow_controls_class], ""), decls: [
+      decl(prop: GridColumn, value: "1 / -1"),
+      decl(prop: Width, value: "100%"),
+    ]),
+    " }",
+  ], "")
+}
+
+data action_prominence_rules_note: String = "PROMINENCE DERIVES FROM SELECTION x PRIORITY, NEVER FROM AVAILABILITY ALONE (A2 hierarchy closeout, operator gap ruling 2026-08-02). Every in-row dispatch control rests QUIET — surface fill, dim ink, plain border — whatever its priority, because an unselected row's operation is context, not the subject; the invite band returns only on the action-focal class, which the client program grants to exactly one control: the selected row's primary action. NAMED FOR WHAT IT MEANS (operator review, S0): the class says 'selection-granted focal prominence', not liveness — live already means live session / live observation elsewhere in this product, so the earlier action-live spelling was a semantic-overlap nickname and was renamed, not kept. An override (action-secondary) never earns action-focal — deliberate out-of-order dispatch stays operable and stays quiet. CASCADE LAW, load-bearing: these rules emit BEFORE the state-family paint rules at equal specificity, so a status class (requested / ok / fail / loud) always outvotes prominence — emphasis never overrides truth, and a quiet button that gets dispatched still turns its honest band. The rest-band key is READ from dispatch_state_family's roster rather than respelled, so a renamed rest member cannot strand these rules on a dead var. Scoping rides the action-* classes themselves — only production row buttons carry them (dispatch_button_axes_note), so the sandbox gallery's raw register specimens keep rendering full-voice, and the two-class specificity stays EQUAL to the status rules so emission order alone decides. The li.node:focus-visible outline is the keyboard half of the same selection grammar: a row is focusable (tabindex on the li), keyboard focus is VISIBLE by the register's focus token, and the client program grants the same selection on keyboard focus and Enter/Space that a click grants — selection is never mouse-exclusive."
+
+fn dispatch_rest_band_key() -> String {
+  fold(dispatch_state_family.members, init: "", f: (acc, m) => match m.binding {
+    RestBinding => m.key
+    StateClassBinding { class_name: _ } => acc
+  })
+}
+
+fn action_prominence_rules() -> List<BuildRule> {
+  [
+    StaticRule {
+      selector: RawSelector { text: ".dispatch-btn.action-primary, .dispatch-btn.action-secondary" },
+      decls: [
+        decl(prop: Color, value: "var(--text-dim)"),
+        decl(prop: Background, value: "var(--surface)"),
+        decl(prop: BorderColor, value: "var(--border)"),
+      ],
+    },
+    StaticRule {
+      selector: RawSelector { text: ".dispatch-btn.action-focal" },
+      decls: [
+        decl(prop: Color, value: state_var_ref(prefix: dispatch_state_family.var_prefix, key: dispatch_rest_band_key(), role: InkVar)),
+        decl(prop: Background, value: state_var_ref(prefix: dispatch_state_family.var_prefix, key: dispatch_rest_band_key(), role: FillVar)),
+        decl(prop: BorderColor, value: state_var_ref(prefix: dispatch_state_family.var_prefix, key: dispatch_rest_band_key(), role: FillVar)),
+      ],
+    },
+    StaticRule {
+      selector: RawSelector { text: "li.node:focus-visible" },
+      decls: [
+        decl(prop: Outline, value: scale_border(w: border_2, color_var: "var(--focus)")),
+      ],
+    },
+  ]
+}
+
+fn roadmap_instance_rules() -> List<BuildRule> {
+  concat(roadmap_instance_rules_head(),
+    concat(action_prominence_rules(),
+      concat(state_paint_rules(f: dispatch_state_family, channels: dispatch_stateful_channels),
+        roadmap_instance_rules_tail())))
+}
+
+fn roadmap_instance_rules_head() -> List<BuildRule> {
+  [
+    StaticRule { selector: RawSelector { text: "*" }, decls: [
+      decl(prop: BoxSizing, value: "border-box"),
+      decl(prop: Margin, value: scale_var(t: space_0)),
+      decl(prop: Padding, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ElementSelector { tag: "body" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_sans)),
+      decl(prop: FontSize, value: scale_var(t: text_14)),
+      decl(prop: LineHeight, value: "1.5"),
+      role_decl(prop: Color, r: TextRole),
+      role_decl(prop: Background, r: CanvasRole),
+    ] },
+    StaticRule { selector: ElementSelector { tag: "header" }, decls: [
+      decl(prop: Padding, value: scale_pair(a: space_12, b: space_24)),
+      decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--border)")),
+      role_decl(prop: Background, r: SurfaceRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "header-inner" }, decls: [
+      decl(prop: MaxWidth, value: scale_var(t: measure_page)),
+      decl(prop: MarginLeft, value: "auto"),
+      decl(prop: MarginRight, value: "auto"),
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_12)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "wordmark" }, decls: [
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: FontSize, value: scale_var(t: text_15)),
+      decl(prop: LetterSpacing, value: "0.02em"),
+      role_decl(prop: Color, r: TextRole),
+    ] },
+    StaticRule { selector: ElementSelector { tag: "h1" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_18)),
+      decl(prop: FontWeight, value: "500"),
+    ] },
+    StaticRule { selector: ElementSelector { tag: "h2" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_15)),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Margin, value: scale_triple(a: space_16, b: space_0, c: space_8)),
+    ] },
+    StaticRule { selector: RawSelector { text: "h3.group-label" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontWeight, value: "500"),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: Margin, value: scale_triple(a: space_12, b: space_0, c: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "roadmap" }, decls: [
+      decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
+      decl(prop: MaxWidth, value: scale_var(t: measure_page)),
+      decl(prop: MarginLeft, value: "auto"),
+      decl(prop: MarginRight, value: "auto"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".daily-workspace > * + *, .roadmap > * + *" }, decls: [
+      decl(prop: MarginTop, value: scale_var(t: space_20)),
+    ] },
+    StaticRule { selector: RawSelector { text: "details.section-fold > summary" }, decls: [
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: ListStyle, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: "details.section-fold > summary::-webkit-details-marker" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "section-band" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: Padding, value: scale_pair(a: space_4, b: space_8)),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+    ] },
+    StaticRule { selector: RawSelector { text: ".section-band h2" }, decls: [
+      decl(prop: Margin, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "section-counts" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontVariantNumeric, value: "tabular-nums"),
+    ] },
+    StaticRule { selector: ElementSelector { tag: "ul" }, decls: [
+      decl(prop: ListStyle, value: "none"),
+      decl(prop: PaddingLeft, value: scale_var(t: space_16)),
+    ] },
+    StaticRule { selector: RawSelector { text: "li.node" }, decls: [
+      decl(prop: Padding, value: scale_pair(a: space_2, b: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "status" }, decls: [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: MinWidth, value: scale_var(t: width_status)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+      decl(prop: TextAlign, value: "center"),
+      decl(prop: MarginRight, value: scale_var(t: space_6)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "status-open" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "status-review" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: BorderColor, value: "var(--focus)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "status-done" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "status-superseded" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: BorderStyle, value: "dashed"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".node-superseded .title" }, decls: [
+      decl(prop: TextDecoration, value: "line-through"),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "superseded-by" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: MarginLeft, value: scale_var(t: space_6)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "title" }, decls: [
+      decl(prop: MarginRight, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "owner" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: MarginRight, value: scale_var(t: space_6)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "sizing" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: MarginRight, value: scale_var(t: space_6)),
+      decl(prop: FontStyle, value: "italic"),
+    ] },
+    StaticRule { selector: ElementSelector { tag: "a" }, decls: [
+      role_decl(prop: Color, r: FigureRole),
+      decl(prop: TextDecoration, value: "none"),
+    ] },
+    StaticRule { selector: PseudoSuffix { base: "a", pseudo: "hover" }, decls: [
+      decl(prop: TextDecoration, value: "underline"),
+    ] },
+    StaticRule { selector: ElementSelector { tag: "code" }, decls: [
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "prose" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "depth-limit" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontStyle, value: "italic"),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "fleet-hardware-standing" }, decls: [
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_12, b: space_16)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-heading" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-summary" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-outstanding" }, decls: [
+      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-row" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_12)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-subject" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MinWidth, value: hardware_subject_reserved_width()),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-axis" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: MinWidth, value: hardware_axis_reserved_width()),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-cell" }, decls: [
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MinWidth, value: hardware_standing_reserved_width()),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-confirmed" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-refused" }, decls: [
+      decl(prop: Color, value: "var(--band-loud)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-misfiled" }, decls: [
+      decl(prop: Color, value: "var(--band-loud)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-unread" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontStyle, value: "italic"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "hardware-detail" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "fleet-capacity-panel" }, decls: [
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_12, b: space_16)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-title" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-summary" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-row" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_12)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-subject" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MinWidth, value: capacity_subject_reserved_width()),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-metric" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: MinWidth, value: capacity_metric_reserved_width()),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-standing" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-withdrawn" }, decls: [
+      decl(prop: Opacity, value: "0.6"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-withdrawn-total" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "capacity-declared-note" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: FontStyle, value: "italic"),
+      decl(prop: MarginTop, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "daily-workspace" }, decls: [
+      decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
+      decl(prop: MaxWidth, value: scale_var(t: measure_page)),
+      decl(prop: MarginLeft, value: "auto"),
+      decl(prop: MarginRight, value: "auto"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "roadmap-frontier" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_20)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "frontier-bucket" }, decls: [
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_12, b: space_16)),
+      role_decl(prop: Background, r: SurfaceRole),
+    ] },
+    StaticRule { selector: RawSelector { text: ".frontier-bucket h2" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_14)),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Margin, value: scale_triple(a: space_0, b: space_0, c: space_8)),
+      decl(prop: TextTransform, value: "lowercase"),
+      decl(prop: LetterSpacing, value: "0.04em"),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "frontier-ready" }, decls: [
+      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--focus)")),
+    ] },
+    StaticRule { selector: RawSelector { text: ".frontier-ready h2" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+    ] },
+    StaticRule { selector: RawSelector { text: ".frontier-upcoming h2" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: RawSelector { text: ".frontier-done h2" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: dashboard_instance_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--focus)")),
+      decl(prop: PaddingLeft, value: scale_var(t: space_6)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "program-progress" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "program-progress-name" }, decls: [
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: FontSize, value: scale_var(t: text_14)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "program-progress-count" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontVariantNumeric, value: "tabular-nums"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "finish-line-counts" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontVariantNumeric, value: "tabular-nums"),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "finish-lines" }, decls: [
+      decl(prop: PaddingLeft, value: scale_var(t: space_0)),
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "finish-line" }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: GridTemplateColumns, value: "auto auto 1fr"),
+      decl(prop: Gap, value: scale_pair(a: space_2, b: space_8)),
+      decl(prop: AlignItems, value: "baseline"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "finish-line-state" }, decls: [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_4)),
+      decl(prop: TextAlign, value: "center"),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: RawSelector { text: ".finish-line-accepted .finish-line-state" }, decls: [
+      role_decl(prop: BorderColor, r: FigureRole),
+      role_decl(prop: Color, r: TextRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "finish-line-name" }, decls: [
+      decl(prop: FontWeight, value: "500"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "finish-line-node" }, decls: [
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "finish-line-claim" }, decls: [
+      decl(prop: GridColumn, value: "1 / -1"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "dependencies" }, decls: [
+      decl(prop: Width, value: "100%"),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "item-facts" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: Gap, value: scale_var(t: space_6)),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_1)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "dispatch-btn" }, decls: dispatch_btn_base_decls() },
+    StaticRule { selector: ClassSelector { name: sound_toggle_class }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
+      decl(prop: MarginLeft, value: "auto"),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: MinWidth, value: sound_toggle_reserved_width()),
+      decl(prop: TextAlign, value: "center"),
+      decl(prop: TextTransform, value: "lowercase"),
+      decl(prop: LetterSpacing, value: "0.03em"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "node-head" }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: GridTemplateColumns, value: roadmap_row_grid_template()),
+      decl(prop: Gap, value: scale_var(t: roadmap_row_column_gutter)),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
+    ] },
+    StaticRule { selector: RawSelector { text: ".node-head > .status" }, decls: [
+      decl(prop: GridColumn, value: to_string(roadmap_row_head_column(region_key: row_region_key(r: StatusChipRegion)))),
+    ] },
+    StaticRule { selector: ClassSelector { name: node_mid_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: roadmap_row_gutter)),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+      decl(prop: GridColumn, value: to_string(roadmap_row_head_column(region_key: row_region_key(r: TitleRegion)))),
+    ] },
+    StaticRule { selector: ClassSelector { name: workflow_controls_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "flex-end"),
+      decl(prop: Gap, value: scale_var(t: roadmap_row_gutter)),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+      decl(prop: GridColumn, value: to_string(roadmap_row_head_column(region_key: row_region_key(r: ActuatorRegion)))),
+    ] },
+    StaticRule { selector: ClassSelector { name: node_activity_class }, decls: [
+      decl(prop: MarginTop, value: scale_var(t: space_4)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+    ] },
+    StaticRule { selector: RawSelector { text: join([
+      ".", node_activity_class, "[data-arm=\"refused\"], .",
+      node_activity_class, "[data-attention=\"anomalous\"]",
+    ], "") }, decls: [
+      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
+      decl(prop: PaddingLeft, value: scale_var(t: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: activity_summary_class }, decls: [
+      decl(prop: Display, value: "block"),
+      role_decl(prop: Color, r: TextRole),
+    ] },
+    StaticRule { selector: RawSelector { text: join([
+      "details.", activity_detail_class, " > summary",
+    ], "") }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: Cursor, value: "pointer"),
+    ] },
+    StaticRule { selector: ClassSelector { name: activity_obligation_class }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: RawSelector { text: join([
+      ".", activity_obligation_class, "[data-state=\"pending\"]",
+    ], "") }, decls: [
+      decl(prop: Opacity, value: "0.72"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([
+      ".", activity_obligation_class, "[data-state=\"active\"]",
+    ], "") }, decls: [
+      decl(prop: Color, value: "var(--band-in-progress)"),
+      decl(prop: FontWeight, value: "600"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([
+      ".", activity_obligation_class, "[data-state=\"complete\"]",
+    ], "") }, decls: [
+      role_decl(prop: Color, r: TextRole),
+    ] },
+    StaticRule { selector: RawSelector { text: join([
+      ".", activity_obligation_class, "[data-state=\"failed\"]",
+    ], "") }, decls: [
+      decl(prop: Color, value: "var(--band-fail)"),
+      decl(prop: FontWeight, value: "600"),
+    ] },
+    StaticRule { selector: RawSelector { text: join([
+      ".", activity_obligation_class, "[data-state=\"refused\"]",
+    ], "") }, decls: [
+      decl(prop: Color, value: "var(--band-loud)"),
+      decl(prop: FontWeight, value: "600"),
+    ] },
+    StaticRule { selector: ClassSelector { name: activity_evidence_row_class }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: activity_located_reason_class }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
+      decl(prop: PaddingLeft, value: scale_var(t: space_4)),
+    ] },
+    StaticRule { selector: ClassSelector { name: session_facts_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_4)),
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: "workspace-observation" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
+      decl(prop: PaddingLeft, value: scale_var(t: space_8)),
+      decl(prop: MarginBottom, value: scale_var(t: space_8)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "workspace-observation-summary" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "workspace-observation-reason" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+    ] },
+    StaticRule { selector: RawSelector { text: ".frontier-active > h2" }, decls: [
+      decl(prop: Color, value: "var(--band-in-progress)"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "family-group" }, decls: [
+      decl(prop: Margin, value: scale_pair(a: space_4, b: space_0)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "family-head" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "family-claim" }, decls: [
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "family-count" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontVariantNumeric, value: "tabular-nums"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".node-head .dispatch-btn" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: MinHeight, value: scale_var(t: roadmap_row_height)),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: space_8)),
+      decl(prop: MarginLeft, value: scale_var(t: space_0)),
+      decl(prop: MaxWidth, value: dispatch_reserved_width()),
+      decl(prop: Overflow, value: "hidden"),
+      decl(prop: WhiteSpace, value: "nowrap"),
+    ] },
+    StaticRule { selector: RawSelector { text: "details.item-detail" }, decls: [
+      decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_3)),
+      decl(prop: MarginLeft, value: scale_var(t: space_12)),
+    ] },
+    StaticRule { selector: RawSelector { text: "details.item-detail > summary" }, decls: [
+      decl(prop: Cursor, value: "pointer"),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: ListStyle, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: "details.item-detail > summary::-webkit-details-marker" }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: "details.ticket-row > summary" }, decls: [
+      role_decl(prop: Color, r: FigureRole),
+    ] },
+    StaticRule { selector: ClassSelector { name: disclosure_mark_class }, decls: [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: MarginRight, value: scale_var(t: space_2)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "cleanup-chip" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
+      decl(prop: MarginLeft, value: scale_var(t: space_2)),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: TextTransform, value: "lowercase"),
+      decl(prop: LetterSpacing, value: "0.03em"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".cleanup-chip:disabled" }, decls: [
+      decl(prop: Cursor, value: "default"),
+      decl(prop: Opacity, value: "0.64"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "dispatch-attempts" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: Margin, value: scale_triple(a: space_2, b: space_0, c: space_1)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "observe-refused" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
+      decl(prop: PaddingLeft, value: scale_var(t: space_6)),
+      decl(prop: Margin, value: scale_triple(a: space_4, b: space_0, c: space_8)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "disclosure-reason" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--band-loud)")),
+      decl(prop: PaddingLeft, value: scale_var(t: space_6)),
+      decl(prop: Margin, value: scale_triple(a: space_2, b: space_0, c: space_2)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "item-body" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: Margin, value: scale_triple(a: space_2, b: space_0, c: space_2)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-brief" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: Margin, value: scale_triple(a: space_2, b: space_0, c: space_3)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-field" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: scale_var(t: space_6)),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_1)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-field-label" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-updates" }, decls: [
+      decl(prop: Margin, value: scale_triple(a: space_3, b: space_0, c: space_1)),
+      decl(prop: PaddingLeft, value: scale_var(t: space_8)),
+      decl(prop: BorderLeft, value: scale_border(w: border_1, color_var: "var(--border)")),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-updates-head" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-update" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: Margin, value: scale_triple(a: space_1, b: space_0, c: space_1)),
+    ] },
+    StaticRule { selector: ClassSelector { name: "ticket-update-date" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: MarginRight, value: scale_var(t: space_6)),
+    ] },
+  ]
+}
+
+fn roadmap_instance_rules_tail() -> List<BuildRule> {
+  [
+    StaticRule { selector: ClassSelector { name: swatch_toggle_class }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: MinWidth, value: swatch_toggle_reserved_width()),
+      decl(prop: TextAlign, value: "center"),
+      decl(prop: TextTransform, value: "lowercase"),
+      decl(prop: LetterSpacing, value: "0.03em"),
+    ] },
+    StaticRule { selector: ClassSelector { name: theme_toggle_class }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
+      decl(prop: MarginLeft, value: scale_var(t: space_2)),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: MinWidth, value: theme_toggle_reserved_width()),
+      decl(prop: TextAlign, value: "center"),
+      decl(prop: TextTransform, value: "lowercase"),
+      decl(prop: LetterSpacing, value: "0.03em"),
+    ] },
+  ]
+}
+
+fn roadmap_css() -> String {
+  join([
+    scale_root_css(),
+    theme_root_css(base: day_theme, alternate: night_theme),
+    band_root_css(),
+    auditioner_root_css(),
+    serialize_rules(rules: roadmap_rules()),
+    workflow_controls_compact_css(),
+    reduced_motion_block(rules: roadmap_rules()),
+  ], "\n")
+}

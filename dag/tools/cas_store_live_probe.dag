@@ -1,0 +1,73 @@
+module tools.cas_store_live_probe
+
+import std.types { NonEmptyStr, String, Bool, Int }
+import std.content_hash { content_hash_of_value }
+import std.durable_compare_and_set { CasAttempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_attempt, cas_generation_count }
+import gunbc.durable_cas_file_store { CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set }
+
+// The live receipt for the EFFECTFUL half of the file-backed CAS store, which
+// the hermetic witness cannot reach.
+//
+// It is an entry point rather than a shell script because DESIGN rules an ad-hoc
+// .sh in this repository to be unmodeled realization: if a measurement is worth
+// re-deriving it is worth an entry point. Run it as
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/tools/cas_store_live_probe.dag --function cas_store_live_probe \
+//     --arg root=<an existing EMPTY directory>
+//
+// WHY IT COVERS WHAT IT COVERS. An earlier revision of this probe asserted only
+// that a first write commits and a second loses. That passed against a store
+// carrying a live precondition defect, because both of its attempts expected an
+// ABSENT slot -- the one expectation the old derivation got right. The probe was
+// strongest exactly where the design was already sound and silent where the
+// defect lived, which is the more useful half of the lesson.
+//
+// The two rows that would have caught it are the last two: an attempt expecting
+// generation 7 must be REFUSED against a slot at generation 2, and refused again
+// against a slot that does not exist at all. Under the old derivation the target
+// was computed from the expectation, so both found generation 8 free, both won
+// the exclusive create, and both reported a commit on a precondition that was
+// never true.
+
+fn cas_probe_attempt(key: NonEmptyStr, payload: NonEmptyStr, expected: CasExpectation) -> CasAttempt<NonEmptyStr> {
+  cas_attempt(key: key, expected: expected, proposed: payload, proposed_content: content_hash_of_value(value: payload))
+}
+
+// 1 = committed (returns the generation as 100 + g so a commit is never
+// confusable with a refusal code), 2 = precondition failed, 3 = store refused,
+// 4 = refused at the mint. Distinct codes because these are different outcomes
+// with different remedies and a Bool would collapse them.
+fn cas_probe_code(outcome: CasOutcome<NonEmptyStr>) -> Int {
+  match outcome {
+    CasCommitted { committed: v } => 100 + cas_generation_count(g: v.generation)
+    CasPreconditionFailed { expected: _, observed: _ } => 2
+    CasStoreRefused { cause: _ } => 3
+  }
+}
+
+fn cas_probe_run(root: NonEmptyStr, key: NonEmptyStr, payload: NonEmptyStr, expected: CasExpectation) -> Int {
+  match admit_cas_attempt(attempt: cas_probe_attempt(key: key, payload: payload, expected: expected)) {
+    CasAttemptAdmitted { verified: v } => cas_probe_code(outcome: file_compare_and_set(root: root, verified: v))
+    CasAttemptDigestMismatch { claimed: _, actual: _ } => 4
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } => 4
+    CasAttemptKeyNotSlotAddressable { key: _ } => 4
+  }
+}
+
+fn cas_store_live_probe(root: NonEmptyStr) -> Bool {
+  let first = cas_probe_run(root: root, key: "slot-a", payload: "state-A", expected: ExpectSlotAbsent)
+  let repeat = cas_probe_run(root: root, key: "slot-a", payload: "state-B", expected: ExpectSlotAbsent)
+  let advance = cas_probe_run(root: root, key: "slot-a", payload: "state-C", expected: ExpectSlotGeneration { generation: 1 })
+  let stale = cas_probe_run(root: root, key: "slot-a", payload: "state-D", expected: ExpectSlotGeneration { generation: 7 })
+  let empty_slot = cas_probe_run(root: root, key: "slot-b", payload: "state-E", expected: ExpectSlotGeneration { generation: 7 })
+  first == 101
+    && repeat == 2
+    && advance == 102
+    && stale == 2
+    && empty_slot == 2
+}
+
+fn cas_store_live_probe_stale_generation_against_empty_slot(root: NonEmptyStr) -> Int {
+  cas_probe_run(root: root, key: "slot-b", payload: "state-E", expected: ExpectSlotGeneration { generation: 7 })
+}

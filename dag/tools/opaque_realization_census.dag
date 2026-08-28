@@ -1,0 +1,1127 @@
+module tools.opaque_realization_census
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { trim }
+import extdeps.shell
+import extdeps.gunbc
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.filesystem.filesystem_io { Filesystem }
+import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+
+// THE OPAQUE-REALIZATION CENSUS.
+//
+// A type's REALIZATION -- how a target spells it -- is a fact about the module that DECLARES the
+// type. When the emitter writes that spelling at a USE site instead of the declared NAME, the fact
+// is exported into a scope that never agreed to it, and the spelling is then re-resolved by the
+// consumer's own bindings. Where the consumer binds that spelling to something else, one spelling
+// names two types and the emitted artifact cannot typecheck; where it does not, the same
+// substitution has happened and is merely silent until some consumer imports the name.
+//
+// This module measures that. It is an INSTRUMENT, not a gate and not a board: it emits one entry's
+// closure with the compiler under measurement, reads what that compiler WROTE, and returns a typed
+// population. It stores no counts, and no workflow invokes it.
+//
+// WHY IT READS THE EMITTED ARTIFACT AND NOT THE SOURCE. The defect IS a divergence between what
+// the source authored and what the emitter wrote, so a source-side census cannot see it by
+// construction -- an authored `id: Symbol` is present and correct in every case this census
+// separates. The subject is therefore established from the emitted tree, and the source is
+// consulted for exactly one further question (below) that the emitted tree cannot answer.
+//
+// EXECUTION PROVENANCE IS THE CARRIER'S FIRST JOB, ahead of any count it reports, for the reason
+// DESIGN's execution-provenance-loss row states: a count of zero and an unreached stage must not
+// render identically. So a census that refused before the emitter ran has its own variant naming
+// the stage, and cannot inhabit the same shape as a census that ran and found nothing.
+
+// ---------------------------------------------------------------------------------------------
+// The subject: what a declaring module's emitted file claims about one of its own type names.
+
+// An emitted module's own statement of how it realizes a type it declares. `spelling` empty means
+// the emitter wrote the type under its OWN name (a phantom-carrier struct), which is the shape that
+// cannot be substituted at a use site at all.
+type RealizationClaim {
+  declaring_file: String
+  name: String
+  spelling: String
+}
+
+// One consumer module's `use` of a name another module declares. This is the join key: the census
+// asks, for each such pair, what the consumer's own body actually spells.
+type ConsumerImport {
+  consumer_file: String
+  declaring_file: String
+  name: String
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE POPULATION PREDICATE, and it mentions no future (operator ruling relayed via warm-hawk-909,
+// 2026-08-27): a source type occurrence resolves to declaration D; the target backend EMITS A NAMED
+// PROVIDER DECLARATION for D; and the consumer occurrence renders D's REALIZATION SPELLING rather
+// than referring to that provider declaration. That is finite and mechanically enumerable from the
+// emitted artifact alone, which is why this census reads the artifact and not the source.
+//
+// WHAT IS DELIBERATELY NOT THE PREDICATE: collision, unresolvedness, and any rustc diagnostic code.
+// Those are MANIFESTATION STATES of the bypass, not the thing being counted. Defining the
+// population as "occurrences that would break if some future consumer imported a colliding name"
+// would be hypothetical and unbounded -- the exact objection this repository makes to other
+// populations -- so the manifestation rides on the row and never decides membership. The harm is
+// latent in one arm; the defect is not.
+//
+// THIS IS NOT A NAMESPACE FAILURE, and the carrier is named so that nobody re-opens one. Resolution
+// found the declared name and import emission emitted it; the target projection then replaced the
+// resolved interface with its implementation spelling. The emitted-and-unused provider import is an
+// excellent specimen witness of exactly that and is not the classifier -- a consumer that never
+// spells either name is NoConsumerOccurrence below, which is not a member of the population.
+// ReboundToDifferentTargetDeclaration -- the realization spelling is bound in the consumer to a
+// DIFFERENT target declaration, so one spelling names two types after resolution. This is the arm
+// that produces a type error. CurrentlyCompatible -- the spelling is not re-bound here; the same
+// substitution has happened and nothing refuses it today.
+type BypassManifestation
+  = ReboundToDifferentTargetDeclaration { rebound_to: String }
+  | CurrentlyCompatible
+
+// ProviderDeclarationPreserved -- the consumer refers to the provider declaration by name: the
+// healthy control. ProviderInterfaceBypass -- the population. NoConsumerOccurrence -- the consumer
+// imports the name and spells NEITHER it nor its realization, so there is no occurrence and the
+// predicate has no subject; counted separately so it cannot inflate either arm above.
+type UseSiteDisposition
+  = ProviderDeclarationPreserved {
+      consumer_file: String
+      declaring_file: String
+      name: String
+    }
+  | ProviderInterfaceBypass {
+      consumer_file: String
+      declaring_file: String
+      name: String
+      realization: String
+      manifestation: BypassManifestation
+    }
+  | NoConsumerOccurrence {
+      consumer_file: String
+      declaring_file: String
+      name: String
+      realization: String
+    }
+
+// ONE DECLARATION CAN RECEIVE BOTH DISPOSITIONS INSIDE ONE CLOSURE, and that is derived here rather
+// than left for a reader to aggregate out of the rows. It is the load-bearing observation the census
+// produces: a rule keyed on WHICH DECLARATION a reference resolves to answers identically for every
+// occurrence of that declaration, so it cannot produce a split, and a split therefore forecloses a
+// declaration-keyed repair before one is built. Stated as a sentence it is a plausible objection;
+// derived as a row it is re-derivable by running the instrument, which a prose claim is not.
+type SubjectConsistency
+  = SubjectUniformlyPreserved { preserved: Int }
+  | SubjectUniformlyBypassed { bypassed: Int }
+  | SubjectDispositionSplit { preserved: Int, bypassed: Int }
+  | SubjectHasNoOccurrences
+
+type SubjectConsistencyRow {
+  declaring_file: String
+  name: String
+  consistency: SubjectConsistency
+}
+
+// WHETHER A GIVEN BYPASS WAS INTENDED IS NOT DECIDABLE FROM THIS TREE, and this carrier says so
+// rather than inferring intent from whether rustc happens to accept the output. The intended split
+// -- preserve the provider declaration, versus inline the target representation, which is the right
+// answer for a machine primitive -- is not authored on any declaration in the corpus today, so the
+// census reports the standing once for the whole run instead of guessing it per row.
+type ReferenceRealizationPolicyStanding
+  = PolicyUnestablished { reason: String }
+
+// ---------------------------------------------------------------------------------------------
+// THE ONE QUESTION THE EMITTED TREE CANNOT ANSWER. `pub type T = R;` in a declaring module is
+// written both for an OPAQUE declaration (`type T` with no body, whose realization is supplied
+// entirely by the target) and for an AUTHORED ALIAS (`type T = ...`, whose realization is derived
+// from a body the author wrote). Those are indistinguishable in the artifact and they are different
+// subjects, so the source declaration is read for this and only this. A source file that cannot be
+// located refuses rather than defaulting to either answer.
+type DeclarationBodyStanding
+  = DeclaredOpaque
+  | DeclaredWithBody
+  | DeclarationSourceUnresolved { attempted: String }
+
+type OpaqueSubjectRow {
+  declaring_file: String
+  source_module: String
+  name: String
+  standing: DeclarationBodyStanding
+}
+
+// ---------------------------------------------------------------------------------------------
+
+// WHERE THE EMITTED TREE CAME FROM IS A FACT THE MEASUREMENT CARRIES, never an assumption. A census
+// that emitted its own subject and a census handed a directory are different provenances, and a
+// consumer must not have to guess which it is reading.
+//
+// WHY THE SUPPLIED ARM EXISTS AT ALL, stated because a second mode is otherwise a smell: the
+// emitter is a separate process holding its own copy of the closure, and running it from inside the
+// interpreter that then holds the whole emitted corpus put both on one machine at once -- measured,
+// the runner was killed at 97% of its memory and the emit stderr stops mid-phase. Emitting and
+// censusing are two computations over one artifact, not one computation, and separating them is the
+// decomposition rather than a way around the failure. The census refuses either way if no readable
+// file reaches it; it never reports an empty tree as a clean result.
+type EmittedTreeProvenance
+  = EmittedByThisRun { entry: String }
+  | SuppliedTree { src_dir: String }
+
+fn tree_provenance_text(p: EmittedTreeProvenance) -> String {
+  match p {
+    EmittedByThisRun { entry: e } => concat("emitted-by-this-run entry=", e)
+    SuppliedTree { src_dir: d } => concat("supplied-tree src_dir=", d)
+  }
+}
+
+type CensusStage
+  = OpaqueCensusStageScratchDirectory
+  | OpaqueCensusStageCompilerBinary
+  | OpaqueCensusStageEmit
+  | OpaqueCensusStageEmittedTreeRead
+
+type OpaqueRealizationCensus
+  = OpaqueCensusUnestablished {
+      provenance: EmittedTreeProvenance
+      stage: CensusStage
+      cause: String
+    }
+  | OpaqueCensusTaken {
+      provenance: EmittedTreeProvenance
+      emitted_file_count: Int
+      dispositions: List<UseSiteDisposition>
+      subject_consistency: List<SubjectConsistencyRow>
+      opaque_subjects: List<OpaqueSubjectRow>
+    }
+
+fn census_stage_text(stage: CensusStage) -> String {
+  match stage {
+    OpaqueCensusStageScratchDirectory => "workspace"
+    OpaqueCensusStageCompilerBinary => "binaries"
+    OpaqueCensusStageEmit => "emit"
+    OpaqueCensusStageEmittedTreeRead => "artifact-listing"
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Text reading. These are the only primitives the census needs, and they are written as boundary
+// checks rather than substring searches: `String` occurring inside `NonEmptyString` is not an
+// occurrence of `String`, and a census that counted it would report a use site that is not there.
+
+fn is_identifier_code_point(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57)
+    || (cp >= 65 && cp <= 90)
+    || (cp >= 97 && cp <= 122)
+    || cp == 95
+}
+
+fn edge_is_boundary(edge: String) -> Bool {
+  if edge == "" {
+    true
+  } else {
+    !is_identifier_code_point(cp: code_point(ch: edge))
+  }
+}
+
+fn first_char(s: String) -> String {
+  if string_length(s: s) == 0 { "" } else { substring(s: s, start: 0, end: 1) }
+}
+
+fn last_char(s: String) -> String {
+  let n = string_length(s: s)
+  if n == 0 { "" } else { substring(s: s, start: n - 1, end: n) }
+}
+
+type TokenScan {
+  started: Bool
+  prev_tail: String
+  found: Bool
+}
+
+// An occurrence of `token` in `text` sits between two consecutive split pieces; it is a real
+// occurrence exactly when neither adjacent character continues an identifier.
+fn mentions_token(text: String, token: String) -> Bool {
+  if token == "" {
+    false
+  } else {
+    fold(
+      split(s: text, delimiter: token),
+      init: TokenScan { started: false, prev_tail: "", found: false },
+      f: (acc, piece) =>
+        if !acc.started {
+          TokenScan { started: true, prev_tail: last_char(s: piece), found: false }
+        } else if acc.found {
+          TokenScan { started: true, prev_tail: last_char(s: piece), found: true }
+        } else {
+          TokenScan {
+            started: true,
+            prev_tail: last_char(s: piece),
+            found: edge_is_boundary(edge: acc.prev_tail)
+              && edge_is_boundary(edge: first_char(s: piece))
+          }
+        }
+    ).found
+  }
+}
+
+fn text_lines(text: String) -> List<String> {
+  split(s: text, delimiter: "\n")
+}
+
+fn after_prefix(line: String, prefix: String) -> String {
+  substring(s: line, start: string_length(s: prefix), end: string_length(s: line))
+}
+
+fn before_delimiter(s: String, delimiter: String) -> String {
+  match split(s: s, delimiter: delimiter) |> first {
+    Present { value: head } => head
+    Absent => s
+  }
+}
+
+fn after_delimiter(s: String, delimiter: String) -> String {
+  let parts = split(s: s, delimiter: delimiter)
+  match parts |> skip(1) |> first {
+    Present { value: rest } => rest
+    Absent => ""
+  }
+}
+
+fn trim_spaces(s: String) -> String {
+  trim(s: s)
+}
+
+// The leading identifier of a realization spelling. `Rc<Vec<String>>` is spelled with `Rc` at the
+// use site, so `Rc` is what a consumer body must mention for the expansion to be observable there.
+fn spelling_head(spelling: String) -> String {
+  let before_args = before_delimiter(s: spelling, delimiter: "<")
+  let segments = split(s: before_args, delimiter: "::")
+  match segments |> reverse |> first {
+    Present { value: leaf } => trim_spaces(s: leaf)
+    Absent => trim_spaces(s: before_args)
+  }
+}
+
+// A spelling that can be SHADOWED is a single bare identifier. `()`, `Vec<u8>` and
+// `serde_json::Value` cannot be re-bound by a consumer's imports, so a collision is unrepresentable
+// for them however many consumers expand them.
+fn spelling_is_bare_identifier(spelling: String) -> Bool {
+  spelling != ""
+    && !string_contains(s: spelling, pattern: "<")
+    && !string_contains(s: spelling, pattern: "::")
+    && !string_contains(s: spelling, pattern: " ")
+    && !string_contains(s: spelling, pattern: "(")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Reading one emitted file.
+
+type EmittedFile {
+  file_key: String
+  source_module: String
+  body: String
+  claims: List<RealizationClaim>
+  imports: List<ConsumerImport>
+  bound_names: List<String>
+}
+
+fn is_use_line(line: String) -> Bool {
+  starts_with(s: line, prefix: "use ") || starts_with(s: line, prefix: "pub use ")
+}
+
+fn emitted_file_key(path: String) -> String {
+  let segments = split(s: path, delimiter: "/")
+  let base = match segments |> reverse |> first {
+    Present { value: b } => b
+    Absent => path
+  }
+  before_delimiter(s: base, delimiter: ".rs")
+}
+
+// The emitted header names the source module the file was generated from. It is the only link back
+// to the authored declaration, and a file without it yields an empty module rather than a guess.
+fn emitted_source_module(lines: List<String>) -> String {
+  fold(
+    lines,
+    init: "",
+    f: (acc, line) =>
+      if acc != "" {
+        acc
+      } else if starts_with(s: line, prefix: "// Source module: ") {
+        trim_spaces(s: after_prefix(line: line, prefix: "// Source module: "))
+      } else {
+        acc
+      }
+  )
+}
+
+// A zero-parameter alias declaration. A parameterized one is excluded: its realization cannot be
+// written at a use site without its arguments, so it is not this class.
+fn alias_claim(file_key: String, line: String) -> RealizationClaim? {
+  if !starts_with(s: line, prefix: "pub type ") {
+    none
+  } else {
+    let rest = after_prefix(line: line, prefix: "pub type ")
+    if !string_contains(s: rest, pattern: " = ") {
+      none
+    } else {
+      let name = trim_spaces(s: before_delimiter(s: rest, delimiter: " = "))
+      let tail = after_delimiter(s: rest, delimiter: " = ")
+      if name == "" || string_contains(s: name, pattern: "<") || !string_contains(s: tail, pattern: ";") {
+        none
+      } else {
+        Present {
+          value: RealizationClaim {
+            declaring_file: file_key,
+            name: name,
+            spelling: trim_spaces(s: before_delimiter(s: tail, delimiter: ";"))
+          }
+        }
+      }
+    }
+  }
+}
+
+fn phantom_claim(file_key: String, line: String) -> RealizationClaim? {
+  if starts_with(s: line, prefix: "pub struct ")
+    && string_contains(s: line, pattern: "(pub std::marker::PhantomData") {
+    let rest = after_prefix(line: line, prefix: "pub struct ")
+    Present {
+      value: RealizationClaim {
+        declaring_file: file_key,
+        name: trim_spaces(s: before_delimiter(s: rest, delimiter: "(")),
+        spelling: ""
+      }
+    }
+  } else {
+    none
+  }
+}
+
+fn line_claims(file_key: String, line: String) -> List<RealizationClaim> {
+  match alias_claim(file_key: file_key, line: line) {
+    Present { value: c } => [c]
+    Absent =>
+      match phantom_claim(file_key: file_key, line: line) {
+        Present { value: c } => [c]
+        Absent => []
+      }
+  }
+}
+
+// Every name this file introduces into its own scope, by declaration. Joined with its imports, this
+// is what decides whether a realization spelling re-binds here.
+fn line_bound_name(line: String) -> String {
+  if starts_with(s: line, prefix: "pub type ") {
+    before_delimiter(s: trim_spaces(s: after_prefix(line: line, prefix: "pub type ")), delimiter: " ")
+  } else if starts_with(s: line, prefix: "pub struct ") {
+    before_delimiter(
+      s: before_delimiter(
+        s: trim_spaces(s: after_prefix(line: line, prefix: "pub struct ")),
+        delimiter: "("
+      ),
+      delimiter: " "
+    )
+  } else if starts_with(s: line, prefix: "pub enum ") {
+    before_delimiter(
+      s: before_delimiter(
+        s: trim_spaces(s: after_prefix(line: line, prefix: "pub enum ")),
+        delimiter: "<"
+      ),
+      delimiter: " "
+    )
+  } else {
+    ""
+  }
+}
+
+// `use crate::<module>::{A, B};` and `use crate::<module>::A;` are the two forms the emitter writes.
+fn use_line_imports(consumer_file: String, line: String) -> List<ConsumerImport> {
+  if !is_use_line(line: line) || !string_contains(s: line, pattern: "crate::") {
+    []
+  } else {
+    let after_crate = after_delimiter(s: line, delimiter: "crate::")
+    if !string_contains(s: after_crate, pattern: "::") {
+      []
+    } else {
+      let declaring = before_delimiter(s: after_crate, delimiter: "::")
+      let tail = after_delimiter(s: after_crate, delimiter: "::")
+      if starts_with(s: tail, prefix: "{") {
+        let inner = before_delimiter(s: after_prefix(line: tail, prefix: "{"), delimiter: "}")
+        fold(
+          split(s: inner, delimiter: ","),
+          init: [],
+          f: (acc, raw) =>
+            let n = trim_spaces(s: raw)
+            if n == "" {
+              acc
+            } else {
+              list_push(acc, ConsumerImport { consumer_file: consumer_file, declaring_file: declaring, name: n })
+            }
+        )
+      } else {
+        let n = trim_spaces(s: before_delimiter(s: tail, delimiter: ";"))
+        if n == "" || string_contains(s: n, pattern: "*") {
+          []
+        } else {
+          [ConsumerImport { consumer_file: consumer_file, declaring_file: declaring, name: n }]
+        }
+      }
+    }
+  }
+}
+
+// THE BODY EXCLUDES THE USE LINES DELIBERATELY. An import is what puts the name in scope; it is not
+// a use SITE. Counting it as one would make every expansion look preserved.
+fn read_emitted_file(path: String, content: String) -> EmittedFile {
+  let file_key = emitted_file_key(path: path)
+  let lines = text_lines(text: content)
+  EmittedFile {
+    file_key: file_key,
+    source_module: emitted_source_module(lines: lines),
+    body: join(filter(lines, l => !is_use_line(line: l)), "\n"),
+    claims: fold(lines, init: [], f: (acc, l) => concat(acc, line_claims(file_key: file_key, line: l))),
+    imports: fold(lines, init: [], f: (acc, l) => concat(acc, use_line_imports(consumer_file: file_key, line: l))),
+    bound_names: fold(
+      lines,
+      init: [],
+      f: (acc, l) =>
+        let n = line_bound_name(line: l)
+        if n == "" { acc } else { list_push(acc, n) }
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Classification.
+
+fn realization_claim_key(declaring_file: String, name: String) -> String {
+  concat(declaring_file, concat("::", name))
+}
+
+// THE CLAIMS ARE INDEXED ONCE, NOT FILTERED PER LOOKUP. Every import in the closure asks this
+// question, so a linear scan per import is the quadratic fold DESIGN section 6 rules is always
+// fixed regardless of the realized n -- and here n is the whole closure's declaration roster.
+fn claim_index(claims: List<RealizationClaim>) -> Map<String, RealizationClaim> {
+  fold(
+    claims,
+    init: empty_map(),
+    f: (acc, c) => map_insert(acc, realization_claim_key(declaring_file: c.declaring_file, name: c.name), c)
+  )
+}
+
+fn claim_for(claims: Map<String, RealizationClaim>, declaring_file: String, name: String) -> RealizationClaim? {
+  lookup(claims, realization_claim_key(declaring_file: declaring_file, name: name))
+}
+
+fn consumer_binds(file: EmittedFile, spelling: String, declaring_file: String) -> String {
+  let from_imports = file.imports
+    |> filter(i => i.name == spelling && i.declaring_file != declaring_file)
+    |> first
+  match from_imports {
+    Present { value: i } => i.declaring_file
+    Absent =>
+      if file.bound_names |> any(n => n == spelling) { file.file_key } else { "" }
+  }
+}
+
+fn classify_import(
+  file: EmittedFile,
+  imp: ConsumerImport,
+  claims: Map<String, RealizationClaim>
+) -> UseSiteDisposition? {
+  match claim_for(claims: claims, declaring_file: imp.declaring_file, name: imp.name) {
+    Absent => none
+    Present { value: claim } =>
+      if claim.spelling == "" || mentions_token(text: file.body, token: imp.name) {
+        Present {
+          value: ProviderDeclarationPreserved {
+            consumer_file: imp.consumer_file,
+            declaring_file: imp.declaring_file,
+            name: imp.name
+          }
+        }
+      } else if !mentions_token(text: file.body, token: spelling_head(spelling: claim.spelling)) {
+        Present {
+          value: NoConsumerOccurrence {
+            consumer_file: imp.consumer_file,
+            declaring_file: imp.declaring_file,
+            name: imp.name,
+            realization: claim.spelling
+          }
+        }
+      } else {
+        let rebound = if spelling_is_bare_identifier(spelling: claim.spelling) {
+          consumer_binds(file: file, spelling: claim.spelling, declaring_file: imp.declaring_file)
+        } else {
+          ""
+        }
+        Present {
+          value: ProviderInterfaceBypass {
+            consumer_file: imp.consumer_file,
+            declaring_file: imp.declaring_file,
+            name: imp.name,
+            realization: claim.spelling,
+            manifestation: if rebound == "" {
+              CurrentlyCompatible
+            } else {
+              ReboundToDifferentTargetDeclaration { rebound_to: rebound }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn classify_file(file: EmittedFile, claims: Map<String, RealizationClaim>) -> List<UseSiteDisposition> {
+  fold(
+    file.imports,
+    init: [],
+    f: (acc, imp) =>
+      match classify_import(file: file, imp: imp, claims: claims) {
+        Present { value: d } => list_push(acc, d)
+        Absent => acc
+      }
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// The source-side opaqueness join, for the one question the artifact cannot answer.
+
+fn module_candidate_paths(source_module: String, roots: List<String>) -> List<String> {
+  let segments = split(s: source_module, delimiter: ".")
+  let direct = join(segments, "/")
+  let dropped = join(segments |> skip(1), "/")
+  fold(
+    roots,
+    init: [],
+    f: (acc, root) =>
+      concat(acc, [
+        concat(root, concat("/", concat(direct, ".dag"))),
+        concat(root, concat("/", concat(dropped, ".dag")))
+      ])
+  )
+}
+
+// A declaration is OPAQUE when its `type X` line carries no body. THE STANDING IS READ FROM THE
+// DECLARATION LINE ALONE, and that is a stated boundary rather than a completeness claim: a
+// coproduct whose first `|` sits on a following line and whose `type X` line ends after the name
+// would read as opaque here. No such spelling occurs in this corpus today, so the reading is exact
+// for the corpus it is run over and would need the successor line the day one is authored.
+// A MODIFIER SUCH AS `nominal_opaque` OR `sole_constructor` SITS BETWEEN THE NAME AND THE BODY, so
+// the last arm decides the body question by what follows the modifier on the same line rather than
+// by the character immediately after the name.
+fn declaration_body_standing_in(content: String, name: String) -> DeclarationBodyStanding? {
+  let header = concat("type ", name)
+  fold(
+    text_lines(text: content),
+    init: none,
+    f: (acc, line) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if !starts_with(s: line, prefix: header) {
+            none
+          } else {
+            let rest = trim_spaces(s: after_prefix(line: line, prefix: header))
+            if rest == "" {
+              Present { value: DeclaredOpaque }
+            } else if starts_with(s: rest, prefix: "=")
+              || starts_with(s: rest, prefix: "|")
+              || starts_with(s: rest, prefix: "{")
+              || starts_with(s: rest, prefix: "<") {
+              Present { value: DeclaredWithBody }
+            } else {
+              if string_contains(s: rest, pattern: "=") || string_contains(s: rest, pattern: "|") {
+                Present { value: DeclaredWithBody }
+              } else {
+                Present { value: DeclaredOpaque }
+              }
+            }
+          }
+      }
+  )
+}
+
+fn declaration_body_standing(source_module: String, name: String, roots: List<String>) -> DeclarationBodyStanding {
+  let candidates = module_candidate_paths(source_module: source_module, roots: roots)
+  fold(
+    candidates,
+    init: DeclarationSourceUnresolved { attempted: join(candidates, " ") },
+    f: (acc, path) =>
+      match acc {
+        DeclaredOpaque => acc
+        DeclaredWithBody => acc
+        DeclarationSourceUnresolved { attempted: a } =>
+          let read = Filesystem.Read(path: path)
+          if !read.success {
+            acc
+          } else {
+            match declaration_body_standing_in(content: read.content, name: name) {
+              Present { value: v } => v
+              Absent => acc
+            }
+          }
+      }
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// The run.
+
+fn census_source_roots() -> List<String> {
+  ["dag", "src/v2", "src/v1"]
+}
+
+// A FILE THAT CANNOT BE READ REFUSES; IT IS NOT SKIPPED. Dropping it would shrink the denominator
+// silently -- the empty-observation narrow -- so a census over three readable files out of ninety-three
+// would report a population and call it taken. The listing failing and the listing being empty are also
+// different states and get different causes: one is an instrument fault, the other is a subject that
+// does not exist.
+type EmittedTreeRead
+  = EmittedTreeFiles { files: List<EmittedFile> }
+  | EmittedTreeUnreadable { cause: String }
+
+fn emitted_tree_read_then(acc: EmittedTreeRead, path: String) -> EmittedTreeRead {
+  match acc {
+    EmittedTreeUnreadable { cause: c } => EmittedTreeUnreadable { cause: c }
+    EmittedTreeFiles { files: so_far } =>
+      let read = Filesystem.Read(path: path)
+      if !read.success {
+        EmittedTreeUnreadable {
+          cause: concat(
+            "an emitted file could not be read, so the subject is incomplete and any population over the rest would be a fraction reported as a whole: ",
+            concat(path, concat(" — ", read.error))
+          )
+        }
+      } else {
+        EmittedTreeFiles { files: list_push(so_far, read_emitted_file(path: path, content: read.content)) }
+      }
+  }
+}
+
+// THE SUBJECT DIRECTORY IS CHECKED BEFORE IT IS LISTED, AND THE REASON IS A PROPERTY OF THE
+// TRANSPORT RATHER THAN CAUTION. shell.Find.FilesByNameSorted runs `find "$1" ... | sort`, and a
+// pipeline's exit status is its LAST command's -- `sort` succeeds whatever `find` did. So a missing
+// or unreadable directory comes back success=true with empty stdout, indistinguishable from a
+// directory that genuinely holds no .rs file. An arm keyed on that success flag would therefore be
+// permanently green: not a weak wall but a decoration, which DESIGN section 4b rates worse than
+// absent because it would be cited as coverage. shell.Test.IsDirectory is a separate process with
+// its own status, so the refusal below has a RED anyone can author by naming a path that is not
+// there -- and that RED is executed.
+//
+// WHAT THIS STILL DOES NOT COVER, named rather than left for a reader to assume away: a find that
+// fails PARTWAY -- an unreadable subdirectory, say -- emits the entries it did reach and still exits
+// through `sort`, so a truncated listing is not detectable at this transport at all. The file-read
+// refusal below catches an unreadable file that IS listed; it cannot catch a file that was never
+// listed. Closing that needs a listing operation whose own status survives, which is a change to
+// extdeps.shell and another module's authority.
+fn read_emitted_tree(src_dir: String) -> EmittedTreeRead {
+  let dir = shell.Test.IsDirectory(path: src_dir)
+  if !dir.is_directory {
+    EmittedTreeUnreadable {
+      cause: concat(
+        "the subject is not a readable directory, so nothing was listed and no population could be taken: ",
+        src_dir
+      )
+    }
+  } else {
+    let found = shell.Find.FilesByNameSorted(root: src_dir, name_glob: "*.rs" as NonEmptyStr)
+    fold(
+      filter(split(s: found.stdout, delimiter: "\n"), p => p != ""),
+      init: EmittedTreeFiles { files: [] },
+      f: (acc, path) => emitted_tree_read_then(acc: acc, path: path)
+    )
+  }
+}
+
+fn all_claims(files: List<EmittedFile>) -> List<RealizationClaim> {
+  fold(files, init: [], f: (acc, f) => concat(acc, f.claims))
+}
+
+// The opaqueness join runs over the DISTINCT declaring names the dispositions actually name, not
+// over the whole claim roster: the question is only asked where an answer changes a count.
+fn opaque_subject_rows(
+  dispositions: List<UseSiteDisposition>,
+  files: List<EmittedFile>,
+  claims: List<RealizationClaim>
+) -> List<OpaqueSubjectRow> {
+  fold(
+    claims,
+    init: [],
+    f: (acc, claim) =>
+      if acc |> any(r => r.declaring_file == claim.declaring_file && r.name == claim.name) {
+        acc
+      } else if !(dispositions |> any(d => disposition_subject_key(d: d) == realization_claim_key(declaring_file: claim.declaring_file, name: claim.name))) {
+        acc
+      } else {
+        let source_module = match files |> filter(f => f.file_key == claim.declaring_file) |> first {
+          Present { value: f } => f.source_module
+          Absent => ""
+        }
+        list_push(acc,
+          OpaqueSubjectRow {
+            declaring_file: claim.declaring_file,
+            source_module: source_module,
+            name: claim.name,
+            standing: if source_module == "" {
+              DeclarationSourceUnresolved { attempted: "" }
+            } else {
+              declaration_body_standing(source_module: source_module, name: claim.name, roots: census_source_roots())
+            }
+          }
+        )
+      }
+  )
+}
+
+fn disposition_subject_key(d: UseSiteDisposition) -> String {
+  match d {
+    ProviderDeclarationPreserved { consumer_file: _, declaring_file: df, name: n } =>
+      realization_claim_key(declaring_file: df, name: n)
+    ProviderInterfaceBypass { consumer_file: _, declaring_file: df, name: n, realization: _, manifestation: _ } =>
+      realization_claim_key(declaring_file: df, name: n)
+    NoConsumerOccurrence { consumer_file: _, declaring_file: df, name: n, realization: _ } =>
+      realization_claim_key(declaring_file: df, name: n)
+  }
+}
+
+fn census_emitted_tree(provenance: EmittedTreeProvenance, src_dir: String, emit_detail: String) -> OpaqueRealizationCensus {
+  match read_emitted_tree(src_dir: src_dir) {
+    EmittedTreeUnreadable { cause: c } =>
+      OpaqueCensusUnestablished {
+        provenance: provenance,
+        stage: OpaqueCensusStageEmittedTreeRead,
+        cause: concat(c, concat("; detail: ", emit_detail))
+      }
+    EmittedTreeFiles { files: files } =>
+      if (files |> count) == 0 {
+        OpaqueCensusUnestablished {
+          provenance: provenance,
+          stage: OpaqueCensusStageEmittedTreeRead,
+          cause: concat(
+            "the emitted src directory listed no .rs file at all, so there is no subject to examine; detail: ",
+            emit_detail
+          )
+        }
+      } else {
+        let claims = all_claims(files: files)
+        let index = claim_index(claims: claims)
+        let dispositions = fold(files, init: [], f: (acc, f) => concat(acc, classify_file(file: f, claims: index)))
+        OpaqueCensusTaken {
+          provenance: provenance,
+          emitted_file_count: files |> count,
+          dispositions: dispositions,
+          subject_consistency: subject_consistency_rows(dispositions: dispositions, claims: claims),
+          opaque_subjects: opaque_subject_rows(dispositions: dispositions, files: files, claims: claims)
+        }
+      }
+  }
+}
+
+fn census_supplied_tree(src_dir: String) -> OpaqueRealizationCensus {
+  census_emitted_tree(
+    provenance: SuppliedTree { src_dir: src_dir },
+    src_dir: src_dir,
+    emit_detail: "the directory was supplied to this run; nothing was emitted by it"
+  )
+}
+
+fn census_entry_emission(entry: String) -> OpaqueRealizationCensus {
+  let provenance = EmittedByThisRun { entry: entry }
+  let root = git.Inspect.Toplevel()
+  let out_dir = shell.Mktemp.Dir()
+  if !out_dir.success {
+    OpaqueCensusUnestablished {
+      provenance: provenance,
+      stage: OpaqueCensusStageScratchDirectory,
+      cause: "could not create a temporary directory for the emitted crate"
+    }
+  } else {
+    let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+    if !gunbc_built {
+      OpaqueCensusUnestablished {
+        provenance: provenance,
+        stage: OpaqueCensusStageCompilerBinary,
+        cause: "the gunbc release binary is not buildable — the census invokes the compiler it is measuring as a subprocess, so an absent binary is a refusal and never a clean measurement"
+      }
+    } else {
+      let emit = gunbc.WitnessBin.Run(
+        workdir: root.path,
+        bin_path: witness_bin_release_path(root: root.path, bin_name: "gunbc"),
+        args: [
+          "compile",
+          "--source-root", "dag",
+          "--source-root", "src/v2",
+          "--entry", entry,
+          "--output-dir", out_dir.path,
+          "--target", "rust",
+          "--dependency-pool-index", "primary-precedence"
+        ]
+      )
+      let emit_detail = concat("emitter exit_code=", concat(to_string(value: emit.exit_code), concat("; stderr: ", emit.stderr)))
+      if !emit.success {
+        OpaqueCensusUnestablished {
+          provenance: provenance,
+          stage: OpaqueCensusStageEmit,
+          cause: concat(
+            "the emitter exited unsuccessfully, so whatever .rs files reached the output directory are a PARTIAL emission and not a subject; a census taken over them would report a population from a run that did not finish. ",
+            emit_detail
+          )
+        }
+      } else {
+        census_emitted_tree(
+          provenance: provenance,
+          src_dir: concat(out_dir.path, "/src"),
+          emit_detail: emit_detail
+        )
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Reporting. The instrument writes its measurement; it does not decide anything about it.
+
+fn manifestation_text(m: BypassManifestation) -> String {
+  match m {
+    CurrentlyCompatible => "currently-compatible"
+    ReboundToDifferentTargetDeclaration { rebound_to: r } => concat("rebound-to=", r)
+  }
+}
+
+fn disposition_row(d: UseSiteDisposition) -> String {
+  match d {
+    ProviderDeclarationPreserved { consumer_file: cf, declaring_file: df, name: n } =>
+      join(["provider-declaration-preserved", cf, df, n, "", ""], "\t")
+    ProviderInterfaceBypass { consumer_file: cf, declaring_file: df, name: n, realization: r, manifestation: m } =>
+      join(["provider-interface-bypass", cf, df, n, r, manifestation_text(m: m)], "\t")
+    NoConsumerOccurrence { consumer_file: cf, declaring_file: df, name: n, realization: r } =>
+      join(["no-consumer-occurrence", cf, df, n, r, ""], "\t")
+  }
+}
+
+type DispositionTally {
+  bypass_rebound: Int
+  bypass_currently_compatible: Int
+  preserved: Int
+  no_occurrence: Int
+}
+
+fn empty_disposition_tally() -> DispositionTally {
+  DispositionTally { bypass_rebound: 0, bypass_currently_compatible: 0, preserved: 0, no_occurrence: 0 }
+}
+
+fn disposition_tally_row(acc: DispositionTally, d: UseSiteDisposition) -> DispositionTally {
+  match d {
+    ProviderDeclarationPreserved { consumer_file: _, declaring_file: _, name: _ } =>
+      DispositionTally {
+        bypass_rebound: acc.bypass_rebound,
+        bypass_currently_compatible: acc.bypass_currently_compatible,
+        preserved: acc.preserved + 1,
+        no_occurrence: acc.no_occurrence
+      }
+    NoConsumerOccurrence { consumer_file: _, declaring_file: _, name: _, realization: _ } =>
+      DispositionTally {
+        bypass_rebound: acc.bypass_rebound,
+        bypass_currently_compatible: acc.bypass_currently_compatible,
+        preserved: acc.preserved,
+        no_occurrence: acc.no_occurrence + 1
+      }
+    ProviderInterfaceBypass { consumer_file: _, declaring_file: _, name: _, realization: _, manifestation: m } =>
+      match m {
+        ReboundToDifferentTargetDeclaration { rebound_to: _ } =>
+          DispositionTally {
+            bypass_rebound: acc.bypass_rebound + 1,
+            bypass_currently_compatible: acc.bypass_currently_compatible,
+            preserved: acc.preserved,
+            no_occurrence: acc.no_occurrence
+          }
+        CurrentlyCompatible =>
+          DispositionTally {
+            bypass_rebound: acc.bypass_rebound,
+            bypass_currently_compatible: acc.bypass_currently_compatible + 1,
+            preserved: acc.preserved,
+            no_occurrence: acc.no_occurrence
+          }
+      }
+  }
+}
+
+fn disposition_tally(dispositions: List<UseSiteDisposition>) -> DispositionTally {
+  fold(dispositions, init: empty_disposition_tally(), f: (acc, d) => disposition_tally_row(acc: acc, d: d))
+}
+
+fn subject_disposition_tally(dispositions: List<UseSiteDisposition>, key: String) -> DispositionTally {
+  fold(
+    dispositions,
+    init: empty_disposition_tally(),
+    f: (acc, d) =>
+      if disposition_subject_key(d: d) == key { disposition_tally_row(acc: acc, d: d) } else { acc }
+  )
+}
+
+fn split_subject_count(rows: List<SubjectConsistencyRow>) -> Int {
+  fold(
+    rows,
+    init: 0,
+    f: (acc, r) =>
+      match r.consistency {
+        SubjectDispositionSplit { preserved: _, bypassed: _ } => acc + 1
+        SubjectUniformlyPreserved { preserved: _ } => acc
+        SubjectUniformlyBypassed { bypassed: _ } => acc
+        SubjectHasNoOccurrences => acc
+      }
+  )
+}
+
+fn subject_consistency_of(preserved: Int, bypassed: Int) -> SubjectConsistency {
+  if preserved > 0 && bypassed > 0 {
+    SubjectDispositionSplit { preserved: preserved, bypassed: bypassed }
+  } else if preserved > 0 {
+    SubjectUniformlyPreserved { preserved: preserved }
+  } else if bypassed > 0 {
+    SubjectUniformlyBypassed { bypassed: bypassed }
+  } else {
+    SubjectHasNoOccurrences
+  }
+}
+
+fn standing_text(s: DeclarationBodyStanding) -> String {
+  match s {
+    DeclaredOpaque => "opaque"
+    DeclaredWithBody => "has-body"
+    DeclarationSourceUnresolved { attempted: a } => concat("source-unresolved(", concat(a, ")"))
+  }
+}
+
+fn subject_consistency_rows(dispositions: List<UseSiteDisposition>, claims: List<RealizationClaim>) -> List<SubjectConsistencyRow> {
+  fold(
+    claims,
+    init: [],
+    f: (acc, claim) =>
+      let key = realization_claim_key(declaring_file: claim.declaring_file, name: claim.name)
+      if acc |> any(r => realization_claim_key(declaring_file: r.declaring_file, name: r.name) == key) {
+        acc
+      } else {
+        let tally = subject_disposition_tally(dispositions: dispositions, key: key)
+        let preserved = tally.preserved
+        let bypassed = tally.bypass_rebound + tally.bypass_currently_compatible
+        if preserved == 0 && bypassed == 0 {
+          acc
+        } else {
+          list_push(acc, SubjectConsistencyRow {
+            declaring_file: claim.declaring_file,
+            name: claim.name,
+            consistency: subject_consistency_of(preserved: preserved, bypassed: bypassed)
+          })
+        }
+      }
+  )
+}
+
+fn opaque_subject_row_text(r: OpaqueSubjectRow) -> String {
+  join([r.declaring_file, r.name, r.source_module, standing_text(s: r.standing)], "\t")
+}
+
+fn subject_consistency_text(c: SubjectConsistency) -> String {
+  match c {
+    SubjectUniformlyPreserved { preserved: p } => concat("uniformly-preserved\t", to_string(value: p))
+    SubjectUniformlyBypassed { bypassed: b } => concat("uniformly-bypassed\t", to_string(value: b))
+    SubjectDispositionSplit { preserved: p, bypassed: b } =>
+      join(["SPLIT", concat("preserved=", to_string(value: p)), concat("bypassed=", to_string(value: b))], "\t")
+    SubjectHasNoOccurrences => "no-occurrences\t0"
+  }
+}
+
+fn subject_consistency_row_text(r: SubjectConsistencyRow) -> String {
+  join([r.declaring_file, r.name, subject_consistency_text(c: r.consistency)], "\t")
+}
+
+fn reference_realization_policy_standing() -> ReferenceRealizationPolicyStanding {
+  PolicyUnestablished {
+    reason: "no declaration in the corpus carries a reference-realization mode, so whether a given bypass was intended cannot be read from this tree; the census reports the bypass and never infers intent from whether the emitted artifact happens to compile"
+  }
+}
+
+fn policy_standing_text(p: ReferenceRealizationPolicyStanding) -> String {
+  match p {
+    PolicyUnestablished { reason: r } => concat("unestablished: ", r)
+  }
+}
+
+fn census_report_text(c: OpaqueRealizationCensus) -> String {
+  match c {
+    OpaqueCensusUnestablished { provenance: pv, stage: st, cause: cause } =>
+      join([
+        "opaque-realization-census UNESTABLISHED",
+        concat("provenance\t", tree_provenance_text(p: pv)),
+        concat("stage\t", census_stage_text(stage: st)),
+        concat("cause\t", cause),
+        ""
+      ], "\n")
+    OpaqueCensusTaken { provenance: pv, emitted_file_count: n, dispositions: ds, subject_consistency: cons, opaque_subjects: subs } =>
+      let tally = disposition_tally(dispositions: ds)
+      join([
+        "opaque-realization-census TAKEN",
+        concat("provenance\t", tree_provenance_text(p: pv)),
+        concat("emitted_files\t", to_string(value: n)),
+        concat("bypass_rebound\t", to_string(value: tally.bypass_rebound)),
+        concat("bypass_currently_compatible\t", to_string(value: tally.bypass_currently_compatible)),
+        concat("provider_declaration_preserved\t", to_string(value: tally.preserved)),
+        concat("no_consumer_occurrence\t", to_string(value: tally.no_occurrence)),
+        concat("subjects_with_split_disposition\t", to_string(value: split_subject_count(rows: cons))),
+        concat("reference_realization_policy\t", policy_standing_text(p: reference_realization_policy_standing())),
+        "",
+        "# disposition\tconsumer\tdeclaring\tname\trealization\tmanifestation",
+        join(map(ds, d => disposition_row(d: d)), "\n"),
+        "",
+        "# declaring\tname\tconsistency\tcounts",
+        join(map(cons, r => subject_consistency_row_text(r: r)), "\n"),
+        "",
+        "# declaring\tname\tsource_module\tdeclaration_standing",
+        join(map(subs, r => opaque_subject_row_text(r: r)), "\n"),
+        ""
+      ], "\n")
+  }
+}
+
+fn write_census(c: OpaqueRealizationCensus, report: String) -> ProcessExit {
+  let write = Filesystem.Write(path: report, content: census_report_text(c: c))
+  if !write.success {
+    exit_failure(reason: concat("could not write the report to ", report))
+  } else {
+    match c {
+      OpaqueCensusTaken { provenance: _, emitted_file_count: _, dispositions: _, subject_consistency: _, opaque_subjects: _ } =>
+        ExitSuccess
+      OpaqueCensusUnestablished { provenance: _, stage: st, cause: _ } =>
+        exit_failure(
+          reason: join([
+            "the census did not reach a readable emitted artifact; it refused at stage",
+            census_stage_text(stage: st),
+            concat("and the report at ", concat(report, " carries the cause"))
+          ], " ")
+        )
+    }
+  }
+}
+
+fn measure_entry(entry: String, report: String) -> ProcessExit {
+  if entry == "" {
+    exit_failure(reason: "measure_entry: --arg entry=<repo-relative .dag path> is required")
+  } else if report == "" {
+    exit_failure(reason: "measure_entry: --arg report=<path> is required — the measurement is written, not printed")
+  } else {
+    write_census(c: census_entry_emission(entry: entry), report: report)
+  }
+}
+
+fn measure_tree(src_dir: String, report: String) -> ProcessExit {
+  if src_dir == "" {
+    exit_failure(reason: "measure_tree: --arg src_dir=<the src/ directory of an already-emitted crate> is required")
+  } else if report == "" {
+    exit_failure(reason: "measure_tree: --arg report=<path> is required — the measurement is written, not printed")
+  } else {
+    write_census(c: census_supplied_tree(src_dir: src_dir), report: report)
+  }
+}

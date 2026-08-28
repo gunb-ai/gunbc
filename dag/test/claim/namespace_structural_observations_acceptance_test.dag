@@ -1,0 +1,220 @@
+module test.claim.namespace_structural_observations_acceptance
+
+import gunbc.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureCapability,
+  SameFileEarlierNeighbourVisible,
+  SiblingDecisionBranchExcluded,
+  LaterDeclarationExcluded,
+  DistinctSameSpelledDeclarationsPreserved,
+}
+import gunbc.namespace_structural_observations_contract {
+  OrdinaryCompileStructuralAdmission,
+  StructuralObservationSubject,
+  namespace_structural_observations_subject,
+  namespace_structural_observations_subject_source,
+  AdmissionNamesAnotherModule,
+  AdmissionSubjectNotProduced,
+  namespace_structural_observations_closing_contract_holds,
+  namespace_structural_observations_missing_capabilities,
+  structural_admission_off_subject_modules,
+}
+import gunbc.namespace_structural_observations_production {
+  namespace_structural_observations_production_admissions,
+}
+import std.reference_binding_observation {
+  SubjectModuleProductionRefused,
+  ReferenceBindingParserTransportRefused,
+}
+import std.types { Bool, Int, List, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CLOSING VALIDATION for roadmap node namespace-structural-observations, plus the per-case
+// red controls the row's own red_control clause asks for.
+//
+// THE SUBJECT IS ONE FILE AND EVERY CONTROL IS ONE EDIT TO IT. Each control is derived from the
+// accepted subject text by a single `replace`, so a control cannot silently become a different
+// program: what it changes is exactly the sentence naming the rule under test. Four hand-written
+// look-alike sources would have proved four rules about four programs, which is the distinction
+// this row exists to make.
+//
+// WHAT MAKES EACH CONTROL DISCRIMINATING rather than merely red: it asserts the missing-capability
+// set is EXACTLY the one capability whose rule was broken. A control that only asserted "the
+// contract is false" would pass just as well if the bridge returned nothing at all, and that is
+// the failure the production-refused arms of the observation carrier exist to make visible.
+data namespace_structural_observations_acceptance_note: String = "Closing validation for namespace-structural-observations. One ordinary compiled subject produces all four in-file visibility observations through the production bridge; four single-edit mutants of that same subject each break exactly one rule and refuse exactly that capability; one mutant changes only the declared module and refuses on subject provenance with every capability still established."
+
+fn nso_subject_with_source(source: String) -> StructuralObservationSubject {
+  let subject = namespace_structural_observations_subject()
+  StructuralObservationSubject {
+    file: subject.file,
+    source: source,
+    neighbour_name: subject.neighbour_name,
+    branch_binder_name: subject.branch_binder_name,
+    later_name: subject.later_name,
+    homonym_name: subject.homonym_name,
+  }
+}
+
+fn nso_admissions_for(source: String) -> List<OrdinaryCompileStructuralAdmission> {
+  namespace_structural_observations_production_admissions(
+    subject: nso_subject_with_source(source: source),
+  )
+}
+
+fn nso_missing_for(source: String) -> List<ReferenceDerivedClosureCapability> {
+  namespace_structural_observations_missing_capabilities(rows: nso_admissions_for(source: source))
+}
+
+fn nso_missing_is_exactly(
+  source: String,
+  capability: ReferenceDerivedClosureCapability,
+) -> Bool {
+  let missing = nso_missing_for(source: source)
+  count(missing) == 1 && (missing |> any(m => m == capability))
+}
+
+fn nso_contract_holds_for(source: String) -> Bool {
+  namespace_structural_observations_closing_contract_holds(rows: nso_admissions_for(source: source))
+}
+
+// The neighbour stops being earlier: the two functions swap places and nothing else moves.
+fn nso_neighbour_not_earlier_source() -> String {
+  replace(
+    namespace_structural_observations_subject_source(),
+    "fn nso_neighbour() -> Int {\n  1\n}\n\nfn nso_uses_neighbour() -> Int {\n  nso_neighbour()\n}",
+    "fn nso_uses_neighbour() -> Int {\n  nso_neighbour()\n}\n\nfn nso_neighbour() -> Int {\n  1\n}",
+  )
+}
+
+// The two decision branches stop being two: the else arm loses its own binder, so the only
+// same-spelled declaration left is the one in the other branch.
+fn nso_branch_binder_collapsed_source() -> String {
+  replace(
+    namespace_structural_observations_subject_source(),
+    "  } else {\n    let nso_x = 2\n    nso_x\n  }",
+    "  } else {\n    nso_x\n  }",
+  )
+}
+
+// The later declaration stops being later.
+fn nso_later_declaration_hoisted_source() -> String {
+  replace(
+    namespace_structural_observations_subject_source(),
+    "fn nso_uses_later() -> Int {\n  nso_later()\n}\n\nfn nso_later() -> Int {\n  3\n}",
+    "fn nso_later() -> Int {\n  3\n}\n\nfn nso_uses_later() -> Int {\n  nso_later()\n}",
+  )
+}
+
+// The two same-spelled declarations merge into one: the inner let goes, leaving only the parameter.
+fn nso_homonyms_merged_source() -> String {
+  replace(
+    namespace_structural_observations_subject_source(),
+    "fn nso_homonym(nso_y: Int) -> Int {\n  let nso_y = 1\n  nso_y\n}",
+    "fn nso_homonym(nso_y: Int) -> Int {\n  nso_y\n}",
+  )
+}
+
+// Same four rules, different compiled subject: only the module declaration changes.
+fn nso_other_module_source() -> String {
+  replace(
+    namespace_structural_observations_subject_source(),
+    "module gunbc.namespace_structural_observations_fixture",
+    "module gunbc.namespace_structural_observations_other",
+  )
+}
+
+test fn namespace_structural_observations_closing_contract_holds_on_one_ordinary_compiled_file() -> Bool {
+  nso_contract_holds_for(source: namespace_structural_observations_subject_source())
+}
+
+test fn an_earlier_neighbour_that_stops_being_earlier_refuses_only_that_capability() -> Bool {
+  !nso_contract_holds_for(source: nso_neighbour_not_earlier_source())
+    && nso_missing_is_exactly(
+      source: nso_neighbour_not_earlier_source(),
+      capability: SameFileEarlierNeighbourVisible,
+    )
+}
+
+test fn a_decision_branch_that_stops_being_two_refuses_only_that_capability() -> Bool {
+  !nso_contract_holds_for(source: nso_branch_binder_collapsed_source())
+    && nso_missing_is_exactly(
+      source: nso_branch_binder_collapsed_source(),
+      capability: SiblingDecisionBranchExcluded,
+    )
+}
+
+test fn a_later_declaration_hoisted_into_view_refuses_only_that_capability() -> Bool {
+  !nso_contract_holds_for(source: nso_later_declaration_hoisted_source())
+    && nso_missing_is_exactly(
+      source: nso_later_declaration_hoisted_source(),
+      capability: LaterDeclarationExcluded,
+    )
+}
+
+test fn two_same_spelled_declarations_merged_into_one_refuse_only_that_capability() -> Bool {
+  !nso_contract_holds_for(source: nso_homonyms_merged_source())
+    && nso_missing_is_exactly(
+      source: nso_homonyms_merged_source(),
+      capability: DistinctSameSpelledDeclarationsPreserved,
+    )
+}
+
+test fn observations_from_another_compiled_module_do_not_close_this_row() -> Bool {
+  count(nso_missing_for(source: nso_other_module_source())) == 0
+    && count(structural_admission_off_subject_modules(
+      rows: nso_admissions_for(source: nso_other_module_source()),
+    )) == 4
+    && !nso_contract_holds_for(source: nso_other_module_source())
+}
+
+// THE BRIDGE IS LOAD-BEARING, AND THIS IS THE AUTHORABLE FORM OF SAYING SO.
+//
+// The ruled control reads "bridge registration removed -> closing witness cannot execute". A
+// witness cannot unregister a host builtin, so what is authorable here is the projection of that
+// state onto this contract: with the bridge gone the contract is offered NO rows, and a contract
+// that closed on no rows would be green for a row nothing produced. The count(rows) > 0 conjunct
+// is what forbids it, and this control is the only thing that fails if someone deletes it.
+test fn a_row_nobody_produced_does_not_close_this_row() -> Bool {
+  !namespace_structural_observations_closing_contract_holds(rows: [])
+    && count(namespace_structural_observations_missing_capabilities(rows: [])) == 4
+}
+
+// THE RESULT IS A CARRIER, NOT A BOOLEAN, AND THE SUBJECT HALF IS WHAT PROVES IT.
+//
+// The ruled control reads "result flattened to Bool -> carrier-shape control refuses". Flattening
+// would keep exactly the capability half and lose the subject half, so the discriminating input is
+// rows whose CAPABILITIES ALL ESTABLISH and whose subject identity was not produced. A Bool-shaped
+// result cannot express the difference; this contract refuses, and names the reason rather than
+// reporting an empty module path -- which is the distinction the typed carrier exists for and the
+// one an empty string silently destroyed.
+fn nso_admissions_with_unproduced_subject() -> List<OrdinaryCompileStructuralAdmission> {
+  nso_admissions_for(source: namespace_structural_observations_subject_source())
+    |> map(row => OrdinaryCompileStructuralAdmission {
+         compiled_module: SubjectModuleProductionRefused {
+           gap: ReferenceBindingParserTransportRefused,
+         },
+         admission: row.admission,
+       })
+}
+
+test fn established_capabilities_with_an_unproduced_subject_still_refuse() -> Bool {
+  count(namespace_structural_observations_missing_capabilities(
+    rows: nso_admissions_with_unproduced_subject(),
+  )) == 0
+    && count(structural_admission_off_subject_modules(
+         rows: nso_admissions_with_unproduced_subject(),
+       )) == 4
+    && count(
+         structural_admission_off_subject_modules(
+           rows: nso_admissions_with_unproduced_subject(),
+         ) |> filter(mismatch => match mismatch {
+           AdmissionSubjectNotProduced { gap: _ } => true
+           AdmissionNamesAnotherModule { module_path: _ } => false
+         })
+       ) == 4
+    && !namespace_structural_observations_closing_contract_holds(
+         rows: nso_admissions_with_unproduced_subject(),
+       )
+}

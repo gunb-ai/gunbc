@@ -64,11 +64,18 @@ mod required_regen_host;
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
 // the emitted crate's exported surface is unchanged; the obligation is enrolled in
 // `gunbc.target_invocation_seed_growth`.
+#[path = "behavioral_receipt_host.rs"]
+pub mod behavioral_receipt_host;
 #[path = "target_invocation_host.rs"]
 pub mod target_invocation_host;
 
+#[path = "generated_artifact_boundary_host.rs"]
+mod generated_artifact_boundary_host;
 #[path = "partition_crate_boundary_host.rs"]
 mod partition_crate_boundary_host;
+
+#[path = "emitted_closure_compile_host.rs"]
+mod emitted_closure_compile_host;
 pub(crate) mod shared_fill;
 pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
@@ -387,7 +394,7 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
             };
         }
     }
-    let overlay_path = temp_dir.join("dag/gunbc/roadmap_authority.dag");
+    let overlay_path = temp_dir.join("dag/gunbc/roadmap/roadmap_authority.dag");
     if let Err(error) = std::fs::create_dir_all(overlay_path.parent().unwrap())
         .and_then(|_| std::fs::write(&overlay_path, authority_text))
     {
@@ -811,7 +818,7 @@ mod roadmap_acceptance_history_projection_tests {
     #[test]
     fn merge_base_authority_projection_matches_jsonl_carrier() {
         let authority = std::process::Command::new("git")
-            .args(["show", "9ce6526c528:dag/gunbc/roadmap_authority.dag"])
+            .args(["show", "9ce6526c528:dag/gunbc/roadmap/roadmap_authority.dag"])
             .output()
             .expect("git show merge-base authority");
         assert!(
@@ -821,7 +828,7 @@ mod roadmap_acceptance_history_projection_tests {
         );
         let authority = String::from_utf8(authority.stdout).expect("utf8 authority");
         let jsonl = std::fs::read_to_string(
-            super::workspace_root().join("dag/gunbc/roadmap_acceptance_event_history.jsonl"),
+            super::workspace_root().join("dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl"),
         )
         .expect("jsonl carrier");
         let projected = project_roadmap_acceptance_event_history_from_authority_text(&authority);
@@ -1272,12 +1279,12 @@ mod process_workspace_root_tests {
     #[test]
     fn repo_relative_path_normalizes_under_process_root() {
         let root = process_workspace_root();
-        let abs = root.join("dag/gunbc/ci_layer_roots.dag");
+        let abs = root.join("dag/gunbc/ci/ci_layer_roots.dag");
         let rel = repo_relative_path(&abs).expect("under process root");
-        assert_eq!(rel, "dag/gunbc/ci_layer_roots.dag");
+        assert_eq!(rel, "dag/gunbc/ci/ci_layer_roots.dag");
         assert_eq!(
             workspace_relative_repo_path(&abs.to_string_lossy()),
-            "dag/gunbc/ci_layer_roots.dag"
+            "dag/gunbc/ci/ci_layer_roots.dag"
         );
     }
 
@@ -1285,7 +1292,7 @@ mod process_workspace_root_tests {
     fn anchor_source_root_resolves_relative_dag() {
         let anchored = anchor_source_root("dag");
         assert!(Path::new(&anchored)
-            .join("gunbc/ci_layer_roots.dag")
+            .join("gunbc/ci/ci_layer_roots.dag")
             .is_file());
     }
 
@@ -1293,8 +1300,40 @@ mod process_workspace_root_tests {
     fn try_anchor_source_root_resolves_declared_present_root() {
         let anchored = try_anchor_source_root("dag").expect("dag exists in every checkout");
         assert!(Path::new(&anchored)
-            .join("gunbc/ci_layer_roots.dag")
+            .join("gunbc/ci/ci_layer_roots.dag")
             .is_file());
+    }
+
+    /// THE TWO MODULE-INDEX BUILDERS MUST ANCHOR A RELATIVE ROOT THE SAME WAY.
+    ///
+    /// `try_build_module_index` resolved each root through `anchor_source_root` -- a relative
+    /// spelling anchors to the PROCESS WORKSPACE -- while the primary-precedence builder read the
+    /// string straight off the filesystem, anchoring it to the PROCESS CWD. One concept with two
+    /// answers, selected by which builder a caller happened to reach.
+    ///
+    /// THIS TEST IS THE DISCRIMINATING RED, and it discriminates because `cargo test` runs with
+    /// its CWD at the PACKAGE directory (`src/v1/stage0`), not the workspace root. Under the
+    /// forked behaviour the relative root `dag` did not exist relative to that CWD and the
+    /// primary-precedence builder refused with `source root does not exist: dag`; the strict
+    /// builder resolved the same string to the real tree. A run whose CWD happens to BE the
+    /// workspace root -- which is every CI invocation -- cannot tell the two apart, which is why
+    /// the fork survived: the one place it is visible is the one place nothing was asserting.
+    #[test]
+    fn both_module_index_builders_anchor_a_relative_root_to_the_workspace() {
+        let roots = vec!["dag".to_string()];
+        let strict = super::try_build_module_index(&roots).expect("strict builder anchors `dag`");
+        let primary = super::try_build_module_index_primary_precedence(&roots)
+            .expect("primary-precedence builder must anchor `dag` the same way");
+        assert!(
+            !strict.is_empty(),
+            "the strict builder must find modules under `dag` -- an empty index would make the \
+             agreement below vacuous"
+        );
+        assert_eq!(
+            strict.len(),
+            primary.len(),
+            "both builders index the same tree for the same relative root spelling"
+        );
     }
 
     #[test]
@@ -1435,12 +1474,12 @@ mod process_workspace_root_tests {
     fn repo_relative_path_normalized_reanchors_baked_absolute_file() {
         let ws = process_workspace_root();
         let baked = workspace_root();
-        let abs = baked.join("dag/gunbc/ci_layer_roots.dag");
+        let abs = baked.join("dag/gunbc/ci/ci_layer_roots.dag");
         if !abs.is_file() {
             return;
         }
         let rel = repo_relative_path_normalized(&abs);
-        assert_eq!(rel, "dag/gunbc/ci_layer_roots.dag");
+        assert_eq!(rel, "dag/gunbc/ci/ci_layer_roots.dag");
         assert_eq!(workspace_relative_repo_path(&abs.to_string_lossy()), rel);
         assert!(ws.join(&rel).is_file());
     }
@@ -1451,13 +1490,13 @@ mod process_workspace_root_tests {
     /// through once verified against the process root, never strip-prefix-panic.
     #[test]
     fn repo_relative_path_normalized_accepts_relative_spelling_under_root() {
-        let rel_in = Path::new("dag/gunbc/ci_layer_roots.dag");
+        let rel_in = Path::new("dag/gunbc/ci/ci_layer_roots.dag");
         if !process_workspace_root().join(rel_in).is_file() {
             return;
         }
         assert_eq!(
             repo_relative_path_normalized(rel_in),
-            "dag/gunbc/ci_layer_roots.dag"
+            "dag/gunbc/ci/ci_layer_roots.dag"
         );
     }
 
@@ -1716,7 +1755,6 @@ struct ModuleBindingManifestRow {
     module_path: String,
     rel_path: String,
     root_variant: String,
-    ident_span: Rc<SourceSpan>,
 }
 
 fn witness_layer_root_spelling(root: &str) -> String {
@@ -1847,7 +1885,6 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
                 module_path: binding.module_path,
                 rel_path: rel,
                 root_variant: root_variants[root_idx].clone(),
-                ident_span: binding.ident_span,
             },
         );
     });
@@ -1925,6 +1962,95 @@ pub enum CompileDiagnosticCensus {
     NotRunnable(String),
 }
 
+thread_local! {
+    static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO: std::cell::RefCell<
+        std::collections::HashMap<String, CompileDiagnosticCensus>,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+static COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+/// `(hits, misses)` for the `compile_dag_diagnostic_census` memo across the whole process.
+/// Report-only; no consumer branches on it. Same accounting shape, and the same reason for it,
+/// as [`compile_dag_rust_emit_check_memo_counts`]: a hit count with no denominator is not a
+/// measurement.
+pub fn compile_dag_diagnostic_census_memo_counts() -> (u64, u64) {
+    (
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.load(std::sync::atomic::Ordering::Relaxed),
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.load(std::sync::atomic::Ordering::Relaxed),
+    )
+}
+
+/// Memoized entry point for the census, mirroring [`compile_dag_rust_emit_check`]'s memo rather
+/// than inventing a second caching discipline beside it (DESIGN §3 — the two builtins compile the
+/// same program through the same pipeline and differ only in what they report, so they must not
+/// disagree about when a compile may be reused).
+///
+/// WHY THIS EXISTS, stated as the measurement that produced it rather than as a general
+/// preference: `compile_dag_rust_emit_check` was memoized and this sibling was not, so a witness
+/// asking two QUESTIONS about one source paid for two full compiles of it. `neither_green_source_
+/// refuses_and_neither_mis_resolves` (`test.claim.callable_candidate_ambiguity_witness`) is the
+/// specimen — four census calls over two distinct sources, so half of its compiles recomputed a
+/// pure function of an input already compiled in the same run. That is the DESIGN §6
+/// bare-minimum-cost class ("a proven cost-shape defect is ALWAYS fixed, regardless of the
+/// realized n"), and its n stopped being small: the row reached 5437ms CPU against the 5000ms
+/// `required_floor_claim_cpu_safety_limit_ms`, which is a FAIL-STOP protecting the executor and
+/// explicitly "never a budget, tolerance, or target" — so the admissible repair is to stop
+/// recomputing, never to raise the line.
+///
+/// PURITY, and it is the whole reason for the guard: the memo is armed ONLY under the floor's
+/// prepared-inventory snapshot and keyed on the source TOGETHER WITH that inventory's content
+/// digest, because `build_module_path_index_from_witness_roots` reads those bytes and the census
+/// is therefore a function of the corpus as well as of the source. Outside the guard there is no
+/// snapshot, so a hit would be a claim about disk that nothing established — DESIGN's
+/// cache-impurity rule (key on declared-input content), and the reason this is not simply a
+/// `HashMap` on the source string.
+pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
+    let Some(inventory_digest) = floor_prepared_inventory_digest() else {
+        return compile_dag_diagnostic_census_uncached(source);
+    };
+    let memo_key = {
+        use crate::v1_rt::{atom_identity_hash, hash_combine};
+        let h = atom_identity_hash(source.to_string());
+        hash_combine(h, atom_identity_hash(inventory_digest))
+    };
+    if let Some(hit) =
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
+    {
+        COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        return hit;
+    }
+    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    // A MISS FILLS A SHARED ARTIFACT, and this memo's fill is the same quantity its sibling's is.
+    // The memo above was landed without this bracket, so the census half of the attribution went
+    // unrecorded: `record_shared_artifact_fill_cpu` was wired into `compile_dag_rust_emit_check`
+    // only, and a claim that filled a CENSUS entry was still charged the whole compile. That is
+    // one accounting rule with two homes, one of which does not apply it (DESIGN §3) — and it is
+    // load-bearing rather than cosmetic, because the ceiling it feeds is a fail-stop: measured on
+    // main run 33131296988, `test.claim.callable_candidate_ambiguity_witness
+    // .neither_green_source_refuses_and_neither_mis_resolves` was the first claim to reach BOTH
+    // green sources, paid both compiles, and refused the floor at 5812ms against 5000ms, while the
+    // two later claims naming those same sources read them free. The number was a fact about
+    // discovery order, not about the row.
+    //
+    // NOTHING IS EXEMPTED. As at the sibling seam, the fill is measured on the same thread clock
+    // the claim loop enforces against, recorded rather than subtracted here, and reported by
+    // `run_claim_measured` as its own `[floor-shared-fill]` column — the claim's marginal and fill
+    // halves still sum to what it actually spent.
+    let fill_started = v1_interpreter::thread_cpu_nanos();
+    let fill_wall_started = std::time::Instant::now();
+    let census = compile_dag_diagnostic_census_uncached(source);
+    record_shared_artifact_fill_cpu(
+        v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
+    );
+    record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
+    COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow_mut().insert(memo_key, census.clone()));
+    census
+}
+
 /// Host realization backing the `compile_dag_diagnostic_census` builtin: compile an in-memory
 /// `.dag` program through the v1 pipeline to the Rust render target (the same pipeline
 /// [`compile_dag_rust_emit_check`] uses), and report the full per-class diagnostic census the
@@ -1946,7 +2072,7 @@ pub enum CompileDiagnosticCensus {
 /// fail-open / `UnlistedImportUse` advisory path. Census receipts therefore must not be read as
 /// production compile-clean behavior for those type positions. It observes nothing about the
 /// interpreter's disposition of the same program and nothing about other emission targets.
-pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
+fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDiagnosticCensus {
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         crate::v1_rt::with_type_ref_hit_ne_bind_measure(|| {
             let module_index = build_module_path_index_from_witness_roots();
@@ -2400,6 +2526,73 @@ thread_local! {
 // not reported" — DESIGN's empty-observation narrow, ⊥-as-answer conflated with ⊥-as-ignorance.
 // One end-of-run receipt carrying BOTH numbers is the same information at 1/N the volume, and
 // it is the first form in which the ratio is readable at all.
+thread_local! {
+    /// CPU spent, on this thread, FILLING shared memoized artifacts during the current claim.
+    ///
+    /// WHY THIS QUANTITY EXISTS AT ALL, and it is an attribution fact rather than a performance
+    /// one: a memoized compile is consumed by every claim that names the same source, but its
+    /// cost lands entirely on whichever claim happened to reach it FIRST. That makes a
+    /// merge-blocking per-claim ceiling a function of EXECUTION ORDER rather than of the tree —
+    /// the same claim is over or under the line depending on who got there first. The floor
+    /// already refuses that accounting for its larger shared artifacts: the three
+    /// `[floor-phase]` warm builds report `provenance=built-by-preparation` and are billed to
+    /// preparation, never to a claim. This is that same rule at a smaller grain (DESIGN §2 — one
+    /// concept, every scale), which is why it reuses `SharedBuildProvenance` rather than minting
+    /// an exemption beside it.
+    ///
+    /// IT EXEMPTS NOTHING. The cost is measured, accumulated, reported per claim and attributed
+    /// to the shared artifact; it stops being CHARGED to the first payer and does not stop being
+    /// COUNTED. A cost that vanished here would be the absorbing fallback (§5) wearing an
+    /// accounting label — the deficit's frequency zeroed by construction — so the receipt carries
+    /// marginal and fill as two columns whose sum is the claim's whole measured cost.
+    // (the CPU fill cell now lives in `v1_interpreter`; see the delegating fns below)
+
+    /// THE SAME FILL, ON THE OTHER CLOCK. The ruling above is about WHOSE COST A FILL IS, which
+    /// is a fact about attribution and not about which clock measured it — so it applies once to
+    /// every ceiling derived from a claim's elapsed time. It was landed on the CPU ceiling alone,
+    /// and the wall ceiling kept charging the whole fill to the first payer, which is how two
+    /// rows whose own cost is 0ms and 1ms refused a required floor at ~18000ms against a 10000ms
+    /// wall requirement (main run 33145062452, `test.claim.transport_script_wall_compile_red`:
+    /// `[floor-shared-fill]` reported `marginal_cpu_ms=0 fill_cpu_ms=18966` for one of them).
+    /// A one-clock accounting rule is the §3 failure the CPU comment already names — one concept
+    /// with two homes, one of which does not apply it — so this cell exists to close the second
+    /// home rather than to add a policy beside it.
+    static SHARED_ARTIFACT_FILL_WALL_NANOS: std::cell::Cell<u128> =
+        const { std::cell::Cell::new(0) };
+}
+
+/// Accumulate CPU spent filling a shared memoized artifact. Called ONLY from a memo MISS path,
+/// and only under the floor guard — outside it there is no memo, so there is no shared artifact
+/// and nothing to attribute.
+///
+/// THE CELL MOVED TO `v1_interpreter` AND THIS DELEGATES. The evaluation deadline must net the
+/// same quantity WHILE a claim runs, and the interpreter cannot read a cell owned here, so one
+/// counter now serves both readers rather than two counters drifting apart — which is the exact
+/// defect (one accounting rule, two homes) this line of work exists to close.
+fn record_shared_artifact_fill_cpu(nanos: u128) {
+    v1_interpreter::record_shared_artifact_fill_cpu_nanos(nanos);
+}
+
+/// Accumulate WALL time spent filling a shared memoized artifact, under the same rule and from
+/// the same miss paths as `record_shared_artifact_fill_cpu`. The two are recorded together at
+/// every call site so a fill can never be counted on one clock and not the other — which is the
+/// state that produced the defect this pair exists to close.
+fn record_shared_artifact_fill_wall(nanos: u128) {
+    SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
+}
+
+/// Read the running total for this thread. The claim loop samples it either side of one claim;
+/// the difference is that claim's fill.
+pub fn shared_artifact_fill_cpu_nanos() -> u128 {
+    v1_interpreter::shared_artifact_fill_cpu_nanos()
+}
+
+/// Read the running wall-clock total for this thread, sampled either side of one claim exactly
+/// as the CPU total is.
+pub fn shared_artifact_fill_wall_nanos() -> u128 {
+    SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.get())
+}
+
 static COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 static COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES: std::sync::atomic::AtomicU64 =
@@ -2481,7 +2674,16 @@ pub fn compile_dag_rust_emit_check(
         return hit;
     }
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    // A MISS FILLS A SHARED ARTIFACT. Measured on the same thread clock the claim loop enforces
+    // against, so the two quantities cannot drift apart, and recorded rather than subtracted here
+    // — the claim loop does the split, this only says how much of the cost was a fill.
+    let fill_started = v1_interpreter::thread_cpu_nanos();
+    let fill_wall_started = std::time::Instant::now();
     let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    record_shared_artifact_fill_cpu(
+        v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
+    );
+    record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict));
     verdict
 }
@@ -2516,13 +2718,13 @@ fn compile_dag_rust_emit_check_uncached(
     }
 }
 
-const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
+const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci/ci_layer_roots.dag";
 /// The function-grain exact witness admission authority (`gunbc.explicit_witness_admission`).
 /// Separate from the path-policy carrier above on purpose: an admission names one witness and
 /// its executing cadence, a path policy names a place, and fusing them into one substring
 /// representation is what made the old reconciliation weaker than its name.
 const EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL: &str = "dag/gunbc/explicit_witness_admission.dag";
-const WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL: &str = "dag/gunbc/witness_deferral_freeze.dag";
+const WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL: &str = "dag/gunbc/witness/witness_deferral_freeze.dag";
 const COMMIT_WORKFLOW_AUTHORITY_REL: &str = "dag/gunbc/commit_workflow.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
@@ -3310,11 +3512,29 @@ fn index_source_root_into_module_index(
         .unwrap_or_else(|e| panic!("{e}"))
 }
 
+/// THE ROOT IS ANCHORED HERE, as `try_build_module_index` already anchors its own.
+///
+/// The two module-index builders forked on this: the strict one resolved each root through
+/// `anchor_source_root` (a relative spelling anchors to the PROCESS WORKSPACE), the
+/// primary-precedence one read the string straight off the filesystem (a relative spelling
+/// anchors to the PROCESS CWD). One concept, two answers, decided by which builder a caller
+/// happened to reach -- the §3 fork, and the kind that only shows when something makes the two
+/// paths meet. Routing the compile transaction's primary arm through the shared index is what
+/// made them meet: `canonical_shared_index_roots` rewrites an absolute root to its repo-relative
+/// spelling for the memo key AND hands that spelling to the builder, which is correct under the
+/// anchoring builder and CWD-dependent under this one. Anchoring here makes the two agree by
+/// construction rather than by every caller running from the right directory.
+///
+/// A root that cannot be anchored falls through to the existence refusal below with its ORIGINAL
+/// spelling, so the diagnostic still names what the caller asked for rather than a rewritten form
+/// the caller never wrote.
 fn try_index_source_root_into_module_index(
     root: &str,
     index: &mut ModuleSourceIndex,
     pool_fill_only: bool,
 ) -> Result<(), String> {
+    let anchored = try_anchor_source_root(root);
+    let root = anchored.as_deref().unwrap_or(root);
     let root_path = std::path::Path::new(root);
     if !root_path.exists() {
         return Err(format!("source root does not exist: {root}"));
@@ -3746,6 +3966,7 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
         && matches!(
             d.diagnostic.as_ref(),
             crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
+                | crate::v1_std_core::CompilerDiagnostic::UnlistedVariantValueUse { .. }
                 | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
                 | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
                 // A non-blocking variant that is absent from this list is counted by
@@ -4424,7 +4645,7 @@ fn collect_repo_files_under_prefix(
 /// entry selection and duplicate policy (refuse vs. superset). DISSOLVES WHEN lifted to one
 /// parameterized helper (duplicate policy + entry source as arguments).
 ///
-/// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
+/// TERMINAL — owning lane: `affected-set-precompute-pruning (plan doc deleted 2026-08-28)`, whose **Step 5
 /// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side selection
 /// Rust in favour of the `.dag` authority. This fn and
 /// `class_b_import_closure_gate_skip_label_for_ci` are new members of exactly that Rust-parallel
@@ -5373,6 +5594,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "NonExhaustiveMatch",
         CompilerDiagnostic::CircularDependency { .. } => "CircularDependency",
         CompilerDiagnostic::DuplicateModule { .. } => "DuplicateModule",
+        CompilerDiagnostic::DuplicateDeclaration { .. } => "DuplicateDeclaration",
         CompilerDiagnostic::MissingAnnotation { .. } => "MissingAnnotation",
         CompilerDiagnostic::ParseError { .. } => "ParseError",
         CompilerDiagnostic::InternalError { .. } => "InternalError",
@@ -5404,6 +5626,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => {
             "AmbiguousAnonymousRecordLiteral"
         }
+        CompilerDiagnostic::ModuleFilenameCollision { .. } => "ModuleFilenameCollision",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
         CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
@@ -5415,6 +5638,13 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
             "ServiceConfigReferenceJudgmentDeferred"
+        }
+        CompilerDiagnostic::UnlistedVariantValueUse { .. } => "UnlistedVariantValueUse",
+        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { .. } => {
+            "ReferenceDerivedImportProviderUnknown"
+        }
+        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => {
+            "ReferenceDerivedImportExportUnproven"
         }
     };
     let name = match d.diagnostic.as_ref() {
@@ -5435,6 +5665,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
         CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),
         CompilerDiagnostic::DuplicateModule { name, .. } => name.clone(),
+        CompilerDiagnostic::DuplicateDeclaration { name, .. } => name.clone(),
         CompilerDiagnostic::MissingAnnotation { fn_name, .. } => fn_name.clone(),
         CompilerDiagnostic::ParseError { message, .. } => truncate_histogram_label(message, 80),
         CompilerDiagnostic::InternalError { message, .. } => {
@@ -5458,12 +5689,16 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::DeclaredTypeNotInhabited { position, .. } => position.clone(),
         CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
+        CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
+        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name, .. } => name.clone(),
+        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name, .. } => name.clone(),
         CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter, .. } => parameter.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates, .. } => {
             candidates.iter().cloned().collect::<Vec<_>>().join("|")
         }
+        CompilerDiagnostic::ModuleFilenameCollision { filename, .. } => filename.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
         CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
@@ -5795,7 +6030,7 @@ mod shared_cache_collision_guard_tests {
 
 #[cfg(test)]
 mod typed_module_content_key_tests {
-    //! Typed-module content-key RED controls (cross-entry-typed-module-memo-sketch.md
+    //! Typed-module content-key RED controls (cross-entry-typed-module-memo-sketch (deleted)
     //! §1/§3, operator-signed 2026-07-16; PR-α — the store re-key).
     //!
     //! The typed store keys on `std.interface_summary.typed_module_key` — module source
@@ -6250,6 +6485,149 @@ mod compile_clean_via_index_verdict_equivalence {
             admitted.len(),
             admitted.iter().map(|(p, _)| p).collect::<Vec<_>>()
         );
+    }
+
+    /// THE PURITY ORACLE FOR THE SHARED PRIMARY-PRECEDENCE INDEX: cached == cold, BYTE-IDENTICAL.
+    ///
+    /// The change this guards routes `compile_emission`'s primary-precedence arm through the
+    /// process-shared `MultiEntryIndex` instead of a fresh per-call one, so N entries compiled in
+    /// one process now SHARE a parse cache, a typed-module cache, a pool census and an intern
+    /// table. The whole benefit is that the overlapping closure prefix -- most of `dag/std` sits
+    /// in nearly every entry's closure -- reconciles once instead of N times; the whole risk is
+    /// that a shared cache serves one entry's result for another's. DESIGN names the oracle for
+    /// exactly this: byte-identical cached-vs-cold.
+    ///
+    /// THE DISCRIMINATION IS IN THE SECOND ENTRY, not the first. Entry `beta` is compiled twice:
+    /// once COLD (a cleared index, so it re-derives from disk) and once WARM BEHIND `alpha`,
+    /// whose closure shares the `common` module with it -- so the warm arm reads `common` from a
+    /// cache another entry's compile filled. Comparing emitted bytes and diagnostic counts across
+    /// those two arms is what distinguishes a shared cache that is CORRECT from one that merely
+    /// runs. Both arms are asserted to have emitted something first, because two empty file lists
+    /// also compare equal and would green this test over a transaction that never emitted.
+    #[test]
+    fn shared_primary_precedence_index_is_byte_identical_to_cold() {
+        let corpus = Corpus::new(
+            "shared-index-purity",
+            &[
+                (
+                    "common.dag",
+                    "module pur.common\n
+fn shared_double(x: Int) -> Int {\n  x + x\n}\n",
+                ),
+                (
+                    "alpha.dag",
+                    "module pur.alpha\n
+import pur.common { shared_double }\n\nfn alpha_use(x: Int) -> Int {\n  shared_double(x)\n}\n",
+                ),
+                (
+                    "beta.dag",
+                    "module pur.beta\n
+import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_double(x) + 1\n}\n",
+                ),
+            ],
+        );
+        let beta_path = corpus.sources[2].path.clone();
+        let alpha_path = corpus.sources[1].path.clone();
+
+        let emission_of = |run: &super::CompileRun| -> Vec<(String, String)> {
+            run.emissions
+                .iter()
+                .flat_map(|e| e.result.files.iter())
+                .map(|f| (f.path.clone(), f.content.clone()))
+                .collect()
+        };
+
+        // COLD: nothing in this process has compiled anything against these roots.
+        super::reset_process_shared_index_for_test();
+        let cold = super::compile_entry_emission(
+            &corpus.roots,
+            &beta_path,
+            true,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let cold_files = emission_of(&cold);
+        assert!(
+            !cold_files.is_empty(),
+            "the cold arm must actually emit -- two empty file lists compare equal and would \
+             green this oracle over a transaction that never ran; disposition={:?}",
+            cold.disposition
+        );
+
+        // WARM: `alpha` fills the shared caches with `common`'s parse and typecheck first, then
+        // `beta` compiles against an index another entry populated.
+        //
+        // THE SHARING IS ASSERTED, NOT ASSUMED. Purity alone is not evidence for this change:
+        // under the OLD per-call index both arms are cold, the bytes match trivially, and this
+        // test greens over a transaction that shares nothing -- the change-detector shape. So the
+        // index identity is read on both sides of `alpha` and `beta`: `generation` is a
+        // per-process monotone counter minted by `new_multi_entry_index_shell`, so two compiles
+        // reporting the SAME generation is the executed proof that one index served both, and
+        // under the old code it is exactly the assertion that fails.
+        super::reset_process_shared_index_for_test();
+        let _alpha = super::compile_entry_emission(
+            &corpus.roots,
+            &alpha_path,
+            true,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let generation_after_alpha = super::try_process_shared_index_for_pool(&corpus.roots, true)
+            .expect("the shared primary-precedence index exists after alpha compiled")
+            .generation;
+        // WHAT THIS SHARING DOES AND DOES NOT REACH, asserted rather than described, because the
+        // difference is the whole honest scope of this change.
+        //
+        // It reaches the INDEX: source discovery, the module index, the parse cache and the pool
+        // census are now built once per (roots, pool) instead of once per entry.
+        //
+        // It does NOT reach RECONCILE. `compile_emission` calls
+        // `v1_compiler_compile::compile_to_resolved_with_options` directly, whose reconcile is
+        // `reconcile_with_census_extra` over the whole closure -- it never touches this index's
+        // `typed_module_cache`, which is filled only by `reconcile_with_typed_cache` on the
+        // `resolved_graph_from_sources_with_index` route. So the typed cache is EMPTY after a
+        // compile, and this assertion pins that fact so a later reader cannot mistake index
+        // sharing for reconcile sharing. When the reconcile route is unified, this assertion is
+        // the one that fails, which is the correct way for it to be superseded: loudly, at the
+        // line that documents the boundary, rather than by a comment quietly going stale.
+        assert_eq!(
+            super::typed_module_cache_len_for_test(
+                &super::try_process_shared_index_for_pool(&corpus.roots, true).unwrap()
+            ),
+            0,
+            "compile_emission does not reconcile through the shared typed cache -- if this is no \
+             longer 0 the reconcile route was unified and this test's scope note is stale"
+        );
+
+        let warm = super::compile_entry_emission(
+            &corpus.roots,
+            &beta_path,
+            true,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let warm_files = emission_of(&warm);
+        let generation_after_beta = super::try_process_shared_index_for_pool(&corpus.roots, true)
+            .expect("the shared index survives beta's compile")
+            .generation;
+        assert_eq!(
+            generation_after_alpha, generation_after_beta,
+            "both entries must have compiled against ONE index -- a differing generation means \
+             each compile built its own, which is the per-entry cost shape this change removes"
+        );
+
+        assert_eq!(
+            cold_files, warm_files,
+            "emitted bytes must be byte-identical whether `beta`'s closure was reconciled cold or \
+             read from caches `alpha`'s compile filled"
+        );
+        assert_eq!(
+            (cold.blocking_diagnostics, cold.advisory_diagnostics),
+            (warm.blocking_diagnostics, warm.advisory_diagnostics),
+            "diagnostic populations must not depend on which sibling entry warmed the index"
+        );
+        assert_eq!(
+            cold.closure_modules, warm.closure_modules,
+            "the closure the transaction resolved must not depend on cache residency"
+        );
+        super::reset_process_shared_index_for_test();
     }
 
     #[test]
@@ -6849,7 +7227,7 @@ const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
     "tools.dag_compile_clean_scope",
 ];
 
-/// Axis (iv) of the fourth-axis law (`docs/plans/live-read-witness-classification-design.md`
+/// Axis (iv) of the fourth-axis law (`live-read-witness-classification-design (plan doc deleted 2026-08-28)`
 /// §7): does `entry_path`'s import closure reach a declared live-read carrier home, and is
 /// any path touched at all? This is a G1-only (module-closure) mirror of the landed G2
 /// call-reachability lens (`v2.lens.live_read_classification`) — G2's carrier set is always
@@ -6980,7 +7358,7 @@ mod live_read_carrier_home_roster_drift_gate_tests {
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_discovery_skip_before_resolve`):
 // ROADMAP lane `2-provenance-ingest` (gunbc.roadmap_authority / ROADMAP.md;
-// docs/plans/affected-set-precompute-pruning.md Step 4 migrate floor) — host-side
+// affected-set-precompute-pruning (plan doc deleted 2026-08-28) Step 4 migrate floor) — host-side
 // per-entry cold-resolve elision under SelectionApplied before `floor_kernel_would_skip`.
 // Unblock: modeled `floor_kernel_precompute_would_skip` / skip-before-resolve arm on
 // `v2.workflow.affected_set_floor_runner` realizes the same decision in `.dag` (N→1 with
@@ -8561,9 +8939,16 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // THE PANICKING WRAPPERS SURVIVE for callers whose inputs are already
     // invariant-established; this is the one route that takes a path straight from a CLI
     // argument, so it is the one that must refuse instead.
+    //
+    // BOTH ARMS NOW ROUTE THROUGH THE PROCESS-SHARED INDEX, one slot per pool semantics.
+    // The primary arm previously built a fresh index per call and discarded it, so every cache
+    // it owns -- parse, typed-module, pool census, intern table -- was per-call, and a run
+    // compiling N entries reconciled the shared prefix N times over closures that overlap almost
+    // entirely. See `try_process_shared_index_for_pool` for why that is a §2 cost-shape defect
+    // rather than a budget fact, and for what is NOT changed by the routing.
     let index: Rc<MultiEntryIndex> = if primary_precedence {
-        match try_build_multi_entry_index_primary_precedence(source_roots) {
-            Ok(idx) => Rc::new(idx),
+        match try_process_shared_index_for_pool(source_roots, true) {
+            Ok(idx) => idx,
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
@@ -10402,14 +10787,167 @@ pub struct BudgetEvent {
     pub completion: BudgetCompletion,
 }
 
-impl BudgetCompletion {
-    /// How the elapsed number may be READ. Rendered beside every budget figure so a reader
-    /// never has to know which mechanism produced it.
-    pub fn elapsed_reading(self) -> &'static str {
+// `BudgetCompletion::elapsed_reading` USED TO LIVE HERE AND IS DELETED, because it was the
+// mechanism that made the defect cheap to write. It answered "at least" / "exactly", which is a
+// QUALIFIER handed to a caller who then supplies the sentence — and every caller supplied the
+// same sentence, `cost {reading} {n}ms against {budget}ms`. That template puts a right-censored
+// BOUND in the field position a reader scans for a COST, with the qualification arriving after
+// the number has already been read, and the two dispositions then differ by ONE WORD in the
+// middle of a sentence while carrying opposite epistemic status. Measured cost of that shape:
+// three readers built wrong models on it independently in one night, and one of them
+// TRANSCRIBED the sentence's own "the figure is the interrupt point, not this row's cost" while
+// drawing an inference those words forbid. A caveat competes with a number in the cost field;
+// it does not win. So the repair is not a louder caveat but a different FIELD, and it has to be
+// unavailable rather than merely discouraged: a shared qualifier can only ever be dropped into
+// somebody's cost template.
+
+impl ClaimOutcome {
+    /// THE ONE RENDERING OF A BUDGET FIGURE, and the reason it is a whole phrase rather than a
+    /// qualifier is the whole point of it.
+    ///
+    /// A bound and a measurement do not differ by an adjective, so they do not share a field.
+    /// The interrupted arm renders `cost=UNMEASURED` — the cost field NEVER holds a number for
+    /// a row that produced no verdict — and reports the interrupt point in its own named field,
+    /// after the cost, labelled with what it is a property of. The completed arm renders an
+    /// exact cost, because it has one.
+    ///
+    /// WHY THE INTERRUPT POINT IS NOT SILENTLY DROPPED: it is real data about the RUN (which
+    /// ceiling fired, and that the poll observed it when it did). What it is not is data about
+    /// the ROW, and that is stated in the same breath, because the misreading it produces is
+    /// structural rather than careless: every interrupted row reports approximately whatever
+    /// ceiling interrupted it, so a "cluster near the budget" is GUARANTEED for any ceiling over
+    /// any population and carries zero information. Both wrong models above were of exactly that
+    /// shape — reading a distribution the deadline manufactured.
+    pub fn budget_figure_phrase(&self) -> Option<String> {
         match self {
-            BudgetCompletion::Interrupted => "at least",
-            BudgetCompletion::CompletedOverBudget => "exactly",
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms,
+                budget_ms,
+                kind,
+            } => Some(format!(
+                "{} budget {}ms EXCEEDED; cost=UNMEASURED — the deadline preempted the witness, \
+                 so this row's cost is ABOVE {}ms with NO UPPER BOUND (a bound, not a near \
+                 miss: it is wrong as a cost by an unbounded amount, always low). \
+                 interrupt_point={}ms is where the poll observed the ceiling; every interrupted \
+                 row reports approximately whatever ceiling interrupted it, so that figure is a \
+                 property of the BUDGET and not of this row — do not compare it with the budget \
+                 or with another row's",
+                kind.label(),
+                budget_ms,
+                budget_ms,
+                elapsed_at_least_ms
+            )),
+            ClaimOutcome::CompletedOverBudget {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => Some(format!(
+                "{} budget {}ms EXCEEDED; cost={}ms EXACT — the witness ran to completion and \
+                 was then reclassified on cost, so this figure is a measurement of the row",
+                kind.label(),
+                budget_ms,
+                elapsed_ms
+            )),
+            // Every other outcome carries no budget figure at all. The wildcard is the same one
+            // `budget_event` above uses and for the same reason: this is a projection OUT of the
+            // two budget arms, and a new non-budget arm has nothing to render here.
+            _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod budget_figure_rendering_tests {
+    use super::{BudgetKind, ClaimOutcome};
+
+    // THE FIELD, NOT THE CAVEAT. The defect this guards is not that the sentence lacked a
+    // qualification — it carried "UNMEASURED" in capitals and three readers still read the
+    // number as a cost, one of them while quoting that word. So the assertion is positional:
+    // whatever follows `cost=` for an INTERRUPTED row must not be a number, whatever the rest
+    // of the sentence says.
+    fn cost_field(phrase: &str) -> String {
+        let after = phrase
+            .split_once("cost=")
+            .expect("every budget phrase names a cost field")
+            .1;
+        after
+            .split_whitespace()
+            .next()
+            .expect("cost field is non-empty")
+            .to_string()
+    }
+
+    fn interrupted(elapsed: u64, budget: u64) -> ClaimOutcome {
+        ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: elapsed,
+            budget_ms: budget,
+            kind: BudgetKind::Cpu,
+        }
+    }
+
+    // RED: restore any rendering of the form `cost ... {elapsed_at_least_ms}ms` — the shape
+    // every site carried before — and this fails, because a digit reaches the cost field.
+    #[test]
+    fn an_interrupted_rows_cost_field_never_holds_a_number() {
+        let phrase = interrupted(5_002, 5_000)
+            .budget_figure_phrase()
+            .expect("interrupted rows render a budget figure");
+        assert_eq!(
+            cost_field(&phrase),
+            "UNMEASURED",
+            "the cost field of an undecided row must name the absence, not a bound: {phrase}"
+        );
+        assert!(
+            !cost_field(&phrase).chars().any(|c| c.is_ascii_digit()),
+            "no digit may occupy the cost field of an interrupted row: {phrase}"
+        );
+    }
+
+    // POSITIVE CONTROL. Without it, a renderer that answered "UNMEASURED" for BOTH arms — and
+    // so carried no information at all — would pass the assertion above.
+    #[test]
+    fn a_completed_rows_cost_field_holds_its_exact_measurement() {
+        let phrase = ClaimOutcome::CompletedOverBudget {
+            elapsed_ms: 5_002,
+            budget_ms: 5_000,
+            kind: BudgetKind::Cpu,
+        }
+        .budget_figure_phrase()
+        .expect("completed-over-budget rows render a budget figure");
+        assert_eq!(cost_field(&phrase), "5002ms", "{phrase}");
+        assert!(phrase.contains("EXACT"), "{phrase}");
+    }
+
+    // THE FIGURE IS KEPT, IN ITS OWN FIELD. Dropping it would trade one wrong reading for a
+    // lost fact about the run: which ceiling fired, and that the poll observed it.
+    #[test]
+    fn the_interrupt_point_survives_under_its_own_name() {
+        let phrase = interrupted(5_002, 5_000).budget_figure_phrase().unwrap();
+        assert!(
+            phrase.contains("interrupt_point=5002ms"),
+            "the interrupt point is reported, just not as a cost: {phrase}"
+        );
+    }
+
+    // THE MISREADING THE FIELD REMOVES, STATED AS A TEST. Two rows whose true costs differ by
+    // any amount report interrupt points that differ only by poll granularity, because the
+    // number is a property of the ceiling. Both must therefore render the SAME cost field, and
+    // that field must be the one that says nothing — otherwise the ledger manufactures a
+    // "cluster near the budget" out of the deadline.
+    #[test]
+    fn two_rows_of_unrelated_true_cost_render_one_indistinguishable_cost() {
+        let quick = interrupted(5_001, 5_000).budget_figure_phrase().unwrap();
+        let slow = interrupted(5_004, 5_000).budget_figure_phrase().unwrap();
+        assert_eq!(cost_field(&quick), cost_field(&slow));
+        assert_eq!(cost_field(&quick), "UNMEASURED", "{quick}");
+    }
+
+    // NON-BUDGET OUTCOMES CARRY NO FIGURE, so no caller can render one for a row that never
+    // met a ceiling.
+    #[test]
+    fn outcomes_without_a_budget_render_no_figure() {
+        assert!(ClaimOutcome::Pass.budget_figure_phrase().is_none());
+        assert!(ClaimOutcome::Fail.budget_figure_phrase().is_none());
     }
 }
 
@@ -10689,6 +11227,46 @@ pub enum ClaimOutcome {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FloorRouteGapExpectedGround {
+    UnpublishedMockCase,
+    NoMockResponse,
+    FilesystemRemoval,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FloorRouteGapExpectation {
+    operation: String,
+    ground: FloorRouteGapExpectedGround,
+}
+
+fn floor_route_gap_expectation_mismatch(
+    expectation: Option<&FloorRouteGapExpectation>,
+    operation: &str,
+    ground: &v1_interpreter::HermeticEffectGround,
+) -> Option<String> {
+    let expectation = expectation?;
+    let observed_ground = match ground {
+        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+            FloorRouteGapExpectedGround::UnpublishedMockCase
+        }
+        v1_interpreter::HermeticEffectGround::NoMockResponse => {
+            FloorRouteGapExpectedGround::NoMockResponse
+        }
+        v1_interpreter::HermeticEffectGround::FilesystemRemoval => {
+            FloorRouteGapExpectedGround::FilesystemRemoval
+        }
+    };
+    if expectation.operation == operation && expectation.ground == observed_ground {
+        None
+    } else {
+        Some(format!(
+            "typed route-gap enrollment expected operation={} ground={:?}, observed operation={} ground={:?}",
+            expectation.operation, expectation.ground, operation, observed_ground
+        ))
+    }
+}
+
 /// Which clock a completed claim's cost is judged on. Operator ruling 2026-08-19 (BUDGET
 /// POLICY CUT): chosen by the witness's PURPOSE — pure modeled computation is judged on CPU,
 /// external/blocking interaction is judged on wall — and NEVER by which clock happened to
@@ -10959,7 +11537,7 @@ pub fn resolve_entry_graph(
 }
 
 // Process-level (per-thread) resolve store — the S1a increment of the resolver
-// graph-major design (docs/plans/resolver-graph-major-design.md). Within one
+// graph-major design (resolver-graph-major-design (plan doc deleted 2026-08-28)). Within one
 // process the source tree is a fixed snapshot, so a resolved entry graph is a
 // pure fact of (source_roots, entry) — the same purity assumption the walk memo
 // (M1) and typed_module_cache already ship on. Routing every fixed-entry
@@ -10982,7 +11560,7 @@ thread_local! {
     > = RefCell::new(HashMap::new());
 
     // The thread's ONE shared resolve index (union-resolve S1,
-    // docs/plans/resolver-graph-major-design.md §7). Every fixed-entry consumer routed
+    // resolver-graph-major-design (plan doc deleted 2026-08-28) §7). Every fixed-entry consumer routed
     // through resolve_entry_graph_shared (the executor prelude: plan entry + output
     // policy + group syntax, plus the floor runner) resolves against this single
     // MultiEntryIndex, so its parse/typed caches share the union of all those closures:
@@ -10990,9 +11568,18 @@ thread_local! {
     // source_roots — a run's roots are fixed, so this is a get-or-build, rebuilt only on
     // the rare roots change. Thread-local by the same Rc-not-Send reason as the store:
     // each shard keeps its own index rather than smuggling Rc across threads.
+    //
+    // TWO SLOTS, ONE PER POOL SEMANTICS, and the pair is what makes the memo safe rather than
+    // merely faster. `primary-precedence` (root[0] wins, later roots fill only absent modules)
+    // and strict are DIFFERENT POOLS over the same roots: serving one where the other was asked
+    // for is a silently divergent resolution, which is the §5 fail-open this cache would
+    // otherwise introduce. So precedence is part of the identity of the slot, not a build flag
+    // applied to a shared one -- a roots-keyed single slot cannot express the distinction and
+    // would answer whichever mode ran first. Each slot keeps the original single-entry,
+    // rebuild-on-roots-change shape, so an index is never held for a pool nobody is asking about.
     #[allow(clippy::type_complexity)]
-    static PROCESS_RESOLVE_INDEX: RefCell<Option<(String, Rc<MultiEntryIndex>)>> =
-        const { RefCell::new(None) };
+    static PROCESS_RESOLVE_INDEX: RefCell<[Option<(String, Rc<MultiEntryIndex>)>; 2]> =
+        const { RefCell::new([None, None]) };
 
     // While loading the materialization-provider authority, cross-process disk hits
     // must not re-enter provider routing (review 44268: bootstrap recursion).
@@ -11073,10 +11660,42 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
 /// discovery must not install a partial index that every later caller in the process would
 /// then read as complete.
 pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntryIndex>, String> {
+    try_process_shared_index_for_pool(source_roots, false)
+}
+
+/// The shared index for `source_roots` under a NAMED POOL SEMANTICS.
+///
+/// WHY THIS EXISTS, and it is a §2 cost-shape repair rather than a new capability. The compile
+/// transaction's two subjects took opposite routes over the same caches: the strict arm resolved
+/// through the process-shared index above -- so a second `--entry` compile in one process is a
+/// cache hit -- while the primary-precedence arm built a FRESH `MultiEntryIndex` per call and
+/// threw it away. Every cache that index owns is per-call under that arm: the parse cache, the
+/// typed-module cache, the pool census, the interned names. So a run that compiles N entries
+/// typechecks the shared prefix N times, and the prefix is nearly the whole closure -- most of
+/// `dag/std` sits in almost every entry's closure. The dominant cost of the emit-compile phase
+/// (`compile.reconcile`) is therefore paid INDEPENDENTLY PER ENTRY over closures that overlap
+/// almost entirely, which is why a per-entry cover cannot reach the corpus at any budget: the
+/// unit of computation was the closure and the unit of fact was the entry.
+///
+/// WHAT CHANGES AND WHAT DOES NOT. Only WHICH index the primary arm reaches; the index's own
+/// semantics are untouched -- it is still built by `try_build_module_index_primary_precedence`
+/// over the same canonicalized roots, so the pool it presents is the same pool. The typed cache
+/// is keyed by authored name and content (`typed_module_content_key`), and the collision-honesty
+/// guard in `reconcile_with_typed_cache` already refuses loudly when one name resolves from two
+/// declaring files across co-resident entries -- which is exactly the co-residence this memo
+/// creates more of, so the wall is upstream of the change rather than owed by it.
+///
+/// PRECEDENCE IS PART OF THE SLOT IDENTITY, never a parameter applied to a shared slot: see the
+/// two-slot note on `PROCESS_RESOLVE_INDEX`.
+pub fn try_process_shared_index_for_pool(
+    source_roots: &[String],
+    primary_precedence: bool,
+) -> Result<Rc<MultiEntryIndex>, String> {
+    let slot = usize::from(primary_precedence);
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
-        s.borrow().as_ref().and_then(|(k, idx)| {
+        s.borrow()[slot].as_ref().and_then(|(k, idx)| {
             if *k == roots_key {
                 Some(idx.clone())
             } else {
@@ -11088,19 +11707,35 @@ pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntry
         return Ok(idx);
     }
     let build_started = std::time::Instant::now();
-    let idx = Rc::new(new_multi_entry_index_shell(
-        try_build_module_index(&roots)?,
-        &roots,
-        None,
-    ));
+    let module_index = if primary_precedence {
+        try_build_module_index_primary_precedence(&roots)?
+    } else {
+        try_build_module_index(&roots)?
+    };
+    let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots, None));
     discovery_phase_totals::add(
         &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
         build_started.elapsed(),
     );
     PROCESS_RESOLVE_INDEX.with(|s| {
-        *s.borrow_mut() = Some((roots_key, idx.clone()));
+        s.borrow_mut()[slot] = Some((roots_key, idx.clone()));
     });
     Ok(idx)
+}
+
+/// Test-only: drop the process-shared index slots so the NEXT compile in this process is COLD.
+///
+/// This exists so `cached == cold` can be asserted by EXECUTION rather than by reading the cache
+/// keys. Without it the two arms of the oracle cannot be distinguished from inside one process:
+/// the second compile is a hit by construction, so a test that ran both arms warm would compare a
+/// value with itself and be green whatever the cache served -- the change-detector shape §5
+/// rejects. Clearing the slot makes the cold arm genuinely re-derive from disk.
+#[cfg(test)]
+pub(crate) fn reset_process_shared_index_for_test() {
+    PROCESS_RESOLVE_INDEX.with(|s| {
+        *s.borrow_mut() = [None, None];
+    });
+    PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
 }
 
 pub fn resolve_entry_graph_shared(
@@ -11868,12 +12503,12 @@ mod live_read_selection_manifest_producer_tests {
             &ctx,
             "PathPattern",
             "LiteralPath",
-            vec![("path", str_value("dag/gunbc/ci_spec.dag".to_string()))],
+            vec![("path", str_value("dag/gunbc/ci/ci_spec.dag".to_string()))],
         );
         assert_eq!(
             decoded_carriers(&ctx, vec![fs_carrier(&ctx, pattern)]),
             vec![LiveReadCarrier::FilesystemReadPath(
-                LiveReadPathPattern::LiteralPath("dag/gunbc/ci_spec.dag".to_string())
+                LiveReadPathPattern::LiteralPath("dag/gunbc/ci/ci_spec.dag".to_string())
             )]
         );
     }
@@ -11977,10 +12612,10 @@ mod live_read_selection_manifest_producer_tests {
     fn a_literal_path_carrier_intersects_only_its_own_path() {
         let row = LiveReadSelectionRow::Classified(LiveReadClassification::RuntimeRead {
             carriers: vec![LiveReadCarrier::FilesystemReadPath(
-                LiveReadPathPattern::LiteralPath("dag/gunbc/ci_spec.dag".to_string()),
+                LiveReadPathPattern::LiteralPath("dag/gunbc/ci/ci_spec.dag".to_string()),
             )],
         });
-        assert!(row.touched_by(&touched(&["dag/gunbc/ci_spec.dag"])));
+        assert!(row.touched_by(&touched(&["dag/gunbc/ci/ci_spec.dag"])));
         // The whole point of preserving the literal: an unrelated diff does NOT select it. A
         // `runtime_read: bool` row could not express this and had to say true here.
         assert!(!row.touched_by(&touched(&["dag/gunbc/unrelated.dag"])));
@@ -12013,7 +12648,7 @@ mod live_read_selection_manifest_producer_tests {
     #[test]
     fn a_local_read_is_never_touched_and_a_refusal_always_is() {
         let local = LiveReadSelectionRow::Classified(LiveReadClassification::LocalRead);
-        assert!(!local.touched_by(&touched(&["dag/gunbc/ci_spec.dag"])));
+        assert!(!local.touched_by(&touched(&["dag/gunbc/ci/ci_spec.dag"])));
         let refused = LiveReadSelectionRow::Refused {
             cause: "partial subject".to_string(),
         };
@@ -12050,7 +12685,7 @@ pub struct MultiEntryIndex {
     /// (`std.interface_summary.typed_module_key`: module source hash ⊕ direct-import
     /// interface hashes ⊕ compiler identity) — never by authored module name. The
     /// content key is the soundness license for eviction (PR-β) and the S2b-ready
-    /// backend shape (cross-entry-typed-module-memo-sketch.md §1, operator-signed
+    /// backend shape (cross-entry-typed-module-memo-sketch (deleted) §1, operator-signed
     /// 2026-07-16); within one process it also makes a same-name/different-file
     /// collision structurally unable to serve the wrong typecheck (the name-keyed
     /// store relied on `module_source_identity` failing loud instead).
@@ -12179,17 +12814,6 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
     )
 }
 
-/// Fallible twin of the above, for the compile transaction. See `try_build_module_index`.
-fn try_build_multi_entry_index_primary_precedence(
-    source_roots: &[String],
-) -> Result<MultiEntryIndex, String> {
-    Ok(new_multi_entry_index_shell(
-        try_build_module_index_primary_precedence(source_roots)?,
-        source_roots,
-        None,
-    ))
-}
-
 pub fn build_multi_entry_index_with_shared_caches(
     source_roots: &[String],
     cross_worker_store: Arc<RwLock<SharedTypecheckCaches>>,
@@ -12305,7 +12929,7 @@ pub fn reset_pool_qualified_fill_for_test(index: &MultiEntryIndex) {
 // terms so `measure_worker_private_memory` can stage construction and then
 // attribute retained heap by EXCLUSIVE DROP (clear one term, measure the live-heap
 // release) instead of by shallow shell sizing, which the Rc→Arc spike receipt
-// (`docs/plans/rc-to-arc-share-spike.md` §2.2) records as an under-count that must
+// (`rc-to-arc-share-spike (plan doc deleted 2026-08-28)` §2.2) records as an under-count that must
 // not be summed. Feature-gated and additive: no production path calls these, and
 // none of them changes any semantic behaviour of the index.
 //
@@ -12737,7 +13361,7 @@ fn shared_caches_write<'a>(
 
 /// The typed-module content key for `resolved` — the Rust realization of
 /// `std.interface_summary.typed_module_key` over the live store's inputs
-/// (cross-entry-typed-module-memo-sketch.md §1, operator-signed 2026-07-16):
+/// (cross-entry-typed-module-memo-sketch (deleted) §1, operator-signed 2026-07-16):
 ///
 ///   key = typed_module_key(module_key(source_hash, direct-import interface hashes),
 ///                          compiler identity)
@@ -14205,7 +14829,7 @@ fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     // the enum instead of re-parsing its display label (§3, avoid a second representation).
     let degraded = !(source_label.contains("memory.max") || source_label.contains("memory.high"));
     // REFUSE rather than widen when no budget is readable (operator ruling 2026-08-05;
-    // authority `dag/gunbc/host_budget_source.dag` `HostBudgetUnreadable`).
+    // authority `dag/gunbc/host/host_budget_source.dag` `HostBudgetUnreadable`).
     //
     // This was `.unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)`: a budget that could not
     // be computed became the MOST PERMISSIVE cap available — top-as-answer conflated with
@@ -14228,7 +14852,7 @@ fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
              unknown budget cannot be defaulted — the previous default was the ceiling, which \
              OOM-killed this process rather than refusing. Declare one with \
              GUNBC_MEMORY_BUDGET_BYTES, or model this platform's memory source \
-             (dag/gunbc/host_budget_source.dag)."
+             (dag/gunbc/host/host_budget_source.dag)."
         );
     };
     let cap = ((budget_bytes / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize).clamp(
@@ -14360,7 +14984,7 @@ fn emit_floor_drain_group_line(
     );
 }
 
-/// P1 retention-vs-drain cohort receipt (docs/plans/floor-prep-tax-program.md §P1):
+/// P1 retention-vs-drain cohort receipt (floor-prep-tax-program (plan doc deleted 2026-08-28) §P1):
 /// per-entry-group instrumentation distinct from `emit_floor_drain_group_line`'s
 /// cumulative cache-size line — this line prices the per-group wall/resolve/eval
 /// tax the program's diagnosing, plus the typecheck-cache-hit / resolved-graph-hit
@@ -14376,7 +15000,7 @@ fn emit_floor_drain_group_line(
 ///
 /// Scaffold, not a second production floor driver: this instrumentation and its
 /// sole consumer, `p1_cohort_probe`, are diagnostic-only (opt-in, zero effect on
-/// default eviction behavior — see `docs/plans/p1-retention-vs-drain-cohort-receipt.md`).
+/// default eviction behavior — see `p1-retention-vs-drain-cohort-receipt (plan doc deleted 2026-08-28)`).
 /// Dissolve-on: once P1 is banked and no other open lane needs cohort-scoped A/B
 /// retention receipts, delete `emit_p1_cohort_entry_line`/`p1_cohort_receipt_enabled`/
 /// `p1_cohort_cgroup_memory`, `resolved_graph_evictions` on `IndexRetentionSnapshot`,
@@ -16544,7 +17168,7 @@ fn resolved_graph_from_sources_with_index(
 }
 
 /// Collision-honesty check for the shared typed-module cache (union-resolve receipt §6.3,
-/// docs/plans/resolver-graph-major-design.md). The typed cache is keyed by authored module
+/// resolver-graph-major-design (plan doc deleted 2026-08-28)). The typed cache is keyed by authored module
 /// name and reused across every entry that co-resides in one process's shared index, so a
 /// name that maps to two DIFFERENT declaring files is a co-residence surprise: serving one
 /// file's typecheck for the other's would be a §5 fail-open (a divergent resolution passing
@@ -16575,7 +17199,7 @@ fn check_module_source_identity_map(
 }
 
 /// Antichain batches (Kahn levels) over the closure's resolved import edges — the host
-/// realization of the modeled module-node schedule (resolver-graph-major-design.md §7 S2a
+/// realization of the modeled module-node schedule (resolver-graph-major-design (deleted) §7 S2a
 /// move 2: module nodes ride the same scheduler/runner shape as the CI floor,
 /// `v2.workflow.module_resolution_plan` is the model authority). Nodes are the closure's
 /// modules at authored-name grain (the typed-store key); edges are `resolved_imports` rows
@@ -17365,7 +17989,7 @@ fn tree_bare_census_for_root(
 
 /// Whole-pool census: every pool module regardless of tree. The loader's
 /// cross-tree fallback (see the `pool_bare_census` field note) — a v2 module's
-/// bare `gunbc_ci_spec` (declared in dag/gunbc/ci_spec.dag) resolves here after
+/// bare `gunbc_ci_spec` (declared in dag/gunbc/ci/ci_spec.dag) resolves here after
 /// missing the v2 tree census, so the provider is pulled and becomes
 /// closure-visible at typecheck.
 fn pool_bare_census(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> {
@@ -17416,7 +18040,7 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
-    // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
+    // S2a move 2 (resolver-graph-major-design (deleted) §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
     // node-keyed store a dependent's handler reads its imports' results from — once-per-node
     // holds by schedule (a node appears once), not merely by cache lookup. The ResolvedGraph
@@ -17457,7 +18081,7 @@ fn reconcile_with_typed_cache(
     // composed lazily per root in `tree_symbol_index_memo`.
     //
     // Built AFTER the all-cache-hits shortcut (fix axis 2b,
-    // docs/plans/floor-memory-pool-parse-regression-diagnosis.md §9): the shortcut
+    // floor-memory-pool-parse-regression-diagnosis (plan doc deleted 2026-08-28) §9): the shortcut
     // consumes no symbol index, so an all-hits entry — the warm single-process case,
     // and any cold child whose closure fully hits the typed/cross-process caches —
     // must not pay the whole-pool census `pool_qualified_fill` performs. Genuine
@@ -18402,6 +19026,7 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<DagParseS
                             module,
                             &source_indices,
                             &rel,
+                            &fill.occurrence_transport,
                         ));
                     }
                     records.lock().expect("record lock").extend(built);
@@ -19558,7 +20183,7 @@ pub fn run_witness_verdict_diagnostic(
 /// `append_failure_receipt_companion_loudness` / `gunbc.test_module_hygiene.failure_receipt_companion`
 /// stack — no parallel naming authority. Lane: **v1 exit** (zero hand-maintained Rust).
 /// ROADMAP row: "Get hand-written Rust in this repository down to zero"
-/// (authority `dag/gunbc/v1_deletion_plan.dag`). Dissolution trigger: deleted with
+/// (authority `dag/gunbc/v1/v1_deletion_plan.dag`). Dissolution trigger: deleted with
 /// `claim_executor` when witness execution leaves the seed runner; witnesses then call the
 /// loudness projection directly without this bridge.
 pub fn seed_runner_bool_false_failure_detail(
@@ -19890,12 +20515,58 @@ pub fn run_claim_measured(
     }
     let started = std::time::Instant::now();
     let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();
+    let fill_before_nanos = shared_artifact_fill_cpu_nanos();
+    let fill_wall_before_nanos = shared_artifact_fill_wall_nanos();
     let outcome = run_claim(ctx, function);
     // CPU consumed by THIS (witness-eval) thread — the budget metric, so the completion-side
     // check matches the cooperative stride-poll and neither fires on cold-I/O or contention
-    // wall time. wall_nanos stays the measurement/receipt basis (unchanged).
-    let cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
-    let wall_nanos = started.elapsed().as_nanos();
+    // wall time.
+    let measured_cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
+    // Sampled here rather than after the report so the wall clock can be split by the same rule
+    // the CPU clock is, and so the reported line and the enforced quantity read one binding.
+    let measured_wall_nanos = started.elapsed().as_nanos();
+    // SHARED-ARTIFACT FILL IS NOT THIS CLAIM'S MARGINAL COST (operator-line ruling, 2026-08-27).
+    // Whatever this claim spent filling a memo is consumed by every later claim naming the same
+    // source — one of them measured at literally 0ms in the same run because this one paid — so
+    // charging it here makes a merge-blocking ceiling a function of EXECUTION ORDER rather than of
+    // the tree. The floor already bills its three `[floor-phase]` warm builds to preparation with
+    // `provenance=built-by-preparation` for exactly this reason; this is that rule at memo grain.
+    //
+    // THE COST IS SPLIT, NEVER DROPPED: `fill_cpu_nanos` is reported per claim and the two halves
+    // sum to `measured_cpu_nanos`. A runaway compile cannot hide behind "it was a miss", because
+    // the fill is still counted, still attributed and still visible in the receipt.
+    let fill_cpu_nanos = shared_artifact_fill_cpu_nanos().saturating_sub(fill_before_nanos);
+    let cpu_nanos = measured_cpu_nanos.saturating_sub(fill_cpu_nanos);
+    // THE SAME SPLIT ON THE WALL CLOCK. `wall_budget_completion_outcome` below is a
+    // merge-blocking ceiling, so charging it the fill made it a function of execution order in
+    // exactly the way the ruling above forbids — and unlike the CPU side it had no exemption
+    // argument, only an omission. Split, never dropped: both halves are reported and they sum to
+    // `measured_wall_nanos`.
+    let fill_wall_nanos = shared_artifact_fill_wall_nanos().saturating_sub(fill_wall_before_nanos);
+    let wall_nanos = marginal_wall_nanos(measured_wall_nanos, fill_wall_nanos);
+    // EITHER clock, not the CPU one. A fill that blocked on I/O can spend wall time while
+    // charging almost no CPU, and under a `fill_cpu_nanos > 0` guard that fill would be
+    // subtracted from the enforced wall figure and reported nowhere — a cost dropped rather
+    // than split, which is the one thing the ruling above forbids.
+    if fill_cpu_nanos > 0 || fill_wall_nanos > 0 {
+        // REPORTED, NOT ABSORBED. Printed on its own line, per claim, whenever a fill happened,
+        // so the quantity the ceiling stops charging is visible at the same grain it was measured
+        // — the difference between attributing a cost and losing one. `triggered_by` is this
+        // claim, which is precisely what `SharedBuildProvenance::AlreadyWarmOnEntry` records for
+        // the larger shared builds: every later claim reading this artifact reads it warm, and
+        // this line names who paid.
+        eprintln!(
+            "[floor-shared-fill] claim={function} marginal_cpu_ms={} fill_cpu_ms={} \
+             measured_cpu_ms={} marginal_wall_ms={} fill_wall_ms={} measured_wall_ms={} \
+             provenance=filled-shared-artifact triggered_by={function}",
+            cpu_nanos / 1_000_000,
+            fill_cpu_nanos / 1_000_000,
+            measured_cpu_nanos / 1_000_000,
+            wall_nanos / 1_000_000,
+            fill_wall_nanos / 1_000_000,
+            measured_wall_nanos / 1_000_000,
+        );
+    }
     ctx.clear_eval_deadline();
     ctx.clear_wall_deadline();
     v1_interpreter::eval_subject_clear();
@@ -20365,6 +21036,19 @@ fn budget_completion_outcome(
     }
 }
 
+/// The claim's own wall cost: what it spent, less what it spent filling a shared artifact every
+/// later claim naming the same source then reads free.
+///
+/// Named rather than written inline at the one call site because it is the quantity
+/// `wall_budget_completion_outcome` enforces against, and a merge-blocking ceiling's input
+/// deserves a symbol its regression control can drive directly. The subtraction is saturating for
+/// the same reason the CPU side's is: the two clocks are sampled at slightly different instants,
+/// so a fill measured marginally longer than the enclosing claim is an artifact of sampling, not
+/// a negative cost.
+fn marginal_wall_nanos(measured_wall_nanos: u128, fill_wall_nanos: u128) -> u128 {
+    measured_wall_nanos.saturating_sub(fill_wall_nanos)
+}
+
 /// Whole-receipt wall budget for Wet self-host receipts: emit+cargo subprocess I/O
 /// counts against wall time, not CPU. A Pass over the wall budget converts to the same
 /// typed refusal — silent green would fail open on the nightly falsifier lane budget.
@@ -20415,6 +21099,68 @@ mod budget_completion_tests {
             }
             other => panic!("expected CompletedOverBudget, got {other:?}"),
         }
+    }
+
+    #[test]
+    /// THE DISCRIMINATING RED FOR THE WALL HALF OF THE FILL-ATTRIBUTION RULING. A claim whose own
+    /// wall cost is 1ms, which happened to be the first to reach a shared memo and paid an 18000ms
+    /// fill for it, must not refuse a 10000ms wall requirement — every later claim naming the same
+    /// source reads that artifact free, so charging it here makes the ceiling a function of
+    /// execution order rather than of the tree.
+    ///
+    /// The second arm is what makes this a control rather than a restatement: driving the SAME
+    /// ceiling with the unsplit figure must still refuse. So the test fails if the split is
+    /// removed AND fails if the ceiling stops firing at all, which is the pair a single assertion
+    /// cannot carry. The shape is the one main run 33145062452 exhibited on
+    /// `test.claim.transport_script_wall_compile_red`, whose two rows reported
+    /// `marginal_cpu_ms=0`/`1` against `fill_cpu_ms` near 19000 and refused the required floor.
+    fn a_shared_fill_is_not_charged_to_the_claim_that_paid_it() {
+        let measured_wall_nanos = 18_001_000_000u128;
+        let fill_wall_nanos = 18_000_000_000u128;
+        let budget_ms = 10_000u64;
+
+        assert!(
+            matches!(
+                wall_budget_completion_outcome(
+                    Some(budget_ms),
+                    ClaimOutcome::Pass,
+                    marginal_wall_nanos(measured_wall_nanos, fill_wall_nanos),
+                ),
+                ClaimOutcome::Pass
+            ),
+            "a 1ms claim must not refuse a 10s ceiling because it paid an 18s shared fill"
+        );
+
+        match wall_budget_completion_outcome(
+            Some(budget_ms),
+            ClaimOutcome::Pass,
+            measured_wall_nanos,
+        ) {
+            ClaimOutcome::CompletedOverBudget { kind, .. } => {
+                assert_eq!(kind, BudgetKind::Wall);
+            }
+            other => panic!("the unsplit figure must still refuse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    /// The cost is SPLIT, never DROPPED (§5 — a vanished cost is the absorbing fallback wearing an
+    /// accounting label). Whatever the ceiling stops charging must still be recoverable, so the
+    /// two halves are asserted to sum to what the claim actually spent.
+    fn the_two_wall_halves_sum_to_the_measured_cost() {
+        let measured_wall_nanos = 18_001_000_000u128;
+        let fill_wall_nanos = 18_000_000_000u128;
+        assert_eq!(
+            marginal_wall_nanos(measured_wall_nanos, fill_wall_nanos) + fill_wall_nanos,
+            measured_wall_nanos
+        );
+    }
+
+    #[test]
+    /// A fill sampled marginally longer than the enclosing claim saturates to zero rather than
+    /// wrapping to an enormous cost that would refuse every ceiling.
+    fn a_fill_longer_than_the_claim_saturates() {
+        assert_eq!(marginal_wall_nanos(5, 9), 0);
     }
 
     #[test]
@@ -22439,7 +23185,7 @@ pub fn compute_percentiles(mut values: Vec<u128>) -> TimingPercentiles {
 
 // SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): the v1 evaluator measures its own
 // per-witness resolve+eval percentiles here — seed-side justified (the evaluator cannot measure
-// itself without circularity). The *rendering* of these timings now lives in `dag/gunbc/ci_render.dag`
+// itself without circularity). The *rendering* of these timings now lives in `dag/gunbc/ci/ci_render.dag`
 // (boxed Frames over `std.render`, width-parameterized by the medium's `Viewport.width`); this Rust
 // only produces the measured data. Full dissolution: ROADMAP lane "CI observability" emits the
 // `TimingPercentiles` rows as a substrate value so a .dag witness measures + histograms natively,
@@ -22651,10 +23397,10 @@ pub fn project_witness_cost_receipt(
 
     let entry = source_roots
         .iter()
-        .map(|root| Path::new(root).join("gunbc/witness_row_cost.dag"))
+        .map(|root| Path::new(root).join("gunbc/witness/witness_row_cost.dag"))
         .find(|path| path.is_file())
         .ok_or_else(|| {
-            "[witness-row-cost] REFUSED: gunbc/witness_row_cost.dag is absent from source roots"
+            "[witness-row-cost] REFUSED: gunbc/witness/witness_row_cost.dag is absent from source roots"
                 .to_string()
         })?
         .to_string_lossy()
@@ -23268,9 +24014,9 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
 // Registered planning artifact: `gunbc.cli_run_witness_admission_scaffold` (review 44487
 // checkable deferral receipt). Witness: `dag/test/claim/cli_run_witness_admission_hand_rust_witness_test.dag`.
 // ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
-// (gunbc.roadmap_authority / ROADMAP.md; docs/plans/module-identity-storage-binding-design.md).
+// (gunbc.roadmap_authority / ROADMAP.md; module-identity-storage-binding-design (plan doc deleted 2026-08-28)).
 // The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms in
-// dag/gunbc/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and the
+// dag/gunbc/ci/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and the
 // cycle-free leaf src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag.
 // The third target is NOT new HAND-RUST surface (review 44441): wet_receipt aliases the leaf as
 // `falsifier_self_host_wet_known_red_entries = seed_emitter_behavioral_wet_known_red_entries`
@@ -23438,7 +24184,7 @@ pub fn witness_admission_explicit_consumer_keys() -> Vec<String> {
     static KEYS: OnceLock<Vec<String>> = OnceLock::new();
     KEYS.get_or_init(|| {
         let mut keys = witness_admission_entry_function_keys_from_source(
-            "dag/gunbc/ci_layer_roots.dag",
+            "dag/gunbc/ci/ci_layer_roots.dag",
             ci_layer_roots_authority_content(),
         );
         let wet =
@@ -23742,7 +24488,7 @@ fn format_expected_red_freeze_intersection_refusal(
         "REQUIRED-FLOOR REFUSAL cause=ExpectedRedFreezeIntersection count={} head={head} — {} \
          identity(ies) are simultaneously enrolled in \
          v2.workflow.floor_expected_red.floor_expected_red_roster (known-red, removable only by \
-         an observed pass) AND path-deferred in dag/gunbc/witness_deferral_freeze.dag \
+         an observed pass) AND path-deferred in dag/gunbc/witness/witness_deferral_freeze.dag \
          frozen_path_deferrals (LegacyFrozenPathDeferral, admitted as never-executed). Both \
          claims cannot hold of one identity: this roster's own did-not-execute check below \
          proves every enrolled row here DOES execute, so the freeze row is stale evidence, not a \
@@ -23770,7 +24516,7 @@ fn format_route_gap_freeze_intersection_refusal(
          identity(ies) are simultaneously enrolled in \
          v2.workflow.floor_route_gap.floor_route_gap_roster (a typed witness that this required \
          floor attempts to execute but cannot route to its subject) AND path-deferred in \
-         dag/gunbc/witness_deferral_freeze.dag frozen_path_deferrals \
+         dag/gunbc/witness/witness_deferral_freeze.dag frozen_path_deferrals \
          (LegacyFrozenPathDeferral, admitted as having no executing consumer). Both claims cannot \
          hold of one identity: the typed route-gap receipt exists only because this required \
          floor consumed the row, so the freeze classification is stale evidence, not a live \
@@ -26158,10 +26904,24 @@ fn call_floor_row_precompute_would_skip(
 // (a live read hidden behind an import was invisible to entry-text scanning): the
 // entry's own row asserts the fact for the whole evaluation, wherever the read hides.
 // A row that DECLARES SubstrateInputsOnly while actually reading live state is not
-// re-checked by any text scan — the nightly affected-set falsifier (predict-only cold
-// run) is the enforcement; a lying row surfaces as a counted divergence within one
-// cadence window. Call-reachability-grade classification (fn-arrow DependencyView over
-// lowered bodies) remains the later lane that re-derives these declarations.
+// re-checked by any text scan, AND IT IS NOW RE-CHECKED BY NOTHING AT ALL. This comment
+// named the nightly affected-set falsifier (predict-only cold run) as the enforcement,
+// promising that a lying row surfaces as a counted divergence within one cadence window.
+// THAT CADENCE IS GONE: `falsifier.yml` was deleted by the 2026-08-15 floor cut and sits
+// on DESIGN's unguarded list awaiting its own re-add, so the sentence was true when
+// written and became false when the workflow died, with nothing to notice. One claim in
+// three places — here, `v2.std.live_tree` `live_tree_disposition_note`, and that module's
+// `live_tree_disposition_stamp_provenance` — all three corrected together, because a claim
+// with three homes corrected in one still has two authorities (DESIGN §3).
+//
+// WHAT IS LEFT IS NOT A WEAKER WALL, IT IS NO WALL. `reads_live_tree_effective` consults
+// this declaration FIRST and falls through to `effect_reach_derived_reads_live_tree_for_entry`
+// only for a row already claiming SubstrateInputsOnly, so that derivation is the sole thing
+// standing behind a false claim — and it is a partial classifier, not an enforcement:
+// `v2.std.effect_reach` `effect_reach_detection_ceiling` files its three bounds and its
+// evidence. A lying declaration therefore buys a predict-skip that nothing observes.
+// Call-reachability-grade classification (fn-arrow DependencyView over lowered bodies) is
+// the capability that would restore an enforcement here, and it remains unbuilt.
 fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool, String> {
     let mut declared: Option<bool> = None;
     for line in content.lines() {
@@ -26402,7 +27162,7 @@ fn effect_reach_touched_via_path_literals(
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_declared_source_ref_selection_bridge`):
-// Lane: declared-source-ref selection (docs/plans/declared-source-ref-selection-design.md
+// Lane: declared-source-ref selection (declared-source-ref-selection-design (plan doc deleted 2026-08-28)
 // task 5) — host-fed declared-ref touch axis for floor discovery admission until discovery
 // admission consumes `v2.lens.affected_set.declared_source_ref_selection` directly (same
 // dissolution posture as sibling bridges: `.dag` authority via interpreter or emitted host
@@ -26820,7 +27580,7 @@ fn discovery_rows_runtime_dependency_touched_count(
 /// discriminate referenced nodes (`red_node_frontier_fires_for_referenced_data_item`).
 // SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): pre-resolve skip for rows
 // provably outside all three skip axes without loading the resolved graph. Dissolves at
-// Step 5 (`docs/plans/affected-set-precompute-pruning.md`) when the Rust parallel
+// Step 5 (`affected-set-precompute-pruning (plan doc deleted 2026-08-28)`) when the Rust parallel
 // (`NodeFrontierSeeds`, `run_discovery_rows` selection) is deleted and the `.dag`
 // `floor_witness_run_disposition` query owns the same predicate end-to-end.
 fn entry_qualifies_for_skip_without_resolve(
@@ -27585,7 +28345,7 @@ fn run_discovery_corpus_with_options_inner(
         );
     }
     let execution_authority_is_subject = options.execution_authority_source_roots == source_roots;
-    // Union-resolve S1 (resolver-graph-major-design.md §7): ONE index for the whole
+    // Union-resolve S1 (resolver-graph-major-design (deleted) §7): ONE index for the whole
     // process step on the pump thread — prelude-warmed parse/typed caches instead of a
     // private cold build per consumer. S2a increment C (cross-worker-typecheck-share-
     // design.md §4): adaptive worker shards arm ONE process-scoped typed_module_cache
@@ -27843,7 +28603,7 @@ fn run_discovery_corpus_with_options_inner(
             // unit-completion rate.
             // 🟡 dissolve-on: Rc→Arc retires the width gate — sharing the index removes the
             // per-worker front cost, which is the thing that makes width unprofitable. Priced
-            // FIRST by the share spike (docs/plans/cross-worker-typecheck-share-design.md §9
+            // FIRST by the share spike (cross-worker-typecheck-share-design (plan doc deleted 2026-08-28) §9
             // open decision 2), because that design's §7 warns a shared store also INCREASES
             // co-resident retention: the win is a crossover in width, not a given.
             if spawn_target_width <= 1 {
@@ -28217,11 +28977,11 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
 // `run_discovery_rows`); these helpers only choose how the already-decided run is printed. They
 // live in Rust because the v1 evaluator narrates its own floor walk (the same seed-side reason as
 // `phase_profile.rs` and `GUNBC_FLOOR_GANTT`). The *rendering* they emit is the same class of
-// output already migrating into `dag/gunbc/ci_render.dag` (the timing histogram + slowest-witness
+// output already migrating into `dag/gunbc/ci/ci_render.dag` (the timing histogram + slowest-witness
 // rollup render there today). Full dissolution: when v2 emit-host owns floor observability — a
 // `.dag` floor-event carrier a witness consumes by execution, the retirement event shared with
 // `phase_profile.rs` (`docs/plans/realization-measurement-loop.md` Phase 0) and the fractal Gantt
-// (`docs/plans/ci-floor-fractal-gantt.md` § dissolution) — this narration collapses into that
+// (`ci-floor-fractal-gantt (plan doc deleted 2026-08-28)` § dissolution) — this narration collapses into that
 // carrier and is deleted. Until then it is counted seed Rust, not a new authority; do not accrete
 // further floor logic here — extend the `.dag` render/observability surface instead.
 
@@ -28634,37 +29394,24 @@ fn run_discovery_rows(
                     hermetic_effect_ground_label(&ground)
                 ))
             }
-            // Rendered so the elapsed value is never mistaken for a completed duration:
-            // the row was killed AT the budget, so this is a ceiling, not a cost. The
-            // clock (cpu vs wall) is named because the two have different remedies.
-            // BOTH ARMS RENDER, and the reading comes from the arm rather than from a field
-            // this format could have wildcarded: `at least` for an interruption's ceiling,
-            // `exactly` for a completed cost.
-            ClaimOutcome::BudgetInterrupted {
-                elapsed_at_least_ms,
-                budget_ms,
-                kind,
-            } => summary.failures.push(format!(
-                "{} ({}) over its {} budget: cost is at least {}ms against a {}ms budget",
-                row.function,
-                row.entry,
-                kind.label(),
-                elapsed_at_least_ms,
-                budget_ms
-            )),
-            ClaimOutcome::CompletedOverBudget {
-                elapsed_ms,
-                budget_ms,
-                kind,
-            } => summary.failures.push(format!(
-                "{} ({}) reached its verdict and then exceeded its {} budget: cost is exactly \
-                 {}ms against a {}ms budget",
-                row.function,
-                row.entry,
-                kind.label(),
-                elapsed_ms,
-                budget_ms
-            )),
+            // BOTH BUDGET ARMS RENDER THROUGH `budget_figure_phrase` AND NEITHER SPELLS ITS
+            // OWN SENTENCE. This site used to hand-write `cost is at least {n}ms against a
+            // {budget}ms budget`, which is the bound-in-the-cost-field defect that renderer
+            // exists to remove; keeping a local format string here would let this transport
+            // disagree with the floor's about one outcome, which has happened before.
+            ClaimOutcome::BudgetInterrupted { .. } | ClaimOutcome::CompletedOverBudget { .. } => {
+                summary.failures.push(format!(
+                    "{} ({}) {}",
+                    row.function,
+                    row.entry,
+                    // SAFE BY CONSTRUCTION: the two arms matched here are exactly the two the
+                    // renderer answers `Some` for. The fallback text is unreachable and says so
+                    // rather than fabricating a figure.
+                    outcome
+                        .budget_figure_phrase()
+                        .unwrap_or_else(|| "budget outcome carried no figure".to_string())
+                ))
+            }
             // THIS PATH DOES NOT STOP THE LINE ON AN UNWIND THE WAY THE REQUIRED FLOOR DOES, and
             // the difference is deliberate rather than an oversight: discovery runs rows across
             // worker threads with no single ordered fold to halt, and a `NotAttempted` population
@@ -29125,7 +29872,7 @@ new file mode 100644
 // Stable floor witnesses use deterministic fixture unified diffs (same structured shape as CI
 // git diff parsing) so every checkout executes the proof — not branch-only origin/main...HEAD
 // asserts. Node-frontier axis vs whole-tree InferredTree remains blocked on resolve grounding
-// (ROADMAP 1-affected-set-defork); receipt in docs/plans/affected-set-precompute-pruning.md
+// (ROADMAP 1-affected-set-defork); receipt in affected-set-precompute-pruning (plan doc deleted 2026-08-28)
 // §Step 3 partial. `NodeFrontierSeeds` deleted — production and witnesses use `FloorDiffEdits`.
 
 #[cfg(test)]
@@ -29646,7 +30393,7 @@ mod floor_witness_a_prove {
     }
 }
 
-// Step 3 module-grain PROVE receipt (docs/plans/affected-set-precompute-pruning.md,
+// Step 3 module-grain PROVE receipt (affected-set-precompute-pruning (plan doc deleted 2026-08-28),
 // ROADMAP 1-affected-set-defork). Node-grain (whole-tree `InferredTree`) equivalence stays
 // BLOCKED (unaffordable resolve); this receipt is re-scoped to MODULE grain, using the landed
 // `import_closure_live` authority (#6210/#6231).
@@ -29986,7 +30733,7 @@ mod module_grain_affected_equivalence_tests {
             "dag/test/claim/v1_dag_parse_witness_test.dag",
             "dag/tools/host_prelude.dag",
             "dag/tools/build_step.dag",
-            "dag/gunbc/ci_layer_roots.dag",
+            "dag/gunbc/ci/ci_layer_roots.dag",
             "src/v2/test/claim/bash_command_fold_test.dag",
             "src/v2/workflow/orchestration_emit_test.dag",
             "dag/test/claim/long/import_closure_live_test.dag",
@@ -31505,6 +32252,52 @@ mod node_frontier_plumbing_controls {
         );
     }
 
+    /// THE DERIVATION'S CEILING, MADE EXECUTABLE. `v2.std.effect_reach` classifies a closure as
+    /// host-reading only when TWO INDEPENDENT EXISTENTIALS both hold somewhere in it: some module
+    /// declares a repository path literal, AND some module contains a host-sink call shape. They
+    /// are evaluated over the closure separately, so neither is a statement about the other — the
+    /// conjunction is not reachability, and it is not a conservative bound in either direction.
+    ///
+    /// WHY THIS PAIR AND NOT A CORPUS COUNT. A count over the live tree is a fact about today's
+    /// corpus and rots (DESIGN §5's oracle rule); this fixture authors both sides, so the red is a
+    /// property of the derivation and survives any amount of corpus drift. The two entries differ
+    /// by exactly one import edge whose only content is a path-literal row, and the read they
+    /// perform is byte-identical — so the disagreement can only be the conjunction.
+    ///
+    /// WHAT IT DOES NOT CLAIM. This is not an argument that the derivation should be widened here:
+    /// its own doc records under-approximation as a deliberate fail-open on the SKIP axis, where a
+    /// missed live reader costs a skipped witness rather than a wrong answer. What the pair
+    /// establishes is narrower and is the thing that was being assumed away: the derivation cannot
+    /// stand in for the authored declaration, so `parse_entry_live_tree_disposition`'s fail-closed
+    /// undeclared default is load-bearing rather than redundant with it.
+    #[test]
+    fn effect_reach_conjunction_loses_a_closure_that_reads_with_no_path_literal() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![ws
+            .join("dag/test/fixture/effect_reach_conjunction")
+            .to_string_lossy()
+            .into_owned()];
+        let facts = super::build_module_graph_facts_live(&roots);
+        let sink_only = "dag/test/fixture/effect_reach_conjunction/sink_only_entry.dag";
+        let sink_and_path = "dag/test/fixture/effect_reach_conjunction/sink_and_path_entry.dag";
+        // POSITIVE CONTROL FIRST: without it a `false` below proves only that the fixture never
+        // reached the derivation at all.
+        assert!(
+            super::effect_reach_derived_reads_live_tree_for_entry(sink_and_path, &facts),
+            "positive control: a closure carrying BOTH terms must derive host-reading, or this \
+             fixture is not reaching the derivation and the red below is meaningless"
+        );
+        assert!(
+            !super::effect_reach_derived_reads_live_tree_for_entry(sink_only, &facts),
+            "THE CEILING: a closure whose only host reach is a real `Filesystem.Read` derives \
+             NOT-live because no module in it carries a repository path literal. This assertion \
+             is expecting-red by construction — it flips the day the derivation stops conjoining \
+             a storage fact with a reachability one, and at that point it becomes the regression \
+             control for the repair rather than being deleted (DESIGN §4b(4))"
+        );
+    }
+
     // Phase 0 monotone-toward-RUN (bridge b): effect_reach_touched is additive touch
     // evidence — it may block skip on literal match but absence must not enable skip
     // beyond today's rules for a hermetic entry.
@@ -32139,7 +32932,24 @@ fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
     }
     if body.is_empty() {
         body.push_str("host_sr_empty");
-    } else if body.as_bytes()[0].is_ascii_digit() {
+    } else if body.as_bytes()[0].is_ascii_digit()
+        || v1_compiler_tokenize::is_keyword_text(body.clone())
+    {
+        // THE THIRD ESCAPE ARM, AND THE CORPUS ALREADY CONTAINED ITS CASE.
+        //
+        // This minted `^{stem}` after escaping non-identifier characters and a leading digit,
+        // and stopped there. A stem that IS a keyword still lexes as a keyword, so `dag/std/
+        // import.dag` emitted `^import` and the manifest failed to parse -- measured, at the
+        // caret: "expected identifier or `(` after `^`, found keyword". Two stems in the tree
+        // reach it today, `dag/std/import.dag` and `dag/extdeps/languages/go/module.dag`.
+        //
+        // The mint promised a valid symbol and returned an unparseable one with no refusal,
+        // which is why nothing caught it: the emitter succeeded, the file was written, and the
+        // only executing consumer is a `long/` `ReadsLiveTree` witness the floor declines.
+        //
+        // The keyword test routes through `v1_compiler_tokenize` `is_keyword_text`, whose set is
+        // derived from the grammar. A literal list here would be a second authority for the
+        // keyword vocabulary (DESIGN §3) and would go stale the next time the grammar gains one.
         body = format!("sr_{body}");
     }
     format!("^{body}")
@@ -32321,6 +33131,20 @@ fn emit_source_root_entry_admission_data(admission: &SourceRootEntryAdmission) -
     )
 }
 
+/// The fnv1a64 digest of one NUL-delimited material string, rendered as `fnv1a64:<hex>`.
+///
+/// Extracted from `source_root_ingest_content_hash_fnv1a64` rather than copied beside it: a second
+/// site spelling out the same two constants would be one concept with two authorities, and the
+/// two would then be free to disagree about a digest two carriers are expected to compare.
+pub fn fnv1a64_digest_of_material(material: &str) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in material.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("fnv1a64:{hash:016x}")
+}
+
 pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord]) -> String {
     let mut material = String::new();
     for rec in records {
@@ -32329,12 +33153,7 @@ pub fn source_root_ingest_content_hash_fnv1a64(records: &[SourceRootReadRecord])
         material.push_str(&rec.source);
         material.push('\0');
     }
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in material.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    format!("fnv1a64:{hash:016x}")
+    fnv1a64_digest_of_material(&material)
 }
 
 fn path_matches_any_subpath(path: &str, subpaths: &[String]) -> bool {
@@ -32552,10 +33371,8 @@ pub fn emit_module_storage_binding_manifest(
     out.push_str("}\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import std.algebra { Cons, Empty }\n");
-    out.push_str("import v2.std.diagnostic { ByteRange, Textual }\n");
     out.push_str("import v2.std.integer { Int }\n");
-    out.push_str("import v2.std.node { MintedOccurrence }\n");
-    out.push_str("import v2.std.provenance { FromSource, span_index_empty, span_index_record }\n");
+    out.push_str("import v2.std.provenance { span_index_empty }\n");
     out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
     out.push('\n');
@@ -32612,37 +33429,40 @@ fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, Strin
     ))
 }
 
-/// The `OccurrenceId` construction is FULLY QUALIFIED deliberately, and the name is
-/// correspondingly absent from this manifest's `v2.std.node` import list.
+/// THE HOST TRANSPORT HAS NO OCCURRENCE IDENTITY TO OFFER, SO IT OFFERS NONE.
 ///
-/// `v2.std.node.OccurrenceId` is a compatibility alias of `std.occurrence_identity.OccurrenceId`
-/// (#7352). Both modules sit in this overlay's compiled pool, so a BARE `OccurrenceId` in a
-/// record-literal position resolves to two candidates and the indexer refuses:
-/// "ambiguous reference 'OccurrenceId' ... qualify by containment path, alias, or rename".
-/// A bare reference in a TYPE position still resolves (v2/std/provenance.dag, v2/std/dependents.dag) —
-/// only construction sites need the qualification, which is why this reads as an inconsistency.
+/// This emitted a one-entry `SpanIndex` keyed on an `OccurrenceId` derived from the ident
+/// span's byte offset (`start.max(1)`). `std.occurrence_identity` `occurrence_identity_scope_law`
+/// names `SourceSpan` a FORBIDDEN identity input, and the derivation additionally collided:
+/// offsets 0 and 1 both produced 1.
 ///
-/// #7352 applied exactly this qualification to the one COMMITTED construction site
-/// (src/v2/test/claim/manual/bind_demand_driven_eval_test.dag) and missed this generator.
-/// The gap stayed invisible because this file is generated: whole-tree compile-clean never
-/// sees it, and its only executing consumer is the module-binding supply gate, which moved
-/// off per-PR CI onto the falsifier cadence — where it then failed for four days.
+/// Traced to its consumers, the fabricated id was WRITE-ONLY, which is why it stood. Each row
+/// built its own `span_index_empty()` and recorded exactly one entry, so the collision could not
+/// manifest within a row; `span_index_merge`'s only production caller is `v2.compiler.02_parse`
+/// over parser-ALLOCATED ids, never over this manifest's; `span_index_lookup` has only test
+/// callers; and the one executing consumer, the module-binding supply gate, compares
+/// `(file_path -> module)` and discards the field by pattern in
+/// `v2.compiler.source_authority` `module_storage_binding_file_path`.
 ///
-/// Dissolve-on: the `node_occurrence_id_v2_facade_dissolve_on` migration deletes the
-/// `v2.std.node` alias; the second candidate disappears and the qualification is free to drop.
-fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> String {
-    let start = span.start.max(0);
-    let end = span.end.max(start);
-    let occurrence_id = start.max(1);
-    format!(
-        "span_index_record(\n  index: span_index_empty(),\n  id: MintedOccurrence {{ id: v2.std.node.OccurrenceId {{ value: {occurrence_id} }} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
-    )
+/// So this was not a defect with a victim. It was a forbidden identity input written into a
+/// COMMITTED artifact whose innocence rested entirely on no consumer ever reading it -- the
+/// inverse of correctness by construction (DESIGN §5), and one consumer away from becoming real.
+///
+/// THE LOCUS GOES WITH IT, AND THAT IS THE HONEST TRADE RATHER THAN A LOSS. `SpanIndex.entries`
+/// is a `Map<OccurrenceId, OriginEvent>`, so the `ByteRange` this used to carry is reachable
+/// ONLY under a key. A producer holding a locus but no allocator identity therefore cannot
+/// record the locus without inventing the key -- the carrier makes the honest state
+/// representable only as EMPTY. Emitting empty is that honest state; inventing a key to keep a
+/// byte range no consumer reads is fabricated plausible output. The carrier gap is named here
+/// rather than papered over, and it is what a future locus-carrying transport must close first.
+fn emit_module_binding_span_index() -> String {
+    String::from("span_index_empty()")
 }
 
 fn emit_module_binding_row(row: &ModuleBindingManifestRow) -> Result<String, String> {
     let qn = emit_module_binding_qualified_name(&row.module_path)?;
     let artifact_id = source_root_ingest_artifact_id_for_path(&row.rel_path);
-    let span_index = emit_module_binding_span_index(&row.ident_span, &artifact_id);
+    let span_index = emit_module_binding_span_index();
     Ok(format!(
         "module_storage_parsed_binding(\n  module: {qn},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  span_index: {span_index},\n  source_root: {}\n)",
         dag_manifest_scalar_escape(&row.rel_path)?,
@@ -37814,7 +38634,7 @@ pub fn complexity_linearity_wildcard_facts() -> &'static [ComplexityLinearityWil
     &cla_cached_wildcard_facts().facts
 }
 
-// --- Fallback-arm census (W2, docs/plans/fallback-arm-census.md) ---
+// --- Fallback-arm census (W2, fallback-arm-census (plan doc deleted 2026-08-28)) ---
 // Per-arm structural wildcard walk over decl_facts. Classifies each MatchPattern::Wildcard
 // arm into exactly one of: refuses | completes_closed_total | declared_interim |
 // answers_on_open | unknown. Completeness: class counts sum to structural wildcard-arm
@@ -38301,7 +39121,7 @@ pub fn doc_graph_doc_count() -> i64 {
     doc_graph_report(&[]).doc_count as i64
 }
 
-// Live derivation of docs/plans/seed-shrink-census.md §5B ("T2 coverage debt"): that table was a
+// Live derivation of seed-shrink-census (plan doc deleted 2026-08-28) §5B ("T2 coverage debt"): that table was a
 // hand-maintained snapshot of v1 test modules with no floor `*_test.dag` equivalent. This walks
 // `src/v1/tests/src/*.rs` (modules containing `#[test]`) and `corpus_dag_files()` (the same
 // witness-layer-roots roster the floor uses) and diffs them by stem, so the debt roster tracks
@@ -40411,7 +41231,7 @@ mod module_path_index_tests {
         let sample = index
             .get("gunbc.ci_layer_roots")
             .expect("gunbc.ci_layer_roots must be indexed from relative roots");
-        assert_eq!(sample, "dag/gunbc/ci_layer_roots.dag");
+        assert_eq!(sample, "dag/gunbc/ci/ci_layer_roots.dag");
         assert!(
             ws.join(sample).is_file(),
             "indexed rel path must resolve under workspace_root()"
@@ -41500,7 +42320,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
 // (measured 2026-07-22: ~33s/module parse + ~5.5s/module tokenize interpreted,
 // ~330 extdeps modules ≈ 3.5h; the modeled corpus witness exists at
 // src/v2/test/claim/long/mandatory_tag_extdeps_corpus_test.dag, offline recipe).
-// Dissolution: witness realization (docs/plans/witness-realization-plan.md) runs
+// Dissolution: witness realization (witness-realization-plan (plan doc deleted 2026-08-28)) runs
 // that parse-grain corpus witness at native speed, then this block and its three
 // builtins (facts_for_qualified_name, live_clean_tree_holds,
 // live_roster_module_count) delete. The shadow-mask and backfill sub-machineries
@@ -41607,6 +42427,7 @@ fn external_authority_alias_symbol_name(
 fn external_authority_anchor_from_data_body(
     body: &Rc<crate::v1_std_core::Node>,
     module: &Rc<crate::v1_std_core::Node>,
+    module_path: &str,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
@@ -41650,7 +42471,19 @@ fn external_authority_anchor_from_data_body(
         }
         return project_external_authority_named_data(&home, symbol.as_str(), visited);
     }
-    ExternalAuthorityAnchorProjection::Absent
+    // The alias names no IMPORTED symbol, so the only home left for it is this module itself. A
+    // `.dag` declaration may reference a sibling declaration in its own file without importing it,
+    // and reading that as Absent conflates "this module declares no anchor" with "this module
+    // declares one I did not follow" -- two states with opposite remedies, one an authoring defect
+    // and one a defect in this reader. Resolving the local home removes the second state rather
+    // than reporting it (DESIGN section 5).
+    let local_key = format!("{module_path}::{symbol}");
+    if !visited.insert(local_key) {
+        return ExternalAuthorityAnchorProjection::Refused {
+            cause: format!("alias cycle revisiting {module_path} for local symbol {symbol}"),
+        };
+    }
+    project_external_authority_named_data(module_path, symbol.as_str(), visited)
 }
 
 fn project_external_authority_named_data(
@@ -41673,7 +42506,13 @@ fn project_external_authority_named_data(
         let Some(body) = item.body.as_ref() else {
             return ExternalAuthorityAnchorProjection::Absent;
         };
-        return external_authority_anchor_from_data_body(body, &module, &source_indices, visited);
+        return external_authority_anchor_from_data_body(
+            body,
+            &module,
+            module_path,
+            &source_indices,
+            visited,
+        );
     }
     ExternalAuthorityAnchorProjection::Absent
 }
@@ -41681,6 +42520,7 @@ fn project_external_authority_named_data(
 fn read_external_authority_anchor_from_items(
     items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
     module: &Rc<crate::v1_std_core::Node>,
+    module_path: &str,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
@@ -41692,7 +42532,13 @@ fn read_external_authority_anchor_from_items(
         let Some(body) = item.body.as_ref() else {
             return ExternalAuthorityAnchorProjection::Absent;
         };
-        return external_authority_anchor_from_data_body(body, module, source_indices, visited);
+        return external_authority_anchor_from_data_body(
+            body,
+            module,
+            module_path,
+            source_indices,
+            visited,
+        );
     }
     ExternalAuthorityAnchorProjection::Absent
 }
@@ -41702,7 +42548,13 @@ fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnch
     let (module, items, source_indices) = parse_extdeps_module_items(&path);
     let mut visited = std::collections::HashSet::new();
     visited.insert(module_path.to_string());
-    read_external_authority_anchor_from_items(&items, &module, &source_indices, &mut visited)
+    read_external_authority_anchor_from_items(
+        &items,
+        &module,
+        module_path,
+        &source_indices,
+        &mut visited,
+    )
 }
 
 fn external_authority_machinery_exempt_module_paths() -> &'static [&'static str] {
@@ -41828,6 +42680,28 @@ mod extdeps_external_authority_anchor_projection_tests {
             facts.locator,
             "docs.claude.com/en/docs/claude-code/cli-reference"
         );
+    }
+
+    #[test]
+    fn same_file_aliased_extdeps_external_authority_anchor_projects_local_literal() {
+        // The discriminating case: extdeps.cpu_attachment.lotes_azifa072 declares the mandatory
+        // anchor as a reference to azifa072_drawing_authority, which is declared in the SAME file
+        // and imported from nowhere. Before local resolution this projected Absent and the module
+        // was reported as `missing:` by the live clean-tree wall.
+        let facts =
+            extdeps_external_authority_module_facts("extdeps.cpu_attachment.lotes_azifa072");
+        assert_eq!(facts.anchor_kind, "present");
+        assert_eq!(facts.scheme_identity, "Https");
+        assert_eq!(facts.locator, "www.lotes.cc/en/contact.php");
+    }
+
+    #[test]
+    fn absent_anchor_still_projects_absent_after_local_alias_resolution() {
+        // The control the clause above must not have broken: a module declaring no anchor at all
+        // reads Absent, so local resolution widened what resolves without fabricating presence.
+        let facts =
+            extdeps_external_authority_module_facts("extdeps.fixture.external_authority_missing");
+        assert_eq!(facts.anchor_kind, "absent");
     }
 
     #[test]
@@ -43904,6 +44778,9 @@ pub struct PreparedRepository {
     pub modules_excluded: usize,
     /// The witness sites preparation found, already folded. NOT the corpus bytes.
     pub witness_files: Vec<InventoryWitnessFile>,
+    /// Admitted sources carrying zero `test` decls (`test fn` or `test data`). See
+    /// `PreparedSubject::test_decl_free_paths`.
+    pub test_decl_free_paths: Vec<String>,
 }
 
 /// Shared view of one admitted source. Holds the same `Rc<SourceFile>` preparation already
@@ -44092,6 +44969,18 @@ pub struct PreparedSubject {
     pub sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     pub inventory: Vec<PreparedSourceView>,
     pub witness_files: Vec<InventoryWitnessFile>,
+    /// Admitted sources carrying ZERO `test` decls — neither `test fn` nor `test data` — by
+    /// repo-relative path. The vocabulary is `floor_discovery_scan_test_decl_names`'s, so this
+    /// population is the wall's own denominator rather than a narrower one that happens to
+    /// agree.
+    ///
+    ///
+    /// Preparation records the fact and judges nothing with it. Whether a path in here is a
+    /// VIOLATION is a policy question owned by `v2.workflow.floor_naming_hygiene`
+    /// (`floor_test_sidecar_suffix` / `floor_entry_is_barren_test_sidecar`), and the floor asks
+    /// it once, later, against the constant read from that module — so the rule keeps one home
+    /// and only its consumer moved.
+    pub test_decl_free_paths: Vec<String>,
     pub subject_digest: String,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
@@ -44118,6 +45007,7 @@ pub fn assemble_prepared_subject(
     let index = build_module_index(source_roots);
     let total = index.len();
     let mut witness_files: Vec<InventoryWitnessFile> = Vec::new();
+    let mut test_decl_free_paths: Vec<String> = Vec::new();
     let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::with_capacity(total);
     let mut inventory: Vec<PreparedSourceView> = Vec::with_capacity(total);
     for (module_path, sf) in index.iter() {
@@ -44128,8 +45018,47 @@ pub fn assemble_prepared_subject(
         {
             continue;
         }
-        if let Some(site) = witness_file_from_source(module_path, &sf.path, &sf.content) {
-            witness_files.push(site);
+        // THE DROP THAT MADE A WALL UNREACHABLE, NOW A RECORDED FACT.
+        //
+        // `witness_file_from_source` answers `None` for a file with no `test fn` decl, and this
+        // loop used to discard that answer. Since `run_required_floor` builds its whole roster
+        // from `witness_files`, a `*_test.dag` file declaring no `test fn` was not declined and
+        // not counted — it left the floor's universe entirely, one level ABOVE the
+        // `offered = routed + declined_long + declined_fixture` partition, which is why that line
+        // can be exact and still say nothing about it.
+        //
+        // The `.dag` producer has carried a wall for exactly this since it was written
+        // (`v2.workflow.floor_naming_hygiene` `floor_entry_is_barren_test_sidecar`, refused as
+        // `BarrenTestSidecar`), and it never fired, because the required floor does not take the
+        // path that reaches it — `invoke_floor_discovery_producer` is reachable only through
+        // `discover_floor_witness_roster`, which `run_required_floor` never calls.
+        //
+        // WHAT IS RECORDED HERE IS A CANDIDATE SET, NOT A VERDICT, and the distinction is the
+        // whole reason no second copy of the rule appears in Rust. This records every source
+        // `witness_file_from_source` declined, and asks nothing about suffixes. That question
+        // belongs to `v2.workflow.floor_naming_hygiene` and is put TO it, per candidate, by
+        // `floor_barren_test_sidecars`. Rust can only widen the question, never decide it, so a
+        // Rust/`.dag` disagreement cannot produce a wrong refusal — only a candidate the
+        // authority discards.
+        //
+        // AND THE RECORDED SET NOW USES THE RULE'S OWN VOCABULARY BY CONSTRUCTION, rather than by
+        // a second test standing beside it. `test data ` is a test decl to
+        // `floor_discovery_scan_test_decl_names`, which is what `floor_entry_is_barren_test_sidecar`
+        // composes; this loop used to agree with that rule by asking a SEPARATE question here
+        // (`site.is_none() && no line starts with "test data "`) because the roster builder below
+        // could not see `test data` at all. It can now, so `site.is_none()` means exactly
+        // "declares no test decl" in the wall's own vocabulary and the compensating second scan is
+        // deleted rather than left as a third spelling of the same fact (DESIGN §3, and §4b(4):
+        // a climb deletes the lower-rung machinery it obsoletes). A `test data`-only file
+        // therefore no longer reaches this set at all, where before the repair it did and the
+        // `.dag` predicate discarded it.
+        //
+        // The 40 `test data` claims that compensating scan was protecting from a
+        // wall-over-reach are, for the same reason, no longer dropped from the roster: they are
+        // offered, routed and executed like any other claim. See `witness_file_from_source`.
+        match witness_file_from_source(module_path, &sf.path, &sf.content) {
+            Some(site) => witness_files.push(site),
+            None => test_decl_free_paths.push(p.clone()),
         }
         inventory.push(PreparedSourceView {
             module_path: module_path.clone(),
@@ -44142,12 +45071,14 @@ pub fn assemble_prepared_subject(
     }
     let modules_excluded = total - sources.len();
     witness_files.sort_by(|a, b| a.path.cmp(&b.path));
+    test_decl_free_paths.sort();
     let subject_digest = subject_digest_for_closure(&sources);
     let modules_resolved = total - modules_excluded;
     Ok(PreparedSubject {
         sources,
         inventory,
         witness_files,
+        test_decl_free_paths,
         subject_digest,
         modules_resolved,
         modules_excluded,
@@ -44176,6 +45107,7 @@ pub fn prepare_repository_once(
         sources,
         inventory,
         witness_files,
+        test_decl_free_paths,
         subject_digest,
         modules_resolved,
         modules_excluded,
@@ -44190,6 +45122,7 @@ pub fn prepare_repository_once(
             modules_resolved,
             modules_excluded,
             witness_files,
+            test_decl_free_paths,
         },
         inventory,
     ))
@@ -44251,6 +45184,18 @@ pub struct PreparedClaimScope {
     /// counted here so the population is a measured quantity rather than an assumption, which is
     /// what decides whether the honest arm — refusing the ambiguous lookup — is affordable or
     /// whether the terminal per-module-environment correction has to land first.
+    ///
+    /// THE COUNT IS UNCHANGED AND ITS SUBJECT HAS NARROWED, which is worth saying because a
+    /// reader who takes it as the silent-pick population will now overcount.
+    /// [`v1_interpreter::InterpContext::lookup_fn_from`] resolves a reference through the
+    /// referring file's own declarations and then its explicit imports before this shared slot,
+    /// so for every name in this count the two directions that used to be decided by nothing the
+    /// author wrote — a module losing its
+    /// OWN declaration to an unrelated homonym, and an explicit `import a.b.c { x }` being inert
+    /// against one — are decided by what the author wrote now. What remains counted here is the
+    /// genuinely undecided residue: a bare reference to a name the referring module neither
+    /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
+    /// modules it reached.
     pub ambiguous_bare_names: usize,
 }
 
@@ -44752,7 +45697,7 @@ pub struct RequiredFloorClaim {
 ///
 /// Modeled authority: `v2.workflow.required_floor` `RequiredFloorDisposition`
 /// (`src/v2/workflow/required_floor.dag`). This Rust type is the realization of that `.dag`
-/// declaration, not its origin — the three arms and their meaning are declared there first; this
+/// declaration, not its origin — the arms and their meaning are declared there first; this
 /// enum's shape must track it rather than the reverse.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequiredFloorDisposition {
@@ -44765,18 +45710,28 @@ pub enum RequiredFloorDisposition {
     /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
     /// former bare `long_declined` counter discarded.
     DeclinedLongModule { matched_prefix: String },
-    /// Declined because the module declares `LiveTreeDisposition = ReadsLiveTree`.
+    /// Declined because the module's AUTHORED name matches a `fixture_home_prefixes()` entry:
+    /// a `test fn` that is a plan-driven FIXTURE MEMBER rather than a witness.
     ///
-    /// STAGED FOR DELETION, and the reason is measured rather than intended — see
-    /// `docs/plans/witness-execution-closure.md`. The premise this arm rests on (reaching the
-    /// live tree implies "cannot run in the hermetic frame") is FALSE: hermetic mode's
-    /// checkout-read carve-out reads committed sources for real. Floor run 32345970386 deleted
-    /// this arm and executed the population: of ~783 identities, **626 pass** and only 157
-    /// genuinely lack a hermetic arm. The deletion is not in this change only because it also
-    /// surfaces 55 blockers — 6 witnesses that do not resolve and 49 in a cost tail — that need
-    /// their own owners, and every one of those 55 is newly-admitted, so this change is exactly
-    /// the part that carries none of them.
-    DeclinedLiveTree,
+    /// Not a cost decline and not a capability decline. These sites are the SPECIMENS that
+    /// `claim_executor --plan-entry .../walk_plan_stage/plan.dag --plan-function <recipe>`
+    /// drives; the recipe is the witness and it already executes them. Two of them are red by
+    /// construction (a body of literal `false`, and a self-call whose depth refusal IS the
+    /// observed subject) and can never green, and one of the rest writes the very marker path
+    /// another recipe asserts must stay absent — so the fold running them is not merely useless
+    /// but corrupting. See `v2.workflow.required_floor` `fixture_home_prefixes` for the full
+    /// argument and the dissolution condition.
+    DeclinedFixtureMember { matched_prefix: String },
+    /// Declined because the qualified identity is enrolled in `v2.workflow.floor_cost_debt`:
+    /// it PASSES and costs more than `required_floor_claim_cpu_safety_limit_ms` allows, so it is
+    /// withheld from execution until made cheap. Carries no payload — the roster is the
+    /// authority for which identities these are, and duplicating the measured cost here would be
+    /// a second representation of a number that is only ever read from the fold.
+    ///
+    /// ORDERED LAST among the declines, per `required_floor_site_disposition`'s own note: a site
+    /// that also declines for a home reason keeps the home decline, so a roster line over it
+    /// surfaces as a STALE row to delete rather than as a withhold that looks legitimate.
+    DeclinedCostDebt,
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -44932,14 +45887,10 @@ pub struct RequiredFloorOutcome {
     /// A cost quarantine on a different axis from execution, and it is REPORTED rather than
     /// silently subtracted: these identities have no executing consumer anywhere in the tree.
     pub declined_long_module: usize,
-    /// Discovered sites declined because the module declares `ReadsLiveTree`.
-    ///
-    /// REPORTED IN THE HEADLINE, which is the change this carries: the population was
-    /// previously visible only as an integer in a `[floor-phase]` line, and the run's own
-    /// honesty check (`planned == executed == receipted`) was computed entirely downstream of
-    /// it. A receipt that cannot state what it dropped cannot be read as a statement about
-    /// coverage. Measured at 778 on main; staged for deletion, see `RequiredFloorDisposition`.
-    pub declined_live_tree: usize,
+    /// Discovered sites declined because the module's AUTHORED name matches a fixture-home
+    /// prefix. Unlike the two neighbours, these identities DO have an executing consumer —
+    /// the plan recipes that drive them — so this count is not a coverage gap.
+    pub declined_fixture_member: usize,
     pub claims_planned: usize,
     pub claims_executed: usize,
     pub receipt_identities: usize,
@@ -45003,6 +45954,18 @@ pub struct RequiredFloorOutcome {
     /// remedy is reducing what it costs, not investigating why it never returned. Still
     /// blocking, per the same ruling.
     pub completed_over_cost_requirement: Vec<String>,
+    /// WITHHELD FROM EXECUTION BY THE COST-DEBT ROSTER. Reported and counted every run, and
+    /// NOT blocking: these rows are the frozen population the 2026-08-27 ceiling restoration
+    /// declared, and blocking on them would red main for exactly the debt the contract exists
+    /// to carry down. It is counted rather than silent because the whole difference between
+    /// this and the relocation the 2026-08-04 ruling forbids is that this one is declared and
+    /// visible — an unreported withhold is the gunbc#7762 specimen with extra steps.
+    pub withheld_cost_debt: Vec<String>,
+    /// A COST-DEBT ROW NAMING AN IDENTITY THE TREE NO LONGER CARRIES. BLOCKING. Without this
+    /// the roster rots into a permission slip: a withheld identity that is renamed or deleted
+    /// leaves a line behind that withholds nothing, and the roster's length then overstates the
+    /// debt in the direction that flatters. Same shape as `stale_quarantine`, same reason.
+    pub stale_cost_debt: Vec<String>,
     /// ENROLLED AS EXPECTED-RED AND THREW, or answered with a non-verdict. Its own collections
     /// for the same reason `route_gap` is not folded into `host_tool_unresolved`: the remedy
     /// differs. A throw is a defect in the witness or its subject; an unreadable observation is
@@ -45072,8 +46035,8 @@ pub struct RequiredFloorOutcome {
     pub long_home_storage_agreement: Vec<LongHomeStorageAgreementRow>,
 }
 
-/// A witness site as preparation found it — the file's path, its module, and the `test fn`
-/// names it declares. Produced from bytes preparation had in hand, and retained INSTEAD of
+/// A witness site as preparation found it — the file's path, its module, and the `test fn` /
+/// `test data` names it declares. Produced from bytes preparation had in hand, and retained INSTEAD of
 /// those bytes.
 pub struct InventoryWitnessFile {
     pub path: String,
@@ -45093,12 +46056,39 @@ pub struct InventoryWitnessFile {
 /// every floor run, acquired the repository a second time, and additionally built a
 /// whole-corpus module graph to answer a question about one file at a time.
 ///
-/// `None` means the file declares no `test fn`, which is how a non-witness module is excluded
+/// `None` means the file declares no `test` decl, which is how a non-witness module is excluded
 /// — the predecessor expressed the same rule as `if !functions.is_empty()` after building the
 /// record.
 ///
-/// A `test fn` is recognised at column zero only, which is the same rule the parser applies to
+/// A `test` decl is recognised at column zero only, which is the same rule the parser applies to
 /// a top-level declaration: an indented occurrence is inside a body and is not a declaration.
+///
+/// BOTH `test fn ` AND `test data ` ARE TEST DECLS HERE, and making that true is the whole of
+/// this function's most recent change. What a test decl IS had two answers in one binary:
+/// `v2.workflow.floor_naming_hygiene` `floor_discovery_scan_test_decl_names` — the authority the
+/// `BarrenTestSidecar` wall composes — counts both forms, while this roster builder counted only
+/// `test fn `. A file whose test decls are all `test data ` therefore SATISFIED the wall (its
+/// predicate found decls) and enrolled ZERO claims (this scan found none), which is partial
+/// enrollment made invisible by construction: nothing refuses, nothing runs, and the run's own
+/// `offered = routed + declined_long + declined_live` partition stays exact because the site was
+/// never offered. That is §3's two-authorities-for-one-fact defect with the two halves wired to
+/// opposite sides of the same gate.
+///
+/// The population this closed is exact and was declared before it was repaired (the note at
+/// `floor_entry_is_barren_test_sidecar`): 40 `test data` decls in 15 files over both source
+/// roots — 34 in 13 files carrying no `test fn` at all, 6 in 2 files the floor already enrolled
+/// partially. The second group is the one no wall could ever have caught.
+///
+/// The two SCANNERS are still two scanners, and that residue is unchanged by this: collapsing
+/// them needs the canonical parser to retain the authored `test` marker, which
+/// `v1_compiler_parse.rs` `drop_leading_test_marker` discards, and `test` cannot become a lex
+/// keyword because it is a live module-path segment. What is repaired here is that they no
+/// longer DISAGREE; what remains is that they are separately spelled.
+///
+/// A `test data` claim executes on exactly the same path as a `test fn` one: `run_claim` calls
+/// `run_in_context`, whose `lookup_fn` resolves a `DataItem` as readily as a function node and
+/// evaluates its initializer with no arguments. There is no second execution mechanism here,
+/// which is why the roster is the only thing that had to move.
 fn witness_file_from_source(
     module_path: &str,
     path: &str,
@@ -45106,7 +46096,10 @@ fn witness_file_from_source(
 ) -> Option<InventoryWitnessFile> {
     let mut functions: Vec<String> = Vec::new();
     for line in content.lines() {
-        let Some(rest) = line.strip_prefix("test fn ") else {
+        let Some(rest) = line
+            .strip_prefix("test fn ")
+            .or_else(|| line.strip_prefix("test data "))
+        else {
             continue;
         };
         let name: String = rest
@@ -45530,6 +46523,106 @@ fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result
     }
 }
 
+/// The barren witnesses among preparation's candidate set, decided by the `.dag` authority
+/// rather than by a second Rust spelling of it.
+///
+/// TWO CALLS, AND THE SPLIT IS A COST DECISION, NEVER A POLICY ONE. Both questions
+/// — does this path claim the sidecar place, and does this file declare a test decl —
+/// are answered by `v2.workflow.floor_naming_hygiene`; Rust supplies facts and decides
+/// nothing.
+///
+/// Preparation records every admitted source with no `test fn` or `test data` decl; this asks
+/// `floor_naming_hygiene`'s own suffix which of them are `*_test.dag` entries — the same
+/// predicate `floor_entry_is_barren_test_sidecar` composes, consumed here because THIS is the
+/// path the required floor takes.
+///
+///   1. `floor_entries_requiring_test_sidecar` is asked ONCE for the whole candidate roster.
+///      It is a pure string question, so the whole list crosses in one call, and it narrows
+///      thousands of admitted sources to the handful that claim the `*_test.dag` place.
+///   2. `floor_entry_is_barren_test_sidecar` is then asked per survivor, with that file's
+///      content. That is the call that needs bytes, and after step 1 there are typically zero
+///      or a few of them — so consuming the real predicate costs a handful of invocations
+///      rather than one per corpus file, which is what a caller reimplementing the filter
+///      would have been buying.
+///
+/// An earlier revision of this function read the suffix constant out of the `.dag` and then
+/// applied `strip_prefix("./")` and `ends_with` in Rust. Reading the constant does not make
+/// the computation derived from the authority — the two can still drift — and that is the
+/// §2/§3 fork this repository exists to prevent (`review 56971`).
+fn floor_barren_test_sidecars(
+    hermetic: &v1_interpreter::InterpContext,
+    candidate_paths: &[String],
+    content_for_path: &HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
+) -> Result<Vec<String>, String> {
+    if candidate_paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    let path_values: Vec<v1_interpreter::Value> = candidate_paths
+        .iter()
+        .map(|s| str_value(s.clone()))
+        .collect();
+    let requiring = v1_interpreter::run_in_context_with_args(
+        hermetic,
+        "v2.workflow.floor_naming_hygiene.floor_entries_requiring_test_sidecar",
+        &[(
+            Some("entry_paths".to_string()),
+            list_value_from_vec(path_values),
+        )],
+        false,
+    )
+    .map_err(|e| format!("floor_entries_requiring_test_sidecar: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&requiring))
+        .map_err(|why| format!("floor_entries_requiring_test_sidecar decode: {why}"))?;
+
+    let mut barren = Vec::new();
+    for item in items {
+        let path = match item {
+            v1_interpreter::Value::Str(s) => s.to_string(),
+            other => {
+                return Err(format!(
+                    "floor_entries_requiring_test_sidecar: expected String rows, got {}",
+                    floor_value_shape(Some(other))
+                ))
+            }
+        };
+        // A candidate with no source in hand is not silently skipped: preparation built both
+        // the candidate list and the inventory from the same walk, so a miss here means those
+        // two disagree, and a wall that quietly drops the entries it cannot look up is the
+        // absorbing failure arm DESIGN §5 forbids.
+        let Some(source) = content_for_path.get(&path) else {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=BarrenCandidateSourceMissing — `{path}` was \
+                 recorded as a sidecar candidate but has no prepared source"
+            ));
+        };
+        let verdict = v1_interpreter::run_in_context_with_args(
+            hermetic,
+            "v2.workflow.floor_naming_hygiene.floor_entry_is_barren_test_sidecar",
+            &[
+                (Some("entry_path".to_string()), str_value(path.clone())),
+                (
+                    Some("content".to_string()),
+                    str_value(source.content.to_string()),
+                ),
+            ],
+            false,
+        )
+        .map_err(|e| format!("floor_entry_is_barren_test_sidecar({path}): {e}"))?;
+        match verdict {
+            v1_interpreter::Value::Bool(true) => barren.push(path),
+            v1_interpreter::Value::Bool(false) => {}
+            other => {
+                return Err(format!(
+                    "floor_entry_is_barren_test_sidecar({path}): expected Bool, got {}",
+                    floor_value_shape(Some(&other))
+                ))
+            }
+        }
+    }
+    barren.sort();
+    Ok(barren)
+}
+
 fn floor_decode_list<'a>(
     ctx: &v1_interpreter::InterpContext,
     v: Option<&'a v1_interpreter::Value>,
@@ -45780,23 +46873,70 @@ pub struct NonVerdictAdmission {
     pub repaid: Vec<String>,
 }
 
+/// Identity-grain set difference, deterministically ordered for diagnostics and receipts.
+///
+/// This is deliberately not a count comparison. Equal-size sets can have different members,
+/// and that swap is the load-bearing case for every roster whose rows are permissions or debt:
+/// repairing one identity must not buy room for an unrelated identity to appear or disappear.
+pub fn identity_set_difference(left: &HashSet<String>, right: &HashSet<String>) -> Vec<String> {
+    let mut difference: Vec<String> = left.difference(right).cloned().collect();
+    difference.sort();
+    difference
+}
+
 pub fn non_verdict_admission(
     observed: &HashSet<String>,
     roster: &HashSet<String>,
 ) -> NonVerdictAdmission {
-    let mut added: Vec<String> = observed
-        .iter()
-        .filter(|q| !roster.contains(q.as_str()))
-        .cloned()
-        .collect();
-    let mut repaid: Vec<String> = roster
-        .iter()
-        .filter(|q| !observed.contains(q.as_str()))
-        .cloned()
-        .collect();
-    added.sort();
-    repaid.sort();
-    NonVerdictAdmission { added, repaid }
+    NonVerdictAdmission {
+        added: identity_set_difference(observed, roster),
+        repaid: identity_set_difference(roster, observed),
+    }
+}
+
+#[cfg(test)]
+mod identity_set_difference_tests {
+    use super::{identity_set_difference, HashSet};
+
+    fn identities(rows: &[&str]) -> HashSet<String> {
+        rows.iter().map(|row| (*row).to_string()).collect()
+    }
+
+    #[test]
+    fn equal_identity_sets_have_no_difference() {
+        let left = identities(&["m.b", "m.a"]);
+        assert!(identity_set_difference(&left, &left).is_empty());
+    }
+
+    #[test]
+    fn an_equal_cardinality_swap_is_visible_in_both_directions() {
+        let roster = identities(&["m.a", "m.b"]);
+        let observed = identities(&["m.a", "m.c"]);
+
+        assert_eq!(
+            identity_set_difference(&roster, &observed),
+            vec!["m.b".to_string()]
+        );
+        assert_eq!(
+            identity_set_difference(&observed, &roster),
+            vec!["m.c".to_string()]
+        );
+        assert_eq!(
+            roster.len(),
+            observed.len(),
+            "control: counts cannot see the swap"
+        );
+    }
+
+    #[test]
+    fn multiple_missing_identities_are_stably_sorted() {
+        let roster = identities(&["m.z", "m.a", "m.q"]);
+        let observed = identities(&["m.q"]);
+        assert_eq!(
+            identity_set_difference(&roster, &observed),
+            vec!["m.a".to_string(), "m.z".to_string()]
+        );
+    }
 }
 
 /// The admission itself: `added` AND `repaid` are both empty. Kept separate from the sets so a
@@ -45851,6 +46991,26 @@ pub fn run_required_floor(
     let prepare_started = std::time::Instant::now();
     let (prepared, prepared_sources) =
         prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
+    // The bytes behind the sidecar candidates, captured here because `prepared_sources` is
+    // moved into the guard on the next line and the barren check needs content, not paths.
+    // Restricted to the candidate set rather than the whole inventory: the `.dag` predicate is
+    // asked only about files preparation already declined, so nothing else is retained.
+    let barren_candidate_sources: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = {
+        let wanted: HashSet<&str> = prepared
+            .test_decl_free_paths
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        prepared_sources
+            .iter()
+            .filter_map(|view| {
+                let path = view.source.path.replace('\\', "/");
+                wanted
+                    .contains(path.as_str())
+                    .then(|| (path, view.source.clone()))
+            })
+            .collect()
+    };
     let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
     // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
     //
@@ -46203,7 +47363,8 @@ pub fn run_required_floor(
     //
     // WHAT THIS REPLACED, and why it was not an optimisation. The required outcome of this whole
     // region is exactly: exclude a witness whose AUTHORED module sits in the long home, exclude
-    // one that reads the live tree, claim everything else Hermetic. That decision used to be
+    // a walk-plan fixture member already driven by its recipe, and plan everything else. That
+    // decision used to be
     // made TWICE — once by `required_floor_manifest` over 10,498 records marshalled into the
     // interpreter, and again here in Rust, applying the same prefix test to explain the
     // difference between sites offered and claims returned. Between the two sat an interpreted
@@ -46248,10 +47409,132 @@ pub fn run_required_floor(
         &hermetic,
         "v2.workflow.required_floor.long_home_prefixes",
     )?;
+    // ONE DECODE, TWO ROSTERS. The fixture-home prefixes are read through the same helper as
+    // the long-home prefixes because they are the same kind of fact — an authored module-name
+    // prefix the floor declines on — and a second hand-rolled decode beside it would be a
+    // second authority for how such a roster is read.
+    let fixture_home_prefixes = floor_decode_module_prefix_roster(
+        &hermetic,
+        "v2.workflow.required_floor.fixture_home_prefixes",
+    )?;
+    // THE LINE STOPS BEFORE THE PARTITION IS COMPUTED, because a barren entry is invisible to
+    // the partition by construction — it contributes no SITE, so `offered` cannot report it and
+    // `offered == routed + declined_long + declined_fixture + declined_cost_debt` stays exact
+    // while saying nothing about
+    // it. A file that claims the `*_test.dag` place and enrolls nothing is a witness nobody asked
+    // and everybody reads as covered.
+    let barren_test_sidecars = floor_barren_test_sidecars(
+        &hermetic,
+        &prepared.test_decl_free_paths,
+        &barren_candidate_sources,
+    )?;
+    if !barren_test_sidecars.is_empty() {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=BarrenTestSidecar count={} — a `*_test.dag` entry must \
+             declare at least one `test fn` or `test data` decl; the required floor enrolls \
+             nothing from: {}",
+            barren_test_sidecars.len(),
+            barren_test_sidecars.join(", ")
+        ));
+    }
+    // THE COST-DEBT ROSTER, decoded before the claim-build loop below because it decides an
+    // ADMISSION and not a verdict. It answers a FOURTH question: not which claims exist, not
+    // which of them are known to fail, and not which have no route — but which PASS and cost
+    // more than the per-claim ceiling allows, and are therefore WITHHELD FROM EXECUTION until
+    // made cheap.
+    //
+    // Withheld is not deferred and is not covered. See `v2.workflow.floor_cost_debt` for the
+    // monotone debt contract and the DESIGN §4b(3) rung drop; the short form is that a rostered
+    // row does not run anywhere, its coverage is gone while it sits there, and it leaves only by
+    // being deleted from the roster and then passing under the ordinary ceiling.
+    let cost_debt_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_cost_debt.floor_cost_debt_roster",
+            false,
+        )
+        .map_err(|e| format!("floor_cost_debt_roster: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_cost_debt_roster: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    // A DUPLICATE REFUSES, for the reason the expected-red roster gives above
+                    // and one more that is specific to a debt this size: the roster's length is
+                    // the debt, a repeated identity makes that length overstate what is
+                    // withheld, and the second copy survives every removal of the first.
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_cost_debt_roster: duplicate withheld identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_cost_debt_roster: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        // NO EMPTY-ROSTER REFUSAL, and the asymmetry with the expected-red roster is deliberate
+        // rather than an oversight. An empty expected-red roster makes its downstream partition
+        // and did-not-execute joins VACUOUS, so nothing can fire. An empty cost-debt roster
+        // makes nothing vacuous: it means every witness runs under the ceiling, which is the
+        // terminal state this contract is shrinking toward, and the guard that matters — the
+        // stale-row join below — gets STRICTER as the roster empties, never weaker.
+        out
+    };
+    eprintln!(
+        "[floor-cost-debt] roster withholds {} identity(ies) from execution",
+        cost_debt_roster.len()
+    );
+
+    // EXACTLY ONE DECLARED MECHANISM HOLDS A ROW, and when cost debt withholds one it is the
+    // holder. `gunbc.quarantine_probe_disposition` states the rule this implements: the question
+    // is never WHICH roster names a row, it is whether exactly one MECHANISM holds it, and a row
+    // claimed by two is the authority-substitution shape.
+    //
+    // WHY THIS IS NOT OPTIONAL, measured rather than anticipated: 6 identities sit in both this
+    // roster and `floor_expected_red` at the restoration. Leaving both claims standing blocks the
+    // run in EITHER direction, which is what makes this a real fork and not a tidy-up. Withheld
+    // and still enrolled, the expected-red reverse join reports them as stale (enrolled but never
+    // executed) and refuses. Un-withheld so the enrollment stays observable, they execute, exceed
+    // the 500ms ceiling, and `ExpectedRedArm` explicitly REFUSES to hold an interrupted budget
+    // outcome -- so they land as ordinary failures and refuse too. All 6 measure 521-3865ms of
+    // MARGINAL cpu, so none of them can execute inside the ceiling.
+    //
+    // COST DEBT WINS, and the direction follows from what each roster asserts. Enrollment in
+    // `floor_expected_red` asserts, in that module's own words, that the identity REACHES ITS
+    // SUBJECT AND ANSWERS. A withheld row answers nothing, so while it is withheld that assertion
+    // is not merely unobserved -- it is untrue, and the roster that must yield is the one making
+    // a claim the run cannot support. The enrollment is dormant, not deleted: the moment the row
+    // leaves the cost-debt roster its expected-red claim is live again and observed again.
+    //
+    // SUPPRESSION IS COUNTED, NEVER SILENT. A roster quietly shrinking is how a skip list is
+    // born, so the count is printed per roster and the population is recoverable by intersecting
+    // the two authorities. This is a narrowing of what those joins observe, declared as one.
+    let suppress_withheld = |roster: &mut HashSet<String>, name: &str| {
+        let before = roster.len();
+        roster.retain(|identity| !cost_debt_roster.contains(identity));
+        let suppressed = before - roster.len();
+        if suppressed > 0 {
+            eprintln!(
+                "[floor-cost-debt] {name}: {suppressed} enrolled identity(ies) suppressed because \
+                 the cost-debt roster withholds them; their enrollment is dormant, not deleted, \
+                 and becomes observable again when they leave that roster"
+            );
+        }
+    };
+
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
-    let mut live_declined = 0usize;
+    let mut fixture_declined = 0usize;
+    let mut cost_debt_declined = 0usize;
+    let mut cost_debt_seen: HashSet<String> = HashSet::new();
+    let mut outcome_withheld_cost_debt: Vec<String> = Vec::new();
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
     let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
@@ -46262,6 +47545,9 @@ pub fn run_required_floor(
         let long_home = matched_prefix.is_some();
         // Diagnostic only -- computed once per file and never consulted by the admission
         // branching below. See `LongHomeStorageAgreement`'s doc comment.
+        let fixture_prefix = fixture_home_prefixes
+            .iter()
+            .find(|prefix| file.module_path.starts_with(prefix.as_str()));
         let path_is_long = is_long_home_path(&file.path);
         let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
         for function in &file.functions {
@@ -46283,11 +47569,35 @@ pub fn run_required_floor(
                 });
                 continue;
             }
-            if file.reads_live_tree {
-                live_declined += 1;
+            if let Some(prefix) = fixture_prefix {
+                fixture_declined += 1;
                 disposition_rows.push(RequiredFloorDispositionRow {
                     identity,
-                    disposition: RequiredFloorDisposition::DeclinedLiveTree,
+                    disposition: RequiredFloorDisposition::DeclinedFixtureMember {
+                        matched_prefix: prefix.clone(),
+                    },
+                });
+                continue;
+            }
+            // THE THIRD DECLINE, APPLIED ONLY TO A SITE THE TWO ABOVE ADMITTED. The precedence
+            // is `required_floor_site_disposition`'s, not this loop's — cost debt is last, so a
+            // rostered identity that ALSO declines for a home reason keeps its home decline and
+            // never lands here. That is what makes such a roster line show up as stale (it never
+            // enters `cost_debt_seen`) instead of as a withhold nobody can tell from a real one.
+            //
+            // DECLINED AT BUILD, NEVER SKIPPED AT EXECUTION. A withheld row must not become a
+            // planned claim: `claims_planned == claims_executed + not_attempted` and the terminal
+            // ledger's identity join both require every planned identity to reach a verdict, so a
+            // skip inside the fold would refuse on both. Declining here keeps all three partition
+            // checks exact and costs the fold nothing — no scope is built and no frame allocated
+            // for a row that will not run.
+            if cost_debt_roster.contains(&identity) {
+                cost_debt_declined += 1;
+                cost_debt_seen.insert(identity.clone());
+                outcome_withheld_cost_debt.push(identity.clone());
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedCostDebt,
                 });
                 continue;
             }
@@ -46338,11 +47648,11 @@ pub fn run_required_floor(
     // it is the construction's own statement of what it guarantees, and it fails loudly the
     // first time an edit adds a third arm that quietly swallows rows, which is precisely how
     // the live-tree decline arrived and stayed invisible.
-    if sites_offered != claims.len() + long_declined + live_declined {
+    if sites_offered != claims.len() + long_declined + fixture_declined + cost_debt_declined {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={sites_offered} \
-             routed={} declined_long={long_declined} \
-             declined_live={live_declined} — every \
+             routed={} declined_long={long_declined} declined_fixture={fixture_declined} \
+             declined_cost_debt={cost_debt_declined} — every \
              discovered site must be either routed to a claim or declined with a stated \
              disposition; a gap here is a roster that narrowed without saying so",
             claims.len()
@@ -46350,13 +47660,14 @@ pub fn run_required_floor(
     }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
-         claims={} declined_long={} declined_live={}",
+         claims={} declined_long={} declined_fixture={} declined_cost_debt={}",
         projection_started.elapsed().as_millis(),
         sites_offered,
         files.len(),
         claims.len(),
         long_declined,
-        live_declined
+        fixture_declined,
+        cost_debt_declined
     );
 
     // THE EXPECTED-RED ROSTER, read from its .dag authority in the policy module's frame — it
@@ -46425,6 +47736,8 @@ pub fn run_required_floor(
         }
         out
     };
+    let mut expected_red_roster = expected_red_roster;
+    suppress_withheld(&mut expected_red_roster, "floor_expected_red");
     eprintln!(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
@@ -46477,10 +47790,98 @@ pub fn run_required_floor(
         }
         out
     };
+    let mut route_gap_roster = route_gap_roster;
+    suppress_withheld(&mut route_gap_roster, "floor_route_gap");
     eprintln!(
         "[floor-route-gap] roster carries {} enrolled identity(ies)",
         route_gap_roster.len()
     );
+
+    // New enrollments carry the operation and the closed remedy-ground observed at the
+    // interpreter boundary. Their identities are projected into `floor_route_gap_roster` by
+    // the .dag authority; this decode reads the detail rather than authoring a second identity
+    // list in Rust. A changed operation or ground blocks below instead of being silently held
+    // by an identity-only row whose original fact no longer applies.
+    let route_gap_expectations: HashMap<String, FloorRouteGapExpectation> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_route_gap.floor_route_gap_expectations",
+            false,
+        )
+        .map_err(|e| format!("floor_route_gap_expectations: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_route_gap_expectations: {e}"))?;
+        let mut out = HashMap::new();
+        for item in items {
+            let v1_interpreter::Value::Record { type_name, fields } = item else {
+                return Err(format!(
+                    "floor_route_gap_expectations: expected FloorRouteGapExpectation, got {}",
+                    floor_value_shape(Some(&item))
+                ));
+            };
+            if !hermetic.sym_eq(*type_name, "FloorRouteGapExpectation") {
+                return Err(format!(
+                    "floor_route_gap_expectations: expected FloorRouteGapExpectation, got record {}",
+                    hermetic.resolve(*type_name)
+                ));
+            }
+            let identity = match hermetic.field(&fields, "identity") {
+                Some(v1_interpreter::Value::Str(s)) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "floor_route_gap_expectations: identity must be String, got {}",
+                        floor_value_shape(other)
+                    ));
+                }
+            };
+            let operation = match hermetic.field(&fields, "operation") {
+                Some(v1_interpreter::Value::Str(s)) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "floor_route_gap_expectations: operation must be String, got {}",
+                        floor_value_shape(other)
+                    ));
+                }
+            };
+            let ground = match hermetic.field(&fields, "ground") {
+                Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+                    match hermetic.resolve(*variant_name).as_str() {
+                        "UnpublishedMockCase" => FloorRouteGapExpectedGround::UnpublishedMockCase,
+                        "NoMockResponse" => FloorRouteGapExpectedGround::NoMockResponse,
+                        "FilesystemRemoval" => FloorRouteGapExpectedGround::FilesystemRemoval,
+                        other => {
+                            return Err(format!(
+                                "floor_route_gap_expectations: unknown ground {other}"
+                            ));
+                        }
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_route_gap_expectations: ground must be a typed variant, got {}",
+                        floor_value_shape(other)
+                    ));
+                }
+            };
+            if !route_gap_roster.contains(identity.as_str()) {
+                return Err(format!(
+                    "floor_route_gap_expectations: located identity is absent from derived roster: {identity}"
+                ));
+            }
+            if out
+                .insert(
+                    identity.clone(),
+                    FloorRouteGapExpectation { operation, ground },
+                )
+                .is_some()
+            {
+                return Err(format!(
+                    "floor_route_gap_expectations: duplicate enrolled identity: {identity}"
+                ));
+            }
+        }
+        out
+    };
 
     // THE TWO ROSTERS MAY NOT NAME THE SAME IDENTITY, and this refusal is the reason the split
     // between them stays a split rather than decaying back into the conflation it was created
@@ -46558,6 +47959,8 @@ pub fn run_required_floor(
         }
         out
     };
+    let mut non_verdict_roster = non_verdict_roster;
+    suppress_withheld(&mut non_verdict_roster, "floor_non_verdict");
     eprintln!(
         "[floor-non-verdict] roster carries {} enrolled identity(ies)",
         non_verdict_roster.len()
@@ -46720,7 +48123,7 @@ pub fn run_required_floor(
         modules_excluded: prepared.modules_excluded,
         sites_offered,
         declined_long_module: long_declined,
-        declined_live_tree: live_declined,
+        declined_fixture_member: fixture_declined,
         claims_planned,
         claims_executed: 0,
         receipt_identities: 0,
@@ -46736,6 +48139,8 @@ pub fn run_required_floor(
         stale_quarantine: Vec::new(),
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
+        withheld_cost_debt: outcome_withheld_cost_debt,
+        stale_cost_debt: Vec::new(),
         known_red_runtime_errored: Vec::new(),
         non_verdict_unenrolled: Vec::new(),
         stale_non_verdict: Vec::new(),
@@ -47113,24 +48518,18 @@ pub fn run_required_floor(
                 // nobody observed.
                 ExpectedRedArm::BudgetRefused => {
                     known_red_budget_refused += 1;
-                    let detail = match &result {
-                        // The arm reached here is the interrupted one BY CONSTRUCTION —
-                        // `ExpectedRedArm::BudgetRefused` has exactly one producer — so the
-                        // reading is `at least` and cannot be anything else. Matching the
-                        // completed arm here would be unreachable, which is why it is not
-                        // written: an unreachable arm rendering "exactly" would be a decoration
-                        // whose red no input can produce.
-                        ClaimOutcome::BudgetInterrupted {
-                            elapsed_at_least_ms,
-                            budget_ms,
-                            kind,
-                        } => format!(
-                            "{kind:?}, cost at least {elapsed_at_least_ms}ms against {budget_ms}ms"
-                        ),
-                        other => format!("{other:?}"),
-                    };
+                    // ONE RENDERER, NOT A LOCAL FORMAT STRING. The arm reached here is the
+                    // interrupted one BY CONSTRUCTION — `ExpectedRedArm::BudgetRefused` has
+                    // exactly one producer — so `budget_figure_phrase` answers `Some` and
+                    // renders `cost=UNMEASURED` with the interrupt point in its own field. The
+                    // local string this replaced said `cost at least {n}ms against {budget}ms`,
+                    // which is the bound-in-the-cost-field reading the renderer exists to make
+                    // unwritable; the debug fallback stays for the same reason it always did.
+                    let detail = result
+                        .budget_figure_phrase()
+                        .unwrap_or_else(|| format!("{result:?}"));
                     outcome.interrupted_before_verdict.push(format!(
-                        "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed: \
+                        "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed. \
                          {}. Enrollment asserts an expected verdict and a budget refusal \
                          produces none, so the enrolled claim went undecided — THIS ROW'S \
                          CORRECTNESS IS UNKNOWN, not merely expensive: the refusal preempted \
@@ -47156,14 +48555,15 @@ pub fn run_required_floor(
                 // to drop was the repaid-debt signal the roster exists to surface.
                 ExpectedRedArm::PassedOverBudget => {
                     known_red_passed_over_budget += 1;
-                    let cost = match &result {
-                        ClaimOutcome::CompletedOverBudget {
-                            elapsed_ms,
-                            budget_ms,
-                            kind,
-                        } => format!("{kind:?}, cost exactly {elapsed_ms}ms against {budget_ms}ms"),
-                        other => format!("{other:?}"),
-                    };
+                    // ONE RENDERER HERE TOO, though this arm's figure was never a bound: a
+                    // completed row has an exact cost. It routes through
+                    // `budget_figure_phrase` anyway so that the completed and interrupted
+                    // sentences keep being authored in one place — a local "exactly" template
+                    // beside a shared renderer is how the two readings drift back into one
+                    // shape.
+                    let cost = result
+                        .budget_figure_phrase()
+                        .unwrap_or_else(|| format!("{result:?}"));
                     outcome.stale_quarantine.push(format!(
                         "{} is enrolled as expected-red and PASSED (then exceeded its budget: \
                          {}) — remove it from v2.workflow.floor_expected_red; the cost debt is \
@@ -47171,10 +48571,8 @@ pub fn run_required_floor(
                         claim.qualified, cost
                     ));
                     outcome.completed_over_cost_requirement.push(format!(
-                        "{} PASSED but exceeded its budget: {}. This is an exact measurement, \
-                         not a bound — the witness ran to completion — so the cost is known and \
-                         actionable. Reduce it, or move the row to a lane declaring its own \
-                         ceiling.",
+                        "{} PASSED but exceeded its budget. {}. Reduce it, or move the row to a \
+                         lane declaring its own ceiling.",
                         claim.qualified, cost
                     ));
                     continue;
@@ -47204,12 +48602,21 @@ pub fn run_required_floor(
                 // enrolled — the failure this whole lane exists to close.
                 ExpectedRedArm::HostEffectRefused => {
                     known_red_host_effect_refused += 1;
-                    let detail = match &result {
-                        ClaimOutcome::HostEffectRefused { operation, ground } => format!(
-                            "hermetic route has no arm for {operation}: {}",
-                            hermetic_effect_ground_label(ground)
+                    let (operation, ground, detail) = match &result {
+                        ClaimOutcome::HostEffectRefused { operation, ground } => (
+                            operation.as_str(),
+                            ground,
+                            format!(
+                                "hermetic route has no arm for {operation}: {}",
+                                hermetic_effect_ground_label(ground)
+                            ),
                         ),
-                        other => format!("{other:?}"),
+                        other => {
+                            return Err(format!(
+                                "required-floor expected-red arm/result disagreement for {}: {other:?}",
+                                claim.qualified
+                            ));
+                        }
                     };
                     // THE TWO ROSTERS ARE DIFFERENT AXES, AND THIS ROW SITS ON BOTH. Being
                     // enrolled as expected-red says nothing about whether the floor has a route
@@ -47218,7 +48625,18 @@ pub fn run_required_floor(
                     // not cover the gap, and the gap does not discharge the enrollment.
                     route_gap_seen.insert(claim.qualified.clone());
                     if route_gap_roster.contains(claim.qualified.as_str()) {
-                        route_gap_held += 1;
+                        if let Some(mismatch) = floor_route_gap_expectation_mismatch(
+                            route_gap_expectations.get(claim.qualified.as_str()),
+                            operation,
+                            ground,
+                        ) {
+                            outcome.route_gap.push(format!(
+                                "{} is enrolled as a route gap, but its observed typed route changed: {}. Update the enrollment only after deciding which route the witness actually requires.",
+                                claim.qualified, mismatch
+                            ));
+                        } else {
+                            route_gap_held += 1;
+                        }
                     } else {
                         outcome.route_gap.push(format!(
                             "{} is enrolled as expected-red but ROUTE-GAPPED, not failed: {}. \
@@ -47348,7 +48766,18 @@ pub fn run_required_floor(
             ClaimOutcome::HostEffectRefused { operation, ground } => {
                 route_gap_seen.insert(claim.qualified.clone());
                 if route_gap_roster.contains(claim.qualified.as_str()) {
-                    route_gap_held += 1;
+                    if let Some(mismatch) = floor_route_gap_expectation_mismatch(
+                        route_gap_expectations.get(claim.qualified.as_str()),
+                        &operation,
+                        &ground,
+                    ) {
+                        outcome.route_gap.push(format!(
+                            "{} is enrolled as a route gap, but its observed typed route changed: {}. Update the enrollment only after deciding which route the witness actually requires.",
+                            claim.qualified, mismatch
+                        ));
+                    } else {
+                        route_gap_held += 1;
+                    }
                 } else {
                     outcome.route_gap.push(format!(
                         "{} never reached its subject: the hermetic route has no arm for {} \
@@ -47385,32 +48814,36 @@ pub fn run_required_floor(
             // is EXACT. Printing one sentence for both would repeat the conflation this arm
             // exists to remove — asserting "correctness unknown" over a row that demonstrably
             // answered is as wrong as calling a cost a defect.
-            ClaimOutcome::BudgetInterrupted {
-                elapsed_at_least_ms,
-                budget_ms,
-                kind,
-            } => outcome.interrupted_before_verdict.push(format!(
-                "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
-                 {elapsed_at_least_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
-                 nothing claims it is broken — but the deadline preempted the verdict, so \
-                 whether it passes is UNKNOWN and its real cost is UNMEASURED: the figure \
-                 is the interrupt point, not this row's cost. Reduce the cost, or move it \
-                 to a lane declaring its own ceiling, so the witness reaches a verdict.",
-                claim.qualified
-            )),
-            ClaimOutcome::CompletedOverBudget {
-                elapsed_ms,
-                budget_ms,
-                kind,
-            } => outcome.completed_over_cost_requirement.push(format!(
-                "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
-                 exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
-                 completion, so this is a measurement rather than a bound and the cost is \
-                 known and actionable. This is a cost debt only — it is not a defect and \
-                 it does not belong on the expected-red roster, which asserts an expected \
-                 FAILURE this row does not exhibit.",
-                claim.qualified
-            )),
+            // THE FIGURES COME FROM `budget_figure_phrase` AND THE PROSE NO LONGER RESTATES
+            // THEM. What used to stand here was `cost at least {n}ms against {budget}ms`
+            // followed by a caveat saying that number was not a cost — a caveat that competes
+            // with a number already read in the cost position, and demonstrably loses. The
+            // renderer does not put the bound there at all, so the remedy sentences below need
+            // only say what to DO, which is the part a caveat was never the right carrier for.
+            ClaimOutcome::BudgetInterrupted { .. } => {
+                let figure = result
+                    .budget_figure_phrase()
+                    .unwrap_or_else(|| format!("{result:?}"));
+                outcome.interrupted_before_verdict.push(format!(
+                    "{} was BUDGET-REFUSED and went UNDECIDED. {}. Not enrolled as \
+                     expected-red, so nothing claims it is broken — but the deadline preempted \
+                     the verdict, so whether it PASSES is UNKNOWN too. Reduce the cost, or move \
+                     it to a lane declaring its own ceiling, so the witness reaches a verdict.",
+                    claim.qualified, figure
+                ))
+            }
+            ClaimOutcome::CompletedOverBudget { .. } => {
+                let figure = result
+                    .budget_figure_phrase()
+                    .unwrap_or_else(|| format!("{result:?}"));
+                outcome.completed_over_cost_requirement.push(format!(
+                    "{} reached its verdict and then exceeded its budget. {}. The cost is \
+                     therefore known and actionable. This is a cost debt only — it is not a \
+                     defect and it does not belong on the expected-red roster, which asserts an \
+                     expected FAILURE this row does not exhibit.",
+                    claim.qualified, figure
+                ))
+            }
             // NEITHER REACHES THIS MATCH, and both are named rather than wildcarded. A panic
             // breaks the loop above this point, and a not-attempted row is minted after the loop
             // and never classified here at all. Naming them keeps this match total over the
@@ -47728,6 +49161,33 @@ pub fn run_required_floor(
             });
         }
     }
+
+    // THE COST-DEBT ROSTER IS A TWO-WAY JOIN FOR THE SAME REASON, and the reverse direction is
+    // the whole thing that stops this contract becoming a permission slip. Forward, the roster
+    // only ever answers "is this planned claim withheld". Reverse, it must answer "does every
+    // withheld identity still exist as a planned claim" — because a rostered row whose witness
+    // was renamed, deleted, or declined by home policy withholds NOTHING while still counting
+    // toward the debt, which overstates what is frozen in the direction that flatters and
+    // survives every repair of the rows around it.
+    //
+    // BLOCKING, unlike the withhold itself. A withheld row is declared debt; a stale row is a
+    // roster that has stopped describing the tree, and the contract's monotone claim is only
+    // worth anything while its universe is the discovered one.
+    {
+        let mut stale: Vec<&String> = cost_debt_roster
+            .iter()
+            .filter(|q| reverse_joins_answerable && !cost_debt_seen.contains(*q))
+            .collect();
+        stale.sort();
+        for identity in stale {
+            outcome.stale_cost_debt.push(format!(
+                "{identity} is enrolled in v2.workflow.floor_cost_debt but was not planned, so \
+                 nothing was withheld for it. It was renamed, deleted, or declined by home \
+                 policy. Delete the row — a withhold over an identity the tree does not carry \
+                 counts as debt while costing nothing and can never ask to be removed."
+            ));
+        }
+    }
     // THE ROSTER IS A TWO-WAY JOIN, NOT A ONE-WAY LOOKUP. Enrollment as written above only ever
     // asks "is this executing claim enrolled". The reverse question — is every enrolled identity
     // still executing — has no consumer unless it is asked here, and without it the roster rots
@@ -47825,6 +49285,18 @@ pub fn run_required_floor(
     // for a reader to compare. A run that planned more claims than it executed has silently
     // narrowed, which is the failure this whole path exists to make unwritable; reporting the
     // pair and letting a human notice is exactly how the deferred bucket survived.
+    // WITHHELD ROWS DO NOT APPEAR IN THIS SUM, and that is a consequence of where the withhold
+    // happens rather than an exemption carved into it. A cost-debt row is declined at claim
+    // BUILD time, alongside the long-home and live-tree declines, so it never becomes a planned
+    // claim and this partition never sees it. The site-level partition upstream
+    // (`SitePartitionInexact`) is what accounts for it.
+    //
+    // A FIRST CUT OF THIS CHANGE WITHHELD INSIDE THE EXECUTION LOOP INSTEAD, and it would have
+    // red the floor on this very check -- 320 planned claims that never executed and never
+    // published as not-attempted. Recorded because the lesson generalises past this diff: a
+    // `continue` at the top of a fold is exactly the shape that leaves a partition behind, and
+    // the three partition checks in this file are the only thing that says so. A code review
+    // approved the loop-skip form; the partition would have refused it on the first run.
     if outcome.claims_planned != outcome.claims_executed + outcome.not_attempted_after_abort
         || outcome.claims_executed != outcome.receipt_identities
     {
@@ -47939,7 +49411,33 @@ pub fn run_required_floor(
         .filter(|row| row.verdict_reached && observed_cost_ms(row, cost_basis) > row.cost_line_ms)
         .collect();
     outcome.over_cost_line_diagnostic = over_cost_members.len();
-    for row in &over_cost_members {
+    // THE WARNING TIER, RESTORED AT 100ms BY OPERATOR RULING (2026-08-27) AND PRINTED RANKED.
+    //
+    // WHY THIS IS NOT THE WARN TIER DELETED ON 2026-08-20, because it will otherwise be deleted
+    // again by a reader who recognises the shape. That tier was a second threshold ON THE SAFETY
+    // DEADLINE -- an admission mechanism -- and "over a threshold, reported, allowed to finish"
+    // is the widen DESIGN section 5 forbids of a FAILURE ARM. This line is not a failure arm and
+    // sits nowhere near admission: `exceeds_completed_cost_line` judges only COMPLETED claims,
+    // nothing reads `over_cost_line_diagnostic` to fail a run, and a row named here has already
+    // been admitted and has already answered. The pairing the operator asked for is a warning at
+    // 100ms and a hard error at 500ms, and those are two different mechanisms rather than two
+    // tiers of one: the hard error is `required_floor_claim_cpu_safety_limit_ms`, which refuses.
+    //
+    // RANKED AND BOUNDED, WITH THE REMAINDER STATED. At a 100ms line the population is ~924 rows
+    // on the measured corpus, and this file already carries the receipt for what that does to a
+    // log -- the prior 5000ms/10000ms pair "fired on the MEDIAN witness (several hundred
+    // `[floor-witness-slow]` lines)", and a signal at that volume is read by nobody. So the print
+    // is the 25 most expensive rows, which is the actionable head of a distribution whose median
+    // is ~1ms.
+    //
+    // THE CAP IS NOT SILENT (DESIGN section 5, no silent caps): the dropped count is printed and
+    // the FULL population is in the per-claim cost TSV, which is written unconditionally a few
+    // lines below and uploaded as a run artifact. A reader who needs row 26 has it; a reader
+    // skimming the log gets the head instead of 835 lines that hide every other diagnostic.
+    let mut ranked: Vec<&WitnessExecutionOccurrence> = over_cost_members.clone();
+    ranked.sort_by_key(|row| std::cmp::Reverse(observed_cost_ms(row, cost_basis)));
+    const OVER_COST_PRINT_LIMIT: usize = 25;
+    for row in ranked.iter().take(OVER_COST_PRINT_LIMIT) {
         eprintln!(
             "[over-cost] {} wall_ms={} cpu_ms={} line_ms={} outcome={}",
             row.identity,
@@ -47947,6 +49445,19 @@ pub fn run_required_floor(
             row.cpu_nanos / 1_000_000,
             row.cost_line_ms,
             row.outcome
+        );
+    }
+    if ranked.len() > OVER_COST_PRINT_LIMIT {
+        eprintln!(
+            "[over-cost] ... and {} further row(s) over the {}ms line, not printed. The complete \
+             population is in the per-claim cost TSV uploaded by this run; this list is the {} \
+             most expensive, ranked on the declared cost basis.",
+            ranked.len() - OVER_COST_PRINT_LIMIT,
+            over_cost_members
+                .first()
+                .map(|row| row.cost_line_ms)
+                .unwrap_or(0),
+            OVER_COST_PRINT_LIMIT
         );
     }
     if let Some(path) = claim_cost_path {
@@ -48040,14 +49551,16 @@ fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &
     match disposition {
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
-        RequiredFloorDisposition::DeclinedLiveTree => "declined_live_tree",
+        RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
+        RequiredFloorDisposition::DeclinedCostDebt => "declined_cost_debt",
     }
 }
 
 fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposition) -> &str {
     match disposition {
-        RequiredFloorDisposition::DeclinedLongModule { matched_prefix } => matched_prefix,
-        RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedLiveTree => "",
+        RequiredFloorDisposition::DeclinedLongModule { matched_prefix }
+        | RequiredFloorDisposition::DeclinedFixtureMember { matched_prefix } => matched_prefix,
+        RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedCostDebt => "",
     }
 }
 
@@ -48123,21 +49636,25 @@ fn write_required_floor_disposition_tsv(
         .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
     let mut planned = 0usize;
     let mut declined_long = 0usize;
-    let mut declined_live = 0usize;
+    let mut declined_fixture = 0usize;
+    let mut declined_cost_debt = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
-            RequiredFloorDisposition::DeclinedLiveTree => declined_live += 1,
+            RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
+            RequiredFloorDisposition::DeclinedCostDebt => declined_cost_debt += 1,
         }
     }
     writeln!(
         file,
-        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_live_tree={}",
+        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
+         \tdeclined_cost_debt={}",
         rows.len(),
         planned,
         declined_long,
-        declined_live
+        declined_fixture,
+        declined_cost_debt
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix")
@@ -48341,8 +49858,10 @@ mod required_floor_disposition_and_storage_agreement_law {
                 },
             },
             RequiredFloorDispositionRow {
-                identity: "m.three.c".to_string(),
-                disposition: RequiredFloorDisposition::DeclinedLiveTree,
+                identity: "v2.test.fixture.walk_plan_stage.x.d".to_string(),
+                disposition: RequiredFloorDisposition::DeclinedFixtureMember {
+                    matched_prefix: "v2.test.fixture.walk_plan_stage.".to_string(),
+                },
             },
         ];
 
@@ -48356,14 +49875,19 @@ mod required_floor_disposition_and_storage_agreement_law {
         assert!(lines[0].contains("total=3"));
         assert!(lines[0].contains("planned=1"));
         assert!(lines[0].contains("declined_long_module=1"));
-        assert!(lines[0].contains("declined_live_tree=1"));
+        assert!(lines[0].contains("declined_fixture_member=1"));
         assert_eq!(lines[1], "identity\tdisposition\tmatched_prefix");
         assert_eq!(lines[2], "m.one.a\tplanned\t");
         assert_eq!(
             lines[3],
             "test.claim.long.two.b\tdeclined_long_module\ttest.claim.long."
         );
-        assert_eq!(lines[4], "m.three.c\tdeclined_live_tree\t");
+        // THE FIXTURE ARM CARRIES ITS MATCHED PREFIX, exactly as the long arm does. A decline
+        // that cannot say WHICH prefix admitted it is a count, not a receipt.
+        assert_eq!(
+            lines[4],
+            "v2.test.fixture.walk_plan_stage.x.d\tdeclined_fixture_member\tv2.test.fixture.walk_plan_stage."
+        );
     }
 
     #[test]
@@ -48504,6 +50028,33 @@ pub use partition_crate_boundary_host::{
     compile_partition_crates, partition_package_names, run_partition_crate_boundary,
     BoundaryFileDisposition, PartitionCompileOutcome, PartitionCrateBoundaryOutcome,
     RenderedBoundaryFile, PARTITION_CRATE_PRODUCING_COMMAND,
+};
+
+/// The committed generated-artifact population, produced from `gunbc.generated_artifact_emit`
+/// and adjudicated against the tree.
+///
+/// Re-exported here rather than reached directly so every required phase addresses the producer
+/// through one surface, the way the regen and partition-crate paths do.
+pub use generated_artifact_boundary_host::{
+    artifact_disposition, artifact_disposition_name, boundary_divergent, boundary_is_clean,
+    generated_artifact_body_for_path, generated_artifact_ctx, run_generated_artifact_boundary,
+    AdjudicatedArtifact, ArtifactDisposition, GeneratedArtifactBoundaryOutcome,
+    GeneratedArtifactPathBody, UnadjudicatedArtifact, GENERATED_ARTIFACT_PRODUCING_COMMAND,
+};
+
+/// The emitted-closure compile phase: one entry's closure emitted, written as a crate, and
+/// compiled — with the discriminating red the phase establishes on itself every run.
+///
+/// Re-exported here for the same reason the two above are: every required phase addresses its
+/// producer through one surface.
+pub use emitted_closure_compile_host::{
+    cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
+    emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
+    emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
+    emit_compile_selection_universe_digest, local_emit_compile_probe_root,
+    required_ci_emit_compile_probe_root, required_emit_compile_entries,
+    retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
+    EmitCompileSelection, MutationVerdict,
 };
 
 /// The authority's own declared module path, for consumers outside this module.

@@ -1,0 +1,328 @@
+module test.claim.git_worktree_set_decoder_witness
+
+import std.types { String, List, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.git.worktree_enumeration {
+  GitWorktreeIdentity,
+  GitWorktreeCheckout,
+  GitWorktreeOnBranch,
+  GitWorktreeDetachedAt,
+  GitWorktreeBare,
+  GitWorktreeSetObservation,
+  GitWorktreeSetObserved,
+  GitWorktreeSetReadRefused,
+  GitWorktreeSetUndecodable,
+  git_worktree_set_observation_of,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data git_worktree_set_decoder_construction_justification: String = "Pure decoder controls over authored wire text, run in the ordinary floor because the subject is the DECODE -- a total function of bytes the test supplies, with no repository, no subprocess and no host. The authored strings are TRANSCRIBED FROM REAL `git worktree list --porcelain -z` OUTPUT observed on a constructed repository (a primary on a branch, a linked worktree on a branch, a detached worktree, a locked worktree, and a bare clone), so the framing under test is git's and not an invention. What these deliberately do NOT establish is that git.Core.WorktreeListIn EMITS these bytes for any given repository state: that is a transport claim, it cannot execute inside the hermetic fold, and it is owned by the separate wet record/replay matrix. Reporting these as coverage for the transport would be the rung inflation DESIGN section 4b forbids."
+
+data oid_a: String = "b0940967fc5128891bb289985b3e2a0714a88773"
+data oid_b: String = "1111111111111111111111111111111111111111"
+
+fn entry(attributes: List<String>) -> String {
+  concat(join(attributes, "\0"), "\0\0")
+}
+
+fn observed_worktrees(observation: GitWorktreeSetObservation) -> List<GitWorktreeIdentity> {
+  match observation {
+    GitWorktreeSetObserved { primary: primary, linked: linked } => Cons { head: primary, tail: linked }
+    GitWorktreeSetReadRefused { exit_code: _, stderr: _ } => []
+    GitWorktreeSetUndecodable { entry_index: _, raw_entry: _, reason: _ } => []
+  }
+}
+
+fn is_undecodable(observation: GitWorktreeSetObservation) -> Bool {
+  match observation {
+    GitWorktreeSetUndecodable { entry_index: _, raw_entry: _, reason: _ } => true
+    GitWorktreeSetObserved { primary: _, linked: _ } => false
+    GitWorktreeSetReadRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+fn undecodable_entry_index(observation: GitWorktreeSetObservation) -> Int {
+  match observation {
+    GitWorktreeSetUndecodable { entry_index: index, raw_entry: _, reason: _ } => index
+    GitWorktreeSetObserved { primary: _, linked: _ } => 0 - 1
+    GitWorktreeSetReadRefused { exit_code: _, stderr: _ } => 0 - 1
+  }
+}
+
+fn path_at(worktrees: List<GitWorktreeIdentity>, index: Int) -> String {
+  match worktrees.skip(n: index).first() {
+    Present { value: identity } => identity.path
+    Absent => ""
+  }
+}
+
+fn checkout_is_on_branch(checkout: GitWorktreeCheckout, expected: String) -> Bool {
+  match checkout {
+    GitWorktreeOnBranch { head: _, branch: branch } => branch == expected
+    GitWorktreeDetachedAt { head: _ } => false
+    GitWorktreeBare => false
+  }
+}
+
+fn checkout_is_detached(checkout: GitWorktreeCheckout) -> Bool {
+  match checkout {
+    GitWorktreeDetachedAt { head: _ } => true
+    GitWorktreeOnBranch { head: _, branch: _ } => false
+    GitWorktreeBare => false
+  }
+}
+
+fn checkout_is_bare(checkout: GitWorktreeCheckout) -> Bool {
+  match checkout {
+    GitWorktreeBare => true
+    GitWorktreeOnBranch { head: _, branch: _ } => false
+    GitWorktreeDetachedAt { head: _ } => false
+  }
+}
+
+fn checkout_at(worktrees: List<GitWorktreeIdentity>, index: Int) -> GitWorktreeCheckout {
+  match worktrees.skip(n: index).first() {
+    Present { value: identity } => identity.checkout
+    Absent => GitWorktreeBare
+  }
+}
+
+// A repository with no linked worktrees still reports its primary, so the decoder must read one
+// entry rather than treat a single-entry stream as a degenerate case.
+test fn a_lone_primary_worktree_decodes() -> Bool {
+  let raw = entry(attributes: ["worktree /repo", concat("HEAD ", oid_a), "branch refs/heads/master"])
+  let worktrees = observed_worktrees(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+  count(worktrees) == 1
+    && path_at(worktrees: worktrees, index: 0) == "/repo"
+    && checkout_is_on_branch(checkout: checkout_at(worktrees: worktrees, index: 0), expected: "refs/heads/master")
+}
+
+test fn a_detached_worktree_reads_as_detached_not_as_a_branch() -> Bool {
+  let raw = entry(attributes: ["worktree /repo/det", concat("HEAD ", oid_a), "detached"])
+  let worktrees = observed_worktrees(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+  count(worktrees) == 1 && checkout_is_detached(checkout: checkout_at(worktrees: worktrees, index: 0))
+}
+
+// git emits NO HEAD line for a bare repository, so bare is the one checkout that carries no object
+// id. The coproduct is what makes that representable without a nullable head everywhere else.
+test fn a_bare_worktree_carries_no_head() -> Bool {
+  let raw = entry(attributes: ["worktree /repo/bare.git", "bare"])
+  let worktrees = observed_worktrees(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+  count(worktrees) == 1 && checkout_is_bare(checkout: checkout_at(worktrees: worktrees, index: 0))
+}
+
+// Multiple entries, in git's emitted order. Like the ref decoder, the accumulation is by cons and
+// turned once, so ORDER is the property no count-based witness can see.
+test fn entries_preserve_the_emitted_order() -> Bool {
+  let raw = concat(
+    concat(
+      entry(attributes: ["worktree /repo", concat("HEAD ", oid_a), "branch refs/heads/master"]),
+      entry(attributes: ["worktree /repo/det", concat("HEAD ", oid_a), "detached"]),
+    ),
+    entry(attributes: ["worktree /repo/linked", concat("HEAD ", oid_b), "branch refs/heads/feat"]),
+  )
+  let worktrees = observed_worktrees(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+  count(worktrees) == 3
+    && path_at(worktrees: worktrees, index: 0) == "/repo"
+    && path_at(worktrees: worktrees, index: 1) == "/repo/det"
+    && path_at(worktrees: worktrees, index: 2) == "/repo/linked"
+}
+
+test fn a_locked_worktree_is_marked_locked() -> Bool {
+  let raw = entry(attributes: ["worktree /repo/det", concat("HEAD ", oid_a), "detached", "locked"])
+  let worktrees = observed_worktrees(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+  match worktrees.first() {
+    Present { value: identity } => identity.locked && identity.prunable == false
+    Absent => false
+  }
+}
+
+// git spells a locked worktree either bare or with a trailing human reason; both are the same fact.
+test fn a_locked_worktree_with_a_reason_is_marked_locked() -> Bool {
+  let raw = entry(attributes: ["worktree /repo/det", concat("HEAD ", oid_a), "detached", "locked on removable media"])
+  let worktrees = observed_worktrees(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+  match worktrees.first() {
+    Present { value: identity } => identity.locked
+    Absent => false
+  }
+}
+
+// An attribute git may add later must stop the line, not be skipped: silently ignoring it would let
+// a future flag change a worktree's meaning while this decoder kept reporting the old reading.
+test fn an_unmodeled_attribute_refuses_rather_than_being_ignored() -> Bool {
+  let raw = entry(attributes: ["worktree /repo", concat("HEAD ", oid_a), "branch refs/heads/master", "quarantined"])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
+test fn a_bare_entry_carrying_a_head_refuses() -> Bool {
+  let raw = entry(attributes: ["worktree /repo/bare.git", concat("HEAD ", oid_a), "bare"])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
+test fn an_entry_both_on_a_branch_and_detached_refuses() -> Bool {
+  let raw = entry(attributes: ["worktree /repo", concat("HEAD ", oid_a), "branch refs/heads/master", "detached"])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
+test fn an_entry_with_neither_branch_nor_detached_refuses() -> Bool {
+  let raw = entry(attributes: ["worktree /repo", concat("HEAD ", oid_a)])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
+test fn an_entry_not_beginning_with_a_worktree_path_refuses() -> Bool {
+  let raw = entry(attributes: [concat("HEAD ", oid_a), "branch refs/heads/master"])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
+test fn a_malformed_head_object_id_refuses() -> Bool {
+  let raw = entry(attributes: ["worktree /repo", "HEAD nothex", "branch refs/heads/master"])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
+// A stream cut mid-entry must refuse rather than silently dropping the unterminated tail, which
+// would report fewer worktrees than the repository has.
+test fn an_unterminated_final_entry_refuses() -> Bool {
+  let raw = concat(
+    entry(attributes: ["worktree /repo", concat("HEAD ", oid_a), "branch refs/heads/master"]),
+    concat(join(["worktree /repo/linked", concat("HEAD ", oid_b)], "\0"), "\0"),
+  )
+  is_undecodable(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
+// The located grain is the ENTRY, not the record: a fault in the second entry must say 1.
+test fn the_refusal_locates_the_offending_entry() -> Bool {
+  let raw = concat(
+    entry(attributes: ["worktree /repo", concat("HEAD ", oid_a), "branch refs/heads/master"]),
+    entry(attributes: ["worktree /repo/bad", "HEAD nothex", "detached"]),
+  )
+  undecodable_entry_index(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: "")) == 1
+}
+
+// One bad entry refuses the WHOLE set: a partial answer is indistinguishable from a repository with
+// fewer worktrees, and a consumer diffing two enumerations would read the drop as a removal.
+test fn one_malformed_entry_refuses_the_whole_observation() -> Bool {
+  let raw = concat(
+    entry(attributes: ["worktree /repo", concat("HEAD ", oid_a), "branch refs/heads/master"]),
+    entry(attributes: ["worktree /repo/bad", "HEAD nothex", "detached"]),
+  )
+  count(observed_worktrees(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))) == 0
+}
+
+// Nonzero exit is git declining, and it must not be read as an empty worktree set. Empty stdout is
+// what BOTH a refusal and a silent success would look like, so the exit code decides first.
+test fn nonzero_exit_refuses_the_read_and_preserves_its_cause() -> Bool {
+  match git_worktree_set_observation_of(raw: "", exit_code: 128, stderr: "not a git repository") {
+    GitWorktreeSetReadRefused { exit_code: code, stderr: text } =>
+      code == 128 && text == "not a git repository"
+    GitWorktreeSetObserved { primary: _, linked: _ } => false
+    GitWorktreeSetUndecodable { entry_index: _, raw_entry: _, reason: _ } => false
+  }
+}
+
+// EXIT ZERO WITH NOTHING ON STDOUT IS NOT AN EMPTY SET. Before this refusal the decoder answered
+// GitWorktreeSetObserved with zero worktrees, which is not a repository git can describe -- the
+// porcelain contract lists the main worktree first, and every repository has one.
+//
+// THE CONSEQUENCE IS WHY IT IS A REFUSAL RATHER THAN A CURIOSITY: a consumer joining worktree
+// rosters before and after an operation finds nothing missing from an empty before-set, so every
+// preservation check over that observation passes VACUOUSLY. The bad observation does not yield a
+// wrong worktree, it yields an unconditional yes from anything that asks.
+test fn an_empty_successful_enumeration_refuses_rather_than_reading_as_no_worktrees() -> Bool {
+  is_undecodable(observation: git_worktree_set_observation_of(raw: "", exit_code: 0, stderr: ""))
+}
+
+// THE POSITIVE CONTROL FOR IT, so the arm above cannot be satisfied by a decoder that refuses every
+// successful read. A single well-formed primary entry still decodes.
+test fn a_single_entry_is_not_caught_by_the_empty_success_refusal() -> Bool {
+  let raw = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "branch refs/heads/main",
+  ])
+  count(observed_worktrees(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))) == 1
+}
+
+// A REPEATED KNOWN ATTRIBUTE IS AS MALFORMED AS AN UNKNOWN ONE, and `branch` was the arm that did
+// not say so: a second `branch` record silently OVERWROTE the first, so an entry naming two branches
+// decoded successfully as whichever one git happened to emit last. HEAD already refused this; branch
+// inherited the guard only now. The asymmetry is the tell -- an unknown attribute refused loudly
+// while a known attribute in an impossible arrangement was accepted quietly.
+test fn an_entry_carrying_two_branches_refuses() -> Bool {
+  let raw = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "branch refs/heads/main",
+    "branch refs/heads/other",
+  ])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
+// THE FOUR BOOLEAN SINGLETONS, EACH WITH ITS OWN POSITIVE CONTROL -- and the controls are the
+// substance of these rows rather than politeness. A first cut of these witnesses built every fixture
+// as worktree + HEAD + the doubled attribute, and three of the four then refused FOR THE WRONG
+// REASON: `bare` with a HEAD is already refused by the bare-carries-no-head rule, and `locked` or
+// `prunable` alone describe no checkout at all, so the entry failed the exactly-one-of check before
+// duplication was ever consulted. All four went green while testing almost nothing.
+//
+// So each fixture below is a VALID entry that duplication alone spoils, and each is paired with the
+// same entry carrying ONE occurrence, which must decode. A duplicate arm whose single-occurrence
+// twin also refuses is not evidence about duplication.
+test fn an_entry_carrying_two_detached_attributes_refuses() -> Bool {
+  let dup = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "detached",
+    "detached",
+  ])
+  let one = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "detached",
+  ])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: dup, exit_code: 0, stderr: ""))
+    && count(observed_worktrees(observation: git_worktree_set_observation_of(raw: one, exit_code: 0, stderr: ""))) == 1
+}
+
+test fn an_entry_carrying_two_bare_attributes_refuses() -> Bool {
+  let dup = entry(attributes: [concat("worktree ", "/opt/gunbc/bare"), "bare", "bare"])
+  let one = entry(attributes: [concat("worktree ", "/opt/gunbc/bare"), "bare"])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: dup, exit_code: 0, stderr: ""))
+    && count(observed_worktrees(observation: git_worktree_set_observation_of(raw: one, exit_code: 0, stderr: ""))) == 1
+}
+
+test fn an_entry_carrying_two_locked_attributes_refuses() -> Bool {
+  let dup = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "branch refs/heads/main",
+    "locked",
+    "locked",
+  ])
+  let one = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "branch refs/heads/main",
+    "locked",
+  ])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: dup, exit_code: 0, stderr: ""))
+    && count(observed_worktrees(observation: git_worktree_set_observation_of(raw: one, exit_code: 0, stderr: ""))) == 1
+}
+
+test fn an_entry_carrying_two_prunable_attributes_refuses() -> Bool {
+  let dup = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "branch refs/heads/main",
+    "prunable",
+    "prunable",
+  ])
+  let one = entry(attributes: [
+    concat("worktree ", "/opt/gunbc/gunbc"),
+    concat("HEAD ", "1111111111111111111111111111111111111111"),
+    "branch refs/heads/main",
+    "prunable",
+  ])
+  is_undecodable(observation: git_worktree_set_observation_of(raw: dup, exit_code: 0, stderr: ""))
+    && count(observed_worktrees(observation: git_worktree_set_observation_of(raw: one, exit_code: 0, stderr: ""))) == 1
+}

@@ -17,8 +17,9 @@ env:
   GUNBC_EXPECTED_RED_ROSTER_JOIN: expected_red_roster_join.tsv
   GUNBC_REQUIRED_FLOOR_DISPOSITION: required_floor_disposition.tsv
   GUNBC_LONG_HOME_STORAGE_AGREEMENT: long_home_storage_agreement.tsv
+  GUNBC_REQUIRED_FLOOR_CLAIM_COST: required_floor_claim_cost.tsv
 jobs:
-  build:
+  required-witnesses-build:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
     steps:
@@ -65,13 +66,18 @@ jobs:
           rustup toolchain list || echo "rustup toolchain list: no answer"
           rustup default || echo "rustup default: no answer"
         if: "!cancelled()"
-      - name: "Required CI: build lane (regen, v2 emission)"
+      - name: "Required CI: build lane (phases named by the run, not by this label)"
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           cd "$ROOT"
           'target/release/claim_executor' '--required-ci' '--source-root' 'dag' '--source-root' 'src/v2' '--required-lane' 'build'
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
-  floor:
+      - name: Every v1-compiler binary target compiles
+        id: build_all_binary_targets
+        run: |
+          cargo build --release -p v1-compiler
+        if: "!cancelled()"
+  required-witnesses-floor:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 180
     steps:
@@ -148,25 +154,22 @@ jobs:
           if-no-files-found: error
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
-      - name: Every v1-compiler binary target compiles
-        id: build_all_binary_targets
-        run: |
-          cargo build --release -p v1-compiler
-        if: "!cancelled()"
+      - name: Upload the floor's per-claim cost receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-floor-claim-cost
+          path: required_floor_claim_cost.tsv
+          if-no-files-found: error
+          retention-days: 14
+        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
   witnesses:
     runs-on: [self-hosted, linux, arm64]
-    needs: [build, floor]
+    needs: [required-witnesses-build, required-witnesses-floor]
     timeout-minutes: 5
     if: always()
     steps:
       - name: Both required lanes must have succeeded
         run: |
-          BUILD='${{ needs.build.result }}'
-          FLOOR='${{ needs.floor.result }}'
-          PULL_REQUEST='${{ github.event.pull_request.number }}'
-          EVENT_NAME='${{ github.event_name }}'
-          MEASURED_HEAD='${{ github.event.pull_request.head.sha }}'
-          RUN_ID='${{ github.run_id }}'
           HEAD_STANDING='not-applicable'
           if '[' "$EVENT_NAME" '=' 'pull_request' ']'; then HEAD_STANDING='unobserved'; fi
           'echo' 'required floor attempt: pull_request='"$PULL_REQUEST"' measured_head='"$MEASURED_HEAD"' run_id='"$RUN_ID"' head_standing='"$HEAD_STANDING"
@@ -178,4 +181,11 @@ jobs:
           'echo' 'required lanes: build='"$BUILD"' floor='"$FLOOR"' verdict='"$VERDICT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"
           if '[' "$VERDICT" '=' 'stands-red' ']'; then 'echo' '::error::a required lane concluded failure; that alone does not establish whether its subject was evaluated, so read the log before assuming a defect in the diff (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
           if '[' "$VERDICT" '=' 'stands-unestablished' ']'; then 'echo' '::error::a required lane produced no conclusion of its own, so this head'\''s floor verdict is unobservable rather than failed; rerun it (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
+        env:
+          BUILD: ${{ needs['required-witnesses-build'].result }}
+          FLOOR: ${{ needs['required-witnesses-floor'].result }}
+          PULL_REQUEST: ${{ github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
+          MEASURED_HEAD: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
         if: always()

@@ -1,0 +1,239 @@
+module v2.test.claim.provenance.cross_file_provenance
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The closing check for the cross-file-provenance lane, authored before the
+// mechanism it closes. It answers ONE name across a module (file) boundary and
+// then derives the referencing module's dependencies from the resolution
+// ANSWERS ALONE -- module_dependencies_from_provenance receives no tree, no
+// import list and no reference spelling, so an edge it reports cannot have come
+// from anything but a resolved target's containment owner. The second witness is
+// the discriminating RED: a spelling whose module prefix names the producer but
+// which resolves nowhere must yield NO edge, which is exactly what separates a
+// resolution-derived edge from the segment-prefix match it replaces.
+
+fn cfp_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: [],
+        occurrence_id: OccurrenceSynthetic
+      }
+    }
+  )
+}
+
+fn cfp_module_root(qn_spine: Node, exports: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: concat(
+      [
+        dag_named_edge(
+          name: ^dag_surface_module_header,
+          target: dag_grammar_atom(id: ^dag_surface_module_header)
+        ),
+        dag_named_edge(
+          name: ^dag_surface_module_header_qualified_name,
+          target: qn_spine
+        )
+      ],
+      exports
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn cfp_declaration(decl_sym: Symbol) -> Edge {
+  Edge {
+    label: Named { name: decl_sym },
+    target: Node {
+      kind: TypeNode { connective: Atom { identity: decl_sym } },
+      children: [],
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
+data cfp_producer_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.provenance_producer"
+)
+
+data cfp_consumer_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+  dotted: "v2.test.provenance_consumer"
+)
+
+data cfp_producer_root: Node = cfp_module_root(
+  qn_spine: cfp_qn_spine(segments: cfp_producer_qn),
+  exports: [
+    cfp_declaration(decl_sym: ^CrossFileMarker),
+    cfp_declaration(decl_sym: ^CrossFileHelper)
+  ]
+)
+
+data cfp_consumer_root: Node = cfp_module_root(
+  qn_spine: cfp_qn_spine(segments: cfp_consumer_qn),
+  exports: [
+    cfp_declaration(decl_sym: ^ConsumerLocal)
+  ]
+)
+
+data cfp_roots: FreeMonoid<Node> = Cons {
+  head: cfp_producer_root,
+  tail: Cons { head: cfp_consumer_root, tail: Empty }
+}
+
+data cfp_index: SymbolIndex = symbol_index_fill_module_roots(
+  index: empty_symbol_index(),
+  roots: cfp_roots
+)
+
+data cfp_roster: FreeMonoid<QualifiedName> = module_roster_from_roots(roots: cfp_roots)
+
+// A bare name mentioned in the consumer whose only declaration lives in the
+// producer: the one name answered across a file boundary.
+data cfp_cross_file_site: ReferenceSite = ReferenceSite {
+  position: cfp_consumer_qn,
+  spelling: qualified_name_from_dotted_string(dotted: "CrossFileMarker")
+}
+
+data cfp_own_module_site: ReferenceSite = ReferenceSite {
+  position: cfp_consumer_qn,
+  spelling: qualified_name_from_dotted_string(dotted: "ConsumerLocal")
+}
+
+data cfp_qualified_site: ReferenceSite = ReferenceSite {
+  position: cfp_consumer_qn,
+  spelling: qualified_name_from_dotted_string(
+    dotted: "v2.test.provenance_producer.CrossFileHelper"
+  )
+}
+
+data cfp_undeclared_but_prefixed_site: ReferenceSite = ReferenceSite {
+  position: cfp_consumer_qn,
+  spelling: qualified_name_from_dotted_string(
+    dotted: "v2.test.provenance_producer.NotDeclaredAnywhere"
+  )
+}
+
+data cfp_consumer_sites: FreeMonoid<ReferenceSite> = Cons {
+  head: cfp_cross_file_site,
+  tail: Cons {
+    head: cfp_own_module_site,
+    tail: Cons { head: cfp_qualified_site, tail: Empty }
+  }
+}
+
+data cfp_second_mention_site: ReferenceSite = ReferenceSite {
+  position: qualified_name_snoc(qn: cfp_consumer_qn, segment: ^ConsumerLocal),
+  spelling: qualified_name_from_dotted_string(dotted: "CrossFileMarker")
+}
+
+data cfp_repeated_mention_sites: FreeMonoid<ReferenceSite> = Cons {
+  head: cfp_cross_file_site,
+  tail: Cons { head: cfp_second_mention_site, tail: Empty }
+}
+
+test fn cross_file_name_answers_with_its_owning_module_and_derives_the_edge_holds() -> Bool {
+  let answer = resolve_reference_provenance(
+    index: cfp_index,
+    roster: cfp_roster,
+    site: cfp_cross_file_site
+  )
+  let named_the_producer = match answer {
+    ProvenanceResolved { site: _, target: target, owner: owner } =>
+      owner == cfp_producer_qn
+        && target == qualified_name_from_dotted_string(
+             dotted: "v2.test.provenance_producer.CrossFileMarker"
+           )
+    ProvenanceOwnerless { site: _, target: _ } => false
+    ProvenanceAmbiguous { site: _ } => false
+    ProvenanceUnbound { site: _ } => false
+  }
+  let derived = module_dependencies_from_sites(
+    index: cfp_index,
+    roster: cfp_roster,
+    module_qn: cfp_consumer_qn,
+    sites: cfp_consumer_sites
+  )
+  named_the_producer
+    && length(xs: derived.dependencies) == 1
+    && contains(xs: derived.dependencies, item: cfp_producer_qn, eq: provenance_qualified_name_eq)
+    && is_empty(xs: derived.unresolved)
+    && length(xs: derived.answers) == 3
+}
+
+// The row's RED control, first half: two mentions of ONE target collapse in the
+// dependency set and must NOT collapse in the per-mention record. A derivation
+// that kept only the set would pass the first clause and fail the second; one
+// that kept only the records would pass the second and fail the first.
+test fn repeated_mentions_collapse_only_in_the_dependency_set_holds() -> Bool {
+  let derived = module_dependencies_from_sites(
+    index: cfp_index,
+    roster: cfp_roster,
+    module_qn: cfp_consumer_qn,
+    sites: cfp_repeated_mention_sites
+  )
+  let both_answered_the_producer = fold_list(
+    xs: derived.answers,
+    empty: true,
+    cons: fn(acc, answer) {
+      acc && match answer_owner_optional(answer: answer) {
+        Present { value: owner } => owner == cfp_producer_qn
+        Absent => false
+      }
+    }
+  )
+  let one_target_two_sites = match derived.answers {
+    Cons { head: first, tail: rest } =>
+      match rest {
+        Cons { head: second, tail: _ } =>
+          match answer_target_optional(answer: first) {
+            Present { value: first_target } =>
+              match answer_target_optional(answer: second) {
+                Present { value: second_target } =>
+                  first_target == second_target
+                    && answer_site(answer: first).position
+                         != answer_site(answer: second).position
+                Absent => false
+              }
+            Absent => false
+          }
+        Empty => false
+      }
+    Empty => false
+  }
+  length(xs: derived.dependencies) == 1
+    && length(xs: derived.answers) == 2
+    && both_answered_the_producer
+    && one_target_two_sites
+}
+
+// The row's RED control, second half: no dependency appears that no name asked
+// for. The spelling here carries the producer module as its prefix, so the
+// segment-prefix match this lane replaces would emit the edge; resolution
+// refuses, and the refusal is counted rather than dropped.
+test fn undeclared_spelling_under_a_module_prefix_derives_no_edge_holds() -> Bool {
+  let answer = resolve_reference_provenance(
+    index: cfp_index,
+    roster: cfp_roster,
+    site: cfp_undeclared_but_prefixed_site
+  )
+  let refused = match answer {
+    ProvenanceUnbound { site: _ } => true
+    ProvenanceResolved { site: _, target: _, owner: _ } => false
+    ProvenanceOwnerless { site: _, target: _ } => false
+    ProvenanceAmbiguous { site: _ } => false
+  }
+  let derived = module_dependencies_from_sites(
+    index: cfp_index,
+    roster: cfp_roster,
+    module_qn: cfp_consumer_qn,
+    sites: Cons { head: cfp_undeclared_but_prefixed_site, tail: Empty }
+  )
+  refused
+    && is_empty(xs: derived.dependencies)
+    && length(xs: derived.unresolved) == 1
+    && length(xs: derived.answers) == 1
+}

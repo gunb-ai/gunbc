@@ -1,7 +1,7 @@
 module test.claim.annotation_carrier
 
-import std.roster_frontier { fold_frontier_expiry, frontier_expiry_clean, frontier_rows_well_formed }
-import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, fold_frontier_expiry, frontier_expiry_clean, frontier_rows_well_formed, frontier_row_decl }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution {
   DissolutionUnbound,
   DissolutionPending,
@@ -10,6 +10,7 @@ import std.dissolution {
   bound_dissolution,
   unbound_dissolution,
 }
+import std.types { List }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -33,26 +34,56 @@ test fn frontier_expiry_fold_partitions_unbound_and_pending() -> Bool {
     && frontier_expiry_clean(report: report)
 }
 
+// AUTHORED FIXTURE ROWS, NOT THE LIVE CENSUS, and the change is a repair rather than a preference.
+// This test previously folded census_closure_frontier_rows() and relied on ONE production row --
+// extdeps.dhcp.v4's MacAddress frontier row -- still carrying a bound trigger on
+// extdeps.network.mac parse_mac_address, so that supplying that ref would make exactly one row fire
+// while present. That made a claim about the FOLD depend on a fact about a row this module does not
+// own: when that row's trigger was re-pointed off the artifact and onto its capability, this test
+// went red without the fold changing at all.
+//
+// fold_frontier_expiry has always taken its rows as a parameter, so the coupling was chosen rather
+// than forced. The subject here is the fold's partition -- a bound trigger whose declaration is
+// present must be counted fired-while-still-present and must break cleanliness -- and that subject
+// is fully expressible in rows this test authors. A planted row also states the discriminating
+// input directly instead of leaving a reader to verify that some production row still happens to
+// have the required shape.
+fn planted_bound_row_ref() -> DeclarationRef {
+  decl_ref(module_path: "test.fixture.frontier", decl_name: "planted_bound_trigger")
+}
+
+fn planted_rows() -> List<FrontierRow> {
+  [
+    frontier_row_decl(
+      ref: decl_ref(module_path: "test.fixture.frontier", decl_name: "planted_subject"),
+      reason: "fixture row whose bound trigger the test supplies",
+      dissolution: bound_dissolution(ref: planted_bound_row_ref()),
+    ),
+    frontier_row_decl(
+      ref: decl_ref(module_path: "test.fixture.frontier", decl_name: "planted_unbound_subject"),
+      reason: "fixture row that can never fire, so the partition has both kinds",
+      dissolution: unbound_dissolution(description: "a condition no bound trigger encodes"),
+    ),
+  ]
+}
+
 test fn frontier_expiry_fired_row_still_present_reds() -> Bool {
-  let mac_trigger = decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")
-  let base = fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: [])
-  let report = fold_frontier_expiry(
-    rows: census_closure_frontier_rows(),
-    present_decls: [mac_trigger],
-  )
-  report.fired_still_present_count == 1
+  let base = fold_frontier_expiry(rows: planted_rows(), present_decls: [])
+  let report = fold_frontier_expiry(rows: planted_rows(), present_decls: [planted_bound_row_ref()])
+  base.pending_count == 1
+    && base.unbound_count == 1
+    && base.fired_still_present_count == 0
+    && frontier_expiry_clean(report: base)
+    && report.fired_still_present_count == 1
     && report.pending_count == base.pending_count - 1
     && report.unbound_count == base.unbound_count
     && !frontier_expiry_clean(report: report)
 }
 
 test fn frontier_expiry_fired_trigger_absent_from_rows_is_clean() -> Bool {
-  let absent_trigger = decl_ref(module_path: "extdeps.network.mac", decl_name: "already_deleted_frontier_unit")
-  let base = fold_frontier_expiry(rows: census_closure_frontier_rows(), present_decls: [])
-  let report = fold_frontier_expiry(
-    rows: census_closure_frontier_rows(),
-    present_decls: [absent_trigger],
-  )
+  let absent_trigger = decl_ref(module_path: "test.fixture.frontier", decl_name: "never_a_trigger_here")
+  let base = fold_frontier_expiry(rows: planted_rows(), present_decls: [])
+  let report = fold_frontier_expiry(rows: planted_rows(), present_decls: [absent_trigger])
   report.fired_still_present_count == 0
     && report.pending_count == base.pending_count
     && report.unbound_count == base.unbound_count

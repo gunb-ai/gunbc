@@ -8,7 +8,7 @@ fn parse_stamp_list_absent_diagnostic() -> Diagnostic {
     at: node_locus(node: Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -140,14 +140,15 @@ test fn parse_stamp_terminal_from_source_holds() -> Bool {
           ) {
             Accepted { value: captured, diagnostics: _ } =>
               match captured.occurrence_id {
-                MintedOccurrence { id: id } =>
+                OccurrenceMinted { id: id } =>
                   parse_stamp_from_source_extent_holds(
                     index: artifact.span_index,
                     id: id,
                     start: 3,
                     end: 8
                   )
-                SyntheticOccurrence => false
+                OccurrenceSynthetic => false
+                OccurrenceProjected { id: _, caused_by: _ } => false
               }
             Rejected { diagnostics: _ } => false
           }
@@ -186,11 +187,11 @@ test fn parse_stamp_sequence_derived_by_holds() -> Bool {
                   ) {
                     Accepted { value: right_term, diagnostics: _ } =>
                       match left_term.occurrence_id {
-                        MintedOccurrence { id: left_id } =>
+                        OccurrenceMinted { id: left_id } =>
                           match right_term.occurrence_id {
-                            MintedOccurrence { id: right_id } =>
+                            OccurrenceMinted { id: right_id } =>
                               match sequence_conj.occurrence_id {
-                                MintedOccurrence { id: seq_id } =>
+                                OccurrenceMinted { id: seq_id } =>
                                   parse_stamp_from_source_extent_holds(
                                     index: artifact.span_index,
                                     id: left_id,
@@ -209,11 +210,14 @@ test fn parse_stamp_sequence_derived_by_holds() -> Bool {
                                       left: left_id,
                                       right: right_id
                                     )
-                                SyntheticOccurrence => false
+                                OccurrenceSynthetic => false
+                                OccurrenceProjected { id: _, caused_by: _ } => false
                               }
-                            SyntheticOccurrence => false
+                            OccurrenceSynthetic => false
+                            OccurrenceProjected { id: _, caused_by: _ } => false
                           }
-                        SyntheticOccurrence => false
+                        OccurrenceSynthetic => false
+                        OccurrenceProjected { id: _, caused_by: _ } => false
                       }
                     Rejected { diagnostics: _ } => false
                   }

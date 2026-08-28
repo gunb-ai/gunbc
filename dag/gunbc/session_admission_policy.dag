@@ -1,0 +1,81 @@
+module gunbc.session_admission_policy
+
+import std.types { NonEmptyStr, String, Int }
+import std.measure { ByteSize, byte_size }
+
+// THE ADMISSION POLICY AND THE HOST AGGREGATE ARE DIFFERENT FACTS ON DIFFERENT CLOCKS, and the
+// carrier this splits out of fused them. gunbc_ci_session_reservation_mode carried the per-session
+// OOMD eviction ceiling, the session concurrency, AND a fleet-wide aggregate reservation in one
+// Regime2AggregateOomd row. The aggregate is a per-host measurement question and has moved to
+// gunbc.session_reservation_policy, which answers it per host from observed evidence. The other two
+// are fleet-wide POLICY inputs and survive here.
+//
+// Splitting them is what lets the dead 20 GiB aggregate be deleted at the root without also
+// deleting the ceiling and the concurrency, which have live consumers and no defect. Retaining 16
+// must not require retaining the aggregate authority beside it.
+
+// AN ADMITTED LIMIT BOUNDS THE FUTURE ONLY IF SOMETHING ENFORCES IT, and that is the distinction
+// this coproduct exists for. A number written in a policy table constrains nothing by itself: the
+// dashboard admits session containers through its own spawn path, and gunbc has no actuator that
+// refuses the seventeenth. So an authored-but-unenforced limit is a DESCRIPTION OF INTENT, and a
+// consumer that divides a host aggregate by it would be dividing by an aspiration.
+//
+// The distinction is why only ConcurrencyEnforcedBy could ever ground a per-container cap: only an
+// enforced limit bounds the containers that do not exist yet. gunbc.session_container_projection
+// was the consumer that read it, and it is DELETED -- so nothing derives a per-container cap today
+// and the enforcement axis exists here to make the unenforced case refuse rather than divide.
+type ConcurrencyEnforcement
+  = ConcurrencyEnforcedBy { actuator: NonEmptyStr }
+  | ConcurrencyAuthoredUnenforced { cause: String }
+
+type SessionAdmissionPolicy
+  = SessionAdmissionDeclared {
+      oomd_eviction_ceiling: ByteSize,
+      admitted_concurrency: Int,
+      enforcement: ConcurrencyEnforcement,
+    }
+  | SessionAdmissionUnestablished { cause: String }
+
+// THE 16 IS CARRIED FORWARD UNCHANGED AND ITS MEANING IS LEFT TO AN OPERATOR RULING, which is the
+// same decision the reservation split already made about it. What changes here is only that it no
+// longer shares a constructor with a dead aggregate literal, so a later ruling can retire it, raise
+// it, or replace it with an observation without touching the reservation authority at all.
+data gunbc_session_admission_policy: SessionAdmissionPolicy = SessionAdmissionDeclared {
+  oomd_eviction_ceiling: byte_size(10737418240),
+  admitted_concurrency: 16,
+  enforcement: ConcurrencyAuthoredUnenforced {
+    cause: "no gunbc actuator admits or refuses session containers: the dashboard spawns them through its own path and nothing consults this number at spawn time, so 16 records an intended ceiling rather than one any host enforces. Whether it becomes an enforced limit with an actuator, or is replaced by an observed population, is an open operator ruling.",
+  },
+}
+
+fn session_admission_oomd_ceiling(p: SessionAdmissionPolicy) -> ByteSize? {
+  match p {
+    SessionAdmissionDeclared { oomd_eviction_ceiling: c, admitted_concurrency: _, enforcement: _ } => Present { value: c }
+    SessionAdmissionUnestablished { cause: _ } => none
+  }
+}
+
+fn session_admission_enforced_concurrency(p: SessionAdmissionPolicy) -> Int? {
+  match p {
+    SessionAdmissionDeclared { oomd_eviction_ceiling: _, admitted_concurrency: n, enforcement: e } =>
+      match e {
+        ConcurrencyEnforcedBy { actuator: _ } => Present { value: n }
+        ConcurrencyAuthoredUnenforced { cause: _ } => none
+      }
+    SessionAdmissionUnestablished { cause: _ } => none
+  }
+}
+
+// THE REFUSAL NAMES WHICH ABSENCE IT IS. A consumer that only sees `none` cannot tell an
+// unestablished policy from an established-but-unenforced one, and those have different remedies:
+// the first needs an operator decision, the second needs an actuator.
+fn session_admission_unenforced_reason(p: SessionAdmissionPolicy) -> String {
+  match p {
+    SessionAdmissionUnestablished { cause: why } => why
+    SessionAdmissionDeclared { oomd_eviction_ceiling: _, admitted_concurrency: _, enforcement: e } =>
+      match e {
+        ConcurrencyEnforcedBy { actuator: _ } => "the admitted concurrency is enforced, so this reason is not reachable from a refusing plan"
+        ConcurrencyAuthoredUnenforced { cause: why } => why
+      }
+  }
+}

@@ -1,0 +1,536 @@
+module gunbc.fleet_converge_workflow
+
+import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
+import extdeps.github.actions {
+  Workflow, Job, Step, RunStep, UsesStep,
+  WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputChoice,
+  WorkflowPermissions, PermRead, PermWrite,
+  upload_artifact_action, download_artifact_action,
+  RunnerSpec, RunsOnExpression,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
+}
+import gunbc.roadmap_execution_contract { CargoCapability }
+import gunbc.toolchain_home_standing {
+  admit_workflow_toolchain_homes,
+  WorkflowToolchainHomesAdmitted,
+  WorkflowToolchainHomeRefused,
+  toolchain_home_refusal_reason,
+}
+import gunbc.workflow_capability_closure {
+  CapabilityAnnotatedStep,
+  capability_neutral,
+  consumes_only,
+  workflow_job_capability_closure,
+  capability_closure_is_closed,
+}
+import v2.std.algebra { list_map }
+import gunbc.fleet_workflow_steps {
+  ci_prelude_steps,
+  ci_prelude_annotations,
+  ci_checkout_step,
+  ci_release_build_step,
+  ci_release_bins_pack_step,
+  ci_release_bins_upload_step,
+  ci_release_bins_download_step,
+  ci_release_bins_unpack_verify_step,
+  ci_fleet_wif_auth_step,
+  ci_fleet_key_agent_step,
+  ci_fleet_key_agent_cleanup_step,
+  gunbc_ci_aux_step_timeout_minutes,
+  gunbc_ci_spark_serving_step_timeout_minutes,
+  gunbc_ci_artifact_transfer_step_timeout_minutes,
+  gunbc_ci_fleet_job_backstop_timeout_minutes,
+  gunbc_ci_release_build_step_timeout_minutes,
+  gunbc_ci_prelude_allowance_minutes,
+  gunbc_ci_live_deploy_step_timeout_minutes,
+  gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes,
+  srv1_dashboard_deploy_concurrency_group,
+  checked_job_timeout_minutes,
+  JobTimeoutWithinCeiling,
+  JobTimeoutExceedsCeiling,
+}
+import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import gunbc.ci_spec {
+  gunbc_ci_fleet_converge_plan_invoke,
+  gunbc_ci_fleet_converge_apply_invoke,
+  gunbc_ci_live_deploy_apply_srv1_invoke,
+  gunbc_ci_spark_serving_converge_slice_invoke,
+  gunbc_ci_spark_serving_observe_invoke,
+  gunbc_ci_spark_serving_reboot_invoke,
+  gunbc_ci_spark_serving_durability_invoke,
+  gunbc_ci_spark_grant_install_invoke,
+  gunbc_fleet_converge_plan_artifact_name,
+  gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
+}
+import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import std.types { NonEmptyStr, List, String, Int }
+
+data fleet_converge_workflow_note: String = "Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218). workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and mode=plan|apply|spark_linger: plan observes the RUNNER host; apply downloads a prior plan artifact; spark_linger runs executor-on-runner → target-on-spark (srv5|srv6) typed argv over FleetSsh via run_typed_argv_transport. Replaces the retired 15-minute ctrl-fleet-converge.timer cadence on every enrolled CI host (timer install route is TimerRetired fleet-wide). Standalone dispatch carries its own build job (release-bins pack/upload) so the converge job never downloads an artifact the current run did not produce."
+
+data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3", "srv4"]
+
+data fleet_converge_spark_target_options: List<String> = ["srv5", "srv6"]
+
+data fleet_converge_mode_options: List<String> = ["plan", "apply", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability", "dashboard_deploy"]
+
+data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
+
+fn gunbc_fleet_converge_build_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+}
+
+// The build job is the prelude plus three steps of its own. The release build CONSUMES cargo; the
+// pack and upload steps handle files the build produced and need no toolchain. Annotated here
+// rather than in fleet_workflow_steps because these are this job's steps, not the shared prelude's.
+fn fleet_converge_build_job_annotations() -> List<CapabilityAnnotatedStep> {
+  concat(
+    ci_prelude_annotations(),
+    [
+      CapabilityAnnotatedStep {
+        step_name: "Build release binaries",
+        role: consumes_only(capabilities: [CargoCapability]),
+      },
+      CapabilityAnnotatedStep { step_name: "Pack release bins", role: capability_neutral },
+      CapabilityAnnotatedStep { step_name: "Upload release bins", role: capability_neutral },
+    ],
+  )
+}
+
+fn fleet_converge_build_job_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(steps: fleet_converge_build_job_annotations()),
+  )
+}
+
+fn fleet_converge_build_job() -> Job {
+  Job {
+    id: "build",
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    steps: concat(
+      ci_prelude_steps(),
+      [ci_release_build_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()],
+    ),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: gunbc_fleet_converge_build_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none,
+  }
+}
+
+fn fleet_converge_host_pinned_runner_spec() -> RunnerSpec {
+  RunsOnExpression { expression: fleet_converge_host_runner_expression }
+}
+
+data fleet_converge_plan_step_if: String = "github.event.inputs.mode == 'plan'"
+data fleet_converge_apply_step_if: String = "github.event.inputs.mode == 'apply'"
+data fleet_converge_spark_linger_step_if: String = "github.event.inputs.mode == 'spark_linger'"
+
+data fleet_converge_spark_observe_step_if: String = "github.event.inputs.mode == 'spark_observe'"
+
+
+data fleet_converge_spark_reboot_step_if: String = "github.event.inputs.mode == 'spark_reboot'"
+
+data fleet_converge_spark_durability_step_if: String = "github.event.inputs.mode == 'spark_durability'"
+
+data fleet_converge_spark_grants_step_if: String = "github.event.inputs.mode == 'spark_grants'"
+
+data fleet_converge_dashboard_deploy_step_if: String = "github.event.inputs.mode == 'dashboard_deploy'"
+
+fn fleet_converge_plan_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload fleet converge plan artifact" },
+    id: Present { value: "plan_upload" },
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: gunbc_fleet_converge_plan_artifact_name)),
+        kv(key: "path", value: yaml_string(s: fleet_converge_plan_artifact_dir)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+        kv(key: "retention-days", value: yaml_int(n: 30)),
+        kv(key: "compression-level", value: yaml_int(n: 0)),
+      ]
+    },
+    env: none,
+    if_condition: Present { value: fleet_converge_plan_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_plan_download_step() -> Step {
+  UsesStep {
+    name: Present { value: "Download fleet converge plan artifact" },
+    id: Present { value: "plan_download" },
+    uses: download_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: gunbc_fleet_converge_plan_artifact_name)),
+        kv(key: "path", value: yaml_string(s: fleet_converge_plan_artifact_dir)),
+        kv(key: "github-token", value: yaml_string(s: "${{ secrets.GITHUB_TOKEN }}")),
+        kv(key: "run-id", value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+      ]
+    },
+    env: none,
+    if_condition: Present { value: fleet_converge_apply_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_plan_step() -> Step {
+  RunStep {
+    name: Present { value: "Fleet converge plan (membership_reconcile → artifact)" },
+    id: Present { value: "plan" },
+    run: gunbc_ci_fleet_converge_plan_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_plan_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_apply_step() -> Step {
+  RunStep {
+    name: Present { value: "Fleet converge apply (CAS + generated apply.sh)" },
+    id: Present { value: "apply" },
+    run: gunbc_ci_fleet_converge_apply_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(
+          key: gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
+          value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}"),
+        ),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_apply_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+// THE DASHBOARD DEPLOY IS ITS OWN JOB, AND THE REASON IS A REQUIREMENT ITS OWN CARRIER STATES.
+// gunbc.fleet_workflow_steps srv1_dashboard_deploy_concurrency_group carries it: two candidate
+// transactions converging ONE instance in place interleave writes to the same tree, binary, unit,
+// process and readiness subject, so each transaction's readback can observe the other's artifacts.
+// (An earlier revision of this paragraph gave blue/green slot selection as that reason. Blue/green
+// was deleted at the root on 2026-08-19 and the citation was stale on arrival; the group's own
+// annotation now carries the current mechanism and the record of the correction.)
+// That requirement is JOB-GRAIN concurrency, and a mode-gated STEP inside the shared converge
+// job structurally cannot carry it: `concurrency` is a job key, so a step would have inherited that
+// job's `concurrency: none`. Landing the deploy as a step would therefore have restored the
+// operation without the serialization the operation requires. That group had no consumer at all
+// after gunbc#8676 deleted deploy.yml -- it is the deleted job's requirement, re-homed rather than
+// re-invented.
+//
+// IT DOES NOT REUSE THE CONVERGE JOB'S PRELUDE, because it does not need it: ci_deploy_srv1_access
+// is `transport: LocalShell`, so the deploy mutates the host it is running on and reaches nothing
+// else. The WIF auth and in-run fleet key the converge job materializes exist to reach OTHER hosts;
+// granting them to a local deploy would widen the job's credential surface for no operation that
+// consumes them.
+//
+// The host comes from the RUNNER, not from an argument, which is why there is no `target` input:
+// ci_deploy_srv1_access resolves the job principal from the runner it lands on and refuses when that
+// user is not in srv1's fleet roster, so host=srv1 is what aims it and any other host refuses at
+// preflight rather than deploying somewhere unintended.
+fn fleet_converge_dashboard_deploy_step() -> Step {
+  RunStep {
+    name: Present { value: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)" },
+    id: Present { value: "dashboard_deploy" },
+    run: gunbc_ci_live_deploy_apply_srv1_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
+  }
+}
+
+// QueueNotMax RATHER THAN QueueMax, and the two are not interchangeable here. QueueMax permits many
+// pending entries, so a burst of dispatches would deploy each queued revision in turn -- installing
+// revisions already superseded before they were installed. QueueNotMax holds at most one pending and
+// REPLACES it with the newest arrival, which is what srv1_dashboard_deploy_concurrency_group's
+// annotation describes: an older pending deployment gives way to the newest arrival. NOTE the
+// weaker claim -- "newest arrival", not "newest main revision". While the trigger is
+// workflow_dispatch over a caller-selected ref, the newest arrival is whatever was dispatched last
+// and need not be main at all, so the stronger sentence would assert an ordering nothing
+// establishes. cancel_in_progress
+// is false in both readings and that is the half that matters most -- a queued deploy must never
+// interrupt the one currently holding the host mutation window, which is the state that produces a
+// half-applied cutover.
+fn fleet_converge_dashboard_deploy_job() -> Job {
+  Job {
+    id: "dashboard-deploy",
+    name: none,
+    runner: fleet_converge_host_pinned_runner_spec(),
+    steps: concat(
+      fleet_converge_consumer_prelude_steps(),
+      [
+        ci_release_bins_download_step(),
+        ci_release_bins_unpack_verify_step(),
+        fleet_converge_dashboard_deploy_step(),
+      ]
+    ),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_dashboard_deploy_step_if },
+    timeout_minutes: Present { value: gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: srv1_dashboard_deploy_concurrency_group,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
+    },
+    permissions: none,
+  }
+}
+
+fn fleet_converge_spark_linger_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark serving linger converge (executor→target FleetSsh typed argv)" },
+    id: Present { value: "spark_linger" },
+    run: gunbc_ci_spark_serving_converge_slice_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+        kv(key: "SPARK_CONVERGE_EXECUTE", value: yaml_string(s: "1")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_linger_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
+// THE DURABILITY PROBE, and it takes a target for the same reason the mutating converge does: a
+// reboot with no named host must never fan out across the fleet from an unset variable. The entry
+// refuses that arm itself; passing the input here is what gives it something to refuse.
+fn fleet_converge_spark_reboot_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark serving reboot (durability probe: the receipt is the converge that follows)" },
+    id: Present { value: "spark_reboot" },
+    run: gunbc_ci_spark_serving_reboot_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_reboot_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
+// THE DURABILITY TRANSACTION, which is a different event from the reboot probe beside it and not a
+// longer version of it. The probe issues a reboot and reports what the far side said; this runs the
+// whole comparison in ONE process -- boot identity before, reboot, poll until that identity changes,
+// then the same replan and generation probe the converge path uses -- because a before-reading kept
+// between two dispatches is a fact whose staleness nothing checks.
+fn fleet_converge_spark_durability_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark serving durability transaction (boot identity before and after, in one run)" },
+    id: Present { value: "spark_durability" },
+    run: gunbc_ci_spark_serving_durability_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_durability_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_spark_grants_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark managed grant reconcile (materializes its own administrator credential in-run, installs only the grants measured missing at the named target, removes the credential within this same step)" },
+    id: Present { value: "spark_grants" },
+    run: gunbc_ci_spark_grant_install_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: "SPARK_CONVERGE_TARGET", value: yaml_string(s: "${{ github.event.inputs.target }}")),
+        kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_grants_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
+
+fn fleet_converge_spark_observe_step() -> Step {
+  RunStep {
+    name: Present { value: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)" },
+    id: Present { value: "spark_observe" },
+    run: gunbc_ci_spark_serving_observe_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_spark_observe_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+  }
+}
+
+data fleet_converge_consumer_prelude_note: String = "Plain fetch-depth-0 checkout only — this workflow has no workflow_dispatch expected_healed_sha input (unlike ci.yml heal revalidation). ci_artifact_consumer_prelude_steps paste-through would reference an undeclared input and emit a dormant preflight guard."
+
+fn fleet_converge_consumer_prelude_steps() -> List<Step> {
+  [ci_checkout_step()]
+}
+
+fn fleet_converge_job() -> Job {
+  Job {
+    id: "fleet-converge",
+    name: none,
+    runner: fleet_converge_host_pinned_runner_spec(),
+    steps: concat(
+      concat(
+        fleet_converge_consumer_prelude_steps(),
+        [
+          ci_release_bins_download_step(),
+          ci_release_bins_unpack_verify_step(),
+          ci_fleet_wif_auth_step(),
+          ci_fleet_key_agent_step(),
+        ]
+      ),
+      [
+        fleet_converge_plan_step(),
+        fleet_converge_plan_upload_step(),
+        fleet_converge_plan_download_step(),
+        fleet_converge_apply_step(),
+        fleet_converge_spark_linger_step(),
+        fleet_converge_spark_grants_step(),
+        fleet_converge_spark_observe_step(),
+        fleet_converge_spark_reboot_step(),
+        fleet_converge_spark_durability_step(),
+        ci_fleet_key_agent_cleanup_step(),
+      ]
+    ),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: gunbc_ci_fleet_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: Present { value: PermRead },
+        id_token: Present { value: PermWrite },
+      }
+    }
+  }
+}
+
+data fleet_converge_workflow: Workflow = Workflow {
+  name: "fleet-converge",
+  on: [
+    WorkflowDispatch {
+      inputs: [
+        DispatchInput {
+          name: "host",
+          description: Present { value: "Executor fleet host (runner pinned here; plan mode observes this host)" },
+          required: true,
+          default: none,
+          type: InputChoice { options: fleet_converge_enrolled_host_options },
+        },
+        DispatchInput {
+          name: "mode",
+          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks" },
+          required: true,
+          default: none,
+          type: InputChoice { options: fleet_converge_mode_options },
+        },
+        DispatchInput {
+          name: "target",
+          description: Present { value: "Spark target host for spark_linger mode (srv5 or srv6)" },
+          required: false,
+          default: none,
+          type: InputChoice { options: fleet_converge_spark_target_options },
+        },
+        DispatchInput {
+          name: "plan_artifact_hash",
+          description: Present { value: "Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire — required for apply (printed by plan step). A plan artifact minted before the typed-actions wire joined the bundle will not match." },
+          required: false,
+          default: none,
+          type: InputString,
+        },
+        DispatchInput {
+          name: "plan_workflow_run_id",
+          description: Present { value: "Workflow run id that produced the plan artifact — required for apply" },
+          required: false,
+          default: none,
+          type: InputString,
+        },
+      ]
+    }
+  ],
+  concurrency: none,
+  env: none,
+  permissions: none,
+  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_dashboard_deploy_job()],
+}
+
+type FleetConvergeYamlGenerationOutcome
+  = FleetConvergeYamlGenerated { content: String }
+  | FleetConvergeYamlGenerationRefused { reason: String }
+
+// TWO REFUSAL CAUSES, ONE TYPED OUTCOME. main added the timeout-ceiling refusal and this branch
+// added the capability-closure refusal; they are peers, not alternatives, so the merge keeps the
+// typed outcome and gives the closure its own arm rather than picking a side. Emission REFUSES
+// rather than reporting: this is the workflow whose build job carries the hand-written cargo
+// resolve circuit, so a closure that only tests consult would be specification-without-execution
+// on the exact file it matters for.
+//
+// The closure is checked FIRST because it is a fact about the steps themselves, while the timeout
+// is a fact about the job that contains them -- a job whose steps cannot satisfy their own
+// capabilities has nothing worth checking a budget against.
+data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
+
+fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
+  match admit_workflow_toolchain_homes(workflow: fleet_converge_workflow) {
+    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+      FleetConvergeYamlGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+    WorkflowToolchainHomesAdmitted => fleet_converge_yml_after_toolchain_admission()
+  }
+}
+
+fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGenerationOutcome {
+  if fleet_converge_build_job_capability_closure_holds() {
+    match checked_job_timeout_minutes(computed: gunbc_ci_fleet_job_backstop_timeout_minutes()) {
+      JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>
+        FleetConvergeYamlGenerationRefused { reason: "fleet-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — split the job or reduce a tier's per-step budget, do not raise past the platform ceiling (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet_workflow_steps)" }
+      JobTimeoutWithinCeiling { minutes: _ } =>
+        FleetConvergeYamlGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow)) }
+    }
+  } else {
+    FleetConvergeYamlGenerationRefused { reason: fleet_converge_capability_closure_refusal }
+  }
+}

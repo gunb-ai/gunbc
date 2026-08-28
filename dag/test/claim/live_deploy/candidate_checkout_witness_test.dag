@@ -61,18 +61,18 @@ test fn empty_status_scans_clean() -> Bool {
 // ---------------------------------------------------------------- the three dirty axes, separated
 
 test fn an_unstaged_tracked_edit_lands_on_the_tracked_axis_only() -> Bool {
-  let s = scan_checkout_status(entries_nul: scan_of(fields: [" M dag/gunbc/roadmap_component.dag"]))
+  let s = scan_checkout_status(entries_nul: scan_of(fields: [" M dag/gunbc/roadmap/roadmap_component.dag"]))
   length(s.tracked) == 1
-    && join(s.tracked, ",") == "dag/gunbc/roadmap_component.dag"
+    && join(s.tracked, ",") == "dag/gunbc/roadmap/roadmap_component.dag"
     && length(s.staged) == 0
     && length(s.untracked) == 0
     && !s.malformed
 }
 
 test fn a_staged_edit_lands_on_the_staged_axis_only() -> Bool {
-  let s = scan_checkout_status(entries_nul: scan_of(fields: ["M  dag/gunbc/roadmap_component.dag"]))
+  let s = scan_checkout_status(entries_nul: scan_of(fields: ["M  dag/gunbc/roadmap/roadmap_component.dag"]))
   length(s.staged) == 1
-    && join(s.staged, ",") == "dag/gunbc/roadmap_component.dag"
+    && join(s.staged, ",") == "dag/gunbc/roadmap/roadmap_component.dag"
     && length(s.tracked) == 0
     && length(s.untracked) == 0
     && !s.malformed
@@ -81,11 +81,11 @@ test fn a_staged_edit_lands_on_the_staged_axis_only() -> Bool {
 // The both-columns case is the one a single `dirty: Bool` would erase: the index and the working tree
 // disagree with HEAD in different ways, and the operator needs both remedies, not one bit.
 test fn a_file_staged_and_then_edited_again_lands_on_both_axes() -> Bool {
-  let s = scan_checkout_status(entries_nul: scan_of(fields: ["MM dag/gunbc/roadmap_component.dag"]))
+  let s = scan_checkout_status(entries_nul: scan_of(fields: ["MM dag/gunbc/roadmap/roadmap_component.dag"]))
   length(s.staged) == 1
     && length(s.tracked) == 1
-    && join(s.staged, ",") == "dag/gunbc/roadmap_component.dag"
-    && join(s.tracked, ",") == "dag/gunbc/roadmap_component.dag"
+    && join(s.staged, ",") == "dag/gunbc/roadmap/roadmap_component.dag"
+    && join(s.tracked, ",") == "dag/gunbc/roadmap/roadmap_component.dag"
     && !s.malformed
 }
 

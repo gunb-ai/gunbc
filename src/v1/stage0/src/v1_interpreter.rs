@@ -29,14 +29,15 @@ use crate::v1_std_core::{
     expr_method_call_semantics, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
     field_init_node_value, find_property, find_property_string, foreach_body, foreach_collection,
-    foreach_variable_at, if_condition, if_else_branch, if_then_branch, index_base, index_expr,
-    is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, param_node_default_value, param_node_name_at, qualified_last_segment,
-    record_lit_type_name_at, return_value, slice_base, slice_end, slice_start, transport_stdin,
-    type_name_compatible, unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode,
-    ExprData, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
+    foreach_variable_at, if_condition, if_else_branch, if_then_branch, import_is_all,
+    import_specific_names_at, index_base, index_expr, is_file_transport, is_rest_transport,
+    is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
+    let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
+    param_node_default_value, param_node_name_at, qualified_last_segment, record_lit_type_name_at,
+    return_value, slice_base, slice_end, slice_start, transport_stdin, type_name_compatible,
+    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
+    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -2075,9 +2076,7 @@ pub fn eval_call_memo_frame_exit(ctx: &InterpContext) {
 #[derive(Default, Clone)]
 pub struct MutationCounters {
     pub map_insert_calls: u64,
-    pub map_insert_entries_copied: u64,
     pub map_merge_calls: u64,
-    pub map_merge_entries_copied: u64,
     pub list_push_calls: u64,
     pub list_push_items_copied: u64,
     pub list_concat_calls: u64,
@@ -2090,17 +2089,21 @@ pub struct MutationCounters {
 
 impl fmt::Display for MutationCounters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let rows: [(&str, u64, u64); 6] = [
-            (
-                "map_insert",
-                self.map_insert_calls,
-                self.map_insert_entries_copied,
-            ),
-            (
-                "map_merge",
-                self.map_merge_calls,
-                self.map_merge_entries_copied,
-            ),
+        // The map rows report calls only: nothing increments an entries-copied
+        // quantity for them, and printing a literal 0 would read as a measurement.
+        // The quantity is well defined -- rc_map_merge clones every overlay entry,
+        // so it is the overlay's size -- it is simply never computed.
+        writeln!(
+            f,
+            "  {:<12} {:>12} calls",
+            "map_insert", self.map_insert_calls
+        )?;
+        writeln!(
+            f,
+            "  {:<12} {:>12} calls",
+            "map_merge", self.map_merge_calls
+        )?;
+        let rows: [(&str, u64, u64); 4] = [
             (
                 "list_push",
                 self.list_push_calls,
@@ -2354,6 +2357,28 @@ pub struct PreparedScopeIndexes {
     pub emit_graph_info: Rc<EmitGraphInfo>,
     fn_nodes: HashMap<String, Rc<Node>>,
     ambiguous_bare_function_names: std::collections::HashSet<String>,
+    /// SOURCE FILE -> DECLARING MODULE PATH, for the one lookup tier that needs to know where a
+    /// reference was authored.
+    ///
+    /// `fn_nodes` holds one bare slot per name and one qualified slot per declaration, so two
+    /// modules that both declare `section_1` fight over the bare slot and the loser's callers
+    /// silently execute the winner's body. This map is what lets a reference authored inside a
+    /// module reach ITS OWN declaration first -- the same `local`-before-`parents` order
+    /// `v1_compiler_infer_sigs::lookup_resolved_sig` already applies at typecheck, which is why
+    /// the collapse was silent: the type layer resolved per module and the runtime did not.
+    file_module_paths: HashMap<String, String>,
+    /// (SOURCE FILE, IMPORTED NAME) -> THE MODULE PATH THAT FILE IMPORTED THE NAME FROM.
+    ///
+    /// The braced list of an `import a.b.c { x, y }` survives on the module node's `params`, so
+    /// what the author wrote about WHERE a name comes from is recoverable and does not have to be
+    /// guessed from a precedence order. It has to be read from here rather than from
+    /// `ResolvedFuncEnv.parents`, which is the FLATTENED TRANSITIVE closure: `parents` keeps
+    /// module identity only, drops the per-import name list, and does not separate a direct
+    /// import from a module merely reachable through one — so a first-hit fold over it answers
+    /// with whichever closure member sorts first, which is the same silent pick one level out.
+    ///
+    /// Wildcard (`import a.b.c` with no braces) binds no names and contributes nothing here.
+    file_import_bindings: HashMap<(String, String), String>,
     service_ops: HashMap<String, ServiceOp>,
 }
 
@@ -2621,7 +2646,18 @@ impl InterpContext {
     ///
     /// THIS IS STILL NAME-BASED RESOLUTION WITH A PRECEDENCE RULE, not a wall. An entry module
     /// now wins its own colliding helper, which makes the compute_board `refusal_is` theft
-    /// unwritable for that caller. A non-entry homonym in the same scope still binds by order.
+    /// unwritable for that caller.
+    ///
+    /// AND PRECEDENCE IS NO LONGER WHAT DECIDES A NON-ENTRY MODULE'S OWN REFERENCES. This clause
+    /// used to end "a non-entry homonym in the same scope still binds by order", which is the
+    /// state that emitted one plan document carrying another plan's entire body: two carriers
+    /// declaring `section_1` .. `section_9`, one bare slot, the loser's own body fold executing
+    /// the winner's sections. [`InterpContext::lookup_fn_from`] now resolves a reference to the
+    /// referring file's OWN module first whenever the bare name is claimed by more than one
+    /// module, so a module reaching its own declaration is no longer a fact about walk order.
+    /// The residue is narrower and named: a bare reference to a name the referring module does
+    /// NOT declare, claimed by two OTHER modules, is still picked by order with nothing said.
+    ///
     /// Next rung: DESIGN §3 namespace-only — a qualified reference has exactly one declarer, so
     /// ambiguous bare binding has no constructor (`floor_bare_name_ambiguity_next_rung_trigger`).
     pub fn build_scope_indexes_with_module_order(
@@ -2652,11 +2688,39 @@ impl InterpContext {
             };
         let mut fn_nodes = HashMap::new();
         let mut bare_name_counts = HashMap::<String, usize>::new();
+        let mut file_module_paths = HashMap::<String, String>::new();
+        let mut file_import_bindings = HashMap::<(String, String), String>::new();
         let mut service_ops = HashMap::new();
         for module in modules_to_walk {
             let module_path = authored_name_at(source_indices.clone(), module.module.clone());
+            // WHAT THE AUTHOR WROTE ABOUT WHERE EACH NAME COMES FROM, read once per module from
+            // the import list the parser kept. FIRST WRITE WINS within a file: two imports of one
+            // spelling from different modules is a double bind the grammar does not yet refuse,
+            // and picking the later one would make this tier depend on statement order in exactly
+            // the way it exists to stop depending on walk order.
+            for imp in crate::v1_std_core::module_imports(module.module.clone()).iter() {
+                if import_is_all(imp.clone()) {
+                    continue;
+                }
+                let source_module = authored_name_at(source_indices.clone(), imp.clone());
+                if source_module.is_empty() {
+                    continue;
+                }
+                for imported in import_specific_names_at(imp.clone(), source_indices.clone()).iter()
+                {
+                    if imported.is_empty() || module.module.span.file.is_empty() {
+                        continue;
+                    }
+                    file_import_bindings
+                        .entry((module.module.span.file.to_string(), imported.clone()))
+                        .or_insert_with(|| source_module.clone());
+                }
+            }
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
+                if !module_path.is_empty() && !item.span.file.is_empty() {
+                    file_module_paths.insert(item.span.file.to_string(), module_path.clone());
+                }
                 if !name.is_empty() {
                     *bare_name_counts.entry(name.clone()).or_default() += 1;
                     if first_write_wins {
@@ -2707,6 +2771,8 @@ impl InterpContext {
             emit_graph_info: graph.emit_graph_info.clone(),
             fn_nodes,
             ambiguous_bare_function_names,
+            file_module_paths,
+            file_import_bindings,
             service_ops,
         })
     }
@@ -2773,7 +2839,7 @@ impl InterpContext {
 
     pub fn arm_eval_deadline(&self, budget_ms: u64) {
         self.eval_deadline
-            .set(Some((thread_cpu_nanos(), budget_ms)));
+            .set(Some((budgeted_cpu_nanos(), budget_ms)));
         self.eval_deadline_stride.set(0);
     }
 
@@ -2785,7 +2851,7 @@ impl InterpContext {
     /// `Some(0)` means already past.
     pub fn eval_deadline_remaining_ms(&self) -> Option<u64> {
         let (baseline, budget_ms) = self.eval_deadline.get()?;
-        let elapsed_ms = (thread_cpu_nanos().saturating_sub(baseline) / 1_000_000) as u64;
+        let elapsed_ms = (budgeted_cpu_nanos().saturating_sub(baseline) / 1_000_000) as u64;
         Some(budget_ms.saturating_sub(elapsed_ms))
     }
 
@@ -2832,7 +2898,7 @@ impl InterpContext {
                 None => requested,
             };
             self.eval_deadline
-                .set(Some((thread_cpu_nanos(), effective)));
+                .set(Some((budgeted_cpu_nanos(), effective)));
             self.eval_deadline_stride.set(0);
         }
         if let Some(requested) = wall_limit_ms {
@@ -2962,6 +3028,76 @@ impl InterpContext {
         self.indexes.fn_nodes.get(name)
     }
 
+    /// Is this bare spelling claimed by more than one module in this scope?
+    pub(crate) fn bare_name_is_ambiguous(&self, name: &str) -> bool {
+        self.indexes.ambiguous_bare_function_names.contains(name)
+    }
+
+    /// [`lookup_fn`], but a BARE name claimed by more than one module in this scope resolves
+    /// through the referring file's own declarations, then its explicit imports, before the
+    /// shared bare slot — the same `local`-then-declared-source order the type layer already
+    /// applies in `lookup_resolved_sig`. That the two layers DISAGREED is what made every defect
+    /// in this class silent: typecheck bound the reference per module and execution rebound it
+    /// globally, so nothing refused and the program simply ran a different function.
+    ///
+    /// The bare slot is a single map entry: whichever module the walk visited last (or first,
+    /// under a precedence order) owns it, and every other module's references to that spelling
+    /// silently execute the winner's body. That is not shadowing the author wrote -- it is a
+    /// module losing its own declaration to an unrelated homonym, and it produced
+    /// `docs/plans/import-namespace-program.md` carrying `v2-corpus-self-host`'s entire body,
+    /// because both plan carriers declare `section_1` .. `section_9` and `status_block`.
+    ///
+    /// THE TIER IS GATED ON `ambiguous_bare_function_names`, so the resolution of every name
+    /// exactly one module declares is byte-for-byte what it was. Only the colliding population
+    /// moves, and it moves toward the module that authored the reference.
+    ///
+    /// WHY THE IMPORT TIER IS NOT OPTIONAL, and it took a floor red to establish rather than
+    /// reasoning: `test.claim.ilm4926_designation_witness` imports `extdeps_external_authority_anchor`
+    /// explicitly from `extdeps.cpu_attachment.ilm4926` — a name 630 modules declare, one per
+    /// extdeps module by repository convention. With the own-module tier alone that import was
+    /// inert: the witness's reference still landed on `extdeps.vendor.lotes`, which it imports one
+    /// line earlier and which wins the shared slot, while the attestation row inside `ilm4926`
+    /// correctly reached ilm4926's own. The row and the query then disagreed and the filter
+    /// returned empty. Before the own-module tier existed BOTH sides read lotes, so the equality
+    /// matched and the witness was green on a query that meant nothing.
+    ///
+    /// THIS IS NOT THE NAMESPACE PROGRAM AND DOES NOT CLAIM TO BE. Two residues stay on the
+    /// shared slot: a bare reference to a name the referring module neither declares nor imports,
+    /// and a name reached through a WILDCARD import, which binds no names and so says nothing
+    /// about where anything comes from. Both are still picked by precedence with nothing said.
+    /// That residue is `PreparedClaimScope::ambiguous_bare_names`'s subject and retires with
+    /// namespace-only resolution, where a reference has exactly one declarer by construction.
+    fn lookup_fn_from(&self, name: &str, site_file: &str) -> Option<&Rc<Node>> {
+        if !name.contains('.')
+            && !site_file.is_empty()
+            && self.indexes.ambiguous_bare_function_names.contains(name)
+        {
+            if let Some(module_path) = self.indexes.file_module_paths.get(site_file) {
+                let qualified = format!("{}.{}", module_path, name);
+                if let Some(node) = self.indexes.fn_nodes.get(&qualified) {
+                    return Some(node);
+                }
+            }
+            // THEN WHERE THE AUTHOR SAID IT COMES FROM. A name this file explicitly imported
+            // resolves to the module it was imported FROM, which is a fact the author wrote and
+            // the shared slot discards. Without this tier an `import a.b.c { anchor }` is inert
+            // whenever any other module in the scope also declares `anchor` -- the reference
+            // still lands on whichever module won a precedence race, and the import line reads
+            // as though it decided something it did not.
+            if let Some(source_module) = self
+                .indexes
+                .file_import_bindings
+                .get(&(site_file.to_string(), name.to_string()))
+            {
+                let qualified = format!("{}.{}", source_module, name);
+                if let Some(node) = self.indexes.fn_nodes.get(&qualified) {
+                    return Some(node);
+                }
+            }
+        }
+        self.indexes.fn_nodes.get(name)
+    }
+
     pub fn lookup_fn_node(&self, qualified_name: &str) -> Option<Rc<Node>> {
         self.indexes.fn_nodes.get(qualified_name).cloned()
     }
@@ -3066,9 +3202,28 @@ pub fn call_env_depth_peak_snapshot() -> usize {
     CALL_ENV_DEPTH_PEAK.with(|peak| peak.get())
 }
 
+/// Pre-evaluate module-level `data` into the base environment.
+///
+/// A NAME CLAIMED BY MORE THAN ONE MODULE IS DELIBERATELY NOT PRE-BOUND, and leaving it out is
+/// what makes [`InterpContext::lookup_fn_from`] reachable for `data` at all. This binds by BARE
+/// name through the global `lookup_fn`, and `eval_var` consults the environment BEFORE the item
+/// registry, so a pre-bound ambiguous name shadows per-module resolution everywhere — the same
+/// single-slot collapse as `fn_nodes`, one layer earlier and harder to see, because it looks like
+/// an ordinary variable lookup succeeding. Measured: with the tiers in place and this loop
+/// unchanged, a `data` reference explicitly imported from one of two declarers still read the
+/// other's value, while the function form of the same collision resolved correctly — functions
+/// are not pre-bound here and so were never affected.
+///
+/// Skipping them costs nothing a consumer can observe: the reference falls through to
+/// `eval_var`'s registry path, which resolves per module and memoizes through `data_cache`, and a
+/// name only ONE module declares still takes this fast path untouched. Locals are unaffected in
+/// both cases — they live in extended scopes and shadow by ordinary lexical rule.
 fn build_initial_env(ctx: &InterpContext) -> InterpResult<Rc<Env>> {
     let mut bindings = HashMap::new();
     for (name, info) in ctx.item_registry.iter() {
+        if ctx.bare_name_is_ambiguous(name) {
+            continue;
+        }
         if info.kind == ItemKind::DataItem {
             if let Some(node) = ctx.lookup_fn(name) {
                 if let Some(ref body) = node.body {
@@ -3502,6 +3657,163 @@ impl Drop for EvaluationBudgetScope<'_> {
     }
 }
 
+thread_local! {
+    /// CPU SPENT FILLING SHARED MEMOIZED ARTIFACTS ON THIS THREAD, and it lives here rather than
+    /// beside the memos that record it because it now has TWO readers with opposite lifetimes:
+    /// the claim loop, which nets it at completion, and the evaluation deadline, which must net
+    /// it WHILE the claim runs. A counter with two homes is the §3 failure this whole line of
+    /// work exists to close, so there is one cell and `cli_run` delegates to it.
+    static SHARED_ARTIFACT_FILL_CPU_NANOS: std::cell::Cell<u128> = const { std::cell::Cell::new(0) };
+}
+
+/// Accumulate CPU spent filling a shared memoized artifact. Called only from a memo MISS path.
+pub fn record_shared_artifact_fill_cpu_nanos(nanos: u128) {
+    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
+}
+
+/// The running fill total for this thread.
+pub fn shared_artifact_fill_cpu_nanos() -> u128 {
+    SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
+}
+
+/// THE CLOCK EVERY CPU BUDGET IS MEASURED ON: thread CPU, less what this thread spent filling
+/// shared artifacts that every later claim naming the same source reads free.
+///
+/// WHY A CLOCK RATHER THAN A BASELINE THREADED THROUGH EACH DEADLINE. Both the arming instant and
+/// the polling instant are read from this one function, so the fill accrued between them cancels
+/// in the subtraction that already exists at every site — no deadline has to carry a second
+/// baseline, and a site that forgets to net cannot arise, because there is nothing to forget.
+///
+/// MONOTONE, which a deadline requires: fill is measured on this same thread clock inside the
+/// miss path, so thread CPU rises by at least as much as fill does over any interval and the
+/// difference never decreases. The saturating subtraction covers only the sampling skew between
+/// the two reads.
+///
+/// WHAT THIS DOES NOT REACH, named rather than left for a reader to discover: the WALL deadline
+/// (`witness_wall_deadline`) is still armed on a raw `Instant` and still charges a fill to
+/// whichever claim paid it. Every interruption in the population this repairs was on the CPU
+/// clock — measured, 44 of 44 `Cpu` on run 33185280160 — so the wall half is a real and currently
+/// unexercised residue, not a fix silently omitted.
+pub fn budgeted_cpu_nanos() -> u128 {
+    thread_cpu_nanos().saturating_sub(shared_artifact_fill_cpu_nanos())
+}
+
+#[cfg(test)]
+mod budgeted_cpu_clock_tests {
+    use super::*;
+
+    /// THE DISCRIMINATING RED FOR THE DEADLINE HALF OF THE FILL-ATTRIBUTION RULING. A claim that
+    /// pays a shared fill must not have that fill counted against its own CPU deadline, because
+    /// every later claim naming the same source reads the artifact free — so charging it makes an
+    /// interrupt a function of discovery order rather than of the row.
+    ///
+    /// ASSERTED AS A DECREASE, NOT AS A RATIO AGAINST MEASURED WORK. An earlier version of this
+    /// test burned CPU in a spin loop, declared the measured cost a fill, and compared the clock's
+    /// advance against `burned / 2`. It failed on the remote runner because `burned` came back
+    /// ZERO — the thread CPU clock did not advance across the loop — which makes the right-hand
+    /// side 0 and the assertion unsatisfiable for an unsigned quantity. The test was measuring the
+    /// runner's clock granularity, not the netting. Recording a KNOWN fill removes the
+    /// measurement from the test entirely: the fill is an input rather than an observation.
+    #[test]
+    fn a_recorded_fill_moves_the_budget_clock_backwards_relative_to_raw_cpu() {
+        const FILL_NANOS: u128 = 1_000_000;
+
+        // SPEND MORE CPU THAN THE FILL BEFORE RECORDING IT, because a fill larger than the thread's
+        // own CPU is a state production cannot reach — a fill is always measured FROM CPU actually
+        // spent inside the miss path, so it is bounded by the raw clock by construction. An earlier
+        // version recorded 1ms of fill against a fresh test thread that had not yet spent 1ms,
+        // saturated the clock to zero, and failed on an input the system cannot produce. That was a
+        // defect in the test's premise, not in the netting.
+        let mut spin = 0u64;
+        let mut rounds = 0u32;
+        while thread_cpu_nanos() < FILL_NANOS * 4 && rounds < 100_000 {
+            for i in 0..100_000u64 {
+                spin = spin.wrapping_add(i);
+            }
+            rounds += 1;
+        }
+        std::hint::black_box(spin);
+        assert!(
+            thread_cpu_nanos() >= FILL_NANOS * 4,
+            "could not accumulate {}ns of thread CPU in {rounds} rounds; the clock is not running \
+             and nothing below would be measuring the netting",
+            FILL_NANOS * 4
+        );
+
+        let budgeted_before = budgeted_cpu_nanos();
+        record_shared_artifact_fill_cpu_nanos(FILL_NANOS);
+        let budgeted_after = budgeted_cpu_nanos();
+
+        // THE DISCRIMINATING ASSERTION. Raw CPU only ever rises, so a budget clock that moved
+        // BACKWARDS across a recorded fill can only have subtracted it. Without the netting the
+        // two clocks move together and this fails.
+        assert!(
+            budgeted_after < budgeted_before,
+            "recording a {FILL_NANOS}ns fill must move the budget clock backwards: \
+             {budgeted_before} -> {budgeted_after}"
+        );
+
+        // AND THE EXACT RELATION, BRACKETED RATHER THAN DIFFERENCED. An earlier version asserted
+        // `budget_drop + raw_advance == FILL`, which is false: those two deltas span different
+        // overlapping intervals, so the CPU elapsed in one does not cancel the CPU elapsed in the
+        // other. Bracketing needs no tolerance and no assumption about clock speed — `budgeted +
+        // fill` IS a raw CPU reading, so it must fall between two raw reads taken either side.
+        let lo = thread_cpu_nanos();
+        let budgeted = budgeted_cpu_nanos();
+        let hi = thread_cpu_nanos();
+        let reconstructed = budgeted + shared_artifact_fill_cpu_nanos();
+        assert!(
+            reconstructed >= lo && reconstructed <= hi,
+            "budgeted + fill ({reconstructed}) must be a raw CPU reading taken between {lo} and {hi}"
+        );
+    }
+
+    /// THE CONTROL THAT KEEPS THE ONE ABOVE HONEST: a clock that simply froze would satisfy
+    /// "fills do not advance it" perfectly and disarm every deadline in the process. So ordinary
+    /// CPU — nothing recorded as a fill — must still move it.
+    ///
+    /// The loop runs until the RAW clock is observed to advance rather than for a fixed count,
+    /// because a fixed count is what made the previous version of this test depend on the
+    /// runner's clock granularity. The cap makes a never-advancing thread CPU clock a loud
+    /// failure rather than a hang.
+    #[test]
+    fn ordinary_work_still_advances_the_budget_clock() {
+        let raw_start = thread_cpu_nanos();
+        let budgeted_start = budgeted_cpu_nanos();
+
+        let mut spin = 0u64;
+        let mut rounds = 0u32;
+        while thread_cpu_nanos() == raw_start && rounds < 10_000 {
+            for i in 0..100_000u64 {
+                spin = spin.wrapping_add(i);
+            }
+            rounds += 1;
+        }
+        std::hint::black_box(spin);
+
+        assert!(
+            thread_cpu_nanos() > raw_start,
+            "the thread CPU clock never advanced across {rounds} rounds of work; the budget \
+             clock cannot be tested against a clock that does not run"
+        );
+        assert!(
+            budgeted_cpu_nanos() > budgeted_start,
+            "ordinary work must advance the budget clock, or every CPU deadline is disarmed"
+        );
+    }
+
+    /// The clock a deadline is armed on must never run backwards, or an armed deadline could
+    /// stop being reachable. Fill is measured on the same thread clock inside the miss path, so
+    /// the difference is monotone; this pins the saturating floor that covers sampling skew.
+    #[test]
+    fn the_budget_clock_never_runs_backwards_even_if_fill_overshoots() {
+        let before = budgeted_cpu_nanos();
+        record_shared_artifact_fill_cpu_nanos(u128::MAX / 2);
+        assert!(budgeted_cpu_nanos() <= before);
+        assert_eq!(budgeted_cpu_nanos(), 0, "saturates rather than wrapping");
+    }
+}
+
 pub fn thread_cpu_nanos() -> u128 {
     #[cfg(unix)]
     {
@@ -3544,7 +3856,7 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         ctx.eval_deadline_stride.set(stride);
         if stride % 4096 == 0 {
             if let Some((cpu_baseline_nanos, budget_ms)) = cpu_armed {
-                let elapsed_nanos = thread_cpu_nanos().saturating_sub(cpu_baseline_nanos);
+                let elapsed_nanos = budgeted_cpu_nanos().saturating_sub(cpu_baseline_nanos);
                 if (elapsed_nanos / 1_000_000) as u64 > budget_ms {
                     return Err(InterpError::EvaluationBudgetExceeded {
                         entry: ctx.budget_entry_or_unnamed(),
@@ -3734,7 +4046,7 @@ fn eval_var(
     let name = ctx.resolve(sym);
     if let Some(info) = v1_rt::map_get(&ctx.item_registry, name.clone()) {
         if info.kind == ItemKind::DataItem {
-            if let Some(fn_node) = ctx.lookup_fn(&name) {
+            if let Some(fn_node) = ctx.lookup_fn_from(&name, node.span.file.as_str()) {
                 if let Some(ref body) = fn_node.body {
                     if let ExprData::ExprVar { .. } = &*body.expr_data {
                         if expr_var_name_at(body.clone(), ctx.si()) == name {
@@ -3752,7 +4064,7 @@ fn eval_var(
             }
         }
         if matches!(info.kind, ItemKind::FuncItem | ItemKind::FnItem) {
-            if let Some(fn_node) = ctx.lookup_fn(&name) {
+            if let Some(fn_node) = ctx.lookup_fn_from(&name, node.span.file.as_str()) {
                 return Ok(Value::Fn {
                     node: fn_node.clone(),
                 });
@@ -4518,7 +4830,7 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
 // while the seed is the evaluator.
 //
 // Lane: ROADMAP `v1-materialization-kernel` (rn_53JPH6BB7G588K7DMZNWM0E3AS,
-// docs/plans/witness-realization-plan.md) — the same lane
+// witness-realization-plan (plan doc deleted 2026-08-28)) — the same lane
 // `extdeps.realization.emit_on_demand_host` `emit_on_demand_host_seed_deferral_note`
 // defers to; counted against `v1-honest-frontier` and terminating at
 // `v1-interpreter-quarantine` → `v1-interpreter-delete`.
@@ -4532,7 +4844,7 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
 //
 // Citation note: the two sibling deferrals in this file and in
 // `emit_on_demand_host_seed_deferral_note` name a
-// `dag/gunbc/v1_deletion_plan.dag ^witness_realization_kernel` deletion row. That row
+// `dag/gunbc/v1/v1_deletion_plan.dag ^witness_realization_kernel` deletion row. That row
 // no longer exists — the brick ledger it belonged to was retired 2026-07-28 by that
 // file's own `v1_exit_model_doc`, which moved per-node acceptance onto the roadmap
 // tickets. This deferral therefore names the live roadmap node instead of copying a
@@ -5330,7 +5642,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     // because reaching it at all required the free-function table to have answered first.
     let fn_node = match lexically_bound_fn {
         Some(node) => node,
-        None => match ctx.lookup_fn(&func_name) {
+        None => match ctx.lookup_fn_from(&func_name, node.span.file.as_str()) {
             Some(node) => node.clone(),
             None => {
                 return Err(InterpError::NoSuchFunction {
@@ -7526,7 +7838,7 @@ macro_rules! v1_algebra_method_arms {
             // eval_algebra_method (method/pipe calls) and that dispatch (direct calls) are two
             // surfaces over one builtin set that have diverged; they should be one authority.
             // Pure-eval logic, in scope of ROADMAP HAND kernel D (`v1_interpreter` pure-eval
-            // dissolution, docs/plans/interpreter-kernel-d.md): dissolution trigger is the
+            // dissolution, interpreter-kernel-d (plan doc deleted 2026-08-28)): dissolution trigger is the
             // pure-eval seam (`emit_host` transport wiring) grounding this dispatch into
             // `v2.compiler.eval`, at which point per-builtin arms stop being hand-Rust here.
             arm "method_call.map_keys" { "map_keys" } => {
@@ -7874,8 +8186,71 @@ fn hermetic_checkout_input_disposition_under(
     } else {
         root.join(requested_path)
     };
-    let canon = std::fs::canonicalize(&joined)
-        .map_err(|e| format!("path does not canonicalize under the checkout ({e})"))?;
+    // AN ABSENT PATH UNDER THE ROOT IS AS COMMIT-DETERMINISTIC AS A PRESENT ONE, and resolving
+    // the REQUESTED leaf could not express that. `canonicalize` requires the whole path to
+    // exist, so it failed identically for three dispositions with three different remedies:
+    // a file the commit says is NOT THERE, a path that RESOLVES OUTSIDE the root, and one
+    // UNRESOLVABLE for any other reason. One error string for three states is the conflation
+    // `HermeticEffectGround` was split to prevent, sitting twenty lines above the enum that
+    // records the lesson.
+    //
+    // The commit determines absence exactly as it determines contents: "this repository has no
+    // such file" is an answer read OFF THE INPUT, not host state, so it belongs on the same
+    // wet arm as a successful read rather than in the mock layer. Rendering it there would
+    // require a canned response, and one canned response necessarily serves every unconfirmed
+    // path -- fabricating "not found" for out-of-root and `.git` reads too.
+    //
+    // So resolve the deepest ancestor that DOES exist and carry the not-yet-existing tail
+    // separately. The existing prefix is what symlinks can move, so it is what must be proven
+    // under the root; the absent tail cannot be a symlink to anywhere, because it is not there.
+    // A `..` in the tail yields no `file_name`, so it exits through the unresolvable arm rather
+    // than being reasoned about -- refusing what cannot be confirmed rather than guessing.
+    let mut probe = joined.as_path();
+    let mut absent_tail: Vec<std::ffi::OsString> = Vec::new();
+    let canon = loop {
+        match std::fs::canonicalize(probe) {
+            Ok(resolved) => break resolved,
+            Err(e) => {
+                // ONLY A GENUINE ABSENCE MAY PEEL A COMPONENT. `canonicalize` fails for
+                // several reasons and they are not interchangeable: a permission-denied or
+                // symlink-loop error says the path CANNOT BE CONFIRMED, which is the
+                // unresolvable arm, not a statement that the component is missing. Treating
+                // every error as absence would climb past a component that is really there.
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    return Err(format!(
+                        "path does not canonicalize under the checkout ({e})"
+                    ));
+                }
+                // A DANGLING SYMLINK IS PRESENT, NOT ABSENT, AND `canonicalize` CANNOT SAY SO.
+                // It resolves symlinks, so a link whose target is missing returns the SAME
+                // NotFound as a name with nothing behind it. `symlink_metadata` does not
+                // follow, so it answers the question actually being asked: is there an entry
+                // here? If there is, its resolution depends on a target the commit does not
+                // contain -- host state, whose appearance later would silently change this
+                // read's result -- so it refuses rather than being peeled as absent.
+                if std::fs::symlink_metadata(probe).is_ok() {
+                    return Err(format!(
+                        "path does not canonicalize under the checkout (`{}` exists but does \
+                         not resolve -- a dangling symlink's target is host state, not a \
+                         commit input)",
+                        probe.display()
+                    ));
+                }
+                let (parent, name) = match (probe.parent(), probe.file_name()) {
+                    (Some(parent), Some(name)) if parent != probe => (parent, name.to_os_string()),
+                    _ => {
+                        return Err(format!(
+                            "path does not canonicalize under the checkout ({e})"
+                        ))
+                    }
+                };
+                absent_tail.push(name);
+                probe = parent;
+            }
+        }
+    };
+    absent_tail.reverse();
+
     if !canon.starts_with(&root) {
         return Err(format!(
             "path resolves outside the checkout root {}",
@@ -7885,14 +8260,20 @@ fn hermetic_checkout_input_disposition_under(
     let rel = canon
         .strip_prefix(&root)
         .expect("starts_with checked above");
-    for comp in rel.components() {
-        if let std::path::Component::Normal(name) = comp {
-            if name == ".git" || name == "target" {
-                return Err(format!(
-                    "`{}` components are not commit-deterministic inputs",
-                    name.to_string_lossy()
-                ));
-            }
+    let existing_names = rel.components().filter_map(|comp| match comp {
+        std::path::Component::Normal(name) => Some(name.to_os_string()),
+        _ => None,
+    });
+    // The tail is checked on the SAME rule as the existing prefix: a read of
+    // `target/does-not-exist` is no more commit-deterministic than one of `target/receipt.txt`,
+    // and admitting it because the file happens to be missing would make the wall depend on
+    // the state of the very directory it exists to exclude.
+    for name in existing_names.chain(absent_tail.into_iter()) {
+        if name == std::ffi::OsStr::new(".git") || name == std::ffi::OsStr::new("target") {
+            return Err(format!(
+                "`{}` components are not commit-deterministic inputs",
+                name.to_string_lossy()
+            ));
         }
     }
     Ok(())
@@ -8036,7 +8417,7 @@ fn eval_service_call(
         // (which would fabricate a plausible answer) nor to a real shell/file effect.
         //
         // HAND-RUST GATE — seed-retained, lane `v1-materialization-kernel`
-        // (rn_53JPH6BB7G588K7DMZNWM0E3AS, docs/plans/witness-realization-plan.md),
+        // (rn_53JPH6BB7G588K7DMZNWM0E3AS, witness-realization-plan (plan doc deleted 2026-08-28)),
         // terminating at `v1-interpreter-quarantine` → `v1-interpreter-delete`; the same
         // lane the `WITNESS_EVALUATION_FRAMES` deferral above names. Deletion condition,
         // checkable by execution: when witnesses emit to native code and the emitted
@@ -8813,6 +9194,179 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
 /// The two arms stay distinct all the way to the substrate — `CensusNotRunnable` must never
 /// arrive as `CensusObserved` with an empty row list, because that is byte-identical to a clean
 /// compile and would let could-not-measure read as the subject passing (DESIGN §5).
+/// Encode one `ReferenceDerivedClosureAdmission` as an interpreter value.
+///
+/// Pure encoding. The judgement it carries was made by
+/// `gunbc.namespace_reference_derived_closure_admission assess_reference_binding_observation`,
+/// which the `.dag` producer calls; nothing here decides, reclassifies, or defaults. The three
+/// payload vocabularies are nullary coproducts, so each is carried by name.
+fn reference_derived_closure_admission_value(
+    admission: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission as A;
+    let nullary = |type_name: &str, variant_name: String| Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(&variant_name),
+        fields: Rc::new(Vec::new()),
+    };
+    // The variant NAME is spelled by a total match, never derived from `Debug` (review 57100).
+    // Debug happens to print exactly the variant name for these nullary enums today, and it stops
+    // doing so the moment any variant gains a payload -- it would print `Foo { .. }` and this seam
+    // would mint a variant name no `.dag` match accepts. That fails loudly rather than silently,
+    // but it fails at RUNTIME on a name; a total match makes the same mistake a COMPILE error here,
+    // which is the construction-over-validation direction DESIGN 5 asks for. It also stops the
+    // Rust identifier from being a second representation of the variant's identity (DESIGN 3).
+    let capability = |c: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability| {
+        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability as C;
+        let name = match c {
+            C::SameFileEarlierNeighbourVisible => "SameFileEarlierNeighbourVisible",
+            C::SiblingDecisionBranchExcluded => "SiblingDecisionBranchExcluded",
+            C::LaterDeclarationExcluded => "LaterDeclarationExcluded",
+            C::DistinctSameSpelledDeclarationsPreserved => "DistinctSameSpelledDeclarationsPreserved",
+            C::RepeatedMentionsCollapseDependency => "RepeatedMentionsCollapseDependency",
+            C::UnrelatedLoadedFileExcluded => "UnrelatedLoadedFileExcluded",
+        };
+        nullary("ReferenceDerivedClosureCapability", name.to_string())
+    };
+    let trigger_value = |t: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger| {
+        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger as T;
+        let name = match t {
+            T::P2aStructuralCandidateProducer7515 => "P2aStructuralCandidateProducer7515",
+            T::P2aReferenceDependencyProjection7515 => "P2aReferenceDependencyProjection7515",
+            T::P2aPoolIndependentDependencyProjection7515 => "P2aPoolIndependentDependencyProjection7515",
+        };
+        nullary("ReferenceDerivedClosureTrigger", name.to_string())
+    };
+    let scenario_failure = |f: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure| {
+        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure as F;
+        let name = match f {
+            F::SameFileNeighbourMissing => "SameFileNeighbourMissing",
+            F::SiblingBranchLeaked => "SiblingBranchLeaked",
+            F::LaterDeclarationLeaked => "LaterDeclarationLeaked",
+            F::DistinctDeclarationCollapsed => "DistinctDeclarationCollapsed",
+            F::RepeatedMentionDuplicatedDependency => "RepeatedMentionDuplicatedDependency",
+            F::UnrelatedLoadedFileDependencyLeaked => "UnrelatedLoadedFileDependencyLeaked",
+        };
+        nullary("ReferenceDerivedClosureScenarioFailure", name.to_string())
+    };
+    match admission {
+        A::ReferenceDerivedClosureEstablished { receipt } => Value::Variant {
+            type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
+            variant_name: ctx.sym("ReferenceDerivedClosureEstablished"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("receipt"),
+                Value::Record {
+                    type_name: ctx.sym("ReferenceDerivedClosureAcceptanceReceipt"),
+                    fields: Rc::new(sorted_fields(vec![(
+                        ctx.sym("capability"),
+                        capability(&receipt.capability()),
+                    )])),
+                },
+            )])),
+        },
+        A::ReferenceDerivedClosureRefused {
+            capability: c,
+            failure,
+        } => Value::Variant {
+            type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
+            variant_name: ctx.sym("ReferenceDerivedClosureRefused"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("capability"), capability(c)),
+                (ctx.sym("failure"), scenario_failure(failure)),
+            ])),
+        },
+        A::ReferenceDerivedClosureUnavailable {
+            capability: c,
+            trigger,
+        } => Value::Variant {
+            type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
+            variant_name: ctx.sym("ReferenceDerivedClosureUnavailable"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("capability"), capability(c)),
+                (ctx.sym("trigger"), trigger_value(trigger)),
+            ])),
+        },
+    }
+}
+
+/// Encode the rows for one in-memory source: each admission the `.dag` producer computed,
+/// paired with the module path that producer read out of the same parse.
+///
+/// The two producer exports are pure functions of `(file, source)` and the caller passes one
+/// pair of strings to both, so this join cannot pair a module path with admissions from a
+/// different subject. It is mechanical, never a decision; the split exists because a `.dag`
+/// record embedding a `sole_constructor`-bearing coproduct does not emit compilably today
+/// (see the producer's own note).
+/// Encode the subject's own identity as the observation it is: the module the parse declared, or
+/// a typed refusal naming the gap. There is deliberately no spelling in which "the parse refused"
+/// and "the module path is empty" are the same value.
+fn subject_module_value(
+    subject: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_reference_binding_observation::ReferenceBindingProductionGap as G;
+    use crate::std_reference_binding_observation::StructuralObservationSubjectModule as S;
+    match subject {
+        S::SubjectModuleProduced { module_path } => Value::Variant {
+            type_name: ctx.sym("StructuralObservationSubjectModule"),
+            variant_name: ctx.sym("SubjectModuleProduced"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("module_path"),
+                str_value(module_path.clone()),
+            )])),
+        },
+        S::SubjectModuleProductionRefused { gap } => {
+            let gap_name = match gap {
+                G::ReferenceBindingParserTransportRefused => {
+                    "ReferenceBindingParserTransportRefused"
+                }
+                G::ReferenceBindingNamedReferenceAbsent => "ReferenceBindingNamedReferenceAbsent",
+                G::ReferenceBindingNamedDeclarationAbsent => {
+                    "ReferenceBindingNamedDeclarationAbsent"
+                }
+            };
+            Value::Variant {
+                type_name: ctx.sym("StructuralObservationSubjectModule"),
+                variant_name: ctx.sym("SubjectModuleProductionRefused"),
+                fields: Rc::new(sorted_fields(vec![(
+                    ctx.sym("gap"),
+                    Value::Variant {
+                        type_name: ctx.sym("ReferenceBindingProductionGap"),
+                        variant_name: ctx.sym(gap_name),
+                        fields: Rc::new(Vec::new()),
+                    },
+                )])),
+            }
+        }
+    }
+}
+
+fn namespace_structural_observation_admissions_value(
+    compiled_module: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
+    admissions: &[Rc<crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
+    ctx: &InterpContext,
+) -> Value {
+    list_value(
+        admissions
+            .iter()
+            .map(|admission| Value::Record {
+                type_name: ctx.sym("OrdinaryCompileStructuralAdmission"),
+                fields: Rc::new(sorted_fields(vec![
+                    (
+                        ctx.sym("compiled_module"),
+                        subject_module_value(compiled_module, ctx),
+                    ),
+                    (
+                        ctx.sym("admission"),
+                        reference_derived_closure_admission_value(admission, ctx),
+                    ),
+                ])),
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
 fn compile_diagnostic_census_value(
     census: crate::cli_run::CompileDiagnosticCensus,
     ctx: &InterpContext,
@@ -9043,7 +9597,7 @@ fn argv_materialization_value(
 /// `extdeps.render.ansi` authority (`ansi_mappings` in `dag/extdeps/render/ansi.dag`).
 /// Seed realization until the interpreter consumes that table directly; the
 /// dissolution is the single checkable receipt ROADMAP §1 "interpreter
-/// terminal-output de-fork" (`dag/gunbc/roadmap_authority.dag`).
+/// terminal-output de-fork" (`dag/gunbc/roadmap/roadmap_authority.dag`).
 pub mod sgr {
     pub const SUCCESS: &str = "38;5;34";
     pub const ERROR: &str = "38;5;196";
@@ -12028,8 +12582,8 @@ fn eval_emit_host_run_transport_builtin(
 /// HAND-RUST GATE explicit deferral: this is bounded growth in the existing seed
 /// file, not a census-shrink receipt and not a new Rust authority. Its lane is
 /// ROADMAP "Make native materialization the shared execution kernel",
-/// docs/plans/witness-realization-plan.md P3/P6, with the concrete deletion row
-/// dag/gunbc/v1_deletion_plan.dag ^witness_realization_kernel. Delete these
+/// witness-realization-plan (plan doc deleted 2026-08-28) P3/P6, with the concrete deletion row
+/// dag/gunbc/v1/v1_deletion_plan.dag ^witness_realization_kernel. Delete these
 /// observation/apply helpers when the self-emitted transport consumes the modeled
 /// ResolvedBuildContext and the dispatcher-change, environment-change, and
 /// cold/warm agreement witnesses remain green without them.
@@ -12283,13 +12837,13 @@ fn run_cached_process_spec(
 /// workspace with only the process env). Resolution order: bare name if it
 /// resolves on PATH; else $CARGO_HOME/bin/<name>; else $HOME/.cargo/bin/<name>;
 /// else refuse (DESIGN §5: never return the bare name and widen to ambient PATH
-/// at spawn time — the absorbing fallback hermetic-tool-provisioning-design.md
+/// at spawn time — the absorbing fallback hermetic-tool-provisioning-design (deleted)
 /// §1 names).
 ///
 /// HAND-RUST GATE explicit deferral (review 44883): this function is seed
 /// retained, not a new resolver authority. Its lane is ROADMAP
 /// `toolchain-single-resolver` (gunbc.roadmap_authority,
-/// docs/plans/hermetic-tool-provisioning-design.md P2 — "one resolver",
+/// hermetic-tool-provisioning-design (plan doc deleted 2026-08-28) P2 — "one resolver",
 /// handback: delete `resolve_host_tool_program` and the bash ladder). This PR
 /// repairs only the fail-open terminal arm; it does not admit a parallel key or
 /// grow the census. Delete the whole function when P2's `membership_reconcile`
@@ -14133,6 +14687,33 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::doc_graph_dangling_link_count(),
             ))),
             arm "free_call.doc_graph_doc_count" { "doc_graph_doc_count" } => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
+
+            arm "free_call.namespace_structural_observation_admissions" { "namespace_structural_observation_admissions" } => {
+                let file = expect_str($positional.first().copied(), $name)?;
+                let source = expect_str($positional.get(1).copied(), $name)?;
+                let neighbour_name = expect_str($positional.get(2).copied(), $name)?;
+                let branch_binder_name = expect_str($positional.get(3).copied(), $name)?;
+                let later_name = expect_str($positional.get(4).copied(), $name)?;
+                let homonym_name = expect_str($positional.get(5).copied(), $name)?;
+                let producer = crate::v1_gunbc_namespace_reference_derived_closure_production_observations::namespace_structural_observation_admissions(
+                    file.clone(),
+                    source.clone(),
+                    neighbour_name,
+                    branch_binder_name,
+                    later_name,
+                    homonym_name,
+                );
+                let compiled_module = crate::v1_gunbc_namespace_reference_derived_closure_production_observations::namespace_structural_observation_compiled_module(
+                    file,
+                    source,
+                );
+                let admissions: Vec<_> = producer.iter().cloned().collect();
+                Ok(Some(namespace_structural_observation_admissions_value(
+                    &compiled_module,
+                    &admissions,
+                    $ctx,
+                )))
+            },
 
             arm "free_call.compile_dag_rust_emit_check" { "compile_dag_rust_emit_check" } => {
                 let source = expect_str($positional.first().copied(), $name)?;
@@ -16031,6 +16612,144 @@ mod shell_completion_trace_tests {
     }
 
     #[test]
+    fn hermetic_checkout_input_admits_an_absent_path_under_root() {
+        // THE COMMIT DETERMINES ABSENCE. A repository that does not contain a file is as
+        // deterministic an input as one that does, so an absent path under the root confirms
+        // and the read runs wet -- returning `success: false` on its own rather than off a
+        // canned response.
+        let dir =
+            std::env::temp_dir().join(format!("hermetic-carveout-absent-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("dag/test/fixture")).unwrap();
+        assert_eq!(
+            hermetic_checkout_input_disposition_under(&dir, "dag/test/fixture/never_written.json"),
+            Ok(()),
+            "an absent file under the root is a commit-deterministic input"
+        );
+        // Absent INTERMEDIATE directories too: nothing in the tail exists, and nothing in the
+        // tail can be a symlink to anywhere, precisely because it is not there.
+        assert_eq!(
+            hermetic_checkout_input_disposition_under(&dir, "dag/absent_dir/absent_file.json"),
+            Ok(()),
+            "an absent path whose parent is also absent is still under the root"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // GATED ON UNIX BECAUSE AUTHORING THE RED REQUIRES A SYMLINK. `std::os::unix::fs::symlink`
+    // is the only API here that can construct the present-but-unresolvable state this test
+    // discriminates, and an unguarded reference breaks test COMPILATION on non-unix targets
+    // (review 57247). The guard is on the test, not on the wall: the peel loop's symlink
+    // refusal in `hermetic_checkout_input_disposition_under` is unconditional, so no platform
+    // loses the refusal -- only this platform loses the ability to author its witness.
+    #[cfg(unix)]
+    #[test]
+    fn hermetic_checkout_refuses_a_dangling_symlink_rather_than_peeling_it_as_absent() {
+        // A DANGLING SYMLINK IS PRESENT AND UNRESOLVABLE, WHICH IS NOT ABSENCE.
+        // `canonicalize` follows links, so a link with a missing target returns the SAME
+        // NotFound as a name with nothing behind it. Peeling it would climb past an entry
+        // that really exists, admit the path, and dispatch a real host read whose result
+        // CHANGES IF THE TARGET LATER APPEARS -- host state entering a hermetic run.
+        // Reported as BLOCKING in review 57219 against the first cut of this repair.
+        let dir =
+            std::env::temp_dir().join(format!("hermetic-carveout-dangling-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let outside_target = std::env::temp_dir().join(format!(
+            "hermetic-carveout-absent-target-{}",
+            std::process::id()
+        ));
+        std::os::unix::fs::symlink(&outside_target, dir.join("dangling_out")).unwrap();
+        std::os::unix::fs::symlink("./never_created_inside", dir.join("dangling_in")).unwrap();
+
+        // Control first: the discriminator must not be "any ENOENT refuses", or the
+        // absent-path admission this whole change exists for would be gone.
+        assert_eq!(
+            hermetic_checkout_input_disposition_under(&dir, "genuinely_absent.json"),
+            Ok(()),
+            "a name with nothing behind it is still a commit-deterministic absence"
+        );
+
+        let out = hermetic_checkout_input_disposition_under(&dir, "dangling_out");
+        assert!(
+            out.as_ref()
+                .err()
+                .is_some_and(|e| e.contains("exists but does not resolve")),
+            "a dangling symlink to an ABSENT OUTSIDE path must refuse, not be peeled as \
+             absent, got {out:?}"
+        );
+
+        let inside = hermetic_checkout_input_disposition_under(&dir, "dangling_in");
+        assert!(
+            inside
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("exists but does not resolve")),
+            "a dangling symlink inside the checkout must refuse, got {inside:?}"
+        );
+
+        // And it must not be defeated by sitting mid-path rather than at the leaf.
+        let through = hermetic_checkout_input_disposition_under(&dir, "dangling_out/under.json");
+        assert!(
+            through.as_ref().err().is_some(),
+            "a path THROUGH a dangling symlink must refuse, got {through:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn hermetic_checkout_absent_paths_keep_the_three_dispositions_distinct() {
+        // THE DISCRIMINATING RED FOR THE ABSENT-PATH REPAIR. Admitting absent-under-root is
+        // only correct if the other two refusals survive it AT THEIR OWN MESSAGES. If an
+        // absent out-of-root path or an absent `.git` path started confirming, the repair
+        // would have moved the conflation rather than removed it -- and every assertion here
+        // is on a path that DOES NOT EXIST, which is exactly the case the old
+        // canonicalize-the-leaf form could not tell apart.
+        let dir =
+            std::env::temp_dir().join(format!("hermetic-carveout-absent3-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        std::fs::create_dir_all(dir.join("target")).unwrap();
+
+        let outside = hermetic_checkout_input_disposition_under(&dir, "../absent_outside.txt");
+        assert!(
+            outside
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("outside the checkout root")),
+            "an ABSENT path that resolves outside the root must still refuse as out-of-root, \
+             got {outside:?}"
+        );
+
+        let absolute = hermetic_checkout_input_disposition_under(&dir, "/etc/absent_hostname");
+        assert!(
+            absolute
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("outside the checkout root")),
+            "an ABSENT absolute path outside the root must still refuse, got {absolute:?}"
+        );
+
+        let git = hermetic_checkout_input_disposition_under(&dir, ".git/absent_HEAD");
+        assert!(
+            git.as_ref()
+                .err()
+                .is_some_and(|e| e.contains("not commit-deterministic")),
+            "an ABSENT `.git` path must still refuse as non-commit-deterministic, got {git:?}"
+        );
+
+        let target = hermetic_checkout_input_disposition_under(&dir, "target/absent_receipt.txt");
+        assert!(
+            target
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("not commit-deterministic")),
+            "an ABSENT `target` path must still refuse as non-commit-deterministic, got {target:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn hermetic_checkout_read_refuses_traversal_escape_and_absolute_outside() {
         let dir =
             std::env::temp_dir().join(format!("hermetic-carveout-escape-{}", std::process::id()));
@@ -16820,7 +17539,7 @@ mod argv_arg_limit_test {
 /// Interim seed witnesses for the fail-closed arms above. HAND-RUST GATE
 /// explicit deferral (review 44883): not a permanent test surface — delete with
 /// `resolve_host_tool_program` when ROADMAP `toolchain-single-resolver` lands
-/// (hermetic-tool-provisioning-design.md P2 RED: unpinned tool refuses before
+/// (hermetic-tool-provisioning-design (deleted) P2 RED: unpinned tool refuses before
 /// spawn, witnessed in `.dag`).
 #[cfg(test)]
 mod resolve_host_tool_program_tests {

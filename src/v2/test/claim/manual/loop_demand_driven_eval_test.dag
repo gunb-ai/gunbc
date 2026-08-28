@@ -1,4 +1,5 @@
 module v2.test.manual.loop_demand_driven_eval
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
@@ -60,7 +61,6 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
-  SyntheticOccurrence,
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -97,7 +97,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn loop_eval_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: []
   }
 }
@@ -120,12 +120,12 @@ fn loop_eval_one_value() -> RuntimeValue {
 }
 
 fn loop_eval_lit_one() -> Node {
-  match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
+  match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: OccurrenceSynthetic) {
     Accepted { value: n, diagnostics: _ } => n
     Rejected { diagnostics: _ } =>
       Node {
         kind: TypeNode { connective: Atom { identity: ^loop_eval_lit_one_lexeme_invalid } },
-        occurrence_id: SyntheticOccurrence,
+        occurrence_id: OccurrenceSynthetic,
         children: []
       }
   }
@@ -133,7 +133,7 @@ fn loop_eval_lit_one() -> Node {
 
 data loop_eval_divergent_value_node: Node = Node {
   kind: ComputationNode { behavior: Value },
-  occurrence_id: SyntheticOccurrence,
+  occurrence_id: OccurrenceSynthetic,
   children: []
 }
 
@@ -266,7 +266,7 @@ fn loop_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn loop_eval_loop_node(body: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: body },
       Edge { label: Named { name: ^loop_bound_edge }, target: loop_eval_measure() }
@@ -277,7 +277,7 @@ fn loop_eval_loop_node(body: Node) -> Node {
 fn loop_eval_pick_call(callee: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [Edge { label: Positional, target: callee }]
   }
 }
@@ -285,13 +285,13 @@ fn loop_eval_pick_call(callee: Node) -> Node {
 fn loop_eval_arrow_with_body(body: Node) -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge {
         label: Positional,
         target: Node {
           kind: TypeNode { connective: Conj },
-          occurrence_id: SyntheticOccurrence,
+          occurrence_id: OccurrenceSynthetic,
           children: []
         }
       },
@@ -305,7 +305,7 @@ fn loop_eval_arrow_with_body(body: Node) -> Node {
 fn loop_eval_tree_root(call: Node, expected: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Named { name: ^loop_eval_actual }, target: call },
       Edge { label: Named { name: ^loop_eval_expected }, target: expected }

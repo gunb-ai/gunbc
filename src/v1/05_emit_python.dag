@@ -89,7 +89,7 @@ import v1.compiler.emit {
 
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
-  escape_json_string, module_to_filename, make_indent,
+  escape_json_string, module_to_filename, module_filename_collision_diagnostics, make_indent,
   to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
   sanitize_service_name, capitalize_first, service_var_name,
   escape_string_literal_body, unique_strings, to_string, to_string_helper,
@@ -106,6 +106,10 @@ import v1.compiler.emit_core_support {
 
 
 fn emit_python(typed: ResolvedGraph) -> EmitResult {
+  let filename_collisions = module_filename_collision_diagnostics(typed: typed)
+  if filename_collisions |> count > 0 {
+    return EmitResult { files: [], diagnostics: filename_collisions }
+  }
   let registry = typed.item_registry
   let test_projections = extract_test_projections(typed: typed)
   let module_files = typed.modules |> map(tm => emit_py_module(typed_module: tm, registry: registry))

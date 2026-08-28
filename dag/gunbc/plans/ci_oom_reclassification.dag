@@ -1,7 +1,7 @@
 module gunbc.plans.ci_oom_reclassification
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
 
@@ -44,6 +44,7 @@ fn ci_oom_reclassification_body() -> List<MarkdownBlock> {
 }
 
 data ci_oom_reclassification_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "ci-oom-reclassification",
   title: "CI OOM reclassification — the green-on-main LIVE-flip prerequisite (cross-run clustering consumer)",
   body: ci_oom_reclassification_body(),

@@ -1,4 +1,4 @@
-//! S2a increment C cross-worker typed-module store (cross-worker-typecheck-share-design.md §4).
+//! S2a increment C cross-worker typed-module store (cross-worker-typecheck-share-design (deleted) §4).
 //!
 //! Only the **typed_module_cache** (the 52% prize path) crosses worker threads when
 //! explicitly armed via `build_multi_entry_index_with_shared_caches`. Parse, normalize,
