@@ -5,6 +5,7 @@ import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
   GeneratedArtifactObserved,
   GeneratedArtifactObservationRefused,
+  GeneratedArtifactCommittedAbsent,
   GeneratedArtifactPopulationFindings,
   UnadjudicatedArtifactFinding,
   assess_generated_artifact_population,
@@ -13,7 +14,8 @@ import gunbc.generated_artifact_assessment {
   generated_artifact_population_findings_empty,
   generated_artifact_population_findings_rendered,
   expected_cardinality_finding_rendered,
-  observation_finding_rendered
+  observation_finding_rendered,
+  unadjudicated_finding_rendered
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -153,6 +155,65 @@ test fn duplicate_and_missing_are_distinct_findings() -> Bool {
   (f.expected_cardinality |> count) == 2
     && any(rendered, r => string_contains(s: r, pattern: "found 0"))
     && any(rendered, r => string_contains(s: r, pattern: "more than one"))
+}
+
+// ---------------------------------------------------------------------------------------------
+// COMMITTED-ABSENT: a verdict about the tree, not a failure to reach one.
+// ---------------------------------------------------------------------------------------------
+
+fn absent_observation(a: GeneratedArtifact, path: String) -> GeneratedArtifactObservation {
+  GeneratedArtifactCommittedAbsent { artifact: a, path: path, detail: concat("no entry is listed for ", path) }
+}
+
+// ABSENT IS ADJUDICATED; REFUSED IS NOT. These two used to share one arm, and the collapse is what
+// this change removes. The pairing is the assertion: the same population, one absent artifact and
+// one refused artifact, must land in DIFFERENT fields -- absent as an observation finding (a
+// verdict about the repository tree) and refused as unadjudicated (no verdict was reached). A
+// carrier that folded them together fails the second clause while passing the first.
+test fn absent_is_a_finding_and_refused_is_unadjudicated() -> Bool {
+  let f = generated_artifact_population_findings(
+    expected: [DesignArtifact, RoadmapArtifact],
+    observations: [
+      absent_observation(a: DesignArtifact, path: "DESIGN.md"),
+      GeneratedArtifactObservationRefused { artifact: RoadmapArtifact, path: "ROADMAP.md", cause: "listed and could not be read" }
+    ]
+  )
+  ((f.observation_failures |> count) == 1)
+    && ((f.unadjudicated |> count) == 1)
+    && ((f.expected_cardinality |> count) == 0)
+}
+
+// ACCEPTANCE ITEM 7, STATED AS A TEST: CommittedArtifactAbsent and ExpectedArtifactObservationMissing
+// must be distinct. Both mean "the artifact is not accounted for" to a careless reader, and their
+// remedies are opposite -- absent is a fact about the tree that asks whether the file was ever meant
+// to exist, missing is a completeness defect in the OBSERVER that adjudicated nothing. Here the same
+// two identities produce one of each, in different fields, from one population.
+test fn committed_absent_is_distinct_from_expected_observation_missing() -> Bool {
+  let f = generated_artifact_population_findings(
+    expected: [DesignArtifact, RoadmapArtifact],
+    observations: [absent_observation(a: DesignArtifact, path: "DESIGN.md")]
+  )
+  let absent_rendered = map(f.observation_failures, x => observation_finding_rendered(f: x))
+  let missing_rendered = map(f.expected_cardinality, x => expected_cardinality_finding_rendered(f: x))
+  ((f.observation_failures |> count) == 1)
+    && ((f.expected_cardinality |> count) == 1)
+    && any(absent_rendered, r => string_contains(s: r, pattern: "committed artifact is absent"))
+    && any(missing_rendered, r => string_contains(s: r, pattern: "never adjudicated"))
+}
+
+// THE ABSENT REMEDY MUST NOT BE A BARE REGENERATE. DESIGN records this gate's first red including a
+// markdown file deleted ON PURPOSE by a commit whose subject was that the .dag carrier is the
+// authority; regenerating would have permanently and silently reversed that decision. So the
+// load-bearing clause is the NEGATIVE one: the absent line must not send the reader to main_wet
+// without first asking whether the artifact belongs in the tree at all.
+test fn absent_remedy_asks_whether_the_artifact_should_exist_before_regenerating() -> Bool {
+  let f = generated_artifact_population_findings(
+    expected: [DesignArtifact],
+    observations: [absent_observation(a: DesignArtifact, path: "DESIGN.md")]
+  )
+  let rendered = map(f.observation_failures, x => observation_finding_rendered(f: x))
+  any(rendered, r => string_contains(s: r, pattern: "establish that projection policy requires"))
+    && !any(rendered, r => string_contains(s: r, pattern: "main_wet"))
 }
 
 // THE PATH BYTES ARE PINNED AGAINST INDEPENDENTLY AUTHORED LITERALS, because artifact_path stopped

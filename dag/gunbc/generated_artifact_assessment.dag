@@ -12,15 +12,23 @@ type GeneratedArtifactObservation
       committed_content: String,
       extra_validation: Bool
     }
+  | GeneratedArtifactCommittedAbsent {
+      artifact: GeneratedArtifact,
+      path: String,
+      detail: String
+    }
   | GeneratedArtifactObservationRefused {
       artifact: GeneratedArtifact,
       path: String,
       cause: String
     }
 
+data committed_absent_arm_note: String = "ABSENT IS NOT A REFUSAL, AND THE DISTINCTION IS THE WHOLE REASON THIS ARM EXISTS. The producer previously mapped EVERY unsuccessful read to GeneratedArtifactObservationRefused, so `the observation could not be made` and `the observation was made and the file is not there` shared one arm. They have opposite owners: a refusal names an authority to repair and reached NO verdict, while an absence IS a verdict about the repository tree and asks whether the artifact was ever meant to be committed. DESIGN carries the receipt for getting this wrong -- this gate's first red included a markdown file deleted ON PURPOSE, and the regenerate remedy would have silently resurrected it.\n\nIT IS ALSO DISTINCT FROM ExpectedArtifactObservationMissing, which is the adjacent confusion. That finding says the POPULATION has no row for an expected identity -- a completeness defect in the observer. This arm says the observer ran, produced a row, and the row reports the committed path is not on disk. Different execution provenance, different remedy.\n\nTHE ABSENCE IS ESTABLISHED, NOT INFERRED. It is produced only where a directory LISTING succeeded and did not name the entry, never from a read failing -- because a read's success channel is exactly the channel that cannot separate absent from unreadable. `detail` carries the established absence's own rendering (which directory was listed, which name was not in it), so a consumer can say what it did not find rather than only that it found nothing."
+
 fn observation_artifact(o: GeneratedArtifactObservation) -> GeneratedArtifact {
   match o {
     GeneratedArtifactObserved { artifact, path: _, generated_content: _, committed_content: _, extra_validation: _ } => artifact
+    GeneratedArtifactCommittedAbsent { artifact, path: _, detail: _ } => artifact
     GeneratedArtifactObservationRefused { artifact, path: _, cause: _ } => artifact
   }
 }
@@ -28,6 +36,7 @@ fn observation_artifact(o: GeneratedArtifactObservation) -> GeneratedArtifact {
 fn observation_path(o: GeneratedArtifactObservation) -> String {
   match o {
     GeneratedArtifactObserved { artifact: _, path, generated_content: _, committed_content: _, extra_validation: _ } => path
+    GeneratedArtifactCommittedAbsent { artifact: _, path, detail: _ } => path
     GeneratedArtifactObservationRefused { artifact: _, path, cause: _ } => path
   }
 }
@@ -65,6 +74,7 @@ type UnadjudicatedArtifactFinding {
 
 type GeneratedArtifactObservationFinding
   = GeneratedArtifactContentDiffers { artifact: GeneratedArtifact, path: String }
+  | GeneratedArtifactCommittedArtifactAbsent { artifact: GeneratedArtifact, path: String, detail: String }
   | GeneratedArtifactExtraValidationFailed { artifact: GeneratedArtifact, path: String }
 
 type GeneratedArtifactPopulationFindings {
@@ -79,6 +89,8 @@ data observation_findings_note: String = "THE LEAF, DESCENDED. The former assess
 fn observation_findings(o: GeneratedArtifactObservation) -> List<GeneratedArtifactObservationFinding> {
   match o {
     GeneratedArtifactObservationRefused { artifact, path, cause } => []
+    GeneratedArtifactCommittedAbsent { artifact, path, detail } =>
+      [GeneratedArtifactCommittedArtifactAbsent { artifact: artifact, path: path, detail: detail }]
     GeneratedArtifactObserved { artifact, path, generated_content, committed_content, extra_validation } =>
       concat(
         if generated_content == committed_content { [] } else {
@@ -117,6 +129,7 @@ fn unadjudicated_findings(observations: List<GeneratedArtifactObservation>) -> L
     match o {
       GeneratedArtifactObservationRefused { artifact, path, cause } =>
         concat(acc, [UnadjudicatedArtifactFinding { artifact: artifact, path: path, cause: cause }])
+      GeneratedArtifactCommittedAbsent { artifact, path, detail } => acc
       GeneratedArtifactObserved { artifact, path, generated_content, committed_content, extra_validation } => acc
     }
   })
@@ -164,6 +177,11 @@ fn observation_finding_rendered(f: GeneratedArtifactObservationFinding) -> Strin
   match f {
     GeneratedArtifactContentDiffers { artifact: _, path } =>
       concat(path, " — committed content differs from authority → this is a GENERATED projection; do not hand-edit, regenerate via main_wet on dag/tools/generated_artifact_gate.dag")
+    GeneratedArtifactCommittedArtifactAbsent { artifact: _, path, detail } =>
+      concat(
+        concat(concat(path, " — committed artifact is absent: "), detail),
+        " → establish that projection policy requires this artifact BEFORE regenerating it; a deliberate deletion regenerated here is silently reversed"
+      )
     GeneratedArtifactExtraValidationFailed { artifact: _, path } =>
       concat(path, " — extra validation failed → repair the generated artifact's structural validity at its authority; regeneration alone will reproduce the same invalid bytes")
   }
