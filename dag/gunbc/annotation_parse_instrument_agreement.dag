@@ -1,7 +1,7 @@
 module gunbc.annotation_parse_instrument_agreement
 
 import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
-import std.measure { second }
+import std.measure { second, ByteSize, byte_size, byte_size_count }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.disposition { Disposition, Terminal, SingleAuthority }
 import extdeps.posix.rusage { RusageMaxrssObservation, RusageChildren }
@@ -114,7 +114,7 @@ type CompilerBuild {
   observed_on: NonEmptyStr
   path: NonEmptyStr
   content_digest: NonEmptyStr
-  byte_length: Int
+  byte_length: ByteSize
   provenance: BuildProvenance
 }
 
@@ -148,7 +148,7 @@ data source_build: CompilerBuild = CompilerBuild {
   observed_on: "session quick-lynx-237 (measured by this receipt's author)" as NonEmptyStr,
   path: "target/release/gunbc" as NonEmptyStr,
   content_digest: "md5:e5f35d562fe512cbb965e8b39adc7937" as NonEmptyStr,
-  byte_length: 25936008,
+  byte_length: byte_size(count: 25936008),
   provenance: BuiltFromRevision { revision: measured_revision, working_tree_dirty: false }
 }
 
@@ -163,7 +163,7 @@ data installed_build: CompilerBuild = CompilerBuild {
   observed_on: "session quick-lynx-237 (measured by this receipt's author)" as NonEmptyStr,
   path: "/usr/local/bin/gunbc" as NonEmptyStr,
   content_digest: "md5:b39fa74a51d9dee146ace796a7598f42" as NonEmptyStr,
-  byte_length: 13240632,
+  byte_length: byte_size(count: 13240632),
   provenance: ProvenanceUnestablished {
     why: "rejects --version with `error: unexpected argument '--version' found`, so it cannot name the revision it was built from; its whole-root output also still prints the pre-compile_emission `indexed N modules / resolved N sources (transitive import closure)` wording, which places it before that transaction landed" as NonEmptyStr
   }
@@ -179,7 +179,7 @@ data reporting_lane_installed_build: CompilerBuild = CompilerBuild {
   observed_on: "session zesty-crane-477 (relayed; measured by that lane, not by this receipt's author)" as NonEmptyStr,
   path: "/usr/local/bin/gunbc" as NonEmptyStr,
   content_digest: "md5:3fd1fabf4d1b28412eabcc70f281e3d0" as NonEmptyStr,
-  byte_length: 13240632,
+  byte_length: byte_size(count: 13240632),
   provenance: ProvenanceUnestablished {
     why: "rejects --version with the same message, so it too cannot name its revision" as NonEmptyStr
   }
@@ -191,7 +191,7 @@ data routing_lane_installed_build: CompilerBuild = CompilerBuild {
   observed_on: "session silent-bear-842 (relayed; measured by that lane, not by this receipt's author)" as NonEmptyStr,
   path: "/usr/local/bin/gunbc" as NonEmptyStr,
   content_digest: "md5:9daad899de93c5c978a94e5c5847e318" as NonEmptyStr,
-  byte_length: 13240632,
+  byte_length: byte_size(count: 13240632),
   provenance: ProvenanceUnestablished {
     why: "rejects --version with the same message; observed a further day older than the other two" as NonEmptyStr
   }
@@ -213,7 +213,7 @@ fn installed_builds_are_distinct(a: CompilerBuild, b: CompilerBuild) -> Bool {
 }
 
 fn installed_builds_agree_on_byte_length(a: CompilerBuild, b: CompilerBuild) -> Bool {
-  a.byte_length == b.byte_length
+  byte_size_count(b: a.byte_length) == byte_size_count(b: b.byte_length)
 }
 
 // ── HOW `gunbc` ON PATH IS REACHED ────────────────────────────────────────────────────────────
