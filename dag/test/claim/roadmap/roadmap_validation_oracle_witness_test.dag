@@ -310,7 +310,7 @@ test fn declaration_scan_ignores_the_name_inside_a_note() -> Bool {
   ) == 1
 }
 
-data unpinned_dependency_note: String = "review 45278. The entry-file pin closes the direct attack but leaves a witness's IMPORTED test modules — fixtures and shared assertions, which are oracle rather than subject — outside the digest. The fixture below is the reviewer's own measured specimen reproduced in shape: dag/test/claim/scm_compatibility_shape_witness_test.dag imports four test.claim modules, so weakening one of them would green Verify without moving the pinned entry's digest. The residue is therefore made unreachable rather than deferred: such an oracle refuses. The paired green is what keeps this from being a blanket rejection — a witness importing only subject and std modules still verifies, so the refusal discriminates on the oracle-side dependency rather than on having imports at all."
+data unpinned_dependency_note: String = "review 45278. The entry-file pin closes the direct attack but leaves a witness's IMPORTED test modules — fixtures and shared assertions, which are oracle rather than subject — outside the digest. The fixture below is the reviewer's own measured specimen reproduced in shape: dag/test/claim/scm/scm_compatibility_shape_witness_test.dag imports four test.claim modules, so weakening one of them would green Verify without moving the pinned entry's digest. The residue is therefore made unreachable rather than deferred: such an oracle refuses. The paired green is what keeps this from being a blanket rejection — a witness importing only subject and std modules still verifies, so the refusal discriminates on the oracle-side dependency rather than on having imports at all."
 
 fn witness_source_importing_test_helpers() -> String {
   join([
@@ -784,7 +784,7 @@ fn receipt_for(verdict: ValidationVerdict) -> String {
       executions: [
         ValidationExecution {
           validation: GunbcClaimValidation {
-            entry: "dag/test/claim/roadmap_validation_oracle_witness_test.dag" as FilePath,
+            entry: "dag/test/claim/roadmap/roadmap_validation_oracle_witness_test.dag" as FilePath,
             function: "verify_lamp_stays_pending_without_a_receipt" as NonEmptyStr,
           },
           command: ModeledValidationCommand {

@@ -76,7 +76,7 @@ test fn floor_entry_resolution_host_boundary_is_declared() -> Bool {
     )
 }
 
-data fixture_witness_entry: String = "dag/test/claim/floor_discovery_roster_fixture_test.dag"
+data fixture_witness_entry: String = "dag/test/claim/floor/floor_discovery_roster_fixture_test.dag"
 data fixture_witness_function: String = "floor_discovery_roster_fixture_witness"
 data fixture_test_fn_content: String = "test fn floor_discovery_roster_fixture_witness() -> Bool { true }\n"
 data fixture_test_data_content: String = "test data floor_discovery_data_fixture: Bool = true\n"
@@ -84,7 +84,7 @@ data fixture_misplaced_entry: String = "src/v2/lens/example.dag"
 data fixture_barren_test_entry: String = "dag/test/claim/floor_discovery_barren_fixture_test.dag"
 data fixture_barren_test_content: String = "module test.claim.floor_discovery_barren_fixture_test\n\nfn floor_discovery_barren_helper() -> Bool { true }\n"
 data fixture_misplaced_wire_contract_entry: String = "dag/test/fixture/floor_discovery/misplaced_wire_contract.dag"
-data fixture_live_tree_entry: String = "dag/test/claim/floor_discovery_roster_fixture_test.dag"
+data fixture_live_tree_entry: String = "dag/test/claim/floor/floor_discovery_roster_fixture_test.dag"
 
 fn fixture_wire_contract_coproduct_content() -> String {
   concat(
@@ -280,7 +280,7 @@ test fn floor_discovery_sidecar_test_decl_misplaced_red_control() -> Bool {
 
 test fn floor_discovery_sidecar_test_decl_allowed_holds() -> Bool {
   match floor_discovery_test_decl_sidecar_violation(
-    entry_path: "dag/test/claim/floor_discovery_roster_fixture_test.dag"
+    entry_path: "dag/test/claim/floor/floor_discovery_roster_fixture_test.dag"
   ) {
     Absent => true
     Present { value: _ } => false

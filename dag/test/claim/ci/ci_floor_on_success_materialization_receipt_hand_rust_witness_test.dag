@@ -30,5 +30,5 @@ test fn scaffold_names_bounded_deferral_receipt() -> Bool {
     && !(ci_floor_on_success_materialization_receipt_claim_executor_seed_receipt_plan_anchor == "")
     && !(ci_floor_on_success_materialization_receipt_claim_executor_seed_roadmap_lane_anchor == "")
     && ci_floor_on_success_materialization_receipt_claim_executor_seed_witness_entry ==
-      "dag/test/claim/ci_floor_on_success_materialization_receipt_hand_rust_witness_test.dag"
+      "dag/test/claim/ci/ci_floor_on_success_materialization_receipt_hand_rust_witness_test.dag"
 }

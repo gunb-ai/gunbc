@@ -78,7 +78,7 @@ fn empty_contract() -> WorkItemExecutionContract {
 
 fn one_validation_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
-    entry: "dag/test/claim/roadmap_verify_witness_test.dag" as FilePath,
+    entry: "dag/test/claim/roadmap/roadmap_verify_witness_test.dag" as FilePath,
     function: "roadmap_verify_keystone_holds" as NonEmptyStr,
   )
 }
