@@ -84,9 +84,10 @@ type SharedLayerProducer {
 // witness_test holds the repair and its two controls. Against the pre-repair binary the repair arm
 // returns false and both controls return true; against the post-repair binary all three return
 // true -- taken by running each test fn directly, which is a real execution receipt. It is NOT a
-// standing one: that file declares ReadsLiveTree truthfully, and v2.workflow.required_floor's
-// retained DeclinedLiveTree arm therefore discovers and declines it, so nothing re-takes these
-// measurements until that arm's staged deletion lands. BLAST RADIUS: a full required-regen over the
+// standing one on main before this cut: that file declares ReadsLiveTree truthfully, and the
+// now-deleted DeclinedLiveTree arm discovered and declined it. With the root deletion these rows
+// execute; their terminal dispositions, rather than this pre-cut note, state the current result.
+// BLAST RADIUS: a full required-regen over the
 // 135-module seed subject drifted exactly one file, v1_compiler_emit_rust.rs -- the repair's own
 // mirror -- and re-ran first_generation_equal=true once that mirror was installed.
 //

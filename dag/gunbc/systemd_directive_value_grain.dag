@@ -8,7 +8,9 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //
 // The systemd unit grammar in extdeps.systemd.unit_file models WHICH directive goes in WHICH
 // section as structure -- Slice= cannot be written into [Unit], WantedBy= cannot be written into
-// [Service] -- and models every directive's VALUE as a string. That is the correct boundary for a
+// [Service] -- and, WHEN THIS ROW WAS FILED, modeled every directive's VALUE as a string. That
+// reading is still true of the [Unit], [Service] and [Timer] vocabularies and no longer of [Slice];
+// the discharge is narrated below. Carrying the wire as text was the correct boundary for a
 // cited transport: systemd's own directive syntax is textual and admits several spellings per axis,
 // so a grammar that refused everything but one form would be modeling a choice upstream did not
 // make. The residue this module files is not that the wire is text. It is that two specific values
@@ -19,24 +21,36 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // -- and #8827 was a renderer migration. A contract change smuggled inside a migration is read by
 // reviewers who came for the migration.
 //
-// THE ByteSize AUTHORITY IS INTACT AND IS SPENT AT EXACTLY ONE LINE, which is the difference
-// between this filing and a general complaint about stringly values. gunbc.build_cache_unit
-// compile_pool_slice_unit_file receives a ByteSize and calls to_string(byte_size_count(b: sized))
-// to fill SliceMemoryMax and SliceMemoryHigh. So the magnitude is modeled all the way down to the
-// constructor argument and flattened there, not carried as text through the vertical -- a reviewer
-// checking whether a flat scalar propagates INWARD will correctly find that it does not.
+// THE SLICE HALF OF THIS FILING IS DISCHARGED, AND WHAT REPLACED IT IS NOT WHAT THE ROW PREDICTED.
 //
-// WHAT IS ACTUALLY LOST is narrower and worth naming precisely: systemd.resource-control(5) accepts
-// MemoryMax as a plain byte count OR with a K/M/G/T suffix OR as a percentage of installed memory,
-// and the directive type cannot say which of those a given value is. Today every producer emits the
-// plain count, so the loss is latent rather than live -- there is no defect to point at, which is
-// exactly why it is filed rather than fixed. It becomes live the first time a producer wants a
-// percentage, at which point a producer emitting a percentage and one emitting a count are
-// indistinguishable to any consumer reading the directive back.
+// AS FILED, the two slice directives took NonEmptyStr and gunbc.build_cache_unit
+// compile_pool_slice_unit_file spent its ByteSize at exactly two lines --
+// to_string(byte_size_count(b: sized)) -- so the magnitude was modeled all the way down to the
+// constructor argument and flattened there. Both of those lines are gone: the mint takes the
+// ByteSize directly and the flattening deleted with them.
 //
-// STATED AS A RUNG (DESIGN section 4b): that axis sits at MITIGATABLE and its ceiling is
+// WHAT MOVED THE SHAPE was gunbc.systemd_property_directive_overlap rather than this row. The cell
+// resource boundary needs five knobs, not two, and adding MemorySwapMax=, TasksMax= and CPUWeight=
+// as three more arms would have widened the knob-name fork that module counts from two to five. So
+// SystemdSliceDirective is now a sole_constructor record pairing a SystemdUnitProperty with a
+// modeled value, reachable only through per-knob mints -- zero knob names minted, one wire owner,
+// and no observation-only property producible because nothing mints one. The named declarations
+// this row was premised on surviving -- SliceMemoryMax and SliceMemoryHigh -- DISSOLVED, which
+// falsifies the clause below that assumed they would stay and only their field type would change.
+//
+// WHAT IS STILL LOST ON THIS AXIS, narrowed to what the new shape genuinely cannot say:
+// systemd.resource-control(5) accepts MemoryMax as a plain byte count OR with a K/M/G/T suffix OR
+// as a PERCENTAGE of installed memory. The byte count is now a ByteSize and the suffixed form is a
+// rendering of that same magnitude, so neither is a lost distinction any more. The PERCENTAGE is:
+// it is a different quantity -- a fraction of a host figure this repository does not hold -- and
+// SystemdDirectiveValue has no arm for it. Today every producer emits the plain count, so the loss
+// stays latent exactly as filed, and it becomes live the first time a producer wants a percentage.
+//
+// STATED AS A RUNG (DESIGN section 4b): the percentage axis sits at MITIGATABLE and its ceiling is
 // structurally impossible, because membership is decidable -- the accepted forms are a closed,
-// cited set. It is not a ratchet.
+// cited set. It is not a ratchet. TasksMax= carries a second, separate grain residue: its value is
+// a bare Int on both the write side and extdeps.systemd's read-side parse, and extdeps.systemd
+// declares that gap itself against feature:task-count-measure-carrier.
 data systemd_directive_value_grain_scope: Disposition = SingleAuthority
 
 // Environment { assignment: NonEmptyStr } CARRIES A KEY=VALUE PAIR AS ONE OPAQUE STRING, and the
@@ -121,15 +135,23 @@ fn environment_name_authority_is_split() -> Bool {
           |> any(v => match v.authority { ModeledUpstream => false SpelledInConsumer => true }))
 }
 
-// THE TRIGGER IS UNBOUND ON PURPOSE.
+// THE TRIGGER IS UNBOUND ON PURPOSE, AND IT STILL IS AFTER THE SLICE HALF LANDED.
 //
-// The terminal shape does not delete either named declaration: SliceMemoryMax stays and its `bytes`
-// field becomes a modeled value, Environment stays and its `assignment` becomes two fields. So
-// neither DeclarationRetires nor DeclarationAppears fits -- the first is false because the subject
-// survives, and the second would require naming a symbol nobody has declared, which is the
-// fabricated-citation class. Picking a ref that makes the row LOOK bound would be that failure
-// arriving by the back door, so the row states its condition in prose and is honest that no
-// mechanism watches it.
+// The original reasoning was that the terminal shape deletes no named declaration -- SliceMemoryMax
+// stays and its `bytes` field becomes a modeled value, Environment stays and its `assignment`
+// becomes two fields -- so neither DeclarationRetires nor DeclarationAppears fits. THE FIRST HALF OF
+// THAT PREMISE TURNED OUT FALSE: SliceMemoryMax and SliceMemoryHigh were deleted rather than
+// re-fielded. The conclusion survives anyway, for the SECOND half's reason: Environment stays and is
+// re-fielded, so a retirement ref would be false of the obligation that remains, and naming a symbol
+// nobody has declared is the fabricated-citation class. Picking a ref that makes the row LOOK bound
+// would be that failure arriving by the back door.
+//
+// THE ROW IS NOT DELETED, AND THAT IS THE POINT OF REWRITING RATHER THAN REMOVING IT. It carries
+// THREE obligations -- the slice value grain, Environment becoming two fields, and the three
+// remaining sccache names moving to extdeps.cache.sccache -- and it dissolves only when all three
+// land together. One of the three is now done; a prose row deleted for one reason takes everything
+// in it, so the other two are restated below unchanged and the deletion condition still requires
+// them.
 data systemd_directive_value_grain_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "the systemd directive vocabulary decomposes its values: SliceMemoryMax and SliceMemoryHigh take a modeled magnitude that can express the byte count, the suffixed form and the percentage form systemd.resource-control(5) admits, and Environment takes a variable name and a value as two fields rather than one fused assignment -- at which point the remaining three sccache variable names gunbc spells as literals move to extdeps.cache.sccache beside the five modeled rows. SCCACHE_DIR and SCCACHE_CACHE_SIZE moved early because the readiness producer now reads those exact upstream names as well as the renderer writing them; leaving either literal in both consumers would have grown the fork this roster exists to count. This row deletes when the value-grain work and the remaining name move land together." as NonEmptyStr,
+  description: "the systemd directive vocabulary decomposes its values. THE SLICE CLAUSE IS DISCHARGED AND IS RESTATED HERE AS DONE RATHER THAN DROPPED, because the shape that discharged it is not the shape this clause predicted: SliceMemoryMax and SliceMemoryHigh do not survive taking a modeled magnitude -- they DISSOLVED into extdeps.systemd.unit_file SystemdSliceDirective, a sole_constructor record pairing a SystemdUnitProperty with a modeled SystemdDirectiveValue and reachable only through per-knob mints, on gunbc.systemd_property_directive_overlap's reading that adding three more knob-named arms would widen the fork that module counts. The byte count and the suffixed form are one ByteSize and are no longer a lost distinction; the PERCENTAGE form remains unmodeled and is the residue that survives on this axis. WHAT REMAINS OUTSTANDING, and what this row still waits on: Environment takes a variable name and a value as two fields rather than one fused assignment -- at which point the remaining three sccache variable names gunbc spells as literals move to extdeps.cache.sccache beside the five modeled rows. SCCACHE_DIR and SCCACHE_CACHE_SIZE moved early because the readiness producer now reads those exact upstream names as well as the renderer writing them; leaving either literal in both consumers would have grown the fork this roster exists to count. This row deletes when the Environment decomposition and the remaining name move land together; the slice value grain no longer gates it." as NonEmptyStr,
 )
