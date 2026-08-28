@@ -1,0 +1,249 @@
+module gunbc.endpoint_residue_census
+
+import std.types { String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.residue_occurrence {
+  ResidueSubject,
+  ResidueCensus, ResidueCensusStanding, admit_residue_census,
+  ResidueOccurrenceObservation, ResidueDependencyStanding, dependency_join_pending,
+  EnclosingCarrier, EnclosedByDeclaration, EnclosedByAnnotationOn,
+  SyntacticChannel, StringData, SourceAnnotation, RenderedReceiptText, FixtureLocalInput, TypedCitation,
+  FixtureCarrierStanding, FixtureCarrier, ProductionCarrier,
+  ResidueScanRefusal, ScanSubjectUnscannable,
+}
+
+// THE FIRST RESIDUE CENSUS, bound to revision 9fc2c531d5f2 and to two subject families that this
+// migration will make stale. It is an AUTHORED OBSERVATION read off the tree at that revision, not
+// a produced one: nothing in this repository can scan source from .dag today, so the rows are
+// hand-read and the census says so in its own limitation field rather than letting a green
+// admission be read as completeness.
+//
+// WHY A CENSUS AT ALL, when slice 0A's boundary census already exists: 0A enumerates SEMANTIC
+// consumers, and its whole discipline is that a row must carry a dependency edge. These rows carry
+// none. That is precisely what makes them dangerous and what makes them invisible to the mechanism
+// 0A relies on -- deleting X refuses at every consumer and says nothing at all about any row here.
+// DESIGN's delete-first doctrine calls the deletion the census; this module is the declared,
+// bounded exception that doctrine requires for what cannot break loudly.
+//
+// NO ROW HERE IS CLASSIFIED LOUD OR SILENT, and the type makes that unwritable rather than
+// discouraged. See gunbc.residue_occurrence for why: loudness is a property of the enclosing
+// declaration's semantic edges and the join that supplies them is slice 0B.1.
+
+data endpoint_residue_census_revision: NonEmptyStr = "9fc2c531d5f2" as NonEmptyStr
+
+fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn subject_endpoint_authority_name() -> ResidueSubject {
+  "fleet_probe_endpoint_for" as ResidueSubject
+}
+
+fn subject_srv5_address() -> ResidueSubject { "192.168.1.222" as ResidueSubject }
+fn subject_srv6_address() -> ResidueSubject { "192.168.1.223" as ResidueSubject }
+
+fn endpoint_residue_subjects() -> List<ResidueSubject> {
+  [subject_endpoint_authority_name(), subject_srv5_address(), subject_srv6_address()]
+}
+
+fn in_declaration(module_path: String, decl_name: String) -> EnclosingCarrier {
+  EnclosedByDeclaration { declaration: decl_ref(module_path: module_path, decl_name: decl_name) }
+}
+
+fn in_annotation_on(module_path: String, decl_name: String) -> EnclosingCarrier {
+  EnclosedByAnnotationOn { annotated_declaration: decl_ref(module_path: module_path, decl_name: decl_name) }
+}
+
+fn occurrence(
+  subject: ResidueSubject,
+  enclosing: EnclosingCarrier,
+  spelling: String,
+  channel: SyntacticChannel,
+  fixture_standing: FixtureCarrierStanding,
+) -> ResidueOccurrenceObservation {
+  ResidueOccurrenceObservation {
+    subject: subject,
+    observed_at_revision: endpoint_residue_census_revision,
+    enclosing: enclosing,
+    observed_spelling: nes(s: spelling),
+    channel: channel,
+    fixture_standing: fixture_standing,
+    dependency_standing: dependency_join_pending(),
+  }
+}
+
+// FAMILY ONE: the authority NAME, spelled where no edge carries it. The first row is the specimen
+// slice 0A found and could not represent -- a receipt line that after the cut goes on PRINTING a
+// claim about an authority that no longer decides the address. It is the sharpest row in the census
+// because its output is consumed by an operator reading a converge receipt, not by the compiler.
+fn authority_name_occurrences() -> List<ResidueOccurrenceObservation> {
+  [
+    occurrence(
+      subject: subject_endpoint_authority_name(),
+      enclosing: in_declaration(module_path: "gunbc.spark.serving_converge_slice_wet", decl_name: "spark_serving_converge_slice_emit_receipt"),
+      spelling: " address_authority=fleet_probe_endpoint_for→dgx_spark_procurement OperatorAllocation\n",
+      channel: RenderedReceiptText,
+      fixture_standing: ProductionCarrier,
+    ),
+    occurrence(
+      subject: subject_endpoint_authority_name(),
+      enclosing: in_declaration(module_path: "gunbc.spark.serving_converge_slice_wet", decl_name: "spark_serving_converge_slice_wet_note"),
+      spelling: "fleet_probe_endpoint_for",
+      channel: StringData,
+      fixture_standing: ProductionCarrier,
+    ),
+    occurrence(
+      subject: subject_endpoint_authority_name(),
+      enclosing: in_declaration(module_path: "gunbc.endpoint_authority_replacement_cut", decl_name: "endpoint_authority_cut_evidence"),
+      spelling: "agreement between the two X entry points fleet_probe_endpoint_for and spark_endpoint_for_binding",
+      channel: StringData,
+      fixture_standing: ProductionCarrier,
+    ),
+    occurrence(
+      subject: subject_endpoint_authority_name(),
+      enclosing: in_annotation_on(module_path: "gunbc.endpoint_authority_replacement_cut", decl_name: "endpoint_authority_cut_note"),
+      spelling: "fleet_probe_endpoint_for",
+      channel: SourceAnnotation,
+      fixture_standing: ProductionCarrier,
+    ),
+    occurrence(
+      subject: subject_endpoint_authority_name(),
+      enclosing: in_declaration(module_path: "gunbc.endpoint_authority_replacement_cut", decl_name: "endpoint_authority_cut_region"),
+      spelling: "fleet_probe_endpoint_for",
+      channel: TypedCitation,
+      fixture_standing: ProductionCarrier,
+    ),
+    occurrence(
+      subject: subject_endpoint_authority_name(),
+      enclosing: in_annotation_on(module_path: "test.claim.host_reach_identity_probe_witness_test", decl_name: "probe_endpoint_agrees_with_the_projection_it_consumes"),
+      spelling: "fleet_probe_endpoint_for",
+      channel: SourceAnnotation,
+      fixture_standing: FixtureCarrier,
+    ),
+    occurrence(
+      subject: subject_endpoint_authority_name(),
+      enclosing: in_declaration(module_path: "test.claim.endpoint_authority_replacement_cut_witness_test", decl_name: "the_region_is_exactly_the_two_endpoint_projections"),
+      spelling: "fleet_probe_endpoint_for",
+      channel: TypedCitation,
+      fixture_standing: FixtureCarrier,
+    ),
+  ]
+}
+
+// FAMILY TWO: the ADDRESSES the router decided, copied into places that will not be told when the
+// decision moves. These are the rows the migration's destination is ABOUT -- "the router no longer
+// decides fleet host addresses" -- and no declaration in this repository owns them, which is why
+// the subject brand carries a free string rather than a DeclarationRef.
+//
+// THE PRODUCTION ROWS ARE HAND-AUTHORED AND NOT GRAPH-DERIVED, per the operator's correction to the
+// slice ruling: fleet_host_key_enrollments carries its endpoints as literals, so nothing propagates
+// a changed address into them.
+fn address_occurrences() -> List<ResidueOccurrenceObservation> {
+  [
+    occurrence(
+      subject: subject_srv5_address(),
+      enclosing: in_declaration(module_path: "gunbc.fleet_host_key_enrollment", decl_name: "fleet_host_key_enrollments"),
+      spelling: "192.168.1.222",
+      channel: StringData,
+      fixture_standing: ProductionCarrier,
+    ),
+    occurrence(
+      subject: subject_srv6_address(),
+      enclosing: in_declaration(module_path: "gunbc.fleet_host_key_enrollment", decl_name: "fleet_host_key_enrollments"),
+      spelling: "192.168.1.223",
+      channel: StringData,
+      fixture_standing: ProductionCarrier,
+    ),
+    occurrence(
+      subject: subject_srv5_address(),
+      enclosing: in_annotation_on(module_path: "gunbc.fleet_host_key_enrollment", decl_name: "HostKeyEnrollmentProvenance"),
+      spelling: "srv5->192.168.1.222",
+      channel: SourceAnnotation,
+      fixture_standing: ProductionCarrier,
+    ),
+    occurrence(
+      subject: subject_srv6_address(),
+      enclosing: in_annotation_on(module_path: "gunbc.fleet_host_key_enrollment", decl_name: "HostKeyEnrollmentProvenance"),
+      spelling: "srv6->192.168.1.223",
+      channel: SourceAnnotation,
+      fixture_standing: ProductionCarrier,
+    ),
+    occurrence(
+      subject: subject_srv5_address(),
+      enclosing: in_declaration(module_path: "test.claim.host_reach_identity_probe_witness_test", decl_name: "spark_probe_targets_are_modeled_addresses_not_names"),
+      spelling: "192.168.1.222",
+      channel: FixtureLocalInput,
+      fixture_standing: FixtureCarrier,
+    ),
+    occurrence(
+      subject: subject_srv6_address(),
+      enclosing: in_declaration(module_path: "test.claim.host_reach_identity_probe_witness_test", decl_name: "spark_probe_targets_are_modeled_addresses_not_names"),
+      spelling: "192.168.1.223",
+      channel: FixtureLocalInput,
+      fixture_standing: FixtureCarrier,
+    ),
+    occurrence(
+      subject: subject_srv6_address(),
+      enclosing: in_declaration(module_path: "test.claim.spark_serving_reboot_probe_witness_test", decl_name: "a_dropped_connection_is_not_read_as_a_rejection"),
+      spelling: "Connection to 192.168.1.223 closed by remote host.",
+      channel: FixtureLocalInput,
+      fixture_standing: FixtureCarrier,
+    ),
+    occurrence(
+      subject: subject_srv5_address(),
+      enclosing: in_declaration(module_path: "test.claim.spark_serving_converge_slice_witness_test", decl_name: "slice_host_report_carries_converged_as_data_matching_its_verdict"),
+      spelling: "192.168.1.222",
+      channel: FixtureLocalInput,
+      fixture_standing: FixtureCarrier,
+    ),
+    occurrence(
+      subject: subject_srv5_address(),
+      enclosing: in_declaration(module_path: "test.claim.fleet_host_key_enrollment_witness_test", decl_name: "witness_empty_registry_yields_no_expectation_and_line_shape_is_exact"),
+      spelling: "192.168.1.222",
+      channel: FixtureLocalInput,
+      fixture_standing: FixtureCarrier,
+    ),
+    occurrence(
+      subject: subject_srv5_address(),
+      enclosing: in_declaration(module_path: "test.claim.fleet_host_key_enrollment_witness_test", decl_name: "witness_empty_registry_yields_no_expectation_and_line_shape_is_exact"),
+      spelling: "192.168.1.222 fixture",
+      channel: FixtureLocalInput,
+      fixture_standing: FixtureCarrier,
+    ),
+    occurrence(
+      subject: subject_srv5_address(),
+      enclosing: in_declaration(module_path: "test.claim.fleet_host_key_enrollment_witness_test", decl_name: "witness_empty_registry_yields_no_expectation_and_line_shape_is_exact"),
+      spelling: "192.168.1.222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE",
+      channel: FixtureLocalInput,
+      fixture_standing: FixtureCarrier,
+    ),
+  ]
+}
+
+// THE ONE THING THE SCAN COULD NOT DO, stated as a counted refusal rather than as a silent absence.
+// spark_endpoint_for_binding is the OTHER covered X entry point and it is not scanned here: its
+// name is a common enough substring of the surrounding prose that a hand read cannot separate a
+// residue spelling from an ordinary mention of the migration itself, and guessing would put
+// transcription errors into the census the containment wall is meant to catch. Recording it as a
+// refusal keeps the deficit countable and rankable; omitting the subject would have made its
+// frequency zero by construction.
+fn endpoint_residue_refusals() -> List<ResidueScanRefusal> {
+  [
+    ScanSubjectUnscannable {
+      subject: "spark_endpoint_for_binding" as ResidueSubject,
+      cause: nes(s: "a hand read cannot separate a residue spelling of this name from an ordinary mention of the migration that is retiring it; the separation needs the 0B.1 edge join, which is the same producer this census's dependency standing is waiting on"),
+    },
+  ]
+}
+
+fn endpoint_residue_census() -> ResidueCensus {
+  ResidueCensus {
+    census_revision: endpoint_residue_census_revision,
+    subjects: endpoint_residue_subjects(),
+    occurrences: concat(authority_name_occurrences(), address_occurrences()),
+    refusals: endpoint_residue_refusals(),
+    limitation: nes(s: "HAND-READ AT ONE REVISION, NOT PRODUCED. Nothing in this repository scans .dag source from .dag today, so these rows were read off the tree at 9fc2c531d5f2 and an omitted occurrence is undetectable here -- exactly as an omitted consumer is undetectable in the 0A boundary census. GRAIN: enclosing declaration x observed spelling x channel, so several identical spellings inside one declaration collapse to one row and a position inside a declaration is deliberately not recorded (a line offset is a second naming scheme for what the containment tree already names, and it rots without anyone touching either end). NO ROW CARRIES A LOUD-OR-SILENT VERDICT and none can: that classification is slice 0B.1's join. ONE SUBJECT IS REFUSED RATHER THAN SCANNED and is counted in the refusals list."),
+  }
+}
+
+fn endpoint_residue_standing() -> ResidueCensusStanding {
+  admit_residue_census(c: endpoint_residue_census())
+}

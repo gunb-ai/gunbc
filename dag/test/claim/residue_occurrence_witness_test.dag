@@ -1,0 +1,326 @@
+module test.claim.residue_occurrence_witness_test
+
+import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.residue_occurrence {
+  ResidueSubject,
+  ResidueCensus, ResidueCensusStanding, ResidueCensusAdmitted, ResidueCensusRefused,
+  ResidueCensusRefusalCause,
+  OccurrenceRevisionMismatch, OccurrenceDoesNotContainItsSubject,
+  OccurrenceSubjectNotEnumerated, OccurrenceDuplicated, CensusEnumeratesNoSubject,
+  admit_residue_census,
+  ResidueOccurrenceObservation, ResidueDependencyStanding, dependency_join_pending,
+  EnclosingCarrier, EnclosedByDeclaration, EnclosedByAnnotationOn,
+  SyntacticChannel, StringData, SourceAnnotation, RenderedReceiptText, FixtureLocalInput, TypedCitation,
+  FixtureCarrierStanding, FixtureCarrier, ProductionCarrier,
+  ResidueScanRefusal, ScanSubjectUnscannable, ScanCarrierUncitable, ScanChannelUndecided,
+}
+import gunbc.endpoint_residue_census {
+  endpoint_residue_census,
+  endpoint_residue_standing,
+  endpoint_residue_subjects,
+  endpoint_residue_refusals,
+}
+
+data residue_occurrence_witness_note: String = "THE CARRIER'S WALLS AND THE PRODUCTION CENSUS, both executed. The mechanism half uses synthetic censuses because a wall is only established by a discriminating RED: a census that admits proves nothing about a census that should refuse. The production half executes the real rows, because whole-tree compilation proves those declarations typecheck and says nothing about what they ANSWER -- the exact gap that made the endpoint cut's own production standing unwitnessed until it was asked for.\n\nWHAT THIS SUITE DELIBERATELY DOES NOT ASSERT: that the census is COMPLETE. It cannot, and neither can any check available today. The population was hand-read at one revision, an omitted occurrence is undetectable from inside, and the census says so in its limitation field. A suite asserting completeness here would be manufacturing exactly the standing the carrier refuses to claim."
+
+fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn fixture_subject() -> ResidueSubject { "fleet_probe_endpoint_for" as ResidueSubject }
+
+fn fixture_carrier() -> EnclosingCarrier {
+  EnclosedByDeclaration { declaration: decl_ref(module_path: "gunbc.fixture", decl_name: "some_decl") }
+}
+
+fn other_carrier() -> EnclosingCarrier {
+  EnclosedByDeclaration { declaration: decl_ref(module_path: "gunbc.fixture", decl_name: "other_decl") }
+}
+
+fn row(
+  subject: ResidueSubject,
+  enclosing: EnclosingCarrier,
+  spelling: String,
+  channel: SyntacticChannel,
+  revision: String,
+) -> ResidueOccurrenceObservation {
+  ResidueOccurrenceObservation {
+    subject: subject,
+    observed_at_revision: nes(s: revision),
+    enclosing: enclosing,
+    observed_spelling: nes(s: spelling),
+    channel: channel,
+    fixture_standing: ProductionCarrier,
+    dependency_standing: dependency_join_pending(),
+  }
+}
+
+fn census_of(subjects: List<ResidueSubject>, rows: List<ResidueOccurrenceObservation>) -> ResidueCensus {
+  ResidueCensus {
+    census_revision: nes(s: "rev-a"),
+    subjects: subjects,
+    occurrences: rows,
+    refusals: [],
+    limitation: nes(s: "fixture"),
+  }
+}
+
+fn causes_of(s: ResidueCensusStanding) -> List<ResidueCensusRefusalCause> {
+  match s {
+    ResidueCensusAdmitted { occurrence_count: _, refusal_count: _ } => []
+    ResidueCensusRefused { causes: cs } => cs
+  }
+}
+
+fn count_causes(s: ResidueCensusStanding, p: fn(ResidueCensusRefusalCause) -> Bool) -> Int {
+  fold(causes_of(s: s), init: 0, f: fn(acc, c) { if p(c) { acc + 1 } else { acc } })
+}
+
+fn is_revision_mismatch(c: ResidueCensusRefusalCause) -> Bool {
+  match c {
+    OccurrenceRevisionMismatch { key: _, row_revision: _, census_revision: _ } => true
+    OccurrenceDoesNotContainItsSubject { key: _, subject: _ } => false
+    OccurrenceSubjectNotEnumerated { key: _, subject: _ } => false
+    OccurrenceDuplicated { key: _ } => false
+    CensusEnumeratesNoSubject => false
+  }
+}
+
+fn is_containment_failure(c: ResidueCensusRefusalCause) -> Bool {
+  match c {
+    OccurrenceDoesNotContainItsSubject { key: _, subject: _ } => true
+    OccurrenceRevisionMismatch { key: _, row_revision: _, census_revision: _ } => false
+    OccurrenceSubjectNotEnumerated { key: _, subject: _ } => false
+    OccurrenceDuplicated { key: _ } => false
+    CensusEnumeratesNoSubject => false
+  }
+}
+
+fn is_duplicate(c: ResidueCensusRefusalCause) -> Bool {
+  match c {
+    OccurrenceDuplicated { key: _ } => true
+    OccurrenceRevisionMismatch { key: _, row_revision: _, census_revision: _ } => false
+    OccurrenceDoesNotContainItsSubject { key: _, subject: _ } => false
+    OccurrenceSubjectNotEnumerated { key: _, subject: _ } => false
+    CensusEnumeratesNoSubject => false
+  }
+}
+
+fn is_unenumerated_subject(c: ResidueCensusRefusalCause) -> Bool {
+  match c {
+    OccurrenceSubjectNotEnumerated { key: _, subject: _ } => true
+    OccurrenceRevisionMismatch { key: _, row_revision: _, census_revision: _ } => false
+    OccurrenceDoesNotContainItsSubject { key: _, subject: _ } => false
+    OccurrenceDuplicated { key: _ } => false
+    CensusEnumeratesNoSubject => false
+  }
+}
+
+fn is_no_subject(c: ResidueCensusRefusalCause) -> Bool {
+  match c {
+    CensusEnumeratesNoSubject => true
+    OccurrenceRevisionMismatch { key: _, row_revision: _, census_revision: _ } => false
+    OccurrenceDoesNotContainItsSubject { key: _, subject: _ } => false
+    OccurrenceSubjectNotEnumerated { key: _, subject: _ } => false
+    OccurrenceDuplicated { key: _ } => false
+  }
+}
+
+fn admitted_counts(s: ResidueCensusStanding, occurrences: Int, refusals: Int) -> Bool {
+  match s {
+    ResidueCensusAdmitted { occurrence_count: o, refusal_count: r } => o == occurrences && r == refusals
+    ResidueCensusRefused { causes: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1. The positive control. Without it every refusal below could be produced by a
+//    census that refuses unconditionally.
+// ---------------------------------------------------------------------------
+
+test fn a_coherent_census_admits_and_counts_both_populations() -> Bool {
+  let c = ResidueCensus {
+    census_revision: nes(s: "rev-a"),
+    subjects: [fixture_subject()],
+    occurrences: [
+      row(subject: fixture_subject(), enclosing: fixture_carrier(), spelling: "calls fleet_probe_endpoint_for in prose", channel: StringData, revision: "rev-a"),
+      row(subject: fixture_subject(), enclosing: other_carrier(), spelling: "fleet_probe_endpoint_for", channel: SourceAnnotation, revision: "rev-a"),
+    ],
+    refusals: [
+      ScanSubjectUnscannable { subject: "other" as ResidueSubject, cause: nes(s: "fixture") },
+    ],
+    limitation: nes(s: "fixture"),
+  }
+  admitted_counts(s: admit_residue_census(c: c), occurrences: 2, refusals: 1)
+}
+
+// ---------------------------------------------------------------------------
+// 2. The walls, each with a discriminating red.
+// ---------------------------------------------------------------------------
+
+// THE ONE AUTHORING DEFECT A HAND-READ CENSUS IS MOST LIKELY TO MAKE. A spelling that does not
+// contain its subject is a transcription error, and it is decidable from the row alone -- so it is
+// a wall rather than a review note.
+test fn a_spelling_that_does_not_contain_its_subject_refuses() -> Bool {
+  let s = admit_residue_census(c: census_of(
+    subjects: [fixture_subject()],
+    rows: [row(subject: fixture_subject(), enclosing: fixture_carrier(), spelling: "spark_endpoint_for_binding", channel: StringData, revision: "rev-a")],
+  ))
+  count_causes(s: s, p: is_containment_failure) == 1 && list_length(items: causes_of(s: s)) == 1
+}
+
+// THE REVISION BINDING IS THE WHOLE POINT OF THE CARRIER. An observation is a claim about a tree at
+// one moment; a row carrying a different revision from its census is two measurements presented as
+// one, which is how a stale reading survives a re-measurement it never participated in.
+test fn a_row_measured_at_another_revision_refuses() -> Bool {
+  let s = admit_residue_census(c: census_of(
+    subjects: [fixture_subject()],
+    rows: [row(subject: fixture_subject(), enclosing: fixture_carrier(), spelling: "fleet_probe_endpoint_for", channel: StringData, revision: "rev-b")],
+  ))
+  count_causes(s: s, p: is_revision_mismatch) == 1 && list_length(items: causes_of(s: s)) == 1
+}
+
+test fn a_row_naming_an_unenumerated_subject_refuses() -> Bool {
+  let s = admit_residue_census(c: census_of(
+    subjects: ["192.168.1.222" as ResidueSubject],
+    rows: [row(subject: fixture_subject(), enclosing: fixture_carrier(), spelling: "fleet_probe_endpoint_for", channel: StringData, revision: "rev-a")],
+  ))
+  count_causes(s: s, p: is_unenumerated_subject) == 1
+}
+
+test fn an_empty_subject_list_refuses() -> Bool {
+  let s = admit_residue_census(c: census_of(subjects: [], rows: []))
+  count_causes(s: s, p: is_no_subject) == 1 && list_length(items: causes_of(s: s)) == 1
+}
+
+// ONE CAUSE PER EXCESS OCCURRENCE. Three rows under one key are two removals, not three causes and
+// not one: the count's denominator is the minimum that must go to restore uniqueness.
+test fn duplicate_occurrences_yield_one_cause_per_excess_row() -> Bool {
+  let r = row(subject: fixture_subject(), enclosing: fixture_carrier(), spelling: "fleet_probe_endpoint_for", channel: StringData, revision: "rev-a")
+  let two = admit_residue_census(c: census_of(subjects: [fixture_subject()], rows: [r, r]))
+  let three = admit_residue_census(c: census_of(subjects: [fixture_subject()], rows: [r, r, r]))
+  count_causes(s: two, p: is_duplicate) == 1 && count_causes(s: three, p: is_duplicate) == 2
+}
+
+// THE DISCRIMINATING CONTROL FOR THE KEY'S GRAIN, and it is the reason the key carries the channel
+// at all. Two rows with the same declaration and the same spelling but DIFFERENT channels are two
+// occurrences, not a duplicate: an annotation and a rendered receipt line spelling the same name
+// have different owners and different repairs. A key that dropped the channel would collapse them
+// and report one of the two as a defect.
+test fn the_same_spelling_in_two_channels_is_two_occurrences_not_a_duplicate() -> Bool {
+  let s = admit_residue_census(c: census_of(
+    subjects: [fixture_subject()],
+    rows: [
+      row(subject: fixture_subject(), enclosing: fixture_carrier(), spelling: "fleet_probe_endpoint_for", channel: StringData, revision: "rev-a"),
+      row(subject: fixture_subject(), enclosing: fixture_carrier(), spelling: "fleet_probe_endpoint_for", channel: SourceAnnotation, revision: "rev-a"),
+    ],
+  ))
+  admitted_counts(s: s, occurrences: 2, refusals: 0)
+}
+
+// AN ANNOTATION CARRIER IS NOT ITS DECLARATION. The same spelling annotating a declaration and
+// sitting inside it are two occurrences with two different standings after the cut -- the compiler
+// never reads one of them. A key that projected both to the declaration would fuse them.
+test fn an_annotation_on_a_declaration_is_a_distinct_carrier_from_the_declaration() -> Bool {
+  let d = decl_ref(module_path: "gunbc.fixture", decl_name: "some_decl")
+  let s = admit_residue_census(c: census_of(
+    subjects: [fixture_subject()],
+    rows: [
+      row(subject: fixture_subject(), enclosing: EnclosedByDeclaration { declaration: d }, spelling: "fleet_probe_endpoint_for", channel: StringData, revision: "rev-a"),
+      row(subject: fixture_subject(), enclosing: EnclosedByAnnotationOn { annotated_declaration: d }, spelling: "fleet_probe_endpoint_for", channel: StringData, revision: "rev-a"),
+    ],
+  ))
+  admitted_counts(s: s, occurrences: 2, refusals: 0)
+}
+
+// ---------------------------------------------------------------------------
+// 3. The production census, executed.
+// ---------------------------------------------------------------------------
+
+test fn the_production_census_is_coherent() -> Bool {
+  admitted_counts(s: endpoint_residue_standing(), occurrences: 18, refusals: 1)
+}
+
+test fn the_production_census_is_bound_to_the_revision_it_was_read_at() -> Bool {
+  (endpoint_residue_census().census_revision as String) == "9fc2c531d5f2"
+}
+
+// THE THREE LIVE CONTROLS THE SLICE RULING NAMED, by exact spelling. The receipt line is the
+// sharpest: after the cut it goes on PRINTING a claim about an authority that no longer decides the
+// address, and its reader is an operator rather than the compiler.
+test fn the_rendered_receipt_line_is_observed_with_its_exact_spelling() -> Bool {
+  fold(endpoint_residue_census().occurrences, init: false, f: fn(acc, o) {
+    acc || ((o.observed_spelling as String) == " address_authority=fleet_probe_endpoint_for→dgx_spark_procurement OperatorAllocation\n"
+      && match o.channel {
+           RenderedReceiptText => true
+           StringData => false
+           SourceAnnotation => false
+           FixtureLocalInput => false
+           TypedCitation => false
+         })
+  })
+}
+
+fn count_occurrences(p: fn(ResidueOccurrenceObservation) -> Bool) -> Int {
+  fold(endpoint_residue_census().occurrences, init: 0, f: fn(acc, o) { if p(o) { acc + 1 } else { acc } })
+}
+
+fn is_fixture_row(o: ResidueOccurrenceObservation) -> Bool {
+  match o.fixture_standing {
+    FixtureCarrier => true
+    ProductionCarrier => false
+  }
+}
+
+fn is_address_family(o: ResidueOccurrenceObservation) -> Bool {
+  (o.subject as String) == "192.168.1.222" || (o.subject as String) == "192.168.1.223"
+}
+
+// THE PARTITION, pinned in both directions. A census whose only assertion was its total could lose
+// the production rows and gain fixture rows without moving it -- and the two halves have different
+// owners and different repair routes, which is the whole reason the standing is carried.
+test fn the_census_partitions_into_the_two_families_and_two_carrier_standings() -> Bool {
+  count_occurrences(p: is_address_family) == 11
+    && count_occurrences(p: fn(o) { !is_address_family(o: o) }) == 7
+    && count_occurrences(p: is_fixture_row) == 9
+    && count_occurrences(p: fn(o) { !is_fixture_row(o: o) }) == 9
+}
+
+// THE HAND-AUTHORED PRODUCTION ENDPOINT ROWS. Per the operator's correction to the slice ruling
+// these are literals, not graph-derived, so nothing propagates a changed address into them -- the
+// exact property that makes them residue rather than consumers.
+test fn both_hand_authored_host_key_endpoint_rows_are_observed() -> Bool {
+  let rows = endpoint_residue_census().occurrences
+  fold(rows, init: false, f: fn(acc, o) {
+    acc || ((o.observed_spelling as String) == "192.168.1.222" && !is_fixture_row(o: o))
+  })
+    && fold(rows, init: false, f: fn(acc, o) {
+         acc || ((o.observed_spelling as String) == "192.168.1.223" && !is_fixture_row(o: o))
+       })
+}
+
+// THE REFUSAL IS COUNTED, NOT SILENT. The second covered X entry point is not scanned, and the
+// census says so in a typed arm rather than by simply having no rows for it -- an unscanned subject
+// rendered as zero occurrences reads identically to a subject that genuinely has none.
+test fn the_unscanned_subject_is_a_counted_refusal_rather_than_an_absence() -> Bool {
+  let rs = endpoint_residue_refusals()
+  list_length(items: rs) == 1
+    && fold(rs, init: false, f: fn(acc, r) {
+         acc || match r {
+           ScanSubjectUnscannable { subject: s, cause: _ } => (s as String) == "spark_endpoint_for_binding"
+           ScanCarrierUncitable { module_path: _, observed_spelling: _, cause: _ } => false
+           ScanChannelUndecided { enclosing: _, observed_spelling: _, cause: _ } => false
+         }
+       })
+    && fold(endpoint_residue_subjects(), init: true, f: fn(acc, s) { acc && (s as String) != "spark_endpoint_for_binding" })
+}
+
+// NO ROW CARRIES A CLASSIFICATION, and this is the row that would go red if a later edit widened
+// the standing into a coproduct and started answering the 0B question from syntax. The standing is
+// a record with no alternative arm, so today the assertion is that the reason names the join rather
+// than a verdict.
+test fn every_row_records_a_pending_join_and_no_loud_or_silent_verdict() -> Bool {
+  fold(endpoint_residue_census().occurrences, init: true, f: fn(acc, o) {
+    acc && contains(o.dependency_standing.required_producer as String, "0B.1")
+      && contains(o.dependency_standing.join_pending_because as String, "ENCLOSING DECLARATION")
+  })
+}

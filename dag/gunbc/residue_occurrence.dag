@@ -1,0 +1,250 @@
+module gunbc.residue_occurrence
+
+import std.types { String, Bool, Int, NonEmptyStr, List, list_length }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+
+// SLICE 0B.0 OF THE ROUTER-AUTHORITY MIGRATION: THE SOURCE-SIDE RESIDUE OCCURRENCE PRODUCER,
+// AND IT DELIBERATELY STOPS SHORT OF THE CLASSIFICATION IT EXISTS TO FEED.
+//
+// WHAT RESIDUE IS. A replacement cut's boundary census enumerates SEMANTIC consumers -- the
+// declarations whose dependency edge on X makes the build refuse when X is deleted. Residue is
+// the complement: a SPELLING of X that carries no edge, so deleting X leaves it standing and
+// silently wrong. gunbc.endpoint_authority_replacement_cut already found two specimens while
+// measuring its own census and could do nothing with them, because they are not consumers and
+// the cut carrier has no row shape for a non-edge. This module is that row shape.
+//
+// WHY IT MAY NOT CLASSIFY YET, and this is the whole discipline of the slice. The question a
+// reader wants answered is whether deleting X makes an occurrence break LOUDLY or leaves it
+// silently stale. That question is NOT decidable from syntax: a literal naming X may sit inside
+// a declaration that SEPARATELY consumes X through an ordinary call, in which case deleting X
+// deletes the whole declaration and the literal goes with it -- loud, for a reason that has
+// nothing to do with the literal. Answering it from the occurrence alone would answer a
+// DECLARATION-level question from an OCCURRENCE-level fact. The relation that decides it is the
+// exact boundary-use join of slice 0B.1, and it does not exist. So this producer observes and
+// locates the population that deletion cannot expose, and records exactly one standing.
+//
+// WHY THAT STANDING IS A RECORD AND NOT A COPRODUCT. DependencyJoinPending is the only state any
+// producer can currently return, and a one-armed coproduct is the hollow-alias shape this
+// repository already refuses -- it also does not export its variant name in the v1 seed, measured
+// on this lane's own LegacySurveyGrain. A record is the STRONGER construction rather than a
+// workaround for that: with no alternative arm, a loud-or-silent conclusion is unwritable here
+// (DESIGN section 4b's top rung, structurally impossible) rather than merely refused by a check
+// someone must run. When 0B.1 lands, the type widens into the three-way coproduct -- DeletionLoud,
+// DeletionSilent, ResidueClassificationUnobserved -- and every row in this census must be
+// re-derived through the join rather than promoted. Authoring those three arms NOW, with no
+// producer able to return them, would be specification-without-execution: three names, no
+// mechanism, and a reader entitled to believe the classification exists.
+type ResidueDependencyStanding {
+  join_pending_because: NonEmptyStr
+  required_producer: NonEmptyStr
+}
+
+fn dependency_join_pending() -> ResidueDependencyStanding {
+  ResidueDependencyStanding {
+    join_pending_because: nes(s: "loudness is a property of the ENCLOSING DECLARATION's semantic edges, not of the literal: an occurrence inside a declaration that separately consumes X is deleted along with that declaration, so syntax alone cannot decide it"),
+    required_producer: nes(s: "slice 0B.1 exact boundary-use relation over consuming declaration x consumed authority"),
+  }
+}
+
+// THE SUBJECT IS THE SPELLING THAT WOULD GO STALE, not the declaration that owns it. Two families
+// are in scope for this migration and they are not the same kind of thing, which is why the brand
+// carries a free NonEmptyStr rather than a DeclarationRef: one family is an authority NAME
+// (fleet_probe_endpoint_for), whose declaration exists and is citable; the other is an ADDRESS
+// LITERAL (192.168.1.222), which the router decided and which no declaration in this repository
+// owns at all. A DeclarationRef subject would have been unable to represent the second family --
+// the family the migration exists to remove.
+type ResidueSubject = NonEmptyStr where brand("ResidueSubject")
+
+// THE CHANNEL A SPELLING TRAVELS, and it is FIVE rather than the four the slice ruling sketched.
+// The fifth was measured, not invented: a typed citation is graph-invisible exactly like a String,
+// but its remedy is completely different -- the declaration index refuses an unresolvable
+// DeclarationRef at ingestion, so a citation to a DELETED X breaks loudly through a mechanism no
+// String occurrence has. Collapsing it into StringData would have put two opposite remedies under
+// one arm, which is this repository's most-repeated failure. It is NOT classified as loud here:
+// the index refuses a citation naming a declaration that does not RESOLVE, and whether the cut
+// leaves the name resolvable is the 0B question, so recording the channel is exactly as far as
+// this producer may go.
+type SyntacticChannel
+  = StringData
+  | SourceAnnotation
+  | RenderedReceiptText
+  | FixtureLocalInput
+  | TypedCitation
+
+// FIXTURE STANDING IS NOT A SEVERITY, and it must not be read as one. A stale literal in a fixture
+// is not automatically harmless: a witness asserting an old address is EXECUTING EVIDENCE, so
+// after the cut it either reds (loud) or keeps certifying a fact that is no longer true (silent,
+// and worse than a stale production string because it is cited as coverage). The field is carried
+// because the two carriers have different OWNERS and different repair routes, not because one is
+// safe.
+type FixtureCarrierStanding
+  = FixtureCarrier
+  | ProductionCarrier
+
+// WHERE THE SPELLING SITS. Annotations get their own arm rather than a declaration ref with a flag:
+// per DESIGN section 4c an annotation is captured authored-source data that NO semantic pass ever
+// reads, so it cannot participate in the 0B edge join at all -- its standing after the cut is
+// decided by a reader, never by the compiler. Folding it into EnclosedByDeclaration would let the
+// join treat it as joinable and silently produce a verdict for a subject the join cannot see.
+type EnclosingCarrier
+  = EnclosedByDeclaration { declaration: DeclarationRef }
+  | EnclosedByAnnotationOn { annotated_declaration: DeclarationRef }
+
+type ResidueOccurrenceObservation {
+  subject: ResidueSubject
+  observed_at_revision: NonEmptyStr
+  enclosing: EnclosingCarrier
+  observed_spelling: NonEmptyStr
+  channel: SyntacticChannel
+  fixture_standing: FixtureCarrierStanding
+  dependency_standing: ResidueDependencyStanding
+}
+
+// TYPED SCAN REFUSALS. A scan that cannot observe something must say so in a counted, located
+// arm -- never widen to "assume none" and never narrow to silence. Both directions are the
+// fail-open this repository names: an unobservable carrier rendered as zero occurrences reads
+// identically to a carrier that genuinely has none.
+type ResidueScanRefusal
+  = ScanCarrierUncitable { module_path: NonEmptyStr, observed_spelling: NonEmptyStr, cause: NonEmptyStr }
+  | ScanChannelUndecided { enclosing: EnclosingCarrier, observed_spelling: NonEmptyStr, cause: NonEmptyStr }
+  | ScanSubjectUnscannable { subject: ResidueSubject, cause: NonEmptyStr }
+
+type ResidueCensus {
+  census_revision: NonEmptyStr
+  subjects: List<ResidueSubject>
+  occurrences: List<ResidueOccurrenceObservation>
+  refusals: List<ResidueScanRefusal>
+  limitation: NonEmptyStr
+}
+
+// ---------------------------------------------------------------------------
+// Admission. The census is an AUTHORED observation, so the wall available here is coherence of
+// the authoring, not exactness of the population -- and it says so rather than letting a green
+// admission be read as completeness.
+// ---------------------------------------------------------------------------
+
+type OccurrenceKey {
+  enclosing_key: NonEmptyStr
+  observed_spelling: NonEmptyStr
+  channel: SyntacticChannel
+}
+
+type ResidueCensusRefusalCause
+  = OccurrenceRevisionMismatch { key: OccurrenceKey, row_revision: NonEmptyStr, census_revision: NonEmptyStr }
+  | OccurrenceDoesNotContainItsSubject { key: OccurrenceKey, subject: ResidueSubject }
+  | OccurrenceSubjectNotEnumerated { key: OccurrenceKey, subject: ResidueSubject }
+  | OccurrenceDuplicated { key: OccurrenceKey }
+  | CensusEnumeratesNoSubject
+
+type ResidueCensusStanding
+  = ResidueCensusAdmitted { occurrence_count: Int, refusal_count: Int }
+  | ResidueCensusRefused { causes: List<ResidueCensusRefusalCause> }
+
+fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn channel_key(c: SyntacticChannel) -> String {
+  match c {
+    StringData => "string-data"
+    SourceAnnotation => "source-annotation"
+    RenderedReceiptText => "rendered-receipt-text"
+    FixtureLocalInput => "fixture-local-input"
+    TypedCitation => "typed-citation"
+  }
+}
+
+fn enclosing_display_key(e: EnclosingCarrier) -> NonEmptyStr {
+  match e {
+    EnclosedByDeclaration { declaration: d } => declaration_ref_display_key(ref: d) as NonEmptyStr
+    EnclosedByAnnotationOn { annotated_declaration: d } =>
+      concat("annotation-on ", declaration_ref_display_key(ref: d)) as NonEmptyStr
+  }
+}
+
+fn occurrence_key(o: ResidueOccurrenceObservation) -> OccurrenceKey {
+  OccurrenceKey {
+    enclosing_key: enclosing_display_key(e: o.enclosing),
+    observed_spelling: o.observed_spelling,
+    channel: o.channel,
+  }
+}
+
+fn occurrence_key_eq(a: OccurrenceKey, b: OccurrenceKey) -> Bool {
+  (a.enclosing_key as String) == (b.enclosing_key as String)
+    && (a.observed_spelling as String) == (b.observed_spelling as String)
+    && channel_key(c: a.channel) == channel_key(c: b.channel)
+}
+
+fn occurrence_key_seen(seen: List<OccurrenceKey>, k: OccurrenceKey) -> Bool {
+  fold(seen, init: false, f: fn(acc, s) { acc || occurrence_key_eq(a: s, b: k) })
+}
+
+fn subject_enumerated(subjects: List<ResidueSubject>, s: ResidueSubject) -> Bool {
+  fold(subjects, init: false, f: fn(acc, x) { acc || (x as String) == (s as String) })
+}
+
+type OccurrenceDupState {
+  seen: List<OccurrenceKey>
+  causes: List<ResidueCensusRefusalCause>
+}
+
+// ONE CAUSE PER EXCESS OCCURRENCE, not one per roster row: N rows sharing a key produce N-1 causes,
+// which is the minimum number that must be removed to restore uniqueness.
+fn occurrence_duplicate_causes(rows: List<ResidueOccurrenceObservation>) -> List<ResidueCensusRefusalCause> {
+  let final = fold(
+    rows,
+    init: OccurrenceDupState { seen: [], causes: [] },
+    f: fn(acc, o) {
+      let k = occurrence_key(o: o)
+      match occurrence_key_seen(seen: acc.seen, k: k) {
+        true => OccurrenceDupState { seen: acc.seen, causes: Cons { head: OccurrenceDuplicated { key: k }, tail: acc.causes } }
+        false => OccurrenceDupState { seen: Cons { head: k, tail: acc.seen }, causes: acc.causes }
+      }
+    },
+  )
+  final.causes
+}
+
+// THE CONSTRUCTION WALL THIS CARRIER CAN ACTUALLY HOLD. An observation whose recorded spelling does
+// not CONTAIN its subject is not an occurrence of that subject -- it is a transcription error, and
+// it is the one authoring defect a census of hand-read literals is most likely to make. Decidable
+// from the row alone, so it is a wall rather than a review note.
+fn occurrence_row_causes(
+  census_revision: NonEmptyStr,
+  subjects: List<ResidueSubject>,
+  o: ResidueOccurrenceObservation,
+) -> List<ResidueCensusRefusalCause> {
+  let k = occurrence_key(o: o)
+  let revision_causes = match (o.observed_at_revision as String) == (census_revision as String) {
+    true => []
+    false => [OccurrenceRevisionMismatch { key: k, row_revision: o.observed_at_revision, census_revision: census_revision }]
+  }
+  let containment_causes = match contains(o.observed_spelling as String, o.subject as String) {
+    true => []
+    false => [OccurrenceDoesNotContainItsSubject { key: k, subject: o.subject }]
+  }
+  let enumeration_causes = match subject_enumerated(subjects: subjects, s: o.subject) {
+    true => []
+    false => [OccurrenceSubjectNotEnumerated { key: k, subject: o.subject }]
+  }
+  concat(revision_causes, concat(containment_causes, enumeration_causes))
+}
+
+fn admit_residue_census(c: ResidueCensus) -> ResidueCensusStanding {
+  let subject_causes = match list_length(items: c.subjects) == 0 {
+    true => [CensusEnumeratesNoSubject]
+    false => []
+  }
+  let row_causes = fold(
+    c.occurrences,
+    init: [],
+    f: fn(acc, o) { concat(acc, occurrence_row_causes(census_revision: c.census_revision, subjects: c.subjects, o: o)) },
+  )
+  let causes = concat(subject_causes, concat(row_causes, occurrence_duplicate_causes(rows: c.occurrences)))
+  match list_length(items: causes) == 0 {
+    true => ResidueCensusAdmitted {
+      occurrence_count: list_length(items: c.occurrences),
+      refusal_count: list_length(items: c.refusals),
+    }
+    false => ResidueCensusRefused { causes: causes }
+  }
+}
