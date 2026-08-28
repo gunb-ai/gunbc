@@ -1,0 +1,178 @@
+module test.claim.dispatch_preflight_witness
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.upsert_decision { Noop, Refuse }
+import gunbc.roadmap_execution_contract {
+  GitWorkspaceCapability,
+  TmuxSessionCapability,
+}
+import gunbc.roadmap_dispatch_environment { CapabilityEnsureReceipt }
+import gunbc.fleet_desired_observe {
+  RevisionConverged,
+  RevisionDrifted,
+  RevisionUnobserved,
+}
+import gunbc.dispatch_preflight {
+  PreflightAxisVerdict,
+  AxisGrounded,
+  AxisRefused,
+  DispatchPreflightReport,
+  DispatchPreflight,
+  PreflightAdmitted,
+  PreflightRefused,
+  PreflightWorkdirLookup,
+  PreflightInstanceResolved,
+  PreflightUnknownWorkdir,
+  axis_verdict_is_refused,
+  capability_axis_verdict,
+  revision_axis_verdict,
+  preflight_verdict_for_report,
+  dispatch_preflight_json_value,
+  preflight_instance_for_workdir,
+}
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import extdeps.languages.json.emit { serialize_json }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data dispatch_preflight_witness_note: String = "The preflight's DECISION layer is pure and is witnessed here; the observation layer is the shared capability observer and the shared fleet-revision observer, each already covered where it lives, so nothing is re-observed. The discriminating reds are the two ways this carrier could lie in the dangerous direction: a report carrying a refused axis rendering as PreflightAdmitted, and a drifted-revision refusal that names only one side of the comparison — the belt's own receipt names both, and a preflight that dropped either would tell an operator a tree had drifted without saying to what."
+
+data desired_hex: String = "7c079cd39c6c58ef201d6949189384019f1576d0"
+data local_hex: String = "517fdac4ddf92d0dd636c1f66fdb95b508525067"
+
+fn grounded_receipt() -> CapabilityEnsureReceipt {
+  CapabilityEnsureReceipt {
+    capability: GitWorkspaceCapability,
+    capability_label: "git-workspace",
+    executable: "/usr/bin/git",
+    decision: Noop,
+    grounded: true,
+    evidence: "exit=0 stdout=git version 2.43.0 stderr=",
+    reason: "",
+  }
+}
+
+fn ungrounded_receipt() -> CapabilityEnsureReceipt {
+  CapabilityEnsureReceipt {
+    capability: TmuxSessionCapability,
+    capability_label: "tmux-session",
+    executable: "/usr/bin/tmux",
+    decision: Refuse { reason: "required executable is absent or not executable: /usr/bin/tmux" as NonEmptyStr },
+    grounded: false,
+    evidence: "",
+    reason: "required executable is absent or not executable: /usr/bin/tmux",
+  }
+}
+
+fn report_with(axes: List<PreflightAxisVerdict>) -> DispatchPreflightReport {
+  DispatchPreflightReport {
+    instance_id: "srv1-live",
+    repo_root: "/opt/gunbc/gunbc",
+    capability_receipts: [],
+    axes: axes,
+  }
+}
+
+test fn preflight_capability_axis_follows_the_shared_receipt() -> Bool {
+  let good = capability_axis_verdict(receipt: grounded_receipt())
+  let bad = capability_axis_verdict(receipt: ungrounded_receipt())
+  return !axis_verdict_is_refused(verdict: good)
+    && axis_verdict_is_refused(verdict: bad)
+    && match good {
+         AxisGrounded { axis_label, evidence } =>
+           string_contains(s: axis_label, pattern: "git-workspace")
+             && string_contains(s: evidence, pattern: "git version")
+         AxisRefused { axis_label: _, reason: _ } => false
+       }
+    && match bad {
+         AxisGrounded { axis_label: _, evidence: _ } => false
+         AxisRefused { axis_label, reason } =>
+           string_contains(s: axis_label, pattern: "tmux-session")
+             && string_contains(s: reason, pattern: "/usr/bin/tmux")
+       }
+}
+
+test fn preflight_revision_axis_names_both_sides_of_the_drift() -> Bool {
+  return match git_object_id_from_untagged_hex(hex: desired_hex) {
+    Absent => false
+    Present { value: desired } =>
+      match git_object_id_from_untagged_hex(hex: local_hex) {
+        Absent => false
+        Present { value: local } => {
+          let drifted = revision_axis_verdict(
+            standing: RevisionDrifted { desired: desired, local: local },
+          )
+          let converged = revision_axis_verdict(
+            standing: RevisionConverged { revision: desired },
+          )
+          let unobserved = revision_axis_verdict(
+            standing: RevisionUnobserved { cause: "HEAD does not decode" },
+          )
+          axis_verdict_is_refused(verdict: drifted)
+            && !axis_verdict_is_refused(verdict: converged)
+            && axis_verdict_is_refused(verdict: unobserved)
+            && match drifted {
+                 AxisGrounded { axis_label: _, evidence: _ } => false
+                 AxisRefused { axis_label: _, reason } =>
+                   string_contains(s: reason, pattern: desired_hex)
+                     && string_contains(s: reason, pattern: local_hex)
+               }
+            && match unobserved {
+                 AxisGrounded { axis_label: _, evidence: _ } => false
+                 AxisRefused { axis_label: _, reason } =>
+                   string_contains(s: reason, pattern: "HEAD does not decode")
+               }
+        }
+      }
+  }
+}
+
+test fn preflight_counts_every_refusal_not_the_first() -> Bool {
+  let two_bad = preflight_verdict_for_report(report: report_with(axes: [
+    AxisRefused { axis_label: "capability:tmux-session", reason: "absent" },
+    AxisGrounded { axis_label: "capability:git-workspace", evidence: "ok" },
+    AxisRefused { axis_label: "deployed-revision", reason: "drifted" },
+  ]))
+  let all_good = preflight_verdict_for_report(report: report_with(axes: [
+    AxisGrounded { axis_label: "capability:git-workspace", evidence: "ok" },
+  ]))
+  return match two_bad {
+    PreflightAdmitted { report: _ } => false
+    PreflightRefused { report: _, refused_axis_count } => refused_axis_count == 2
+  }
+    && match all_good {
+         PreflightAdmitted { report: _ } => true
+         PreflightRefused { report: _, refused_axis_count: _ } => false
+       }
+}
+
+test fn preflight_wire_reports_the_refusal_it_reached() -> Bool {
+  let refused = serialize_json(v: dispatch_preflight_json_value(
+    preflight: preflight_verdict_for_report(report: report_with(axes: [
+      AxisRefused { axis_label: "deployed-revision", reason: "drifted" },
+    ])),
+  ))
+  let admitted = serialize_json(v: dispatch_preflight_json_value(
+    preflight: preflight_verdict_for_report(report: report_with(axes: [
+      AxisGrounded { axis_label: "deployed-revision", evidence: "converged" },
+    ])),
+  ))
+  return string_contains(s: refused, pattern: "\"status\": \"refused\"")
+    && string_contains(s: refused, pattern: "\"refused_axis_count\": 1")
+    && string_contains(s: refused, pattern: "roadmap-dispatch-preflight/v1")
+    && string_contains(s: admitted, pattern: "\"status\": \"admitted\"")
+    && string_contains(s: admitted, pattern: "\"refused_axis_count\": 0")
+}
+
+test fn preflight_refuses_a_workdir_that_is_not_a_known_instance() -> Bool {
+  return match preflight_instance_for_workdir(workdir: "/opt/gunbc/gunbc") {
+    PreflightInstanceResolved { instance } =>
+      (instance.repo_root as String) == "/opt/gunbc/gunbc"
+    PreflightUnknownWorkdir { workdir: _ } => false
+  }
+    && match preflight_instance_for_workdir(workdir: "/tmp/somebody-elses-tree") {
+         PreflightInstanceResolved { instance: _ } => false
+         PreflightUnknownWorkdir { workdir } => workdir == "/tmp/somebody-elses-tree"
+       }
+}
