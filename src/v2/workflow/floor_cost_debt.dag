@@ -4,7 +4,7 @@ import v2.std.algebra { Cons, Empty, list_flat_map, any }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-// THE OVER-COST WITHHOLDING MECHANISM, CARRYING 268 IDENTITIES.
+// THE OVER-COST WITHHOLDING MECHANISM, CARRYING 272 IDENTITIES.
 //
 // The count is stated once, here, and derived nowhere else in this file's prose. An earlier
 // revision of this header read "CURRENTLY CARRYING NO IDENTITIES" -- true of the empty carrier
@@ -176,7 +176,7 @@ import v2.std.text { String }
 // Nothing here needs to be re-measured to release a row, and nothing may be added to release
 // one.
 
-// THE ROSTER CARRIES 268 IDENTITIES, IN TWO POPULATIONS THAT ARE ENROLLED FOR DIFFERENT REASONS
+// THE ROSTER CARRIES 272 IDENTITIES, IN TWO POPULATIONS THAT ARE ENROLLED FOR DIFFERENT REASONS
 // AND MUST NOT BE READ AS ONE.
 //
 // POPULATION A -- 221 EXPENSIVE PASSES. Claims that REACHED A VERDICT, PASSED, and whose measured
@@ -185,7 +185,7 @@ import v2.std.text { String }
 // figure is that run's own and none is transcribed by hand. Measured range 511..3757ms. For these
 // rows the carrier's ordinary premise holds exactly: the witness works and costs too much.
 //
-// POPULATION B -- 47 ROWS TOO EXPENSIVE TO REACH A VERDICT AT ALL. 44 `budget_interrupted` on the
+// POPULATION B -- 51 ROWS TOO EXPENSIVE TO REACH A VERDICT AT ALL. 44 `budget_interrupted` on the
 // CPU clock against 5000ms and 2 `completed_over_budget` on the wall clock against 10000ms
 // (18882ms and 19024ms), measured on main run 33145062452 and supplied at identity grain by
 // warm-tern-34. THESE ARE NOT CLAIMED TO PASS. An interrupted claim went UNDECIDED -- it may pass,
@@ -237,10 +237,36 @@ import v2.std.text { String }
 // rust emit check). Every OTHER memoised shared construction is relocated the same way and
 // recorded NOWHERE.
 //
-// THE DISCRIMINATING OBSERVATION IS ON THE SIX ROWS THAT COMPLETED. An interrupted row emits no
-// per-claim fill line whatever it paid, so absence proves nothing there; a COMPLETED row reaches
-// the emission site, so for these six the record is readable. Their marginal costs moved 89ms ->
-// 59817ms, 98ms -> 25216ms, 1ms -> 1157ms, 0ms -> 645ms. Nothing got slower by 672x.
+// THE DISCRIMINATING OBSERVATION IS ON THE SIX ROWS THAT COMPLETED, whose marginal costs moved
+// 89ms -> 59817ms, 98ms -> 25216ms, 1ms -> 1157ms, 0ms -> 645ms. Nothing got slower by 672x.
+//
+// THIS CLAUSE CARRIED A FALSE PREMISE ALONGSIDE THAT, AND ITS CORRECTION CUTS THE OTHER WAY. It
+// said an interrupted row emits no per-claim fill line whatever it paid, so absence proves nothing
+// there. The ordering behind that is right -- `record_shared_artifact_fill_cpu` is called after the
+// uncached computation returns -- but the conclusion needs the deadline to be able to fire inside
+// that window, and it cannot. The eval deadline is COOPERATIVE, polled by the interpreter, and both
+// bracketed sites are straight-line Rust with no poll within:
+//
+//   let fill_started = thread_cpu_nanos();
+//   let census = compile_dag_diagnostic_census_uncached(source);   // no deadline poll inside
+//   record_shared_artifact_fill_cpu(thread_cpu_nanos() - fill_started);
+//
+// `compile_dag_rust_emit_check` is the same shape. A host builtin is ATOMIC with respect to a
+// cooperative deadline, so a claim that enters a fill always finishes it and always records it.
+// "Interrupted mid-fill with the counter unadvanced" is not a reachable state.
+//
+// SO ABSENCE OF A FILL LINE ON AN INTERRUPTED ROW IS A REAL ZERO, and warm-tern-34 finding none
+// across all 44 is evidence those rows paid no shared fill rather than an artifact of the
+// instrument. Population B's interrupt points are therefore NOT fill-inflated -- they are the rows'
+// own charged cost up to the deadline -- so the enrolment rests on better evidence than this file
+// was claiming for itself.
+//
+// PROVENANCE, because two readers were wrong in sequence and in opposite directions: crisp-newt-899
+// first argued the emission site is unreachable for an interrupted row, then retracted that at
+// source (the interrupt is a returned `ClaimOutcome::BudgetInterrupted` VALUE, not a process death,
+// so the site IS reached). This file recorded the retraction correctly and kept a second, subtler
+// form of the same error -- site reached, counter never advanced -- which the UNWINDING question
+// cannot settle and the POLLING question can.
 //
 // AND THERE ARE TWO `[floor-shared-fill]` FORMATS, WHICH IS WHERE A FIRST READING OF THIS WENT
 // WRONG. The per-claim form (`claim=... marginal_cpu_ms=... fill_cpu_ms=...`) is the one netted
@@ -311,13 +337,43 @@ import v2.std.text { String }
 // module's own membership rather than by the fill shrinking.
 //
 // WORKED ON THE KEY THAT PRODUCED THE CASCADE. `reference_edges`' four claim-paid keys report
-// `consumer_modules=1`, all in `rest_path_reaches_no_cli`. That module has EIGHT members. An
+// `consumer_modules=1`, all in `rest_path_reaches_no_cli`.
+//
+// AN EARLIER REVISION SAID THAT MODULE HAS EIGHT MEMBERS AND WAS WRONG -- IT HAS TWELVE. The error
+// was in the METHOD, not the arithmetic: the count came from the identities two floor LOGS happened
+// to mention, and a log names the claims that RAN AND REPORTED, never a module's membership. The
+// authority is the module's own source; `grep -c 'test fn'` on `rest_path_reaches_no_cli_test.dag`
+// returns 12. Enrolling to eight was then claimed as CLOSURE, which was a coincidence of what two
+// runs printed.
+//
+// THE NEXT RUN FALSIFIED IT EXACTLY AS THE MECHANISM PREDICTS: with eight withheld, the bill
+// relocated to a NINTH member -- `dropping_the_definition_edge_roster_surfaces_more` -- interrupted
+// before a verdict, in a module this file had declared closed. So the termination argument is SOUND
+// and its INPUT was wrong. Exhaustion terminates, but only against real membership, and a
+// population read off a log is not membership. That cost one 51-minute floor run to learn.
+//
+// THE MODULE IS NOW CLOSED AT 12/12, ENROLLED FROM SOURCE. The ninth member's own numbers are the
+// argument: recorded `cost at least 28769ms`, of which `cache=reference_edges fill_ms=25995` is a
+// bill four withheld siblings used to pay -- roughly 90%. It was not expensive; it inherited.
+// `consumer_modules=1` on that key, so with every member withheld no claim reaches the artifact and
+// the fill STOPS HAPPENING rather than moving to a thirteenth. That is what exhaustion buys, and it
+// is only available because the membership came from `grep -c 'test fn'` on the module source.
+//
+// WHY THE FILL WAS INVISIBLE TO THREE TESTS THAT LOOKED FOR IT, recorded because the blind spot is
+// reusable: that row's fill is `disposition=EXCLUSIVE`, and `disposition` is computed as
+// `consumer_modules > 1`. The run's `shared_fill_ms=727` therefore bounds CROSS-MODULE relocation
+// only -- a real figure, correctly summed, measuring a population this fill is not in. 25995ms is
+// 36x that entire budget and contributes nothing to it. A paid_by-difference test over warmed keys
+// cannot see it either (`<outside-fold>` in every run, so it cannot differ by construction), nor
+// can a census of which REFUSED rows are shared (an inheritor is the SOLE payer, hence exclusive,
+// and it completes or is interrupted rather than being refused). Three tests agreed and shared one
+// blind spot; agreement among tests with a common blind spot is not independence. An
 // earlier cut of this roster withheld six; the two it left were `widened_scans_actually_read_the_tree`
 // and `withdrawing_the_consumer_admissions_surfaces_exactly_three`, and the branch run shows the
 // ~26s bill landing on exactly those two and breaching in both -- 59817ms completed-over-budget
-// and an interrupt at 27939ms. Enrolling them closes the module 8/8, and there is no ninth member
-// to inherit. Found by calm-ram-380, who joined main's fill attribution against this roster and
-// predicted both inheritors by name before the branch run was consulted.
+// and an interrupt at 27939ms. Found by calm-ram-380, who joined main's fill attribution against
+// this roster and predicted both inheritors by name before the branch run was consulted. CLOSING
+// the module takes all TWELVE members, which is what the source says and what a log cannot.
 //
 // THE BREADTH SPLIT IS THE WHOLE OF WHY THE WARM IS NOT ALSO REQUIRED HERE. The keys with broad
 // consumption are ALREADY charged to nobody: `module_path_index` fills for 70826ms across
@@ -413,7 +469,7 @@ fn floor_cost_debt_censored_chunk_01() -> List<String> {
 }
 
 fn floor_cost_debt_censored_chunk_02() -> List<String> {
-  Cons { head: "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts", tail: Cons { head: "v2.test.lens_wiring_liveness.wiring_liveness_corpus_test.wiring_liveness_corpus_witnesses", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.compiler_substrate_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.extdeps_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.gunbc_consumers_reach_transport_vocabulary_only_by_named_admission", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.test_corpus_reaches_cli_vocabulary_only_as_declared_exercise", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Empty {} } } } } } } }
+  Cons { head: "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts", tail: Cons { head: "v2.test.lens_wiring_liveness.wiring_liveness_corpus_test.wiring_liveness_corpus_witnesses", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.compiler_substrate_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.extdeps_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.gunbc_consumers_reach_transport_vocabulary_only_by_named_admission", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.test_corpus_reaches_cli_vocabulary_only_as_declared_exercise", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.dropping_the_definition_edge_roster_surfaces_more", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_target_ast_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_admission_surfaces_the_known_cli_edge", tail: Empty {} } } } } } } } } } } }
 }
 
 // THE TWO EVIDENCE CLASSES ARE SEPARATE FUNCTIONS, NOT ONE LIST WITH A NOTE BESIDE IT.
@@ -426,10 +482,38 @@ fn floor_cost_debt_censored_chunk_02() -> List<String> {
 // PROVEN: reached a verdict, PASSED, and the measured marginal CPU exceeded the ceiling. For these
 // the carrier's ordinary premise holds exactly -- the witness works and costs too much.
 //
-// CENSORED: the deadline preempted the verdict, so the reported figure is an interrupt point and
-// the row's own cost is UNMEASURED and can only be larger. Enrolling one asserts that it did not
-// finish inside the ceiling on the charged clock -- which is what the floor observed -- and
-// asserts NOTHING about whether it would pass, or about its own-work cost.
+// CENSORED: the figure the floor enforced on is a CHARGED-CLOCK figure, so the row's own-work cost
+// is UNMEASURED. Enrolling one asserts that it did not finish inside the ceiling on that clock --
+// which is what the floor observed -- and asserts NOTHING about whether it would pass on its own
+// work. TWO ROUTES REACH THIS CLASS and an earlier revision named only the first:
+//
+//   PREEMPTED -- the deadline cut in before a verdict, so the reported figure is an interrupt point
+//   and the true cost can only be larger.
+//
+//   COMPLETED OVER THE WALL LIMIT -- the row finished, but shared-artifact fill is netted out of the
+//   CPU clock ONLY. `wall_nanos` is left unadjusted and the wall completion check enforces on that
+//   unadjusted figure, so a wall breach can be almost entirely borrowed fill. Two members are
+//   exactly this: measured by warm-tern-34 on run 33160240865, their MARGINAL cpu is 0ms and 1ms
+//   against fills of 18089ms and 17759ms, both `provenance=filled-shared-artifact triggered_by=ITSELF`.
+//   Their own work is nil; the wall figure is the fill.
+//
+// THAT SECOND ROUTE IS AN ACCOUNTING GAP, NOT A PROPERTY OF THOSE WITNESSES, and this file says so
+// rather than letting `DeclinedCostDebt` imply they are expensive. One netting rule with two homes,
+// applied in one of them. cool-koi-235 is repairing it at the root by netting fill out of the wall
+// clock as it already is for CPU; when that lands these two become cheap rather than invisible and
+// their rows should be DELETED, which is the ordinary shrink this contract is built for.
+//
+// THEY ARE NOT DROPPED PRE-EMPTIVELY, because today the floor enforces on the unadjusted wall and
+// would refuse on them. Dropping a row whose cost is an artifact is right only once the artifact is
+// gone; dropping it while the gate still reads the artifact just moves the red. What is corrected
+// here is the CLAIM, not the membership -- an earlier revision described the whole roster as rows
+// whose own marginal cost exceeds the ceiling, and for these two that is measurably false.
+//
+// CORPUS CONTEXT, from the same measurement and worth recording because it bounds the proven class:
+// across all 12949 rows the MAXIMUM marginal_cpu_ms is 72, and only three rows carry fill above
+// 5000ms. That figure is not extended to this roster's proven members here -- it was taken on a
+// different tree and this file does not restate someone else's measurement as its own -- but it is
+// the reason the second route above is worth naming rather than filing as an oddity.
 //
 // NO SECOND DECLINE ARM IS MINTED FOR THIS. A disposition names an admission outcome; evidence
 // strength is a different axis, and giving the host a second arm to branch on would make it
