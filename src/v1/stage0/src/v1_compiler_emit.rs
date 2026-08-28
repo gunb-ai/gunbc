@@ -44,6 +44,7 @@ pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{build_params_scope, call_param_caller_labels, extend_scope};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
+pub use crate::v1_compiler_infer_env::UnitVariantContribution;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
@@ -587,6 +588,11 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
+            visible_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            unit_variant_index: v1_rt::rc_empty_map::<
+                String,
+                Rc<HashMap<String, Rc<UnitVariantContribution>>>,
+            >(),
         }),
         func_env: Rc::new(ResolvedFuncEnv {
             name: "".to_string(),
