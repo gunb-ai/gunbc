@@ -109,6 +109,15 @@ data git_inspect_service_note: String = "Read-only repository-root, revision, an
 // merge bases. A consumer that needs the merge to be reproducible needs this one, and a consumer
 // that needs to compare content needs the other; collapsing them into one operation with a format
 // argument would let a caller ask for content and be answered with identity.
+// git grep's EXIT CODE IS THE ANSWER, NOT A VERDICT, and the exit table above is where that is
+// stated once rather than re-derived by each caller. git-grep documents 0 for a match and 1 for no
+// match, so a consumer reading `exit_success` alone cannot distinguish "this revision does not
+// contain the pattern" from "this revision could not be read" -- both arrive as false. The
+// operation therefore publishes `exit_code`, and a caller that collapses 1 and 128 has turned an
+// answer into an absence, which is the empty-observation narrow DESIGN names. Fixed-string
+// matching is pinned in the argv because the patterns callers pass are qualified identity names
+// full of `.`, which a regular expression would read as wildcards -- a silently WIDER match, and
+// therefore a silently WRONG present-at-this-revision answer.
 service git.Inspect {
   operation Toplevel {
     input {}
@@ -217,6 +226,22 @@ service git.Inspect {
     transport shell { argv: ["git", "show", "-s", "--format=%H", "{ref}"] }
     exit {
       0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation GrepFixedAtRevision {
+    input { pattern: String, ref: GitRef }
+    output {
+      paths: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "grep", "--fixed-strings", "--files-with-matches", "-e", "{pattern}", "{ref}"] }
+    exit {
+      0 => Unit
+      1 => String "No file at that revision contains the pattern"
       128 => String "Invalid ref or not a git repository"
     }
   }
