@@ -1,0 +1,200 @@
+module test.claim.deploy_transition_bootstrap_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.live_deploy.spec {
+  DeploymentNames,
+  srv1_live_deployment_names,
+  deployment_belt_timer_unit_name,
+  deployment_belt_service_unit_name,
+}
+import gunbc.deploy_transition_bootstrap {
+  ReleaseMarkerAwareness,
+  MarkerAware,
+  MarkerUnaware,
+  MarkerAwarenessUnobserved,
+  QuiescenceRegime,
+  BootstrapExternalQuiescence,
+  SteadyStateInProcessInhibition,
+  QuiescenceRegimeDecision,
+  QuiescenceRegimeIs,
+  QuiescenceRegimeUndecidable,
+  SteadyStateAdoption,
+  SteadyStateAdopted,
+  SteadyStateRefused,
+  TransitionStep,
+  StepLeaseHeld,
+  StepExternallyQuiesced,
+  StepInhibitionPersisted,
+  StepReleaseInstalled,
+  StepSteadyStateAdopted,
+  StepInhibitionCleared,
+  StepLeaseReleased,
+  StepAdmission,
+  StepAdmitted,
+  StepOutOfOrder,
+  StepAfterCompletion,
+  quiescence_regime,
+  adopt_steady_state,
+  bootstrap_quiesced_units,
+  bootstrap_quiesce_commands,
+  bootstrap_restore_commands,
+  transition_step_advance,
+  transition_step_admitted,
+  transition_step_label,
+}
+
+fn names() -> DeploymentNames {
+  srv1_live_deployment_names(instance: srv1_live_dashboard_instance())
+}
+
+fn regime_key(d: QuiescenceRegimeDecision) -> String {
+  match d {
+    QuiescenceRegimeIs { regime: r } =>
+      match r {
+        BootstrapExternalQuiescence => "bootstrap"
+        SteadyStateInProcessInhibition => "steady-state"
+      }
+    QuiescenceRegimeUndecidable { cause: _ } => "undecidable"
+  }
+}
+
+fn adoption_admits(a: SteadyStateAdoption) -> Bool {
+  match a {
+    SteadyStateAdopted { release_identity: _ } => true
+    SteadyStateRefused { cause: _ } => false
+  }
+}
+
+fn adoption_cause(a: SteadyStateAdoption) -> String {
+  match a {
+    SteadyStateAdopted { release_identity: _ } => ""
+    SteadyStateRefused { cause: c } => c
+  }
+}
+
+// THE RUNNING RELEASE DECIDES THE REGIME, and the two answers are genuinely different mechanisms
+// rather than two strengths of one. Asserting either alone would be satisfied by a fold that
+// answered it unconditionally.
+test fn the_running_releases_awareness_selects_the_regime() -> Bool {
+  regime_key(d: quiescence_regime(awareness: MarkerUnaware { release_identity: "old" })) == "bootstrap"
+    && regime_key(d: quiescence_regime(awareness: MarkerAware { release_identity: "new" })) == "steady-state"
+}
+
+// AN UNOBSERVED AWARENESS REFUSES RATHER THAN DEFAULTING TO THE STRONGER REGIME. Choosing bootstrap
+// on ignorance would be safe in outcome and wrong in kind: it answers a question it could not compute
+// with the most protective value, which zeroes the observation deficit's frequency by construction
+// and makes an unobservable release indistinguishable from an old one.
+test fn an_unobserved_release_refuses_rather_than_widening_to_bootstrap() -> Bool {
+  regime_key(d: quiescence_regime(
+    awareness: MarkerAwarenessUnobserved { cause: "health endpoint unreachable" },
+  )) == "undecidable"
+}
+
+// EVERY UNIT THAT CAN ACTUATE A RELEASE IS QUIESCED, not the timer alone. Disabling only the timer
+// leaves the one-shot belt service startable and leaves the HTTP dispatcher inside the serve unit
+// running -- which is the same defect one layer out, and the deploy-convergence design record
+// already records it as the reason the seam is the shared admission and not either ingress.
+test fn the_quiesced_set_covers_the_timer_the_service_and_the_serve_unit() -> Bool {
+  let units = bootstrap_quiesced_units(names: names())
+  units.length() == 3
+    && any(units, u => u == deployment_belt_timer_unit_name(names: names()))
+    && any(units, u => u == deployment_belt_service_unit_name(names: names()))
+    && any(units, u => u == names().unit_name)
+}
+
+// `disable --now` AND NOT `stop`, because durability is the whole requirement here. A stopped unit is
+// one reboot -- or one dependency -- away from running against a half-converged tree, and the deploy
+// process that stopped it may be gone. This witness reds if the quiescence is ever weakened to a stop.
+test fn quiescence_disables_rather_than_merely_stopping() -> Bool {
+  let cmds = bootstrap_quiesce_commands(names: names(), privileged: true)
+  cmds.length() == 3
+    && all(cmds, c => string_contains(s: c, pattern: "disable"))
+    && all(cmds, c => string_contains(s: c, pattern: "--now"))
+}
+
+// RESTORATION IS ENABLE AND START, one of each per unit, because a disabled unit that is merely
+// started comes back disabled at the next boot -- the mirror of the property above.
+test fn restoration_re_enables_every_quiesced_unit_and_starts_it() -> Bool {
+  let cmds = bootstrap_restore_commands(names: names(), privileged: true)
+  cmds.length() == 6
+    && count(filter(cmds, c => string_contains(s: c, pattern: "enable"))) == 3
+    && count(filter(cmds, c => string_contains(s: c, pattern: "start"))) == 3
+}
+
+// THE SWITCH IS A WALL. Restoring the units over a release that does not consult the marker
+// reinstates exactly the unprotected actuator the bootstrap regime exists to stop, at the moment the
+// tree is most likely half-converged -- and it would look like progress. Both refusing arms are
+// driven beside the admitting one, so a collapse in either direction reds.
+test fn the_units_are_restored_only_over_a_marker_aware_release() -> Bool {
+  adoption_admits(a: adopt_steady_state(installed: MarkerAware { release_identity: "new" }))
+    && !adoption_admits(a: adopt_steady_state(installed: MarkerUnaware { release_identity: "old" }))
+    && !adoption_admits(a: adopt_steady_state(
+      installed: MarkerAwarenessUnobserved { cause: "binary not readable" },
+    ))
+}
+
+// THE REFUSAL SAYS THAT QUIESCENCE STAYS IN FORCE, because the operator's reading of a failed deploy
+// otherwise leaves them wondering whether the dashboard is down by accident or on purpose.
+test fn a_refused_switch_states_that_quiescence_remains() -> Bool {
+  string_contains(
+    s: adoption_cause(a: adopt_steady_state(installed: MarkerUnaware { release_identity: "old" })),
+    pattern: "external quiescence stays in force",
+  )
+}
+
+fn advance_ok(from: TransitionStep, to: TransitionStep) -> Bool {
+  transition_step_admitted(admission: transition_step_advance(from: from, to: to))
+}
+
+// THE WHOLE DECLARED ORDER IS ADMITTED, END TO END. This is the positive control for the refusals
+// below: without it, a successor relation that admitted nothing would satisfy every one of them.
+test fn the_declared_sequence_advances_step_by_step() -> Bool {
+  advance_ok(from: StepLeaseHeld, to: StepExternallyQuiesced)
+    && advance_ok(from: StepExternallyQuiesced, to: StepInhibitionPersisted)
+    && advance_ok(from: StepInhibitionPersisted, to: StepReleaseInstalled)
+    && advance_ok(from: StepReleaseInstalled, to: StepSteadyStateAdopted)
+    && advance_ok(from: StepSteadyStateAdopted, to: StepInhibitionCleared)
+    && advance_ok(from: StepInhibitionCleared, to: StepLeaseReleased)
+}
+
+// NOTHING MUTATES BEFORE THE OLD ACTUATORS ARE QUIESCED AND THE MARKER IS PERSISTED. Each of these is
+// a shortcut a plausible implementation takes when it is in a hurry, and each one is the hazard this
+// lane exists to close: publishing before quiescing leaves the old belt spawning into the transition.
+test fn the_mutation_cannot_begin_before_quiescence_and_the_marker() -> Bool {
+  !advance_ok(from: StepLeaseHeld, to: StepInhibitionPersisted)
+    && !advance_ok(from: StepLeaseHeld, to: StepReleaseInstalled)
+    && !advance_ok(from: StepExternallyQuiesced, to: StepReleaseInstalled)
+}
+
+// AND NOTHING IS GIVEN BACK EARLY. Clearing the marker before the switch hands the tree to actuators
+// still running under bootstrap quiescence with nothing enforcing anything; releasing the lease before
+// the marker is cleared lets a second transition start while the first is still outstanding.
+test fn the_release_order_cannot_be_short_circuited() -> Bool {
+  !advance_ok(from: StepReleaseInstalled, to: StepInhibitionCleared)
+    && !advance_ok(from: StepSteadyStateAdopted, to: StepLeaseReleased)
+    && !advance_ok(from: StepInhibitionPersisted, to: StepLeaseReleased)
+}
+
+// THE ORDER IS A SEQUENCE AND NOT A SET, so going backwards is refused too -- a re-quiesce after the
+// switch would read as progress while undoing it.
+test fn the_sequence_does_not_run_backwards_and_does_not_continue_past_its_end() -> Bool {
+  !advance_ok(from: StepSteadyStateAdopted, to: StepExternallyQuiesced)
+    && match transition_step_advance(from: StepLeaseReleased, to: StepLeaseHeld) {
+      StepAfterCompletion { attempted: _ } => true
+      StepAdmitted { step: _ } => false
+      StepOutOfOrder { expected: _, attempted: _ } => false
+    }
+}
+
+// AN OUT-OF-ORDER REFUSAL NAMES BOTH STEPS, so the caller learns what was expected rather than only
+// that something was wrong.
+test fn an_out_of_order_step_names_what_was_expected() -> Bool {
+  match transition_step_advance(from: StepLeaseHeld, to: StepReleaseInstalled) {
+    StepOutOfOrder { expected: e, attempted: a } =>
+      e == transition_step_label(step: StepExternallyQuiesced)
+        && a == transition_step_label(step: StepReleaseInstalled)
+    StepAdmitted { step: _ } => false
+    StepAfterCompletion { attempted: _ } => false
+  }
+}

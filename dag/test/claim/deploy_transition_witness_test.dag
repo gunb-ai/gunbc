@@ -1,0 +1,638 @@
+module test.claim.deploy_transition_witness_test
+
+import std.types { Bool, String }
+import extdeps.filesystem.filesystem_io {
+  FilesystemReadOutcome,
+  FilesystemReadSucceeded,
+  FilesystemReadRefused,
+}
+import gunbc.deploy_transition {
+  TransitionSubject,
+  TransitionActor,
+  TransitionRecord,
+  TransitionGuard,
+  TransitionFileObservation,
+  TransitionFileAbsent,
+  TransitionFilePresent,
+  TransitionFileUndecodable,
+  TransitionRecordDecode,
+  TransitionRecordDecoded,
+  TransitionRecordUndecodable,
+  LeaseAcquisition,
+  LeaseAcquired,
+  LeaseHeldBy,
+  LeaseHeldUndecodable,
+  LeaseUnobtainable,
+  ActuationStanding,
+  ActuationPermitted,
+  ActuationInhibited,
+  ActuationStandingUnreadable,
+  ActuationAdmission,
+  ActuationAdmitted,
+  ActuationRefused,
+  ResidueEvidence,
+  ResidueDisposition,
+  ResidueResolvable,
+  ResidueTransitionIncomplete,
+  ResiduePartialDeclared,
+  ResidueStateUnobservable,
+  AbandonmentMint,
+  AbandonmentMinted,
+  AbandonmentRefusedUnobserved,
+  AbandonmentRefusedNotOperator,
+  ClearanceBasis,
+  ClearedByHolder,
+  ClearedByEvidence,
+  ClearedByAbandonment,
+  ClearanceAdmission,
+  ClearanceAdmitted,
+  ClearanceRefused,
+  transition_lease_path,
+  transition_inhibition_path,
+  transition_record_json,
+  transition_record_decode,
+  transition_file_observation_of,
+  transition_record_same_subject,
+  lease_acquisition_from_create,
+  actuation_standing_of,
+  actuation_admission,
+  residue_disposition,
+  mint_transition_abandonment,
+  clearance_admission,
+  transition_phase_in_force,
+  transition_phase_partial,
+}
+
+fn subject() -> TransitionSubject {
+  TransitionSubject {
+    instance_root: "/opt/gunbc",
+    repo_root: "/opt/gunbc/gunbc",
+    base_ref: "refs/remotes/origin/main",
+    candidate: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  }
+}
+
+fn holder() -> TransitionActor {
+  TransitionActor { actor: "deployer", invocation: "run-1" }
+}
+
+fn in_force_record() -> TransitionRecord {
+  TransitionRecord {
+    actor: "deployer",
+    invocation: "run-1",
+    repo_root: "/opt/gunbc/gunbc",
+    base_ref: "refs/remotes/origin/main",
+    candidate: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    phase: transition_phase_in_force,
+  }
+}
+
+fn partial_record() -> TransitionRecord {
+  TransitionRecord {
+    actor: "deployer",
+    invocation: "run-1",
+    repo_root: "/opt/gunbc/gunbc",
+    base_ref: "refs/remotes/origin/main",
+    candidate: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    phase: transition_phase_partial,
+  }
+}
+
+fn acquisition_arm(a: LeaseAcquisition) -> String {
+  match a {
+    LeaseAcquired(_) => "acquired"
+    LeaseHeldBy { record: _ } => "held"
+    LeaseHeldUndecodable { cause: _ } => "undecodable"
+    LeaseUnobtainable { cause: _ } => "unobtainable"
+  }
+}
+
+fn acquire_with(created: Bool, observed: TransitionFileObservation) -> String {
+  acquisition_arm(a: lease_acquisition_from_create(
+    subject: subject(),
+    holder: holder(),
+    created: created,
+    create_error: "File exists (os error 17)",
+    observed: observed,
+  ))
+}
+
+fn decoded_ok(d: TransitionRecordDecode) -> Bool {
+  match d {
+    TransitionRecordDecoded { record: _ } => true
+    TransitionRecordUndecodable { cause: _ } => false
+  }
+}
+
+fn decode_cause(d: TransitionRecordDecode) -> String {
+  match d {
+    TransitionRecordDecoded { record: _ } => ""
+    TransitionRecordUndecodable { cause: c } => c
+  }
+}
+
+fn admission_admits(a: ActuationAdmission) -> Bool {
+  match a {
+    ActuationAdmitted => true
+    ActuationRefused { reason: _ } => false
+  }
+}
+
+fn admission_reason(a: ActuationAdmission) -> String {
+  match a {
+    ActuationAdmitted => ""
+    ActuationRefused { reason: r } => r
+  }
+}
+
+fn disposition_arm(d: ResidueDisposition) -> String {
+  match d {
+    ResidueResolvable { candidate: _ } => "resolvable"
+    ResidueTransitionIncomplete { candidate: _, observed_head: _ } => "incomplete"
+    ResiduePartialDeclared { candidate: _, observed_head: _ } => "partial"
+    ResidueStateUnobservable { cause: _ } => "unobservable"
+  }
+}
+
+fn clearance_admits(c: ClearanceAdmission) -> Bool {
+  match c {
+    ClearanceAdmitted { basis: _ } => true
+    ClearanceRefused { reason: _ } => false
+  }
+}
+
+fn present_marker(record: TransitionRecord) -> TransitionFileObservation {
+  TransitionFilePresent { record: record }
+}
+
+fn clearance_text(c: ClearanceAdmission) -> String {
+  match c {
+    ClearanceAdmitted { basis: b } => b
+    ClearanceRefused { reason: r } => r
+  }
+}
+
+// A GUARD CANNOT BE WRITTEN HERE. `TransitionGuard` is sole_constructor, so this module -- and every
+// module that is not gunbc.deploy_transition -- has no record literal for it. The only way a witness
+// obtains one is the same way production does: through the acquisition fold on its admitting arm.
+// That is why this helper exists rather than a fixture constructor, and its existence is the
+// evidence that the wall is real: a literal here refuses to compile.
+fn acquired_guard() -> TransitionGuard? {
+  match lease_acquisition_from_create(
+    subject: subject(),
+    holder: holder(),
+    created: true,
+    create_error: "",
+    observed: TransitionFileAbsent { detail: "" },
+  ) {
+    LeaseAcquired(g) => Present { value: g }
+    LeaseHeldBy { record: _ } => none
+    LeaseHeldUndecodable { cause: _ } => none
+    LeaseUnobtainable { cause: _ } => none
+  }
+}
+
+// THE RECORDS LIVE OUTSIDE THE REPOSITORY BEING TRANSITIONED. A durable file written under
+// `repo_root` would be untracked residue in the tree the convergence reads back, so the
+// convergence's own residue check would refuse on the artifact that exists to protect it. This
+// witness is what makes that a checked property rather than a habit.
+test fn the_durable_records_sit_outside_the_repository_they_protect() -> Bool {
+  let lease = transition_lease_path(instance_root: "/opt/gunbc")
+  let inhibition = transition_inhibition_path(instance_root: "/opt/gunbc")
+  lease != inhibition
+    && !string_contains(s: lease, pattern: "/opt/gunbc/gunbc")
+    && !string_contains(s: inhibition, pattern: "/opt/gunbc/gunbc")
+    && string_contains(s: lease, pattern: "/opt/gunbc/")
+    && string_contains(s: inhibition, pattern: "/opt/gunbc/")
+}
+
+// ALL FOUR ACQUISITION ARMS ARE DISTINCT, driven through one function over inputs that differ only
+// in the two facts the decision consumes. Asserting one arm alone would stay green against a fold
+// that answered it unconditionally.
+test fn the_four_acquisition_outcomes_are_four_different_answers() -> Bool {
+  let acquired = acquire_with(created: true, observed: TransitionFileAbsent { detail: "" })
+  let held = acquire_with(
+    created: false,
+    observed: TransitionFilePresent { record: in_force_record() },
+  )
+  let corrupt = acquire_with(
+    created: false,
+    observed: TransitionFileUndecodable { cause: "bad" },
+  )
+  let unobtainable = acquire_with(
+    created: false,
+    observed: TransitionFileAbsent { detail: "Permission denied" },
+  )
+  acquired == "acquired"
+    && held == "held"
+    && corrupt == "undecodable"
+    && unobtainable == "unobtainable"
+}
+
+// THE FAIL-CLOSED DIRECTION, and it is the one a reasonable implementation gets wrong. A lease file
+// that exists and does not decode is NOT a free lease: rendering it as absent would hand a second
+// converge the critical section a first one is still inside. This witness reds the moment the
+// undecodable arm is folded into either neighbour.
+test fn a_lease_that_does_not_decode_is_not_a_free_lease() -> Bool {
+  let corrupt = acquire_with(
+    created: false,
+    observed: TransitionFileUndecodable { cause: "bad" },
+  )
+  corrupt != "acquired" && corrupt != "held"
+}
+
+// A CREATE THAT FAILED WITH NOTHING READABLE IS NOT A HELD LEASE EITHER. Permission denied on the
+// directory and a lease held by a peer have opposite remedies -- fix the host, or wait -- so a fold
+// that answered "held" for both would send an operator to wait out a lease that does not exist.
+test fn a_directory_refusal_is_distinguished_from_a_held_lease() -> Bool {
+  acquire_with(created: false, observed: TransitionFileAbsent { detail: "Permission denied" })
+    != acquire_with(created: false, observed: TransitionFilePresent { record: in_force_record() })
+}
+
+// THE ROUND TRIP IS THE ORACLE FOR THE ENCODING, not a golden string: what production writes is what
+// production reads back, through the two functions that actually run.
+test fn a_written_record_decodes_back_to_the_same_fields() -> Bool {
+  match transition_record_decode(text: transition_record_json(record: in_force_record())) {
+    TransitionRecordUndecodable { cause: _ } => false
+    TransitionRecordDecoded { record: r } =>
+      r.actor == "deployer"
+        && r.invocation == "run-1"
+        && r.repo_root == "/opt/gunbc/gunbc"
+        && r.base_ref == "refs/remotes/origin/main"
+        && r.candidate == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        && r.phase == transition_phase_in_force
+  }
+}
+
+test fn the_partial_phase_survives_the_round_trip_distinctly() -> Bool {
+  match transition_record_decode(text: transition_record_json(record: partial_record())) {
+    TransitionRecordUndecodable { cause: _ } => false
+    TransitionRecordDecoded { record: r } =>
+      r.phase == transition_phase_partial && r.phase != transition_phase_in_force
+  }
+}
+
+// EVERY WAY A RECORD CAN BE WRONG REFUSES, and the positive control above is what stops this from
+// being satisfied by a decoder that refuses everything.
+test fn a_malformed_record_refuses_rather_than_decoding() -> Bool {
+  !decoded_ok(d: transition_record_decode(text: "{"))
+    && !decoded_ok(d: transition_record_decode(text: "\"a bare string\""))
+    && !decoded_ok(d: transition_record_decode(
+      text: "{\"schema\":\"gunbc.deploy_transition/0\",\"actor\":\"a\",\"invocation\":\"i\",\"repo_root\":\"r\",\"base_ref\":\"b\",\"candidate\":\"c\",\"phase\":\"in-force\"}"))
+    && !decoded_ok(d: transition_record_decode(
+      text: "{\"schema\":\"gunbc.deploy_transition/1\",\"actor\":\"a\",\"invocation\":\"i\",\"repo_root\":\"r\",\"base_ref\":\"b\",\"phase\":\"in-force\"}"))
+    && !decoded_ok(d: transition_record_decode(
+      text: "{\"schema\":\"gunbc.deploy_transition/1\",\"actor\":\"a\",\"invocation\":\"i\",\"repo_root\":\"r\",\"base_ref\":\"b\",\"candidate\":\"c\",\"phase\":\"whatever\"}"))
+}
+
+// A NUMERIC FIELD IS A REFUSAL, NOT AN EMPTY STRING. The shared JSON helper answers "" for a member
+// of the wrong shape, and a candidate that decoded to "" would compare unequal to every head -- a
+// refusal reached for a fabricated reason, which is worse than the real one because the cause it
+// reports sends the reader somewhere else.
+test fn a_field_of_the_wrong_shape_refuses_and_names_the_field() -> Bool {
+  let d = transition_record_decode(
+    text: "{\"schema\":\"gunbc.deploy_transition/1\",\"actor\":\"a\",\"invocation\":\"i\",\"repo_root\":\"r\",\"base_ref\":\"b\",\"candidate\":7,\"phase\":\"in-force\"}")
+  !decoded_ok(d: d) && string_contains(s: decode_cause(d: d), pattern: "candidate")
+}
+
+// A DUPLICATED IDENTITY FIELD REFUSES RATHER THAN RESOLVING. RFC 8259 does not say which duplicate
+// wins, so a last-wins reader accepts whichever candidate was written second -- which is exactly how
+// a record carrying two candidates reads as the wrong one.
+test fn a_duplicated_field_refuses_rather_than_picking_one() -> Bool {
+  !decoded_ok(d: transition_record_decode(
+    text: "{\"schema\":\"gunbc.deploy_transition/1\",\"actor\":\"a\",\"invocation\":\"i\",\"repo_root\":\"r\",\"base_ref\":\"b\",\"candidate\":\"c\",\"candidate\":\"d\",\"phase\":\"in-force\"}"))
+}
+
+// A READ REFUSAL RENDERS AS ABSENT AND A DECODE REFUSAL DOES NOT. The file transport reports one
+// error channel, so absence and permission denial arrive identically here -- which is safe only
+// because acquisition never trusts this reading, and unsafe if it ever leaked into the standing.
+// The next witness is the half that makes that safe.
+test fn the_observation_separates_a_read_refusal_from_a_decode_refusal() -> Bool {
+  let missing = transition_file_observation_of(
+    read: FilesystemReadRefused { error: "No such file or directory" },
+    path: "/opt/gunbc/transition-lease.json",
+  )
+  let corrupt = transition_file_observation_of(
+    read: FilesystemReadSucceeded { content: "not json" },
+    path: "/opt/gunbc/transition-lease.json",
+  )
+  let good = transition_file_observation_of(
+    read: FilesystemReadSucceeded { content: transition_record_json(record: in_force_record()) },
+    path: "/opt/gunbc/transition-lease.json",
+  )
+  match missing {
+    TransitionFileAbsent { detail: _ } =>
+      match corrupt {
+        TransitionFileUndecodable { cause: _ } =>
+          match good {
+            TransitionFilePresent { record: _ } => true
+            TransitionFileAbsent { detail: _ } => false
+            TransitionFileUndecodable { cause: _ } => false
+          }
+        TransitionFileAbsent { detail: _ } => false
+        TransitionFilePresent { record: _ } => false
+      }
+    TransitionFilePresent { record: _ } => false
+    TransitionFileUndecodable { cause: _ } => false
+  }
+}
+
+// ONLY ONE STANDING ADMITS. An unreadable inhibition refuses, which is the direction that matters:
+// a belt tick that proceeded because it could not tell would act on a tree that is mid-transition
+// exactly when the evidence protecting it is damaged.
+test fn only_a_permitted_standing_admits_actuation() -> Bool {
+  admission_admits(a: actuation_admission(standing: ActuationPermitted))
+    && !admission_admits(a: actuation_admission(
+      standing: ActuationInhibited { record: in_force_record() }))
+    && !admission_admits(a: actuation_admission(
+      standing: ActuationStandingUnreadable { cause: "corrupt" }))
+}
+
+// AN UNREADABLE STANDING IS NOT A PERMITTED ONE, driven through the observation fold rather than by
+// constructing the standing directly, so the witness covers the join and not just the last arm.
+test fn an_unreadable_inhibition_refuses_actuation() -> Bool {
+  let standing = actuation_standing_of(
+    observed: transition_file_observation_of(
+      read: FilesystemReadSucceeded { content: "{\"schema\":\"wrong\"}" },
+      path: "/opt/gunbc/transition-inhibition.json",
+    ),
+  )
+  !admission_admits(a: actuation_admission(standing: standing))
+    && string_contains(s: admission_reason(a: actuation_admission(standing: standing)), pattern: "unreadable")
+}
+
+// A REFUSAL AN OPERATOR CAN ACT ON. "Refused" alone is a verdict they must trust; naming the
+// repository, the candidate and the holder lets them go and check it on the host.
+test fn an_inhibited_refusal_names_the_holder_and_the_candidate() -> Bool {
+  let reason = admission_reason(a: actuation_admission(
+    standing: ActuationInhibited { record: in_force_record() }))
+  string_contains(s: reason, pattern: "/opt/gunbc/gunbc")
+    && string_contains(s: reason, pattern: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    && string_contains(s: reason, pattern: "deployer")
+    && string_contains(s: reason, pattern: "run-1")
+}
+
+fn evidence(record: TransitionRecord, observed: Bool, head: String) -> ResidueEvidence {
+  ResidueEvidence {
+    record: record,
+    head_observed: observed,
+    observed_head: head,
+    observation_detail: "rev-parse HEAD refused",
+  }
+}
+
+// STALENESS IS RESOLVED BY EVIDENCE, NEVER BY DURATION. A record naming a candidate the repository
+// is actually at describes a transition that landed whatever killed the process; the same record
+// over any other head describes one that did not, and no elapsed time changes that. The two arms
+// are driven over inputs differing only in the observed head.
+test fn a_residue_resolves_only_when_the_repository_stands_at_its_candidate() -> Bool {
+  disposition_arm(d: residue_disposition(evidence: evidence(
+    record: in_force_record(),
+    observed: true,
+    head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  ))) == "resolvable"
+    && disposition_arm(d: residue_disposition(evidence: evidence(
+      record: in_force_record(),
+      observed: true,
+      head: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    ))) == "incomplete"
+}
+
+// A DECLARED PARTIAL TRANSITION IS NOT RESOLVABLE BY A MATCHING HEAD. The phase is a first-hand
+// report from the process that was there: it reached the worktree transition and the worktree
+// transition failed. A head that matches afterwards means something else moved it, which is more
+// alarming than a mismatch and not less -- so this arm stays separate from the resolvable one over
+// an input the resolvable arm would otherwise accept.
+test fn a_declared_partial_transition_refuses_even_at_a_matching_head() -> Bool {
+  disposition_arm(d: residue_disposition(evidence: evidence(
+    record: partial_record(),
+    observed: true,
+    head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  ))) == "partial"
+}
+
+// AN UNOBSERVABLE REPOSITORY DOMINATES EVERY OTHER READING, including the head field that happens to
+// be sitting in the carrier. Reading the head without checking whether it was observed is how a
+// default value becomes a verdict.
+test fn an_unobservable_repository_refuses_rather_than_reading_a_stale_head() -> Bool {
+  disposition_arm(d: residue_disposition(evidence: evidence(
+    record: in_force_record(),
+    observed: false,
+    head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  ))) == "unobservable"
+}
+
+// THE HOLDER MAY NOT CLEAR ON EXIT STATUS. Both arms run over one guard, so a fold that ignored the
+// readback would go red here rather than quietly clearing an inhibition over a tree nothing verified.
+test fn the_holder_clears_only_after_a_converged_readback() -> Bool {
+  match acquired_guard() {
+    Absent => false
+    Present { value: g } =>
+      clearance_admits(c: clearance_admission(
+        basis: ClearedByHolder(g),
+        readback_converged: true,
+        observed: present_marker(record: in_force_record()),
+      ))
+        && !clearance_admits(c: clearance_admission(
+          basis: ClearedByHolder(g),
+          readback_converged: false,
+          observed: present_marker(record: in_force_record()),
+        ))
+  }
+}
+
+// EVIDENCE-BASED CLEARANCE FOLLOWS THE DISPOSITION AND NOTHING ELSE, and the readback flag of the
+// clearing process is irrelevant to it -- it is clearing someone else's residue, so its own verdict
+// carries no authority over that record. Passing `true` here would be the tell that the two paths
+// were fused.
+test fn evidence_clearance_admits_only_a_resolvable_residue() -> Bool {
+  clearance_admits(c: clearance_admission(
+    basis: ClearedByEvidence {
+      expected: in_force_record(),
+      disposition: ResidueResolvable { candidate: "c" },
+    },
+    readback_converged: false,
+    observed: present_marker(record: in_force_record()),
+  ))
+    && !clearance_admits(c: clearance_admission(
+      basis: ClearedByEvidence {
+        expected: in_force_record(),
+        disposition: ResidueTransitionIncomplete { candidate: "c", observed_head: "d" },
+      },
+      readback_converged: true,
+      observed: present_marker(record: in_force_record()),
+    ))
+    && !clearance_admits(c: clearance_admission(
+      basis: ClearedByEvidence {
+        expected: in_force_record(),
+        disposition: ResiduePartialDeclared { candidate: "c", observed_head: "c" },
+      },
+      readback_converged: true,
+      observed: present_marker(record: in_force_record()),
+    ))
+    && !clearance_admits(c: clearance_admission(
+      basis: ClearedByEvidence {
+        expected: in_force_record(),
+        disposition: ResidueStateUnobservable { cause: "unreadable" },
+      },
+      readback_converged: true,
+      observed: present_marker(record: in_force_record()),
+    ))
+}
+
+// A REFUSED CLEARANCE SAYS WHY THE INHIBITION STAYS SET, because the operator's next action differs
+// per cause: wait for the transition, repair the tree, or abandon the record.
+test fn a_refused_clearance_names_the_reason_the_inhibition_stands() -> Bool {
+  let incomplete = clearance_text(c: clearance_admission(
+    basis: ClearedByEvidence {
+      expected: in_force_record(),
+      disposition: ResidueTransitionIncomplete {
+        candidate: "aaaa",
+        observed_head: "bbbb",
+      },
+    },
+    readback_converged: true,
+    observed: present_marker(record: in_force_record()),
+  ))
+  string_contains(s: incomplete, pattern: "aaaa") && string_contains(s: incomplete, pattern: "bbbb")
+}
+
+// THE OPERATOR PATH HAS TWO WALLS AND BOTH FIRE. An abandonment minted without a fresh observation
+// would be an assertion with no evidence attached, and one minted by a non-operator would be the
+// escape hatch section 5 forbids wearing a different name.
+test fn an_abandonment_refuses_without_an_operator_and_without_an_observation() -> Bool {
+  let no_operator = mint_transition_abandonment(
+    operator: "belt",
+    operator_admitted: false,
+    evidence: evidence(record: partial_record(), observed: true, head: "bbbb"),
+  )
+  let no_observation = mint_transition_abandonment(
+    operator: "operator",
+    operator_admitted: true,
+    evidence: evidence(record: partial_record(), observed: false, head: ""),
+  )
+  let minted = mint_transition_abandonment(
+    operator: "operator",
+    operator_admitted: true,
+    evidence: evidence(record: partial_record(), observed: true, head: "bbbb"),
+  )
+  match no_operator {
+    AbandonmentRefusedNotOperator { actor: _ } =>
+      match no_observation {
+        AbandonmentRefusedUnobserved { cause: _ } =>
+          match minted {
+            AbandonmentMinted(_) => true
+            AbandonmentRefusedUnobserved { cause: _ } => false
+            AbandonmentRefusedNotOperator { actor: _ } => false
+          }
+        AbandonmentMinted(_) => false
+        AbandonmentRefusedNotOperator { actor: _ } => false
+      }
+    AbandonmentMinted(_) => false
+    AbandonmentRefusedUnobserved { cause: _ } => false
+  }
+}
+
+// AN ABANDONMENT IS RECORDED, NOT SILENT. The admitted basis names the operator and what they saw,
+// so retiring a record leaves an account of who retired it and on what -- which is the difference
+// between an actuation and a bypass.
+test fn an_admitted_abandonment_names_the_operator_and_the_observation() -> Bool {
+  match mint_transition_abandonment(
+    operator: "operator",
+    operator_admitted: true,
+    evidence: evidence(record: partial_record(), observed: true, head: "bbbb"),
+  ) {
+    AbandonmentRefusedUnobserved { cause: _ } => false
+    AbandonmentRefusedNotOperator { actor: _ } => false
+    AbandonmentMinted(a) => {
+      let text = clearance_text(c: clearance_admission(
+        basis: ClearedByAbandonment(a),
+        readback_converged: false,
+        observed: present_marker(record: partial_record()),
+      ))
+      string_contains(s: text, pattern: "operator") && string_contains(s: text, pattern: "bbbb")
+    }
+  }
+}
+
+fn newer_record() -> TransitionRecord {
+  TransitionRecord {
+    actor: "deployer",
+    invocation: "run-2",
+    repo_root: "/opt/gunbc/gunbc",
+    base_ref: "refs/remotes/origin/main",
+    candidate: "cccccccccccccccccccccccccccccccccccccccc",
+    phase: transition_phase_in_force,
+  }
+}
+
+// THE CLEARANCE IS SUBJECT-MATCHED, AND THIS IS THE FAILURE IT PREVENTS. A late-finishing older
+// deployment holds a perfectly sound basis -- its own guard, its own converged readback -- and the
+// marker on disk belongs to a NEWER transition that is still running. A blind delete admits the belt
+// into the tree that newer transition is mutating. Both halves are driven here over one basis: the
+// same clearance that admits against its own record refuses against someone else's.
+test fn a_clearance_cannot_clear_another_transitions_marker() -> Bool {
+  match acquired_guard() {
+    Absent => false
+    Present { value: g } =>
+      clearance_admits(c: clearance_admission(
+        basis: ClearedByHolder(g),
+        readback_converged: true,
+        observed: present_marker(record: in_force_record()),
+      ))
+        && !clearance_admits(c: clearance_admission(
+          basis: ClearedByHolder(g),
+          readback_converged: true,
+          observed: present_marker(record: newer_record()),
+        ))
+  }
+}
+
+// THE REFUSAL NAMES BOTH RECORDS, because an operator seeing it needs to know which transition owns
+// the marker and which one tried to clear it -- a mismatch that reported only "refused" would look
+// identical to a permission problem.
+test fn a_subject_mismatch_names_both_transitions() -> Bool {
+  match acquired_guard() {
+    Absent => false
+    Present { value: g } => {
+      let text = clearance_text(c: clearance_admission(
+        basis: ClearedByHolder(g),
+        readback_converged: true,
+        observed: present_marker(record: newer_record()),
+      ))
+      string_contains(s: text, pattern: "run-1")
+        && string_contains(s: text, pattern: "run-2")
+        && string_contains(s: text, pattern: "cccccccccccccccccccccccccccccccccccccccc")
+    }
+  }
+}
+
+// A MARKER THAT VANISHED OR BECAME UNREADABLE BETWEEN THE DECISION AND THE DELETE ALSO REFUSES.
+// Absent is the subtle one: it reads like "already cleared, nothing to do", and it is equally
+// consistent with another actor having replaced the file, so proceeding would delete whatever
+// arrives next. Neither state is the record this clearance was computed against.
+test fn a_vanished_or_unreadable_marker_refuses_the_clearance() -> Bool {
+  match acquired_guard() {
+    Absent => false
+    Present { value: g } =>
+      !clearance_admits(c: clearance_admission(
+        basis: ClearedByHolder(g),
+        readback_converged: true,
+        observed: TransitionFileAbsent { detail: "No such file or directory" },
+      ))
+        && !clearance_admits(c: clearance_admission(
+          basis: ClearedByHolder(g),
+          readback_converged: true,
+          observed: TransitionFileUndecodable { cause: "corrupt" },
+        ))
+  }
+}
+
+// SUBJECT IDENTITY IGNORES THE PHASE, and that is required rather than incidental: a transition that
+// marked itself partial and then recovered must still be able to clear its OWN marker, and the phase
+// is the one field it deliberately rewrote. Matching on it would make a partial transition
+// permanently unclearable by the process that owns it.
+test fn subject_identity_is_the_transition_and_not_its_phase() -> Bool {
+  transition_record_same_subject(a: in_force_record(), b: partial_record())
+    && !transition_record_same_subject(a: in_force_record(), b: newer_record())
+}

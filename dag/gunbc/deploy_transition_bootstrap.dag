@@ -1,0 +1,226 @@
+module gunbc.deploy_transition_bootstrap
+
+
+import std.types { String, Bool, List, NonEmptyStr }
+import gunbc.live_deploy.spec {
+  DeploymentNames,
+  deployment_belt_service_unit_name,
+  deployment_belt_timer_unit_name,
+}
+import gunbc.live_deploy.operations {
+  systemctl_disable_now_command,
+  systemctl_enable_command,
+  systemctl_start_command,
+}
+
+// THE FIRST TRANSITION IS NOT PROTECTED BY ANY MARKER, AND THAT IS NOT A GAP IN THE MARKER.
+//
+// `gunbc.deploy_transition` inhibits release-consuming actuators by writing a durable record that
+// the actuator READS. That works for every actuator running a release which knows the record
+// exists. It cannot work for the FIRST activation, because the belt timer and the HTTP dispatcher
+// live during it are running the OLD binary -- the one installed before the mechanism was written
+// -- and no file can inhibit a program that never looks for it. The new release is not installed
+// until partway through the very transition that needs protecting.
+//
+// So there are two regimes and the transition between them is itself a modeled step.
+//
+// BOOTSTRAP: the old release's actuators are stopped from OUTSIDE the process, by disabling their
+// systemd units. That requires nothing of the old binary and survives both a reboot and the death
+// of the deploying process, which is the property an in-process gate cannot have here. It is
+// stronger than the steady-state mechanism and correspondingly more expensive: the dashboard is
+// down for the window, which the single-deployment ruling already accepts as the cost of a
+// restart-in-place deployment.
+//
+// STEADY STATE: the installed release consults the durable marker itself, so its units may run
+// while a transition is in force -- every actuation path inside them refuses on its own. The units
+// are re-enabled at that point even though the inhibition is still set, because the inhibition is
+// now enforced one level in.
+//
+// THE SWITCH IS A WALL, NOT A STEP. Re-enabling the units is admitted only when the INSTALLED
+// release is observed to be marker-aware. Re-enabling over an unaware release would restore exactly
+// the unprotected actuator the bootstrap regime exists to stop, at the moment the tree is most
+// likely to be half-converged -- and it would look like progress.
+
+type ReleaseMarkerAwareness
+  = MarkerAware { release_identity: String }
+  | MarkerUnaware { release_identity: String }
+  | MarkerAwarenessUnobserved { cause: String }
+
+type QuiescenceRegime
+  = BootstrapExternalQuiescence
+  | SteadyStateInProcessInhibition
+
+type QuiescenceRegimeDecision
+  = QuiescenceRegimeIs { regime: QuiescenceRegime }
+  | QuiescenceRegimeUndecidable { cause: String }
+
+// AN UNOBSERVED AWARENESS REFUSES RATHER THAN CHOOSING THE STRONGER REGIME. Defaulting to bootstrap
+// would be safe in outcome and wrong in kind: it answers a question it could not compute with the
+// most protective value, which zeroes the frequency of the observation deficit by construction and
+// makes an unobservable release indistinguishable from an old one. A transition that cannot tell
+// which release is running has no business starting.
+fn quiescence_regime(awareness: ReleaseMarkerAwareness) -> QuiescenceRegimeDecision {
+  match awareness {
+    MarkerAware { release_identity: _ } =>
+      QuiescenceRegimeIs { regime: SteadyStateInProcessInhibition }
+    MarkerUnaware { release_identity: _ } =>
+      QuiescenceRegimeIs { regime: BootstrapExternalQuiescence }
+    MarkerAwarenessUnobserved { cause: c } =>
+      QuiescenceRegimeUndecidable {
+        cause: join([
+          "gunbc.deploy_transition_bootstrap: the running release's marker awareness is unobserved, so neither quiescence regime can be selected -- ",
+          c,
+        ], ""),
+      }
+  }
+}
+
+// THE QUIESCED SET IS EVERY UNIT THAT CAN ACTUATE A RELEASE, and both of the belt's units are in it
+// rather than only the timer. Disabling the timer alone leaves the one-shot service startable by
+// anything that reaches systemd, and the HTTP dispatcher lives in the serve unit -- the deploy
+// convergence design record already records that stopping only the timer leaves the click path
+// admitting against a half-published release, which is this defect one layer out.
+fn bootstrap_quiesced_units(names: DeploymentNames) -> List<NonEmptyStr> {
+  [
+    deployment_belt_timer_unit_name(names: names),
+    deployment_belt_service_unit_name(names: names),
+    names.unit_name,
+  ]
+}
+
+// `disable --now` AND NOT `stop`, because the durability is the whole requirement. `stop` is lost on
+// reboot and lost to any dependency that starts the unit again, so a deploy process that dies after
+// stopping would leave the actuator one reboot away from running against a half-converged tree.
+// Disabling removes the enablement symlinks, which persist until something deliberately restores
+// them -- and the only thing that restores them here is the switch below, which is walled.
+fn bootstrap_quiesce_commands(names: DeploymentNames, privileged: Bool) -> List<String> {
+  map(
+    bootstrap_quiesced_units(names: names),
+    u => systemctl_disable_now_command(unit: u, privileged: privileged),
+  )
+}
+
+fn bootstrap_restore_commands(names: DeploymentNames, privileged: Bool) -> List<String> {
+  concat(
+    map(
+      bootstrap_quiesced_units(names: names),
+      u => systemctl_enable_command(unit: u, privileged: privileged),
+    ),
+    map(
+      bootstrap_quiesced_units(names: names),
+      u => systemctl_start_command(unit: u, privileged: privileged),
+    ),
+  )
+}
+
+type SteadyStateAdoption
+  = SteadyStateAdopted { release_identity: String }
+  | SteadyStateRefused { cause: String }
+
+// THE SWITCH IS ADMITTED BY THE INSTALLED RELEASE, NOT BY THE DEPLOYING PROCESS'S INTENTION. The
+// argument is the awareness of what is now ON DISK, observed after installation -- a deploy that
+// asked about the release it MEANT to install would be checking its own plan rather than the host.
+fn adopt_steady_state(installed: ReleaseMarkerAwareness) -> SteadyStateAdoption {
+  match installed {
+    MarkerAware { release_identity: r } => SteadyStateAdopted { release_identity: r }
+    MarkerUnaware { release_identity: r } =>
+      SteadyStateRefused {
+        cause: join([
+          "gunbc.deploy_transition_bootstrap: refusing to restore actuator units over release ",
+          r,
+          ", which does not consult the durable inhibition; external quiescence stays in force",
+        ], ""),
+      }
+    MarkerAwarenessUnobserved { cause: c } =>
+      SteadyStateRefused {
+        cause: join([
+          "gunbc.deploy_transition_bootstrap: refusing to restore actuator units without observing the installed release's marker awareness -- ",
+          c,
+        ], ""),
+      }
+  }
+}
+
+// THE ORDER IS THE SAFETY PROPERTY, so it is a modeled successor relation rather than the order in
+// which a caller happens to write the calls. Every adjacent pair below is one of the requirements
+// this lane exists to hold, and a skipped or reordered step is a refusal with both steps named
+// rather than a run that quietly omitted one.
+//
+// Read it as the two invariants it encodes. Nothing mutates before the lease is held and the old
+// actuators are quiesced. Nothing is released -- units, then marker, then lease -- until the layer
+// beneath it is in place: units restore only over an aware release, the marker clears only after
+// the units are governed in-process, and the lease releases last so a second transition cannot
+// begin while any of it is outstanding.
+type TransitionStep
+  = StepLeaseHeld
+  | StepExternallyQuiesced
+  | StepInhibitionPersisted
+  | StepReleaseInstalled
+  | StepSteadyStateAdopted
+  | StepInhibitionCleared
+  | StepLeaseReleased
+
+fn transition_step_label(step: TransitionStep) -> String {
+  match step {
+    StepLeaseHeld => "lease-held"
+    StepExternallyQuiesced => "externally-quiesced"
+    StepInhibitionPersisted => "inhibition-persisted"
+    StepReleaseInstalled => "release-installed"
+    StepSteadyStateAdopted => "steady-state-adopted"
+    StepInhibitionCleared => "inhibition-cleared"
+    StepLeaseReleased => "lease-released"
+  }
+}
+
+fn transition_step_successor(step: TransitionStep) -> TransitionStep? {
+  match step {
+    StepLeaseHeld => Present { value: StepExternallyQuiesced }
+    StepExternallyQuiesced => Present { value: StepInhibitionPersisted }
+    StepInhibitionPersisted => Present { value: StepReleaseInstalled }
+    StepReleaseInstalled => Present { value: StepSteadyStateAdopted }
+    StepSteadyStateAdopted => Present { value: StepInhibitionCleared }
+    StepInhibitionCleared => Present { value: StepLeaseReleased }
+    StepLeaseReleased => none
+  }
+}
+
+type StepAdmission
+  = StepAdmitted { step: String }
+  | StepOutOfOrder { expected: String, attempted: String }
+  | StepAfterCompletion { attempted: String }
+
+fn transition_step_advance(from: TransitionStep, to: TransitionStep) -> StepAdmission {
+  match transition_step_successor(step: from) {
+    Absent => StepAfterCompletion { attempted: transition_step_label(step: to) }
+    Present { value: next } =>
+      if transition_step_label(step: next) == transition_step_label(step: to) {
+        StepAdmitted { step: transition_step_label(step: to) }
+      } else {
+        StepOutOfOrder {
+          expected: transition_step_label(step: next),
+          attempted: transition_step_label(step: to),
+        }
+      }
+  }
+}
+
+// WHERE A CRASH LEAVES THE HOST, per step, and the property that holds at every one of them: no
+// state below leaves an unguarded actuator over a tree that may be half-converged.
+//
+// After lease-held: nothing mutated; the lease file is residue, resolved by the clearance path in
+// gunbc.deploy_transition on evidence. After externally-quiesced: the units are disabled and stay
+// disabled across a reboot, so the dashboard is down -- an outage, and the SAFE side of this
+// mechanism, restored by re-running the deployment or by an operator abandonment plus a deliberate
+// enable, both of which leave a record. Through inhibition-persisted and release-installed both
+// mechanisms are in force at once, which is the only overlap in the sequence and is deliberate: the
+// marker takes over from external quiescence rather than replacing it in one uncovered instant.
+// After steady-state-adopted the units run again and refuse in-process, because the switch was
+// admitted only over a release that consults the marker. After inhibition-cleared only the lease is
+// outstanding, which is the cheapest residue in the sequence.
+fn transition_step_admitted(admission: StepAdmission) -> Bool {
+  match admission {
+    StepAdmitted { step: _ } => true
+    StepOutOfOrder { expected: _, attempted: _ } => false
+    StepAfterCompletion { attempted: _ } => false
+  }
+}
