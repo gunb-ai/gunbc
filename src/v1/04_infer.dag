@@ -41,6 +41,7 @@ import v1.std.core {
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
   InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
+  TypeArgumentArityMismatch,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
   expr_has_self_call, expr_has_non_tail_self_call,
@@ -6267,15 +6268,49 @@ fn alias_chain_generic_decl(env: TypeEnv, carrier: Node, target: Node) -> Node {
   else { resolve_generic_use_decl(env: env, n: carrier) }
 }
 
-fn alias_chain_type_arg_subst(env: TypeEnv, carrier: Node, target: Node, type_args: List<Node>) -> Map<String, Node> {
+data alias_chain_type_arg_arity_note: String = "WHY THIS SEAM REFUSES INSTEAD OF SUBSTITUTING WHAT FITS (DESIGN sec 5, the absorbing fallback; sec 4b floor band 'applications bind in exact bijection'). alias_chain_type_arg_subst folded the DECLARED parameters against the SUPPLIED type arguments positionally and absorbed every disagreement in both directions at once: with fewer arguments than parameters the fold's Absent arm left the surplus parameters unsubstituted, so the expanded record kept type-variable fields and field access on it was judged against a hole; with more arguments than parameters the surplus arguments were simply never read. Neither state produced a diagnostic, so `Alias<Int>` and `Alias<Int, String>` against a one-parameter Alias compiled identically -- correct and incorrect indistinguishable at the floor band. One of the three call sites did notice: expand_alias_chain_for_field_access computed `dropped_args` at its recursion seam and widened `lossy`, which is the absorbing fallback in its purest form -- the failure arm stood the field-presence wall DOWN rather than refusing, so the deficit's frequency was zero by construction and nothing ranked it for repair. The other two call sites (alias_chain_target_after_args, and the record branch's re-substitution over an unresolved-parameter field) did not check at all. The repair is construction before validation: the subst is now Optional and has NO spelling for a partial map, so a mismatch cannot be handed downstream by any caller; and alias_chain_arity_diagnostics states the refusal ONCE, typed and located, at the seam that owns both the declaration and the application. SCOPE, stated rather than implied: the refused population is exactly the state `dropped_args` already computed -- both counts nonzero and unequal -- so this wall adds no refusal to a shape the code was not already treating as wrong, and a zero-parameter declaration or a zero-argument use is untouched. Container spellings are excluded because their arity has its own authority (container_expected_arity) and its own diagnostic. AND THE CARRIER MUST BE A USE-SITE LEAF, which is the qualification the first cut of this wall omitted and CI refused it for -- correctly, and the refusal is recorded here rather than quietly patched out. alias_chain_carrier answers the authored node only when it is NoConnective and named; otherwise it answers structural_from_expanded_type, whose children are the record's FIELDS or the coproduct's VARIANTS, not type arguments at all. Reading those as arguments made the check compare a declaration's field count against its parameter count, so `type Medium<R> { carried: R  fidelity: DecodeFidelity }` reported 'two type arguments supplied, one type parameter declared' at its own declaration -- 2460 diagnostics over 154 sites and 65 type names across dag/ and src/v2/, none of them a use site and none of them wrong source. The predicate therefore requires connective == NoConnective, which is exactly the branch where children ARE the applied arguments, and is the same position the deleted dropped_args occupied. WHY THIS WAS NOT CAUGHT BEFORE PUSHING: the corpus control was run with a compiler built BEFORE the change, so it exercised nothing and its zero was a fact about the old binary. A control that cannot flip is not a control."
+
+fn alias_chain_type_arg_arity_mismatch(carrier: Node, decl: Node, type_args: List<Node>) -> Bool {
+  let declared = decl.params |> count
+  let supplied = type_args |> count
+  carrier.connective == NoConnective && declared > 0 && supplied > 0 && declared != supplied
+}
+
+fn alias_chain_type_arg_subst(env: TypeEnv, carrier: Node, target: Node, type_args: List<Node>) -> Map<String, Node>? {
   let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
-  fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
-    let slot = generic_param_name_at(n: pair.second, source_indices: env.source_indices)
-    match type_args |> skip(pair.first) |> first {
-      Present { value: arg } => map_insert(acc, slot, resolve_scrutinee_type_node(env: env, n: arg))
-      Absent => acc
+  if alias_chain_type_arg_arity_mismatch(carrier: carrier, decl: decl, type_args: type_args) { none }
+  else {
+    Present { value: fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
+      let slot = generic_param_name_at(n: pair.second, source_indices: env.source_indices)
+      match type_args |> skip(pair.first) |> first {
+        Present { value: arg } => map_insert(acc, slot, resolve_scrutinee_type_node(env: env, n: arg))
+        Absent => acc
+      }
+    ) }
+  }
+}
+
+fn alias_chain_arity_diagnostics(carrier: Node, carrier_name: String, env: TypeEnv, module_name: String) -> List<ErrorNode> {
+  let type_args = carrier.children
+  if carrier_name == "" || (type_args |> count) == 0 || is_container_type(name: carrier_name) { [] }
+  else {
+    match lookup_type_by_name(env: env, name: carrier_name) {
+      Present { value: target } =>
+        let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
+        if alias_chain_type_arg_arity_mismatch(carrier: carrier, decl: decl, type_args: type_args) {
+          [make_error_node(
+            diagnostic: TypeArgumentArityMismatch {
+              type_name: carrier_name,
+              supplied: type_args |> count,
+              declared: decl.params |> count,
+              span: carrier.span
+            },
+            module_name: module_name
+          )]
+        } else { [] }
+      Absent => []
     }
-  )
+  }
 }
 
 fn alias_chain_target_after_args(target: Node, carrier: Node, env: TypeEnv) -> Node {
@@ -6283,15 +6318,18 @@ fn alias_chain_target_after_args(target: Node, carrier: Node, env: TypeEnv) -> N
   if type_args |> count == 0 { target }
   else {
     let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
-    let subst = alias_chain_type_arg_subst(env: env, carrier: carrier, target: target, type_args: type_args)
-    let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
-    if is_parameterized_alias {
-      match decl.inferred {
-        Present { value: Resolved { node: alias_body } } => substitute_generics(n: alias_body, subst: subst, source_indices: env.source_indices)
-        _ => target
-      }
-    } else {
-      substitute_generics(n: decl, subst: subst, source_indices: env.source_indices)
+    match alias_chain_type_arg_subst(env: env, carrier: carrier, target: target, type_args: type_args) {
+      Absent => target
+      Present { value: subst } =>
+        let is_parameterized_alias = decl.inferred != none && decl.children |> count == 0 && decl.connective == NoConnective
+        if is_parameterized_alias {
+          match decl.inferred {
+            Present { value: Resolved { node: alias_body } } => substitute_generics(n: alias_body, subst: subst, source_indices: env.source_indices)
+            _ => target
+          }
+        } else {
+          substitute_generics(n: decl, subst: subst, source_indices: env.source_indices)
+        }
     }
   }
 }
@@ -6301,7 +6339,7 @@ fn alias_chain_carrier(n: Node) -> Node {
   else { structural_from_expanded_type(normed: n) }
 }
 
-fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, origin_name: String, seen: Map<String, Bool>, lossy: Bool) -> NodeResolveResult {
+fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> NodeResolveResult {
   let peel_result = if needs_alias_field_expansion(n: n, env: env) {
     peel_alias_once_for_field_access(n: n, env: env, module_name: module_name)
   } else {
@@ -6310,53 +6348,49 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
   let peeled = peel_result.resolved
   let carrier = alias_chain_carrier(n: peeled)
   let carrier_name = if carrier.name != "" { carrier.name } else { authored_name_at(source_indices: env.source_indices, node: carrier) }
+  let own_diags = concat(peel_result.diagnostics, alias_chain_arity_diagnostics(carrier: carrier, carrier_name: carrier_name, env: env, module_name: module_name))
   let structural = structural_from_expanded_type(normed: resolve_scrutinee_type_node(env: env, n: peeled))
   let is_record = structural.connective == Conj || structural.connective == Disj
   if is_record {
     let resolved_record = if record_has_unresolved_param_field(record: structural, env: env) && (carrier.children |> count) > 0 && carrier_name != "" {
       match lookup_type_by_name(env: env, name: carrier_name) {
         Present { value: target } =>
-          let subst = alias_chain_type_arg_subst(env: env, carrier: carrier, target: target, type_args: carrier.children)
-          substitute_generics(n: structural, subst: subst, source_indices: env.source_indices)
+          match alias_chain_type_arg_subst(env: env, carrier: carrier, target: target, type_args: carrier.children) {
+            Present { value: subst } => substitute_generics(n: structural, subst: subst, source_indices: env.source_indices)
+            Absent => structural
+          }
         Absent => structural
       }
     } else { structural }
-    let fail_closed = lossy && record_has_unresolved_param_field(record: resolved_record, env: env)
-    if fail_closed {
-      NodeResolveResult { resolved: nominal_type_ref(name: origin_name), diagnostics: peel_result.diagnostics }
-    } else { NodeResolveResult { resolved: resolved_record, diagnostics: peel_result.diagnostics } }
+    NodeResolveResult { resolved: resolved_record, diagnostics: own_diags }
   } else {
     let next_name = carrier_name
 
     let is_optional = structural.return_cardinality == CardOptional
     if is_optional {
-      let expanded_inner = expand_alias_chain_for_field_access(n: with_required_cardinality(n: structural), env: env, module_name: module_name, origin_name: origin_name, seen: seen, lossy: lossy)
+      let expanded_inner = expand_alias_chain_for_field_access(n: with_required_cardinality(n: structural), env: env, module_name: module_name, seen: seen)
       NodeResolveResult {
         resolved: with_optional_cardinality(n: expanded_inner.resolved),
-        diagnostics: concat(peel_result.diagnostics, expanded_inner.diagnostics)
+        diagnostics: concat(own_diags, expanded_inner.diagnostics)
       }
     } else {
     let stop = next_name == "" || emit_map_has(m: seen, key: next_name)
     if stop {
-      NodeResolveResult { resolved: structural, diagnostics: peel_result.diagnostics }
+      NodeResolveResult { resolved: structural, diagnostics: own_diags }
     } else {
       match lookup_type_by_name(env: env, name: next_name) {
         Present { value: target } =>
           let next_seen = map_insert(seen, next_name, true)
           let type_arg_count = carrier.children |> count
-          let decl = alias_chain_generic_decl(env: env, carrier: carrier, target: target)
-          let param_count = decl.params |> count
-          let dropped_args = type_arg_count > 0 && param_count > 0 && param_count != type_arg_count
-          let next_lossy = lossy || dropped_args
-          let next_n = if type_arg_count > 0 && !dropped_args {
+          let next_n = if type_arg_count > 0 {
             alias_chain_target_after_args(target: target, carrier: carrier, env: env)
           } else { target }
-          let expanded_next = expand_alias_chain_for_field_access(n: next_n, env: env, module_name: module_name, origin_name: origin_name, seen: next_seen, lossy: next_lossy)
+          let expanded_next = expand_alias_chain_for_field_access(n: next_n, env: env, module_name: module_name, seen: next_seen)
           NodeResolveResult {
             resolved: expanded_next.resolved,
-            diagnostics: concat(peel_result.diagnostics, expanded_next.diagnostics)
+            diagnostics: concat(own_diags, expanded_next.diagnostics)
           }
-        Absent => NodeResolveResult { resolved: structural, diagnostics: peel_result.diagnostics }
+        Absent => NodeResolveResult { resolved: structural, diagnostics: own_diags }
       }
     }
     }
@@ -6367,8 +6401,7 @@ fn expand_type_for_field_access_with_seen(n: Node, env: TypeEnv, module_name: St
   if is_deferred_field_access_base(n: n, env: env) {
     NodeResolveResult { resolved: n, diagnostics: [] }
   } else {
-    let origin_name = authored_name_at(source_indices: env.source_indices, node: n)
-    expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, origin_name: origin_name, seen: seen, lossy: false)
+    expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, seen: seen)
   }
 }
 
