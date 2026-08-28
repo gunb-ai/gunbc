@@ -1994,7 +1994,27 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
         return hit;
     }
     COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    // A MISS FILLS A SHARED ARTIFACT, and this memo's fill is the same quantity its sibling's is.
+    // The memo above was landed without this bracket, so the census half of the attribution went
+    // unrecorded: `record_shared_artifact_fill_cpu` was wired into `compile_dag_rust_emit_check`
+    // only, and a claim that filled a CENSUS entry was still charged the whole compile. That is
+    // one accounting rule with two homes, one of which does not apply it (DESIGN §3) — and it is
+    // load-bearing rather than cosmetic, because the ceiling it feeds is a fail-stop: measured on
+    // main run 33131296988, `test.claim.callable_candidate_ambiguity_witness
+    // .neither_green_source_refuses_and_neither_mis_resolves` was the first claim to reach BOTH
+    // green sources, paid both compiles, and refused the floor at 5812ms against 5000ms, while the
+    // two later claims naming those same sources read them free. The number was a fact about
+    // discovery order, not about the row.
+    //
+    // NOTHING IS EXEMPTED. As at the sibling seam, the fill is measured on the same thread clock
+    // the claim loop enforces against, recorded rather than subtracted here, and reported by
+    // `run_claim_measured` as its own `[floor-shared-fill]` column — the claim's marginal and fill
+    // halves still sum to what it actually spent.
+    let fill_started = v1_interpreter::thread_cpu_nanos();
     let census = compile_dag_diagnostic_census_uncached(source);
+    record_shared_artifact_fill_cpu(
+        v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
+    );
     COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow_mut().insert(memo_key, census.clone()));
     census
 }
