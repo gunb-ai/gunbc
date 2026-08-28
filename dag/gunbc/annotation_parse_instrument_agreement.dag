@@ -107,7 +107,7 @@ fn entry_points_share_one_grammar(s: GrammarAuthorityStanding) -> Bool {
 // build that answered with a revision; anything else carries the reason it could not, so a reading
 // can never silently claim a provenance nobody obtained.
 type BuildProvenance
-  = BuiltFromRevision { revision: CommitSha }
+  = BuiltFromRevision { revision: CommitSha, working_tree_dirty: Bool }
   | ProvenanceUnestablished { why: NonEmptyStr }
 
 type CompilerBuild {
@@ -120,7 +120,22 @@ type CompilerBuild {
 
 fn build_names_its_revision(b: CompilerBuild) -> Bool {
   match b.provenance {
-    BuiltFromRevision { revision: _ } => true
+    BuiltFromRevision { revision: _, working_tree_dirty: _ } => true
+    ProvenanceUnestablished { why: _ } => false
+  }
+}
+
+// NAMING A REVISION AND NAMING THE SUBJECT'S REVISION ARE TWO QUESTIONS, and only the second makes
+// a build an instrument for a given measurement. A peer lane ran this receipt's `--version` check
+// on its OWN build rather than assuming, and it answered with a real revision that was eighty-seven
+// commits behind that lane's branch head and dirty -- sound provenance, wrong subject. So the
+// predicate below is not `build_names_its_revision` with extra steps: the first says a reading is
+// attributable at all, the second says it is attributable TO THE TREE BEING MEASURED. A build that
+// passes the first and fails the second produces greens that do not entail CI greens for anything
+// touching compiler behaviour, and nothing about the reading looks different.
+fn build_is_the_subject_revision(b: CompilerBuild, subject: CommitSha) -> Bool {
+  match b.provenance {
+    BuiltFromRevision { revision: r, working_tree_dirty: dirty } => r == subject && !dirty
     ProvenanceUnestablished { why: _ } => false
   }
 }
@@ -134,7 +149,7 @@ data source_build: CompilerBuild = CompilerBuild {
   path: "target/release/gunbc" as NonEmptyStr,
   content_digest: "md5:e5f35d562fe512cbb965e8b39adc7937" as NonEmptyStr,
   byte_length: 25936008,
-  provenance: BuiltFromRevision { revision: measured_revision }
+  provenance: BuiltFromRevision { revision: measured_revision, working_tree_dirty: false }
 }
 
 // THE COMPILER THAT IS ON PATH. It is what `gunbc` resolves to for any lane that does not build
@@ -170,16 +185,57 @@ data reporting_lane_installed_build: CompilerBuild = CompilerBuild {
   }
 }
 
-// WHAT THE PAIR ESTABLISHES, AND ITS EXACT SIZE. Two containers, two digests, one path: the
-// installed compiler is AT LEAST TWO artifacts, not one image-wide binary. It does not establish
-// how many there are, which containers hold which, or where any of them came from -- a population
-// of two observed by two lanes who happened to compare notes is a lower bound and nothing more.
+// THE THIRD INSTALLED ARTIFACT, a further day older again, reported by the lane that routed the
+// finding and recorded with its observer named for the same reason as the second.
+data routing_lane_installed_build: CompilerBuild = CompilerBuild {
+  observed_on: "session silent-bear-842 (relayed; measured by that lane, not by this receipt's author)" as NonEmptyStr,
+  path: "/usr/local/bin/gunbc" as NonEmptyStr,
+  content_digest: "md5:9daad899de93c5c978a94e5c5847e318" as NonEmptyStr,
+  byte_length: 13240632,
+  provenance: ProvenanceUnestablished {
+    why: "rejects --version with the same message; observed a further day older than the other two" as NonEmptyStr
+  }
+}
+
+// WHAT THE THREE ESTABLISH, AND ITS EXACT SIZE. Three containers, three digests, one path: the
+// installed compiler is AT LEAST THREE artifacts, not one image-wide binary, spanning at least two
+// days. It does not establish how many there are, which containers hold which, or where any of them
+// came from -- three observations by three lanes who happened to compare notes is a lower bound and
+// nothing more.
+//
+// AND THE BYTE LENGTH IS CONSTANT ACROSS ALL THREE. That is a stronger statement than "size does
+// not discriminate": three for three means a size comparison does not merely fail, it
+// AFFIRMATIVELY CONFIRMS THE WRONG CONCLUSION every time anyone runs it. The check a diagnostician
+// reaches for first is the one that lies most reliably here, which is why the length is carried as
+// a field rather than left out as uninformative.
 fn installed_builds_are_distinct(a: CompilerBuild, b: CompilerBuild) -> Bool {
   a.content_digest != b.content_digest
 }
 
 fn installed_builds_agree_on_byte_length(a: CompilerBuild, b: CompilerBuild) -> Bool {
   a.byte_length == b.byte_length
+}
+
+// ── HOW `gunbc` ON PATH IS REACHED ────────────────────────────────────────────────────────────
+//
+// THE STALE BINARY IS NOT FIRST ON PATH; A WRAPPER IS. `which -a gunbc` answers
+// /usr/local/ctrl-build-shims/gunbc ahead of /usr/local/bin/gunbc, and the shim is a bash script
+// that delegates to `/usr/local/bin/gunbc` as its default real binary. Measured here: bare
+// `gunbc --version` through the shim reproduces the same `unexpected argument` refusal, so the
+// discriminator fires through the wrapper and needs no special invocation.
+//
+// IT MATTERS FOR THE REPAIR AND NOT FOR THE DIAGNOSIS. Anyone inspecting only `which gunbc`
+// finds a script and may conclude PATH is clean; anyone replacing only /usr/local/bin/gunbc leaves
+// the wrapper ahead of it. Both halves have to be looked at, and neither is a fact this repository
+// owns.
+type PathResolution
+  = ResolvesDirectly { to: NonEmptyStr }
+  | ResolvesThroughWrapper { wrapper_path: NonEmptyStr, wrapper_kind: NonEmptyStr, delegates_to: NonEmptyStr }
+
+data path_gunbc_resolution: PathResolution = ResolvesThroughWrapper {
+  wrapper_path: "/usr/local/ctrl-build-shims/gunbc" as NonEmptyStr,
+  wrapper_kind: "bash script (ctrl-build remote-execution shim)" as NonEmptyStr,
+  delegates_to: "/usr/local/bin/gunbc" as NonEmptyStr
 }
 
 // ── THE DISCRIMINATING PAIR ───────────────────────────────────────────────────────────────────
@@ -370,10 +426,10 @@ fn red_control_count_moved_down(o: RedControlOutcome) -> Bool {
 // THE ADVISORY POPULATION IS CARRIED AS A MEASUREMENT, NEVER AS AN ORACLE. A number measured off
 // the current tree cannot adjudicate a later tree (DESIGN section 5), so nothing here compares
 // against it and nothing may ratchet on it.
-fn reading_is_from_an_identified_build(r: WholeRootReading) -> Bool {
+fn reading_is_from_the_subject_build(r: WholeRootReading) -> Bool {
   match r {
     ReadWithBuild { build: b, run: _, admitted_form_refusals: _, hard_total: _, advisory_total: _ } =>
-      build_names_its_revision(b: b)
+      build_is_the_subject_revision(b: b, subject: measured_revision)
     NotRead { build: _, why: _ } => false
   }
 }
