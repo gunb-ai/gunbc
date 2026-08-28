@@ -90,7 +90,7 @@ import gunbc.roadmap_dispatch_actuator {
   git_for_each_ref_dispatch_argv_for_instance,
   dispatch_tmux_session_scope,
   DispatchCliProvider, ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider,
-  dispatch_cli_provider, dispatch_provider_label, dispatch_codex_home,
+  dispatch_provider_label, dispatch_codex_home,
   dispatch_actuator_selection,
   DispatchActuatorSelectionOk,
   DispatchActuatorSelectionRefused,
@@ -2373,7 +2373,7 @@ fn belt_tick_teardown_ok_count(t: BeltTickResult) -> Int {
   count(t.teardown_outcomes |> filter(o => belt_teardown_ok(o: o)))
 }
 
-data belt_run_once_note: String = "One belt tick against the LIVE roadmap reads the roadmap authority + merged PRs, builds the ready frontier, and reconciles it in Running state at the default capacity. belt_run_once_cli is the executable entrypoint (`gunbc run --function belt_run_once_cli`, wet): it requires the deployment's GUNBC_BELT_SPAWN_WORKDIR, resolves that root to its dashboard instance, runs the tick against that instance, and persists the resulting BeltTickReceipt. belt_run_once and belt_run_once_json are non-executable projections: the former returns the typed BeltTickResult for the production instance and the latter serializes that result; `gunbc run` rejects both return types. The tick observes live sessions before actuating planned spawns and teardowns through dispatch_cli_provider, then verifies and publishes attempts on their independent evidence authorities. Idempotent: a spawned session is observed live next tick and reconciles to noop."
+data belt_run_once_note: String = "One belt tick against the LIVE roadmap reads the roadmap authority + merged PRs, builds the ready frontier, and reconciles it in Running state at the default capacity. belt_run_once_cli is the executable entrypoint (`gunbc run --function belt_run_once_cli`, wet): it requires the deployment's GUNBC_BELT_SPAWN_WORKDIR, resolves that root to its dashboard instance, runs the tick against that instance, and persists the resulting BeltTickReceipt. belt_run_once and belt_run_once_json are non-executable projections: the former returns the typed BeltTickResult for the production instance and the latter serializes that result; `gunbc run` rejects both return types. The tick observes live sessions before actuating planned spawns and teardowns through the provider dispatch_actuator_selection resolves (a refused selection is a typed SpawnFailed at step dispatch-selection, never a defaulted provider), then verifies and publishes attempts on their independent evidence authorities. Idempotent: a spawned session is observed live next tick and reconciles to noop."
 
 fn belt_run_once_in(
   instance: HostDashboardInstance,
