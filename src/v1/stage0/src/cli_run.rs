@@ -818,7 +818,10 @@ mod roadmap_acceptance_history_projection_tests {
     #[test]
     fn merge_base_authority_projection_matches_jsonl_carrier() {
         let authority = std::process::Command::new("git")
-            .args(["show", "9ce6526c528:dag/gunbc/roadmap/roadmap_authority.dag"])
+            .args([
+                "show",
+                "9ce6526c528:dag/gunbc/roadmap/roadmap_authority.dag",
+            ])
             .output()
             .expect("git show merge-base authority");
         assert!(
@@ -828,7 +831,8 @@ mod roadmap_acceptance_history_projection_tests {
         );
         let authority = String::from_utf8(authority.stdout).expect("utf8 authority");
         let jsonl = std::fs::read_to_string(
-            super::workspace_root().join("dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl"),
+            super::workspace_root()
+                .join("dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl"),
         )
         .expect("jsonl carrier");
         let projected = project_roadmap_acceptance_event_history_from_authority_text(&authority);
