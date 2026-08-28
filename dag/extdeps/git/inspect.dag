@@ -236,6 +236,22 @@ service git.Inspect {
     }
   }
 
+  operation ConfigGet {
+    input { key: String }
+    output {
+      value: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "config", "--get", "{key}"] }
+    exit {
+      0 => Unit
+      1 => String "Key is not set"
+      128 => String "Not a git repository"
+    }
+  }
+
   operation MergeTreeWriteTree {
     input { left: GitRef, right: GitRef }
     output {
@@ -374,6 +390,33 @@ fn merge_tree_outcome(exit_code: Int, stdout: String, stderr: String) -> MergeTr
       } else {
         MergeTreeRefused { exit_code: exit_code, stderr: stderr }
       }
+    }
+  }
+}
+
+
+// A CONFIG KEY THAT IS UNSET IS AN ANSWER, NOT A FAILURE, which is why the exit table above declares
+// 1 as its own arm: `git config --get` exits 1 when the key has no value, and a caller comparing
+// only against 0 would render "this repository does not configure that" identically to "the read
+// broke". They have opposite meanings for anyone deciding whether an observed behaviour is a
+// property of the repository or of the reader's own clone.
+type ConfigReading
+  = ConfigSet { value: String }
+  | ConfigUnset
+  | ConfigUnreadable { exit_code: Int, stderr: String }
+
+data git_config_get_exit_set: Int = 0
+
+data git_config_get_exit_unset: Int = 1
+
+fn config_reading(exit_code: Int, stdout: String, stderr: String) -> ConfigReading {
+  if exit_code == git_config_get_exit_set {
+    ConfigSet { value: trim(s: stdout) }
+  } else {
+    if exit_code == git_config_get_exit_unset {
+      ConfigUnset
+    } else {
+      ConfigUnreadable { exit_code: exit_code, stderr: stderr }
     }
   }
 }

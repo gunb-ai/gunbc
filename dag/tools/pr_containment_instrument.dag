@@ -5,10 +5,14 @@ import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.git { ThreeDot }
 import extdeps.git.inspect {
+  ConfigSet,
+  ConfigUnset,
+  ConfigUnreadable,
   MergeTreeClean,
   MergeTreeConflicted,
   MergeTreeRefused,
-  merge_tree_outcome
+  merge_tree_outcome,
+  config_reading
 }
 import extdeps.github.pulls
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -118,6 +122,20 @@ import extdeps.languages.json.parse {
 // The two have different justifications and will move for different reasons, so fusing them means
 // any future argument about either is an argument about both -- and the reading-order half has no
 // defensible number behind it, so it would be settled by whoever cares more about the payload half.
+// A SECOND DECLARED FUSION, MEASURED AND NOT YET SPLIT (eager-owl-431, third pass). The conflicted
+// arm fuses two states with opposite remedies: git could not reconcile AUTHORED content (rebase),
+// and this repository's own merge driver refused a DERIVED projection (regenerate). Measured over
+// 67 open pull requests against one base: 12 conflict and 12 do not among branches touching a
+// generated artifact, while ZERO of the 42 touching none conflict at all -- so touching a generated
+// artifact is a NECESSARY condition for conflict in this population. Of the 12, five are
+// generated-only and flip to a clean merge when the driver is neutralised, seven are mixed. So
+// nearly half the arm's population is not a merge problem in the sense a reader will assume.
+//
+// It is declared rather than split here for the same reason the ordering change is deferred: the
+// split needs a `.gitattributes`-derived membership test this module does not have, and landing it
+// unmeasured inside a change that already repairs two defects is how a good idea arrives untested.
+// The arm is also NOT exceptional -- main regenerates constantly, so it stays populated permanently.
+//
 // The follow-up is therefore NOT "sort by ratio": it is order by ratio, free and total, and keep a
 // cut ONLY as the residue payload bound, justified as a report-size budget and named as one. That
 // is deliberately not done here, because an unmeasured presentation change landing inside one that
@@ -157,16 +175,50 @@ data containment_ratio_scale: Int = 1000
 // and tree are established BEFORE any branch is classified and travel with the report. A report
 // that named no base would be unjoinable with any later one: "contained" is not a property of a
 // branch, it is a relation to a tree that moves every time something merges.
+//
+// AND ONE OPERAND IS NOT IN THE COMMITS AT ALL, which is why the subject carries a git config value
+// (eager-owl-431, third review pass on #9590, measured). `.gitattributes` binds generated-artifact
+// paths to `merge=generated-artifact`, and this repository's driver REFUSES when both sides changed
+// such a path -- so `merge-tree` exits 1 for a reason that is a property of the READER'S CLONE, not
+// of the two commits. Control, same branches, driver neutralised with
+// `-c merge.generated-artifact.driver=true`: five generated-only branches flip exit 1 to exit 0
+// while a mixed branch with real authored conflicts stays at 1. DESIGN records that clones skipping
+// the one-time `core.hooksPath` setup degrade to vanilla text-merge for exactly those paths, so two
+// people can run this instrument on the same commits, get different reports, and neither can tell
+// from the report which one they are holding.
+//
+// THIS IS THE SAME CLASS AS NAMING THE REVISIONS, ONE STEP OUT: a reading is reproducible only if
+// every operand that changes the answer is named, and an operand outside the commits is the one a
+// reader will never think to check. Recording it costs one readonly config read.
+//
+// THE HALF-LIFE RULE, which the head commit on every disposition already serves and which is stated
+// here because the connection was not obvious until warm-tern-34 named it: a measurement of another
+// lane's UNMERGED BRANCH has a half-life set by THAT lane's push cadence, not by ours. So a row must
+// carry the head it was measured at, or it is a claim with an invisible expiry that nobody but its
+// author can re-derive. Two sessions hit that in one night on two different subjects.
 type ContainmentSubject {
   base_ref: String
   base_commit: String
   base_tree: String
   remote: String
+  merge_driver: String
 }
 
 type ContainmentSubjectRead
   = SubjectEstablished { subject: ContainmentSubject }
   | SubjectUnreadable { cause: String }
+
+// An unset driver is reported as the word `unset` rather than as an empty field, because an empty
+// field reads as "not measured" and this value decides how to read every conflicted row below.
+fn observed_merge_driver() -> String {
+  let read = git.Inspect.ConfigGet(key: "merge.generated-artifact.driver")
+  match config_reading(exit_code: read.exit_code, stdout: read.value, stderr: read.stderr) {
+    ConfigSet { value: v } => v
+    ConfigUnset => "unset -- generated-artifact paths merge as vanilla text in this clone"
+    ConfigUnreadable { exit_code: code, stderr: _ } =>
+      concat("unreadable -- git config --get exited ", to_string(code))
+  }
+}
 
 fn establish_containment_subject(base_ref: String, remote: String) -> ContainmentSubjectRead {
   let commit = git.Inspect.ResolveRefCommit(ref: base_ref as GitRef)
@@ -186,7 +238,8 @@ fn establish_containment_subject(base_ref: String, remote: String) -> Containmen
           base_ref: base_ref,
           base_commit: trim(s: commit.sha as String),
           base_tree: trim(s: tree.tree),
-          remote: remote
+          remote: remote,
+          merge_driver: observed_merge_driver()
         }
       }
     }
@@ -717,7 +770,8 @@ fn containment_subject_rows(subject: ContainmentSubject) -> List<String> {
     concat("base_commit\t", subject.base_commit),
     concat("base_tree\t", subject.base_tree),
     concat("candidate_threshold_per_mille\t", to_string(containment_candidate_threshold_per_mille)),
-    concat("branch_remote\t", subject.remote)
+    concat("branch_remote\t", subject.remote),
+    concat("merge_generated_artifact_driver\t", subject.merge_driver)
   ]
 }
 
@@ -803,7 +857,7 @@ fn containment_rows(pr: PullRequestContainment) -> List<String> {
               )
             )
           ),
-          "  note\tthe merge did NOT complete, so no tree-grain answer exists for this branch; the line reading below cannot be assessed as mostly-landed until the branch is rebased"
+          "  note\tthe merge did NOT complete, so no tree-grain answer exists for this branch. READ THE DRIVER LINE ABOVE BEFORE ACTING: where merge.generated-artifact.driver is configured, a refusal over a GENERATED path is this repository's driver declining a derived projection, whose remedy is REGENERATE, not rebase -- measured, five of twelve such branches carry no authored conflict at all and flip to a clean merge when the driver is neutralised. This arm does not yet separate the two, which is a declared fusion rather than a discovered one"
         ],
         map(residue, r => concat("  residue\t", concat(r.path, concat("\t", r.text))))
       )
