@@ -4,6 +4,15 @@ import std.types { Bool, Int, NonEmptyStr, String }
 import std.decimal { ExactDecimal, ExactDecimalAdmitted, ExactDecimalScaleRefused, admit_exact_decimal }
 import extdeps.languages.json.grammar { JsonNumberLexeme }
 import extdeps.languages.json.emit { JsonArray, JsonBool, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.rfc-editor.org/rfc/rfc8259#section-6",
+  },
+}
 
 // READING A JSON NUMBER AS A VALUE, WHICH THIS TREE DELIBERATELY DID NOT DO UNTIL A CONSUMER
 // NEEDED IT. extdeps.languages.json.emit keeps every number as a JsonNumberLexeme -- a branded

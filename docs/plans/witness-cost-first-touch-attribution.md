@@ -564,6 +564,13 @@ cost is exactly     a completion      -> a measurement
 a poll-pinned 1553ms with 1ms margin  -> neither; it cannot move by construction
 ```
 
+(The first three spellings are the pre-#9599 rendering, kept because this
+document's figures were parsed from runs that emitted them. Current spelling:
+`cost=UNMEASURED` with a separate `interrupt_point=` field for an interrupt, and
+`cost={n}ms EXACT` for a completion — `ClaimOutcome::budget_figure_phrase`. The
+change is this rule made structural: the bound no longer occupies the field a
+measurement occupies, so it can no longer be extracted as one.)
+
 (the channel refinement is sharp-raven-273's, and it is the right generalization:
 "how many were dropped" hides that the dropped rows failed in different ways) An interrupt is not a measurement, and a
 pinned value cannot move by construction, so neither can answer a question about

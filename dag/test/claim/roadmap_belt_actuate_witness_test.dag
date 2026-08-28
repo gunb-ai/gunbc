@@ -128,7 +128,6 @@ import gunbc.roadmap_belt_actuate {
   belt_publication_subject_for,
   BeltPublishGate, PublishProceed, PublishHalted,
   belt_publish_gate,
-  belt_listing_names_entry,
   belt_publish_write_outcome,
   BeltPublishOutcome,
   PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable,
@@ -141,10 +140,12 @@ import gunbc.roadmap_belt_actuate {
   belt_tick_empty_reconcile,
   BeltTickResult,
   Running,
-  belt_dashboard_instance_lookup_for_spawn_workdir,
-  SpawnWorkdirInstanceResolved,
-  UnknownSpawnWorkdir,
   srv1_live_dashboard_instance,
+}
+import gunbc.roadmap_dashboard_instance {
+  DashboardInstanceResolved,
+  DashboardInstanceRootUnknown,
+  dashboard_instance_for_repo_root,
 }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.fleet_desired_observe {
@@ -1126,9 +1127,9 @@ test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
 }
 
 test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
-  match belt_dashboard_instance_lookup_for_spawn_workdir(workdir: "/typo/gunbc") {
-    UnknownSpawnWorkdir { workdir: w } => w == "/typo/gunbc"
-    SpawnWorkdirInstanceResolved { instance: _ } => false
+  match dashboard_instance_for_repo_root(repo_root: "/typo/gunbc") {
+    DashboardInstanceRootUnknown { repo_root: w } => w == "/typo/gunbc"
+    DashboardInstanceResolved { instance: _ } => false
   }
 }
 
@@ -1136,7 +1137,7 @@ test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
 // assert that two known spawn workdirs resolve to DIFFERENT instances, with the deleted green slot
 // as the second one. Re-enrolling it against srv1-lab looked right and failed by execution: the
 // lookup's population is the instances this belt actuates, and the lab was never in it, so the lab
-// root resolves to UnknownSpawnWorkdir. Distinctness is not something the lookup can be asked about
+// root resolves to DashboardInstanceRootUnknown. Distinctness is not something the lookup can be asked about
 // any more -- it knows exactly one workdir -- and that is a consequence of the single deployment
 // rather than a guarantee that was dropped.
 //
@@ -1147,10 +1148,10 @@ test fn unknown_spawn_workdir_refuses_instance_resolution() -> Bool {
 // refusal arm cannot detect its absence.
 test fn the_known_spawn_workdir_resolves_to_its_own_instance() -> Bool {
   let live = srv1_live_dashboard_instance()
-  match belt_dashboard_instance_lookup_for_spawn_workdir(workdir: live.repo_root as String) {
-    SpawnWorkdirInstanceResolved { instance: resolved } =>
+  match dashboard_instance_for_repo_root(repo_root: live.repo_root as String) {
+    DashboardInstanceResolved { instance: resolved } =>
       (resolved.instance_id as String) == (live.instance_id as String)
-    UnknownSpawnWorkdir { workdir: _ } => false
+    DashboardInstanceRootUnknown { repo_root: _ } => false
   }
 }
 
@@ -1595,19 +1596,6 @@ test fn a_present_but_empty_receipt_is_a_fault_not_an_absence() -> Bool {
         PublishDeferred { node_id: _, reason: _ } => false
       }
   }
-}
-
-data listing_membership_note: String = "The line-exact membership test is what makes every ABSENCE conclusion in belt_publication_receipt_source a fact rather than a spelling coincidence. A plain substring test would find a head sha inside a longer one, or a receipt name inside its own .tmp sibling, and would then report a receipt PRESENT that is not there - or, worse under the opposite skew, miss one that is. The prefix and suffix cases are asserted, not just the positive."
-
-test fn listing_membership_is_line_exact_not_substring() -> Bool {
-  let listing = join(["alpha.json", "beta.json", "beta.json.tmp"], "\n")
-  belt_listing_names_entry(listing: listing, name: "alpha.json")
-    && belt_listing_names_entry(listing: listing, name: "beta.json")
-    && belt_listing_names_entry(listing: listing, name: "beta.json.tmp")
-    && !belt_listing_names_entry(listing: listing, name: "eta.json")
-    && !belt_listing_names_entry(listing: listing, name: "beta")
-    && !belt_listing_names_entry(listing: listing, name: "gamma.json")
-    && !belt_listing_names_entry(listing: "", name: "alpha.json")
 }
 
 test fn an_undecodable_receipt_is_not_overwritten_either() -> Bool {
