@@ -187,7 +187,7 @@ fn cli_run_hand_rust_area_rows() -> List<CliRunHandRustAreaRow> {
       anchors: [
         CliRunAreaAnchor {
           symbol: "floor_materialization" as NonEmptyStr,
-          anchor_home: "dag/gunbc/floor_materialization.dag" as NonEmptyStr
+          anchor_home: "dag/gunbc/floor/floor_materialization.dag" as NonEmptyStr
         },
         CliRunAreaAnchor { symbol: "memory_governor" as NonEmptyStr, anchor_home: subject }
       ]

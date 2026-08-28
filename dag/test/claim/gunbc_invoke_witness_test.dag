@@ -99,27 +99,27 @@ test fn gunbc_invoke_word_wall_refuses_metacharacter_entry_holds() -> Bool {
 test fn gunbc_invoke_word_wall_admits_ordinary_entry_holds() -> Bool {
   let admitted = gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/host_reach_identity_probe.dag",
+    entry: "dag/gunbc/host/host_reach_identity_probe.dag",
     function: "probe_fleet_reach_wet",
     claim_run: false,
     receipt_rel: "target/fleet-reach-probe-receipt.txt"
   )
   !string_contains(s: admitted, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
     && string_contains(s: admitted, pattern: "\"$ROOT/target/release/gunbc\" run --source-root \"$ROOT/dag\"")
-    && string_contains(s: admitted, pattern: "--entry dag/gunbc/host_reach_identity_probe.dag --function probe_fleet_reach_wet")
+    && string_contains(s: admitted, pattern: "--entry dag/gunbc/host/host_reach_identity_probe.dag --function probe_fleet_reach_wet")
     && string_contains(s: admitted, pattern: "cat \"$ROOT/target/fleet-reach-probe-receipt.txt\"")
 }
 
 test fn gunbc_invoke_argv_and_emitted_step_share_one_authority_holds() -> Bool {
   let argv = gunbc_run_transport_argv(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/host_reach_identity_probe.dag",
+    entry: "dag/gunbc/host/host_reach_identity_probe.dag",
     function: "probe_fleet_reach_wet",
     claim_run: false
   )
   let words = gunbc_run_invocation_words(
     source_roots: witness_layer_roots,
-    entry: "dag/gunbc/host_reach_identity_probe.dag",
+    entry: "dag/gunbc/host/host_reach_identity_probe.dag",
     function: "probe_fleet_reach_wet",
     claim_run: false
   )

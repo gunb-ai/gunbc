@@ -706,10 +706,10 @@ Named by a live `.dag`, `.rs` or data file, or otherwise carrying an obligation 
 | `gunbc.auth.optional_impersonation` | `dag/gunbc/auth/optional_impersonation.dag` | STILL-UNCONSUMED |
 | `gunbc.auth.patterns` | `dag/gunbc/auth/patterns.dag` | STILL-UNCONSUMED |
 | `gunbc.char_at_scaling_probe_support` | `dag/gunbc/char_at_scaling_probe_support.dag` | STILL-UNCONSUMED |
-| `gunbc.ci_build_job_v1_compiler_unit_receipt` | `dag/gunbc/ci_build_job_v1_compiler_unit_receipt.dag` | STILL-UNCONSUMED |
+| `gunbc.ci_build_job_v1_compiler_unit_receipt` | `dag/gunbc/ci/ci_build_job_v1_compiler_unit_receipt.dag` | STILL-UNCONSUMED |
 | `gunbc.generic_binder_field_projection_deficit` | `dag/gunbc/generic_binder_field_projection_deficit.dag` | STILL-UNCONSUMED |
-| `gunbc.githooks_pre_push_cli` | `dag/gunbc/githooks_pre_push_cli.dag` | STILL-UNCONSUMED |
-| `gunbc.namespace_census_receipt` | `dag/gunbc/namespace_census_receipt.dag` | STILL-UNCONSUMED |
+| `gunbc.githooks_pre_push_cli` | `dag/gunbc/githooks/githooks_pre_push_cli.dag` | STILL-UNCONSUMED |
+| `gunbc.namespace_census_receipt` | `dag/gunbc/namespace/namespace_census_receipt.dag` | STILL-UNCONSUMED |
 | `gunbc.p1_retention_cohort_receipt` | `dag/gunbc/p1_retention_cohort_receipt.dag` | STILL-UNCONSUMED |
 | `gunbc.plans.affected_set_self_confirmation` | `dag/gunbc/plans/affected_set_self_confirmation.dag` | STILL-UNCONSUMED |
 | `gunbc.plans.fleet_subsumption_manual_gaps` | `dag/gunbc/plans/fleet_subsumption_manual_gaps.dag` | STILL-UNCONSUMED |
@@ -718,7 +718,7 @@ Named by a live `.dag`, `.rs` or data file, or otherwise carrying an obligation 
 | `gunbc.seed_closed_vocabulary_wildcard_census` | `dag/gunbc/seed_closed_vocabulary_wildcard_census.dag` | STILL-UNCONSUMED |
 | `gunbc.site.interaction` | `dag/gunbc/site/interaction.dag` | STILL-UNCONSUMED |
 | `gunbc.test_node_wall_clock_ratchet` | `dag/gunbc/test_node_wall_clock_ratchet.dag` | STILL-UNCONSUMED |
-| `gunbc.v1_maintenance_standing` | `dag/gunbc/v1_maintenance_standing.dag` | STILL-UNCONSUMED |
+| `gunbc.v1_maintenance_standing` | `dag/gunbc/v1/v1_maintenance_standing.dag` | STILL-UNCONSUMED |
 | `std.exec_format` | `dag/std/exec_format.dag` | DEAD-CONSUMER-ONLY |
 | `std.import` | `dag/std/import.dag` | STILL-UNCONSUMED |
 | `std.methods` | `dag/std/methods.dag` | STILL-UNCONSUMED |
