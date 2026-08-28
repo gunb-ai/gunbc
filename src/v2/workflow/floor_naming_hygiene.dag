@@ -175,12 +175,28 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
 // parser to retain the authored `test` marker, and the note below states why that is blocked on
 // a GrammarExpr contextual-keyword terminal that does not exist yet.
 //
-// STILL OPEN, DECLARED RATHER THAN LEFT TO BE REDISCOVERED: witness_file_from_source recognises
-// `test fn ` and not `test data `, so every `test data` claim is dropped from the required
-// floor's roster -- including from files it otherwise enrolls. Measured over both source roots
-// at 3bbd53c05a: 40 decls in 15 files (34 in 13 files that carry no `test fn` at all, 6 in 2
-// files the floor does enrol). That is a separate repair with its own population and its own
-// triage, not a widening of this one.
+// THAT SEPARATE REPAIR HAS LANDED, and the population it named is the population it closed.
+// witness_file_from_source recognised `test fn ` and not `test data `, so every `test data`
+// claim was dropped from the required floor's roster -- including from files the floor
+// otherwise enrolled. Measured over both source roots at 3bbd53c05a and re-measured unchanged
+// when the repair landed: 40 decls in 15 files (34 in 13 files carrying no `test fn` at all, 6
+// in 2 files the floor does enrol). The roster builder now reads BOTH forms, so the two
+// consumers of "what a test decl is" no longer disagree across this gate.
+//
+// WHY THE SECOND GROUP IS THE POINT, and why a stronger predicate here would not have reached
+// it. The 13 files were at least VISIBLE as a class: they enrolled nothing, and a wall over
+// file-grain barrenness could in principle have named them. The 2 files could not be reached
+// that way at all -- each carries `test fn` decls the floor enrols, so neither is barren under
+// ANY predicate over the file, while 6 of its authored claims silently never ran. That is the
+// PARTIAL enrollment this wall is structurally unable to see: its predicate is EXISTENCE, and
+// existence is satisfied by one enrolled row out of thirty. The repair is therefore not a
+// stronger predicate here -- it is removing the disagreement that made this predicate's own
+// vocabulary mean one thing to the wall and another to the roster.
+//
+// STILL OPEN, AND NOT WIDENED BY THAT REPAIR: this module's scan and the two in cli_run.rs are
+// still THREE SPELLINGS of one fact. They now agree; they are not unified. The prerequisite is
+// unchanged and is stated in the note below -- the canonical parser must retain the authored
+// `test` marker, which needs a GrammarExpr contextual-keyword terminal that does not exist yet.
 fn floor_entry_is_barren_test_sidecar(entry_path: String, content: String) -> Bool {
   if floor_entry_requires_test_sidecar(entry_path: entry_path) {
     length(xs: floor_discovery_scan_test_decl_names(content: content)) == 0
