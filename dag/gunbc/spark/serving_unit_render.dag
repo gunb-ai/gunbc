@@ -18,7 +18,11 @@ import extdeps.systemd.unit_file {
   WantedBy,
   serialize_systemd_unit_file,
 }
-import extdeps.ollama.server_env { ollama_host_env_assignment, ollama_models_env_assignment }
+import extdeps.ollama.server_env {
+  ollama_host_env_assignment,
+  ollama_models_env_assignment,
+  ollama_context_length_env_assignment,
+}
 import gunbc.spark.serving_install_paths {
   SparkServingUserUnitSpec,
   spark_serving_user_unit_spec,
@@ -26,7 +30,10 @@ import gunbc.spark.serving_install_paths {
   spark_serving_required_runtime_executable_path,
   spark_serving_models_root,
 }
-import gunbc.spark.serving_desired { spark_serving_desired_bind_host_port }
+import gunbc.spark.serving_desired {
+  spark_serving_desired_bind_host_port,
+  spark_serving_desired_configured_context,
+}
 
 // THE ONE PLACE A SPARK SERVING UNIT BECOMES BYTES.
 //
@@ -71,6 +78,9 @@ fn spark_serving_user_unit_file(spec: SparkServingUserUnitSpec) -> SystemdUnitFi
       Environment {
         assignment: ollama_models_env_assignment(root: spark_serving_models_root() as NonEmptyStr),
       },
+      Environment {
+        assignment: ollama_context_length_env_assignment(configured_context: spec.configured_context),
+      },
       WorkingDirectory { path: spark_serving_required_runtime_root() as NonEmptyStr },
       ExecStart { command: spark_serving_exec_start_command(spec: spec) },
       Restart { policy: spec.restart },
@@ -90,6 +100,7 @@ fn spark_serving_desired_user_unit_text() -> String {
   spark_serving_user_unit_text(
     spec: spark_serving_user_unit_spec(
       bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
+      configured_context: spark_serving_desired_configured_context(),
     ),
   )
 }
