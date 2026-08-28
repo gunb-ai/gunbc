@@ -12,7 +12,7 @@ import product.fabric.execution {
   ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence,
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
-import std.currency { Usd, Eur, CurrencyCode }
+import extdeps.currency.currency { Usd, Eur, CurrencyCode }
 import std.measure {
   MoneyOnce, MoneyPerSecond, money_amount_micro, Second, second, hardware_thread_count,
 }

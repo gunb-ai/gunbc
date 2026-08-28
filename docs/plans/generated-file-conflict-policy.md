@@ -233,7 +233,7 @@ being diagnosed.
 **RECOVERY GUIDANCE, CORRECTED.** The old text said to rerun `regen_stage0`. That binary was
 deleted by #8406, so the instruction named nothing for as long as it stood. The route is
 `claim_executor --required-regen`, and for the generated-artifact registry, `main_wet` on
-`dag/tools/generated_artifact_gate.dag`. Take either side, regenerate from the merged
+`dag/gunbc/instruments/generated_artifact_gate.dag`. Take either side, regenerate from the merged
 authorities, verify divergence 0 — never hand-pick hunks.
 
 **Acceptance wall (operator second-pass review, 2026-08-01):** an Unavailable/Refused

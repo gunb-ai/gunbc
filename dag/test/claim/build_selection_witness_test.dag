@@ -2,7 +2,7 @@ module test.claim.build_selection_witness
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.currency { Eur, Usd }
+import extdeps.currency.currency { Eur, Usd }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { Bandwidth, ByteSize, MoneyOnce, Watt, byte_size, money_amount_micro, watt }
 import std.pareto {

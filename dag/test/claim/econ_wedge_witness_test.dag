@@ -48,7 +48,7 @@ import gunbc.econ.margin_envelope {
   derive_margin_envelope_from_filed_facts,
   margin_envelope_in_band,
 }
-import std.currency { Eur, Usd }
+import extdeps.currency.currency { Eur, Usd }
 import std.measure {
   BasisPoint,
   MoneyPerMinute,

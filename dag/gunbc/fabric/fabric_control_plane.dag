@@ -3,7 +3,7 @@ module gunbc.fabric_control_plane
 import std.types { Int, List, NonEmptyStr, String, Bool, Timestamp }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.measure { MoneyAmountMicro, MoneyPerSecond }
-import std.currency { CurrencyCode }
+import extdeps.currency.currency { CurrencyCode }
 import std.durable_compare_and_set {
   CasExpectation, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasReadableAbsent, CasReadablePresent, CasUnreadableSlot,

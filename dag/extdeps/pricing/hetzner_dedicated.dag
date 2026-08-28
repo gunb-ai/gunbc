@@ -6,7 +6,7 @@ import extdeps.cpu.amd {
   ryzen_7_pro_8700ge_facts,
   ryzen_9_7950x3d_facts,
 }
-import std.currency { Eur }
+import extdeps.currency.currency { Eur }
 import std.measure {
   ByteSize,
   HardwareThreadCount,

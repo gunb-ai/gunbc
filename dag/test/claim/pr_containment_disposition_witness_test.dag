@@ -316,7 +316,7 @@ test fn the_same_tally_under_a_completed_merge_does_report_containment() -> Bool
 // proves nothing -- an instrument that refused everything passes the second, and the one under
 // repair passed the first.
 
-data probe_subject_path: String = "dag/tools/pr_containment_instrument.dag"
+data probe_subject_path: String = "dag/gunbc/instruments/pr_containment_instrument.dag"
 
 fn absent_subject() -> ContainmentSubject {
   ContainmentSubject {

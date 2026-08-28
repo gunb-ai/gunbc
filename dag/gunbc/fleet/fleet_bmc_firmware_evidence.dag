@@ -1,6 +1,6 @@
 module gunbc.fleet_bmc_firmware_evidence
 
-import std.bmc { BmcEndpoint, OpenBmc }
+import extdeps.bmc.endpoint { BmcEndpoint, OpenBmc }
 import std.types { EpochMs, Int, List, NonEmptyStr, String }
 import extdeps.bmc.capability {
   BmcFirmwareCapabilityAmbiguous,

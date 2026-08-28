@@ -2,7 +2,7 @@ module gunbc.fleet_fan_acoustic_evidence
 
 import std.types { Bool }
 import std.measure { millimeter, percent_count, rpm, rpm_count }
-import std.acoustic { dba_tenths }
+import extdeps.units.iec_61672 { dba_tenths }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.fans.types {
   FanAcousticLawFittable,

@@ -1,6 +1,6 @@
 module gunbc.bmc_onboarding
 
-import std.bmc { BmcEndpoint, Redfish }
+import extdeps.bmc.endpoint { BmcEndpoint, Redfish }
 import std.credentials { FactoryLogin }
 import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
 import std.types { NonEmptyStr, Int, List }

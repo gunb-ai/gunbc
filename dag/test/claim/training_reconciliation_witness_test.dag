@@ -87,7 +87,7 @@ import product.fabric.identity {
   FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, fabric_identity_eq,
 }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_of_value }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.measure { MoneyOnce, money_amount_micro, hardware_thread_count }
 import std.integer { PositiveInt }
 import std.nat { Nat }

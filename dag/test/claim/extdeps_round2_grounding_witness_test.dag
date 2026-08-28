@@ -8,7 +8,7 @@ import extdeps.http.server {
   media_type_wire_label, text_html_utf8, text_plain_utf8,
   TopLevelText, GET, ServedStaticRoute,
 }
-import std.http_path { PathTemplate }
+import extdeps.uri_path { PathTemplate }
 import extdeps.cloud.cloud {
   aws_region_wire_label, UsEast1, aws_service_wire_label, S3,
   SigV4, Protocol, OidcToken,

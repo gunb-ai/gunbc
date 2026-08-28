@@ -3,7 +3,7 @@ module extdeps.colo.natcoweb
 import std.types { NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { MoneyPerMonth, MoneyPerHour, money_amount_micro, ampere, bandwidth, rack_unit }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressUnread,

@@ -3,7 +3,7 @@ module extdeps.energy.nj_electricity
 import std.types { NonEmptyStr }
 import std.nat { Nat }
 import std.measure { MoneyPerKilowattHour, money_amount_micro }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }

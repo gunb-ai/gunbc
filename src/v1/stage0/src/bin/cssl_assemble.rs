@@ -17,7 +17,7 @@ struct Args {
     entry_dag: PathBuf,
     #[arg(long)]
     root: PathBuf,
-    #[arg(long, default_value = "dag/tools/self_host_std_bridge_shims")]
+    #[arg(long, default_value = "dag/gunbc/instruments/self_host_std_bridge_shims")]
     std_bridge_dir: PathBuf,
 }
 

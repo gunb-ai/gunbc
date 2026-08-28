@@ -12,7 +12,7 @@ import extdeps.runtime.abi.aapcs64 {
 }
 import extdeps.runtime.syscalls.linux { linux_aarch64_syscall_abi }
 import extdeps.toolchain.types { Aarch64 }
-import std.abi { ArchitecturalRegister, StackLayout }
+import extdeps.abi { ArchitecturalRegister, StackLayout }
 import extdeps.toolchain.architecture_profile { ArchitectureProfile, DeploymentTarget, Endianness }
 import std.os.invocation { SyscallAbiSurface }
 import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
