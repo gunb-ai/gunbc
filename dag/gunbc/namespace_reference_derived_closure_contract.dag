@@ -33,22 +33,38 @@ fn reference_derived_closure_required_capabilities() -> List<ReferenceDerivedClo
   ]
 }
 
-fn reference_derived_closure_missing_capabilities(
+// THE SET DIFFERENCE IS PARAMETERIZED IN ITS REQUIRED POPULATION, AND NOTHING ELSE CHANGED.
+// gunbc.namespace_structural_observations_contract closes a FOUR-capability row over the same
+// admission vocabulary; a second copy of this fold there would be two authorities for one
+// dominance rule (a refusal or an unavailable row dominates every establishment), which is the
+// class that rule exists to prevent. The six-capability entry point below is unchanged in
+// meaning and is still what closes the parent row.
+fn closure_missing_capabilities(
+  required: List<ReferenceDerivedClosureCapability>,
   admissions: List<ReferenceDerivedClosureAdmission>,
 ) -> List<ReferenceDerivedClosureCapability> {
-  reference_derived_closure_required_capabilities()
-    |> filter(required =>
+  required
+    |> filter(required_capability =>
       !(admissions |> any(admission => match admission {
-        ReferenceDerivedClosureEstablished { receipt } => receipt.capability == required
+        ReferenceDerivedClosureEstablished { receipt } => receipt.capability == required_capability
         ReferenceDerivedClosureRefused { capability: _, failure: _ } => false
         ReferenceDerivedClosureUnavailable { capability: _, trigger: _ } => false
       }))
         || admissions |> any(admission => match admission {
           ReferenceDerivedClosureEstablished { receipt: _ } => false
-          ReferenceDerivedClosureRefused { capability, failure: _ } => capability == required
-          ReferenceDerivedClosureUnavailable { capability, trigger: _ } => capability == required
+          ReferenceDerivedClosureRefused { capability, failure: _ } => capability == required_capability
+          ReferenceDerivedClosureUnavailable { capability, trigger: _ } => capability == required_capability
         })
     )
+}
+
+fn reference_derived_closure_missing_capabilities(
+  admissions: List<ReferenceDerivedClosureAdmission>,
+) -> List<ReferenceDerivedClosureCapability> {
+  closure_missing_capabilities(
+    required: reference_derived_closure_required_capabilities(),
+    admissions: admissions,
+  )
 }
 
 fn reference_derived_closure_closing_frontier_count(
