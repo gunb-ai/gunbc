@@ -143,3 +143,9 @@ stops contaminating sessions with dead premises.
 ## Log
 
 - 2026-08-28: created; measured state recorded; priorities agreed in session.
+- 2026-08-28: P4 first cut — deleted 21 orphan docs (15 docs/plans, 5 docs/briefs,
+  1 more) after a full reference census. Remaining candidate classes recorded in
+  session discussion: 27 docs referenced only by other docs (islands to cut whole),
+  ~200 docs/plans referenced from dag/src carriers, tools/ receipts (consumer:
+  srv1_residue_rehearsal path strings only), docs/probes single file (referenced by
+  lotes_azifa072.dag), runbooks (referenced by roadmap/actuate carriers).
