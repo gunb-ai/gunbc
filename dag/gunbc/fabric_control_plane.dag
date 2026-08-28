@@ -794,6 +794,57 @@ type CellSettlementAdmission
   | SettlementReceiptRefused { admission: ReceiptAdmission }
   | SettlementReceiptCarriesNoSpend { detail: NonEmptyStr }
 
+// THREE GAPS THAT ARE ONE ABSENCE: NOTHING CONSTRUCTS AN ExecutionGrant.
+//
+// This function CONSUMES a grant, which is why the note lives here. Measured on
+// origin/main, 2026-08-28: `ExecutionGrant {` appears at three sites and all
+// three are test fixtures. Every production reference takes a grant as a
+// parameter or filters a list of them. There is no producer.
+//
+// Read as three separate gaps a reader will do three pieces of work; they are
+// one absence seen from three sides, and whoever writes the producer inherits
+// all of it:
+//
+// ONE -- a ReleaseDirective cannot name a cell. product.fabric.arbitration
+// produces the directive and nothing consumes it. It carries
+// resource_reservations as ReservationRefs; the release actuator here needs a
+// SLOT KEY. Nothing relates the two, and the fixtures are opaque literals
+// ("reservation-cpu-1", "res-cpu-1") because no consumer has ever had to
+// interpret one. The relation is not inventable safely: ReservationRef is a
+// branded NonEmptyStr, so ANY string inhabits it and a parse has no shape to
+// validate against -- a wrong guess is undetectable at the type level and
+// releases a cell someone else holds.
+//
+// TWO -- the acquire-side atomic join is a REQUIREMENT with no implementation.
+// product.fabric.execution states that every reservation is applied tentatively
+// and committed only if EVERY ledger admits, and that a partial commit is
+// unreachable only if the join is atomic rather than sequential. With no grant
+// producer that has never been executed.
+//
+// THREE -- the identity layer is unproduced. Measured the same day over dag/,
+// excluding fixtures and the brand declarations: ObservationReceiptRef,
+// ExecutionAttemptKey, LeaseKey, GrantKey and ReceiptKey have ZERO construction
+// sites. ReservationRef has two and both are in this module. So the producer
+// does not merely assemble a grant; it decides five identity conventions that
+// nothing decides today.
+//
+// THE DECIDED DESIGN, so the producer's author inherits a ruling rather than
+// reopening it (operator ruling relayed 2026-08-28): when a directive CAN name
+// a cell, refuse more than one resource reservation per directive as a typed
+// located refusal, and fold over the atomic one-cell release. Do not build the
+// N-cell reconciliation. The plural the model proves load-bearing is a list of
+// DIRECTIVES -- a Work under re-execution holds two grants and two sets of
+// reservations -- and that folds cleanly, leaving whole grants released and
+// whole grants held with no grant in a partial state. Two-phase commit,
+// compensating release and undo logs are all ruled out: they make the partial
+// state reachable and then work to escape it.
+//
+// CITATION TREE, because this note will be read from main and half of it does
+// not resolve there: fabric_reservation_payload and this module do not exist on
+// main -- they are unmerged. On main NEITHER reference is derivable. On this
+// stack the money reference has a modeled derivation and the resource reference
+// still does not, which is the precise gap: the producer owns one derivation,
+// not two.
 fn admit_cell_settlement<P>(
   receipt: Receipt<P>,
   grant: ExecutionGrant<P>,
