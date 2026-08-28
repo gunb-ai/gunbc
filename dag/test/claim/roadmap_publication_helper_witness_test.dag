@@ -3,11 +3,13 @@ module test.claim.roadmap_publication_helper_witness
 import std.types { Bool, String, NonEmptyStr, CommitSha }
 import std.layout { render }
 import gunbc.repository { gunbc_repository }
+import extdeps.github.github { Repository }
 import gunbc.roadmap_publish { RoadmapPublicationSubject }
 import gunbc.roadmap_publication_helper {
   publication_helper_disposition_detail,
-  PublicationSpoolAddress, SpoolAddressed, SpoolUnaddressable,
-  publication_spool_address,
+  publication_spool_key,
+  PublicationCapabilityAdmission, SubjectWithinCapability, SubjectOutsideCapability,
+  publication_helper_capability_admits,
   publication_spool_entry_name,
   publication_request_json,
   publication_request_decode,
@@ -16,7 +18,7 @@ import gunbc.roadmap_publication_helper {
   publication_answer_path_for,
   PublicationHelperOutcome,
   HelperAnswered, HelperRequestNotConsumed, HelperRequestUnreadable,
-  HelperAnswerWriteFailed, HelperSpoolRefused,
+  HelperAnswerWriteFailed, HelperSpoolRefused, HelperSubjectOutsideCapability,
   PublicationHelperDisposition, OutcomeRecorded, OutcomeStopsTheLine,
   publication_helper_outcome_disposition,
   PublicationHelperRunStanding, HelperRunCompleted, HelperRunStopped,
@@ -80,6 +82,18 @@ fn subject_at(node_id: String, attempt_key: String, head: String) -> RoadmapPubl
   }
 }
 
+// A REPOSITORY THAT IS NOT THIS ONE, built from the real authority so the only thing that differs
+// is the identity under test rather than an incidentally malformed record.
+fn other_repository() -> Repository {
+  Repository {
+    owner: "other-owner",
+    name: "other-repo",
+    full_name: "other-owner/other-repo",
+    private: false,
+    default_branch: gunbc_repository.default_branch,
+  }
+}
+
 fn ordinary_subject() -> RoadmapPublicationSubject {
   subject_at(
     node_id: "adhoc-27aa0eed-025",
@@ -88,51 +102,85 @@ fn ordinary_subject() -> RoadmapPublicationSubject {
   )
 }
 
-// ── The spool address refuses what it cannot safely name ────────────────────────────────────────
+// ── The spool key separates every field of the subject ─────────────────────────────────
 //
-// A DISCRIMINATING PAIR, not a single green. The subject's three identifying fields arrive from an
-// attempts ledger on disk rather than from a constructor that constrains them, so a separator in
-// any of them would address a file outside the spool -- and this is a wall that would look exactly
-// as healthy while accepting everything, which is why the refusal is asserted beside the accept.
+// SIX FIELDS, SIX ASSERTIONS, AND THAT COUNT IS THE POINT. The previous key was built from three of
+// the subject's six fields, so the three it omitted -- repository owner, repository name, branch and
+// expected_base -- collided silently. A witness that only checked "the key is stable" would have
+// passed against the defective key just as happily, so each field is varied ALONE and required to
+// move the key. This is the discriminating form: it fails if any field is dropped from the digest.
+//
+// The path-separator and empty-field refusals this block used to assert are GONE, deliberately.
+// publication_spool_key returns a lower-hex-16 digest, so no subject can produce a key containing
+// `/` or `..` and the refusal's RED is no longer authorable anywhere -- a check that cannot fail is
+// a decoration cited as coverage (DESIGN section 4b), so it is deleted with the machinery it guarded
+// rather than kept as a permanently-green reassurance.
 
-test fn an_ordinary_subject_addresses_its_own_spool_entry() -> Bool {
-  match publication_spool_address(subject: ordinary_subject()) {
-    SpoolAddressed { key } =>
-      key == "adhoc-27aa0eed-025.a1.1111111111111111111111111111111111111111"
-      && publication_spool_entry_name(key: key) == "adhoc-27aa0eed-025.a1.1111111111111111111111111111111111111111.json"
-    SpoolUnaddressable { reason: _ } => false
+fn key_of(s: RoadmapPublicationSubject) -> String { publication_spool_key(subject: s) }
+
+test fn the_spool_key_is_stable_and_names_its_own_entry() -> Bool {
+  let k = key_of(s: ordinary_subject())
+  k == key_of(s: ordinary_subject())
+    && publication_spool_entry_name(key: k) == join([k, ".json"], "")
+    && !string_contains(s: k, pattern: "/")
+    && !string_contains(s: k, pattern: ".")
+}
+
+test fn every_field_of_the_subject_moves_the_spool_key() -> Bool {
+  let base = ordinary_subject()
+  let k = key_of(s: base)
+  let node = k != key_of(s: subject_at(node_id: "other-node", attempt_key: "a1", head: "1111111111111111111111111111111111111111"))
+  let attempt = k != key_of(s: subject_at(node_id: "adhoc-27aa0eed-025", attempt_key: "a2", head: "1111111111111111111111111111111111111111"))
+  let head = k != key_of(s: subject_at(node_id: "adhoc-27aa0eed-025", attempt_key: "a1", head: "2222222222222222222222222222222222222222"))
+  let owner = k != key_of(s: RoadmapPublicationSubject {
+    node_id: base.node_id, attempt_key: base.attempt_key,
+    repository: other_repository(), branch: base.branch,
+    expected_base: base.expected_base, expected_head: base.expected_head,
+  })
+  let branch = k != key_of(s: RoadmapPublicationSubject {
+    node_id: base.node_id, attempt_key: base.attempt_key,
+    repository: base.repository, branch: "session/other" as NonEmptyStr,
+    expected_base: base.expected_base, expected_head: base.expected_head,
+  })
+  let expected_base = k != key_of(s: RoadmapPublicationSubject {
+    node_id: base.node_id, attempt_key: base.attempt_key,
+    repository: base.repository, branch: base.branch,
+    expected_base: "release/9" as NonEmptyStr, expected_head: base.expected_head,
+  })
+  node && attempt && head && owner && branch && expected_base
+}
+
+// ── The credential is not spent on a repository the requester chose ───────────────────────
+//
+// THE CONFUSED-DEPUTY WALL, asserted as a pair so it cannot pass by admitting everything. The helper
+// holds an authority the requester does not, and the request names its own repository, so without
+// this check the service principal could direct the credential at any target it liked.
+
+test fn a_request_for_this_repository_is_within_the_capability() -> Bool {
+  match publication_helper_capability_admits(subject: ordinary_subject()) {
+    SubjectWithinCapability => true
+    SubjectOutsideCapability { detail: _ } => false
   }
 }
 
-test fn a_subject_carrying_a_path_separator_is_refused_in_every_field() -> Bool {
-  let node = match publication_spool_address(
-    subject: subject_at(node_id: "../etc", attempt_key: "a1", head: "1111111111111111111111111111111111111111"),
-  ) {
-    SpoolUnaddressable { reason: _ } => true
-    SpoolAddressed { key: _ } => false
+test fn a_request_naming_another_repository_is_refused_before_any_observation() -> Bool {
+  let base = ordinary_subject()
+  match publication_helper_capability_admits(subject: RoadmapPublicationSubject {
+    node_id: base.node_id, attempt_key: base.attempt_key,
+    repository: other_repository(), branch: base.branch,
+    expected_base: base.expected_base, expected_head: base.expected_head,
+  }) {
+    SubjectOutsideCapability { detail } =>
+      string_contains(s: detail, pattern: "other-owner")
+        && string_contains(s: detail, pattern: gunbc_repository.owner)
+    SubjectWithinCapability => false
   }
-  let attempt = match publication_spool_address(
-    subject: subject_at(node_id: "n", attempt_key: "a/1", head: "1111111111111111111111111111111111111111"),
-  ) {
-    SpoolUnaddressable { reason: _ } => true
-    SpoolAddressed { key: _ } => false
-  }
-  let head = match publication_spool_address(
-    subject: subject_at(node_id: "n", attempt_key: "a1", head: "../../answers/other"),
-  ) {
-    SpoolUnaddressable { reason: _ } => true
-    SpoolAddressed { key: _ } => false
-  }
-  node && attempt && head
 }
 
-test fn an_empty_identifying_field_is_refused_rather_than_addressed() -> Bool {
-  match publication_spool_address(
-    subject: subject_at(node_id: "n", attempt_key: "", head: "1111111111111111111111111111111111111111"),
-  ) {
-    SpoolUnaddressable { reason: _ } => true
-    SpoolAddressed { key: _ } => false
-  }
+test fn a_request_outside_the_capability_stops_the_line() -> Bool {
+  disposition_stops(o: HelperSubjectOutsideCapability {
+    entry: "e.json", detail: "another repository",
+  })
 }
 
 // ── The request round-trips, and refuses a document that is not one ──────────────────────────────
@@ -188,6 +236,7 @@ test fn a_request_whose_subject_addresses_another_entry_is_refused_before_any_ob
     HelperRequestNotConsumed { key: _, detail: _ } => false
     HelperAnswerWriteFailed { key: _, detail: _ } => false
     HelperSpoolRefused { detail: _ } => false
+    HelperSubjectOutsideCapability { entry: _, detail: _ } => false
   }
 }
 
@@ -203,6 +252,7 @@ test fn a_request_document_that_does_not_decode_is_refused_rather_than_skipped()
     HelperRequestNotConsumed { key: _, detail: _ } => false
     HelperAnswerWriteFailed { key: _, detail: _ } => false
     HelperSpoolRefused { detail: _ } => false
+    HelperSubjectOutsideCapability { entry: _, detail: _ } => false
   }
 }
 

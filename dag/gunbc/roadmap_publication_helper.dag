@@ -3,6 +3,7 @@ module gunbc.roadmap_publication_helper
 import std.algebra { trim }
 import std.types { String, NonEmptyStr, List, Bool, CommitSha }
 import std.credentials { CredentialSource }
+import std.content_hash { content_hash_atom }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
@@ -24,6 +25,7 @@ import extdeps.languages.json.parse {
   JsonMemberFound,
 }
 import gunbc.host_layout { publication_request_dir, publication_answer_dir }
+import gunbc.repository { gunbc_repository }
 import gunbc.roadmap_publish {
   RoadmapPublicationSubject,
   PublicationReceipt,
@@ -101,55 +103,48 @@ import gunbc.roadmap_publish_observe {
 // GITHUB_TOKEN at the provider spawn. That ordering was ruled explicitly: with no worker source
 // modeled or observed, removing those variables could take away the only authentication a worker
 // currently has, trading a scope defect for a capability loss.
-// THE SPOOL KEY IS THE SUBJECT'S OWN IDENTITY, RENDERED, and it is checked rather than trusted.
-// node id, attempt key and head are the three fields that make a publication judgment unique, and
-// they arrive from an attempts ledger on disk rather than from a constructor that constrains them,
-// so a value carrying a path separator would address a file outside the spool. That is a decidable
-// property of a string this module is about to use as a filename, so it refuses here rather than
-// producing a path and hoping.
-type PublicationSpoolAddress
-  = SpoolAddressed { key: String }
-  | SpoolUnaddressable { reason: String }
-
-fn publication_spool_segment_is_addressable(segment: String) -> Bool {
-  if trim(segment) == "" {
-    false
-  } else if string_contains(s: segment, pattern: "/") {
-    false
-  } else {
-    !string_contains(s: segment, pattern: "..")
-  }
-}
-
-fn publication_spool_address(subject: RoadmapPublicationSubject) -> PublicationSpoolAddress {
-  if !publication_spool_segment_is_addressable(segment: subject.node_id) {
-    SpoolUnaddressable {
-      reason: join([
-        "the node id is empty or carries a path separator, so it cannot address a spool entry: ",
-        subject.node_id,
-      ], ""),
-    }
-  } else if !publication_spool_segment_is_addressable(segment: subject.attempt_key) {
-    SpoolUnaddressable {
-      reason: join([
-        "the attempt key is empty or carries a path separator, so it cannot address a spool entry: ",
-        subject.attempt_key,
-      ], ""),
-    }
-  } else if !publication_spool_segment_is_addressable(segment: subject.expected_head as String) {
-    SpoolUnaddressable {
-      reason: join([
-        "the expected head is empty or carries a path separator, so it cannot address a spool entry: ",
-        subject.expected_head as String,
-      ], ""),
-    }
-  } else {
-    SpoolAddressed {
-      key: join([
-        subject.node_id, ".", subject.attempt_key, ".", subject.expected_head as String,
-      ], ""),
-    }
-  }
+// THE SPOOL KEY IS A DIGEST OF THE COMPLETE SUBJECT, and the earlier revision of this function is
+// the reason the rule is stated rather than assumed. It keyed on node id, attempt key and head, and
+// the annotation here asserted those were "the three fields that make a publication judgment
+// unique". They are not. RoadmapPublicationSubject carries SIX fields -- repository, branch and
+// expected_base as well -- so two different publication questions could address the same request
+// and answer path. That is keying an address on less than its declared inputs, the same shape as a
+// cache key that omits half of what it depends on, and DESIGN section 5 names it directly: the
+// declaration can be edited green while the realization still collides.
+//
+// THE COLLISION`S TWO HALVES HAVE DIFFERENT SEVERITIES, and only one of them was already contained.
+// On the ANSWER side a collision could not have produced a wrong answer, because
+// publication_answer_read_at compares all six fields through gunbc.roadmap_publish
+// publication_receipt_subject_match and refuses a mismatched document as AnswerUnreadable rather
+// than reading it as this subject`s answer. On the REQUEST side nothing compared anything: two
+// subjects sharing a key write to one path, so the second silently overwrites the first, the helper
+// answers whichever document it finds, and the losing subject`s ask disappears with no diagnostic.
+// The belt re-asks every tick, so neither subject converges and the failure renders as a lamp that
+// never settles -- a liveness defect with no located cause, which is the worst reading to debug.
+//
+// SO THE KEY IS THE DIGEST OF THE SERIALIZED SUBJECT, which is the one value that changes whenever
+// any field does. It is derived from publication_subject_json -- the SAME serialization the request
+// document carries -- so the key cannot drift away from the subject it names by someone adding a
+// field to one and not the other.
+//
+// AND THIS RETIRES A VALIDATOR RATHER THAN ADDING ONE (DESIGN section 4b, construction over
+// validation). The previous key interpolated ledger-supplied strings into a filename, so a value
+// carrying `/` or `..` would have addressed a file outside the spool, and a PublicationSpoolAddress
+// coproduct refused that case. A lower-hex-16 digest cannot carry a path separator: the invalid
+// state has no representation instead of being caught, so the refusal arm and its witnesses are
+// deleted rather than kept -- a check whose RED is no longer authorable is a decoration that would
+// be cited as coverage.
+//
+// THE CAST IS TOTAL BY CONSTRUCTION, not by inspection: the hashed text begins with the schema
+// literal, so the joined string is non-empty whatever the subject serializes to.
+fn publication_spool_key(subject: RoadmapPublicationSubject) -> String {
+  content_hash_atom(
+    value: join([
+      publication_request_schema as String,
+      "|",
+      serialize_json(v: publication_subject_json(subject: subject)),
+    ], "") as NonEmptyStr,
+  ).digest as String
 }
 
 fn publication_spool_entry_name(key: String) -> String {
@@ -345,17 +340,17 @@ fn publication_request_enqueue(
   }
 }
 
-// FOUR STATES, BECAUSE FOUR REMEDIES. An answer that is ready, a request that is now waiting, a
-// subject that cannot address a spool entry at all, and a spool that could not be reached are what
-// a caller does four different things about, and an Optional over the receipt would collapse the
-// last three into one silence. The waiting arm in particular must NOT read as `nothing to publish`:
+// THREE STATES, BECAUSE THREE REMEDIES. An answer that is ready, a request that is now waiting, and
+// a spool that could not be reached are what a caller does three different things about, and an
+// Optional over the receipt would collapse the last two into one silence. There was a fourth --
+// a subject that could not address a spool entry -- and it is gone because publication_spool_key
+// made that state unrepresentable rather than merely refused. The waiting arm in particular must NOT read as `nothing to publish`:
 // that is the empty-observation narrow -- an observation that could not answer rendered as the
 // verdict `nothing is affected` -- and it is what a Pending lamp looked like for the whole time
 // this lane was broken.
 type PublicationAnswerStanding
   = AnswerReady { receipt: PublicationReceipt }
   | AnswerAwaited { request_path: String }
-  | AnswerUnaddressable { reason: String }
   | AnswerSpoolRefused { reason: String }
 
 // THE REQUEST IS RE-ASKED ON EVERY REACH, AND GETTING THIS WRONG WOULD HAVE FROZEN THE LAMP -- the
@@ -390,29 +385,25 @@ fn publication_answer_standing(
   instance_root: String,
   subject: RoadmapPublicationSubject,
 ) -> PublicationAnswerStanding {
-  match publication_spool_address(subject: subject) {
-    SpoolUnaddressable { reason } => AnswerUnaddressable { reason: reason }
-    SpoolAddressed { key } => {
-      let found = publication_answer_read(
-        instance_root: instance_root,
-        key: key,
-        expected: subject,
-      )
-      let asked = publication_request_enqueue(
-        instance_root: instance_root,
-        key: key,
-        subject: subject,
-      )
-      match asked {
-        RequestNotEnqueued { detail } => AnswerSpoolRefused { reason: detail }
-        RequestEnqueued { path } =>
-          match found {
-            AnswerUnreadable { reason } => AnswerSpoolRefused { reason: reason }
-            AnswerPresent { receipt } => AnswerReady { receipt: receipt }
-            AnswerAbsent => AnswerAwaited { request_path: path }
-          }
+  let key = publication_spool_key(subject: subject)
+  let found = publication_answer_read(
+    instance_root: instance_root,
+    key: key,
+    expected: subject,
+  )
+  let asked = publication_request_enqueue(
+    instance_root: instance_root,
+    key: key,
+    subject: subject,
+  )
+  match asked {
+    RequestNotEnqueued { detail } => AnswerSpoolRefused { reason: detail }
+    RequestEnqueued { path } =>
+      match found {
+        AnswerUnreadable { reason } => AnswerSpoolRefused { reason: reason }
+        AnswerPresent { receipt } => AnswerReady { receipt: receipt }
+        AnswerAbsent => AnswerAwaited { request_path: path }
       }
-    }
   }
 }
 
@@ -469,6 +460,7 @@ type PublicationHelperOutcome
   | HelperRequestNotConsumed { key: String, detail: String }
   | HelperRequestUnreadable { entry: String, detail: String }
   | HelperAnswerWriteFailed { key: String, detail: String }
+  | HelperSubjectOutsideCapability { entry: String, detail: String }
   | HelperSpoolRefused { detail: String }
 
 fn publication_helper_outcome_key(o: PublicationHelperOutcome) -> String {
@@ -477,6 +469,7 @@ fn publication_helper_outcome_key(o: PublicationHelperOutcome) -> String {
     HelperRequestNotConsumed { key: _, detail: _ } => "request-not-consumed"
     HelperRequestUnreadable { entry: _, detail: _ } => "request-unreadable"
     HelperAnswerWriteFailed { key: _, detail: _ } => "answer-write-failed"
+    HelperSubjectOutsideCapability { entry: _, detail: _ } => "subject-outside-capability"
     HelperSpoolRefused { detail: _ } => "spool-refused"
   }
 }
@@ -514,6 +507,8 @@ fn publication_helper_outcome_disposition(o: PublicationHelperOutcome) -> Public
       OutcomeStopsTheLine { detail: join([entry, ": ", detail], "") }
     HelperAnswerWriteFailed { key, detail } =>
       OutcomeStopsTheLine { detail: join([key, ": ", detail], "") }
+    HelperSubjectOutsideCapability { entry, detail } =>
+      OutcomeStopsTheLine { detail: join([entry, ": ", detail], "") }
     HelperSpoolRefused { detail } =>
       OutcomeStopsTheLine { detail: detail }
   }
@@ -573,10 +568,11 @@ fn publication_helper_answer_request(
     RequestUndecodable { reason } =>
       HelperRequestUnreadable { entry: entry, detail: reason }
     RequestDecoded { subject } =>
-      match publication_spool_address(subject: subject) {
-        SpoolUnaddressable { reason } =>
-          HelperRequestUnreadable { entry: entry, detail: reason }
-        SpoolAddressed { key } =>
+      match publication_helper_capability_admits(subject: subject) {
+        SubjectOutsideCapability { detail } =>
+          HelperSubjectOutsideCapability { entry: entry, detail: detail }
+        SubjectWithinCapability => {
+          let key = publication_spool_key(subject: subject)
           if publication_spool_entry_name(key: key) != entry {
             HelperRequestUnreadable {
               entry: entry,
@@ -627,7 +623,61 @@ fn publication_helper_answer_request(
               }
             }
           }
+        }
       }
+  }
+}
+
+// A CREDENTIAL BOUNDARY WITHOUT A SUBJECT BOUNDARY RELOCATES THE AUTHORITY INSTEAD OF CONFINING IT,
+// and this function is the half the first cut of this module was missing.
+//
+// The principal boundary answers WHO holds the credential. It says nothing about WHAT the credential
+// may be spent on, and RoadmapPublicationSubject carries its own `repository` field. So the service
+// principal -- which cannot read the token -- could hand the helper a request naming ANY repository
+// and have the helper spend the credential against it on the requester`s behalf. That is a confused
+// deputy in its textbook form: the helper has an authority the caller lacks, and was taking the
+// caller`s word for the target it should be used on.
+//
+// THE TOKEN`S NARROW SCOPE BOUNDS THE DAMAGE AND DOES NOT CLOSE THE HOLE. The publication capability
+// is Pull requests: read over one repository, so today the worst case is reading public PR state
+// somewhere else. That is an argument about the current token, not about this code, and it expires
+// silently the moment a wider credential is placed at the same path -- at which point an unguarded
+// path is already there and nobody re-derives this reasoning. The refusal belongs here, where the
+// capability is a modeled fact, rather than in an assumption about what the operator installed.
+//
+// SO THE CHECK RUNS BEFORE ANY NETWORK ACCESS and compares the request`s repository against
+// gunbc.repository gunbc_repository, the single authority for which repository this project is. It
+// refuses rather than narrowing: a request outside the capability is a defect or an attempt, and
+// both want the line stopped and the document left in place for analysis rather than a quiet
+// substitution of the permitted repository for the requested one -- which would answer a question
+// nobody asked and record it as though they had.
+type PublicationCapabilityAdmission
+  = SubjectWithinCapability
+  | SubjectOutsideCapability { detail: String }
+
+fn publication_helper_capability_admits(
+  subject: RoadmapPublicationSubject,
+) -> PublicationCapabilityAdmission {
+  if subject.repository.owner != gunbc_repository.owner {
+    SubjectOutsideCapability {
+      detail: join([
+        "the request names repository owner ", subject.repository.owner,
+        ", and the publication capability covers only ", gunbc_repository.owner,
+        "/", gunbc_repository.name,
+        " -- the credential is not spent on a target the requester chose",
+      ], ""),
+    }
+  } else if subject.repository.name != gunbc_repository.name {
+    SubjectOutsideCapability {
+      detail: join([
+        "the request names repository ", subject.repository.owner, "/", subject.repository.name,
+        ", and the publication capability covers only ", gunbc_repository.owner,
+        "/", gunbc_repository.name,
+        " -- the credential is not spent on a target the requester chose",
+      ], ""),
+    }
+  } else {
+    SubjectWithinCapability
   }
 }
 

@@ -181,7 +181,7 @@ import gunbc.roadmap_execution_contract {
 import gunbc.repository { gunbc_repository }
 import gunbc.roadmap_publication_helper {
   PublicationAnswerStanding,
-  AnswerReady, AnswerAwaited, AnswerUnaddressable, AnswerSpoolRefused,
+  AnswerReady, AnswerAwaited, AnswerSpoolRefused,
   publication_answer_standing,
 }
 import gunbc.roadmap_publish {
@@ -5306,14 +5306,6 @@ fn belt_publish_attempt_for_instance(
                 instance_root: instance.instance_root as String,
                 subject: subject,
               ) {
-                AnswerUnaddressable { reason } =>
-                  PublishEvidenceUnreadable {
-                    node_id: node_id,
-                    detail: join([
-                      "this attempt cannot be handed to the publication helper because its own identity does not address a spool entry: ",
-                      reason,
-                    ], ""),
-                  }
                 AnswerSpoolRefused { reason } =>
                   PublishEvidenceUnreadable {
                     node_id: node_id,
