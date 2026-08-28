@@ -8054,6 +8054,31 @@ fn hermetic_checkout_input_disposition_under(
         match std::fs::canonicalize(probe) {
             Ok(resolved) => break resolved,
             Err(e) => {
+                // ONLY A GENUINE ABSENCE MAY PEEL A COMPONENT. `canonicalize` fails for
+                // several reasons and they are not interchangeable: a permission-denied or
+                // symlink-loop error says the path CANNOT BE CONFIRMED, which is the
+                // unresolvable arm, not a statement that the component is missing. Treating
+                // every error as absence would climb past a component that is really there.
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    return Err(format!(
+                        "path does not canonicalize under the checkout ({e})"
+                    ));
+                }
+                // A DANGLING SYMLINK IS PRESENT, NOT ABSENT, AND `canonicalize` CANNOT SAY SO.
+                // It resolves symlinks, so a link whose target is missing returns the SAME
+                // NotFound as a name with nothing behind it. `symlink_metadata` does not
+                // follow, so it answers the question actually being asked: is there an entry
+                // here? If there is, its resolution depends on a target the commit does not
+                // contain -- host state, whose appearance later would silently change this
+                // read's result -- so it refuses rather than being peeled as absent.
+                if std::fs::symlink_metadata(probe).is_ok() {
+                    return Err(format!(
+                        "path does not canonicalize under the checkout (`{}` exists but does \
+                         not resolve -- a dangling symlink's target is host state, not a \
+                         commit input)",
+                        probe.display()
+                    ));
+                }
                 let (parent, name) = match (probe.parent(), probe.file_name()) {
                     (Some(parent), Some(name)) if parent != probe => (parent, name.to_os_string()),
                     _ => {
@@ -16250,6 +16275,61 @@ mod shell_completion_trace_tests {
             Ok(()),
             "an absent path whose parent is also absent is still under the root"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn hermetic_checkout_refuses_a_dangling_symlink_rather_than_peeling_it_as_absent() {
+        // A DANGLING SYMLINK IS PRESENT AND UNRESOLVABLE, WHICH IS NOT ABSENCE.
+        // `canonicalize` follows links, so a link with a missing target returns the SAME
+        // NotFound as a name with nothing behind it. Peeling it would climb past an entry
+        // that really exists, admit the path, and dispatch a real host read whose result
+        // CHANGES IF THE TARGET LATER APPEARS -- host state entering a hermetic run.
+        // Reported as BLOCKING in review 57219 against the first cut of this repair.
+        let dir =
+            std::env::temp_dir().join(format!("hermetic-carveout-dangling-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let outside_target = std::env::temp_dir().join(format!(
+            "hermetic-carveout-absent-target-{}",
+            std::process::id()
+        ));
+        std::os::unix::fs::symlink(&outside_target, dir.join("dangling_out")).unwrap();
+        std::os::unix::fs::symlink("./never_created_inside", dir.join("dangling_in")).unwrap();
+
+        // Control first: the discriminator must not be "any ENOENT refuses", or the
+        // absent-path admission this whole change exists for would be gone.
+        assert_eq!(
+            hermetic_checkout_input_disposition_under(&dir, "genuinely_absent.json"),
+            Ok(()),
+            "a name with nothing behind it is still a commit-deterministic absence"
+        );
+
+        let out = hermetic_checkout_input_disposition_under(&dir, "dangling_out");
+        assert!(
+            out.as_ref()
+                .err()
+                .is_some_and(|e| e.contains("exists but does not resolve")),
+            "a dangling symlink to an ABSENT OUTSIDE path must refuse, not be peeled as \
+             absent, got {out:?}"
+        );
+
+        let inside = hermetic_checkout_input_disposition_under(&dir, "dangling_in");
+        assert!(
+            inside
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("exists but does not resolve")),
+            "a dangling symlink inside the checkout must refuse, got {inside:?}"
+        );
+
+        // And it must not be defeated by sitting mid-path rather than at the leaf.
+        let through = hermetic_checkout_input_disposition_under(&dir, "dangling_out/under.json");
+        assert!(
+            through.as_ref().err().is_some(),
+            "a path THROUGH a dangling symlink must refuse, got {through:?}"
+        );
+
         std::fs::remove_dir_all(&dir).ok();
     }
 
