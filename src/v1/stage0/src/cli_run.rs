@@ -2041,10 +2041,12 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     // `run_claim_measured` as its own `[floor-shared-fill]` column — the claim's marginal and fill
     // halves still sum to what it actually spent.
     let fill_started = v1_interpreter::thread_cpu_nanos();
+    let fill_wall_started = std::time::Instant::now();
     let census = compile_dag_diagnostic_census_uncached(source);
     record_shared_artifact_fill_cpu(
         v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
     );
+    record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
     COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow_mut().insert(memo_key, census.clone()));
     census
 }
@@ -2545,6 +2547,19 @@ thread_local! {
     /// marginal and fill as two columns whose sum is the claim's whole measured cost.
     static SHARED_ARTIFACT_FILL_CPU_NANOS: std::cell::Cell<u128> =
         const { std::cell::Cell::new(0) };
+
+    /// THE SAME FILL, ON THE OTHER CLOCK. The ruling above is about WHOSE COST A FILL IS, which
+    /// is a fact about attribution and not about which clock measured it — so it applies once to
+    /// every ceiling derived from a claim's elapsed time. It was landed on the CPU ceiling alone,
+    /// and the wall ceiling kept charging the whole fill to the first payer, which is how two
+    /// rows whose own cost is 0ms and 1ms refused a required floor at ~18000ms against a 10000ms
+    /// wall requirement (main run 33145062452, `test.claim.transport_script_wall_compile_red`:
+    /// `[floor-shared-fill]` reported `marginal_cpu_ms=0 fill_cpu_ms=18966` for one of them).
+    /// A one-clock accounting rule is the §3 failure the CPU comment already names — one concept
+    /// with two homes, one of which does not apply it — so this cell exists to close the second
+    /// home rather than to add a policy beside it.
+    static SHARED_ARTIFACT_FILL_WALL_NANOS: std::cell::Cell<u128> =
+        const { std::cell::Cell::new(0) };
 }
 
 /// Accumulate CPU spent filling a shared memoized artifact. Called ONLY from a memo MISS path,
@@ -2554,10 +2569,24 @@ fn record_shared_artifact_fill_cpu(nanos: u128) {
     SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
 }
 
+/// Accumulate WALL time spent filling a shared memoized artifact, under the same rule and from
+/// the same miss paths as `record_shared_artifact_fill_cpu`. The two are recorded together at
+/// every call site so a fill can never be counted on one clock and not the other — which is the
+/// state that produced the defect this pair exists to close.
+fn record_shared_artifact_fill_wall(nanos: u128) {
+    SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
+}
+
 /// Read the running total for this thread. The claim loop samples it either side of one claim;
 /// the difference is that claim's fill.
 pub fn shared_artifact_fill_cpu_nanos() -> u128 {
     SHARED_ARTIFACT_FILL_CPU_NANOS.with(|c| c.get())
+}
+
+/// Read the running wall-clock total for this thread, sampled either side of one claim exactly
+/// as the CPU total is.
+pub fn shared_artifact_fill_wall_nanos() -> u128 {
+    SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.get())
 }
 
 static COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS: std::sync::atomic::AtomicU64 =
@@ -2645,10 +2674,12 @@ pub fn compile_dag_rust_emit_check(
     // against, so the two quantities cannot drift apart, and recorded rather than subtracted here
     // — the claim loop does the split, this only says how much of the cost was a fill.
     let fill_started = v1_interpreter::thread_cpu_nanos();
+    let fill_wall_started = std::time::Instant::now();
     let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
     record_shared_artifact_fill_cpu(
         v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
     );
+    record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict));
     verdict
 }
@@ -20481,11 +20512,15 @@ pub fn run_claim_measured(
     let started = std::time::Instant::now();
     let cpu_started_nanos = v1_interpreter::thread_cpu_nanos();
     let fill_before_nanos = shared_artifact_fill_cpu_nanos();
+    let fill_wall_before_nanos = shared_artifact_fill_wall_nanos();
     let outcome = run_claim(ctx, function);
     // CPU consumed by THIS (witness-eval) thread — the budget metric, so the completion-side
     // check matches the cooperative stride-poll and neither fires on cold-I/O or contention
-    // wall time. wall_nanos stays the measurement/receipt basis (unchanged).
+    // wall time.
     let measured_cpu_nanos = v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_started_nanos);
+    // Sampled here rather than after the report so the wall clock can be split by the same rule
+    // the CPU clock is, and so the reported line and the enforced quantity read one binding.
+    let measured_wall_nanos = started.elapsed().as_nanos();
     // SHARED-ARTIFACT FILL IS NOT THIS CLAIM'S MARGINAL COST (operator-line ruling, 2026-08-27).
     // Whatever this claim spent filling a memo is consumed by every later claim naming the same
     // source — one of them measured at literally 0ms in the same run because this one paid — so
@@ -20498,7 +20533,18 @@ pub fn run_claim_measured(
     // the fill is still counted, still attributed and still visible in the receipt.
     let fill_cpu_nanos = shared_artifact_fill_cpu_nanos().saturating_sub(fill_before_nanos);
     let cpu_nanos = measured_cpu_nanos.saturating_sub(fill_cpu_nanos);
-    if fill_cpu_nanos > 0 {
+    // THE SAME SPLIT ON THE WALL CLOCK. `wall_budget_completion_outcome` below is a
+    // merge-blocking ceiling, so charging it the fill made it a function of execution order in
+    // exactly the way the ruling above forbids — and unlike the CPU side it had no exemption
+    // argument, only an omission. Split, never dropped: both halves are reported and they sum to
+    // `measured_wall_nanos`.
+    let fill_wall_nanos = shared_artifact_fill_wall_nanos().saturating_sub(fill_wall_before_nanos);
+    let wall_nanos = marginal_wall_nanos(measured_wall_nanos, fill_wall_nanos);
+    // EITHER clock, not the CPU one. A fill that blocked on I/O can spend wall time while
+    // charging almost no CPU, and under a `fill_cpu_nanos > 0` guard that fill would be
+    // subtracted from the enforced wall figure and reported nowhere — a cost dropped rather
+    // than split, which is the one thing the ruling above forbids.
+    if fill_cpu_nanos > 0 || fill_wall_nanos > 0 {
         // REPORTED, NOT ABSORBED. Printed on its own line, per claim, whenever a fill happened,
         // so the quantity the ceiling stops charging is visible at the same grain it was measured
         // — the difference between attributing a cost and losing one. `triggered_by` is this
@@ -20507,13 +20553,16 @@ pub fn run_claim_measured(
         // this line names who paid.
         eprintln!(
             "[floor-shared-fill] claim={function} marginal_cpu_ms={} fill_cpu_ms={} \
-             measured_cpu_ms={} provenance=filled-shared-artifact triggered_by={function}",
+             measured_cpu_ms={} marginal_wall_ms={} fill_wall_ms={} measured_wall_ms={} \
+             provenance=filled-shared-artifact triggered_by={function}",
             cpu_nanos / 1_000_000,
             fill_cpu_nanos / 1_000_000,
             measured_cpu_nanos / 1_000_000,
+            wall_nanos / 1_000_000,
+            fill_wall_nanos / 1_000_000,
+            measured_wall_nanos / 1_000_000,
         );
     }
-    let wall_nanos = started.elapsed().as_nanos();
     ctx.clear_eval_deadline();
     ctx.clear_wall_deadline();
     v1_interpreter::eval_subject_clear();
@@ -20983,6 +21032,19 @@ fn budget_completion_outcome(
     }
 }
 
+/// The claim's own wall cost: what it spent, less what it spent filling a shared artifact every
+/// later claim naming the same source then reads free.
+///
+/// Named rather than written inline at the one call site because it is the quantity
+/// `wall_budget_completion_outcome` enforces against, and a merge-blocking ceiling's input
+/// deserves a symbol its regression control can drive directly. The subtraction is saturating for
+/// the same reason the CPU side's is: the two clocks are sampled at slightly different instants,
+/// so a fill measured marginally longer than the enclosing claim is an artifact of sampling, not
+/// a negative cost.
+fn marginal_wall_nanos(measured_wall_nanos: u128, fill_wall_nanos: u128) -> u128 {
+    measured_wall_nanos.saturating_sub(fill_wall_nanos)
+}
+
 /// Whole-receipt wall budget for Wet self-host receipts: emit+cargo subprocess I/O
 /// counts against wall time, not CPU. A Pass over the wall budget converts to the same
 /// typed refusal — silent green would fail open on the nightly falsifier lane budget.
@@ -21033,6 +21095,68 @@ mod budget_completion_tests {
             }
             other => panic!("expected CompletedOverBudget, got {other:?}"),
         }
+    }
+
+    #[test]
+    /// THE DISCRIMINATING RED FOR THE WALL HALF OF THE FILL-ATTRIBUTION RULING. A claim whose own
+    /// wall cost is 1ms, which happened to be the first to reach a shared memo and paid an 18000ms
+    /// fill for it, must not refuse a 10000ms wall requirement — every later claim naming the same
+    /// source reads that artifact free, so charging it here makes the ceiling a function of
+    /// execution order rather than of the tree.
+    ///
+    /// The second arm is what makes this a control rather than a restatement: driving the SAME
+    /// ceiling with the unsplit figure must still refuse. So the test fails if the split is
+    /// removed AND fails if the ceiling stops firing at all, which is the pair a single assertion
+    /// cannot carry. The shape is the one main run 33145062452 exhibited on
+    /// `test.claim.transport_script_wall_compile_red`, whose two rows reported
+    /// `marginal_cpu_ms=0`/`1` against `fill_cpu_ms` near 19000 and refused the required floor.
+    fn a_shared_fill_is_not_charged_to_the_claim_that_paid_it() {
+        let measured_wall_nanos = 18_001_000_000u128;
+        let fill_wall_nanos = 18_000_000_000u128;
+        let budget_ms = 10_000u64;
+
+        assert!(
+            matches!(
+                wall_budget_completion_outcome(
+                    Some(budget_ms),
+                    ClaimOutcome::Pass,
+                    marginal_wall_nanos(measured_wall_nanos, fill_wall_nanos),
+                ),
+                ClaimOutcome::Pass
+            ),
+            "a 1ms claim must not refuse a 10s ceiling because it paid an 18s shared fill"
+        );
+
+        match wall_budget_completion_outcome(
+            Some(budget_ms),
+            ClaimOutcome::Pass,
+            measured_wall_nanos,
+        ) {
+            ClaimOutcome::CompletedOverBudget { kind, .. } => {
+                assert_eq!(kind, BudgetKind::Wall);
+            }
+            other => panic!("the unsplit figure must still refuse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    /// The cost is SPLIT, never DROPPED (§5 — a vanished cost is the absorbing fallback wearing an
+    /// accounting label). Whatever the ceiling stops charging must still be recoverable, so the
+    /// two halves are asserted to sum to what the claim actually spent.
+    fn the_two_wall_halves_sum_to_the_measured_cost() {
+        let measured_wall_nanos = 18_001_000_000u128;
+        let fill_wall_nanos = 18_000_000_000u128;
+        assert_eq!(
+            marginal_wall_nanos(measured_wall_nanos, fill_wall_nanos) + fill_wall_nanos,
+            measured_wall_nanos
+        );
+    }
+
+    #[test]
+    /// A fill sampled marginally longer than the enclosing claim saturates to zero rather than
+    /// wrapping to an enormous cost that would refuse every ceiling.
+    fn a_fill_longer_than_the_claim_saturates() {
+        assert_eq!(marginal_wall_nanos(5, 9), 0);
     }
 
     #[test]
