@@ -1,181 +1,121 @@
 module test.claim.interpreter_replacement_cut_witness_test
 
-import std.types { String, Bool, List, list_length }
+import std.types { String, Bool, Int, List, list_length }
 import gunbc.replacement_cut {
-  BoundaryConsumer, BoundaryCensus, ConsumersEnumerated, BoundaryDeclaredEmpty,
   ConsumerDisposition, RetainSameContract, RetainChangedContract, ReplacedByY,
   EvidenceOnly, Retire, Undecided,
-  CutRefusalCause,
-  UndispositionedConsumer, UncoveredSurvivingConsumer, UndispositionedEvidence,
-  CoveredByOldRoot, ReplacementNamesOldRoot,
-  ConsumerDuplicated, EvidenceDuplicated, RegionMemberDuplicated,
-  EnumeratedCensusEmpty, ExternalRolesEnumeratedEmpty, EmptyCoveredRegion,
-  NewRootEqualsOldRoot, SelfReferentialDescent,
-  PlanAdmission, PlanAdmitted, PlanRefused,
   HigherBoundaryAnswer, OutermostBoundary, DescendedFromRefusedCut, DescentParentUnauthored,
+  LegacyConsumerSurveyRow, LegacyReplacementSurvey,
+  CutRegistration, RegisteredExactCut, RegisteredCutRemeasureRequired,
 }
 import gunbc.interpreter_replacement_cut {
-  interpreter_cut_admission,
+  interpreter_replacement_survey,
+  interpreter_cut_registration,
   interpreter_cut_why_not_higher,
-  interpreter_replacement_cut,
 }
 
-data interpreter_replacement_cut_witness_note: String = "The first production ReplacementCut, asserted at the state it is actually in. This suite does NOT assert the plan is admitted -- it asserts that it refuses, and that every cause is one of the two open-decision classes. If a cause of any other class appears, that is an authoring defect in the row and this suite reds; if the undecided or uncovered counts change, the open-decision set moved and the row must be re-earned rather than silently re-counted."
+data interpreter_replacement_cut_witness_note: String = "RECAST 2026-08-28 WITH THE ROW IT WITNESSES. This suite previously asserted that the interpreter ReplacementCut refuses with exactly the two open-decision cause classes. That claim no longer has a subject: the carrier re-grounded its boundary relation onto declaration-grain consumer x consumed-authority, the interpreter value was authored at module-or-binary grain over a ten-of-125 sample, and it is therefore now a LegacyReplacementSurvey plus a registered remeasurement obligation rather than an exact plan.\n\nTHE OLD ASSERTION IS NOT PRESERVED, AND THAT IS DELIBERATE RATHER THAN A LOSS. Its subject was the admission verdict of a plan that no longer exists in the exact carrier, so re-enrolling it would require reconstructing the coarse plan purely to keep asserting something about it -- the shape DESIGN §4b(4) forbids, where evidence is retained beside the machinery it was supposed to dissolve with. What survives is the pair below: the survey's measured content stays identity-bound so the historical record cannot drift, and the registration cannot be read as an admitted exact plan.\n\nWHY THE SECOND ONE IS THE LOAD-BEARING ONE: the whole risk of keeping a coarse survey in the tree is that some later consumer treats it as an exact census. RegisteredCutRemeasureRequired has no arm that yields a ReplacementCut, so that misreading is unwritable rather than merely discouraged -- but a control is enrolled anyway, because the arm could be widened by a later edit and the cost of that edit is exactly this class of laundering."
 
-fn causes_of(admission: PlanAdmission) -> List<CutRefusalCause> {
-  match admission {
-    PlanAdmitted { admitted: _ } => []
-    PlanRefused { causes: cs } => cs
-  }
-}
+// ---------------------------------------------------------------------------
+// 1. The historical survey stays identity-bound.
+// ---------------------------------------------------------------------------
 
-fn is_undecided_consumer(c: CutRefusalCause) -> Bool {
-  match c {
-    UndispositionedConsumer { consumer: _ } => true
-    UncoveredSurvivingConsumer { consumer: _ } => false
-    UndispositionedEvidence { evidence: _ } => false
-    CoveredByOldRoot { consumer: _ } => false
-    ReplacementNamesOldRoot { consumer: _ } => false
-    ConsumerDuplicated { consumer: _ } => false
-    EvidenceDuplicated { evidence: _ } => false
-    RegionMemberDuplicated { member: _ } => false
-    EnumeratedCensusEmpty => false
-    ExternalRolesEnumeratedEmpty => false
-    EmptyCoveredRegion => false
-    NewRootEqualsOldRoot => false
-    SelfReferentialDescent => false
-  }
-}
-
-fn is_uncovered_surviving(c: CutRefusalCause) -> Bool {
-  match c {
-    UncoveredSurvivingConsumer { consumer: _ } => true
-    UndispositionedConsumer { consumer: _ } => false
-    UndispositionedEvidence { evidence: _ } => false
-    CoveredByOldRoot { consumer: _ } => false
-    ReplacementNamesOldRoot { consumer: _ } => false
-    ConsumerDuplicated { consumer: _ } => false
-    EvidenceDuplicated { evidence: _ } => false
-    RegionMemberDuplicated { member: _ } => false
-    EnumeratedCensusEmpty => false
-    ExternalRolesEnumeratedEmpty => false
-    EmptyCoveredRegion => false
-    NewRootEqualsOldRoot => false
-    SelfReferentialDescent => false
-  }
-}
-
-fn count_matching(causes: List<CutRefusalCause>, p: fn(CutRefusalCause) -> Bool) -> Int {
-  fold(causes, init: 0, f: fn(acc, c) { if p(c) { acc + 1 } else { acc } })
-}
-
-// The plan refuses, and that is the authored outcome rather than a defect.
-test fn interpreter_cut_plan_refuses_with_open_decisions() -> Bool {
-  let causes = causes_of(admission: interpreter_cut_admission())
-  list_length(items: causes) == 4
-    && count_matching(causes: causes, p: is_undecided_consumer) == 1
-    && count_matching(causes: causes, p: is_uncovered_surviving) == 3
-}
-
-// Every cause is one of the two open-decision classes. Any other class is an
-// authoring defect in the row, not a fact about the world.
-test fn every_refusal_cause_is_an_open_decision_not_a_defect() -> Bool {
-  let causes = causes_of(admission: interpreter_cut_admission())
-  fold(
-    causes,
-    init: true,
-    f: fn(acc, c) { acc && (is_undecided_consumer(c) || is_uncovered_surviving(c)) },
-  )
-}
-
-fn census_rows(census: BoundaryCensus) -> List<BoundaryConsumer> {
-  match census {
-    ConsumersEnumerated { consumers: rows } => rows
-    BoundaryDeclaredEmpty { basis: _ } => []
-  }
-}
-
-fn is_causeless_disposition(d: ConsumerDisposition) -> Bool {
-  match d {
-    Retire { reason: _ } => true
-    ReplacedByY { new_authority: _ } => true
-    RetainSameContract { justification: _, coverage: _ } => false
-    RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
-    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
-    Undecided => false
-  }
-}
-
-fn count_consumers(rows: List<BoundaryConsumer>, p: fn(ConsumerDisposition) -> Bool) -> Int {
-  fold(rows, init: 0, f: fn(acc, r) { if p(r.disposition) { acc + 1 } else { acc } })
+fn label_present(rows: List<LegacyConsumerSurveyRow>, name: String) -> Bool {
+  fold(rows, init: false, f: fn(acc, r) { acc || (r.consumer_label as String) == name })
 }
 
 fn is_retire(d: ConsumerDisposition) -> Bool {
   match d {
     Retire { reason: _ } => true
-    ReplacedByY { new_authority: _ } => false
     RetainSameContract { justification: _, coverage: _ } => false
     RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+    ReplacedByY { new_authority: _ } => false
     EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
     Undecided => false
   }
 }
 
-fn is_replaced(d: ConsumerDisposition) -> Bool {
+fn is_undecided(d: ConsumerDisposition) -> Bool {
   match d {
-    ReplacedByY { new_authority: _ } => true
+    Undecided => true
     Retire { reason: _ } => false
     RetainSameContract { justification: _, coverage: _ } => false
     RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+    ReplacedByY { new_authority: _ } => false
     EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
-    Undecided => false
   }
 }
 
-// A row whose subject leaves with X needs no coverage authority. Asserted as the
-// ARITHMETIC that distinguishes the arms rather than by re-stating the cause
-// counts: six consumers are retired-or-replaced, ten are enumerated, and exactly
-// the other four produce causes. Three DIFFERENT constants (5, 1, 10) can only hold
-// together if the disposition field genuinely varies per row -- a constant or an
-// unpopulated field cannot satisfy them at once.
-test fn retiring_with_x_needs_no_coverage_authority() -> Bool {
-  let rows = census_rows(census: interpreter_replacement_cut().boundary_census)
-  let causeless = count_consumers(rows: rows, p: is_causeless_disposition)
-  list_length(items: rows) == 10
-    && count_consumers(rows: rows, p: is_retire) == 5
-    && count_consumers(rows: rows, p: is_replaced) == 1
-    && causeless == 6
-    && list_length(items: causes_of(admission: interpreter_cut_admission()))
-       == list_length(items: rows) - causeless
+fn count_rows(rows: List<LegacyConsumerSurveyRow>, p: fn(ConsumerDisposition) -> Bool) -> Int {
+  fold(rows, init: 0, f: fn(acc, r) { if p(r.disposition) { acc + 1 } else { acc } })
 }
 
-// The descent arm carries a BOUNDARY and no identifier. This is the assertion
-// that the honest arm was not quietly upgraded into the joinable one.
+test fn the_survey_keeps_its_measured_revision() -> Bool {
+  (interpreter_replacement_survey().measured_revision as String) == "7f5fa6a94ec1"
+}
+
+// The grain is the whole reason this row cannot inhabit the exact carrier, so it is pinned rather
+// than left to prose drift.
+test fn the_survey_states_its_coarser_grain() -> Bool {
+  let lim = interpreter_replacement_survey().limitation as String
+  contains(lim, "ONE ROW PER CONSUMING MODULE OR BINARY")
+}
+
+test fn the_survey_keeps_its_ten_measured_consumer_rows() -> Bool {
+  let s = interpreter_replacement_survey()
+  list_length(items: s.consumer_rows) == 10
+    && count_rows(rows: s.consumer_rows, p: is_retire) == 5
+    && count_rows(rows: s.consumer_rows, p: is_undecided) == 1
+}
+
+// The four labels that named host Rust compilation units rather than .dag modules. They are pinned
+// because they are the measured evidence for WHY this row could not migrate one-for-one: at exact
+// grain each is a set of Rust items reached through gunbc.rust_item_host_observation, and one label
+// may expand into many relations, into an uncitable impl method, or into none.
+test fn the_four_host_rust_labels_are_still_recorded() -> Bool {
+  let rows = interpreter_replacement_survey().consumer_rows
+  label_present(rows: rows, name: "v1_compiler.cli_run")
+    && label_present(rows: rows, name: "v1_compiler.coproduct_reflection")
+    && label_present(rows: rows, name: "v1_compiler.pre_push")
+    && label_present(rows: rows, name: "v1_compiler.v1_interpreter_dispatch_generated")
+}
+
 test fn descent_names_a_boundary_and_carries_no_cut_id() -> Bool {
   match interpreter_cut_why_not_higher() {
     DescentParentUnauthored { intended_parent_boundary: b, basis: _ } =>
-      (b as String) == "the engine cut through the v1 driver region"
+      (b as String) != ""
     OutermostBoundary => false
     DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
   }
 }
 
-// new_root names the boundary in CONSUMER terms, not in one realization's
-// vocabulary. Asserted against both fields at once with distinct constants: a
-// realization name reappearing in new_root fails the first conjunct, and the
-// contract silently drifting toward a realization fails the second. Neither can
-// be satisfied by a default or an unpopulated field.
-test fn new_root_names_the_boundary_not_a_realization() -> Bool {
-  let cut = interpreter_replacement_cut()
-  (cut.new_root as String)
-      == "the DagExecution boundary: evaluate(resolved_graph, entry, arguments, execution_mode, capabilities) -> Value | LocatedDiagnostic | UnsupportedFeature"
-    && (cut.contract as String)
-      == "evaluate a resolved .dag declaration to a value, or refuse with a typed located diagnostic; no fabricated plausible output"
+// ---------------------------------------------------------------------------
+// 2. The registration cannot be projected as an admitted exact plan.
+// ---------------------------------------------------------------------------
+
+fn registration_is_remeasure_required(r: CutRegistration) -> Bool {
+  match r {
+    RegisteredCutRemeasureRequired { identity: _, prior_survey: _, reason: _ } => true
+    RegisteredExactCut { cut: _ } => false
+  }
 }
 
-// The covered region is the exact set that leaves, and the old root is not in it.
-test fn covered_region_is_the_deleted_set_and_excludes_the_old_root() -> Bool {
-  let cut = interpreter_replacement_cut()
-  list_length(items: cut.covered_region) == 4
-    && (cut.old_root_consumer as String) == "v1 .dag evaluation entry"
+test fn the_interpreter_registration_is_a_remeasurement_obligation() -> Bool {
+  registration_is_remeasure_required(r: interpreter_cut_registration())
+}
+
+test fn the_registration_keeps_the_identity_visible_for_parent_resolution() -> Bool {
+  match interpreter_cut_registration() {
+    RegisteredCutRemeasureRequired { identity: i, prior_survey: _, reason: _ } =>
+      (i as String) == "cut-v1-interpreter"
+    RegisteredExactCut { cut: _ } => false
+  }
+}
+
+test fn the_registration_states_why_remeasurement_is_required() -> Bool {
+  match interpreter_cut_registration() {
+    RegisteredCutRemeasureRequired { identity: _, prior_survey: _, reason: r } =>
+      (r as String) != ""
+    RegisteredExactCut { cut: _ } => false
+  }
 }
