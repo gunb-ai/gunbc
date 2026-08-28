@@ -1,0 +1,109 @@
+module gunbc.emitted_record_deserialize_gap
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref }
+
+// A RECORD THAT EMBEDS A sole_constructor-BEARING COPRODUCT DOES NOT COMPILE IN THE SEED. MEASURED.
+//
+// The Rust emitter derives Deserialize on an emitted record. It emits a sole_constructor type as a
+// Serialize-only struct with a PRIVATE field, which is correct and is the whole point of that
+// wall -- an unforgeable carrier must not be reconstructible from wire bytes and must not expose
+// its field. The two rules are individually right and compose into a shape the author cannot write:
+// the moment an ordinary record embeds a coproduct one of whose variants carries such a type, the
+// record's derived Deserialize has an unsatisfiable bound and the seed stops compiling.
+//
+// WHY THIS IS A FINDING AND NOT A COMPLAINT ABOUT sole_constructor: the refusal arrives as two rustc
+// codes in the EMITTED tree, not as a typed located diagnostic from our own compiler. The .dag is
+// well-formed and accepted; nothing in the ordinary compile path says the shape is unsupported. So
+// the author learns it from a Rust build failure in generated code they did not write, which is the
+// furthest possible position from the source construct that caused it.
+data emitted_record_deserialize_gap_note: String = "A .dag record embedding a coproduct whose variant carries a sole_constructor type emits a Rust record deriving Deserialize over a Serialize-only private-field struct. The seed then fails to compile with E0277, and reading the carried field fails with E0616. The .dag is accepted; the refusal appears only in emitted Rust."
+
+type EmittedRecordDeserializeEvidence
+  = RustcRefusal {
+      code: NonEmptyStr
+      what_it_lands_on: NonEmptyStr
+      why: NonEmptyStr
+    }
+  | AuthoredShape {
+      outer_record_field_type: DeclarationRef
+      unforgeable_carrier: DeclarationRef
+      why_unrepresentable: NonEmptyStr
+    }
+  | WorkaroundInUse {
+      producer: DeclarationRef
+      shape: NonEmptyStr
+      what_it_costs: NonEmptyStr
+    }
+
+// MEASUREMENT ONE AND TWO. Both codes were produced by building the seed after installing the
+// regen candidate for a producer exporting ONE row type of the shape below; neither is recalled
+// from a message. They are separate observations rather than one, because they land on different
+// constructs and either can appear without the other: E0277 is the derive, E0616 is a read.
+data e0277_on_the_outer_record: EmittedRecordDeserializeEvidence = RustcRefusal {
+  code: "E0277",
+  what_it_lands_on: "the emitted outer record's derived Deserialize",
+  why: "the embedded coproduct does not implement Deserialize, because the sole_constructor type inside one of its variants is emitted Serialize-only",
+}
+
+data e0616_on_the_carried_field: EmittedRecordDeserializeEvidence = RustcRefusal {
+  code: "E0616",
+  what_it_lands_on: "a read of the sole_constructor type's carried field from outside its emitted module",
+  why: "the field is emitted private, which is the wall behaving correctly; the accessor is the sanctioned route and a struct-field read is not",
+}
+
+// THE MINIMAL SHAPE. Named at declaration grain so the next author can check whether their own row
+// is this shape before building it, rather than recognising it from a rustc code after the fact.
+data minimal_reproducing_shape: EmittedRecordDeserializeEvidence = AuthoredShape {
+  outer_record_field_type: decl_ref(
+    module_path: "gunbc.namespace_reference_derived_closure_admission",
+    decl_name: "ReferenceDerivedClosureAdmission",
+  ),
+  unforgeable_carrier: decl_ref(
+    module_path: "gunbc.namespace_reference_derived_closure_admission",
+    decl_name: "ReferenceDerivedClosureAcceptanceReceipt",
+  ),
+  why_unrepresentable: "an ordinary record with a field of the coproduct type -- for example { compiled_module: String, admission: ReferenceDerivedClosureAdmission } -- is accepted as .dag and refuses in emitted Rust",
+}
+
+// WHAT IT COSTS TODAY, stated so the gap is priced rather than merely described. The obvious single
+// row is unavailable, so the producer exports the two halves separately. That is sound here for a
+// reason specific to this producer and NOT general: both exports are pure functions of the same
+// argument pair, so a caller cannot pair one subject's module path with another subject's
+// admissions. A producer whose halves were not both functions of one key would have no such
+// argument available and would be splitting a row that must not be split.
+data workaround_in_this_repository: EmittedRecordDeserializeEvidence = WorkaroundInUse {
+  producer: decl_ref(
+    module_path: "v1.gunbc.namespace_reference_derived_closure_production_observations",
+    decl_name: "namespace_structural_observation_admissions",
+  ),
+  shape: "two exports, each a pure function of the same (file, source) pair, joined by the caller",
+  what_it_costs: "the pairing is an argument-identity argument rather than a type-level one; a producer without a shared key has no equivalent and is blocked",
+}
+
+data emitted_record_deserialize_gap_evidence: List<EmittedRecordDeserializeEvidence> = [
+  e0277_on_the_outer_record,
+  e0616_on_the_carried_field,
+  minimal_reproducing_shape,
+  workaround_in_this_repository,
+]
+
+// RUNG, STATED HONESTLY. The class sits at MITIGATABLE: the failure occurs, and it is contained
+// only by the seed build refusing loudly at a distance from its cause. It is not mechanically
+// preventable, because nothing in the ordinary .dag compile path refuses the shape.
+//
+// NO EXECUTING RED IS ENROLLED HERE, AND THE REASON IS THE FIXTURE BOUNDARY RATHER THAN A CHOICE.
+// The only way to author this shape today is to put it in the seed's emit closure, which by
+// construction stops the required build for every subject at once -- so the probe cannot be a
+// witness that goes red on its own; it goes red by breaking the tree. That missing harness is this
+// class's next-rung trigger, exactly as DESIGN 4b prescribes, and not a permanent ceiling.
+data emitted_record_deserialize_gap_rung: String = "mitigatable"
+
+data emitted_record_deserialize_gap_next_rung_trigger: String = "THE CAPABILITY: emitting a candidate .dag module to Rust and compiling it IN ISOLATION FROM THE SEED, so a shape the emitter cannot support is refusable as its own red without stopping the required build. An entry point that emits and compiles one module is NOT sufficient on its own unless it can carry a module the seed does not import. When that exists, this row's minimal shape is enrolled as the discriminating red and the row becomes mechanically preventable."
+
+// The predicate is deliberately narrow: it says the finding is carried with its codes and its
+// shape, never that the gap is closed. A row asserting closure would be satisfied by editing this
+// file, which is the validation-standing-where-construction-was-available tell.
+fn emitted_record_deserialize_gap_is_recorded() -> Bool {
+  count(emitted_record_deserialize_gap_evidence) == 4
+}
