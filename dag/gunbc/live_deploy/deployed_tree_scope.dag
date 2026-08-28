@@ -51,3 +51,51 @@ fn deployed_tree_rsync_exclude_flags() -> String {
 fn path_is_deployed(path: String) -> Bool {
   !any(deployed_tree_excluded_prefixes, p => path == p || starts_with(s: path, prefix: concat(p, "/")))
 }
+
+// WHICH REPOSITORY TRANSITION THIS DEPLOYMENT IS BOUND TO, AND WHY IT IS A WALL RATHER THAN A NOTE.
+//
+// The `.git` leg of the source sync copies `HEAD`, `objects`, `packed-refs` and `refs` as FILES and
+// excludes `index` entirely, so the target receives working files from one revision and git metadata
+// from another. Measured on srv1 2026-08-27, `/opt/gunbc/gunbc` is in three-way divergence --
+// `git status --porcelain` reports 5650 paths, of which 1964 are tracked-and-staged-present but
+// absent from the worktree and 1731 are present but unknown to HEAD -- with the first status column
+// (index vs HEAD) and the second (worktree vs index) BOTH wrong. That is one deployment's output,
+// not two racing: no concurrency control can make a single execution of this operation valid.
+//
+// THIS EXISTS BECAUSE A PR COMMENT IS NOT A WALL. The change that restored the dashboard deploy mode
+// recorded, in prose, that the mode must not be dispatched until this leg is replaced. DESIGN
+// section 5 is explicit that construction beats validation and that a state you can still write is a
+// state that will be written; an operator memory and a PR body are neither. So the unsafe dispatch
+// is refused HERE, before the launcher observes anything, and the prose is demoted to explanation.
+//
+// ITS RUNG, HONESTLY: mechanically preventable, not structural. The wall executes and refuses on the
+// real path, but the bound realization is a HAND-DECLARED row -- someone could edit it without
+// having done the work, and nothing would notice. NEXT-RUNG TRIGGER: derive the bound realization
+// from the emitted tree-sync unit itself, so the declaration cannot disagree with what is installed.
+//
+// DISSOLVES ON: the Git-native transition landing, at which point this row becomes
+// `GitNativeConvergence`, the refusal arm stops being reachable from production, and its
+// discriminating control is retained as a regression probe rather than deleted (section 4b(4)).
+type RepositoryTransitionRealization
+  = LegacyGitFileSync
+  | GitNativeConvergence
+
+data deployed_tree_repository_transition: RepositoryTransitionRealization = LegacyGitFileSync
+
+type RepositoryTransitionAdmission
+  = RepositoryTransitionAdmitted
+  | LegacyGitFileSyncNotAdmitted { reason: String }
+
+// THE REFUSAL NAMES THE MEASUREMENT RATHER THAN ASSERTING A JUDGEMENT, so an operator who hits it can
+// check the claim on the host instead of taking this module's word for it.
+fn repository_transition_admission(
+  realization: RepositoryTransitionRealization,
+) -> RepositoryTransitionAdmission {
+  match realization {
+    GitNativeConvergence => RepositoryTransitionAdmitted
+    LegacyGitFileSync =>
+      LegacyGitFileSyncNotAdmitted {
+        reason: "the deployed-tree sync still transports .git as files (HEAD/objects/packed-refs/refs copied, index excluded), which leaves the target with working files and git metadata from different revisions -- measured on srv1 as 5650 divergent paths with index-vs-HEAD and worktree-vs-index both wrong. One execution of this operation cannot produce a valid target state, so no dispatch is admitted until the Git-native transition replaces it",
+      }
+  }
+}
