@@ -1,0 +1,19 @@
+module v2.test.lens_fact_density.kernel_ambient_bool
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.lens.fact_density {
+  KernelAmbientAtom,
+  carrier_spec_fact
+}
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, TypeNode }
+
+data kernel_ambient_bool_input: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_bool } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn kernel_ambient_bool_claim_holds() -> Bool {
+  carrier_spec_fact(carrier: kernel_ambient_bool_input) == KernelAmbientAtom
+}

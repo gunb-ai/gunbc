@@ -1,5 +1,6 @@
 module v2.test.computation_shapes.loop_linear_bound
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node {
   Atom,
   ComputationNode,
@@ -13,7 +14,6 @@ import v2.std.node {
   TypeNode,
   content_hash,
   well_formed,
-  SyntheticOccurrence
 }
 import v2.std.verification {
   ManualAnchorAbsent,
@@ -28,7 +28,7 @@ import v2.std.verification {
 
 fn loop_linear_bound_leaf(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -40,7 +40,7 @@ data loop_linear_bound_body: Node = Node {
   children: [
     Edge { label: Positional, target: loop_linear_bound_body_leaf }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data loop_linear_bound_subject: Node = Node {
@@ -49,7 +49,7 @@ data loop_linear_bound_subject: Node = Node {
     Edge { label: Positional, target: loop_linear_bound_body },
     Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn loop_linear_bound_pass_node() -> Node {
@@ -88,7 +88,7 @@ data loop_linear_bound_subject_rebuilt: Node = Node {
     Edge { label: Positional, target: loop_linear_bound_body },
     Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_bound_measure_leaf }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data loop_linear_bound_subject_unbounded: Node = Node {
@@ -96,7 +96,7 @@ data loop_linear_bound_subject_unbounded: Node = Node {
   children: [
     Edge { label: Positional, target: loop_linear_bound_body }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data witness_loop_linear_bound_content_hash_stable: Bool = (content_hash(n: loop_linear_bound_subject) == content_hash(n: loop_linear_bound_subject_rebuilt)) && (content_hash(n: loop_linear_bound_subject) != content_hash(n: loop_linear_bound_subject_unbounded))

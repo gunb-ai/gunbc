@@ -1,7 +1,7 @@
 module gunbc.plans.intent_linearity_design_draft
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul, quote }
 
@@ -28,6 +28,7 @@ fn intent_linearity_design_draft_body() -> List<MarkdownBlock> {
 }
 
 data intent_linearity_design_draft_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "intent-linearity-design-draft",
   title: "DRAFT for operator review — a candidate DESIGN.md articulation",
   body: intent_linearity_design_draft_body(),

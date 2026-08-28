@@ -1,5 +1,6 @@
 module v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra {
   Cons,
   Empty
@@ -97,9 +98,8 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  SyntheticOccurrence,
   TypeNode,
-  node_rebuild
+  node_rebuild,
 }
 import v2.std.optional {
   Absent,
@@ -124,7 +124,7 @@ fn sgb_left_param_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sgb_type_param } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -132,7 +132,7 @@ fn sgb_right_param_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sgb_type_param } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -144,7 +144,7 @@ fn sgb_nested_source_carrier_node() -> Node {
       Edge { label: Positional, target: sgb_left_param_node() },
       Edge { label: Positional, target: sgb_right_param_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -155,7 +155,7 @@ fn sgb_concrete_source_carrier_node() -> Node {
       Edge { label: Positional, target: target_carrier_free_monoid_node() },
       Edge { label: Positional, target: char_kernel_type_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -165,7 +165,7 @@ fn sgb_collection_eligible_elem_node() -> Node {
       connective: Atom { identity: ^target_collection_kernel_string }
     },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -173,7 +173,7 @@ fn sgb_atom_source_carrier_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -755,7 +755,7 @@ fn sgb_atom_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -819,7 +819,7 @@ fn sgb_malformed_contract_row_node() -> Node {
         target: sgb_atom_node(identity: ^target_capability_debug)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

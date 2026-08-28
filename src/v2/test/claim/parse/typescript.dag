@@ -14,10 +14,10 @@ data ts_union_minimal_source: String = "const bit: 'On' | 'Off' = bit;"
 fn ts_parse_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^ts_parse_bool_true } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
     false => Node { kind: TypeNode { connective: Atom { identity: ^ts_parse_bool_false } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
   }
 }

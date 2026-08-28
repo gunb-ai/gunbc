@@ -1,5 +1,6 @@
 module v2.test.parse.parse_binding_fidelity
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots, admit_normalized_tree }
 import v2.compiler.name_resolve {
   Admission,
@@ -54,7 +55,6 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.resolution_policy { ImportScoped }
@@ -78,7 +78,7 @@ fn pbf_qn_node(seg: Symbol) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   )
@@ -101,11 +101,11 @@ fn pbf_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -126,11 +126,11 @@ fn pbf_subject_with_import_use() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_imported_decl } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -191,11 +191,11 @@ fn pbf_unbound_atom_tree() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_unbound_sym } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -230,11 +230,11 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_ambiguous_export_sym } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

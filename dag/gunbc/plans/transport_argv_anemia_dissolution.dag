@@ -3,7 +3,7 @@ module gunbc.plans.transport_argv_anemia_dissolution
 import std.dissolution { unbound_dissolution }
 import std.types { String, List }
 import std.markdown { MarkdownBlock }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
 
 fn taad_intro() -> List<MarkdownBlock> {
@@ -84,6 +84,7 @@ fn transport_argv_anemia_dissolution_body() -> List<MarkdownBlock> {
 }
 
 data transport_argv_anemia_dissolution_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "transport-argv-anemia-dissolution",
   title: "Transport-argv anemia dissolution — model the request, derive the argv (kill the fail-open class by construction)",
   body: transport_argv_anemia_dissolution_body(),

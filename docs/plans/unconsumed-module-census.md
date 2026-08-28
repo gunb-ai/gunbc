@@ -833,10 +833,10 @@ executable against the real corpus rather than against a fixture someone has to 
 | `examples.nominal_distinctness_twin` | `dag/examples/nominal_distinctness_witness/twin.dag` | 15 | —  |
 | `examples.nominal_distinctness_witness` | `dag/examples/nominal_distinctness_witness/witness.dag` | 19 | —  |
 | `gunbc.assimilate.bmc_wif_canary_bootstrap` | `dag/gunbc/assimilate/bmc_wif_canary_bootstrap.dag` | 126 | —  |
-| `gunbc.ci_oom_reclassify` | `dag/gunbc/ci_oom_reclassify.dag` | 87 | —  |
+| `gunbc.ci_oom_reclassify` | `dag/gunbc/ci/ci_oom_reclassify.dag` | 87 | —  |
 | `gunbc.cursor_sdk_secure_api_key` | `dag/gunbc/cursor_sdk_secure_api_key.dag` | 73 | —  |
 | `gunbc.devboot.vertical_receipt` | `dag/gunbc/devboot/vertical_receipt.dag` | 68 | —  |
-| `gunbc.host_converge_delta` | `dag/gunbc/host_converge_delta.dag` | 119 | —  |
+| `gunbc.host_converge_delta` | `dag/gunbc/host/host_converge_delta.dag` | 119 | —  |
 | `gunbc.install_media` | `dag/gunbc/install_media.dag` | 43 | —  |
 | `gunbc.parse_allowlist` | `dag/gunbc/parse_allowlist.dag` | 20 | —  |
 | `gunbc.plans.wave2_prep_design` | `dag/gunbc/plans/wave2_prep_design.dag` | 205 | —  |
@@ -904,7 +904,7 @@ executable against the real corpus rather than against a fixture someone has to 
 | `gunbc.code_change_workflow` | `dag/gunbc/code_change_workflow.dag` | 371 | —  |
 | `gunbc.floor_resolve_realization` | `dag/gunbc/floor_resolve_realization.dag` | 28 | —  |
 | `gunbc.hand_lens_host_bridge_scaffold_watchdog` | `dag/gunbc/hand_lens_host_bridge_scaffold_watchdog.dag` | 46 | —  |
-| `gunbc.host_runner_memory_cap_plan_emit` | `dag/gunbc/host_runner_memory_cap_plan_emit.dag` | 110 | —  |
+| `gunbc.host_runner_memory_cap_plan_emit` | `dag/gunbc/host/host_runner_memory_cap_plan_emit.dag` | 110 | —  |
 | `gunbc.hostname_allocation` | `dag/gunbc/hostname_allocation.dag` | 148 | —  |
 | `gunbc.language_subject_scope_scaffold` | `dag/gunbc/language_subject_scope_scaffold.dag` | 10 | —  |
 | `gunbc.p3a1_self_fork_homonym_disposition` | `dag/gunbc/p3a1_self_fork_homonym_disposition.dag` | 10 | —  |
@@ -964,53 +964,53 @@ executable against the real corpus rather than against a fixture someone has to 
 | `extdeps.sec.mock_corpus` | `dag/extdeps/sec/mock_corpus.dag` | 23 | {'dag': 1} `dag/gunbc/extdeps_scope_frontier.dag` |
 | `extdeps.shell.mock_corpus` | `dag/extdeps/shell_mock_corpus.dag` | 31 | {'dag': 1} `dag/gunbc/extdeps_scope_frontier.dag` |
 | `extdeps.tcgplayer.mock_corpus` | `dag/extdeps/tcgplayer/mock_corpus.dag` | 63 | {'dag': 1} `dag/gunbc/extdeps_scope_frontier.dag` |
-| `gunbc.apply` | `dag/gunbc/apply.dag` | 118 | {'dag': 2} `dag/gunbc/runner_lifecycle.dag` `dag/gunbc/runner_capacity_realize.dag` |
+| `gunbc.apply` | `dag/gunbc/apply.dag` | 118 | {'dag': 2} `dag/gunbc/runner/runner_lifecycle.dag` `dag/gunbc/runner/runner_capacity_realize.dag` |
 | `gunbc.auth.credentials` | `dag/gunbc/auth/credentials.dag` | 89 | {'dag': 1, 'rs': 1} `dag/gunbc/tailscale_acl_phase2_credential.dag` `src/v1/stage0/src/bin/parse_witness.rs` |
 | `gunbc.auth.optional_impersonation` | `dag/gunbc/auth/optional_impersonation.dag` | 20 | {'dag': 2} `dag/test/claim/tailscale_acl_phase2_design_witness_test.dag` `dag/gunbc/tailscale_acl_phase2_credential.dag` |
 | `gunbc.auth.patterns` | `dag/gunbc/auth/patterns.dag` | 113 | {'rs': 1} `src/v1/stage0/src/cli_run.rs` |
 | `gunbc.bootstrap` | `dag/gunbc/bootstrap.dag` | 126 | {'dag': 2} `dag/gunbc/doc_graph_roots.dag` `src/v2/compiler/self_host/frontier_probe_types.dag` |
 | `gunbc.char_at_scaling_probe_support` | `dag/gunbc/char_at_scaling_probe_support.dag` | 58 | {'rs': 1} `src/v1/stage0/src/bin/char_at_scaling_probe.rs` |
-| `gunbc.ci_build_job_v1_compiler_unit_receipt` | `dag/gunbc/ci_build_job_v1_compiler_unit_receipt.dag` | 21 | {'dag': 1} `dag/gunbc/ci_spec.dag` |
-| `gunbc.ci_input_envelope` | `dag/gunbc/ci_input_envelope.dag` | 86 | {'dag': 3} `dag/gunbc/doc_graph_roots.dag` `dag/gunbc/plans/bounded_input_cost_envelope_scheduling.dag` |
+| `gunbc.ci_build_job_v1_compiler_unit_receipt` | `dag/gunbc/ci/ci_build_job_v1_compiler_unit_receipt.dag` | 21 | {'dag': 1} `dag/gunbc/ci/ci_spec.dag` |
+| `gunbc.ci_input_envelope` | `dag/gunbc/ci/ci_input_envelope.dag` | 86 | {'dag': 3} `dag/gunbc/doc_graph_roots.dag` `dag/gunbc/plans/bounded_input_cost_envelope_scheduling.dag` |
 | `gunbc.compile_source_model` | `dag/gunbc/compile_source_model.dag` | 65 | {'dag': 1} `dag/gunbc/plans/seed_debt_bundle_item_2.dag` |
-| `gunbc.deployed_intent_v0` | `dag/gunbc/deployed_intent_v0.dag` | 61 | {'dag': 2} `dag/gunbc/host_standup.dag` `dag/gunbc/host_identity_adopt.dag` |
-| `gunbc.deployed_intent_v1` | `dag/gunbc/deployed_intent_v1.dag` | 69 | {'dag': 1} `dag/gunbc/host_standup.dag` |
+| `gunbc.deployed_intent_v0` | `dag/gunbc/deployed_intent_v0.dag` | 61 | {'dag': 2} `dag/gunbc/host/host_standup.dag` `dag/gunbc/host/host_identity_adopt.dag` |
+| `gunbc.deployed_intent_v1` | `dag/gunbc/deployed_intent_v1.dag` | 69 | {'dag': 1} `dag/gunbc/host/host_standup.dag` |
 | `gunbc.design_argument` | `dag/gunbc/design_argument.dag` | 93 | {'dag': 1} `dag/gunbc/plans/axiom_syllogism_lens.dag` |
-| `gunbc.githooks_pre_push_cli` | `dag/gunbc/githooks_pre_push_cli.dag` | 10 | {'dag': 2, 'rs': 2} `dag/std/emit_on_demand.dag` `dag/gunbc/githooks_pre_push_fmt_transport_scaffold.dag` |
-| `gunbc.host_authorized_keys_reconcile` | `dag/gunbc/host_authorized_keys_reconcile.dag` | 104 | {'dag': 1} `dag/gunbc/build_cache_instance.dag` |
-| `gunbc.host_build_cache_provision` | `dag/gunbc/host_build_cache_provision.dag` | 335 | {'dag': 4} `dag/gunbc/build_cache_instance.dag` `dag/gunbc/fleet_host_budget.dag` |
-| `gunbc.host_identity_assimilation` | `dag/gunbc/host_identity_assimilation.dag` | 266 | {'dag': 3} `dag/gunbc/host_standup.dag` `dag/gunbc/host_identity_adopt.dag` |
-| `gunbc.host_identity_converge` | `dag/gunbc/host_identity_converge.dag` | 250 | {'dag': 1} `dag/gunbc/host_standup.dag` |
-| `gunbc.host_identity_knob` | `dag/gunbc/host_identity_knob.dag` | 55 | {'dag': 1} `dag/gunbc/host_standup.dag` |
-| `gunbc.host_identity_observation` | `dag/gunbc/host_identity_observation.dag` | 89 | {'dag': 1} `dag/gunbc/host_standup.dag` |
-| `gunbc.host_network_diagnosis` | `dag/gunbc/host_network_diagnosis.dag` | 213 | {'dag': 1} `dag/gunbc/prose_row_frontier.dag` |
-| `gunbc.host_toolchain_components` | `dag/gunbc/host_toolchain_components.dag` | 195 | {'dag': 1} `dag/gunbc/prose_row_frontier.dag` |
+| `gunbc.githooks_pre_push_cli` | `dag/gunbc/githooks/githooks_pre_push_cli.dag` | 10 | {'dag': 2, 'rs': 2} `dag/std/emit_on_demand.dag` `dag/gunbc/githooks/githooks_pre_push_fmt_transport_scaffold.dag` |
+| `gunbc.host_authorized_keys_reconcile` | `dag/gunbc/host/host_authorized_keys_reconcile.dag` | 104 | {'dag': 1} `dag/gunbc/build_cache/build_cache_instance.dag` |
+| `gunbc.host_build_cache_provision` | `dag/gunbc/host/host_build_cache_provision.dag` | 335 | {'dag': 4} `dag/gunbc/build_cache/build_cache_instance.dag` `dag/gunbc/fleet/fleet_host_budget.dag` |
+| `gunbc.host_identity_assimilation` | `dag/gunbc/host/host_identity_assimilation.dag` | 266 | {'dag': 3} `dag/gunbc/host/host_standup.dag` `dag/gunbc/host/host_identity_adopt.dag` |
+| `gunbc.host_identity_converge` | `dag/gunbc/host/host_identity_converge.dag` | 250 | {'dag': 1} `dag/gunbc/host/host_standup.dag` |
+| `gunbc.host_identity_knob` | `dag/gunbc/host/host_identity_knob.dag` | 55 | {'dag': 1} `dag/gunbc/host/host_standup.dag` |
+| `gunbc.host_identity_observation` | `dag/gunbc/host/host_identity_observation.dag` | 89 | {'dag': 1} `dag/gunbc/host/host_standup.dag` |
+| `gunbc.host_network_diagnosis` | `dag/gunbc/host/host_network_diagnosis.dag` | 213 | {'dag': 1} `dag/gunbc/prose_row_frontier.dag` |
+| `gunbc.host_toolchain_components` | `dag/gunbc/host/host_toolchain_components.dag` | 195 | {'dag': 1} `dag/gunbc/prose_row_frontier.dag` |
 | `gunbc.interpreter_kernel_model` | `dag/gunbc/interpreter_kernel_model.dag` | 82 | {'dag': 1} `dag/gunbc/plans/interpreter_kernel_d.dag` |
-| `gunbc.namespace_census_receipt` | `dag/gunbc/namespace_census_receipt.dag` | 74 | {'dag': 1} `dag/gunbc/doc_graph_roots.dag` |
+| `gunbc.namespace_census_receipt` | `dag/gunbc/namespace/namespace_census_receipt.dag` | 74 | {'dag': 1} `dag/gunbc/doc_graph_roots.dag` |
 | `gunbc.network_identity_subsumption` | `dag/gunbc/network_identity_subsumption.dag` | 134 | {'dag': 5} `dag/test/claim/dgx_spark_witness_test.dag` `dag/test/claim/host_phase_status_witness_test.dag` |
 | `gunbc.p1_retention_cohort_receipt` | `dag/gunbc/p1_retention_cohort_receipt.dag` | 8 | {'dag': 1} `dag/gunbc/doc_graph_roots.dag` |
 | `gunbc.plans.affected_set_self_confirmation` | `dag/gunbc/plans/affected_set_self_confirmation.dag` | 29 | {'rs': 1} `src/v1/stage0/src/cli_run.rs` |
 | `gunbc.plans.branch_merge_admission_model` | `dag/gunbc/plans/branch_merge_admission_model.dag` | 172 | {'dag': 2} `dag/test/claim/merge_lifecycle_interleaving_witness_test.dag` `dag/gunbc/merge_lifecycle.dag` |
-| `gunbc.plans.fleet_subsumption_manual_gaps` | `dag/gunbc/plans/fleet_subsumption_manual_gaps.dag` | 196 | {'dag': 12} `dag/test/claim/retained_shell_script_witness_test.dag` `dag/gunbc/build_cache_instance.dag` |
-| `gunbc.plans.host_convergence_circuit_residue` | `dag/gunbc/plans/host_convergence_circuit_residue.dag` | 75 | {'dag': 1} `dag/gunbc/host_converge.dag` |
+| `gunbc.plans.fleet_subsumption_manual_gaps` | `dag/gunbc/plans/fleet_subsumption_manual_gaps.dag` | 196 | {'dag': 12} `dag/test/claim/retained_shell_script_witness_test.dag` `dag/gunbc/build_cache/build_cache_instance.dag` |
+| `gunbc.plans.host_convergence_circuit_residue` | `dag/gunbc/plans/host_convergence_circuit_residue.dag` | 75 | {'dag': 1} `dag/gunbc/host/host_converge.dag` |
 | `gunbc.plans.merge_admission_gate_shape_proposal` | `dag/gunbc/plans/merge_admission_gate_shape_proposal.dag` | 78 | {'dag': 1} `dag/gunbc/merge_admission.dag` |
 | `gunbc.plans.transport_argv_anemia_dissolution` | `dag/gunbc/plans/transport_argv_anemia_dissolution.dag` | 89 | {'dag': 2} `dag/extdeps/git/git.dag` `dag/extdeps/exec/command.dag` |
 | `gunbc.process_algebra` | `dag/gunbc/process_algebra.dag` | 147 | {'dag': 3} `dag/gunbc/doc_graph_roots.dag` `dag/gunbc/plans/invert_hand_maintained.dag` |
-| `gunbc.runner_slot_enforcement` | `dag/gunbc/runner_slot_enforcement.dag` | 129 | {'dag': 3} `dag/gunbc/host_standup.dag` `dag/gunbc/runner_slot_allocation.dag` |
+| `gunbc.runner_slot_enforcement` | `dag/gunbc/runner/runner_slot_enforcement.dag` | 129 | {'dag': 3} `dag/gunbc/host/host_standup.dag` `dag/gunbc/runner/runner_slot_allocation.dag` |
 | `gunbc.seed_closed_vocabulary_wildcard_census` | `dag/gunbc/seed_closed_vocabulary_wildcard_census.dag` | 175 | {'rs': 1} `src/v1/stage0/src/cli_run.rs` |
 | `gunbc.site.interaction` | `dag/gunbc/site/interaction.dag` | 14 | {'dag': 1} `dag/gunbc/design/interaction.dag` |
 | `gunbc.spark.provisioning` | `dag/gunbc/spark/provisioning.dag` | 543 | {'dag': 2} `dag/extdeps/systems/nvidia_dgx_spark_setup.dag` `dag/test/claim/spark_provisioning_witness_test.dag` |
-| `gunbc.srv3_os_install_diagnostic` | `dag/gunbc/srv3_os_install_diagnostic.dag` | 1410 | {'dag': 1} `dag/gunbc/non_fold_residue.dag` |
-| `gunbc.tailscale_acl_emit` | `dag/gunbc/tailscale_acl_emit.dag` | 52 | {'dag': 1} `dag/gunbc/host_standup.dag` |
+| `gunbc.srv3_os_install_diagnostic` | `dag/gunbc/srv3/srv3_os_install_diagnostic.dag` | 1410 | {'dag': 1} `dag/gunbc/non_fold_residue.dag` |
+| `gunbc.tailscale_acl_emit` | `dag/gunbc/tailscale_acl_emit.dag` | 52 | {'dag': 1} `dag/gunbc/host/host_standup.dag` |
 | `gunbc.test_node_wall_clock_ratchet` | `dag/gunbc/test_node_wall_clock_ratchet.dag` | 99 | {'dag': 1} `dag/gunbc/plans/structural_quadratic_wall_coverage_audit.dag` |
 | `gunbc.tools.review` | `dag/gunbc/tools/review.dag` | 187 | {'dag': 4} `dag/test/claim/workflow_default_field_projection_fold_witness_test.dag` `src/v2/lens/meta_exec_confinement.dag` |
-| `gunbc.tools.review_codex` | `dag/gunbc/tools/review_codex.dag` | 205 | {'dag': 2, 'rs': 1} `dag/test/claim/workflow_default_field_projection_fold_witness_test.dag` `dag/gunbc/roadmap_belt_actuate.dag` |
-| `gunbc.v1_maintenance_standing` | `dag/gunbc/v1_maintenance_standing.dag` | 83 | {'dag': 6, 'rs': 1} `dag/test/claim/match_arm_pattern_identity_emission_witness_test.dag` `dag/test/claim/documentary_refs_witness_test.dag` |
+| `gunbc.tools.review_codex` | `dag/gunbc/tools/review_codex.dag` | 205 | {'dag': 2, 'rs': 1} `dag/test/claim/workflow_default_field_projection_fold_witness_test.dag` `dag/gunbc/roadmap/roadmap_belt_actuate.dag` |
+| `gunbc.v1_maintenance_standing` | `dag/gunbc/v1/v1_maintenance_standing.dag` | 83 | {'dag': 6, 'rs': 1} `dag/test/claim/match_arm_pattern_identity_emission_witness_test.dag` `dag/test/claim/documentary_refs_witness_test.dag` |
 | `gunbc.workflow.types` | `dag/gunbc/workflow/types.dag` | 311 | {'dag': 1} `dag/gunbc/plans/host_effect_orchestration.dag` |
 | `std.behavioral` | `dag/std/behavioral.dag` | 51 | {'rs': 1} `src/v1/stage0/src/bin/parse_witness.rs` |
 | `std.durable_compare_and_set` | `dag/std/durable_compare_and_set.dag` | 292 | {'dag': 1} `dag/test/claim/durable_compare_and_set_witness_test.dag` |
 | `std.methods` | `dag/std/methods.dag` | 67 | {'dag': 1, 'rs': 2} `src/v1/compiler_tests_rust.dag` `src/v1/stage0/src/v1_compiler_compiler_tests_rust.rs` |
-| `std.stack` | `dag/std/stack.dag` | 56 | {'dag': 1, 'rs': 1} `dag/gunbc/witness_floor_workflow.dag` `src/v1/stage0/src/bin/parse_witness.rs` |
+| `std.stack` | `dag/std/stack.dag` | 56 | {'dag': 1, 'rs': 1} `dag/gunbc/witness/witness_floor_workflow.dag` `src/v1/stage0/src/bin/parse_witness.rs` |
 | `std.verification` | `dag/std/verification.dag` | 34 | {'dag': 3} `dag/gunbc/plans/resolver_type_name_collision_wall.dag` `dag/gunbc/plans/realization_measurement_loop.dag` |
 | `tools.gunbc_ci` | `dag/tools/gunbc_ci.dag` | 25 | {'dag': 2, 'rs': 1} `dag/std/emit_on_demand.dag` `src/v2/test/claim/host_language_transport_script/corpus/wall_residue_live_test.dag` |
 | `v2.extdeps.languages.ecmascript` | `src/v2/extdeps/languages/ecmascript.dag` | 1340 | {'dag': 1} `dag/gunbc/language_target_registry.dag` |
@@ -1024,7 +1024,7 @@ executable against the real corpus rather than against a fixture someone has to 
 | `v2.test.workflow.glob_discovery_law` | `src/v2/workflow/glob_discovery_law.dag` | 113 | {'dag': 1} `src/v2/test/claim/complexity/accumulator_copy_roster_gate_test.dag` |
 | `v2.workflow.class_b_import_closure_transport` | `src/v2/workflow/class_b_import_closure_transport.dag` | 118 | {'dag': 2, 'rs': 1} `dag/test/claim/long/rust_test_fixtures_import_closure_witness_test.dag` `src/v2/workflow/class_b_import_closure_probe.dag` |
 | `v2.workflow.compile_door_ledger` | `src/v2/workflow/compile_door_ledger.dag` | 341 | {'dag': 1} `src/v2/test/claim/long/door_real_module_probe_test.dag` |
-| `v2.workflow.compiler_closure_ingest_transport` | `src/v2/workflow/compiler_closure_ingest_transport.dag` | 150 | {'dag': 4} `dag/tools/ci_gates.dag` `dag/gunbc/ci_layer_roots.dag` |
+| `v2.workflow.compiler_closure_ingest_transport` | `src/v2/workflow/compiler_closure_ingest_transport.dag` | 150 | {'dag': 4} `dag/tools/ci_gates.dag` `dag/gunbc/ci/ci_layer_roots.dag` |
 | `v2.workflow.phase_profile_proof_plan` | `src/v2/workflow/phase_profile_proof_plan.dag` | 22 | {'rs': 1} `src/v1/stage0/tests/phase_profile_claim_executor.rs` |
 | `v2.workflow.source_root_ingest_gate` | `src/v2/workflow/source_root_ingest_gate.dag` | 18 | {'dag': 3} `dag/test/claim/guarantee_rung_drop_witness_test.dag` `dag/tools/ci_gates.dag` |
 | `v2.workflow.source_root_ingest_transport` | `src/v2/workflow/source_root_ingest_transport.dag` | 90 | {'dag': 2} `dag/tools/ci_gates.dag` `src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag` |
@@ -1124,7 +1124,7 @@ executable against the real corpus rather than against a fixture someone has to 
 | `extdeps.runtime.local` | `dag/extdeps/runtime/local.dag` | 22 | —  |
 | `extdeps.sec.edgar_rest` | `dag/extdeps/sec/edgar_rest.dag` | 71 | {'dag': 2} `dag/extdeps/sec/edgar.dag` `dag/gunbc/prose_row_frontier.dag` |
 | `extdeps.shell.credentials` | `dag/extdeps/shell/credentials.dag` | 19 | —  |
-| `extdeps.tailscale.acl` | `dag/extdeps/tailscale/acl.dag` | 312 | {'dag': 2} `dag/test/claim/host_standup_spine_witness_test.dag` `dag/gunbc/host_standup.dag` |
+| `extdeps.tailscale.acl` | `dag/extdeps/tailscale/acl.dag` | 312 | {'dag': 2} `dag/test/claim/host_standup_spine_witness_test.dag` `dag/gunbc/host/host_standup.dag` |
 | `extdeps.tailscale.acl_api` | `dag/extdeps/tailscale/acl_api.dag` | 70 | —  |
 | `extdeps.tcgplayer.catalog` | `dag/extdeps/tcgplayer/catalog.dag` | 180 | —  |
 | `extdeps.tcgplayer.pricing` | `dag/extdeps/tcgplayer/pricing.dag` | 78 | —  |

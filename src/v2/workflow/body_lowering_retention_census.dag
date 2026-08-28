@@ -1,5 +1,6 @@
 module v2.workflow.body_lowering_retention_census
 
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
 import std.types { NonEmptyStr }
 import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
 import v2.std.algebra { Empty, fold_list, length, list_snoc_item }
@@ -32,15 +33,12 @@ import v2.std.node {
   Instantiation,
   Loop,
   Match,
-  MintedOccurrence,
   Node,
   NodeKind,
-  NodeOccurrenceId,
   node_subtree_nodes,
-  SyntheticOccurrence,
   Transform,
   TypeNode,
-  Value
+  Value,
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
@@ -138,10 +136,11 @@ fn emitted_production_label(node: Node) -> String {
   }
 }
 
-fn occurrence_label(occurrence: NodeOccurrenceId) -> String {
+fn occurrence_label(occurrence: NodeOccurrenceIdentity) -> String {
   match occurrence {
-    SyntheticOccurrence => "synthetic"
-    MintedOccurrence { id: _ } => "minted"
+    OccurrenceSynthetic => "synthetic"
+    OccurrenceMinted { id: _ } => "minted"
+    OccurrenceProjected { id: _, caused_by: _ } => "projected"
   }
 }
 

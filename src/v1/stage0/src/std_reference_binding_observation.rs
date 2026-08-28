@@ -4,6 +4,7 @@
 use self::ReferenceBindingObservation::*;
 use self::ReferenceBindingProductionGap::*;
 use self::StructuralBindingResolution::*;
+use self::StructuralObservationSubjectModule::*;
 pub use crate::std_occurrence_binding::{BindingCandidate, OccurrenceBinding};
 use crate::std_occurrence_binding_candidates::AuthoredOrderIndexRefusal::*;
 use crate::std_occurrence_binding_candidates::DeclarationExposure::*;
@@ -85,6 +86,13 @@ pub enum ReferenceBindingProductionGap {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
+pub enum StructuralObservationSubjectModule {
+    SubjectModuleProduced { module_path: String },
+    SubjectModuleProductionRefused { gap: ReferenceBindingProductionGap },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum ReferenceBindingObservation {
     SameFileNeighbourObservation {
         neighbour: OccurrenceId,
@@ -132,57 +140,26 @@ pub fn structural_binding_resolution_from_candidates(
     inputs: Rc<OccurrenceBindingCandidateInputs>,
     reference: Rc<ReferenceOccurrence>,
 ) -> Rc<StructuralBindingResolution> {
-    match (*occurrence_candidate_index_build(transport.clone(), inputs.clone())).clone() {
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index: index, .. } => {
-            Rc::new(StructuralBindingResolution::StructuralBindingResolved {
-                binding_outcome: resolve_reference_occurrence_binding(
-                    transport.clone(),
-                    reference.occurrence.clone(),
-                    candidate_occurrence_ids_for_reference(index.clone(), reference.clone()),
-                ),
-            })
-        }
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused {
-            refusal: refusal,
-            ..
-        } => Rc::new(
-            StructuralBindingResolution::StructuralBindingIndexTransportRefused {
-                refusal: refusal.clone(),
-            },
-        ),
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexModulePathRefused {
-            refusal: refusal,
-            ..
-        } => Rc::new(
-            StructuralBindingResolution::StructuralBindingIndexModulePathRefused {
-                refusal: refusal.clone(),
-            },
-        ),
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexExposureRefused {
-            refusal: refusal,
-            ..
-        } => Rc::new(
-            StructuralBindingResolution::StructuralBindingIndexExposureRefused {
-                refusal: refusal.clone(),
-            },
-        ),
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexAuthoredOrderRefused {
-            refusal: refusal,
-            ..
-        } => Rc::new(
-            StructuralBindingResolution::StructuralBindingIndexAuthoredOrderRefused {
-                refusal: refusal.clone(),
-            },
-        ),
-        OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexDeclarationBucketRefused {
-            occurrence: occurrence,
-            ..
-        } => Rc::new(
-            StructuralBindingResolution::StructuralBindingIndexDeclarationBucketRefused {
-                occurrence: occurrence.clone(),
-            },
-        ),
-    }
+    match (*crate::std_occurrence_binding_candidates::occurrence_candidate_index_build(transport.clone(), inputs.clone())).clone() {
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index: index, .. } => Rc::new(StructuralBindingResolution::StructuralBindingResolved {
+    binding_outcome: crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding(transport.clone(), reference.occurrence.clone(), crate::std_occurrence_binding_candidates::candidate_occurrence_ids_for_reference(index.clone(), reference.clone())),
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused { refusal: refusal, .. } => Rc::new(StructuralBindingResolution::StructuralBindingIndexTransportRefused {
+    refusal: refusal.clone(),
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexModulePathRefused { refusal: refusal, .. } => Rc::new(StructuralBindingResolution::StructuralBindingIndexModulePathRefused {
+    refusal: refusal.clone(),
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexExposureRefused { refusal: refusal, .. } => Rc::new(StructuralBindingResolution::StructuralBindingIndexExposureRefused {
+    refusal: refusal.clone(),
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexAuthoredOrderRefused { refusal: refusal, .. } => Rc::new(StructuralBindingResolution::StructuralBindingIndexAuthoredOrderRefused {
+    refusal: refusal.clone(),
+}),
+    OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: occurrence, .. } => Rc::new(StructuralBindingResolution::StructuralBindingIndexDeclarationBucketRefused {
+    occurrence: occurrence.clone(),
+}),
+}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

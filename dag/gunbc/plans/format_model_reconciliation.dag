@@ -1,7 +1,7 @@
 module gunbc.plans.format_model_reconciliation
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone, CodeBlock }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
@@ -66,6 +66,7 @@ fn format_model_reconciliation_body() -> List<MarkdownBlock> {
 }
 
 data format_model_reconciliation_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "format-model-reconciliation",
   title: "Format-model reconciliation — record spelling onto single authority",
   body: format_model_reconciliation_body(),

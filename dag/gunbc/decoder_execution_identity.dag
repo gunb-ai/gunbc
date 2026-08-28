@@ -1,0 +1,270 @@
+module gunbc.decoder_execution_identity
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { FreeMonoid }
+import std.content_hash {
+  ContentHash,
+  Fnv1a64Structural,
+  as_content_hash_structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged_structural,
+  serialize_content_hash,
+}
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.lens.module_graph { import_closure_live }
+import tools.multi_module_compile_fixture {
+  FixtureCompileCompleted,
+  FixtureCompileRefused,
+  FixtureInstrumentRefused,
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  compile_fixture,
+  fixture_source,
+}
+import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.bmc_fan_program_interpretation {
+  DecoderIdentityEstablished,
+  DecoderIdentityNotInstrumented,
+  DecoderIdentityStanding,
+  FanProgramDecoderIdentity,
+  decoder_identity_instrument_obligation,
+  fan_program_decoder,
+}
+
+// THE INSTRUMENT THAT DISCHARGES DecoderIdentityNotInstrumented. A semantic program digest says
+// what a document MEANS; this says which reader decided that, so a corrected decoder producing a
+// different meaning from the same bytes is distinguishable from a refactor producing the same one.
+// Without it an operator adoption is a statement about a reading nobody can identify.
+//
+// NOTHING HERE IS MINTED. Both halves already existed and were found by searching before building,
+// which is also why this file is short:
+//
+//   v2.lens.module_graph import_closure_live       enumerates an entry's transitive closure
+//   tools.multi_module_compile_fixture compile_fixture   returns a structural digest over the
+//                                                 (path, content) vector AND the running compiler
+//                                                 binary's own content hash, both computed host-
+//                                                 side from what actually ran
+//
+// The second is the precedent DESIGN already points at for this exact two-digest shape, and its
+// digests are host-computed rather than authored -- which is the whole property being bought. A
+// hand-written pair would be two literals typed by whoever typed the decoder, agreeing because one
+// person wrote both and continuing to agree after the thing they describe has changed.
+
+// ONE NEAR-MISS IS DELIBERATELY NOT REUSED, RECORDED SO THE NEXT READER DOES NOT "FIX" THIS BY
+// ADOPTING IT. std.interface_summary typed_module_key is exactly this shape -- a source-side key
+// combined with compiler identity -- and it is the wrong GRAIN: its module_key folds a module's
+// source hash with its DIRECT IMPORT INTERFACE hashes. A body-only change in a transitively
+// imported module leaves that key unchanged while genuinely changing what this decoder produces
+// (std.decimal canonical_exact_decimal could be rewritten and the key would not move). It answers
+// "may I reuse a cached typecheck", which is a question about interfaces; this answers "is this
+// the same reader", which is a question about executed code. Borrowing the first to answer the
+// second is authority substitution -- the entailment invented rather than any fact misstated.
+
+// THE CLOSURE IS DERIVED, NEVER LISTED. The one authored thing in this module is the entry path,
+// which IS the identity's subject -- naming what you are identifying is not the same as authoring
+// the answer. Every other input is read: the closure comes from the module graph, the contents
+// from the files those paths name. THE DECLARATION IS NOT AUTHORED HERE EITHER: fan_program_decoder
+// is consumed from gunbc.bmc_fan_program_interpretation, which is the module that declares the
+// standing this instrument exists to discharge, so the reader being identified and the reader
+// whose standing is at stake cannot drift apart (review 57069; a byte-identical DeclarationRef
+// stood here). THE PATH IS A SECOND FACT AND NOT A SECOND SPELLING OF THE SAME ONE: a module path
+// does not carry which source root stores the module, and deriving one needs an OBSERVED
+// ModuleStorageIndex (v2.compiler.source_authority module_storage_path_for_module), not a pure
+// transform -- so the path is authored and the declaration is consumed.
+data decoder_entry_path: NonEmptyStr = "dag/extdeps/bmc/pid_control_representability.dag"
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// COST, MEASURED RATHER THAN ESTIMATED, because it decides where this may run. The closure walk
+// alone is tens of modules and several minutes on the decoder entry; report_decoder_identity
+// prints the module count with the digests. That is fine for an
+// instrument invoked on demand and is why nothing here is enrolled in any required lane: a
+// four-minute live-tree walk on every push would be the corpus-denominated cost DESIGN warns
+// about, paid by every consumer that wanted something else.
+// THE DISCRIMINATING PAIR, MEASURED RATHER THAN ARGUED, because an identity that moves on
+// everything and an identity that moves on nothing both look like a working digest from one run.
+// THE DIGESTS ARE NOT TRANSCRIBED HERE, and that is DESIGN's standing rule rather than brevity:
+// a measurement is cited by naming the producer that re-derives it, never by copying its numbers
+// into prose, because a transcribed figure is unreachable from the thing that owns it and rots
+// without anyone touching either end. This module IS that producer -- run report_decoder_identity
+// and it prints the baseline. What is recorded is the SHAPE of the controls, which does not rot:
+// append one comment line to a module INSIDE the closure and source_closure moves; append one to
+// a module OUTSIDE it and source_closure is byte-identical to baseline; restore both byte-exactly
+// and the baseline returns. The compiler digest holds across all three, which is correct -- one
+// binary ran them.
+//
+// The second half is the one worth having. Without it a digest over the whole tree would pass the
+// first test and be useless, since every unrelated edit anywhere would invalidate an adoption.
+//
+// THERE IS NO ENROLLED WITNESS FOR THIS PAIR AND THE REASON IS STRUCTURAL, NOT NEGLECT. The
+// instrument reads the live tree and takes about four and a half minutes, so the floor planner
+// declines it before it runs; and the mutation half needs to EDIT tracked source, which no
+// hermetic witness may do. So the evidence above is a recorded measurement with its controls,
+// which is weaker than an executing one and is stated as such rather than dressed up. NEXT-RUNG
+// TRIGGER: a fixture-grain closure -- a small tree this instrument owns, mutated inside its own
+// fixture rather than in the corpus -- at which point the pair becomes an ordinary witness.
+
+
+fn closure_paths() -> FreeMonoid<String> {
+  import_closure_live(entry_path: decoder_entry_path as String, pool_roots: witness_layer_roots)
+}
+
+fn read_closure_source(path: String) -> FixtureSource {
+  let read = Filesystem.Read(path: path)
+  fixture_source(path: path, content: read.content)
+}
+
+// THE VECTOR'S ORDER IS THE CLOSURE WALK'S ORDER AND IS NOT SORTED HERE. The fixture's own digest
+// note records that a reordering is a different subject, so imposing an order at this seam would
+// make the identity depend on a choice made here rather than on what the walk produced. The walk
+// is deterministic over a fixed tree; if it ever is not, that is a defect in the walk and this
+// identity moving is the correct symptom rather than something to paper over.
+fn closure_sources() -> List<FixtureSource> {
+  map(closure_paths(), path => read_closure_source(path: path))
+}
+
+type DecoderIdentityMeasurement
+  = DecoderIdentityMeasured { identity: FanProgramDecoderIdentity, module_count: Int }
+  | DecoderIdentityInstrumentRefused { cause: NonEmptyStr }
+
+// BOTH DIGESTS COME FROM ONE EXECUTION OVER ONE VECTOR, which is what makes them a join rather than
+// two facts placed side by side. The compile also has to REACH a subject for either to exist: the
+// instrument-refused arm carries neither digest, on purpose, because stamping one on it would name
+// a measurement that did not happen.
+//
+// A COMPILE THAT REFUSES STILL YIELDS AN IDENTITY, AND THAT IS CORRECT RATHER THAN LAX. The
+// question here is which reader ran, not whether its subject was clean -- a decoder whose closure
+// carries a diagnostic is still a specific decoder, and refusing to identify it would leave the
+// adoption unable to say what it could not adopt.
+fn identity_from_outcome(outcome: MultiModuleCompileFixtureOutcome) -> DecoderIdentityMeasurement {
+  match outcome {
+    FixtureInstrumentRefused { cause } => DecoderIdentityInstrumentRefused { cause: cause }
+    FixtureCompileRefused { module_count, diagnostics, source_digest, compiler_digest } =>
+      DecoderIdentityMeasured {
+        identity: FanProgramDecoderIdentity {
+          entry_declaration: fan_program_decoder,
+          source_closure_digest: as_content_hash_structural(
+            structural: content_hash_atom(value: source_digest),
+          ),
+          compiler_runtime_digest: as_content_hash_structural(
+            structural: content_hash_atom(value: compiler_digest),
+          ),
+        },
+        module_count: module_count,
+      }
+    FixtureCompileCompleted { module_count, emitted_files, diagnostics, source_digest, compiler_digest } =>
+      DecoderIdentityMeasured {
+        identity: FanProgramDecoderIdentity {
+          entry_declaration: fan_program_decoder,
+          source_closure_digest: as_content_hash_structural(
+            structural: content_hash_atom(value: source_digest),
+          ),
+          compiler_runtime_digest: as_content_hash_structural(
+            structural: content_hash_atom(value: compiler_digest),
+          ),
+        },
+        module_count: module_count,
+      }
+  }
+}
+
+fn measure_decoder_identity() -> DecoderIdentityMeasurement {
+  identity_from_outcome(
+    outcome: compile_fixture(
+      fixture: MultiModuleCompileFixture {
+        sources: closure_sources(),
+        entry: decoder_entry_path,
+      },
+    ),
+  )
+}
+
+// WHAT THIS INSTRUMENT DOES NOT ESTABLISH, AND IT IS THE THING A READER WILL ASSUME IT DOES.
+// It enumerates a closure, hashes that exact vector, and compiles it. It does NOT execute the
+// decoder against that vector -- a semantic program digest is produced by some other run, through
+// the interpreter's own resolution of the same entry. So pairing this identity with that digest
+// would be two individually correct observations with an invented arrow between them: exactly the
+// fake join removed from the capture observer on gunbc#9299, one level up.
+//
+// The two subjects are very probably identical -- the walk follows the same import edges the
+// interpreter resolves -- and "very probably" is what the objection is about. Nothing here proves
+// the interpreter received this vector and no wider one, so the honest reading is that this
+// measures THE DECODER'S SOURCE IDENTITY and not THE IDENTITY OF A PARTICULAR DECODE.
+//
+// SO THE STANDING IS NOT HANDED OUT FROM HERE. gunbc.bmc_fan_program_interpretation's
+// DecoderIdentityEstablished is what lets a consumer treat two readings as same-reader, and
+// granting it from a run that did not perform the reading would restore the unbound claim under a
+// name that reads as bound. This module reports a measurement; binding it is a separate
+// construction and its trigger is named below.
+type DecoderIdentityBinding
+  = IdentityBoundToDecode { identity: FanProgramDecoderIdentity }
+  | IdentityMeasuredButUnbound { identity: FanProgramDecoderIdentity, gap: NonEmptyStr }
+  | IdentityNotMeasured { cause: NonEmptyStr }
+
+// THE TRIGGER NAMES A MISSING HOST CAPABILITY, NOT AN AFTERNOON'S WORK, and that was established
+// by looking rather than assumed. Two routes could close the binding and neither is reachable
+// today. EXECUTE-THE-VECTOR: the seed registers exactly one fixture builtin,
+// compile_dag_multi_module_fixture, which COMPILES a supplied (path, content) vector; no builtin
+// evaluates one, so "run the decoder against that exact vector" needs a new host surface, and that
+// is v1 seed growth the freeze admits only in service of the v2 self-host program -- which this is
+// not. PROVE-THE-SUBJECTS-EQUAL: nothing exposes the RUNNING program's resolved module set;
+// module_declaration_facts reads the source tree, which is the same authority the closure walk
+// already consumed, so comparing them would compare a reading against itself rather than against
+// what the interpreter received.
+//
+// Recorded at this grain because a trigger that reads as small invites someone to "just finish
+// it", discover the capability is absent, and close the gap with an argument instead.
+data decoder_identity_binding_gap: NonEmptyStr = "the identity was measured over a closure this instrument enumerated and compiled; the decode that produces a semantic program digest runs through the interpreter's own resolution of the same entry, and nothing here proves the two subjects are the same set. NEXT-RUNG TRIGGER: a host capability that EVALUATES a supplied source vector (the seed today registers only compile_dag_multi_module_fixture, which compiles one), so that one execution hashes its vector and runs the decoder against that same vector, returning identity and semantic result together. The alternative route -- comparing the interpreter's resolved module set against the enumerated closure -- is closed for a different reason: no builtin exposes the running program's resolved set, and module_declaration_facts reads the source tree the closure walk already consumed."
+
+fn decoder_identity_binding(measurement: DecoderIdentityMeasurement) -> DecoderIdentityBinding {
+  match measurement {
+    DecoderIdentityMeasured { identity, module_count } =>
+      IdentityMeasuredButUnbound { identity: identity, gap: decoder_identity_binding_gap }
+    DecoderIdentityInstrumentRefused { cause } => IdentityNotMeasured { cause: cause }
+  }
+}
+
+// THE STANDING THIS INSTRUMENT CAN HONESTLY PRODUCE IS STILL THE ABSENT ONE, and that is not the
+// instrument failing -- it is the instrument reporting what it has. The obligation text is
+// narrowed rather than discharged: what was missing was any producer at all, and what is missing
+// now is the binding.
+fn decoder_identity_standing(binding: DecoderIdentityBinding) -> DecoderIdentityStanding {
+  match binding {
+    IdentityBoundToDecode { identity } => DecoderIdentityEstablished { identity: identity }
+    IdentityMeasuredButUnbound { identity, gap } =>
+      DecoderIdentityNotInstrumented { obligation: gap }
+    IdentityNotMeasured { cause } =>
+      DecoderIdentityNotInstrumented { obligation: decoder_identity_instrument_obligation }
+  }
+}
+
+// THE REPORTING ENTRY, WHICH FAILS ON PURPOSE WHEN IT SUCCEEDS. A run's verdict is an exit code,
+// so an instrument that wants to REPORT a value has to carry it in the one channel the host will
+// print. Reporting through the refusal reason is deliberate rather than a dodge: an instrument
+// that exited zero would say "the identity was measured" and show nothing, and a reader would then
+// have to take the measurement on trust -- which is the exact provenance loss this identity exists
+// to close. DISSOLVES WHEN the identity is consumed by a receipt carrier that persists it, at
+// which point this entry has no reason to exist.
+fn report_decoder_identity() -> ProcessExit {
+  match measure_decoder_identity() {
+    DecoderIdentityInstrumentRefused { cause } =>
+      exit_failure(reason: concat("decoder identity NOT measured: ", cause as String))
+    DecoderIdentityMeasured { identity, module_count } =>
+      exit_failure(
+        reason: join([
+          "decoder identity measured over ",
+          to_string(module_count),
+          " modules | entry=",
+          fan_program_decoder.module_path as String,
+          " ",
+          fan_program_decoder.decl_name as String,
+          " | source_closure=",
+          serialize_content_hash(hash: identity.source_closure_digest) as String,
+          " | compiler_runtime=",
+          serialize_content_hash(hash: identity.compiler_runtime_digest) as String,
+        ], ""),
+      )
+  }
+}

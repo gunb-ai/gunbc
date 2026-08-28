@@ -62,7 +62,7 @@ test fn rostered_consumer_import_is_not_leak_holds() -> Bool {
 data de_rostered_consumer_import_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dag/gunbc/ci_spec.dag",
+    path: "dag/gunbc/ci/ci_spec.dag",
     import_module: sidecar_module
   }
 ]
@@ -100,7 +100,7 @@ fn edge_in_grandfathered_roster(edge: RealizationVocabImportEdge) -> Bool {
 test fn ci_spec_excused_from_bash_roster_holds() -> Bool {
   !edge_in_grandfathered_roster(
     edge: RealizationVocabImportEdge {
-      importer_path: "dag/gunbc/ci_spec.dag",
+      importer_path: "dag/gunbc/ci/ci_spec.dag",
       vocab_module: bash_vocab_module
     }
   )
@@ -151,7 +151,7 @@ test fn node_http_server_emit_rostered_for_typescript_sidecar_holds() -> Bool {
 test fn roadmap_component_rostered_for_typescript_sidecar_holds() -> Bool {
   edge_in_grandfathered_roster(
     edge: RealizationVocabImportEdge {
-      importer_path: "dag/gunbc/roadmap_component.dag",
+      importer_path: "dag/gunbc/roadmap/roadmap_component.dag",
       vocab_module: sidecar_module
     }
   )
@@ -211,6 +211,6 @@ test fn de_rostered_ci_materialization_emit_edge_is_leak_holds() -> Bool {
 test fn grandfathered_edge_keys_are_exact_identity_holds() -> Bool {
   list_contains_str(
     xs: realization_vocab_grandfathered_edge_keys(),
-    target: "dag/gunbc/roadmap_component.dag -> extdeps.languages.typescript.program"
+    target: "dag/gunbc/roadmap/roadmap_component.dag -> extdeps.languages.typescript.program"
   )
 }

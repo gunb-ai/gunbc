@@ -1,7 +1,7 @@
 module gunbc.plans.m4_universal_hermetic_corpus
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownListItem, TableBlock, AlignNone, ThematicBreak }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
 
@@ -86,6 +86,7 @@ fn m4_universal_hermetic_corpus_body() -> List<MarkdownBlock> {
 }
 
 data m4_universal_hermetic_corpus_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "m4-universal-hermetic-corpus",
   title: "Plan — M4.1: universal hermetic corpus governance",
   body: m4_universal_hermetic_corpus_body(),

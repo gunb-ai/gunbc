@@ -1,0 +1,36 @@
+module v2.test.lens_cost.disj_alternative_floor
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data disj_floor_arm_a: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^disj_floor_arm_a_atom } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data disj_floor_arm_b: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^disj_floor_arm_b_atom } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+data disj_floor_input: Node = Node {
+  kind: TypeNode { connective: Disj },
+  children: [
+    Edge { label: Positional, target: disj_floor_arm_a },
+    Edge { label: Positional, target: disj_floor_arm_b }
+  ],
+  occurrence_id: OccurrenceSynthetic
+}
+
+test fn disj_floor_projects_unit() -> Bool {
+  match cost_lens(n: disj_floor_input) {
+    Holds { value: actual } => actual == unit_cost()
+    _ => false
+  }
+}
+
+test fn symbolic_max_absorbs_zero() -> Bool {
+  symbolic_max(a: zero_cost(), b: zero_cost()) == zero_cost()
+}
+

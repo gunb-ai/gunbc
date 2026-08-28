@@ -47,6 +47,7 @@ import v1.std.core {
   FieldAccessStyle, StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue, FieldSummary,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
+  CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined,
   CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
@@ -195,6 +196,7 @@ import v1.compiler.infer_lookup {
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
   lookup_in_scope, lookup_func_sig,
+  resolved_plain_call_target, resolved_declaration_call_target, builtin_call_target_or_undetermined,
   global_bare_callable_node, func_decl_binding_for_call,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
   NotAdmissionBearingReference, AdmissionBearingDeclarationUnavailable,
@@ -921,7 +923,7 @@ fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_n
   make_error_node(diagnostic: TypeMismatch { expected: expected, got: got, span: span }, module_name: module_name)
 }
 
-data seed_node_traversal_frontier: String = "\u{1F7E1} dissolve-on: v1_seed_deleted_at_v2_self_host (opened 2026-07-31) — the v1 seed reads and recurses substrate Node storage directly instead of consuming a canonical traversal surface. Recorded as ONE frontier row for the CLASS, because that is the honest grain: the idiom is 16 self-recursive `children |> flat_map` sites on origin/main across 04_emit_info, 04_sigs, 04_infer, 05_emit, 05_emit_rust, compile and complexity (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings), plus 579 direct Node-storage field reads in 04_infer alone. collect_explicit_return_values is the 17th instance and v1.compiler.trait_derive_emit.v1_type_expr_contains_param_name the 18th (codex review 47248), not new classes, and a per-function row would assert separable work that does not exist while 16 identical siblings carried none (codex reviews 45570, 45580, 45666). SIBLING COUNT IS NOT THE JUSTIFICATION and the reviewer is right to reject that reading — precedent is debt, not permission. The justification is that no canonical surface is REACHABLE here: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap; and no shared v1 walker exists to route through, because every v1 collector recurses itself. DESIGN's fold_node line is scoped to the 7 v2 stages. COST OF CLOSING NOW, which is why this is retained rather than accepted: building a v1-local generic traversal for one call site adds another shape without removing any of the existing ones, and migrating all 18 is a seed-wide refactor of the stage that IS the traversal — against a seed whose declared endpoint is deletion. DISSOLVES WHEN the v1 seed is deleted at v2 self-host, at which point every row in this class goes with it; the same trigger compiler_diagnostic_seed_projection_note carries for the hand-Rust arms, because it is the same seed and the same endpoint."
+data seed_node_traversal_frontier: String = "\u{1F7E1} dissolve-on: v1_seed_deleted_at_v2_self_host (opened 2026-07-31) — the v1 seed reads and recurses substrate Node storage directly instead of consuming a canonical traversal surface. Recorded as ONE frontier row for the CLASS, because that is the honest grain: the idiom is every self-recursive `children |> flat_map` site across the seed's stages (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings), plus the direct Node-storage field reads inside them. BOTH POPULATIONS ARE NAMED BY THEIR INSTRUMENT RATHER THAN TRANSCRIBED, and this row is the receipt for why: it previously carried a site count across a module list, and both halves were wrong. It also carried a direct-Node-storage-field-read count for 04_infer alone, a figure no recipe in this corpus reproduces; a plausible reconstruction disagrees with it by a wide margin, which establishes the number is stale WITHOUT establishing what the right one is. NO SUPERSEDED FIGURE IS RESTATED HERE, and the omission is the point: a wrong number quoted as history is still a number in a live authority, it decays the same way, and it gets cited as though this row had measured it. The before-and-after lives in the PR that made the correction. That asymmetry is exactly why the repair is DELETION rather than an update: replacing a stale number with one my own instrument produced would swap an uncheckable figure for a checkable-looking wrong one, which is worse, because it would then be cited as verified. Re-derive the site population by grepping the literal idiom under src/v1 -- the grep is LEXICAL while `self-recursive` is SEMANTIC, so it bounds the literal-occurrence population and the recursion property is read off the sites, never off the count; the field-read population has no agreed instrument and is therefore stated as a shape and not a count. THE STALENESS WAS FOUND IN THIS ROW ONLY AFTER THE SIBLING row explicit_return_conformance_note was repaired for the identical claim -- one sentence fixed while the same assertion stood untouched a few lines away, which is the document-wide-correction failure and the reason a figure must be grepped as a CLAIM rather than edited as a SENTENCE. collect_explicit_return_values and v1.compiler.trait_derive_emit.v1_type_expr_contains_param_name are further instances of that same idiom (codex review 47248), not new classes — stated without ordinals deliberately, because the ordinals they previously carried were positions in a count that has since been measured wrong, and an ordinal is a transcribed measurement wearing the costume of a structural fact, and a per-function row would assert separable work that does not exist while every identical sibling carried none (codex reviews 45570, 45580, 45666). SIBLING COUNT IS NOT THE JUSTIFICATION and the reviewer is right to reject that reading — precedent is debt, not permission. The justification is that no canonical surface is REACHABLE here: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap; and no shared v1 walker exists to route through, because every v1 collector recurses itself. DESIGN's fold_node line is scoped to the 7 v2 stages. COST OF CLOSING NOW, which is why this is retained rather than accepted: building a v1-local generic traversal for one call site adds another shape without removing any of the existing ones, and migrating the whole population is a seed-wide refactor of the stage that IS the traversal — against a seed whose declared endpoint is deletion. DISSOLVES WHEN the v1 seed is deleted at v2 self-host, at which point every row in this class goes with it; the same trigger compiler_diagnostic_seed_projection_note carries for the hand-Rust arms, because it is the same seed and the same endpoint."
 
 fn collect_explicit_return_values(n: Node) -> List<Node> {
   match n.expr_data {
@@ -943,7 +945,7 @@ fn explicit_return_conformance_diags(declared: Node, body_typed: Node, scope: In
          scope: scope))
 }
 
-data explicit_return_conformance_note: String = "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom — 16 such sites on origin/main across 04_emit_info, 04_sigs, 04_infer, 05_emit, 05_emit_rust, compile and complexity (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings) — and there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is the 17th instance of a 16-instance idiom, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a 17th shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's."
+data explicit_return_conformance_note: String = "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings). THE POPULATION IS NAMED BY ITS INSTRUMENT AND NOT TRANSCRIBED: grep the literal idiom under src/v1 to re-derive it, and note the grep is LEXICAL while `self-recursive` and `only traversal idiom` are SEMANTIC properties — so it bounds the literal-occurrence population, and the recursion claim is read off the sites rather than off the count. This clause previously carried a site count and a module list, and both were wrong. NO SUPERSEDED FIGURE IS RESTATED HERE, not even as history: a wrong number quoted inside the sentence announcing its removal is still a number in a live authority, it decays exactly as the original did, and it gets cited as though this row had measured it. The before-and-after belongs in the PR that made the correction. Nothing edited this note; the tree moved underneath it, which is the decay mode §3 gives for a positional citation and the reason the 2026-08-24 ruling forbids transcribing an instrument's output. The argument never needed the number: what makes this the seed's idiom rather than a new shape is that EVERY collector recurses itself, and that is true at whatever the instrument measures next — a clause whose force depends on a figure it cannot keep current was overstating its own evidence. And there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is one more instance of an idiom the seed uses everywhere rather than a new shape beside it, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's."
 
 fn declared_return_type_node(item: Node) -> Node {
   preserve_outer_optional_cardinality(outer: item, inner: resolved_type(n: item))
@@ -2082,7 +2084,53 @@ fn infer_list_literal_element(element: Node, expected: Node?, scope: InferScope)
   }
 }
 
+// A DECLARED TYPE WRITTEN AS AN ALIAS BINDS TO A BARE NOMINAL REFERENCE, AND THIS RELATION JUDGED
+// THE REFERENCE INSTEAD OF WHAT IT NAMES. Measured at this seam, `type KAlias = KOuter` binds the
+// name `KAlias` to a node carrying `name = "KOuter"` and NO children -- a reference to the target,
+// not the target's declaration. The judgment asks whether that node is a Conj or a Disj with
+// children; a bare reference is neither, so it fell through to the admitting arm and a plain kernel
+// value inhabited ANY aliased declared type. The wall refused `5` at `KOuter` and admitted it at
+// `KAlias`, one name away, at every position that consults this relation.
+//
+// THIS IS THE "TOTAL AT THE LEVEL EXAMINED, BLIND ONE LEVEL DOWN" CLASS. The match is exhaustive
+// over the node it was handed and silent about the distinction that decides the outcome, which
+// lives one lookup further on. There is no missing arm for a reviewer or an exhaustiveness check to
+// see.
+//
+// THE FOLLOW READS `decl.name`, NOT `authored_name_at(decl)`, AND THAT IS THE ENTIRE REPAIR. These
+// two disagree on exactly this node: `authored_name_at` reads the SOURCE TEXT at `ident_span`, and
+// an alias binding carries the ALIAS declaration's span while its `name` field carries the TARGET.
+// So the authored reading answers `KAlias` and the field answers `KOuter`. An earlier attempt
+// compared authored names and was measured INERT, because it was comparing a name with itself.
+// (An attempt before that followed `decl.inferred` -- the shape `peel_nominal_alias_identity` reads
+// for PARAMETERIZED aliases -- which this binding does not carry at all, and was also inert.
+// Typecheck and regen were green over both.)
+//
+// THE FOLLOW RE-ENTERS THIS RELATION rather than restating any part of it (DESIGN section 3), so
+// every exemption it already owns -- name equality, `dag_can_cast`, the structural-carrier template,
+// the single-child refinement shape -- is applied at the followed name instead of being re-derived
+// beside it. `type NatAlias = Nat` with an Int value therefore stays admitted through the grounded
+// Int->Nat identity exactly as `Nat` itself does.
+//
+// TERMINATION IS ESTABLISHED TWICE, INDEPENDENTLY. A follow is taken only when the reference names
+// something OTHER than the name just looked up, so a self-naming binding cannot recur; and the depth
+// bound stops a multi-type cycle (`type A = B` / `type B = A`) regardless. Both exhaust to the
+// ADMITTING arm -- where an unfollowable reference already landed -- never to a fabricated refusal,
+// because exhausting the walk establishes ignorance, not a mismatch.
 fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  kernel_value_declared_type_mismatch_bounded(
+    formal: formal, actual: actual, type_env: type_env, source_indices: source_indices,
+    formal_name_override: "", depth: 0)
+}
+
+fn kernel_value_declared_type_mismatch_bounded(
+  formal: Node,
+  actual: Node,
+  type_env: TypeEnv,
+  source_indices: Map<String, NewlineIndex>,
+  formal_name_override: String,
+  depth: Int
+) -> Bool {
   if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
     false
   } else {
@@ -2091,7 +2139,9 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
     if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
       false
     } else {
-      let formal_name = authored_name_at(source_indices: source_indices, node: formal_base)
+      let formal_name = if formal_name_override == "" {
+        authored_name_at(source_indices: source_indices, node: formal_base)
+      } else { formal_name_override }
       if formal_name == "" || qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) {
         false
       } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices) {
@@ -2108,7 +2158,19 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
                     Present { value: refinement_child } => authored_name_at(source_indices: source_indices, node: refinement_child) == actual_name
                     Absent => false
                   }))
-              (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0 && decl_is_refinement_over_actual == false
+              if (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0 {
+                decl_is_refinement_over_actual == false
+              } else if depth >= 16 || decl.name == "" || qualified_last_segment(name: decl.name) == qualified_last_segment(name: formal_name) {
+                false
+              } else {
+                kernel_value_declared_type_mismatch_bounded(
+                  formal: decl,
+                  actual: actual,
+                  type_env: type_env,
+                  source_indices: source_indices,
+                  formal_name_override: decl.name,
+                  depth: depth + 1)
+              }
             Absent => false
           }
         }
@@ -2278,8 +2340,8 @@ fn type_name_transparently_aliases_to(
 //
 // The receipt is #8865's minimal pair, and the class is not synthetic: it is the mechanism that
 // permitted the 2026-08-22 outage. v2.extdeps.languages.dag built `Node { occurrence_id: <raw
-// OccurrenceId> }` where the field is declared `NodeOccurrenceId` and `OccurrenceId` is the
-// payload of its `MintedOccurrence` arm; the value entered the bad state at that record literal,
+// OccurrenceId> }` where the field is declared `NodeOccurrenceIdentity` and `OccurrenceId` is the
+// payload of its `OccurrenceMinted` arm; the value entered the bad state at that record literal,
 // stayed latent two months, and surfaced 2,000 lines and one pipeline stage away as
 // `non-exhaustive pattern match on: OccurrenceId { value: 79 }` in sixteen floor claims.
 //
@@ -2546,6 +2608,8 @@ type InhabitanceUndecidableReason
 type InhabitanceRefusalReason
   = RefusedPayloadAtParent
   | RefusedKernelAtStructured
+  | RefusedDistinctProductConstructor
+  | RefusedDistinctAppliedTypeArgument
 
 type InhabitanceVerdict
   = Inhabits
@@ -2599,7 +2663,10 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   } else if coproduct_payload_where_parent_required(formal: declared, actual: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedPayloadAtParent }
   } else {
-    Inhabits
+    match nominal_product_inhabitance_refusal(declared: declared, produced: produced, scope: scope) {
+      Present { value: r } => InhabitanceRefused { reason: r }
+      Absent => Inhabits
+    }
   }
 }
 
@@ -2652,6 +2719,253 @@ fn declared_realizes_as_kernel_numeric(
     false
   } else {
     decl_file_realizes_natively(decl_file: type_reference_decl_file(n: declared))
+  }
+}
+
+// THE NOMINAL-PRODUCT ARM (DESIGN 4b floor: "values inhabit declared types").
+//
+// The state this refuses: a value whose type is one nominal PRODUCT reaches a position declared
+// as a different nominal product. Two shapes, measured 2026-08-28 on a compiler built from the
+// tree, each its own entry compile, each admitted with ZERO blocking diagnostics before this arm:
+//   Alpha<String> at a Beta<String> parameter  -- distinct constructors, both applied
+//   Wrapper<KindB> at a Wrapper<KindA> parameter -- one constructor, distinct type arguments
+//   Alpha at a Beta parameter, the actual a CALL rather than a record literal -- distinct
+//     constructors, neither applied, and silent for the same reason
+// The third is the one that shows the class is not about generics at all: the ONLY spelling
+// that refused was a record LITERAL at a non-generic formal, which is a different producer.
+//
+// WHY NOTHING ELSE CAUGHT IT, read off the producers rather than inferred from the silence:
+// kernel_value_declared_type_mismatch returns false at its first gate for any actual carrying
+// children AND requires the actual to be a kernel type, so a product value is never judged
+// there; coproduct_payload_where_parent_required requires the formal's declaration to be a
+// concrete COPRODUCT, so a product formal leaves its body immediately; and
+// structured_application_site_type_mismatch judges only an actual whose EXPRESSION is a record
+// literal, which the overwhelmingly common spelling -- a call -- is not. Three total judgments,
+// none of them reaching this pair.
+//
+// IT CONSUMES THE EXPOSURE AUTHORITY, IT DOES NOT RE-DERIVE ONE. v1.compiler.type_head_exposure
+// already answers "what head does this type expose, and if it is an application, which
+// constructor and which arguments", and exposure_view_for_node is that view's single producer.
+// Deriving application-ness here from connective and children would be the second representation
+// DESIGN 3 forbids. The constructor comparison likewise DELEGATES to
+// application_type_names_compatible, the predicate the neighbouring seams already use for this
+// exact question (aliases, brands, declared casts), so alias identity keeps one home.
+//
+// EVERY GUARD FAILS OPEN. A head this relation cannot establish, a container carrier, a callable,
+// an anonymous record, an unresolvable name -- each answers "not judgeable" and the pair is
+// admitted, never refused. The arm can therefore only convert silence into a refusal for a pair
+// whose two identities are both established.
+fn nominal_product_inhabitance_refusal(
+  declared: Node,
+  produced: Node,
+  scope: InferScope
+) -> InhabitanceRefusalReason? {
+  let declared_head = nominal_product_head_name(n: declared, scope: scope)
+  let produced_head = nominal_product_head_name(n: produced, scope: scope)
+  if declared_head == "" || produced_head == "" {
+    none
+  } else if nominal_product_head_names_agree(
+      declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
+    Present { value: RefusedDistinctProductConstructor }
+  } else if applied_type_arguments_conflict(
+      declared: declared, produced: produced, scope: scope) {
+    Present { value: RefusedDistinctAppliedTypeArgument }
+  } else {
+    none
+  }
+}
+
+// expected_type_head_exposure is consulted rather than exposure_view_for_node directly: a leaf
+// TYPE REFERENCE carries no connective and no children of its own, so the direct view answers
+// OpaqueTypeHead for `Alpha` and the head would be invisible on exactly the spelling the third
+// red arm uses. The entry point falls back to the symbol index's recorded exposure for that
+// identity, which is where a declaration's head actually lives. Its name says `expected`
+// because its first consumer asks about a formal; the function takes any node and is the single
+// exposure entry point, so consuming it for the produced side is reuse, not a second producer.
+// The head name of a NOMINAL product -- a declared record, applied or not -- and "" for
+// everything else. The container carriers are excluded because List<T> and Map<K,V> expose an
+// ApplicationHead too and their element compatibility is a different judgment with its own
+// established producer (container_element_nominal_brand_mismatch).
+fn nominal_product_head_name(n: Node, scope: InferScope) -> String {
+  let source_indices = scope.type_env.source_indices
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if name == "" || n.return_cardinality == CardOptional || type_node_is_callable(n: n)
+    || is_kernel_type(name: name)
+    || qualified_last_segment(name: name) == "Optional"
+    || node_is_element_collection(n: n, source_indices: source_indices)
+    || node_is_keyed_collection(n: n, source_indices: source_indices) {
+    ""
+  } else {
+    match expected_type_head_exposure(formal: n, scope: scope) {
+      ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } =>
+        nominal_product_head_name_if_declared_product(name: name, scope: scope)
+      ExposedTypeHead { view: ProductHead { type_identity: _ } } =>
+        nominal_product_head_name_if_declared_product(name: name, scope: scope)
+      _ => ""
+    }
+  }
+}
+
+fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope) -> String {
+  match lookup_type_by_name(env: scope.type_env, name: name) {
+    Present { value: decl } =>
+      if decl.connective == Conj && (decl.children |> count) > 0 { name } else { "" }
+    Absent => ""
+  }
+}
+
+fn nominal_product_head_names_agree(
+  declared_name: String,
+  produced_name: String,
+  scope: InferScope
+) -> Bool {
+  application_type_names_compatible(
+    formal_name: declared_name,
+    lit_name: produced_name,
+    type_env: scope.type_env,
+    module_name: scope.module_name,
+    source_indices: scope.type_env.source_indices)
+    || transparent_alias_identity_agrees(
+      index: scope.type_env.symbol_index, left: declared_name, right: produced_name)
+}
+
+// ARITY DIFFERENCE IS NOT THIS CLASS, and neither is an unapplied side. Two applications of one
+// constructor at different arities mean the constructor identity was not what it looked like, or
+// a substitution is incomplete; either way this relation has nothing to say and says nothing
+// rather than inventing a verdict.
+fn applied_type_arguments_conflict(
+  declared: Node,
+  produced: Node,
+  scope: InferScope
+) -> Bool {
+  let declared_args = declared.children
+  let produced_args = produced.children
+  if (declared_args |> count) == 0 || (declared_args |> count) != (produced_args |> count) {
+    false
+  } else {
+    applied_type_arguments_conflict_scan(
+      declared_args: declared_args, produced_args: produced_args, scope: scope)
+  }
+}
+
+fn applied_type_arguments_conflict_scan(
+  declared_args: List<Node>,
+  produced_args: List<Node>,
+  scope: InferScope
+) -> Bool {
+  match declared_args |> first {
+    Present { value: d } =>
+      match produced_args |> first {
+        Present { value: p } =>
+          if applied_type_argument_conflicts(declared_arg: d, produced_arg: p, scope: scope) {
+            true
+          } else {
+            applied_type_arguments_conflict_scan(
+              declared_args: declared_args |> skip(1),
+              produced_args: produced_args |> skip(1),
+              scope: scope)
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// A TYPE VARIABLE IS NOT A DISAGREEMENT, AND FINDING A TEST FOR ONE TOOK THREE MEASUREMENTS.
+//
+// WHAT DOES NOT WORK, both refuted by execution rather than by reading. Asking whether the
+// argument's NAME resolves in the type environment does not work: type parameters ARE bound
+// there, so `S` and `R` answer "declared type" exactly as `KindA` does. Measured on the v2
+// pipeline entry, that test produced fifteen refusals and every single one had a type variable
+// on one side -- Measure<Q,S,M> receiving Measure<Time,S,Nat>, NodeFoldTopDown<Ctx,R> receiving
+// NodeFoldTopDown<Ctx,Result> -- with zero true positives among them. Comparing the exposure's
+// constructor_identity does not work either, and it is worth recording why since it looks like
+// the obvious authority: the identity is keyed on the REFERENCING file, so one Measure read from
+// two modules yields dag/std/measure.dag::Measure and dag/std/realization_measurement.dag::Measure
+// for the same declaration. It can therefore never establish agreement across modules, which is
+// the only case where establishing it would matter.
+//
+// WHAT DOES WORK, and it is a property of the substrate rather than a trick: a type VARIABLE
+// resolves to nothing, so child_type_node leaves it with no authored name, while a real argument
+// resolves to its declaration and carries that declaration's name. The empty resolved name is
+// therefore the decidable test, and it fails open -- an argument this relation cannot resolve is
+// never read as a disagreement. This is also why node_type_shape renders these as `Primitive()`:
+// the renderer already followed the same resolution and found the same nothing.
+//
+// THE NESTEDNESS TEST STILL READS THE AUTHORED NODE while the name reads the RESOLVED one, and
+// the split is not an inconsistency: whether an argument is itself an application is a question
+// about how it was WRITTEN, and what it denotes is a question about what it RESOLVES TO. Reading
+// nestedness off the resolved node was the second cut of this arm and it silenced the whole
+// class, because a resolved record declaration carries its fields as children and every argument
+// then looked nested.
+fn applied_type_argument_conflicts(
+  declared_arg: Node,
+  produced_arg: Node,
+  scope: InferScope
+) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  if declared_arg.return_cardinality == CardOptional || produced_arg.return_cardinality == CardOptional
+    || applied_type_argument_is_nested_application(n: declared_arg, scope: scope)
+    || applied_type_argument_is_nested_application(n: produced_arg, scope: scope)
+    || type_node_is_callable(n: declared_arg) || type_node_is_callable(n: produced_arg) {
+    false
+  } else {
+    let d = child_type_node(ch: declared_arg)
+    let p = child_type_node(ch: produced_arg)
+    let d_name = authored_name_at(source_indices: source_indices, node: d)
+    let p_name = authored_name_at(source_indices: source_indices, node: p)
+    if applied_type_argument_identity_known(name: d_name, scope: scope) == false
+      || applied_type_argument_identity_known(name: p_name, scope: scope) == false {
+      false
+    } else {
+      nominal_product_head_names_agree(
+        declared_name: d_name, produced_name: p_name, scope: scope) == false
+    }
+  }
+}
+
+// The DIRECT view, deliberately not expected_type_head_exposure: the index fallback answers for
+// a leaf reference by looking up what it names, and a leaf naming a parameterised record would
+// come back as a head with arguments -- which is the opposite of what this asks. Here the
+// question is about the argument's own written form.
+fn applied_type_argument_is_nested_application(n: Node, scope: InferScope) -> Bool {
+  match exposure_view_for_node(n: n, source_indices: scope.type_env.source_indices) {
+    ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } => true
+    _ => false
+  }
+}
+
+// A TYPE VARIABLE MUST RESOLVE TO A STRUCTURE, NOT MERELY TO A BINDING, and the third refuted
+// test is the reason this clause is spelled this way rather than the two shorter ways.
+//
+// REFUTED ONCE: "the name resolves in the type environment". Type PARAMETERS are bound there, so
+// S and R answer exactly as a declared record does. Fifteen false positives on the v2 pipeline
+// entry.
+//
+// REFUTED TWICE, and this is the subtler one: "the resolved node has no authored name". On the
+// v2 entry a type variable's resolved node was nameless and the test looked sound. Over the WHOLE
+// corpus it is not -- measured on the required floor, `Measure<Time,S,Nat>`, `MembershipPlan<M,At>`
+// and `ContainmentPath<N>` all resolve their variables to nodes that KEEP the authored name, so
+// the test admitted them as concrete and refused four live modules. A property observed on one
+// entry was read as a property of the substrate; it is a property of that entry's resolution
+// state.
+//
+// WHAT HOLDS OVER THE CORPUS: a type parameter binds to a bare leaf standing for itself, while a
+// real type resolves to a declaration WITH STRUCTURE -- a record's fields, a coproduct's variants.
+// So the test is structural rather than nominal, and it fails open twice over: an argument whose
+// name does not resolve, and an argument that resolves to something structureless (a bare alias,
+// a parameter), are both left unjudged.
+fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool {
+  if name == "" {
+    false
+  } else if is_kernel_type(name: name) {
+    true
+  } else {
+    match lookup_type_by_name(env: scope.type_env, name: name) {
+      Present { value: decl } =>
+        (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0
+      Absent => false
+    }
   }
 }
 
@@ -4400,12 +4714,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         Absent =>
           match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name) {
-            FuncSigResolved { sig: fsig } =>
+            FuncSigResolved { sig: fsig, declared: fsig_declared } =>
                   match (fsig.params |> count) == 0 {
                     true =>
                       ok_infer(texpr: make_named_expr_node(
                         name: name,
-                        expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_declaration_call_target(declared: fsig_declared) } }, descent_evidence: none },
                         children: [],
                         inferred: Present { value: Resolved { node: fsig.inferred } },
                         span: span,
@@ -4601,7 +4915,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: refusal } => refusal
         Absent =>
       let sig = match call_sig_lookup {
-        FuncSigResolved { sig: resolved_call_sig } => Present { value: resolved_call_sig }
+        FuncSigResolved { sig: resolved_call_sig, declared: _ } => Present { value: resolved_call_sig }
         FuncSigUnresolved => Absent
         FuncSigAmbiguous { candidates: _ } => Absent
       }
@@ -4698,7 +5012,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         )
         InferResult {
           typed: make_named_expr_node(
-            name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+            name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
             children: typed_arg_nodes,
             inferred: Present { value: Resolved { node: resolved_type } },
             span: span,
@@ -4805,7 +5119,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) {
                 InferResult {
                   typed: make_named_expr_node(
-                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: exp } },
                     span: span,
@@ -4819,7 +5133,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: map_t } =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: map_t } },
                         span: span,
@@ -4830,7 +5144,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Absent =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
                         span: span,
@@ -4845,7 +5159,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Present { value: map_t } =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: map_t } },
                       span: span,
@@ -4856,7 +5170,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Absent =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
                       span: span,
@@ -4873,7 +5187,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               if node_is_set_collection(n: exp, source_indices: scope.type_env.source_indices) {
                 InferResult {
                   typed: make_named_expr_node(
-                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: exp } },
                     span: span,
@@ -4887,7 +5201,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: set_t } =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: set_t } },
                         span: span,
@@ -4898,7 +5212,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Absent =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
                         span: span,
@@ -4913,7 +5227,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Present { value: set_t } =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: set_t } },
                       span: span,
@@ -4924,7 +5238,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Absent =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_set(): Set kernel container profile missing (compiler misconfigured)", span: span } },
                       span: span,
@@ -4938,9 +5252,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
           let bt = tier2b.bt
           let call_semantics = if func_name == "lookup" {
-            Present { value: LookupCallSemantics }
+            Present { value: LookupCallSemantics { target: RuntimePrimitiveCall { primitive_name: func_name } } }
           } else {
-            Present { value: PlainCallSemantics }
+            Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }
           }
           InferResult {
             typed: make_named_expr_node(
@@ -4970,7 +5284,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             }
             InferResult {
               typed: make_named_expr_node(
-                name: func_name, expr_data: ExprCall { call_semantics: Present { value: if callee_is_body_binding { FunctionValueCallSemantics } else { PlainCallSemantics } }, descent_evidence: none },
+                name: func_name, expr_data: ExprCall { call_semantics: Present { value: if callee_is_body_binding { FunctionValueCallSemantics } else { PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } } }, descent_evidence: none },
                 children: typed_arg_nodes,
                 inferred: Present { value: Resolved { node: resolved_type } },
                 span: span,
@@ -5015,7 +5329,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               }
               InferResult {
                 typed: make_named_expr_node(
-                  name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                  name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
                   children: typed_arg_nodes,
                   inferred: Present { value: Resolved { node: resolved_type } },
                   span: span,
@@ -5048,7 +5362,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: infer_expr(
                     texpr: make_named_expr_node(
                       name: dotted,
-                      expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: CallableTargetUndetermined } }, descent_evidence: none },
                       children: mc_args,
                       inferred: none,
                       span: span,
@@ -9745,7 +10059,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
 // DELIBERATELY NOT PEELED, because each of these is an intentional distinction and erasing it
 // would recreate the class this relation exists to expose: a coproduct arm is never reduced to its
 // payload (the arm is a different type from what it wraps -- exactly the
-// OccurrenceId/NodeOccurrenceId shape whose absence of a wall made main red on 2026-08-22,
+// OccurrenceId/NodeOccurrenceIdentity shape whose absence of a wall made main red on 2026-08-22,
 // gunbc#8854); a where-refinement (`type A = String where p`) parses as a Conj carrying its
 // predicate and is refused by the connective test; an applied generic (`type A = B<C>`) carries
 // its arguments as children and is refused by the children test; a parameterized alias (`type A<T>
@@ -9973,7 +10287,7 @@ fn transparent_alias_representative(index: SymbolIndex, name: String) -> String 
 // actually chase through `transparent_alias_rep`; when neither does, the reps are the inputs and
 // a last-segment comparison would make any two homonymous nominal types from different modules
 // agree -- a fail-open widening in the exact arm that exists to exculpate, and precisely the
-// distinction whose erasure caused the OccurrenceId/NodeOccurrenceId incident. The caller has
+// distinction whose erasure caused the OccurrenceId/NodeOccurrenceIdentity incident. The caller has
 // already established the names are not equal, so an unchased pair is a refusal, not a question.
 // The last-segment reduction survives only for the chased case, because an alias target is the
 // authored RHS name and may be bare where the other side is qualified. Residual, stated rather
@@ -10958,6 +11272,100 @@ fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index:
   )
 }
 
+
+// IMPORT-AWARE PARENT ENVIRONMENTS.
+//
+// WHY THIS IS HERE RATHER THAN IN ITS OWN LANE, stated plainly because it is a corpus-wide
+// resolver narrowing and a reader is entitled to know why it rides along with an emission
+// change: the emission change does not build without it. Once a call's target is the exact
+// declaration resolution chose, a WRONGLY chosen declaration reaches rustc instead of being
+// re-looked-up by leaf spelling and accidentally corrected. Three such bindings existed on main
+// and every one is a name its own module never imported:
+//
+//   v1.compiler.dag_collect_support  to_string  -- imports only escape_json_string from
+//                                                 v1.compiler.emit_core_support, and the
+//                                                 declaration it received takes Int while the
+//                                                 call passes Bool
+//   v1.compiler.infer                map_has    -- imports only ModuleGraph/ResolvedModule/
+//                                                 ResolvedImport from v1.compiler.resolve, twice,
+//                                                 against a declaration whose map value type is Bool
+//
+// A parent env used to be admitted whole: `[typed_parent.func_env]`, whose own `.parents` chain
+// is the FLATTENED TRANSITIVE CLOSURE, so importing one module admitted every declaration
+// reachable from it. That is bare-pool coincidence acting as a binding source, and it is a
+// second positional naming scheme for declarations whose namespace identity the author already
+// wrote explicitly. A module's own declarations plus the names its import lists actually name
+// are what it may bind; nothing else is narrowed here, and the own-module level is untouched.
+fn selective_func_env_view(env: ResolvedFuncEnv, names: List<String>) -> ResolvedFuncEnv {
+  let selected = fold(names, init: empty_map(), f: (acc, name) =>
+    match map_get(env.local, name) {
+      Present { value: sig } => map_insert(acc, name, sig)
+      Absent => acc
+    }
+  )
+  ResolvedFuncEnv { name: env.name, local: selected, parents: [] }
+}
+
+// An `import ... { .. }` all-import admits the parent whole, exactly as before. A SELECTIVE
+// import admits only the named locals -- and it must look through the parent's own flattened
+// closure as well, because the name it lists may be RE-EXPORTED rather than declared there.
+fn func_env_views_for_import(parent: ResolvedFuncEnv, is_all: Bool, specific_names: List<String>) -> List<ResolvedFuncEnv> {
+  if is_all { [parent] }
+  else {
+    concat([parent], parent.parents)
+      |> map(env => selective_func_env_view(env: env, names: specific_names))
+  }
+}
+
+type FuncEnvViewMerge {
+  by_owner: Map<String, ResolvedFuncEnv>
+  owner_order: List<String>
+}
+
+fn merge_func_sig_maps(base: Map<String, ResolvedFuncSig>, incoming: Map<String, ResolvedFuncSig>) -> Map<String, ResolvedFuncSig> {
+  fold(map_keys(incoming), init: base, f: (acc, name) =>
+    match map_get(incoming, name) {
+      Present { value: sig } => map_insert(acc, name, sig)
+      Absent => acc
+    }
+  )
+}
+
+// UNION BEFORE DEDUPLICATION, AND THE ORDER IS THE WHOLE POINT.
+//
+// Two separate direct imports can reach the SAME real owner through different flattened
+// closures, so one selective view of that owner can be empty while another carries the name the
+// author listed. Deduplicating by owner first would keep whichever view came first and discard
+// the other, silently suppressing an EXPLICITLY imported name -- a narrowing defect, not a
+// widening one. Union the admitted locals per real owner, then deduplicate; the result is a
+// function of the view SET rather than of import order.
+fn merge_func_env_views_by_owner(views: List<ResolvedFuncEnv>) -> List<ResolvedFuncEnv> {
+  let merged = fold(views, init: FuncEnvViewMerge { by_owner: empty_map(), owner_order: [] }, f: (acc, view) =>
+    match map_get(acc.by_owner, view.name) {
+      Present { value: existing } =>
+        FuncEnvViewMerge {
+          by_owner: map_insert(
+            acc.by_owner,
+            view.name,
+            ResolvedFuncEnv { name: view.name, local: merge_func_sig_maps(base: existing.local, incoming: view.local), parents: [] }
+          ),
+          owner_order: acc.owner_order
+        }
+      Absent =>
+        FuncEnvViewMerge {
+          by_owner: map_insert(acc.by_owner, view.name, view),
+          owner_order: list_push(acc.owner_order, view.name)
+        }
+    }
+  )
+  merged.owner_order |> flat_map(owner =>
+    match map_get(merged.by_owner, owner) {
+      Present { value: env } => [env]
+      Absent => []
+    }
+  )
+}
+
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     variant_surfaces: Map<String, VariantExportSurface>,
@@ -11024,12 +11432,13 @@ fn build_module_context(contributions: List<ItemContribution>,
     svc_registry: map_merge(census_scope.svc_registry, local.svc_registry),
     svc_locals: map_merge(census_scope.svc_locals, local.svc_locals)
   )
-  let parent_envs = flat_map(resolved_imports, imp =>
+  let parent_envs = merge_func_env_views_by_owner(flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: typed_parent } => [typed_parent.func_env]
+      Present { value: typed_parent } =>
+        func_env_views_for_import(parent: typed_parent.func_env, is_all: imp.is_all, specific_names: imp.specific_names)
       Absent => []
     }
-  )
+  ))
   let resolve_result = resolve_func_sigs(
     declared_sigs: local.func_sigs,
     parent_envs: parent_envs,
@@ -11802,13 +12211,17 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )
   map(modules, m =>
-    let parents = flat_map(module_imports(n: m.module), imp =>
+    let parents = merge_func_env_views_by_owner(flat_map(module_imports(n: m.module), imp =>
       let path = import_module_path_at(imp: imp, source_indices: source_indices)
       match map_get(index, path) {
-        Present { value: parent } => [parent.func_env]
+        Present { value: parent } => func_env_views_for_import(
+          parent: parent.func_env,
+          is_all: import_is_all(n: imp),
+          specific_names: import_specific_names_at(n: imp, source_indices: source_indices)
+        )
         Absent => []
       }
-    )
+    ))
     TypedModule {
       progress: m.progress,
       module: m.module,
