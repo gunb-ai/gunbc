@@ -227,3 +227,24 @@ data phantom_distinct_type_argument_source: String = "module probe_inhabit_phant
 test fn w_a_phantom_type_argument_with_identical_representation_is_still_separated() -> Bool {
   violation_count(source: phantom_distinct_type_argument_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
+
+// WHERE THE examples.nominal_distinctness_witness PAIR WENT, recorded here because deleting a
+// module takes its evidence with it unless the evidence is named first. That pair was
+// dag/examples/nominal_distinctness_witness/{witness,twin}.dag: witness.dag passed an AccountId
+// to a parameter declared UserId and twin.dag passed a UserId, an ordinary RED/GREEN discriminator
+// over exactly this class, authored long before this arm.
+//
+// IT WAS INERT, AND ITS INERTNESS WAS THIS DEFECT. Consumed by nothing (it appears in the
+// unconsumed-module census with no consumer), the RED half COMPILED CLEAN -- so the pair recorded
+// a distinction the compiler was not making, and nothing anywhere reported that. The moment this
+// arm landed, witness.dag stopped compiling, which is the pair finally working and also the reason
+// it can no longer live in the corpus: strict preparation compiles every module, so a module that
+// must not compile stops the line.
+//
+// A DELIBERATELY INVALID PROGRAM BELONGS AT THE FIXTURE BOUNDARY, NOT IN THE CORPUS -- DESIGN 4b's
+// distinction between what an Accepted program may contain and what a fixture may author. The
+// discrimination the pair carried is exactly w_distinct_unapplied_product_constructors_through_a
+// _call_are_refused above plus w_matching_applied_product_at_a_direct_call_argument_is_admitted,
+// both of which EXECUTE on every floor run. So the evidence did not move to a weaker home; it
+// moved from a home where it could never fire to one where it fires every run.
+data nominal_distinctness_example_disposition: String = "examples.nominal_distinctness_witness and examples.nominal_distinctness_twin were deleted when this arm landed: the RED half was a corpus module that must not compile, and its discrimination is carried by the enrolled fixture arms in this file."

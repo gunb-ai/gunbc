@@ -4091,7 +4091,11 @@ pub fn applied_type_argument_identity_known(name: String, scope: Rc<InferScope>)
                 scope.type_env.clone(),
                 name.clone(),
             ) {
-                Some(_) => true,
+                Some(decl) => {
+                    (((decl.connective.clone() == Connective::Conj)
+                        || (decl.connective.clone() == Connective::Disj))
+                        && ((decl.children.clone().len() as i64) > 0))
+                }
                 None => false,
             }
         }

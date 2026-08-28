@@ -2935,6 +2935,26 @@ fn applied_type_argument_is_nested_application(n: Node, scope: InferScope) -> Bo
   }
 }
 
+// A TYPE VARIABLE MUST RESOLVE TO A STRUCTURE, NOT MERELY TO A BINDING, and the third refuted
+// test is the reason this clause is spelled this way rather than the two shorter ways.
+//
+// REFUTED ONCE: "the name resolves in the type environment". Type PARAMETERS are bound there, so
+// S and R answer exactly as a declared record does. Fifteen false positives on the v2 pipeline
+// entry.
+//
+// REFUTED TWICE, and this is the subtler one: "the resolved node has no authored name". On the
+// v2 entry a type variable's resolved node was nameless and the test looked sound. Over the WHOLE
+// corpus it is not -- measured on the required floor, `Measure<Time,S,Nat>`, `MembershipPlan<M,At>`
+// and `ContainmentPath<N>` all resolve their variables to nodes that KEEP the authored name, so
+// the test admitted them as concrete and refused four live modules. A property observed on one
+// entry was read as a property of the substrate; it is a property of that entry's resolution
+// state.
+//
+// WHAT HOLDS OVER THE CORPUS: a type parameter binds to a bare leaf standing for itself, while a
+// real type resolves to a declaration WITH STRUCTURE -- a record's fields, a coproduct's variants.
+// So the test is structural rather than nominal, and it fails open twice over: an argument whose
+// name does not resolve, and an argument that resolves to something structureless (a bare alias,
+// a parameter), are both left unjudged.
 fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool {
   if name == "" {
     false
@@ -2942,7 +2962,8 @@ fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool
     true
   } else {
     match lookup_type_by_name(env: scope.type_env, name: name) {
-      Present { value: _ } => true
+      Present { value: decl } =>
+        (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0
       Absent => false
     }
   }
