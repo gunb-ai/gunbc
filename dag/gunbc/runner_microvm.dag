@@ -1,0 +1,254 @@
+module gunbc.runner_microvm
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.disposition { Disposition, SingleAuthority }
+import product.fabric.isolation {
+  IsolationProfile,
+  IsolationGuarantee,
+  DedicatedKernel,
+  dedicated_kernel_sandbox_profile,
+  isolation_profile_satisfies,
+}
+import gunbc.runner_unit {
+  RunnerUnitLifecycleIntent,
+  gunbc_runner_lifecycle_intent,
+  lifecycle_intent_cannot_orphan,
+  gunbc_runner_listener_is_main_process,
+}
+import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_release_2_336_0 }
+import extdeps.virtualization.firecracker {
+  FirecrackerVmConfig,
+  FirecrackerBootSource,
+  FirecrackerDrive,
+  FirecrackerNetworkInterface,
+  FirecrackerMachineConfig,
+  FirecrackerRelease,
+  firecracker_release_aarch64,
+  firecracker_config_has_single_root,
+}
+
+data runner_microvm_disposition: Disposition = SingleAuthority
+
+// THE GUEST IMAGE IS AN IDENTITY, NOT A PATH.
+//
+// A path names where an image happens to sit on one host; two hosts holding different bytes at the
+// same path is exactly the drift this fleet keeps losing track of. The distribution, its release
+// and the runner baked into it are what make two images the same image, so they are the fields.
+//
+// THE RUNNER IS CARRIED AS THE CITED RELEASE ROW, NOT AS A VERSION STRING. extdeps.github.
+// actions_runner already owns which Actions runner this fleet installs, with the upstream digests
+// and a measured note about why the previous pin was retired server-side. A version literal here
+// would be a SECOND authority for one fact, and the two would drift the moment either moved -- the
+// exact nicknaming failure the guest-image-as-identity paragraph above is about, committed one
+// field lower. Whatever the host path installs, the VM path installs, because it is one row.
+type RunnerGuestImage {
+  distribution: NonEmptyStr
+  release_series: NonEmptyStr
+  arch: NonEmptyStr
+  runner: ActionsRunnerRelease
+}
+
+data gunbc_runner_guest_image: RunnerGuestImage = RunnerGuestImage {
+  distribution: "ubuntu",
+  release_series: "24.04",
+  arch: "aarch64",
+  runner: actions_runner_release_2_336_0,
+}
+
+// THE CREDENTIAL REACHES THE GUEST AS A READ-ONLY BLOCK DEVICE, AND THAT IS THE WHOLE POINT.
+//
+// Today a slot's credential is a FILE IN A DIRECTORY THE NEXT INCARNATION ALSO OWNS, which is how
+// an orphaned listener deletes a live job's credentials: same path, different process, no wall.
+// A per-registration drive has no such sharing to express -- the device is attached to one VM, is
+// read-only to the guest, and ceases to exist when that VM does. AttemptScopedSecrets is therefore
+// a property of the CARRIER rather than a promise the handler makes.
+type JitCredentialTransport
+  = JitConfigOnReadOnlyDrive { drive_id: NonEmptyStr }
+  | JitConfigInSharedSlotDirectory { path: FilePath }
+
+fn jit_transport_is_attempt_scoped(t: JitCredentialTransport) -> Bool {
+  match t {
+    JitConfigOnReadOnlyDrive { drive_id: _ } => true
+    JitConfigInSharedSlotDirectory { path: _ } => false
+  }
+}
+
+data gunbc_runner_jit_transport: JitCredentialTransport = JitConfigOnReadOnlyDrive {
+  drive_id: "jitcfg",
+}
+
+// WHAT ONE RUNNER VM IS SIZED AT.
+//
+// vcpu_count and mem_size_mib are carried through to Firecracker's own field names rather than
+// converted, because a converted value would disagree with what the API accepts.
+type RunnerMicroVmSize {
+  vcpu_count: Int
+  mem_size_mib: Int
+}
+
+// THE MVP SIZE, DECLARED AS THE MVP SIZE. It is what was booted on srv4 and is NOT a production
+// sizing: the floor's working set has one observed peak and one sample cannot support a hard cap.
+// A production row belongs beside a measured distribution and is deliberately absent until there
+// is one, because a plausible number here would be consumed as though it were measured.
+data runner_microvm_mvp_size: RunnerMicroVmSize = RunnerMicroVmSize {
+  vcpu_count: 4,
+  mem_size_mib: 4096,
+}
+
+// THE ISOLATION A RUNNER MICROVM PROVIDES, WHICH IS THE FABRIC'S VOCABULARY AND NOT A NEW ONE.
+//
+// A dedicated kernel is the guarantee the current fleet slots cannot make -- product.fabric.
+// isolation current_runner_slot_profile() is EMPTY by measurement -- so this row is the entire
+// delta the migration buys, stated in terms a broker can already compare against a requirement.
+fn runner_microvm_isolation_profile() -> IsolationProfile {
+  dedicated_kernel_sandbox_profile()
+}
+
+fn runner_microvm_provides_dedicated_kernel() -> Bool {
+  isolation_profile_satisfies(
+    required: IsolationProfile { guarantees: [DedicatedKernel] },
+    provided: runner_microvm_isolation_profile(),
+  )
+}
+
+// THE VMM PROCESS TOPOLOGY IS A FACT WITH OPPOSITE CONSEQUENCES, SO IT IS CARRIED RATHER THAN
+// ASSUMED.
+//
+// An earlier revision of this module refused every microVM under an orphanable lifecycle intent, on
+// the reasoning that a microVM relocates the orphan to the VMM rather than removing it. That
+// reasoning is sound for ONE topology and wrong for the other, and collapsing the two into a single
+// unconditional refusal would have refused a correct design:
+//
+//   VmmIsMainProcess -- the unit execs the jailer, which execs Firecracker, so the VMM IS MainPID.
+//     Killing MainPID destroys the guest and everything in it. No process can outlive that kill, so
+//     no kill mode or exit type can produce an orphan here. The guarantee is not needed.
+//
+//   VmmUnderLifecycleController -- a controller stays MainPID so it can wait for the VMM, tear down
+//     the epoch's disk, tap and secret, read back their absence and return one classified status.
+//     That controller is worth having, and it puts the VMM back underneath a parent, which is
+//     exactly the shape that orphans today. The guarantee IS needed.
+//
+// So the prerequisite belongs to the topology, not to virtualization. Stating it the other way
+// would have been a claim about microVMs that the mechanism does not support.
+type VmmProcessTopology = VmmIsMainProcess | VmmUnderLifecycleController
+
+fn topology_requires_cgroup_reaching_teardown(t: VmmProcessTopology) -> Bool {
+  match t {
+    VmmIsMainProcess => false
+    VmmUnderLifecycleController => true
+  }
+}
+
+// ADMISSION, AND THE PREREQUISITE IS A REFUSAL RATHER THAN A PARAGRAPH.
+//
+// Under a lifecycle-controller topology whose teardown does not reach the whole cgroup, a microVM
+// does not close the orphan class -- it moves the orphan up one level, and an orphaned VMM keeps
+// its guest alive holding the same credential. "Everything inside the VM dies together" is true and
+// does not help when the VM is what survived.
+//
+// gunbc.runner_unit already owns the deciding predicate and the measured input (the listener is a
+// GRANDCHILD of MainPID because GitHub's stock run.sh does not exec), so this consumes that
+// authority rather than re-deriving it. Stating the dependency in prose would have left it
+// satisfiable by an author who never read the paragraph.
+type RunnerMicroVmAdmission
+  = RunnerMicroVmAdmitted
+  | RunnerMicroVmRefusedOrphanableUnit { reason: String }
+  | RunnerMicroVmRefusedSharedCredential { reason: String }
+  | RunnerMicroVmRefusedMalformedVm { reason: String }
+
+fn runner_microvm_admission(
+  topology: VmmProcessTopology,
+  intent: RunnerUnitLifecycleIntent,
+  listener_is_main_process: Bool,
+  transport: JitCredentialTransport,
+  config: FirecrackerVmConfig,
+) -> RunnerMicroVmAdmission {
+  if topology_requires_cgroup_reaching_teardown(t: topology)
+    && !lifecycle_intent_cannot_orphan(intent: intent, listener_is_main_process: listener_is_main_process) {
+    RunnerMicroVmRefusedOrphanableUnit {
+      reason: "this topology keeps a lifecycle controller above the VMM, and the unit's teardown can leave a live process behind, so an orphaned VMM would keep its guest and its credential alive -- the microVM relocates the orphan rather than removing it. Deploy the cgroup-reaching intent, or exec the VMM directly as MainPID",
+    }
+  } else if !jit_transport_is_attempt_scoped(t: transport) {
+    RunnerMicroVmRefusedSharedCredential {
+      reason: "the JIT credential is carried in a directory shared across incarnations, which is the exact carrier that lets one incarnation delete another's credential mid-job; a per-VM read-only drive is required",
+    }
+  } else if !firecracker_config_has_single_root(config: config) {
+    RunnerMicroVmRefusedMalformedVm {
+      reason: "the Firecracker configuration does not name exactly one root device, so the guest either cannot boot or its root is ambiguous",
+    }
+  } else {
+    RunnerMicroVmAdmitted
+  }
+}
+
+// THE VM CONFIGURATION, DERIVED FROM THE FACTS ABOVE RATHER THAN AUTHORED BESIDE THEM.
+//
+// Every field a caller could get wrong independently is instead a consequence: the root drive is
+// the image, the second drive is the credential transport's own drive_id, and the size is the
+// declared size. A hand-authored config beside these rows would be a second spelling of one VM.
+fn runner_microvm_vm_config(
+  rootfs_path: FilePath,
+  jit_config_path: FilePath,
+  kernel_path: FilePath,
+  tap_device: NonEmptyStr,
+  guest_mac: NonEmptyStr,
+  size: RunnerMicroVmSize,
+  transport: JitCredentialTransport,
+) -> FirecrackerVmConfig {
+  FirecrackerVmConfig {
+    boot_source: FirecrackerBootSource {
+      kernel_image_path: kernel_path,
+      boot_args: "keep_bootcon console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw",
+    },
+    drives: [
+      FirecrackerDrive {
+        drive_id: "rootfs",
+        path_on_host: rootfs_path,
+        is_root_device: true,
+        is_read_only: false,
+      },
+      FirecrackerDrive {
+        drive_id: jit_transport_drive_id(t: transport),
+        path_on_host: jit_config_path,
+        is_root_device: false,
+        is_read_only: true,
+      },
+    ],
+    network_interfaces: [
+      FirecrackerNetworkInterface {
+        iface_id: "eth0",
+        host_dev_name: tap_device,
+        guest_mac: guest_mac,
+      },
+    ],
+    machine_config: FirecrackerMachineConfig {
+      vcpu_count: size.vcpu_count,
+      mem_size_mib: size.mem_size_mib,
+    },
+  }
+}
+
+fn jit_transport_drive_id(t: JitCredentialTransport) -> NonEmptyStr {
+  match t {
+    JitConfigOnReadOnlyDrive { drive_id: d } => d
+    JitConfigInSharedSlotDirectory { path: _ } => "jitcfg"
+  }
+}
+
+// THE FLEET'S OWN ADMISSION, EVALUATED AGAINST THE DECLARED INTENT.
+//
+// This is the row that answers "may we run runners in microVMs today", and it answers by consuming
+// gunbc_runner_lifecycle_intent rather than by an author's assertion. It moves the day that intent
+// is deployed, and not before.
+fn gunbc_runner_microvm_admission(
+  topology: VmmProcessTopology,
+  config: FirecrackerVmConfig,
+) -> RunnerMicroVmAdmission {
+  runner_microvm_admission(
+    topology: topology,
+    intent: gunbc_runner_lifecycle_intent,
+    listener_is_main_process: gunbc_runner_listener_is_main_process,
+    transport: gunbc_runner_jit_transport,
+    config: config,
+  )
+}
