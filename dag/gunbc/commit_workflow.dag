@@ -11,7 +11,7 @@ import gunbc.generated_artifact {
   GeneratedArtifact, GithooksPrePushArtifact, artifact_path
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, declaration_ref_eq, declaration_ref_in_list }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, declaration_ref_eq, declaration_ref_in_list }
 import std.types { NonEmptyStr, FilePath }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.git
@@ -1049,6 +1049,133 @@ type CommitCheckEnrollment {
   surfaces: List<CommitWorkflowSurface>
 }
 
+// A REMOVAL'S "STILL COVERED ELSEWHERE" HALF IS A CITATION, AND UNTIL THIS CARRIER IT WAS
+// PROSE. Every check this repository drops is justified the same way: the check moved, the
+// authoritative boundary still covers it, so nothing is lost. That second clause is the whole
+// safety argument, and it was written as English naming a symbol -- which nothing resolves.
+// DESIGN section 3 already rules that a prose reference inside a String is covered by nothing,
+// before or after the declaration-index wall; these rows are that rule applied to the one place
+// where an unresolvable citation converts directly into an unguarded check.
+//
+// THE MEASURED FAILURE THIS EXISTS FOR, and it is a COMPOSITION rather than a mistake. Two
+// removals were individually sound: the drift gate left the push path in 2026-07-22 because the
+// floor still ran it, and the hook was slimmed to fmt-only in 2026-07-25 because CI still ran
+// fmt. The 2026-08-15 floor cut then deleted the authority BOTH cited. No step was wrong and no
+// review could have caught it from either diff, because each removal's justification was true
+// when written and was falsified by a later change that had no way to see it. That is exactly
+// what a resolvable citation fixes: had the covering mechanism been a DeclarationRef, the floor
+// cut would have refused at the required parse phase instead of landing silently.
+//
+// WHY THE COVERAGE CLAIM IS A DeclarationRef AND NOT A JOIN AGAINST commit_gate_roster. The
+// tempting construction is to derive coverage from the roster's own GithubActionsCiJob
+// enrollments. That would be authority substitution: no .dag authority states which checks the
+// required run actually performs -- gunbc.compiler_frontend_program_status records exactly this,
+// answering NotDerivable for SelfHostCargoPhaseEnrolled because the phase roster lives in host
+// Rust -- so a green join would assert coverage nothing established. What a DeclarationRef DOES
+// buy is narrower and real: the cited mechanism must EXIST. That is a wall against the deletion
+// this class died of, and it is not a claim that the mechanism runs.
+// THE ARM IS NAMED FOR A CLAIM, NOT FOR A VERIFIED FACT, and review 57017 was right that the
+// first spelling (`RemovalCoveredBy`) read as the latter. What a resolvable DeclarationRef
+// establishes is that the cited mechanism EXISTS; the required-phase enrollment could be
+// deleted while the declaration stands, and this row would not notice. Naming the arm for
+// coverage while the evidence reaches only existence is the rung inflation DESIGN 4b(1) calls
+// worse than sitting low, so the arm now says CLAIMED and the gap is in the name rather than
+// only in a paragraph underneath it.
+//
+// NO `since` FIELD, AND ITS ABSENCE IS THE POINT. The first cut of this arm carried one, and
+// in the only row that inhabits it, `since` and the row's own `removed_on` were the SAME
+// LITERAL -- two representations of one fact with no authority saying which wins if they
+// drift, which is the §2 defect this whole carrier exists to reduce, reintroduced one field
+// in. Uncoverage begins when the check was removed, and `removed_on` already states that. A
+// row that was covered and became uncovered LATER is a different shape; it gets modeled when
+// a real specimen exists, rather than minted now on speculation.
+type RemovalResidual
+  = RemovalCoverageClaimed { mechanism: DeclarationRef }
+  | RemovalUncovered { cause: NonEmptyStr }
+
+type CheckRemoval {
+  check: CommitCheckKind
+  removed_from: CommitWorkflowSurface
+  removed_on: NonEmptyStr
+  residual: RemovalResidual
+}
+
+// One row per removed CHECK, never per removing change: the fmt row below was removed by a cut
+// whose subject was the whole floor, and folding it into that cut's record is what let it go
+// unnoticed for eleven days.
+// UNCOVERED, AND FOUND BY WRITING THIS ROSTER RATHER THAN BY A RED. The pre-push hook was
+// slimmed to fmt-only on the stated ground that fmt remained a required-path CI step; the
+// floor cut deleted the job carrying it, and the emitted .github/workflows/witnesses.yml has
+// no cargo fmt step in either lane. So the hook is now the ONLY place fmt runs, and a hook is
+// opt-in per clone and bypassable with --no-verify -- which is the same argument the slimming
+// ruling itself used to establish that a hook enforces nothing. DESIGN already lists the fmt
+// gate among the floor cut's unguarded re-adds; this row is that entry at check grain, so the
+// gap is countable here rather than only narrated there.
+data check_removal_roster: List<CheckRemoval> = [
+  CheckRemoval {
+    check: CommitSpecGate { gate: GeneratedArtifactDriftGate },
+    removed_from: GitPrePushHook,
+    removed_on: "2026-07-22" as NonEmptyStr,
+    residual: RemovalCoverageClaimed {
+      mechanism: decl_ref(
+        module_path: "gunbc.generated_artifact_emit",
+        decl_name: "generated_artifact_body_for_path"
+      )
+    }
+  },
+  CheckRemoval {
+    check: CommitCargoFmtCheck,
+    removed_from: GithubActionsCiJob,
+    removed_on: "2026-08-15" as NonEmptyStr,
+    residual: RemovalUncovered {
+      cause: "the floor cut deleted the build job that ran cargo fmt --all --check; no required lane in .github/workflows/witnesses.yml carries a fmt step, so GitPrePushHook is the only remaining surface and it is opt-in per clone" as NonEmptyStr
+    }
+  }
+]
+
+// THE SELECTION MATCHES THE COPRODUCT IN PLACE, and there is deliberately no reusable
+// `removal_is_uncovered(..) -> Bool` beside it. The first cut had one, and review 57017 named it
+// correctly as the repository's predicate-dissolution violation: a Bool classifying coproduct
+// arms is a parallel surface over a vocabulary that already answers, and it destroys
+// exhaustiveness at every call site -- a THIRD residual arm would have been absorbed into one
+// side of that predicate and no consumer would have been asked. Matched here, a new arm fails to
+// compile at the site that has to decide about it.
+//
+// The judgment also has to DESCEND: a match on the row that binds `residual` as a payload is
+// exhaustive at the row level and blind to the distinction that decides the answer, which is the
+// failure mode DESIGN names as total at the level examined, blind one level down.
+//
+// NEITHER QUERY BELOW ANSWERS "WHICH CHECKS ARE GUARDED", AND NOTHING HERE DOES, which is the
+// repair for review 57058. The first cut had a single `uncovered_removals` described as "the
+// repository's answer to which checks are unguarded"; it excluded every RemovalCoverageClaimed
+// row, so a mechanism that still EXISTS while its required-phase enrollment was deleted read as
+// guarded. Renaming the arm to CLAIMED made the carrier honest and left the QUERY promoting a
+// claim into a conclusion -- ⊥-as-ignorance rendered as ⊥-as-answer, the empty-observation
+// narrow DESIGN names as strictly worse than the widen §5 already forbids, because a widen is
+// merely expensive and a narrow is silently uncovered.
+//
+// So the partition is stated at the grain the evidence supports: a row is either DECLARED
+// uncovered or carries an UNVERIFIED claim, and those two exhaust the roster. There is
+// deliberately no third query and no `verified covered` arm, because no producer could inhabit
+// one -- no .dag authority states which checks the required run performs -- and an arm nothing
+// can reach is the permanently-green decoration §4b forbids. The consequence a caller must not
+// miss: the COMPLEMENT of removals_declared_uncovered is NOT the guarded set. It is the set
+// whose coverage is claimed and unchecked, and the honest count of what this repository can
+// currently prove is guarded, at check grain, is ZERO.
+fn removals_declared_uncovered(removals: List<CheckRemoval>) -> List<CheckRemoval> {
+  filter(removals, r => match r.residual {
+    RemovalCoverageClaimed { mechanism: _ } => false
+    RemovalUncovered { cause: _ } => true
+  })
+}
+
+fn removals_with_unverified_coverage_claim(removals: List<CheckRemoval>) -> List<CheckRemoval> {
+  filter(removals, r => match r.residual {
+    RemovalCoverageClaimed { mechanism: _ } => true
+    RemovalUncovered { cause: _ } => false
+  })
+}
+
 type EntryDeclarationDiscovery
   = DiscoveryComplete {
       entry: String,
@@ -1095,11 +1222,11 @@ type CommitWorkflowRealizationBinding {
 }
 
 data githooks_pre_push_artifact_drift_gate_removed_disposition: Disposition = Terminal {
-  reason: "GeneratedArtifactDriftGate's GitPrePushHook enrollment REMOVED 2026-07-22 (fleet incident: this gate broke pushes fleet-wide — measured ~61min/2,176 witnesses on a rebased force-push touching measure.dag, since committed_generated_artifacts() regeneration walks the whole generated-artifact corpus, not an affected-set slice). Fail-closed verification before removal (DESIGN §5 — do not drop a check without confirming the authoritative boundary still covers it): GeneratedArtifactDriftGate stays enrolled on GithubActionsCiJob, which the required `ci` job runs via src/v2/workflow/ci_floor_plan.dag gunbc_ci_floor_plan (dag/gunbc/ci_spec.dag ci_gate list, RunnableSingleClaim on generated_artifact_drift_gate_passes); that same floor run is what stamps the merge-admission receipt tools.merge_admission_gate.dag reads at merge time, so drift is still a hard merge-time wall — pre-push was a redundant SECOND full-corpus run of the same unscoped check (DESIGN §2: duplicated work, not added safety), not the only place it was enforced. This mirrors the fmt precedent recorded in commit_gate_rust_suite_removed_disposition below: a git hook is opt-in per clone (core.hooksPath), bypassable with --no-verify, and absent in container worktrees, so it was never a sound enforcement AUTHORITY — only fast local feedback. The pre-push hook keeps the cheap guards (uncommitted-tree check, doc-reachability witness on the ReadsLiveTree entry, cargo fmt --all --check) and gunbc_ci_witness_corpus_only_batches' declared affected-set-scoped test gate (see its own note: deliberately narrowed to the hermetic discovery corpus, not this whole-corpus regen sweep). No skip env var was added — the heavy arm is gone from the model, not hidden behind a toggle (DESIGN §5 no-escape-hatches)."
+  reason: "GeneratedArtifactDriftGate's GitPrePushHook enrollment REMOVED 2026-07-22 (fleet incident: this gate broke pushes fleet-wide — measured ~61min/2,176 witnesses on a rebased force-push touching measure.dag, since committed_generated_artifacts() regeneration walks the whole generated-artifact corpus, not an affected-set slice). Fail-closed verification before removal (DESIGN §5 — do not drop a check without confirming the authoritative boundary still covers it): GeneratedArtifactDriftGate stays enrolled on GithubActionsCiJob, so drift is still a hard merge-time wall. THAT CITATION WAS REWRITTEN 2026-08-27 AND THE ORIGINAL IS WORTH RECORDING, because the rewrite is the whole point of check_removal_roster above. As authored, this clause named `src/v2/workflow/ci_floor_plan.dag gunbc_ci_floor_plan` and the merge-admission receipt at `tools.merge_admission_gate.dag`. BOTH are deleted -- the first by the 2026-08-15 floor cut, the second with it, and merge-admission stamping is on DESIGN's unguarded re-add list -- so from 2026-08-15 this disposition justified a removed check by naming two authorities that did not exist, and nothing could say so because a citation inside a String resolves against nothing. The claim happens to be TRUE again today by a route this text never named: gunbc#9415 enrolled a `generated-artifact` required phase adjudicating every member of committed_generated_artifacts through gunbc.generated_artifact_emit generated_artifact_body_for_path. The live coverage claim is therefore carried by this disposition's check_removal_roster row as a DeclarationRef, where deleting the mechanism refuses, and this prose is history — pre-push was a redundant SECOND full-corpus run of the same unscoped check (DESIGN §2: duplicated work, not added safety), not the only place it was enforced. This mirrors the fmt precedent recorded in commit_gate_rust_suite_removed_disposition below: a git hook is opt-in per clone (core.hooksPath), bypassable with --no-verify, and absent in container worktrees, so it was never a sound enforcement AUTHORITY — only fast local feedback. The pre-push hook keeps the cheap guards (uncommitted-tree check, doc-reachability witness on the ReadsLiveTree entry, cargo fmt --all --check) and gunbc_ci_witness_corpus_only_batches' declared affected-set-scoped test gate (see its own note: deliberately narrowed to the hermetic discovery corpus, not this whole-corpus regen sweep). No skip env var was added — the heavy arm is gone from the model, not hidden behind a toggle (DESIGN §5 no-escape-hatches)."
 }
 
 data githooks_pre_push_slimmed_to_fmt_disposition: Disposition = Terminal {
-  reason: "The pre-push hook was SLIMMED TO FMT-ONLY 2026-07-25 (operator ruling): 'Pre-push hook restored to fmt-only per CLAUDE.md's documented contract; the witness corpus belongs to CI, not the push path.' Removed from the GitPrePushHook surface: the doc-reachability CommitWitnessClaim enrollment, and (in gunbc.githooks_pre_push_emit) the whole `claim_batch --pre-push` shim — the affected-set WitnessCorpusRun gate, the DocWitnessRun gate, and the in-hook `cargo build -p v1-compiler --bin claim_batch` that ran from inside a push when the binary was missing. Fail-closed verification before removal (DESIGN §5 — do not drop a check without confirming the authoritative boundary still covers it): cargo fmt --all --check remains a required-path CI step (gunbc.ci_spec ci_fmt_gate_note — build runs it first, and ci needs:[build]); the witness corpus remains the required `ci` floor via gunbc_ci_floor_plan, which also stamps the merge-admission receipt tools.merge_admission_gate.dag reads; and dag/test/claim/doc_reachability_witness_test.dag keeps its cadence through the floor's discovery-corpus scan (CiSpec.discovery_scan_dirs covers dag/test/claim), so the doc-reachability rows lose no coverage — only their redundant second run on the push path. NOTHING LOSES ENFORCEMENT BECAUSE THE HOOK NEVER PROVIDED ANY: it is opt-in per clone (core.hooksPath), bypassable with --no-verify, absent in container worktrees, and PROVEN ineffective by #6658 (an unformatted .rs landed on main and no hook caught it) — the same argument commit_gate_rust_suite_removed_disposition and githooks_pre_push_artifact_drift_gate_removed_disposition already make. What the weight DID buy was harm: a non-authority check heavy enough to make a legitimately-red mid-lane branch feel unpushable is pressure that converts honest reds into workaround greens, and it was priced — three rounds of hand-import workarounds, one decorative gate, and the normalization of --no-verify on the namespace type-binding lane (2026-07-25). A check that cannot enforce should at least be instant. Explicitly DECLINED as the alternative: branch-level expected-red exemption machinery — building configuration so a non-authority check can be tolerated invests in a mechanism that should not carry this weight at all, and slimming dissolves the need. No skip env var was added; the heavy arms are gone from the model, not hidden behind a toggle (DESIGN §5 no-escape-hatches). Re-heavying requires a GitPrePushHook roster edit, which dag/test/claim/githooks_pre_push_emit_test.dag reds on."
+  reason: "The pre-push hook was SLIMMED TO FMT-ONLY 2026-07-25 (operator ruling): 'Pre-push hook restored to fmt-only per CLAUDE.md's documented contract; the witness corpus belongs to CI, not the push path.' Removed from the GitPrePushHook surface: the doc-reachability CommitWitnessClaim enrollment, and (in gunbc.githooks_pre_push_emit) the whole `claim_batch --pre-push` shim — the affected-set WitnessCorpusRun gate, the DocWitnessRun gate, and the in-hook `cargo build -p v1-compiler --bin claim_batch` that ran from inside a push when the binary was missing. Fail-closed verification before removal (DESIGN §5 — do not drop a check without confirming the authoritative boundary still covers it): the witness corpus remains the required floor, whose admission is owned by v2.workflow.required_floor required_floor_site_disposition; and dag/test/claim/doc_reachability_witness_test.dag keeps its cadence through the floor's discovery-corpus scan (CiSpec.discovery_scan_dirs covers dag/test/claim), so the doc-reachability rows lose no coverage — only their redundant second run on the push path. NOTHING LOSES ENFORCEMENT BECAUSE THE HOOK NEVER PROVIDED ANY: it is opt-in per clone (core.hooksPath), bypassable with --no-verify, absent in container worktrees, and PROVEN ineffective by #6658 (an unformatted .rs landed on main and no hook caught it) — the same argument commit_gate_rust_suite_removed_disposition and githooks_pre_push_artifact_drift_gate_removed_disposition already make. What the weight DID buy was harm: a non-authority check heavy enough to make a legitimately-red mid-lane branch feel unpushable is pressure that converts honest reds into workaround greens, and it was priced — three rounds of hand-import workarounds, one decorative gate, and the normalization of --no-verify on the namespace type-binding lane (2026-07-25). A check that cannot enforce should at least be instant. Explicitly DECLINED as the alternative: branch-level expected-red exemption machinery — building configuration so a non-authority check can be tolerated invests in a mechanism that should not carry this weight at all, and slimming dissolves the need. No skip env var was added; the heavy arms are gone from the model, not hidden behind a toggle (DESIGN §5 no-escape-hatches). Re-heavying requires a GitPrePushHook roster edit, which dag/test/claim/githooks_pre_push_emit_test.dag reds on.\n\nTWO OF THIS ROW'S THREE COVERAGE CITATIONS WERE FALSIFIED BY THE 2026-08-15 FLOOR CUT, corrected 2026-08-27, and only one of the two is repaired by rewording. THE WITNESS-CORPUS HALF named `gunbc_ci_floor_plan`; the corpus still runs, under a different authority, so that citation is simply repointed at v2.workflow.required_floor. THE FMT HALF IS DIFFERENT AND IS A REAL GAP: this row's stated ground for slimming the hook was that `cargo fmt --all --check` remained a required-path CI step, and the floor cut deleted the build job carrying it -- measured against the emitted .github/workflows/witnesses.yml, neither required lane runs fmt at all. So the hook is the only surface left for a check whose removal from the push path was argued FROM the hook being unable to enforce anything. That is recorded at check grain in check_removal_roster above as an Uncovered residual rather than repaired here, because rewording a justification cannot restore a check. The merge-admission receipt this row also cited (`tools.merge_admission_gate.dag`) is likewise deleted and is on DESIGN's unguarded re-add list."
 }
 
 data commit_gate_rust_suite_removed_disposition: Disposition = Terminal {
