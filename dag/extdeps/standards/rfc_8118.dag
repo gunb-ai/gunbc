@@ -23,12 +23,19 @@ import extdeps.uri {
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+data rfc_8118_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc8118#section-3"
   }
 }
+
+// THE CONVENTIONAL ANCHOR NAME IS A BINDING, NOT A SECOND URI -- the extdeps.cpu_attachment
+// modules do the same thing. The mandatory-tag corpus wall reads a module's authority under this
+// exact name, and consumers import the document-specific name because THAT one does not collide:
+// a witness citing two modules' authorities cannot import both under the conventional spelling.
+// So the locator is typed once above and named twice, once for each reader.
+data extdeps_external_authority_anchor: ExternalAuthority = rfc_8118_external_authority_anchor
 
 data iso_32000_2_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -66,7 +73,7 @@ data rfc_8118_model_scope: ExternalModelScope = ExternalModelScope {
       field: WholeDeclaration,
     }
   },
-  first_citation: extdeps_external_authority_anchor,
+  first_citation: rfc_8118_external_authority_anchor,
   further_citations: [iso_32000_2_authority],
 }
 
@@ -437,7 +444,7 @@ fn pdf_open_fragment_selector(sequence: PdfOpenParameterSequence) -> PdfOpenFrag
       }
     PdfOpenParameterSequenceWired { wire: fragment } =>
       match fragment_selector(
-        conforms_to: extdeps_external_authority_anchor,
+        conforms_to: rfc_8118_external_authority_anchor,
         value: fragment as NonEmptyStr,
       ) {
         CitationSelectorConstructed(selector) => PdfOpenFragmentSelectorConstructed(selector)
