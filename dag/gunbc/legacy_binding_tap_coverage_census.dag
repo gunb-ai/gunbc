@@ -1,0 +1,176 @@
+module gunbc.legacy_binding_tap_coverage_census
+
+import std.types { String, NonEmptyStr, List }
+import gunbc.rust_item_identity { RustItemDeclarationRef, RustItemWhole }
+import gunbc.legacy_binding_tap_coverage {
+  TapCoverageCensus, TapCoverageStanding, admit_tap_coverage_census,
+  DecisionSiteObservation,
+  OccurrenceIdentityAtSite, OccurrenceIdentityExact, OccurrenceIdentityAbsent,
+  TargetIdentityInOutcome, TargetIdentityExactInOutcome, TargetIdentityComputedThenErased, TargetIdentityNotComputed,
+  AnsweredReferenceFamily, BareCallableReference, QualifiedCallableReference, ConstructorReference, AnswersNoAuthoredReference,
+  TapCoverageRefusal, DecisionSurfaceUnsurveyed,
+}
+
+// THE MEASURED DECISION-SITE ROSTER, read off the v1 seed's callable-resolution surfaces at
+// origin/main 3a8344b5c389. Five sites, and the headline is a single number: ZERO are tappable now,
+// because not one of them receives the parser-minted occurrence identity. Every one is keyed by a
+// bare `name: String` alongside func_env and type_env.
+//
+// THAT IS THE PRICING RESULT AND IT IS NOT WHAT THE ROUTE ASSUMED. The ruled construction was to
+// tap decisions where exact occurrence identity and exact target identity coexist. Measured on this
+// family they never coexist -- the occurrence axis is uniformly absent -- so no amount of widening
+// an outcome carrier makes any of these sites tappable. Threading the occurrence identity into the
+// callable-resolution seam is not an optimisation for a few stragglers, it is the whole
+// precondition, and 0B.1b cannot begin on this family until it lands.
+//
+// THE TARGET AXIS DISCRIMINATES, WHICH IS WHY THIS ROSTER IS A MEASUREMENT AND NOT A DECORATION.
+// Four of five carry the exact selected declaration in the outcome -- the three FuncSigLookup sites
+// through FuncSigResolved { sig, declared: DeclaredCallableIdentity { owner_module_path, decl_name } },
+// and constructor_declaration_for_admission through ExactDeclarationIdentity on BOTH its arms, so a
+// refusal there names the declaration it could not find rather than only that it failed. The fifth,
+// borrowed_census_decl, does not: BorrowedCensusDecl carries { owner_module_path, node }, so the
+// owning module survives while the declaration NAME does not, and the outcome alone cannot say which
+// declaration was found. Two remedies, not one: an erased target is repaired by WIDENING AN OUTCOME,
+// an absent occurrence by THREADING AN INPUT, and folding them into a single not-tappable bucket
+// would send both to whichever repair the shared label suggested.
+//
+// THIS ROSTER WAS RE-DERIVED BEFORE IT LANDED, AND THAT IS THE MORE USEFUL HALF OF THE ENTRY. It was
+// first read at 9fc2c531d5f2 and recorded all three FuncSigLookup sites as COMPUTED-THEN-ERASED:
+// FuncSigResolved carried a signature alone, so the identity the site had selected on was discarded
+// at the moment it answered. Between that reading and this one, gunbc#8952 collected every admissible
+// candidate before deciding and stopped erasing the ambiguity arm, and gunbc#9436 bound floor
+// witnesses to owner-qualified declarations -- and `declared` appeared on the resolved arm. So a
+// census that had been published from the first reading would have named a defect that no longer
+// existed and priced work already done, in the file it was measuring, days earlier. The revision
+// field is not bookkeeping: a decision-site reading is a claim about a tree at one moment, and this
+// tree moved 440 lines in exactly these two files while the claim was being written.
+//
+// WHAT THIS CENSUS IS NOT. It is hand-read at one revision and it surveys ONE family -- callable
+// resolution. Type resolution, method resolution, field resolution and pattern selectors are NOT
+// surveyed, and each is a counted refusal below rather than an absent row, because an unsurveyed
+// surface and a surveyed surface with nothing to report are indistinguishable once the roster is
+// the only output. No tap is placed. No relation is produced. No site is claimed observable.
+
+data legacy_binding_tap_coverage_census_revision: NonEmptyStr = "3a8344b5c389" as NonEmptyStr
+
+fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn seed_fn(module_path: String, decl_name: String) -> RustItemDeclarationRef {
+  RustItemDeclarationRef {
+    module_path: nes(s: module_path),
+    decl_name: nes(s: decl_name),
+    field: RustItemWhole,
+  }
+}
+
+// Every surveyed site is keyed by an authored SPELLING rather than by an occurrence. The
+// occurrence-identity law forbids recovering the identity afterwards from a name, a span, or a
+// structural node, so this is an absence rather than a weaker key.
+fn keyed_by_bare_name() -> OccurrenceIdentityAtSite {
+  OccurrenceIdentityAbsent { keyed_by: nes(s: "name: String -- an authored spelling, with func_env and type_env; no OccurrenceId reaches the site") }
+}
+
+fn site(
+  module_path: String,
+  decl_name: String,
+  outcome_carrier: String,
+  families: List<AnsweredReferenceFamily>,
+  target_identity: TargetIdentityInOutcome,
+) -> DecisionSiteObservation {
+  DecisionSiteObservation {
+    site: seed_fn(module_path: module_path, decl_name: decl_name),
+    observed_at_revision: legacy_binding_tap_coverage_census_revision,
+    outcome_carrier: nes(s: outcome_carrier),
+    families: families,
+    occurrence_identity: keyed_by_bare_name(),
+    target_identity: target_identity,
+  }
+}
+
+fn declared_on_the_resolved_arm() -> TargetIdentityInOutcome {
+  TargetIdentityExactInOutcome {
+    carrier: nes(s: "FuncSigLookup::FuncSigResolved { sig, declared: DeclaredCallableIdentity { owner_module_path, decl_name } } -- the identity the site selected on survives into the answer it gives. The AMBIGUOUS arm separately retains the full CallableCandidate roster, so the path that did not decide also names what it could not choose between."),
+  }
+}
+
+fn tap_coverage_sites() -> List<DecisionSiteObservation> {
+  [
+    site(
+      module_path: "v1_compiler_infer_lookup",
+      decl_name: "callable_lookup_over_candidates",
+      outcome_carrier: "FuncSigLookup",
+      families: [BareCallableReference],
+      target_identity: declared_on_the_resolved_arm(),
+    ),
+    site(
+      module_path: "v1_compiler_infer_lookup",
+      decl_name: "lookup_func_sig",
+      outcome_carrier: "FuncSigLookup",
+      families: [BareCallableReference, QualifiedCallableReference],
+      target_identity: declared_on_the_resolved_arm(),
+    ),
+    site(
+      module_path: "v1_compiler_infer_lookup",
+      decl_name: "func_sig_from_global_bare",
+      outcome_carrier: "FuncSigLookup",
+      families: [BareCallableReference],
+      target_identity: declared_on_the_resolved_arm(),
+    ),
+    site(
+      module_path: "v1_compiler_infer_lookup",
+      decl_name: "constructor_declaration_for_admission",
+      outcome_carrier: "ConstructorDeclarationLookup",
+      families: [ConstructorReference],
+      target_identity: TargetIdentityExactInOutcome {
+        carrier: nes(s: "ExactDeclarationIdentity { owner_module_path, decl_name }, carried on BOTH arms -- ExactConstructorDeclaration and AdmissionBearingDeclarationUnavailable -- so a refusal names the declaration it could not find rather than only that it failed"),
+      },
+    ),
+    site(
+      module_path: "v1_compiler_infer_lookup",
+      decl_name: "borrowed_census_decl",
+      outcome_carrier: "BorrowedCensusDeclLookup",
+      families: [BareCallableReference, QualifiedCallableReference],
+      target_identity: TargetIdentityComputedThenErased {
+        computed_as: nes(s: "BorrowedCensusDecl { owner_module_path, node } on the found arm"),
+        erased_into: nes(s: "the owning module survives but the declaration NAME does not: it is only the caller's input spelling, so the outcome alone cannot say which declaration was found. The ambiguous arm carries GlobalBareCandidate rows and the not-found arm carries nothing at all."),
+      },
+    ),
+  ]
+}
+
+// THE FOUR UNSURVEYED FAMILIES, counted rather than omitted. Each is a decision surface that can
+// answer an authored reference and that this pass did not read; leaving them out of the roster
+// would make a one-family census read as a whole-compiler one.
+fn tap_coverage_refusals() -> List<TapCoverageRefusal> {
+  [
+    DecisionSurfaceUnsurveyed {
+      surface: nes(s: "type resolution"),
+      cause: nes(s: "resolution reconstructs and substitutes nodes, so whether an authored type reference's target identity survives into any outcome is a separate reading this pass did not perform"),
+    },
+    DecisionSurfaceUnsurveyed {
+      surface: nes(s: "method resolution"),
+      cause: nes(s: "the known-method bridge and receiver-type resolution decide method references through a different path from callable lookup and were not read"),
+    },
+    DecisionSurfaceUnsurveyed {
+      surface: nes(s: "field resolution"),
+      cause: nes(s: "field access is answered by lookup_field_type_node and its coproduct sibling, neither of which was read"),
+    },
+    DecisionSurfaceUnsurveyed {
+      surface: nes(s: "pattern selectors"),
+      cause: nes(s: "selectors are inference-owned by a standing ruling and are deliberately not namespace occurrences; whether they belong in this denominator at all is a prior question this census does not settle"),
+    },
+  ]
+}
+
+fn tap_coverage_census() -> TapCoverageCensus {
+  TapCoverageCensus {
+    census_revision: legacy_binding_tap_coverage_census_revision,
+    sites: tap_coverage_sites(),
+    refusals: tap_coverage_refusals(),
+    limitation: nes(s: "HAND-READ AT ONE REVISION, ONE FAMILY. Five callable-resolution sites in v1_compiler_infer_lookup, read off the seed at 3a8344b5c389; four further decision surfaces are counted refusals rather than absent rows. AN OMITTED SITE IS UNDETECTABLE HERE, exactly as an omitted consumer is undetectable in the 0A boundary census. The occurrence axis is uniformly absent across all five, so this census establishes a PRECONDITION -- occurrence identity must be threaded into the callable-resolution seam -- and does NOT establish that threading it is sufficient, because the target axis is separately deficient at one of the five. THE ROSTER WAS RE-DERIVED AGAINST CURRENT MAIN BEFORE LANDING: an earlier reading of the same five sites, four days of main movement ago, reported three of them as target-deficient, and publishing it would have priced work that had already been done. NO TAP IS PLACED and no binding relation is produced: the counts price the work, they do not perform it."),
+  }
+}
+
+fn tap_coverage_standing() -> TapCoverageStanding {
+  admit_tap_coverage_census(c: tap_coverage_census())
+}
