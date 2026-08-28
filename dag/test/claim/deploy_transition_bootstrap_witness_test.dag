@@ -388,14 +388,16 @@ test fn a_successful_probe_refuses_under_every_containment_and_names_which() -> 
     inactive: UnitObservedInactive { unit: a_unit() },
     activation: unit_activation_standing(
       unit: a_unit(), probe_ran: true, start_succeeded: true, detail: "started",
-      containment: ProbeContained { detail: "stopped again" }),
+      containment: probe_containment(
+        stopped_ok: true, observed: true, detail: "stopped again")),
   ))
   let uncontained = unit_quiescence_admission(q: observe_unit_quiescence(
     unit: a_unit(),
     inactive: UnitObservedInactive { unit: a_unit() },
     activation: unit_activation_standing(
       unit: a_unit(), probe_ran: true, start_succeeded: true, detail: "started",
-      containment: ProbeUncontained { detail: "stop exited 1" }),
+      containment: probe_containment(
+        stopped_ok: false, observed: true, detail: "stop exited 1")),
   ))
   !quiescence_admits(a: contained)
     && !quiescence_admits(a: uncontained)
@@ -428,4 +430,35 @@ test fn the_containment_command_stops_the_probed_unit() -> Bool {
   string_contains(s: c, pattern: "stop")
     && string_contains(s: c, pattern: a_unit() as String)
     && !string_contains(s: c, pattern: "start")
+}
+
+
+// THE CONTAINMENT PRODUCER'S OWN ARMS, and this witness exists because the containment witness above
+// originally HAND-BUILT `ProbeUncontained` and never called `probe_containment` at all. The producer
+// was imported and unreached, so its arm assignment could have been inverted -- a failed stop
+// reported as contained -- with nothing going red, in the arm that matters most. That is the same
+// defect this PR already found one layer out: a value denoting a state, asserted rather than
+// produced. The fold above now routes through the mint, and this drives the mint directly.
+fn containment_key(c: ProbeContainment) -> String {
+  match c {
+    ProbeContained { detail: _ } => "contained"
+    ProbeUncontained { detail: _ } => "uncontained"
+    ProbeContainmentUnobserved { cause: _ } => "unobserved"
+  }
+}
+
+test fn the_containment_producer_maps_a_failed_stop_to_uncontained() -> Bool {
+  containment_key(c: probe_containment(stopped_ok: true, observed: true, detail: "d")) == "contained"
+    && containment_key(c: probe_containment(stopped_ok: false, observed: true, detail: "d")) == "uncontained"
+    && containment_key(c: probe_containment(stopped_ok: true, observed: false, detail: "d")) == "unobserved"
+    && containment_key(c: probe_containment(stopped_ok: false, observed: false, detail: "d")) == "unobserved"
+}
+
+// AN UNOBSERVED STOP IS NOT A CONTAINED ONE. If the stop's outcome was never read, the unit may still
+// be running, so it must not read as contained -- the two clauses above pin that the `observed`
+// input dominates `stopped_ok`, which is the direction a fold reading the booleans in the obvious
+// order would get wrong.
+test fn an_unobserved_stop_does_not_read_as_contained() -> Bool {
+  containment_key(c: probe_containment(stopped_ok: true, observed: false, detail: "no ssh"))
+    != containment_key(c: probe_containment(stopped_ok: true, observed: true, detail: "stopped"))
 }
