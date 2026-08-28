@@ -23,11 +23,14 @@ import product.fabric.selection {
   OpportunityCostObservation, NoFeasibleAlternativeUse,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance { EncumbranceLedger }
+import product.fabric.budget { MoneyAccount }
 import gunbc.fabric_executor_class { ExecutorSanction, fleet_cell_sanction }
 import gunbc.fabric_floor_dispatch { floor_demand }
 import gunbc.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, ReservationLost,
-  StoreUnavailable, AttemptRefused,
+  StoreUnavailable, AttemptRefused, BudgetRefused,
   FabricCellCandidate, CellCandidateBound, OfferExecutorIsNotTheCell,
   fabric_cell_allocation_key, reserve_selected_cell, broker_reserve_for_demand,
   bind_fabric_cell_candidate,
@@ -73,12 +76,29 @@ fn cp_probe_slot() -> RunnerSlotIdentity {
 // refusal code; the four refusals stay distinct because their remedies differ.
 fn cp_probe_code(r: CellReservation) -> Int {
   match r {
-    CellReserved { offer: _, slot_key: _, generation: g } => 100 + g
+    CellReserved { offer: _, slot_key: _, generation: g, account: _ } => 100 + g
     ReservationLost { slot_key: _ } => 2
+    BudgetRefused { slot_key: _, refusal: _ } => 6
     StoreUnavailable { slot_key: _, cause: _ } => 3
     AttemptRefused { slot_key: _, detail: _ } => 4
     NoCellAdmissible { considered: c } =>
       if c.length() == 0 { 50 } else { 51 }
+  }
+}
+
+// A funded account for the live rows. The ceiling is far above any probe
+// liability on purpose: these rows measure the STORE, and a budget refusal here
+// would be a fixture defect masquerading as a store answer -- exactly the
+// conflation the 50/51 split above exists to prevent, one resource over.
+fn cp_probe_account() -> MoneyAccount {
+  MoneyAccount {
+    account: "fleet-ci",
+    currency: Usd,
+    ledger: EncumbranceLedger {
+      appropriation: Appropriation { ceiling: money_amount_micro(count: 1000000000) },
+      entries: [],
+    },
+    leases: [],
   }
 }
 
@@ -90,6 +110,7 @@ fn cp_probe_reserve(root: NonEmptyStr, expected: CasExpectation) -> Int {
       expected: expected,
       demand_id: cp_probe_demand_id(key: "demand-7"),
       offer_id: cp_probe_offer_id(key: "offer-1"),
+      account: cp_probe_account(),
     )
   )
 }
@@ -134,6 +155,7 @@ fn cp_live_nothing_admissible_touches_no_store(root: NonEmptyStr) -> Int {
       expected: ExpectSlotAbsent,
       roster: [],
       sanctions: [],
+      account: cp_probe_account(),
       maximum_buy_order: money_amount_micro(count: 1000000),
       delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
     )
@@ -209,6 +231,7 @@ fn cp_live_broker_reserves_the_cell_the_market_chose(root: NonEmptyStr) -> Int {
       roster: cp_probe_roster(executor: "srv3-06"),
       sanctions: [fleet_cell_sanction(slot: cp_probe_slot())],
       expected: ExpectSlotAbsent,
+      account: cp_probe_account(),
       maximum_buy_order: money_amount_micro(count: 1000000),
       delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
     )

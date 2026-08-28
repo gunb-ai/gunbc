@@ -1,9 +1,9 @@
 module test.claim.fabric_control_plane_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.durable_compare_and_set { CasUnreadableReadRefused }
+import std.durable_compare_and_set { CasUnreadableReadRefused, ExpectSlotAbsent }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
-import std.currency { Usd }
+import std.currency { Usd, Eur, CurrencyCode }
 import std.measure {
   MoneyOnce, MoneyPerSecond, money_amount_micro, Second, second, hardware_thread_count,
 }
@@ -11,8 +11,13 @@ import product.fabric.work { Shape, HardRequirements }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance { EncumbranceLedger, ExceedsAppropriation }
+import product.fabric.budget {
+  MoneyAccount, MoneyRefusal, CurrencyMismatch, LedgerRefused, StaleLeaseGeneration,
+}
 import product.fabric.selection {
-  CandidateOffer, DispatchInputs, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
+  CandidateOffer, DispatchInputs, SelectionCost, selection_liability, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
   AvailabilityObservation, AvailableIndefinitely,
   CommitmentState, PayAsYouGo,
   StartCostObservation, StartCostMeasured,
@@ -23,7 +28,7 @@ import product.fabric.selection {
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, ReservationLost,
-  StoreUnavailable, AttemptRefused,
+  StoreUnavailable, AttemptRefused, BudgetRefused, reserve_priced_cell,
   CellCandidateBinding, CellCandidateBound, OfferExecutorIsNotTheCell,
   fabric_cell_allocation_key, fabric_reservation_payload,
   cell_reservation_is_held, fabric_control_plane_store_root,
@@ -68,6 +73,7 @@ test fn a_committed_reservation_reports_the_cell_as_held() -> Bool {
       offer: cp_offer_id(key: "offer-1"),
       slot_key: "srv3-06",
       generation: 1,
+      account: cp_account(currency: Usd, ceiling: 1000000),
     }
   )
 }
@@ -89,6 +95,19 @@ test fn no_outcome_other_than_a_commit_reports_the_cell_as_held() -> Bool {
        )
     && !cell_reservation_is_held(
          reservation: AttemptRefused { slot_key: "srv3-06", detail: "malformed" }
+       )
+    && !cell_reservation_is_held(
+         reservation: BudgetRefused {
+           slot_key: "srv3-06",
+           refusal: LedgerRefused {
+             account: "fleet-ci",
+             refusal: ExceedsAppropriation {
+               requested: money_amount_micro(count: 500),
+               committed: money_amount_micro(count: 0),
+               ceiling: money_amount_micro(count: 1),
+             },
+           },
+         }
        )
 }
 
@@ -188,4 +207,131 @@ test fn an_offer_executed_by_the_cell_itself_binds_to_that_cell() -> Bool {
 test fn an_offer_executed_by_anyone_else_cannot_be_bound_to_this_cell() -> Bool {
   let bound = cp_binds(executor: "srv1-02")
   bound.length() == 1 && !cp_bind_is_bound(b: bound[0])
+}
+
+// THE ACCOUNT FIXTURE, PARAMETERIZED ON THE TWO AXES THE BUDGET SEAM CAN REFUSE
+// ON. One fixture rather than three named ones, because the rows below differ
+// only in currency and ceiling and a reader must be able to see that the two
+// refusals come from the same account shape.
+fn cp_account(currency: CurrencyCode, ceiling: Int) -> MoneyAccount {
+  MoneyAccount {
+    account: "fleet-ci",
+    currency: currency,
+    ledger: EncumbranceLedger {
+      appropriation: Appropriation { ceiling: money_amount_micro(count: ceiling) },
+      entries: [],
+    },
+    leases: [],
+  }
+}
+
+// A priced selection with a real liability. Zero would make the ceiling row
+// green against ANY ceiling including zero, which is the fixture defect that
+// turns a budget wall into a decoration.
+fn cp_cost() -> SelectionCost {
+  SelectionCost {
+    marginal_charge: money_amount_micro(count: 500),
+    start: money_amount_micro(count: 0),
+    transition: money_amount_micro(count: 0),
+    operating: money_amount_micro(count: 500),
+    opportunity: money_amount_micro(count: 0),
+    valued_delay: money_amount_micro(count: 0),
+  }
+}
+
+fn cp_priced(account: MoneyAccount) -> CellReservation {
+  reserve_priced_cell(
+    root: fabric_control_plane_store_root(),
+    demand_id: cp_demand_id(key: "demand-7"),
+    offer: cp_offer_for(executor: "srv3-06"),
+    cost: cp_cost(),
+    expected: ExpectSlotAbsent,
+    account: account,
+  )
+}
+
+fn cp_budget_refusal(r: CellReservation) -> List<MoneyRefusal> {
+  match r {
+    BudgetRefused { slot_key: _, refusal: f } => [f]
+    CellReserved { offer: _, slot_key: _, generation: _, account: _ } => []
+    NoCellAdmissible { considered: _ } => []
+    ReservationLost { slot_key: _ } => []
+    StoreUnavailable { slot_key: _, cause: _ } => []
+    AttemptRefused { slot_key: _, detail: _ } => []
+  }
+}
+
+fn cp_refusal_is_ceiling(f: MoneyRefusal) -> Bool {
+  match f {
+    LedgerRefused { account: _, refusal: _ } => true
+    CurrencyMismatch { account: _, account_currency: _, presented_currency: _ } => false
+    StaleLeaseGeneration { reference: _, presented: _ } => false
+  }
+}
+
+fn cp_refusal_is_currency(f: MoneyRefusal) -> Bool {
+  match f {
+    CurrencyMismatch { account: _, account_currency: _, presented_currency: _ } => true
+    LedgerRefused { account: _, refusal: _ } => false
+    StaleLeaseGeneration { reference: _, presented: _ } => false
+  }
+}
+
+// THE BUDGET SEAM IS REACHED AND ANSWERS WITH A TYPED CAUSE. An account whose
+// ceiling cannot cover the selection's liability refuses the reservation, and
+// the refusal names the ledger rather than being a bare "no" -- so a caller can
+// tell an unaffordable offer from an unavailable cell, which are different
+// problems with different remedies.
+//
+// WHAT THIS ROW DOES NOT ESTABLISH, stated because an earlier version of it
+// claimed exactly this and was wrong: it says NOTHING about whether the budget
+// is consulted BEFORE the store is touched. That version was authored, went
+// green, and then STAYED GREEN under a mutation that moved the compare-and-set
+// ahead of the encumbrance -- the substrate is lazy, so the branch that is not
+// returned is never forced, and both orderings are equally effect-free on this
+// path. The row could not discriminate the thing its name asserted, which makes
+// it a decoration cited as coverage (§4b) rather than a weak check.
+//
+// The claim was corrected to what the carrier actually guarantees rather than
+// deleted, because the guarantee is real and stronger: no arm of CellReservation
+// carries both an account and no cell, so the partial commit has no constructor.
+// That has no authorable RED -- the invalid state does not compile -- so it is
+// correctly covered by no row at all.
+test fn an_underfunded_budget_refuses_with_a_ledger_cause() -> Bool {
+  let refusals = cp_budget_refusal(r: cp_priced(account: cp_account(currency: Usd, ceiling: 1)))
+  (refusals |> count) == 1
+    && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_ceiling(f: f))
+}
+
+// THE SECOND REFUSAL, ON THE OTHER AXIS, AND IT IS THE CONTROL THAT EXCLUDES A
+// CONSTANT. The row above alone is satisfied by a broker that returns
+// BudgetRefused unconditionally. This one holds the ceiling far above the
+// liability and varies only the CURRENCY, so a constant-refusing broker cannot
+// produce it: the two rows demand two DIFFERENT causes from the same seam.
+//
+// Verified by execution rather than asserted: substituting the account's own
+// currency for the offer's turns this row red. It also proves the currency
+// reaching the budget comes from the OFFER and not from the account. The offer quotes Usd and the account holds Eur; had the
+// broker passed the account's own currency through, the two would agree by
+// construction and this refusal could never fire (§4b -- a check whose red is
+// unauthorable is a decoration, not a wall).
+test fn an_offer_quoted_in_another_currency_is_refused_at_the_budget_seam() -> Bool {
+  let refusals = cp_budget_refusal(
+    r: cp_priced(account: cp_account(currency: Eur, ceiling: 1000000)),
+  )
+  (refusals |> count) == 1
+    && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_currency(f: f))
+}
+
+// THE LIABILITY IS THE SELECTION'S OWN TOTAL, NOT ONE COMPONENT OF IT, and the
+// ceiling here is what makes that decidable. The fixture's marginal charge is
+// 500 and its operating cost is 500, so selection_liability is 1000. A ceiling
+// of 999 refuses ONLY if the full 1000 was presented: a broker that encumbered
+// the marginal charge alone would present 500, clear 999 comfortably, and this
+// row would go red. That is the discrimination the two rows above cannot make,
+// because both of their ceilings refuse against any nonzero amount.
+test fn the_encumbered_liability_is_the_full_selection_cost() -> Bool {
+  let refusals = cp_budget_refusal(r: cp_priced(account: cp_account(currency: Usd, ceiling: 999)))
+  (refusals |> count) == 1
+    && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_ceiling(f: f))
 }

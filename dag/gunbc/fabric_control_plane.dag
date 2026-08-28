@@ -3,6 +3,7 @@ module gunbc.fabric_control_plane
 import std.types { Int, List, NonEmptyStr, String, Bool }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.measure { MoneyAmountMicro, MoneyPerSecond }
+import std.currency { CurrencyCode }
 import std.durable_compare_and_set {
   CasExpectation, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasReadableAbsent, CasReadablePresent, CasUnreadableSlot,
@@ -10,9 +11,9 @@ import std.durable_compare_and_set {
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
 import product.fabric.demand { Demand }
-import product.fabric.supply { SupplierOffer }
+import product.fabric.supply { SupplierOffer, OfferQuote, offer_quote_currency }
 import product.fabric.work { ExecutionRequirements }
-import product.fabric.selection { CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, SelectionCost, OfferCandidacy }
+import product.fabric.selection { CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, SelectionCost, OfferCandidacy, selection_liability }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.durable_cas_file_store {
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch,
@@ -20,6 +21,11 @@ import gunbc.durable_cas_file_store {
   admit_cas_attempt, file_compare_and_set,
 }
 import gunbc.fabric_floor_dispatch { floor_supply_selection, floor_execution_requirements }
+import product.fabric.budget {
+  MoneyAccount, MoneyReservationRequest, MoneyRefusal, MoneyOutcome,
+  AccountAdvanced, MoneyRefused, reserve_money,
+}
+import product.fabric.execution { ReservationRef }
 import gunbc.fabric_executor_class {
   ExecutorSanction, CapacityClassAdmission, CapacityClassAdmitted,
   CapacityClassRefused, ExecutorNotClassified,
@@ -112,8 +118,10 @@ type CellReservation
       offer: FabricIdentity<NonEmptyStr, OfferKey>,
       slot_key: NonEmptyStr,
       generation: Int,
+      account: MoneyAccount,
     }
   | NoCellAdmissible { considered: List<OfferCandidacy<NonEmptyStr>> }
+  | BudgetRefused { slot_key: NonEmptyStr, refusal: MoneyRefusal }
   | ReservationLost { slot_key: NonEmptyStr }
   | StoreUnavailable { slot_key: NonEmptyStr, cause: CasUnreadableSlot }
   | AttemptRefused { slot_key: NonEmptyStr, detail: NonEmptyStr }
@@ -133,6 +141,7 @@ fn reserve_selected_cell(
   expected: CasExpectation,
   demand_id: FabricIdentity<NonEmptyStr, DemandKey>,
   offer_id: FabricIdentity<NonEmptyStr, OfferKey>,
+  account: MoneyAccount,
 ) -> CellReservation {
   let payload = fabric_reservation_payload(demand: demand_id, offer: offer_id)
   match admit_cas_attempt(
@@ -150,6 +159,7 @@ fn reserve_selected_cell(
             offer: offer_id,
             slot_key: slot_key,
             generation: cas_generation_count(g: c.generation),
+            account: account,
           }
         CasPreconditionFailed { expected: _, observed: _ } => ReservationLost { slot_key: slot_key }
         CasStoreRefused { cause: c } => StoreUnavailable { slot_key: slot_key, cause: c }
@@ -297,12 +307,65 @@ fn refused_cell_admissions(
   )
 }
 
+// ONE RESERVATION, ONE REFERENCE. The money encumbrance and the cell slot name
+// the same reservation because they are derived from the same pair -- the demand
+// and the offer -- through the very rendering the store slot holds. Minting a
+// separate money key here would make the budget and the store disagree about
+// what is being held, and nothing would ever detect it: two references that are
+// both individually well-formed are indistinguishable from one reservation
+// unless they are DERIVED from a common identity rather than agreed by
+// convention (§3 -- a second name for one concept).
+fn fabric_money_reservation_ref(
+  demand: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+) -> ReservationRef {
+  fabric_reservation_payload(demand: demand, offer: offer) as ReservationRef
+}
+
+// THE BUDGET REFUSAL RETURNS NEITHER A CELL NOR AN ACCOUNT, AND THAT -- NOT THE
+// ORDER THESE TWO STEPS ARE WRITTEN IN -- IS THE SAFETY ARGUMENT.
+//
+// Two resources are held per reservation and they have opposite reversal costs.
+// The budget is a PURE VALUE: reserving against it produces a new account and
+// changes nothing anyone else can observe, so abandoning it costs exactly
+// nothing -- the caller simply does not persist it. The cell is an EFFECT: a
+// committed compare-and-set is visible to every other broker the instant it
+// lands, and there is no arm here that un-commits it.
+//
+// SO THE GUARANTEE IS STATED OVER THE RETURNED VALUE, NOT OVER A SEQUENCE. On
+// the BudgetRefused arm the store call is not part of the result, so it is
+// never forced and no effect occurs; on every cell-refusal arm there is no
+// account value in the caller's hands to persist. The partial commit -- an
+// encumbrance without its cell, or a cell without its encumbrance -- has no
+// constructor on any arm of CellReservation, so it is unwritable rather than
+// checked (§4b, structurally impossible rather than validated).
+//
+// THIS WAS NEARLY DOCUMENTED AS AN ORDERING GUARANTEE AND IT IS NOT ONE. A
+// witness asserting "the budget refuses before the store is touched" was
+// authored, went green, and then STAYED GREEN under a mutation that moved the
+// compare-and-set ahead of the encumbrance -- because in a lazy substrate the
+// unreturned branch is never forced, so both spellings are equally safe and the
+// row discriminated nothing. The executed receipt is what corrected the claim:
+// the safety is carried by which arm carries what, and source order is free.
+// Writing the encumbrance first is kept because it reads in the order a person
+// reasons about it, and for no stronger reason than that.
+//
+// THE CURRENCY COMES FROM THE OFFER, NOT THE ACCOUNT. product.fabric.budget
+// deliberately makes a request state its own currency so a mismatch is
+// representable and therefore detectable; passing the account's own currency
+// back to it would satisfy the check by construction and turn a real wall into
+// a decoration that can never fire (§4b -- ask whether the RED is authorable).
+// The supplier quotes in its currency and the account holds one, so the two can
+// genuinely disagree, and a mutation substituting the account's currency was
+// executed and turned the witness below red -- so the wall is load-bearing
+// rather than merely present.
 fn broker_reserve_for_demand(
   root: NonEmptyStr,
   demand: Demand<NonEmptyStr>,
   roster: List<FabricCellCandidate>,
   sanctions: List<ExecutorSanction>,
   expected: CasExpectation,
+  account: MoneyAccount,
   maximum_buy_order: MoneyAmountMicro,
   delay_valuation: MoneyPerSecond,
 ) -> CellReservation {
@@ -318,21 +381,65 @@ fn broker_reserve_for_demand(
     delay_valuation: delay_valuation,
   ) {
     NoAdmissibleOffer { considered: c } => NoCellAdmissible { considered: c }
-    OfferSelected { offer: o, cost: _, basis: _, horizon: _, considered: _ } =>
+    OfferSelected { offer: o, cost: k, basis: _, horizon: _, considered: _ } =>
+      reserve_priced_cell(
+        root: root,
+        demand_id: demand.id,
+        offer: o,
+        cost: k,
+        expected: expected,
+        account: account,
+      )
+  }
+}
+
+// The priced half, split out so the money reference and the slot key are named
+// once each rather than recomputed inside a match arm.
+//
+// The lease generation is 0 because this is a MINT: the fence in
+// product.fabric.budget exists so that a LATER settle or release must present
+// the generation it observed, and a first encumbrance has no prior generation
+// to present. Deriving it from the CAS generation is not available and would be
+// wrong if it were -- the money reservation is taken before the store is
+// touched, so no CAS generation exists yet, and borrowing one would make the
+// budget's fence depend on a fact from the other resource's clock.
+fn reserve_priced_cell(
+  root: NonEmptyStr,
+  demand_id: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer: SupplierOffer<NonEmptyStr>,
+  cost: SelectionCost,
+  expected: CasExpectation,
+  account: MoneyAccount,
+) -> CellReservation {
+  let slot_key = selected_cell_allocation_key(offer: offer)
+  let reference = fabric_money_reservation_ref(demand: demand_id, offer: offer.id)
+  match reserve_money(
+    a: account,
+    request: MoneyReservationRequest {
+      reference: reference,
+      generation: 0,
+      maximum_liability: selection_liability(c: cost),
+      currency: offer_quote_currency(q: offer.quote),
+    },
+  ) {
+    MoneyRefused { refusal: r } => BudgetRefused { slot_key: slot_key, refusal: r }
+    AccountAdvanced { account: advanced } =>
       reserve_selected_cell(
         root: root,
-        slot_key: selected_cell_allocation_key(offer: o),
+        slot_key: slot_key,
         expected: expected,
-        demand_id: demand.id,
-        offer_id: o.id,
+        demand_id: demand_id,
+        offer_id: offer.id,
+        account: advanced,
       )
   }
 }
 
 fn cell_reservation_is_held(reservation: CellReservation) -> Bool {
   match reservation {
-    CellReserved { offer: _, slot_key: _, generation: _ } => true
+    CellReserved { offer: _, slot_key: _, generation: _, account: _ } => true
     NoCellAdmissible { considered: _ } => false
+    BudgetRefused { slot_key: _, refusal: _ } => false
     ReservationLost { slot_key: _ } => false
     StoreUnavailable { slot_key: _, cause: _ } => false
     AttemptRefused { slot_key: _, detail: _ } => false
