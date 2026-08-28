@@ -28,7 +28,7 @@ fn entry(attributes: List<String>) -> String {
 
 fn observed_worktrees(observation: GitWorktreeSetObservation) -> List<GitWorktreeIdentity> {
   match observation {
-    GitWorktreeSetObserved { worktrees: worktrees } => worktrees
+    GitWorktreeSetObserved { primary: primary, linked: linked } => Cons { head: primary, tail: linked }
     GitWorktreeSetReadRefused { exit_code: _, stderr: _ } => []
     GitWorktreeSetUndecodable { entry_index: _, raw_entry: _, reason: _ } => []
   }
@@ -37,7 +37,7 @@ fn observed_worktrees(observation: GitWorktreeSetObservation) -> List<GitWorktre
 fn is_undecodable(observation: GitWorktreeSetObservation) -> Bool {
   match observation {
     GitWorktreeSetUndecodable { entry_index: _, raw_entry: _, reason: _ } => true
-    GitWorktreeSetObserved { worktrees: _ } => false
+    GitWorktreeSetObserved { primary: _, linked: _ } => false
     GitWorktreeSetReadRefused { exit_code: _, stderr: _ } => false
   }
 }
@@ -45,7 +45,7 @@ fn is_undecodable(observation: GitWorktreeSetObservation) -> Bool {
 fn undecodable_entry_index(observation: GitWorktreeSetObservation) -> Int {
   match observation {
     GitWorktreeSetUndecodable { entry_index: index, raw_entry: _, reason: _ } => index
-    GitWorktreeSetObserved { worktrees: _ } => 0 - 1
+    GitWorktreeSetObserved { primary: _, linked: _ } => 0 - 1
     GitWorktreeSetReadRefused { exit_code: _, stderr: _ } => 0 - 1
   }
 }
@@ -215,7 +215,7 @@ test fn nonzero_exit_refuses_the_read_and_preserves_its_cause() -> Bool {
   match git_worktree_set_observation_of(raw: "", exit_code: 128, stderr: "not a git repository") {
     GitWorktreeSetReadRefused { exit_code: code, stderr: text } =>
       code == 128 && text == "not a git repository"
-    GitWorktreeSetObserved { worktrees: _ } => false
+    GitWorktreeSetObserved { primary: _, linked: _ } => false
     GitWorktreeSetUndecodable { entry_index: _, raw_entry: _, reason: _ } => false
   }
 }

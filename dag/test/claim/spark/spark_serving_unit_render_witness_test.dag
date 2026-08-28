@@ -1,0 +1,73 @@
+module test.claim.spark_serving_unit_render_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import std.measure { TokenCount, token_count }
+import gunbc.spark.serving_install_paths {
+  SparkServingUserUnitSpec,
+  spark_serving_user_unit_spec,
+}
+import gunbc.spark.serving_unit_render {
+  spark_serving_user_unit_text,
+  spark_serving_user_unit_content_identity,
+  spark_serving_user_unit_content_wire,
+  spark_serving_desired_user_unit_text,
+}
+import gunbc.spark.serving_desired {
+  spark_serving_desired_bind_host_port,
+  spark_serving_desired_configured_context,
+}
+
+// THE CONFIGURED CONTEXT WINDOW IS CAUSAL, AND THESE ARE THE ARMS THAT GO RED IF IT STOPS BEING SO.
+//
+// The window was declared on the serving policy and rendered nowhere: the unit carried OLLAMA_HOST
+// and OLLAMA_MODELS and nothing about context, so `max_model_len` was a number standing beside a
+// process it did not configure. Every claim below is stated as a DISCRIMINATION -- two windows must
+// produce two different artifacts -- rather than as a substring lookup, because a containment check
+// passes as soon as the digits appear anywhere and would still pass if the directive were rendered
+// into a field nothing reads.
+//
+// Each arm is red against the pre-change tree: with no rendering, both windows produce identical
+// bytes and an identical content identity.
+
+fn spec_with_window(window: TokenCount) -> SparkServingUserUnitSpec {
+  spark_serving_user_unit_spec(
+    bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
+    configured_context: window,
+  )
+}
+
+fn text_with_window(window: TokenCount) -> String {
+  spark_serving_user_unit_text(spec: spec_with_window(window: window))
+}
+
+fn content_identity_with_window(window: TokenCount) -> NonEmptyStr {
+  spark_serving_user_unit_content_identity(
+    wire_base64: spark_serving_user_unit_content_wire(text: text_with_window(window: window)),
+  )
+}
+
+// CONTROL 1: the window reaches the bytes. Two specs differing in NOTHING but the window must not
+// render the same file -- which is exactly what they did before the renderer consumed the field.
+test fn the_configured_window_changes_the_unit_bytes() -> Bool {
+  text_with_window(window: token_count(count: 8192)) != text_with_window(window: token_count(count: 131072))
+    && text_with_window(window: token_count(count: 131072)) == text_with_window(window: token_count(count: 131072))
+}
+
+// CONTROL 2: the member's identity moves with it. The write side and the observe side compare
+// content identities, so a window change that did not reach this value would converge as a no-op
+// against a host serving the other window.
+test fn the_configured_window_changes_the_unit_content_identity() -> Bool {
+  content_identity_with_window(window: token_count(count: 8192)) != content_identity_with_window(window: token_count(count: 131072))
+}
+
+// CONTROL 3: THE CAUSAL LINK ITSELF. The desired unit is the one rendered at the window the serving
+// policy declares, and is NOT the one rendered at any other window. This is the claim the repair
+// exists to make true: it holds only while the policy is the single authority the bytes derive
+// from, and it breaks the moment someone re-authors the window beside the policy instead of
+// deriving it. Stated in both directions so it cannot be satisfied by a renderer that ignores its
+// argument and returns one fixed text.
+test fn the_desired_unit_is_rendered_at_the_declared_window() -> Bool {
+  spark_serving_desired_user_unit_text()
+    == text_with_window(window: spark_serving_desired_configured_context())
+    && spark_serving_desired_user_unit_text() != text_with_window(window: token_count(count: 4096))
+}

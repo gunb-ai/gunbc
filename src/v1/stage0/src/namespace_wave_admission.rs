@@ -355,6 +355,11 @@ pub struct TransitionAdmission {
 /// UNADJUDICATED and refuses. The failure mode of having shrunk too early is therefore a loud
 /// refusal naming the delta, which its author closes by authoring a row -- never a silent
 /// admission. The next transition adds its rows here and removes them when its subject lands.
+/// SECOND SHRINK, SAME RULE. Two `gunbc.ci_render` `plain_span` rows dissolved on
+/// schedule: `ci_render` now imports `plain_span` from the `std.render` authority and declares
+/// none, so no run can produce the deltas those rows named and both were reported stale on
+/// every build. They are removed here by the trigger they were authored with, not by a
+/// reinterpretation of it.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is

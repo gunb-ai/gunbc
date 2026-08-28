@@ -1,0 +1,301 @@
+module test.claim.scm_render_witness
+
+// THE CLAIM THIS FILE EXISTS FOR: the SCM read verbs' PRESENTATION is a value with no destination in
+// it, and adding that value did not fork the presentation of status text.
+//
+// The second half is the one worth executing. `gunbc.scm.status` already owned the text of a status
+// line before `gunbc.scm.render` existed, so the cheap way to build a document was to re-decide that
+// text here -- which would have left two modules answering "how does a status read?" and made them
+// drift on the first edit either one received. The renderer consumes the verb module's helpers
+// instead, and `status_document_does_not_fork_the_verb_modules_text` holds that composition to its
+// consequence BY EXECUTION: serializing the document must reproduce `render_repository_status`
+// byte for byte. If someone later re-decides a status line inside the renderer, that equality is
+// what breaks.
+
+import std.types { Bool, String }
+import std.minted_identity { MintedIdAllocator }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.render { Document, RenderCapability }
+import std.symbols { Ascii }
+import extdeps.render.surface { serialize_document, PlainTerminal, GithubActions }
+import gunbc.scm.object_store { empty_store, store_node, Stored, LocatorCollision, ObjectId, ObjectStore }
+import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
+import extdeps.render.ansi { ansi_escape }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  RepositoryDecodeRefusal,
+  RepositoryFormatUnrecognized,
+}
+import gunbc.scm.authoring { empty_proposal }
+import gunbc.scm.status {
+  repository_status,
+  render_repository_status,
+  RepositoryStatus,
+  StatusCheckout,
+  CheckedOutCommit,
+}
+import gunbc.scm.log { repository_log, CommitLog }
+import extdeps.languages.json.parse { JsonDocumentGap, JsonDocumentMalformedAt }
+import gunbc.scm.read_command { ScmReadResult, ScmReadAnswered, ScmReadRepositoryUnavailable }
+import gunbc.scm.repository_load {
+  RepositoryLoadRefusal,
+  RepositoryFileUnreadable,
+  RepositoryDocumentUnparseable,
+  RepositoryDocumentRefused,
+}
+import gunbc.scm.render {
+  scm_status_document,
+  scm_log_document,
+  scm_log_cli_response,
+  scm_status_cli_response,
+}
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.render.terminal { TerminalWriteProjection, TerminalWriteProjected, TerminalWriteRefused }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data plain_cap: RenderCapability = RenderCapability {
+  color: false, tier: Ascii, cursor_addressable: false
+}
+
+fn render_witness_atom(name: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
+}
+
+fn render_witness_object_id() -> ObjectId {
+  match store_node(store: empty_store(), n: render_witness_atom(name: ^r1)) {
+    Stored { store: _, identity: identity } => identity
+    LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
+  }
+}
+
+fn render_witness_empty_repository() -> RepositoryEnvelope {
+  RepositoryEnvelope {
+    store: empty_store(),
+    commits: [],
+    commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+    checked_out: none,
+  }
+}
+
+fn empty_status_result() -> ScmReadResult<RepositoryStatus> {
+  ScmReadAnswered {
+    path: "repo.json",
+    answer: repository_status(
+      envelope: render_witness_empty_repository(),
+      pending: empty_proposal(),
+    ),
+  }
+}
+
+fn serialized_status() -> String {
+  serialize_document(
+    doc: scm_status_document(result: empty_status_result()),
+    target: PlainTerminal,
+    cap: plain_cap,
+  )
+}
+
+// THE ANTI-FORK CLAIM. Byte equality against the verb module's own renderer, so that this module
+// contributing DOCUMENT STRUCTURE and the verb module owning LINE TEXT is a measured fact rather
+// than an intention stated in a comment.
+test fn status_document_does_not_fork_the_verb_modules_text() -> Bool {
+  serialized_status()
+    == render_repository_status(
+         status: repository_status(
+           envelope: render_witness_empty_repository(),
+           pending: empty_proposal(),
+         ),
+       )
+}
+
+// The empty repository still SAYS something. A read that succeeded and found nothing is not the same
+// event as a read that produced no output, and a reader cannot tell them apart if the second is how
+// the first looks.
+test fn an_empty_repository_status_renders_its_three_lines() -> Bool {
+  serialized_status() == "nothing checked out\n0 commits\n  nothing staged"
+}
+
+// NO COMMITS IS AN ANSWER. Same distinction, on the log verb.
+test fn an_empty_log_states_that_there_are_no_commits() -> Bool {
+  let result: ScmReadResult<CommitLog> = ScmReadAnswered {
+    path: "repo.json",
+    answer: repository_log(envelope: render_witness_empty_repository()),
+  }
+  serialize_document(doc: scm_log_document(result: result), target: PlainTerminal, cap: plain_cap)
+    == "no commits yet"
+}
+
+// THE THREE REFUSAL ARMS SEND THE READER TO THREE DIFFERENT PLACES, so they must not render alike.
+// This is the discriminating control for the collapse DESIGN records in this module family: a fold
+// that matched one outer arm over a whole refusal enum, total at the level examined and blind one
+// level down. Pairwise distinctness is what a wildcard arm cannot satisfy.
+fn refusal_render(cause: RepositoryLoadRefusal) -> String {
+  serialize_document(
+    doc: scm_log_document(result: ScmReadRepositoryUnavailable { cause: cause }),
+    target: PlainTerminal,
+    cap: plain_cap,
+  )
+}
+
+test fn the_three_load_refusals_render_distinguishably() -> Bool {
+  let unreadable = refusal_render(
+    cause: RepositoryFileUnreadable { path: "repo.json", error: "No such file or directory" },
+  )
+  let unparseable = refusal_render(
+    cause: RepositoryDocumentUnparseable { path: "repo.json", gap: JsonDocumentMalformedAt { at: 0 } },
+  )
+  let refused = refusal_render(
+    cause: RepositoryDocumentRefused { path: "repo.json", cause: RepositoryFormatUnrecognized { found: "not-a-repo" } },
+  )
+  unreadable != unparseable && unparseable != refused && unreadable != refused
+}
+
+// A REFUSAL NAMES THE PATH IT REFUSED ON. A diagnostic that says only "could not load" leaves the
+// reader with no located subject, which DESIGN section 5 requires of every failure arm.
+test fn a_refusal_names_the_path() -> Bool {
+  refusal_render(
+    cause: RepositoryFileUnreadable { path: "repo.json", error: "No such file or directory" },
+  ) == "cannot read repository at repo.json\n  No such file or directory"
+}
+
+// THE DESTINATION IS NOT IN THE VALUE. The same document serialized to two different targets differs
+// only where the TARGET's syntax differs -- here, not at all, because a Leaf block carries no group
+// framing. The claim is that `scm_status_document` made no destination decision: had it named a
+// terminal, a second target could not consume it at all.
+test fn one_status_document_serves_two_targets() -> Bool {
+  let doc = scm_status_document(result: empty_status_result())
+  serialize_document(doc: doc, target: PlainTerminal, cap: plain_cap)
+    == serialize_document(doc: doc, target: GithubActions, cap: plain_cap)
+}
+
+// THE RECORD'S WHOLE REASON FOR EXISTING: a refused read still PRINTS and still FAILS.
+//
+// This is the case that decided the carrier shape against two separate entry points. If the bytes
+// and the exit status could be derived from one another, one field would do; they cannot, and this
+// claim is what holds that to execution. A carrier carrying only bytes could not express the
+// nonzero; one carrying only a status could not express the printed diagnostic.
+test fn an_unavailable_repository_prints_a_diagnostic_and_still_exits_failure() -> Bool {
+  let r = scm_log_cli_response(
+    result: ScmReadRepositoryUnavailable {
+      cause: RepositoryFileUnreadable { path: "repo.json", error: "No such file or directory" },
+    },
+    target: PlainTerminal,
+    capability: plain_cap,
+  )
+  match r {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: b, exit: e } =>
+      b == "cannot read repository at repo.json\n  No such file or directory\n"
+        && match e {
+             ExitSuccess => false
+             ExitFailure { code: _, reason: _ } => true
+           }
+  }
+}
+
+// AN EMPTY REPOSITORY IS AN ANSWER, SO IT EXITS SUCCESS. Same distinction as the rendering claims,
+// carried to the exit code: a caller must be able to tell "no commits" from "no repository".
+test fn an_empty_log_exits_success_because_it_answered() -> Bool {
+  let r = scm_log_cli_response(
+    result: ScmReadAnswered {
+      path: "repo.json",
+      answer: repository_log(envelope: render_witness_empty_repository()),
+    },
+    target: PlainTerminal,
+    capability: plain_cap,
+  )
+  match r {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: _, exit: e } =>
+      match e {
+        ExitSuccess => true
+        ExitFailure { code: _, reason: _ } => false
+      }
+  }
+}
+
+// THE TWO FIELDS DISAGREE, AND THAT IS THE POINT. An answered read and a refused read produce
+// DIFFERENT exit statuses while both produce printable bytes -- so neither field is a function of
+// the other, which is the claim that would fail if someone later collapsed the record to one field.
+test fn bytes_and_exit_status_are_independent_facts() -> Bool {
+  let answered = scm_status_cli_response(
+    result: empty_status_result(), target: PlainTerminal, capability: plain_cap,
+  )
+  let refused = scm_status_cli_response(
+    result: ScmReadRepositoryUnavailable {
+      cause: RepositoryFileUnreadable { path: "repo.json", error: "gone" },
+    },
+    target: PlainTerminal,
+    capability: plain_cap,
+  )
+  match answered {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: _, exit: ae } =>
+      match refused {
+        CliWireUnprintable { cause: _ } => false
+        CliWirePrintable { bytes: _, exit: re } =>
+          match ae {
+            ExitSuccess =>
+              match re {
+                ExitSuccess => false
+                ExitFailure { code: _, reason: _ } => true
+              }
+            ExitFailure { code: _, reason: _ } => false
+          }
+      }
+  }
+}
+
+// THE REVIEWER'S SCENARIO, EXECUTED (review 57275).
+//
+// The silent-success state needed an ANSWERED read whose rendered bytes are refused: a refused read
+// already exits nonzero, so it could never have demonstrated refusal-paired-with-success. The review
+// named the commit message; `StatusCheckout.CheckedOutCommit` carries the same unrestricted `String`
+// on the status path and reaches the renderer the same way, through `render_status_checkout`, so it
+// is the same defect on a fixture that constructs in one literal.
+//
+// Under the predecessor RECORD carrier this printed NOTHING and reported SUCCESS. It is now
+// structurally unable to: `CliWireUnprintable` has no exit field to set to success.
+//
+// THE COMPLEMENTARY STRUCTURAL FACT IS DELIBERATELY NOT ASSERTED. "No response pairs refusal with
+// success" is now UNWRITABLE rather than false, so a fixture asserting it could not be authored and
+// the check would be permanently green BY CONSTRUCTION -- the decoration section 4b names as worse
+// than absent. What is asserted is the reachable behaviour a caller can still get wrong.
+fn render_witness_checked_out(message: String) -> RepositoryStatus {
+  RepositoryStatus {
+    checkout: CheckedOutCommit { root: render_witness_object_id(), message: message },
+    commit_count: 1,
+    staged: [],
+  }
+}
+
+fn control_byte_response(message: String) -> CliWireResponse {
+  scm_status_cli_response(
+    result: ScmReadAnswered { path: "repo.json", answer: render_witness_checked_out(message: message) },
+    target: PlainTerminal,
+    capability: plain_cap,
+  )
+}
+
+test fn a_control_byte_in_an_answered_read_is_unprintable_not_a_silent_success() -> Bool {
+  match control_byte_response(message: concat("release", ansi_escape)) {
+    CliWireUnprintable { cause: _ } => true
+    CliWirePrintable { bytes: _, exit: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: the identical fixture without the control byte prints AND exits success, so the
+// claim above discriminates the control byte rather than the fixture's shape.
+test fn the_same_answered_read_without_a_control_byte_prints_and_succeeds() -> Bool {
+  match control_byte_response(message: "release") {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: b, exit: e } =>
+      b == "on commit: release\n1 commit\n  nothing staged\n"
+        && match e {
+             ExitSuccess => true
+             ExitFailure { code: _, reason: _ } => false
+           }
+  }
+}
