@@ -643,6 +643,24 @@ type LegacyReplacementSurvey {
 // under one identity space is what lets the interpreter id stay visible -- so a parent reference to
 // it resolves to something and refuses for the RIGHT reason -- without letting a coarse survey
 // answer as an exact plan.
+// A FIELD ADDED TO LegacyReplacementSurvey IS INCOMPLETE UNTIL EVERY PRODUCTION LEGACY SURVEY GAINS
+// AN EXACT PAYLOAD ASSERTION FOR IT. Supplying the field at construction is not evidence that its
+// historical value is bound -- the compiler forces the field to EXIST and says nothing about whether
+// anything executes over its content, which is the specification-without-execution trap one level
+// in. The obligation is review diligence today and is strictly weaker than a wall; its next rung is
+// whole-value equality against an expected fixture survey, which a field addition breaks at the
+// construction site rather than leaving green. That construction is not built here because there is
+// ONE production legacy survey and this type is a non-authoritative container for it; a second
+// production survey, or an actual schema extension, is the trigger.
+//
+// AND `reason` BELOW IS MUTABLE OPERATOR-FACING GUIDANCE, NOT PART OF THE HISTORICAL RECEIPT. The
+// registration's semantic state is already carried structurally -- by the constructor, by the
+// identity, and by the prior survey embedded whole rather than transcribed -- so the string is
+// present-tense instruction about what the owning lane must do next, and it should improve as the
+// remeasurement program becomes clearer. Its witness therefore checks nonempty rather than equality,
+// which is the OPPOSITE treatment from LegacyReplacementSurvey's `limitation`: that field records
+// what was measured and must not drift. If a mechanism ever begins deriving work from this string,
+// the trigger is to replace it with typed fields, never to freeze today's sentence.
 type CutRegistration
   = RegisteredExactCut { cut: ReplacementCut }
   | RegisteredCutRemeasureRequired {

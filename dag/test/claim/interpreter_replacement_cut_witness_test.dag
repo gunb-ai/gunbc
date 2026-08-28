@@ -263,6 +263,19 @@ fn retained_same_contract_with(justification: String) -> fn(ConsumerDisposition)
   }
 }
 
+fn retired_because(reason: String) -> fn(ConsumerDisposition) -> Bool {
+  fn(d) {
+    match d {
+      Retire { reason: r } => (r as String) == reason
+      RetainSameContract { justification: _, coverage: _ } => false
+      RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+      ReplacedByY { new_authority: _ } => false
+      EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
+      Undecided => false
+    }
+  }
+}
+
 fn replaced_by(authority: String) -> fn(ConsumerDisposition) -> Bool {
   fn(d) {
     match d {
@@ -378,4 +391,41 @@ test fn the_surviving_rows_carry_their_exact_dispositions() -> Bool {
 // against. One substring pinned one of them.
 test fn the_limitation_is_pinned_exactly() -> Bool {
   (interpreter_replacement_survey().limitation as String) == "GRAIN: ONE ROW PER CONSUMING MODULE OR BINARY, TEN OF 125 FILES. Not a complete consumer census: an omitted consumer is undetectable at this grain, and the 1350 line-hits behind the sample measure ENTANGLEMENT (how much code reaches X) rather than surviving OBLIGATIONS. Four of the ten labels -- v1_compiler.cli_run, v1_compiler.coproduct_reflection, v1_compiler.pre_push, v1_compiler.v1_interpreter_dispatch_generated -- name host Rust compilation units and not .dag modules, so at exact grain they are Rust ITEMS projected through gunbc.rust_item_host_observation item_declaration_ref, and one label may expand into many item relations or into none. v1_interpreter_dispatch_generated additionally appears BOTH as a consumer and as a covered-region member, which at exact grain is very likely a region member that was never an inbound boundary crossing at all."
+}
+
+// THE FIVE Retire REASONS, and they are not interchangeable prose. Two of them carry a DISPUTE the
+// survey records rather than settles: coproduct_reflection and pre_push are Retire because the
+// measured branch DELETED them, and the row says in as many words that this reports what the branch
+// did and is NOT a finding that the behavior had no surviving subject. Review has held that
+// deleting consumers alongside X damages the experiment -- once a demand signal is gone, the absence
+// of further failure may only mean nothing is left to ask. Collapsing those two reasons into the
+// three subject-leaves-with-X reasons would erase the distinction the carrier was corrected to make,
+// and the aggregate count of five Retire cannot see it.
+test fn the_five_retire_reasons_are_pinned_and_keep_their_two_classes_apart() -> Bool {
+  let rows = interpreter_replacement_survey().consumer_rows
+  row_disposition_matches(
+    rows: rows,
+    name: "gunbc.v1_interpreter_primitive_surface",
+    p: retired_because(reason: "its entire subject is X's primitive dispatch arms"),
+  )
+    && row_disposition_matches(
+         rows: rows,
+         name: "v1_compiler.v1_interpreter_dispatch_generated",
+         p: retired_because(reason: "generated projection of X's dispatch table; no authority survives it"),
+       )
+    && row_disposition_matches(
+         rows: rows,
+         name: "gunbc.v1_interpreter_dispatch_emit",
+         p: retired_because(reason: "the emitter whose only output is X's dispatch table"),
+       )
+    && row_disposition_matches(
+         rows: rows,
+         name: "v1_compiler.coproduct_reflection",
+         p: retired_because(reason: "deleted by the measured cut; the deletion is the disposition, not a finding that the behavior had no surviving subject"),
+       )
+    && row_disposition_matches(
+         rows: rows,
+         name: "v1_compiler.pre_push",
+         p: retired_because(reason: "deleted by the measured cut; the deletion is the disposition, not a finding that the behavior had no surviving subject"),
+       )
 }
