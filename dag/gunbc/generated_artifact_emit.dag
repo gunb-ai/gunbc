@@ -3,7 +3,7 @@ module gunbc.generated_artifact_emit
 
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
+  WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignLedgersArtifact,
   RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
@@ -20,6 +20,7 @@ import gunbc.gitignore_emit { expected_gitignore }
 import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
 import gunbc.roadmap_authority { expected_roadmap_md }
 import gunbc.design_document { expected_design_md }
+import gunbc.design_ledgers { expected_design_ledgers_md }
 import gunbc.runner_deploy_emit { expected_runner_deploy_manifest }
 import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
@@ -70,6 +71,7 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
     }
     RoadmapArtifact => artifact_generated(content: expected_roadmap_md())
     DesignArtifact => artifact_generated(content: expected_design_md())
+    DesignLedgersArtifact => artifact_generated(content: expected_design_ledgers_md())
     GithooksPrePushArtifact => artifact_generated(content: expected_githooks_pre_push_sh())
     GithooksPreCommitArtifact => artifact_generated(content: expected_githooks_pre_commit_sh())
     GeneratedArtifactMergeDriverArtifact => artifact_generated(content: expected_generated_artifact_merge_driver_sh(regen_command: ci_heal_author_commit_regen_command))
@@ -99,6 +101,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     GitattributesArtifact => true
     RoadmapArtifact => true
     DesignArtifact => true
+    DesignLedgersArtifact => true
     GithooksPrePushArtifact => true
     GithooksPreCommitArtifact => true
     GeneratedArtifactMergeDriverArtifact => true
