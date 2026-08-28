@@ -296,10 +296,22 @@ fn deployment_publication_timer_unit_path(names: DeploymentNames) -> NonEmptyStr
 // BOTH OBJECTIONS ARE ABOUT WHO CAN READ, AND NEITHER SURVIVES A SEPARATE PRINCIPAL. The file is
 // owned by names.publication_principal and readable by nobody else, so the service user cannot read
 // it however its own units are bound; and the only process that resolves it -- the publication
-// helper -- spawns nothing, so there is no child to inherit anything. The withdrawal is therefore
-// lifted for one unit and stands for the other two: the serve unit and the belt unit bind no
-// credential and contain no function that could name one, because gunbc.roadmap_belt_actuate's
-// probe was DELETED rather than merely unbound.
+// helper -- spawns no provider, tmux or worker session, so there is nothing for the token to be
+// inherited INTO. That is stated more weakly than `spawns nothing` on purpose: the helper does
+// spawn `printenv` and `git`, and the sentence that is TRUE is the one that is also sufficient.
+// The withdrawal is therefore lifted for one unit and stands for the other two: the serve unit and
+// the belt unit bind no credential and contain no function that could name one, because
+// gunbc.roadmap_belt_actuate's probe was DELETED rather than merely unbound.
+//
+// FILE-BACKED DELIVERY IS NOT MERELY INSUFFICIENT, IT IS UNNECESSARY, and this correction matters
+// more than the row it sits in. The earlier ruling said a file was not ENOUGH, which reads as
+// though a file plus something else were the required next step -- and a reader taking that reading
+// would build a carrier nobody needs. Both objections above are about WHO CAN READ, so the boundary
+// is the principal and the transport was never the defect; under a dedicated principal an
+// environment variable leaks nowhere a file would not. That is why this change adds no file-backed
+// std.credentials.CredentialSource variant, and the absence is a decision rather than an omission
+// (gunbc.roadmap_publication_helper's header carries the second reason, which is that the v1 seed
+// resolves an auth source as an environment variable and nothing else).
 //
 // IT IS STILL ONE FILE FOR THE INSTANCE, and the reason is unchanged: TWO ingress paths reach
 // publication -- the belt tick, and POST /publish/{node_id} through gunbc.roadmap_serve

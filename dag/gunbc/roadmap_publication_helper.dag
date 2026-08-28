@@ -63,10 +63,22 @@ import gunbc.roadmap_publish_observe {
 // worker is spawned beneath that process.
 //
 // SO THE BOUNDARY IS THE PRINCIPAL. This module is the whole of what runs under it: a request
-// carrying a publication SUBJECT is handed across, a receipt is handed back, and the process that
-// holds the credential has no tmux, no provider, no workspace, no git worktree and no children.
-// gunbc.fleet_posix_accounts fleet_posix_publication_helper_sudo_grants states the other half --
-// the principal holds no sudo grant of any shape, so it cannot act as anybody else either.
+// carrying a publication SUBJECT is handed across, and a receipt is handed back. The property the
+// boundary rests on is that NO PROCESS HOLDING THIS TOKEN SPAWNS A PROVIDER, TMUX OR WORKER
+// SESSION -- stated that way rather than as `no children`, because the weaker sentence is the one
+// that is true and it is still sufficient. This process does spawn children: `printenv` for the
+// presence probe and `git` for the ref advertisement. Neither is a session anything is dispatched
+// into, and neither survives the run. gunbc.fleet_posix_accounts
+// fleet_posix_publication_helper_sudo_grants states the other half -- the principal holds no sudo
+// grant of any shape, so it cannot act as anybody else either.
+//
+// THE REF ADVERTISEMENT NEEDS NO CREDENTIAL, and that is a modeled fact rather than an observed
+// convenience: gunbc.repository gunbc_repository carries `private: false`, so `git ls-remote` over
+// HTTPS is anonymous. It is worth stating because the tempting reading of this boundary is that the
+// helper's environment must reproduce every credential the belt had, and the measurement says
+// otherwise -- an over-broad credential request would be the same class of defect this module
+// exists to remove. If that row ever becomes `private: true` this sentence stops being true, which
+// is why it is cited to the row rather than to a run.
 //
 // WHY THE CREDENTIAL SOURCE IS STILL AN ENVIRONMENT VARIABLE, which looks like the very thing that
 // was withdrawn and is not. The withdrawal was of a variable bound into a unit WHOSE CHILDREN ARE
@@ -345,30 +357,61 @@ type PublicationAnswerStanding
   | AnswerUnaddressable { reason: String }
   | AnswerSpoolRefused { reason: String }
 
+// THE REQUEST IS RE-ASKED ON EVERY REACH, AND GETTING THIS WRONG WOULD HAVE FROZEN THE LAMP -- the
+// same failure gunbc.roadmap_belt_actuate belt_publish_gate_note records for the receipt, arriving
+// one layer out through the new boundary.
+//
+// The tempting shape is `if an answer exists, use it; otherwise ask`, and it is wrong for exactly
+// the reason the obvious idempotence key was wrong there. The belt ticks continuously, so the FIRST
+// observation of a head usually happens before the worker has pushed. That observation is a
+// perfectly good judgment -- branch-not-published -- and an answer kept as the standing answer would
+// pin the row to `not published` forever, with every later tick re-copying the very document that
+// recorded the branch's absence. The negative answer would outlive the fact it described.
+//
+// SO THE ASK IS UNCONDITIONAL AND THE GATE IS WHAT STOPS IT. This function is reached only after
+// belt_publish_gate answers PublishProceed, and the gate proceeds only while the question is OPEN --
+// a receipt saying the head is on offer halts before this is called at all. So `reached` already
+// means `re-observe`, and asking again here needs no second predicate that could disagree with the
+// first. The answer read is the LATEST observation the helper produced; the enqueue is what makes
+// the next one exist.
+//
+// The read runs BEFORE the write so a reader never races its own request into a half-written
+// answer. A helper mid-write from a previous tick is still possible, and it produces a decode
+// refusal rather than a wrong answer -- typed, located, and gone on the next tick.
+//
+// A FAILED ENQUEUE REFUSES EVEN WHEN AN ANSWER WAS READ, and that ordering is deliberate rather
+// than incidental. Returning the answer and swallowing the write failure would be an absorbed
+// degradation: with an answer already on disk the belt would re-copy it forever and the unwritable
+// request directory would never surface again, so the deficit`s frequency would be zeroed by
+// construction. The answer stays perfectly good; what has failed is the obligation to re-observe,
+// and that is the belt`s own problem to report.
 fn publication_answer_standing(
   instance_root: String,
   subject: RoadmapPublicationSubject,
 ) -> PublicationAnswerStanding {
   match publication_spool_address(subject: subject) {
     SpoolUnaddressable { reason } => AnswerUnaddressable { reason: reason }
-    SpoolAddressed { key } =>
-      match publication_answer_read(
+    SpoolAddressed { key } => {
+      let found = publication_answer_read(
         instance_root: instance_root,
         key: key,
         expected: subject,
-      ) {
-        AnswerUnreadable { reason } => AnswerSpoolRefused { reason: reason }
-        AnswerPresent { receipt } => AnswerReady { receipt: receipt }
-        AnswerAbsent =>
-          match publication_request_enqueue(
-            instance_root: instance_root,
-            key: key,
-            subject: subject,
-          ) {
-            RequestNotEnqueued { detail } => AnswerSpoolRefused { reason: detail }
-            RequestEnqueued { path } => AnswerAwaited { request_path: path }
+      )
+      let asked = publication_request_enqueue(
+        instance_root: instance_root,
+        key: key,
+        subject: subject,
+      )
+      match asked {
+        RequestNotEnqueued { detail } => AnswerSpoolRefused { reason: detail }
+        RequestEnqueued { path } =>
+          match found {
+            AnswerUnreadable { reason } => AnswerSpoolRefused { reason: reason }
+            AnswerPresent { receipt } => AnswerReady { receipt: receipt }
+            AnswerAbsent => AnswerAwaited { request_path: path }
           }
       }
+    }
   }
 }
 
@@ -422,7 +465,7 @@ fn publication_helper_credential() -> PublicationCredentialSource {
 // the helper can see, which is a deadlock whose observable form is an ordinary Pending lamp.
 type PublicationHelperOutcome
   = HelperAnswered { key: String, outcome_key: String }
-  | HelperAlreadyAnswered { key: String }
+  | HelperRequestNotConsumed { key: String, detail: String }
   | HelperRequestUnreadable { entry: String, detail: String }
   | HelperAnswerWriteFailed { key: String, detail: String }
   | HelperSpoolRefused { detail: String }
@@ -430,7 +473,7 @@ type PublicationHelperOutcome
 fn publication_helper_outcome_key(o: PublicationHelperOutcome) -> String {
   match o {
     HelperAnswered { key: _, outcome_key: _ } => "answered"
-    HelperAlreadyAnswered { key: _ } => "already-answered"
+    HelperRequestNotConsumed { key: _, detail: _ } => "request-not-consumed"
     HelperRequestUnreadable { entry: _, detail: _ } => "request-unreadable"
     HelperAnswerWriteFailed { key: _, detail: _ } => "answer-write-failed"
     HelperSpoolRefused { detail: _ } => "spool-refused"
@@ -440,7 +483,7 @@ fn publication_helper_outcome_key(o: PublicationHelperOutcome) -> String {
 fn publication_helper_outcome_is_fault(o: PublicationHelperOutcome) -> Bool {
   match o {
     HelperAnswered { key: _, outcome_key: _ } => false
-    HelperAlreadyAnswered { key: _ } => false
+    HelperRequestNotConsumed { key: _, detail: _ } => true
     HelperRequestUnreadable { entry: _, detail: _ } => true
     HelperAnswerWriteFailed { key: _, detail: _ } => true
     HelperSpoolRefused { detail: _ } => true
@@ -485,17 +528,32 @@ fn publication_helper_answer_request(
               path: publication_answer_path_for(instance_root: instance_root, key: key),
               content: publication_receipt_json(receipt: receipt),
             )
-            if write.success {
-              HelperAnswered {
-                key: key,
-                outcome_key: publication_receipt_outcome_key(outcome: receipt.outcome) as String,
-              }
-            } else {
+            if !write.success {
               HelperAnswerWriteFailed {
                 key: key,
                 detail: join([
                   "the publication answer could not be written: ", write.error,
                 ], ""),
+              }
+            } else {
+              let consumed = Filesystem.Delete(
+                path: join([
+                  publication_request_dir(instance_root: instance_root), "/", entry,
+                ], ""),
+              )
+              if consumed.success {
+                HelperAnswered {
+                  key: key,
+                  outcome_key: publication_receipt_outcome_key(outcome: receipt.outcome) as String,
+                }
+              } else {
+                HelperRequestNotConsumed {
+                  key: key,
+                  detail: join([
+                    "the answer was written and its request could not be removed, so this subject would be re-observed every run with nothing recording why: ",
+                    consumed.error,
+                  ], ""),
+                }
               }
             }
           }
@@ -503,16 +561,28 @@ fn publication_helper_answer_request(
   }
 }
 
+// A REQUEST'S PRESENCE IS THE ASK, AND THE ANSWER IS NOT A CACHE.
+//
+// The helper does not skip an entry because an answer already exists for it. Publication is an
+// observation of a remote that has not stopped moving, so a standing answer is a snapshot rather
+// than a settled fact -- and a helper that treated it as settled would pin every row whose first
+// observation preceded the worker's push, which is the freeze publication_answer_standing's header
+// describes from the requesting side. The requester enqueues only while its own gate says the
+// question is open, so a request that exists is a question that is still open, and the only correct
+// response to it is to observe.
+//
+// THE REQUEST IS CONSUMED BY THE ANSWER, and the ordering is write-then-delete. A delete that
+// preceded the write would lose the question on any failure after it; this way the worst case is a
+// request answered twice, which costs one network read and produces identical bytes. A delete that
+// FAILS is its own outcome rather than a silence, because the alternative is a subject re-observed
+// on every run forever with nothing saying why.
 fn publication_helper_entry_outcome(
   instance_root: String,
   credential: PublicationCredentialSource,
-  answers: String,
   entry: String,
 ) -> PublicationHelperOutcome {
   if trim(entry) == "" {
     HelperSpoolRefused { detail: "the request listing carried an empty entry name" }
-  } else if filesystem_listing_names_entry(listing: answers, name: entry) {
-    HelperAlreadyAnswered { key: entry }
   } else {
     let path = join([
       publication_request_dir(instance_root: instance_root), "/", entry,
@@ -558,28 +628,15 @@ fn publication_helper_run_once(instance_root: String) -> List<PublicationHelperO
       },
     ]
   } else {
-    let answers = Filesystem.List(path: publication_answer_dir(instance_root: instance_root))
-    if !answers.success {
-      [
-        HelperSpoolRefused {
-          detail: join([
-            "the publication answer directory could not be listed, so an already-answered request is indistinguishable from a new one: ",
-            publication_answer_dir(instance_root: instance_root), " (", answers.error, ")",
-          ], ""),
-        },
-      ]
-    } else {
-      let credential = publication_helper_credential()
-      map(
-        filter(xs: split(s: requests.entries, delimiter: "\n"), f: e => trim(e) != ""),
-        entry => publication_helper_entry_outcome(
-          instance_root: instance_root,
-          credential: credential,
-          answers: answers.entries,
-          entry: trim(entry),
-        ),
-      )
-    }
+    let credential = publication_helper_credential()
+    map(
+      filter(xs: split(s: requests.entries, delimiter: "\n"), f: e => trim(e) != ""),
+      entry => publication_helper_entry_outcome(
+        instance_root: instance_root,
+        credential: credential,
+        entry: trim(entry),
+      ),
+    )
   }
 }
 
@@ -599,7 +656,7 @@ fn publication_helper_run_json(outcomes: List<PublicationHelperOutcome>) -> Stri
 fn publication_helper_outcome_detail(o: PublicationHelperOutcome) -> String {
   match o {
     HelperAnswered { key, outcome_key } => join([key, " → ", outcome_key], "")
-    HelperAlreadyAnswered { key } => key
+    HelperRequestNotConsumed { key, detail } => join([key, ": ", detail], "")
     HelperRequestUnreadable { entry, detail } => join([entry, ": ", detail], "")
     HelperAnswerWriteFailed { key, detail } => join([key, ": ", detail], "")
     HelperSpoolRefused { detail } => detail

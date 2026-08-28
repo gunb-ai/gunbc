@@ -509,11 +509,12 @@ fn fleet_posix_inference_service_sudo_grants() -> List<PosixSudoGrant> {
 // declared empty, so a future grant is a visible edit to this function rather than a roster append
 // nobody reads.
 //
-// It is also why the publication helper spawns nothing. The belt's leak surface is its children --
-// `env -C <workdir> <program>` inherits the environment, so an ambient token reaches git, tmux and
-// the dispatched provider session. A principal with no grants running a process with no children
-// has no such surface, and that is a fact about what the helper DOES rather than a promise about
-// what it will not do.
+// It is also why the publication helper spawns no session. The belt's leak surface is the sessions
+// it dispatches into -- `env -C <workdir> <program>` inherits the environment, so an ambient token
+// reaches git, tmux and the provider session that outlives the tick. The helper does spawn
+// children, `printenv` and `git`, and neither is a session anything is dispatched into nor survives
+// the run. A principal with no grants running a process that starts no session has no such surface,
+// and that is a fact about what the helper DOES rather than a promise about what it will not do.
 fn fleet_posix_publication_helper_sudo_grants() -> List<PosixSudoGrant> {
   []
 }

@@ -20,7 +20,7 @@ import gunbc.roadmap_publication_helper {
   publication_request_path_for,
   publication_answer_path_for,
   PublicationHelperOutcome,
-  HelperAnswered, HelperAlreadyAnswered, HelperRequestUnreadable,
+  HelperAnswered, HelperRequestNotConsumed, HelperRequestUnreadable,
   HelperAnswerWriteFailed, HelperSpoolRefused,
   publication_helper_outcome_is_fault,
   publication_helper_answer_request,
@@ -53,7 +53,7 @@ import gunbc.live_deploy.spec {
 // and a negative over a whole process is not something a hermetic witness can establish. What is
 // establishable is the two facts the property is built from, and both are asserted here by
 // execution: the units that spawn children bind no credential while the unit that does bind one
-// spawns nothing (over rendered unit bytes, which is where a credential binding is either present
+// starts no session (over rendered unit bytes, which is where a credential binding is either present
 // or absent), and the request document the belt hands across carries a subject and nothing that
 // could direct a write.
 //
@@ -187,7 +187,7 @@ test fn a_request_whose_subject_addresses_another_entry_is_refused_before_any_ob
     HelperRequestUnreadable { entry: e, detail: _ } =>
       e == "some-other-node.a1.2222222222222222222222222222222222222222.json"
     HelperAnswered { key: _, outcome_key: _ } => false
-    HelperAlreadyAnswered { key: _ } => false
+    HelperRequestNotConsumed { key: _, detail: _ } => false
     HelperAnswerWriteFailed { key: _, detail: _ } => false
     HelperSpoolRefused { detail: _ } => false
   }
@@ -202,7 +202,7 @@ test fn a_request_document_that_does_not_decode_is_refused_rather_than_skipped()
   ) {
     HelperRequestUnreadable { entry: _, detail: _ } => true
     HelperAnswered { key: _, outcome_key: _ } => false
-    HelperAlreadyAnswered { key: _ } => false
+    HelperRequestNotConsumed { key: _, detail: _ } => false
     HelperAnswerWriteFailed { key: _, detail: _ } => false
     HelperSpoolRefused { detail: _ } => false
   }
@@ -213,16 +213,21 @@ test fn a_request_document_that_does_not_decode_is_refused_rather_than_skipped()
 // The helper's exit status is derived from this predicate, so a new outcome arm silently classified
 // as non-fault would be a helper that exits 0 having done nothing. Both poles are asserted, because
 // a predicate that answered true for everything would satisfy a one-sided check.
+//
+// HelperRequestNotConsumed IS A FAULT and that is not obvious: the answer was written, so the
+// requester is served and the run looks successful. It is a fault because the request survives, so
+// the subject is re-observed on every run from then on with nothing recording why -- a cost that
+// grows silently, which is exactly the shape a non-fault classification would hide.
 
 test fn only_the_helpers_own_failures_are_faults() -> Bool {
   !publication_helper_outcome_is_fault(o: HelperAnswered { key: "k", outcome_key: "branch-not-published" })
-  && !publication_helper_outcome_is_fault(o: HelperAlreadyAnswered { key: "k" })
+  && publication_helper_outcome_is_fault(o: HelperRequestNotConsumed { key: "k", detail: "d" })
   && publication_helper_outcome_is_fault(o: HelperRequestUnreadable { entry: "e", detail: "d" })
   && publication_helper_outcome_is_fault(o: HelperAnswerWriteFailed { key: "k", detail: "d" })
   && publication_helper_outcome_is_fault(o: HelperSpoolRefused { detail: "d" })
 }
 
-// ── The credential is bound to exactly one unit, and it is the one that spawns nothing ───────────
+// ── The credential is bound to one unit, and it is the one that dispatches no session ────────────
 //
 // THE DISCRIMINATOR IS THE PAIR, ASSERTED OVER THE SAME BYTES A DEPLOY INSTALLS. A witness that
 // only checked the publication unit HAS a credential would pass just as well with the belt unit
