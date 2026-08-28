@@ -1,6 +1,7 @@
 module test.claim.systemd_unit_file_witness_test
 
 import std.types { Bool, String, NonEmptyStr }
+import std.measure { ByteSize, byte_size }
 import extdeps.systemd.unit_file {
   SystemdUnitFile,
   ServiceUnitFile,
@@ -42,8 +43,15 @@ import extdeps.systemd.unit_file {
   ServiceSlice,
   SliceUnitFile,
   SystemdSliceDirective,
-  SliceMemoryMax,
-  SliceMemoryHigh,
+  slice_memory_max,
+  slice_memory_high,
+  slice_memory_swap_max,
+  slice_tasks_max,
+  slice_cpu_weight,
+  slice_memory_max_unlimited,
+  slice_memory_high_unlimited,
+  slice_memory_swap_max_unlimited,
+  slice_tasks_max_unlimited,
   NotInstallable,
   systemd_slice_directive_line,
   systemd_unit_file_lines,
@@ -288,11 +296,64 @@ test fn the_slice_directive_renders_in_the_service_section() -> Bool {
     == "Slice=p.slice"
 }
 
-test fn each_slice_directive_renders_its_own_systemd_name() -> Bool {
-  systemd_slice_directive_line(directive: SliceMemoryMax { bytes: "17179869184" as NonEmptyStr })
+// THE FIVE KNOBS THE CELL BOUNDARY DECLARES, EACH SPELLED EXACTLY AS systemd SPELLS IT.
+//
+// This is the discriminating half of the grounding claim rather than a restatement of it. The knob
+// name now comes from `systemd_unit_property_wire` through the mint's chosen property, so a mint
+// wired to the wrong member of `SystemdUnitProperty` -- `slice_memory_high` reaching MemoryMax, say
+// -- compiles clean, renders a plausible line, and silently writes the wrong ceiling onto a host.
+// Nothing but this comparison against the literal upstream spelling catches that.
+test fn each_slice_knob_renders_its_own_systemd_name() -> Bool {
+  let sixteen_gib = byte_size(count: 17179869184)
+  systemd_slice_directive_line(directive: slice_memory_max(bytes: sixteen_gib))
       == "MemoryMax=17179869184"
-    && systemd_slice_directive_line(directive: SliceMemoryHigh { bytes: "17179869184" as NonEmptyStr })
+    && systemd_slice_directive_line(directive: slice_memory_high(bytes: sixteen_gib))
       == "MemoryHigh=17179869184"
+    && systemd_slice_directive_line(directive: slice_memory_swap_max(bytes: byte_size(count: 34359738368)))
+      == "MemorySwapMax=34359738368"
+    && systemd_slice_directive_line(directive: slice_tasks_max(count: 16384))
+      == "TasksMax=16384"
+    && systemd_slice_directive_line(directive: slice_cpu_weight(weight: 100))
+      == "CPUWeight=100"
+}
+
+// THE FIVE LINES ARE PAIRWISE DISTINCT, which is what a shared renderer over one property field can
+// get wrong in the direction the assertion above cannot see on its own. A `systemd_slice_directive_line`
+// that ignored `directive.property` and emitted one name would fail the test above at the second
+// conjunct -- but a mint set where two knobs collapsed onto ONE property would pass a per-line check
+// written less carefully than the one above. Asserting distinctness states the property directly:
+// five mints, five spellings, no two the same.
+test fn the_five_slice_knobs_render_five_distinct_names() -> Bool {
+  let lines = [
+    systemd_slice_directive_line(directive: slice_memory_max(bytes: byte_size(count: 1))),
+    systemd_slice_directive_line(directive: slice_memory_high(bytes: byte_size(count: 1))),
+    systemd_slice_directive_line(directive: slice_memory_swap_max(bytes: byte_size(count: 1))),
+    systemd_slice_directive_line(directive: slice_tasks_max(count: 1)),
+    systemd_slice_directive_line(directive: slice_cpu_weight(weight: 1)),
+  ]
+  (filter(lines, a => (filter(lines, b => a == b) |> count) == 1) |> count) == 5
+}
+
+// THE UNLIMITED MINTS RENDER systemd's SENTINEL RATHER THAN A LARGE NUMBER, and the asymmetry is
+// asserted alongside: there is no `slice_cpu_weight_unlimited`, because systemd defines no unlimited
+// CPUWeight. That absence is not testable by constructing the bad value -- it has no constructor --
+// so what is asserted is the observable half, that the four knobs which DO admit the sentinel each
+// render it under their own name.
+test fn the_unlimited_mints_render_systemds_sentinel() -> Bool {
+  systemd_slice_directive_line(directive: slice_memory_max_unlimited()) == "MemoryMax=infinity"
+    && systemd_slice_directive_line(directive: slice_memory_high_unlimited()) == "MemoryHigh=infinity"
+    && systemd_slice_directive_line(directive: slice_memory_swap_max_unlimited())
+      == "MemorySwapMax=infinity"
+    && systemd_slice_directive_line(directive: slice_tasks_max_unlimited()) == "TasksMax=infinity"
+}
+
+// A BYTE COUNT AND A SENTINEL ARE DIFFERENT LINES FOR THE SAME KNOB. The RED this discriminates is a
+// value renderer that dropped its `DirectiveUnlimited` arm into the numeric one, or a mint that
+// filled `DirectiveByteCount { bytes: byte_size(count: 0) }` where the sentinel belonged -- both of
+// which write a ZERO ceiling onto a host, which is not "no limit" but the strictest limit there is.
+test fn an_unlimited_ceiling_is_not_a_zero_ceiling() -> Bool {
+  systemd_slice_directive_line(directive: slice_memory_max_unlimited())
+    != systemd_slice_directive_line(directive: slice_memory_max(bytes: byte_size(count: 0)))
 }
 
 fn slice_sample() -> SystemdUnitFile {
@@ -302,8 +363,8 @@ fn slice_sample() -> SystemdUnitFile {
       Before { target: "slices.target" as NonEmptyStr },
     ],
     slice: [
-      SliceMemoryMax { bytes: "17179869184" as NonEmptyStr },
-      SliceMemoryHigh { bytes: "17179869184" as NonEmptyStr },
+      slice_memory_max(bytes: byte_size(count: 17179869184)),
+      slice_memory_high(bytes: byte_size(count: 17179869184)),
     ],
     install: NotInstallable,
   }
