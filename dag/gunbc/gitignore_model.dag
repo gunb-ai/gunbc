@@ -79,13 +79,6 @@ type IgnoreArtifact
   | V2InspectErrorsFile
   | GithubCLICacheDir
   | PythonLocalDevScriptFile
-  | PythonAuditScriptAllowlisted
-  | PythonProbeScriptAllowlisted
-  | FloorCutNameResolutionPartitionScriptAllowlisted
-  | ShadowDirectCallArgConformanceSummarizeScriptAllowlisted
-  | ShadowDirectCallArgConformanceAdjudicateScriptAllowlisted
-  | ShadowDirectCallArgConformanceJoinBoardScriptAllowlisted
-  | E0308ClassifySitesScriptAllowlisted
   | PythonBytecodeCacheDir
   | PythonCompiledBytecode
   | ClaimMapDir
