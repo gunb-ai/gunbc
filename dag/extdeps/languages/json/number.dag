@@ -1,0 +1,146 @@
+module extdeps.languages.json.number
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.decimal { ExactDecimal, ExactDecimalAdmitted, ExactDecimalScaleRefused, admit_exact_decimal }
+import extdeps.languages.json.grammar { JsonNumberLexeme }
+import extdeps.languages.json.emit { JsonArray, JsonBool, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
+
+// READING A JSON NUMBER AS A VALUE, WHICH THIS TREE DELIBERATELY DID NOT DO UNTIL A CONSUMER
+// NEEDED IT. extdeps.languages.json.emit keeps every number as a JsonNumberLexeme -- a branded
+// String -- precisely so that parsing never silently reinterprets a numeral, and
+// extdeps.github.workflow_run_event's run_id note records that decision along with where the
+// decode belongs when it is finally needed: "the decode lands in the JSON authority with its own
+// witness, not here". This is that module. It is placed beside the grammar rather than in the
+// consumer for the reason that note gives -- a decode minted inside a reader is a second reading
+// of RFC 8259 section 6, and this tree has already paid for one of those (the exponent fork the
+// grammar's own note records).
+//
+// THE CONSUMER THAT FORCED IT: two captured OpenBMC fan programs write the same coefficient as
+// `30` on one host and `30.0` on the other. Asking whether the two hosts run the same program is
+// asking whether two numerals denote the same number, and no comparison of lexemes answers that.
+
+// THE MODELLED FRAGMENT IS RFC 8259's NUMBER PRODUCTION MINUS ITS EXPONENT, AND THE EXCLUSION
+// REFUSES RATHER THAN APPROXIMATING. `1e3` is a perfectly good JSON number; expanding it here
+// would mean deciding what `1e400` becomes, and any answer to that is either an overflow or a
+// fabricated one. So the exponent form is named as outside the fragment and stops the line, which
+// leaves the decision with a caller that knows its own domain -- and costs nothing today, because
+// no captured document uses it.
+// THE FRAGMENT IS NARROWER THAN "EXPONENT-FREE RFC NUMBERS", AND SAYING SO IS THE POINT. The
+// digits are read into the substrate's Int, so an exponent-free numeral whose exact coefficient
+// exceeds that range is refused -- and it is refused as a MAGNITUDE limit, not as unreadable
+// digits. A grammar-validated lexeme does not have unreadable digits merely because the carrier
+// that would hold it is bounded, and the two have different owners: one is a document to fix, the
+// other is this fragment reaching its edge. Found in review of gunbc#9491, where both landed on
+// one arm.
+type JsonNumberFragmentRefusal
+  = JsonNumberUsesExponent
+  | JsonNumberMagnitudeOutsideCarrierRange
+  | JsonNumberScaleRefused
+
+type JsonNumberReading
+  = JsonNumberExact { value: ExactDecimal }
+  | JsonNumberOutsideExactFragment { lexeme: String, refusal: JsonNumberFragmentRefusal }
+
+fn json_number_fragment_refusal_text(r: JsonNumberFragmentRefusal) -> NonEmptyStr {
+  match r {
+    JsonNumberUsesExponent => "json number uses the exponent form, which is outside the exactly-read fragment"
+    JsonNumberMagnitudeOutsideCarrierRange => "json number coefficient does not fit the substrate integer carrier"
+    JsonNumberScaleRefused => "json number fraction-digit count was refused by the exact decimal mint"
+  }
+}
+
+// A SCAN RATHER THAN A `contains`, BECAUSE THE POSITION IS THE ANSWER. Whether the lexeme has a
+// decimal point is not the question; where it is decides how many fraction digits there are.
+fn json_number_char_index(s: String, i: Int, wanted: String, other: String) -> Int {
+  if i >= s.length() {
+    s.length()
+  } else if char_at(s, i) == wanted || char_at(s, i) == other {
+    i
+  } else {
+    json_number_char_index(s: s, i: i + 1, wanted: wanted, other: other)
+  }
+}
+
+fn json_number_digits_before_point(body: String, point: Int) -> String {
+  substring(s: body, start: 0, end: point)
+}
+
+fn json_number_digits_after_point(body: String, point: Int) -> String {
+  if point >= body.length() {
+    ""
+  } else {
+    substring(s: body, start: point + 1, end: body.length())
+  }
+}
+
+fn json_number_fraction_digit_count(body: String, point: Int) -> Int {
+  json_number_digits_after_point(body: body, point: point).length()
+}
+
+fn json_number_signed_units(digits: String, negative: Bool) -> Int? {
+  match parse_int(s: digits) {
+    Present { value: v } => Present { value: if negative { 0 - v } else { v } }
+    Absent => Absent
+  }
+}
+
+// WHY THE SIGN IS STRIPPED BEFORE THE DIGITS ARE JOINED RATHER THAN LEFT IN PLACE. `-0.5` has to
+// become units -5 with one fraction digit, and the digit string handed to parse_int is built by
+// concatenating the two sides of the point. Leaving the minus attached would produce "-05", whose
+// reading depends on how parse_int treats a leading zero after a sign -- a question this decode
+// has no need to ask. Negating a magnitude asks nothing.
+fn read_json_number_lexeme(lexeme: String) -> JsonNumberReading {
+  let n = lexeme.length()
+  let exponent_at = json_number_char_index(s: lexeme, i: 0, wanted: "e", other: "E")
+  if exponent_at < n {
+    JsonNumberOutsideExactFragment { lexeme: lexeme, refusal: JsonNumberUsesExponent }
+  } else {
+    let negative = starts_with(s: lexeme, prefix: "-")
+    let body = if negative { substring(s: lexeme, start: 1, end: n) } else { lexeme }
+    let point = json_number_char_index(s: body, i: 0, wanted: ".", other: ".")
+    let digits = join([
+      json_number_digits_before_point(body: body, point: point),
+      json_number_digits_after_point(body: body, point: point),
+    ], "")
+    match json_number_signed_units(digits: digits, negative: negative) {
+      Present { value: units } =>
+        match admit_exact_decimal(
+          units: units,
+          fraction_digits: json_number_fraction_digit_count(body: body, point: point),
+        ) {
+          ExactDecimalAdmitted { canonical } => JsonNumberExact { value: canonical }
+          ExactDecimalScaleRefused { observed_fraction_digits } =>
+            JsonNumberOutsideExactFragment { lexeme: lexeme, refusal: JsonNumberScaleRefused }
+        }
+      Absent =>
+        JsonNumberOutsideExactFragment {
+          lexeme: lexeme,
+          refusal: JsonNumberMagnitudeOutsideCarrierRange,
+        }
+    }
+  }
+}
+
+fn read_json_number(lexeme: JsonNumberLexeme) -> JsonNumberReading {
+  read_json_number_lexeme(lexeme: lexeme as String)
+}
+
+// READING A NUMBER OUT OF A VALUE OF UNKNOWN KIND IS A DIFFERENT QUESTION AND GETS A DIFFERENT
+// ANSWER. A string, an object or a null in a coefficient position is not a number that failed to
+// read -- it is a document that put the wrong kind of thing there, which is a defect in the
+// document rather than a limit of this fragment. Collapsing the two would let a coefficient
+// spelled "30" (quoted) report as an unreadable numeral.
+type JsonNumberValueReading
+  = JsonNumberValueRead { reading: JsonNumberReading }
+  | JsonValueIsNotANumber
+
+fn read_json_number_value(v: JsonValue) -> JsonNumberValueReading {
+  match v {
+    JsonNumber { lexeme: l } => JsonNumberValueRead { reading: read_json_number(lexeme: l) }
+    JsonString { value: _ } => JsonValueIsNotANumber
+    JsonBool { value: _ } => JsonValueIsNotANumber
+    JsonNull => JsonValueIsNotANumber
+    JsonArray { elements: _ } => JsonValueIsNotANumber
+    JsonObject { members: _ } => JsonValueIsNotANumber
+  }
+}

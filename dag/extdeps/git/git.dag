@@ -311,6 +311,38 @@ data git_ls_remote_external_authority_anchor: ExternalAuthority = ExternalAuthor
 // maintenance with no ref having moved. Both directions were measured on a live tree: a digest over
 // storage reports a difference where nothing changed, and misses one where a loose ref shadows a stale
 // packed entry.
+// WHAT --sort=refname ORDERS BY, stated because pinning the flag fixes the ORDER and says nothing
+// about the RELATION, and a consumer has to reimplement that relation to check it.
+//
+// git-for-each-ref(1) documents refname as the sort key and the default when --sort is unspecified.
+// The comparison it performs is over the ref name's BYTES: git refnames are byte strings, not
+// characters -- git-check-ref-format(1) constrains which bytes may appear and says nothing about an
+// encoding -- so git's ordering here is bytewise, not a collation.
+//
+// THE CONSUMER'S COMPARATOR IS NOT BYTEWISE, AND THE TWO AGREE FOR A REASON THAT IS NOT OBVIOUS.
+// extdeps.git.enumeration validates this order with std.string_type string_is_lexicographically_before,
+// which compares CODE POINTS. Bytewise and code-point-wise orderings coincide over well-formed UTF-8,
+// because UTF-8 is order-preserving by construction: a code point's encoding sorts, byte for byte, in
+// the same relation as the code point itself. That is a property of the encoding rather than of either
+// comparator, and it is the entire reason the decoder's check does not produce false refusals.
+//
+// IT IS RECORDED HERE BECAUSE NOTHING ELSE CARRIES IT. Before this note the correspondence held by
+// coincidence as far as any reader could tell, which fails in the direction that looks like a bug in
+// git: make std's comparator locale-aware -- an entirely reasonable-looking improvement -- and the
+// decoder begins refusing valid `for-each-ref` output with "ref names are not strictly increasing",
+// a message that accuses the tool rather than the change that broke it.
+//
+// THE BOUNDARY, DECLARED RATHER THAN GUARDED (DESIGN section 4b, outside the modeled guarantee): a
+// refname whose bytes are not well-formed UTF-8 is permitted by git and has no defined relation to a
+// code-point comparator. No refusal is claimed for it here, because whether such a name survives the
+// shell transport into a String at all is unestablished, and a wall whose reachability has not been
+// measured would be asserted coverage rather than a wall. Establishing that is the next rung; what is
+// owed first is a measurement, not a check.
+//
+// NO GIT VERSION IS PINNED ANYWHERE IN THIS MODULE, and ExternalAuthority carries no version field to
+// pin one with -- it holds a Uri and nothing else. DESIGN section 3 asks an extdeps subject to declare
+// its version, so this is a standing gap for the whole module rather than for this operation, named
+// here because the sort semantics are exactly the kind of fact that is version-relative.
 data git_for_each_ref_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -330,6 +362,95 @@ data git_for_each_ref_external_authority_anchor: ExternalAuthority = ExternalAut
 // path content. Each entry carries the absolute worktree path, its HEAD, its branch or a bare detached
 // marker, and the locked and prunable standings -- exactly the tuple a preservation comparison needs,
 // and none of it recoverable from the filesystem without re-deciding git's own layout.
+// COMPARE-AND-SWAP, AND THE THIRD ARGUMENT IS THE ENTIRE POINT OF THIS OPERATION EXISTING.
+//
+// git-update-ref documents the form `git update-ref <ref> <newvalue> [<oldvalue>]` and states that
+// with <oldvalue> it verifies the ref's current value matches before updating, failing otherwise.
+// That is a real compare-and-swap performed by git under its own ref lock, not a check this layer
+// could do by reading and then writing -- a read-then-write here would carry a window in which
+// another actor moves the ref between the two, and would report success for a transition that
+// overwrote someone else's.
+//
+// THE UNCONDITIONAL FORM ALREADY EXISTED AND IS WHY THIS IS SEPARATE RATHER THAN A PARAMETER.
+// shape_git_bare_update_ref_argv writes `update-ref <ref> FETCH_HEAD` with no expected value, so
+// it cannot fail on a concurrent move; it clobbers. Adding an optional oldvalue to that shaper
+// would make the safe and unsafe forms one call distinguished by whether a caller remembered to
+// pass an argument, which is the state-space conflation this repository keeps finding. Two names,
+// and a caller cannot reach one meaning the other.
+//
+// EXPECTING ABSENCE IS SPELLED BY THE EMPTY STRING, which is git's own convention for "verify the
+// ref does not exist" rather than an invention here.
+data git_update_ref_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-update-ref"
+  }
+}
+
+// THE REFLOG IS READ BECAUSE IT IS THE ONLY EVIDENCE THAT A TRANSITION HAPPENED THROUGH GIT.
+// A converged HEAD proves the destination; it does not distinguish "git moved this ref" from "a
+// file was copied over it", and the whole defect this operation exists to detect is the second.
+// A file-level copy of `refs/**` leaves no reflog entry, so a non-noop transition with an
+// unchanged reflog is exactly the corruption signature.
+//
+// `--format` IS PINNED rather than left to git's default, because the default is affected by the
+// user's configuration and this output is decoded. `%H %gd %gs` is old-to-new-independent: the
+// object, the selector and the subject.
+data git_reflog_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-reflog"
+  }
+}
+
+// UNTRACKED RESIDUE IS WHAT `reset --hard` CANNOT REACH, and reporting a convergence without
+// observing it would be a fabricated plausible output: `reset --hard` moves HEAD, the index and the
+// TRACKED bytes, so a tree that carries strays afterwards is candidate-union-strays and not the
+// candidate. On the deployed tree this is not hypothetical -- the sync being replaced wrote files
+// git never tracked, and they survive the transition untouched.
+//
+// `ls-files --others` rather than `status --porcelain` because the question is exactly "which paths
+// does git not track", with no interest in staged or modified state, and `--exclude-standard` keeps
+// ignored build output out of the answer: a target/ directory is not residue, it is a gitignored
+// artifact the candidate tree also expects to be absent from. `-z` because a path may contain a
+// newline, and a newline-delimited reading of this output would silently split one path into two.
+//
+// THIS OPERATION OBSERVES AND DOES NOT REMOVE. `git clean -fdx` would make the tree match by
+// deleting whatever it found, which widens rather than refuses (DESIGN section 5) and would destroy
+// operator state nobody adjudicated. The consumer refuses and names the residue instead.
+data git_ls_files_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-ls-files"
+  }
+}
+
+// ONE OPERATION MOVES HEAD, THE INDEX AND THE TRACKED BYTES TOGETHER, which is the property the
+// deployed tree lost. The sync it replaces moved tracked bytes by rsync and HEAD by file copy and
+// left the index untouched entirely, so the three could and did disagree -- measured on srv1 as
+// 5650 divergent paths with index-vs-HEAD and worktree-vs-index both wrong. `reset --hard` is ONE
+// GIT-OWNED COMMAND over all three, which is materially better than three uncoordinated transports.
+//
+// THAT IS NOT A CLAIM OF CRASH-ATOMICITY, and an earlier revision of this annotation made one: it
+// said partial application "is not a state it can produce". Git documents this command as updating
+// HEAD, the index and the working tree; it does not document the sequence as a transaction that
+// rolls back, and a kill between the ref write and the file writes leaves exactly the partial state
+// the sentence denied. Nor does the surrounding composition inherit atomicity from it -- `update-ref`
+// gives a compare-and-swap over the ref IT owns, and nothing extends that guarantee across a later
+// worktree reset. The consumer therefore carries an explicit partial-transition outcome rather than
+// relying on this command to make one unreachable.
+//
+// IT IS NOT READONLY AND IT DISCARDS LOCAL MODIFICATIONS, stated plainly because the name does not
+// say so: any uncommitted change in the target worktree is destroyed. That is correct for a
+// deployed tree, whose contents are supposed to be a function of the release and nothing else, and
+// it would be wrong for a working checkout. The caller owns that distinction.
+data git_reset_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-reset"
+  }
+}
+
 data git_worktree_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -1085,6 +1206,54 @@ service git.Core {
       0 => Unit
       128 => String "Not a valid object name"
     }
+  }
+
+  operation UpdateRefCompareAndSwapInRepo {
+    input { repo: FilePath, ref: String, new_value: String, expected_old: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["git", "-C", "{repo}", "update-ref", "{ref}", "{new_value}", "{expected_old}"]
+    }
+  }
+
+  operation ReflogInRepo {
+    input { repo: FilePath, ref: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["git", "-C", "{repo}", "reflog", "show", "--format=%H %gd %gs", "{ref}"]
+    }
+  }
+
+  operation ListUntrackedInRepo {
+    input { repo: FilePath }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["git", "-C", "{repo}", "ls-files", "--others", "--exclude-standard", "-z"]
+    }
+  }
+
+  operation ResetHardInRepo {
+    input { repo: FilePath, target: String }
+    output {
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "-C", "{repo}", "reset", "--hard", "{target}"] }
   }
 }
 
