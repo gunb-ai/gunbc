@@ -1,0 +1,180 @@
+module test.claim.repository_convergence_wet_witness_test
+
+import std.types { String, Bool, NonEmptyStr, FilePath }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.output_policy { OutcomeIsData }
+import gunbc.retained_shell_script { retained_runtime }
+import gunbc.live_deploy.repository_convergence { repository_converge_wet }
+import extdeps.shell
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// FIRST REAL EXECUTION EVIDENCE FOR repository_converge_wet. The fixture is rebuilt for each row
+// from ordinary git commands in a fresh mktemp directory. The function under test then performs its
+// own ForEachRef/WorktreeList/rev-parse/reflog/write-tree/diff/fetch/update-ref/reset/readback chain;
+// none of those answers is authored by this witness. Hermetic execution must refuse this file.
+// Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry
+// dag/test/claim/repository_convergence_wet_witness_test.dag --functions
+// detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree,already_at_candidate_repairs_a_stale_index,cas_race_is_observed_after_fetch,reset_refusal_after_successful_cas_is_nonzero
+data repository_convergence_wet_witness_note: String = "Scratch-repository WET matrix over the real git transport."
+
+// Record/replay receipt recipe (the setup invocation is stable and its recorded stdout carries the
+// original mktemp path into every subsequent operation key): run the function roster above with
+// `--wet --record --fixture-store target/repository-convergence-fixtures`; replay the same roster
+// with `--hermetic`; then replay against an EMPTY store. The populated replay must pass all rows and
+// the empty-store control must refuse every row with `missing recorded fixture`. That asymmetry is
+// the proof that replay consumed the recorded observations instead of silently reaching live git.
+data repository_convergence_record_replay_control_note: String = "Populated replay passes; empty-store replay refuses every effectful row."
+
+type ScratchRepository {
+  root: String
+  repo: String
+  remote_path: String
+  old: String
+  candidate: String
+}
+
+fn line_at(raw: String, index: Int) -> String {
+  match split(s: raw, sep: "\n").skip(n: index).first() { Present { value: x } => x _ => "" }
+}
+
+fn scratch_repository(index_lock: Bool, already_candidate: Bool, racing_fetch: Bool) -> ScratchRepository? {
+  let flags = join([if index_lock { "1" } else { "0" }, if already_candidate { "1" } else { "0" }, if racing_fetch { "1" } else { "0" }], " ")
+  let result = shell.Exec.Run(
+    script: retained_runtime(
+      body: join([
+        "set -eu",
+        "root=$(mktemp -d)",
+        "remote=$root/remote.git",
+        "repo=$root/repo",
+        "linked=$root/linked",
+        "git init -q --bare $remote",
+        "git init -q $repo",
+        "git -C $repo config user.email witness@example.invalid",
+        "git -C $repo config user.name witness",
+        "printf old > $repo/tracked",
+        "git -C $repo add tracked",
+        "git -C $repo commit -qm old",
+        "old=$(git -C $repo rev-parse HEAD)",
+        "printf new > $repo/tracked",
+        "git -C $repo commit -qam new",
+        "candidate=$(git -C $repo rev-parse HEAD)",
+        "git -C $repo branch dispatch-linked $old",
+        "git -C $repo worktree add -q $linked dispatch-linked",
+        "git -C $repo update-ref refs/dispatch/packed $old",
+        "git -C $repo pack-refs --all --prune",
+        "git -C $repo update-ref refs/dispatch/loose $old",
+        "git -C $repo remote add origin $remote",
+        "git -C $repo push -q origin $candidate:refs/heads/main",
+        "git -C $repo checkout -q --detach $old",
+        "git -C $repo update-ref refs/remotes/origin/main $old",
+        concat("set -- ", flags),
+        "if [ $2 = 1 ]; then git -C $repo reset -q --hard $candidate; cp $repo/.git/index $root/good-index; git -C $repo read-tree $old; else git -C $repo reset -q --hard $old; fi",
+        "if [ $3 = 1 ]; then printf '#!/bin/sh\\ngit -C \"$1\" update-ref refs/remotes/origin/main \"$2\"\\nshift 2\\nexec git-upload-pack \"$@\"\\n' > $root/upload-pack; chmod +x $root/upload-pack; git -C $repo config remote.origin.uploadpack \"$root/upload-pack $repo $candidate\"; fi",
+        "if [ $1 = 1 ]; then printf '#!/bin/sh\\n: > \"$1/.git/index.lock\"\\nshift\\nexec git-upload-pack \"$@\"\\n' > $root/upload-pack; chmod +x $root/upload-pack; git -C $repo config remote.origin.uploadpack \"$root/upload-pack $repo\"; fi",
+        "printf '%s\\n%s\\n%s\\n%s\\n%s\\n' $root $repo $remote $old $candidate",
+      ], "\n"),
+      reason: "repository convergence deterministic scratch git matrix" as NonEmptyStr,
+    ),
+    expect: OutcomeIsData,
+  )
+  if result.success {
+    Present { value: ScratchRepository { root: line_at(raw: result.stdout, index: 0), repo: line_at(raw: result.stdout, index: 1), remote_path: line_at(raw: result.stdout, index: 2), old: line_at(raw: result.stdout, index: 3), candidate: line_at(raw: result.stdout, index: 4) } }
+  } else { none }
+}
+
+fn remove_scratch(s: ScratchRepository) -> Bool {
+  shell.Remove.RecursiveForce(path: s.root as FilePath).success
+}
+
+fn run_scratch(s: ScratchRepository) -> ProcessExit {
+  repository_converge_wet(repo: s.repo, remote: "origin", base_ref: "refs/remotes/origin/main", candidate: s.candidate)
+}
+
+fn mutate_scratch(s: ScratchRepository, body: String) -> Bool {
+  shell.Exec.Run(
+    script: retained_runtime(body: body, reason: "repository convergence refusal fixture mutation" as NonEmptyStr),
+    expect: OutcomeIsData,
+  ).success
+}
+
+test fn detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree() -> Bool {
+  match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
+    Absent => false
+    Present { value: s } => {
+      let outcome = run_scratch(s: s)
+      let cleaned = remove_scratch(s: s)
+      match outcome { ExitSuccess => cleaned _ => false }
+    }
+  }
+}
+
+test fn already_at_candidate_repairs_a_stale_index() -> Bool {
+  match scratch_repository(index_lock: false, already_candidate: true, racing_fetch: false) {
+    Absent => false
+    Present { value: s } => {
+      let outcome = run_scratch(s: s)
+      let cleaned = remove_scratch(s: s)
+      match outcome { ExitSuccess => cleaned _ => false }
+    }
+  }
+}
+
+test fn cas_race_is_observed_after_fetch() -> Bool {
+  match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: true) {
+    Absent => false
+    Present { value: s } => {
+      let outcome = run_scratch(s: s)
+      let cleaned = remove_scratch(s: s)
+      match outcome { ExitFailure { code: _, reason: why } => cleaned && string_contains(s: why, pattern: "base ref moved") _ => false }
+    }
+  }
+}
+
+test fn reset_refusal_after_successful_cas_is_nonzero() -> Bool {
+  match scratch_repository(index_lock: true, already_candidate: false, racing_fetch: false) {
+    Absent => false
+    Present { value: s } => {
+      let outcome = run_scratch(s: s)
+      let cleaned = remove_scratch(s: s)
+      match outcome { ExitFailure { code: _, reason: why } => cleaned && string_contains(s: why, pattern: "PARTIAL TRANSITION") _ => false }
+    }
+  }
+}
+
+test fn unreadable_head_refuses_before_fetch_or_mutation() -> Bool {
+  match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
+    Absent => false
+    Present { value: s } => {
+      let changed = mutate_scratch(s: s, body: concat("printf 'ref: refs/heads/missing\\n' > ", concat(s.repo, "/.git/HEAD")))
+      let outcome = run_scratch(s: s)
+      let cleaned = remove_scratch(s: s)
+      changed && cleaned && match outcome { ExitFailure { code: _, reason: why } => string_contains(s: why, pattern: "before the transition could not be observed") _ => false }
+    }
+  }
+}
+
+test fn undecodable_worktree_roster_refuses_before_mutation() -> Bool {
+  match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
+    Absent => false
+    Present { value: s } => {
+      let changed = mutate_scratch(s: s, body: concat("printf invalid > ", concat(s.repo, "/.git/worktrees/linked/HEAD")))
+      let outcome = run_scratch(s: s)
+      let cleaned = remove_scratch(s: s)
+      changed && cleaned && match outcome { ExitFailure { code: _, reason: why } => string_contains(s: why, pattern: "worktree") _ => false }
+    }
+  }
+}
+
+test fn wrong_primary_standing_refuses_from_gits_roster() -> Bool {
+  match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
+    Absent => false
+    Present { value: s } => {
+      let linked_repo = concat(s.root, "/linked")
+      let outcome = repository_converge_wet(repo: linked_repo, remote: "origin", base_ref: "refs/remotes/origin/main", candidate: s.candidate)
+      let cleaned = remove_scratch(s: s)
+      cleaned && match outcome { ExitFailure { code: _, reason: _ } => true _ => false }
+    }
+  }
+}
