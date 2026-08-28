@@ -72,16 +72,15 @@ import v2.std.node {
   Named,
   Node,
   NodeFold,
-  NodeOccurrenceId,
   Positional,
   Symbol,
   Transform,
   TypeNode,
   fold_node,
   node_with_occurrence_id,
-  well_formed
+  well_formed,
 }
-import std.occurrence_identity { OccurrenceId }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId }
 
 type ResolvedTree = Node
 
@@ -361,7 +360,7 @@ fn namespace_has_canonical_symbol(namespace: Namespace, name: Symbol) -> Bool {
   namespace.canonical_symbols.member(name)
 }
 
-fn canonical_atom(identity: Symbol, occurrence_id: NodeOccurrenceId) -> Node {
+fn canonical_atom(identity: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Node {
   node_with_occurrence_id(
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],

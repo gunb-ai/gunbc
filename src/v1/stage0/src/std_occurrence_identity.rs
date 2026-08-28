@@ -384,7 +384,7 @@ pub fn scoped_occurrence_ref_in_scope(
 pub fn occurrence_identity_constructor_spelling_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global: the legacy v2 SyntheticOccurrence/MintedOccurrence facade and identically named shared constructors cannot coexist in one conversion closure. The constructor spelling is representation; this shared carrier and its allocator remain the semantic authority.".to_string()
+            "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global. The spelling was chosen while a second, identically named v2 coproduct still existed and could not coexist with these constructors in one closure; that coproduct and its conversions are deleted and this carrier is now the only occurrence-identity carrier a Node holds. The spelling is kept because renaming it would be a corpus-wide rewrite that buys nothing: the constructor spelling is representation, and this shared carrier and its allocator remain the semantic authority.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

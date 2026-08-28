@@ -53,8 +53,7 @@ import v2.std.node {
   Named,
   Node,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.runtime {
   BindInterpreter,

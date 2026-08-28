@@ -1,5 +1,6 @@
 module v2.extdeps.runtimes.v2_evaluator
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.collection {
   Absent,
   List,
@@ -54,8 +55,7 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
-  SyntheticOccurrence,
-  node_for_structural_equality
+  node_for_structural_equality,
 }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.runtime {
@@ -104,14 +104,14 @@ fn v2_eval_unit_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^v2_eval_unit_type_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
 data v2_eval_bool_literal_pin: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^v2_eval_bool_literal_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data v2_eval_unit_literal_pin: Node = v2_eval_unit_type_node()
@@ -141,7 +141,7 @@ fn v2_eval_boundary_operation_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^v2_eval_boundary_operation_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -149,7 +149,7 @@ fn v2_eval_effect_signature_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^v2_eval_boundary_effect_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -194,7 +194,7 @@ fn v2_eval_int_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

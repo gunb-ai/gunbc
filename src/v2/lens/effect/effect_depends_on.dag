@@ -1,5 +1,6 @@
 module v2.test.lens_effect.effect_depends_on
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.compiler.eval {
   EvalContext,
@@ -25,7 +26,7 @@ import v2.std.dependency {
 import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, None, diagnostics_singleton }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, ComputationNode, Edge, Named, Node, Symbol, TypeNode, Value, SyntheticOccurrence }
+import v2.std.node { Atom, ComputationNode, Edge, Named, Node, Symbol, TypeNode, Value }
 import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
@@ -65,7 +66,7 @@ data effect_root: Node = Node {
   children: [
     Edge { label: Named { name: ^effect_edge_symbol }, target: effect_child }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data effect_dependency: DependencyView = DependencyView {
@@ -131,7 +132,7 @@ fn lens_effect_marker_node(marker: Symbol) -> Node {
         target: effect_root
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
