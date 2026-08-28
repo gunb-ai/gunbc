@@ -10,7 +10,7 @@ import gunbc.replacement_cut {
   CoverageClaim, Covered, CoverageOpen,
   ConsumerDisposition,
   RetainSameContract, RetainChangedContract, ReplacedByY, EvidenceOnly, Retire, Undecided,
-  BoundaryConsumer,
+  BoundaryConsumer, BoundaryConsumerKey,
   BoundaryCensus, ConsumersEnumerated, BoundaryDeclaredEmpty,
   HigherBoundaryAnswer, OutermostBoundary, DescendedFromRefusedCut, DescentParentUnauthored,
   EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence, EvidenceUndecided,
@@ -153,14 +153,19 @@ fn causes_of(admission: PlanAdmission) -> List<CutRefusalCause> {
   }
 }
 
+fn key_is(k: BoundaryConsumerKey, consumer_name: String, authority: DeclarationRef) -> Bool {
+  declaration_ref_eq(a: k.consumer, b: fixture_ref(name: consumer_name))
+    && declaration_ref_eq(a: k.consumed_old_authority, b: authority)
+}
+
 fn cause_matches(c: CutRefusalCause, tag: String, subject: String) -> Bool {
   match c {
-    UndispositionedConsumer { consumer: w } => tag == "undispositioned-consumer" && declaration_ref_eq(a: w, b: fixture_ref(name: subject))
-    UncoveredSurvivingConsumer { consumer: w } => tag == "uncovered-surviving" && declaration_ref_eq(a: w, b: fixture_ref(name: subject))
+    UndispositionedConsumer { key: k } => tag == "undispositioned-consumer" && key_is(k: k, consumer_name: subject, authority: fixture_authority())
+    UncoveredSurvivingConsumer { key: k } => tag == "uncovered-surviving" && key_is(k: k, consumer_name: subject, authority: fixture_authority())
     UndispositionedEvidence { evidence: w } => tag == "undispositioned-evidence" && (w as String) == subject
-    CoveredByOldRoot { consumer: w } => tag == "covered-by-old-root" && declaration_ref_eq(a: w, b: fixture_ref(name: subject))
-    ReplacementNamesOldRoot { consumer: w } => tag == "replacement-names-old-root" && declaration_ref_eq(a: w, b: fixture_ref(name: subject))
-    ConsumerDuplicated { consumer: w } => tag == "consumer-duplicated" && declaration_ref_eq(a: w, b: fixture_ref(name: subject))
+    CoveredByOldRoot { key: k } => tag == "covered-by-old-root" && key_is(k: k, consumer_name: subject, authority: fixture_authority())
+    ReplacementNamesOldRoot { key: k } => tag == "replacement-names-old-root" && key_is(k: k, consumer_name: subject, authority: fixture_authority())
+    ConsumerDuplicated { key: k } => tag == "consumer-duplicated" && key_is(k: k, consumer_name: subject, authority: fixture_authority())
     EvidenceDuplicated { evidence: w } => tag == "evidence-duplicated" && (w as String) == subject
     RegionMemberDuplicated { member: w } => tag == "region-member-duplicated" && declaration_ref_eq(a: w, b: fixture_ref(name: subject))
     EnumeratedCensusEmpty => tag == "enumerated-census-empty" && subject == ""
@@ -746,4 +751,57 @@ test fn descent_parent_unauthored_needs_no_registered_parent() -> Bool {
     CutRegistryAdmitted { exact_count: e, remeasure_required_count: r } => e == 1 && r == 0
     CutRegistryRefused { causes: _ } => false
   }
+}
+
+// ---------------------------------------------------------------------------
+// The refusal must name WHICH RELATION refused, not just which consumer. The
+// carrier explicitly permits one declaration to consume two old authorities, so
+// a cause carrying only the consumer cannot say which of them is defective --
+// and a witness that checked only the consumer would certify that weaker grain.
+// Here one caller holds a valid row against authority A and a DEFECTIVE row
+// against authority B, and the cause must name B.
+// ---------------------------------------------------------------------------
+
+fn one_caller_two_authorities_only_second_defective() -> List<BoundaryConsumer> {
+  [
+    BoundaryConsumer {
+      consumer: fixture_ref(name: "dual caller"), consumed_old_authority: fixture_authority(),
+      disposition: Retire { reason: nes(s: "this dependency leaves with x") },
+    },
+    BoundaryConsumer {
+      consumer: fixture_ref(name: "dual caller"), consumed_old_authority: other_authority(),
+      disposition: Undecided,
+    },
+  ]
+}
+
+fn cause_names_key(causes: List<CutRefusalCause>, tag: String, consumer_name: String, authority: DeclarationRef) -> Bool {
+  fold(causes, init: false, f: fn(acc, c) {
+    acc || match c {
+      UndispositionedConsumer { key: k } => tag == "undispositioned-consumer" && key_is(k: k, consumer_name: consumer_name, authority: authority)
+      UncoveredSurvivingConsumer { key: k } => tag == "uncovered-surviving" && key_is(k: k, consumer_name: consumer_name, authority: authority)
+      CoveredByOldRoot { key: k } => tag == "covered-by-old-root" && key_is(k: k, consumer_name: consumer_name, authority: authority)
+      ReplacementNamesOldRoot { key: k } => tag == "replacement-names-old-root" && key_is(k: k, consumer_name: consumer_name, authority: authority)
+      ConsumerDuplicated { key: k } => tag == "consumer-duplicated" && key_is(k: k, consumer_name: consumer_name, authority: authority)
+      UndispositionedEvidence { evidence: _ } => false
+      EvidenceDuplicated { evidence: _ } => false
+      RegionMemberDuplicated { member: _ } => false
+      EnumeratedCensusEmpty => false
+      ExternalRolesEnumeratedEmpty => false
+      EmptyCoveredRegion => false
+      NewRootEqualsOldRoot => false
+      SelfReferentialDescent => false
+    }
+  })
+}
+
+test fn a_refusal_names_the_defective_relation_not_merely_the_consumer() -> Bool {
+  let causes = causes_of(admission: admit_replacement_cut_plan(cut: cut_with(
+    consumers: one_caller_two_authorities_only_second_defective(),
+    region: two_region(),
+    evidence: dispositioned_evidence(),
+  )))
+  list_length(items: causes) == 1
+    && cause_names_key(causes: causes, tag: "undispositioned-consumer", consumer_name: "dual caller", authority: other_authority())
+    && !cause_names_key(causes: causes, tag: "undispositioned-consumer", consumer_name: "dual caller", authority: fixture_authority())
 }

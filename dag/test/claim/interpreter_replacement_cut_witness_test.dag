@@ -7,6 +7,9 @@ import gunbc.replacement_cut {
   HigherBoundaryAnswer, OutermostBoundary, DescendedFromRefusedCut, DescentParentUnauthored,
   LegacyConsumerSurveyRow, LegacyReplacementSurvey,
   CutRegistration, RegisteredExactCut, RegisteredCutRemeasureRequired,
+  EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence, EvidenceUndecided,
+  ExternalXAnswer, ExternalXRoles, NoExternalOracleRequired,
+  ExternalXRole, BootstrapProducer, ExternalDifferentialOracle, MechanicalCorpusRewriter, HistoricalMeasurementSource,
 }
 import gunbc.interpreter_replacement_cut {
   interpreter_replacement_survey,
@@ -118,4 +121,87 @@ test fn the_registration_states_why_remeasurement_is_required() -> Bool {
       (r as String) != ""
     RegisteredExactCut { cut: _ } => false
   }
+}
+
+// ---------------------------------------------------------------------------
+// The survey is only "identity-bound" to the extent something executes over it.
+// These pin the fields the widened carrier exists to preserve -- the contract
+// fields, the operator external-X grant and both evidence rows -- because
+// without them, deleting exactly that content would leave this suite green,
+// which is the specification-without-execution trap one level in.
+// ---------------------------------------------------------------------------
+
+fn evidence_key_of(e: EvidenceDisposition) -> String {
+  match e {
+    ReenrollAgainstY { evidence: w, surviving_claim: _ } => w as String
+    ReplaceEvidence { old_evidence: w, new_evidence: _ } => w as String
+    RetireEvidence { evidence: w, retired_subject: _, retirement_reason: _ } => w as String
+    EvidenceUndecided { evidence: w } => w as String
+  }
+}
+
+fn evidence_named(rows: List<EvidenceDisposition>, name: String) -> Bool {
+  fold(rows, init: false, f: fn(acc, e) { acc || evidence_key_of(e: e) == name })
+}
+
+fn role_is_differential_oracle(r: ExternalXRole) -> Bool {
+  match r {
+    ExternalDifferentialOracle => true
+    BootstrapProducer => false
+    MechanicalCorpusRewriter => false
+    HistoricalMeasurementSource => false
+  }
+}
+
+fn role_is_historical_source(r: ExternalXRole) -> Bool {
+  match r {
+    HistoricalMeasurementSource => true
+    BootstrapProducer => false
+    ExternalDifferentialOracle => false
+    MechanicalCorpusRewriter => false
+  }
+}
+
+test fn the_survey_keeps_its_contract_fields() -> Bool {
+  let s = interpreter_replacement_survey()
+  (s.old_root_consumer as String) == "v1 .dag evaluation entry"
+    && contains(s.subject as String, "every .dag subject executed by the v1 tree-walking interpreter")
+    && contains(s.contract as String, "or refuse with a typed located diagnostic")
+    && contains(s.new_root as String, "the DagExecution boundary")
+}
+
+test fn the_survey_keeps_its_covered_region_labels() -> Bool {
+  let labels = interpreter_replacement_survey().covered_region_labels
+  list_length(items: labels) == 4
+    && fold(labels, init: false, f: fn(acc, l) { acc || (l as String) == "v1_compiler.v1_interpreter" })
+}
+
+// THE OPERATOR GRANT. This is the single most deletable thing in the survey and no other carrier
+// holds it: the standing permission is compile-checking only, and its two roles are the whole
+// content. A row asserting only that external_x is nonempty would not have caught its removal.
+test fn the_survey_keeps_the_operator_external_x_grant() -> Bool {
+  match interpreter_replacement_survey().external_x {
+    ExternalXRoles { roles: rs } =>
+      list_length(items: rs) == 2
+        && fold(rs, init: false, f: fn(acc, r) { acc || role_is_differential_oracle(r: r) })
+        && fold(rs, init: false, f: fn(acc, r) { acc || role_is_historical_source(r: r) })
+    NoExternalOracleRequired { justification: _ } => false
+  }
+}
+
+test fn the_survey_keeps_both_evidence_rows() -> Bool {
+  let rows = interpreter_replacement_survey().evidence_rows
+  list_length(items: rows) == 2
+    && evidence_named(rows: rows, name: "cross_representation_equality guard witness")
+    && evidence_named(rows: rows, name: "interpreter_dispatch_bijection_real_roster_red")
+}
+
+test fn the_survey_keeps_its_remaining_consumer_labels() -> Bool {
+  let rows = interpreter_replacement_survey().consumer_rows
+  label_present(rows: rows, name: "gunbc.v1_interpreter_primitive_surface")
+    && label_present(rows: rows, name: "gunbc.v1_interpreter_dispatch_emit")
+    && label_present(rows: rows, name: "v1_compiler.bin.claim_executor")
+    && label_present(rows: rows, name: "v1_compiler.bin.interp_recorded_fixture_witness")
+    && label_present(rows: rows, name: "v1_compiler.bin.auth_declared_but_unwired_witness")
+    && label_present(rows: rows, name: "std.primitive_identity")
 }

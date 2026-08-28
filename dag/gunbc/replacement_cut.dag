@@ -35,10 +35,19 @@ type ConsumerDisposition
 // disposition stand in for two dependencies. Both sides are DeclarationRef because the exact join
 // in 0B compares identities; a rendered name is a second naming scheme for what the containment
 // tree already names, and it cannot be resolved against an index.
+type BoundaryConsumerKey {
+  consumer: DeclarationRef
+  consumed_old_authority: DeclarationRef
+}
+
 type BoundaryConsumer {
   consumer: DeclarationRef
   consumed_old_authority: DeclarationRef
   disposition: ConsumerDisposition
+}
+
+fn boundary_consumer_key(c: BoundaryConsumer) -> BoundaryConsumerKey {
+  BoundaryConsumerKey { consumer: c.consumer, consumed_old_authority: c.consumed_old_authority }
 }
 
 type BoundaryCensus
@@ -80,12 +89,12 @@ type ReplacementCut {
 }
 
 type CutRefusalCause
-  = UndispositionedConsumer { consumer: DeclarationRef }
-  | UncoveredSurvivingConsumer { consumer: DeclarationRef }
+  = UndispositionedConsumer { key: BoundaryConsumerKey }
+  | UncoveredSurvivingConsumer { key: BoundaryConsumerKey }
   | UndispositionedEvidence { evidence: NonEmptyStr }
-  | CoveredByOldRoot { consumer: DeclarationRef }
-  | ReplacementNamesOldRoot { consumer: DeclarationRef }
-  | ConsumerDuplicated { consumer: DeclarationRef }
+  | CoveredByOldRoot { key: BoundaryConsumerKey }
+  | ReplacementNamesOldRoot { key: BoundaryConsumerKey }
+  | ConsumerDuplicated { key: BoundaryConsumerKey }
   | EvidenceDuplicated { evidence: NonEmptyStr }
   | RegionMemberDuplicated { member: DeclarationRef }
   | EnumeratedCensusEmpty
@@ -124,15 +133,15 @@ fn nes_seen(xs: List<NonEmptyStr>, x: NonEmptyStr) -> Bool {
 
 fn coverage_causes(
   acc: List<CutRefusalCause>,
-  consumer: DeclarationRef,
+  key: BoundaryConsumerKey,
   old_root_consumer: NonEmptyStr,
   cov: CoverageClaim,
 ) -> List<CutRefusalCause> {
   match cov {
-    CoverageOpen => Cons { head: UncoveredSurvivingConsumer { consumer: consumer }, tail: acc }
+    CoverageOpen => Cons { head: UncoveredSurvivingConsumer { key: key }, tail: acc }
     Covered { by: authority } =>
       match nes_eq(a: authority, b: old_root_consumer) {
-        true => Cons { head: CoveredByOldRoot { consumer: consumer }, tail: acc }
+        true => Cons { head: CoveredByOldRoot { key: key }, tail: acc }
         false => acc
       }
   }
@@ -144,14 +153,14 @@ fn consumer_causes(
   c: BoundaryConsumer,
 ) -> List<CutRefusalCause> {
   match c.disposition {
-    Undecided => Cons { head: UndispositionedConsumer { consumer: c.consumer }, tail: acc }
+    Undecided => Cons { head: UndispositionedConsumer { key: boundary_consumer_key(c: c) }, tail: acc }
     RetainSameContract { justification: _, coverage: cov } =>
-      coverage_causes(acc: acc, consumer: c.consumer, old_root_consumer: old_root_consumer, cov: cov)
+      coverage_causes(acc: acc, key: boundary_consumer_key(c: c), old_root_consumer: old_root_consumer, cov: cov)
     RetainChangedContract { terminal_contract: _, justification: _, coverage: cov } =>
-      coverage_causes(acc: acc, consumer: c.consumer, old_root_consumer: old_root_consumer, cov: cov)
+      coverage_causes(acc: acc, key: boundary_consumer_key(c: c), old_root_consumer: old_root_consumer, cov: cov)
     ReplacedByY { new_authority: authority } =>
       match nes_eq(a: authority, b: old_root_consumer) {
-        true => Cons { head: ReplacementNamesOldRoot { consumer: c.consumer }, tail: acc }
+        true => Cons { head: ReplacementNamesOldRoot { key: boundary_consumer_key(c: c) }, tail: acc }
         false => acc
       }
     EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => acc
@@ -205,7 +214,7 @@ fn consumer_duplicate_causes(
       match boundary_consumer_key_seen(xs: state.seen, x: c) {
         true => ConsumerDupState {
           seen: state.seen,
-          causes: Cons { head: ConsumerDuplicated { consumer: c.consumer }, tail: state.causes },
+          causes: Cons { head: ConsumerDuplicated { key: boundary_consumer_key(c: c) }, tail: state.causes },
         }
         false => ConsumerDupState {
           seen: Cons { head: c, tail: state.seen },
@@ -368,6 +377,13 @@ fn nes_digest(value: NonEmptyStr) -> Fnv1a64Structural {
 
 fn tag_digest(tag: NonEmptyStr) -> Fnv1a64Structural {
   content_hash_atom(value: tag)
+}
+
+fn boundary_consumer_key_digest(key: BoundaryConsumerKey) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: decl_ref_digest(ref: key.consumer),
+    right: decl_ref_digest(ref: key.consumed_old_authority),
+  )
 }
 
 fn decl_ref_digest(ref: DeclarationRef) -> Fnv1a64Structural {

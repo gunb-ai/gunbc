@@ -1,0 +1,116 @@
+module test.claim.endpoint_authority_replacement_cut_witness_test
+
+import std.types { String, Bool, Int, List, list_length }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import gunbc.replacement_cut {
+  BoundaryConsumerKey,
+  CutRefusalCause,
+  UndispositionedConsumer, UncoveredSurvivingConsumer, UndispositionedEvidence,
+  CoveredByOldRoot, ReplacementNamesOldRoot,
+  ConsumerDuplicated, EvidenceDuplicated, RegionMemberDuplicated,
+  EnumeratedCensusEmpty, ExternalRolesEnumeratedEmpty, EmptyCoveredRegion,
+  NewRootEqualsOldRoot, SelfReferentialDescent,
+  PlanAdmission, PlanAdmitted, PlanRefused,
+  EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence, EvidenceUndecided,
+  CutRegistryStanding, CutRegistryAdmitted, CutRegistryRefused,
+}
+import gunbc.endpoint_authority_replacement_cut {
+  endpoint_authority_cut_admission,
+  endpoint_authority_cut_region,
+  endpoint_authority_cut_consumers,
+  endpoint_authority_cut_evidence,
+}
+import gunbc.replacement_cut_registry { production_registry_standing }
+
+data endpoint_authority_replacement_cut_witness_note: String = "THE PRODUCTION ROWS, EXECUTED. The generic carrier suite exercises synthetic cuts and synthetic registries; whole-tree compilation proves these declarations typecheck. Neither establishes what the REAL endpoint cut and the REAL registry answer, so before this file the production rows could acquire a duplicate relation, an authoring-defect cause, a malformed region or a wrong evidence disposition while every reported suite stayed green. That is the specification-without-execution trap applied to the one part of the change that is not a mechanism but a claim about this repository.\n\nWHAT THE REFUSAL MUST AND MUST NOT CONTAIN is the whole point of the first two rows. The plan is EXPECTED to refuse -- Y does not exist, so every surviving consumer is CoverageOpen -- but it must refuse for exactly that reason and no other. An authoring defect (a duplicated relation, a coverage claim naming the old root, an undispositioned row, an empty region) would also produce PlanRefused, so asserting `refuses` alone would pass over a broken row. The partition is therefore asserted in both directions: every cause is UncoveredSurvivingConsumer, and the count equals the census."
+
+fn causes_of(admission: PlanAdmission) -> List<CutRefusalCause> {
+  match admission {
+    PlanAdmitted { admitted: _ } => []
+    PlanRefused { causes: cs } => cs
+  }
+}
+
+fn is_uncovered_surviving(c: CutRefusalCause) -> Bool {
+  match c {
+    UncoveredSurvivingConsumer { key: _ } => true
+    UndispositionedConsumer { key: _ } => false
+    CoveredByOldRoot { key: _ } => false
+    ReplacementNamesOldRoot { key: _ } => false
+    ConsumerDuplicated { key: _ } => false
+    UndispositionedEvidence { evidence: _ } => false
+    EvidenceDuplicated { evidence: _ } => false
+    RegionMemberDuplicated { member: _ } => false
+    EnumeratedCensusEmpty => false
+    ExternalRolesEnumeratedEmpty => false
+    EmptyCoveredRegion => false
+    NewRootEqualsOldRoot => false
+    SelfReferentialDescent => false
+  }
+}
+
+fn count_matching(causes: List<CutRefusalCause>, p: fn(CutRefusalCause) -> Bool) -> Int {
+  fold(causes, init: 0, f: fn(acc, c) { if p(c) { acc + 1 } else { acc } })
+}
+
+test fn the_endpoint_cut_refuses_only_for_missing_coverage() -> Bool {
+  let causes = causes_of(admission: endpoint_authority_cut_admission())
+  list_length(items: causes) > 0
+    && count_matching(causes: causes, p: is_uncovered_surviving) == list_length(items: causes)
+}
+
+// The count is pinned to the census rather than to a literal measured off the current tree: every
+// consumer is CoverageOpen, so one relation is one cause, and adding a consumer without coverage
+// must move both sides together.
+test fn every_censused_relation_produces_exactly_one_coverage_cause() -> Bool {
+  let causes = causes_of(admission: endpoint_authority_cut_admission())
+  list_length(items: causes) == list_length(items: endpoint_authority_cut_consumers())
+}
+
+// Both endpoint functions leave together. The helper contributes no production boundary of its own,
+// which is exactly why a region assertion is needed: nothing else would notice it being dropped.
+test fn the_region_is_exactly_the_two_endpoint_projections() -> Bool {
+  let region = endpoint_authority_cut_region()
+  list_length(items: region) == 2
+    && fold(region, init: false, f: fn(acc, r) {
+         acc || declaration_ref_eq(a: r, b: decl_ref(module_path: "gunbc.fleet_reach_endpoint", decl_name: "fleet_probe_endpoint_for"))
+       })
+    && fold(region, init: false, f: fn(acc, r) {
+         acc || declaration_ref_eq(a: r, b: decl_ref(module_path: "gunbc.fleet_reach_endpoint", decl_name: "spark_endpoint_for_binding"))
+       })
+}
+
+fn evidence_key_of(e: EvidenceDisposition) -> String {
+  match e {
+    ReenrollAgainstY { evidence: w, surviving_claim: _ } => w as String
+    ReplaceEvidence { old_evidence: w, new_evidence: _ } => w as String
+    RetireEvidence { evidence: w, retired_subject: _, retirement_reason: _ } => w as String
+    EvidenceUndecided { evidence: w } => w as String
+  }
+}
+
+fn evidence_named(rows: List<EvidenceDisposition>, name: String) -> Bool {
+  fold(rows, init: false, f: fn(acc, e) { acc || evidence_key_of(e: e) == name })
+}
+
+// FOUR, not three. The witness file holds four declaration-grain evidence consumers and the fourth
+// -- spark_endpoint_or_empty -- is an ordinary declaration rather than a test fn, which is precisely
+// why one witness FILE is not one evidence subject. Omitting it would have left a known observed use
+// with no disposition for the eventual evidence-population join to report.
+test fn all_four_evidence_declarations_are_dispositioned() -> Bool {
+  let rows = endpoint_authority_cut_evidence()
+  list_length(items: rows) == 4
+    && evidence_named(rows: rows, name: "test.claim.host_reach_identity_probe_witness spark_probe_targets_are_modeled_addresses_not_names")
+    && evidence_named(rows: rows, name: "test.claim.host_reach_identity_probe_witness undecided_spark_slot_projects_no_endpoint")
+    && evidence_named(rows: rows, name: "test.claim.host_reach_identity_probe_witness probe_endpoint_agrees_with_the_projection_it_consumes")
+    && evidence_named(rows: rows, name: "test.claim.host_reach_identity_probe_witness spark_endpoint_or_empty")
+}
+
+// The real registry, not a synthetic one: one exact cut and one remeasurement obligation, coherent.
+// A synthetic-fixture registry passing says nothing about whether the production rows collide.
+test fn the_production_registry_is_coherent_with_both_arms_occupied() -> Bool {
+  match production_registry_standing() {
+    CutRegistryAdmitted { exact_count: e, remeasure_required_count: r } => e == 1 && r == 1
+    CutRegistryRefused { causes: _ } => false
+  }
+}
