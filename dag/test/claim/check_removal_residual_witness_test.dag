@@ -10,7 +10,8 @@ import gunbc.commit_workflow {
   GitPrePushHook,
   GithubActionsCiJob,
   check_removal_roster,
-  uncovered_removals,
+  removals_declared_uncovered,
+  removals_with_unverified_coverage_claim,
 }
 import gunbc.ci_gate { GeneratedArtifactDriftGate }
 import std.decl_ref { decl_ref }
@@ -61,7 +62,7 @@ fn synthetic_uncovered() -> CheckRemoval {
 // predicate-dissolution violation, and a witness that kept testing it would have entrenched the
 // parallel surface the production fix removed.
 test fn uncovered_selection_descends_into_the_residual() -> Bool {
-  let selected = uncovered_removals(removals: [synthetic_covered(), synthetic_uncovered()])
+  let selected = removals_declared_uncovered(removals: [synthetic_covered(), synthetic_uncovered()])
   selected.count() == 1
 }
 
@@ -70,7 +71,7 @@ test fn uncovered_selection_descends_into_the_residual() -> Bool {
 // The surviving row is identified by the payload the deleted Bool discarded -- which is the
 // concrete thing predicate dissolution costs, not an abstraction about it.
 test fn uncovered_selection_is_exact_and_keeps_the_cause_payload() -> Bool {
-  let selected = uncovered_removals(
+  let selected = removals_declared_uncovered(
     removals: [synthetic_covered(), synthetic_uncovered(), synthetic_covered()]
   )
   selected.count() == 1
@@ -90,6 +91,19 @@ test fn uncovered_selection_is_exact_and_keeps_the_cause_payload() -> Bool {
 // tree-copied count would be the change detector DESIGN section 5 rejects, and this holds as the
 // roster grows.
 test fn live_removal_roster_occupies_both_residual_arms() -> Bool {
-  let uncovered = uncovered_removals(removals: check_removal_roster).count()
+  let uncovered = removals_declared_uncovered(removals: check_removal_roster).count()
   uncovered > 0 && uncovered < check_removal_roster.count()
+}
+
+// THE COMPLEMENT OF `removals_declared_uncovered` IS NOT THE GUARDED SET, and this witness is
+// what makes that structural rather than a paragraph. Review 57058 caught the first cut treating
+// it as guarded, so the law asserted here is that the two queries PARTITION the roster: every
+// row is declared-uncovered or unverified-claimed, and none is anything else. A future
+// `verified covered` arm would break this sum and have to be reckoned with at this site, which
+// is the point -- it cannot be added silently and then quietly excluded from the unguarded
+// answer, which is exactly how the defect this witness exists for was introduced.
+test fn the_two_queries_partition_the_roster_leaving_no_guarded_remainder() -> Bool {
+  let uncovered = removals_declared_uncovered(removals: check_removal_roster).count()
+  let claimed = removals_with_unverified_coverage_claim(removals: check_removal_roster).count()
+  uncovered + claimed == check_removal_roster.count() && uncovered > 0 && claimed > 0
 }

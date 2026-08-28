@@ -1145,13 +1145,34 @@ data check_removal_roster: List<CheckRemoval> = [
 // exhaustive at the row level and blind to the distinction that decides the answer, which is the
 // failure mode DESIGN names as total at the level examined, blind one level down.
 //
-// The repository's answer to "which checks are unguarded, at check grain". DESIGN narrates the
-// floor cut's unguarded re-adds in prose; this makes the subset that reaches a named check
-// countable, so a row stops being closed by someone rewriting a paragraph.
-fn uncovered_removals(removals: List<CheckRemoval>) -> List<CheckRemoval> {
+// NEITHER QUERY BELOW ANSWERS "WHICH CHECKS ARE GUARDED", AND NOTHING HERE DOES, which is the
+// repair for review 57058. The first cut had a single `uncovered_removals` described as "the
+// repository's answer to which checks are unguarded"; it excluded every RemovalCoverageClaimed
+// row, so a mechanism that still EXISTS while its required-phase enrollment was deleted read as
+// guarded. Renaming the arm to CLAIMED made the carrier honest and left the QUERY promoting a
+// claim into a conclusion -- ⊥-as-ignorance rendered as ⊥-as-answer, the empty-observation
+// narrow DESIGN names as strictly worse than the widen §5 already forbids, because a widen is
+// merely expensive and a narrow is silently uncovered.
+//
+// So the partition is stated at the grain the evidence supports: a row is either DECLARED
+// uncovered or carries an UNVERIFIED claim, and those two exhaust the roster. There is
+// deliberately no third query and no `verified covered` arm, because no producer could inhabit
+// one -- no .dag authority states which checks the required run performs -- and an arm nothing
+// can reach is the permanently-green decoration §4b forbids. The consequence a caller must not
+// miss: the COMPLEMENT of removals_declared_uncovered is NOT the guarded set. It is the set
+// whose coverage is claimed and unchecked, and the honest count of what this repository can
+// currently prove is guarded, at check grain, is ZERO.
+fn removals_declared_uncovered(removals: List<CheckRemoval>) -> List<CheckRemoval> {
   filter(removals, r => match r.residual {
     RemovalCoverageClaimed { mechanism: _ } => false
     RemovalUncovered { cause: _ } => true
+  })
+}
+
+fn removals_with_unverified_coverage_claim(removals: List<CheckRemoval>) -> List<CheckRemoval> {
+  filter(removals, r => match r.residual {
+    RemovalCoverageClaimed { mechanism: _ } => true
+    RemovalUncovered { cause: _ } => false
   })
 }
 
