@@ -1074,15 +1074,23 @@ type CommitCheckEnrollment {
 // Rust -- so a green join would assert coverage nothing established. What a DeclarationRef DOES
 // buy is narrower and real: the cited mechanism must EXIST. That is a wall against the deletion
 // this class died of, and it is not a claim that the mechanism runs.
+// THE ARM IS NAMED FOR A CLAIM, NOT FOR A VERIFIED FACT, and review 57017 was right that the
+// first spelling (`RemovalCoveredBy`) read as the latter. What a resolvable DeclarationRef
+// establishes is that the cited mechanism EXISTS; the required-phase enrollment could be
+// deleted while the declaration stands, and this row would not notice. Naming the arm for
+// coverage while the evidence reaches only existence is the rung inflation DESIGN 4b(1) calls
+// worse than sitting low, so the arm now says CLAIMED and the gap is in the name rather than
+// only in a paragraph underneath it.
+//
+// NO `since` FIELD, AND ITS ABSENCE IS THE POINT. The first cut of this arm carried one, and
+// in the only row that inhabits it, `since` and the row's own `removed_on` were the SAME
+// LITERAL -- two representations of one fact with no authority saying which wins if they
+// drift, which is the §2 defect this whole carrier exists to reduce, reintroduced one field
+// in. Uncoverage begins when the check was removed, and `removed_on` already states that. A
+// row that was covered and became uncovered LATER is a different shape; it gets modeled when
+// a real specimen exists, rather than minted now on speculation.
 type RemovalResidual
-  = RemovalCoveredBy { mechanism: DeclarationRef }
-  // NO `since` FIELD, AND ITS ABSENCE IS THE POINT. The first cut of this arm carried one, and
-  // in the only row that inhabits it, `since` and the row's own `removed_on` were the SAME
-  // LITERAL -- two representations of one fact with no authority saying which wins if they
-  // drift, which is the §2 defect this whole carrier exists to reduce, reintroduced one field
-  // in. Uncoverage begins when the check was removed, and `removed_on` already states that. A
-  // row that was covered and became uncovered LATER is a different shape; it gets modeled when
-  // a real specimen exists, rather than minted now on speculation.
+  = RemovalCoverageClaimed { mechanism: DeclarationRef }
   | RemovalUncovered { cause: NonEmptyStr }
 
 type CheckRemoval {
@@ -1095,26 +1103,26 @@ type CheckRemoval {
 // One row per removed CHECK, never per removing change: the fmt row below was removed by a cut
 // whose subject was the whole floor, and folding it into that cut's record is what let it go
 // unnoticed for eleven days.
+// UNCOVERED, AND FOUND BY WRITING THIS ROSTER RATHER THAN BY A RED. The pre-push hook was
+// slimmed to fmt-only on the stated ground that fmt remained a required-path CI step; the
+// floor cut deleted the job carrying it, and the emitted .github/workflows/witnesses.yml has
+// no cargo fmt step in either lane. So the hook is now the ONLY place fmt runs, and a hook is
+// opt-in per clone and bypassable with --no-verify -- which is the same argument the slimming
+// ruling itself used to establish that a hook enforces nothing. DESIGN already lists the fmt
+// gate among the floor cut's unguarded re-adds; this row is that entry at check grain, so the
+// gap is countable here rather than only narrated there.
 data check_removal_roster: List<CheckRemoval> = [
   CheckRemoval {
     check: CommitSpecGate { gate: GeneratedArtifactDriftGate },
     removed_from: GitPrePushHook,
     removed_on: "2026-07-22" as NonEmptyStr,
-    residual: RemovalCoveredBy {
+    residual: RemovalCoverageClaimed {
       mechanism: decl_ref(
         module_path: "gunbc.generated_artifact_emit",
         decl_name: "generated_artifact_body_for_path"
       )
     }
   },
-  // UNCOVERED, AND FOUND BY WRITING THIS ROSTER RATHER THAN BY A RED. The pre-push hook was
-  // slimmed to fmt-only on the stated ground that fmt remained a required-path CI step; the
-  // floor cut deleted the job carrying it, and the emitted .github/workflows/witnesses.yml has
-  // no cargo fmt step in either lane. So the hook is now the ONLY place fmt runs, and a hook is
-  // opt-in per clone and bypassable with --no-verify -- which is the same argument the slimming
-  // ruling itself used to establish that a hook enforces nothing. DESIGN already lists the fmt
-  // gate among the floor cut's unguarded re-adds; this row is that entry at check grain, so the
-  // gap is countable here rather than only narrated there.
   CheckRemoval {
     check: CommitCargoFmtCheck,
     removed_from: GithubActionsCiJob,
@@ -1125,24 +1133,26 @@ data check_removal_roster: List<CheckRemoval> = [
   }
 ]
 
-// THE CLASSIFIER DESCENDS INTO THE RESIDUAL, and that is the only thing worth asserting about
-// it. A judgment over CheckRemoval is exhaustive at the row level while saying nothing about the
-// distinction that decides the answer, which lives one level down in RemovalResidual -- the
-// failure mode DESIGN names as total at the level examined, blind one level down. Matching the
-// row and reading `residual` as a payload binding compiles, looks complete, and answers the
-// same way for a covered and an uncovered removal.
-fn removal_is_uncovered(removal: CheckRemoval) -> Bool {
-  match removal.residual {
-    RemovalCoveredBy { mechanism: _ } => false
-    RemovalUncovered { cause: _ } => true
-  }
-}
-
+// THE SELECTION MATCHES THE COPRODUCT IN PLACE, and there is deliberately no reusable
+// `removal_is_uncovered(..) -> Bool` beside it. The first cut had one, and review 57017 named it
+// correctly as the repository's predicate-dissolution violation: a Bool classifying coproduct
+// arms is a parallel surface over a vocabulary that already answers, and it destroys
+// exhaustiveness at every call site -- a THIRD residual arm would have been absorbed into one
+// side of that predicate and no consumer would have been asked. Matched here, a new arm fails to
+// compile at the site that has to decide about it.
+//
+// The judgment also has to DESCEND: a match on the row that binds `residual` as a payload is
+// exhaustive at the row level and blind to the distinction that decides the answer, which is the
+// failure mode DESIGN names as total at the level examined, blind one level down.
+//
 // The repository's answer to "which checks are unguarded, at check grain". DESIGN narrates the
 // floor cut's unguarded re-adds in prose; this makes the subset that reaches a named check
 // countable, so a row stops being closed by someone rewriting a paragraph.
 fn uncovered_removals(removals: List<CheckRemoval>) -> List<CheckRemoval> {
-  filter(removals, r => removal_is_uncovered(removal: r))
+  filter(removals, r => match r.residual {
+    RemovalCoverageClaimed { mechanism: _ } => false
+    RemovalUncovered { cause: _ } => true
+  })
 }
 
 type EntryDeclarationDiscovery
