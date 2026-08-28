@@ -13,12 +13,14 @@ import gunbc.replacement_cut {
   PlanAdmission, PlanAdmitted, PlanRefused,
   EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence, EvidenceUndecided,
   CutRegistryStanding, CutRegistryAdmitted, CutRegistryRefused,
+  ExternalXAnswer, ExternalXRoles, NoExternalOracleRequired,
 }
 import gunbc.endpoint_authority_replacement_cut {
   endpoint_authority_cut_admission,
   endpoint_authority_cut_region,
   endpoint_authority_cut_consumers,
   endpoint_authority_cut_evidence,
+  endpoint_authority_cut_external_x,
 }
 import gunbc.replacement_cut_registry { production_registry_standing }
 
@@ -112,5 +114,83 @@ test fn the_production_registry_is_coherent_with_both_arms_occupied() -> Bool {
   match production_registry_standing() {
     CutRegistryAdmitted { exact_count: e, remeasure_required_count: r } => e == 1 && r == 1
     CutRegistryRefused { causes: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The two claims the name-keyed rows above cannot make.
+//
+// evidence_named erases the VARIANT: it reads a key out of all four arms, so a
+// row flipping from ReplaceEvidence to RetireEvidence keeps every check above
+// green while inverting what the row says -- one promises the claim survives
+// against Y, the other says its subject leaves with X. And nothing at all read
+// external_x, so reverting this cut's corrected NoExternalOracleRequired back to
+// ExternalXRoles { roles: [HistoricalMeasurementSource] } would add no refusal
+// cause, alter no region, and leave all five preceding witnesses green -- the
+// semantic contradiction it repairs (granting a surviving external role to two
+// functions the cut says have none) would return unobserved.
+// ---------------------------------------------------------------------------
+
+fn is_replace_evidence(e: EvidenceDisposition) -> Bool {
+  match e {
+    ReplaceEvidence { old_evidence: _, new_evidence: _ } => true
+    ReenrollAgainstY { evidence: _, surviving_claim: _ } => false
+    RetireEvidence { evidence: _, retired_subject: _, retirement_reason: _ } => false
+    EvidenceUndecided { evidence: _ } => false
+  }
+}
+
+fn is_retire_evidence(e: EvidenceDisposition) -> Bool {
+  match e {
+    RetireEvidence { evidence: _, retired_subject: _, retirement_reason: _ } => true
+    ReplaceEvidence { old_evidence: _, new_evidence: _ } => false
+    ReenrollAgainstY { evidence: _, surviving_claim: _ } => false
+    EvidenceUndecided { evidence: _ } => false
+  }
+}
+
+fn evidence_named_with(
+  rows: List<EvidenceDisposition>,
+  name: String,
+  p: fn(EvidenceDisposition) -> Bool,
+) -> Bool {
+  fold(rows, init: false, f: fn(acc, e) { acc || (evidence_key_of(e: e) == name && p(e)) })
+}
+
+fn count_evidence(rows: List<EvidenceDisposition>, p: fn(EvidenceDisposition) -> Bool) -> Int {
+  fold(rows, init: 0, f: fn(acc, e) { if p(e) { acc + 1 } else { acc } })
+}
+
+test fn the_evidence_partition_is_pinned_by_variant_and_by_name() -> Bool {
+  let rows = endpoint_authority_cut_evidence()
+  count_evidence(rows: rows, p: is_replace_evidence) == 2
+    && count_evidence(rows: rows, p: is_retire_evidence) == 2
+    && evidence_named_with(
+         rows: rows,
+         name: "test.claim.host_reach_identity_probe_witness spark_probe_targets_are_modeled_addresses_not_names",
+         p: is_replace_evidence,
+       )
+    && evidence_named_with(
+         rows: rows,
+         name: "test.claim.host_reach_identity_probe_witness undecided_spark_slot_projects_no_endpoint",
+         p: is_replace_evidence,
+       )
+    && evidence_named_with(
+         rows: rows,
+         name: "test.claim.host_reach_identity_probe_witness spark_endpoint_or_empty",
+         p: is_retire_evidence,
+       )
+    && evidence_named_with(
+         rows: rows,
+         name: "test.claim.host_reach_identity_probe_witness probe_endpoint_agrees_with_the_projection_it_consumes",
+         p: is_retire_evidence,
+       )
+}
+
+test fn the_cut_grants_no_surviving_external_role_to_x() -> Bool {
+  match endpoint_authority_cut_external_x() {
+    NoExternalOracleRequired { justification: j } =>
+      contains(j as String, "no terminal role")
+    ExternalXRoles { roles: _ } => false
   }
 }

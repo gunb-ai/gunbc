@@ -1,12 +1,13 @@
 module test.claim.interpreter_replacement_cut_witness_test
 
-import std.types { String, Bool, Int, List, list_length }
+import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
 import gunbc.replacement_cut {
   ConsumerDisposition, RetainSameContract, RetainChangedContract, ReplacedByY,
   EvidenceOnly, Retire, Undecided,
   HigherBoundaryAnswer, OutermostBoundary, DescendedFromRefusedCut, DescentParentUnauthored,
   LegacyConsumerSurveyRow, LegacyReplacementSurvey,
   CutRegistration, RegisteredExactCut, RegisteredCutRemeasureRequired,
+  CoverageClaim, Covered, CoverageOpen,
   EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence, EvidenceUndecided,
   ExternalXAnswer, ExternalXRoles, NoExternalOracleRequired,
   ExternalXRole, BootstrapProducer, ExternalDifferentialOracle, MechanicalCorpusRewriter, HistoricalMeasurementSource,
@@ -204,4 +205,177 @@ test fn the_survey_keeps_its_remaining_consumer_labels() -> Bool {
     && label_present(rows: rows, name: "v1_compiler.bin.interp_recorded_fixture_witness")
     && label_present(rows: rows, name: "v1_compiler.bin.auth_declared_but_unwired_witness")
     && label_present(rows: rows, name: "std.primitive_identity")
+}
+
+// ---------------------------------------------------------------------------
+// 3. EXACTNESS. The suite above pins that the survey's fields are POPULATED and
+// that its aggregate shape is right. That is strictly weaker than pinning what
+// it SAYS: a substring check on a contract field, a length-four region with one
+// named member, an evidence roster keyed only by name, and aggregate Retire and
+// Undecided counts all stay green while the survey changes in ways a later
+// reader would act on. These rows close that gap by matching the exact payloads.
+// The survey is a historical record whose whole value is that it does not drift,
+// so an assertion weaker than equality is not evidence that it has not.
+// ---------------------------------------------------------------------------
+
+type OrderedProbe { index: Int, ok: Bool }
+
+fn nth_label_is(labels: List<NonEmptyStr>, index: Int, name: String) -> Bool {
+  let r = fold(
+    labels,
+    init: OrderedProbe { index: 0, ok: false },
+    f: fn(acc, l) {
+      OrderedProbe {
+        index: acc.index + 1,
+        ok: acc.ok || (acc.index == index && (l as String) == name),
+      }
+    },
+  )
+  r.ok
+}
+
+fn row_disposition_matches(
+  rows: List<LegacyConsumerSurveyRow>,
+  name: String,
+  p: fn(ConsumerDisposition) -> Bool,
+) -> Bool {
+  fold(rows, init: false, f: fn(acc, r) { acc || ((r.consumer_label as String) == name && p(r.disposition)) })
+}
+
+fn coverage_is_open(c: CoverageClaim) -> Bool {
+  match c {
+    CoverageOpen => true
+    Covered { by: _ } => false
+  }
+}
+
+fn retained_same_contract_with(justification: String) -> fn(ConsumerDisposition) -> Bool {
+  fn(d) {
+    match d {
+      RetainSameContract { justification: j, coverage: c } =>
+        (j as String) == justification && coverage_is_open(c: c)
+      Retire { reason: _ } => false
+      RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+      ReplacedByY { new_authority: _ } => false
+      EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
+      Undecided => false
+    }
+  }
+}
+
+fn replaced_by(authority: String) -> fn(ConsumerDisposition) -> Bool {
+  fn(d) {
+    match d {
+      ReplacedByY { new_authority: a } => (a as String) == authority
+      Retire { reason: _ } => false
+      RetainSameContract { justification: _, coverage: _ } => false
+      RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } => false
+      EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => false
+      Undecided => false
+    }
+  }
+}
+
+// The region is ORDERED and its second member is the one the survey itself flags
+// as very likely never an inbound boundary crossing. A length-four check with one
+// named member left the other three free to change.
+test fn the_region_labels_are_pinned_in_order() -> Bool {
+  let labels = interpreter_replacement_survey().covered_region_labels
+  list_length(items: labels) == 4
+    && nth_label_is(labels: labels, index: 0, name: "v1_compiler.v1_interpreter")
+    && nth_label_is(labels: labels, index: 1, name: "v1_compiler.v1_interpreter_dispatch_generated")
+    && nth_label_is(labels: labels, index: 2, name: "gunbc.v1_interpreter_primitive_surface")
+    && nth_label_is(labels: labels, index: 3, name: "gunbc.v1_interpreter_dispatch_emit")
+}
+
+// The four contract fields by equality. new_root in particular was corrected once
+// already -- it named one realization's vocabulary and now names the boundary in
+// consumer terms -- and a substring check on "the DagExecution boundary" would
+// not have distinguished the corrected text from the text it replaced.
+test fn the_contract_fields_are_pinned_exactly() -> Bool {
+  let s = interpreter_replacement_survey()
+  (s.old_root_consumer as String) == "v1 .dag evaluation entry"
+    && (s.subject as String) == "every .dag subject executed by the v1 tree-walking interpreter: enrolled witnesses, plan evaluation, and lens execution"
+    && (s.contract as String) == "evaluate a resolved .dag declaration to a value, or refuse with a typed located diagnostic; no fabricated plausible output"
+    && (s.new_root as String) == "the DagExecution boundary: evaluate(resolved_graph, entry, arguments, execution_mode, capabilities) -> Value | LocatedDiagnostic | UnsupportedFeature"
+}
+
+// The BASIS, not merely the boundary. The survey's own note records that this
+// finding may be an artifact of drawing the boundary at a file rather than at a
+// contract, and that it is left as authored until remeasured -- so the sentence
+// that will be checked against a remeasurement is the thing that must not drift.
+test fn the_descent_basis_is_pinned_exactly() -> Bool {
+  match interpreter_cut_why_not_higher() {
+    DescentParentUnauthored { intended_parent_boundary: b, basis: basis } =>
+      (b as String) == "the engine cut through the v1 driver region"
+        && (basis as String) == "no cut is authored at that boundary by any lane: the cli_run lane's ruled scope is the driver verbs and it places this region explicitly outside its own, so both lanes descend from one unauthored parent"
+    OutermostBoundary => false
+    DescendedFromRefusedCut { parent_cut: _, refusal_summary: _ } => false
+  }
+}
+
+// Evidence VARIANTS and payloads. Keyed-by-name alone could not tell a
+// ReenrollAgainstY from a RetireEvidence, which are opposite dispositions: one
+// says the claim survives against Y, the other says its subject leaves with X.
+test fn the_evidence_rows_are_pinned_by_variant_and_payload() -> Bool {
+  let rows = interpreter_replacement_survey().evidence_rows
+  list_length(items: rows) == 2
+    && fold(rows, init: false, f: fn(acc, e) {
+         acc || match e {
+           ReenrollAgainstY { evidence: w, surviving_claim: sc } =>
+             (w as String) == "cross_representation_equality guard witness"
+               && (sc as String) == "a cross-representation equality straddle refuses rather than answering false"
+           ReplaceEvidence { old_evidence: _, new_evidence: _ } => false
+           RetireEvidence { evidence: _, retired_subject: _, retirement_reason: _ } => false
+           EvidenceUndecided { evidence: _ } => false
+         }
+       })
+    && fold(rows, init: false, f: fn(acc, e) {
+         acc || match e {
+           RetireEvidence { evidence: w, retired_subject: rs, retirement_reason: rr } =>
+             (w as String) == "interpreter_dispatch_bijection_real_roster_red"
+               && (rs as String) == "bijection between X's dispatch arms and its declared roster"
+               && (rr as String) == "the bijection's two sides both leave with X"
+           ReenrollAgainstY { evidence: _, surviving_claim: _ } => false
+           ReplaceEvidence { old_evidence: _, new_evidence: _ } => false
+           EvidenceUndecided { evidence: _ } => false
+         }
+       })
+}
+
+// PER-ROW dispositions for the four non-Retire rows. Aggregate counts of five
+// Retire and one Undecided leave the identity of every row free: the same counts
+// hold if claim_executor became ReplacedByY and primitive_identity became
+// RetainSameContract, which are exactly the two rows a reader would act on.
+test fn the_surviving_rows_carry_their_exact_dispositions() -> Bool {
+  let rows = interpreter_replacement_survey().consumer_rows
+  row_disposition_matches(
+    rows: rows,
+    name: "v1_compiler.bin.claim_executor",
+    p: retained_same_contract_with(justification: "the floor executor must keep executing every enrolled witness"),
+  )
+    && row_disposition_matches(
+         rows: rows,
+         name: "v1_compiler.bin.interp_recorded_fixture_witness",
+         p: retained_same_contract_with(justification: "recorded-fixture replay has no native route"),
+       )
+    && row_disposition_matches(
+         rows: rows,
+         name: "v1_compiler.bin.auth_declared_but_unwired_witness",
+         p: retained_same_contract_with(justification: "probe binary still reached through X's evaluation entry"),
+       )
+    && row_disposition_matches(
+         rows: rows,
+         name: "std.primitive_identity",
+         p: replaced_by(authority: "std.primitive_identity four-surface derived census"),
+       )
+    && row_disposition_matches(rows: rows, name: "v1_compiler.cli_run", p: is_undecided)
+}
+
+// The limitation by equality. It is the field that states the grain, the sample
+// size, what the line-hit total does and does not measure, the host-Rust finding
+// and the region-member finding -- five separate claims a later lane will plan
+// against. One substring pinned one of them.
+test fn the_limitation_is_pinned_exactly() -> Bool {
+  (interpreter_replacement_survey().limitation as String) == "GRAIN: ONE ROW PER CONSUMING MODULE OR BINARY, TEN OF 125 FILES. Not a complete consumer census: an omitted consumer is undetectable at this grain, and the 1350 line-hits behind the sample measure ENTANGLEMENT (how much code reaches X) rather than surviving OBLIGATIONS. Four of the ten labels -- v1_compiler.cli_run, v1_compiler.coproduct_reflection, v1_compiler.pre_push, v1_compiler.v1_interpreter_dispatch_generated -- name host Rust compilation units and not .dag modules, so at exact grain they are Rust ITEMS projected through gunbc.rust_item_host_observation item_declaration_ref, and one label may expand into many item relations or into none. v1_interpreter_dispatch_generated additionally appears BOTH as a consumer and as a covered-region member, which at exact grain is very likely a region member that was never an inbound boundary crossing at all."
 }
