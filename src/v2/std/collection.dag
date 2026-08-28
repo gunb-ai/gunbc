@@ -79,6 +79,26 @@ fn map_lookup<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
   m.lookup(key)
 }
 
+// THIS RETURNS `Accepted` UNCONDITIONALLY, AND CONSUMERS HAVE BEEN WRITTEN AGAINST THAT FACT
+// RATHER THAN AGAINST THE TYPE. The return type admits `Rejected`; this body cannot produce it,
+// because `outcome_accepted` is the only constructor it reaches. Callers must still match the
+// `Rejected` arm for exhaustiveness, and some of them answer it by CONTINUING SILENTLY -- in
+// `v2.std.symbol_index`, `symbol_index_global_unique_lookup` renders it as the same
+// `GlobalBareLookupUnbound` it uses for a genuine miss, and `symbol_index_track_global_bare`
+// returns the index unchanged, which would drop a binding with no diagnostic anywhere.
+//
+// Those arms are DEAD TODAY and are not a defect today: no authorable input makes this function
+// reject, so nothing reaches them. The hazard is that they are silent rather than refusing, so
+// THE DAY THIS FUNCTION GAINS A REJECTION PATH -- a bounded map, a poisoned key, a fallible
+// backing store -- they begin to fail open, at fill time as well as at read time, and no test
+// will notice because no test can exist for them until that day.
+//
+// SO THE OBLIGATION IS ORDERED, and it is stated here rather than at the consumers because the
+// author who creates the hazard is editing THIS function and has no reason to read them: before
+// giving `map_get` any path to `Rejected`, convert those silent-continue arms into typed
+// refusals. At that point their red becomes authorable and each is an ordinary change; before
+// it, a witness over them would be permanently green by construction, which DESIGN section 4b
+// calls worse than absent because it is cited as coverage.
 fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
   outcome_accepted(value: map_lookup(m: m, key: key))
 }
