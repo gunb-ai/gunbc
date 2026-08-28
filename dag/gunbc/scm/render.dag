@@ -76,8 +76,8 @@ fn text_lines_document(lines: List<String>) -> Document {
     blocks: [
       Leaf {
         frame: RenderFrame {
-          lines: map(lines, l => plain_line(text: l))
-          cursor_action: Append
+          lines: map(lines, l => plain_line(text: l)),
+          cursor_action: Append,
         }
       }
     ]

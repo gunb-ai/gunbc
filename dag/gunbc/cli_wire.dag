@@ -36,14 +36,13 @@ module gunbc.cli_wire
 // `gunbc.observation_seed_render` calls it at two sites.
 
 import std.process { ProcessExit }
-import std.render { Document, RenderCapability }
+import std.render { Append, Document, RenderCapability }
 import extdeps.render.surface { RenderTarget, serialize_document }
 import extdeps.render.terminal {
   TerminalWriteProjection,
   DynamicLineClosed,
   project_terminal_write,
 }
-import std.render { Append }
 
 type CliWireResponse {
   write: TerminalWriteProjection
