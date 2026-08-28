@@ -10,6 +10,7 @@ import extdeps.systemd.systemctl {
   systemctl_disable_now_argv,
   systemctl_mask_now_argv,
   systemctl_unmask_argv,
+  systemctl_stop_argv,
 }
 import extdeps.tools.gnu_coreutils {
   coreutils_install_directory_argv,
@@ -101,6 +102,14 @@ fn systemctl_mask_now_command(unit: NonEmptyStr, privileged: Bool) -> String {
     shell_privileged_command_text_of_argv(argv: systemctl_mask_now_argv(unit: unit))
   } else {
     shell_command_text_of_argv(argv: systemctl_mask_now_argv(unit: unit))
+  }
+}
+
+fn systemctl_stop_command(unit: NonEmptyStr, privileged: Bool) -> String {
+  if privileged {
+    shell_privileged_command_text_of_argv(argv: systemctl_stop_argv(unit: unit))
+  } else {
+    shell_command_text_of_argv(argv: systemctl_stop_argv(unit: unit))
   }
 }
 

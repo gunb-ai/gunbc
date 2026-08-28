@@ -58,6 +58,20 @@ import gunbc.deploy_transition_bootstrap {
   roster_quiescence_admission,
   quiescence_admits,
   quiescence_probe_start_command,
+  quiescence_probe_stop_command,
+  QuiescenceAdmission,
+  QuiescenceInForce,
+  QuiescenceRefused,
+  ProbeContainment,
+  ProbeContained,
+  ProbeUncontained,
+  ProbeContainmentUnobserved,
+  probe_containment,
+  MaskPersistence,
+  MaskPersistentObserved,
+  MaskRuntimeOnlyObserved,
+  MaskPersistenceUnobserved,
+  mask_survives_reboot,
 }
 
 fn names() -> DeploymentNames {
@@ -294,7 +308,8 @@ test fn quiescence_needs_both_inactive_and_activation_refused() -> Bool {
       act: ActivationObservedRefused { unit: a_unit(), detail: "Unit is masked." })
     && !q(unit: a_unit(),
       inactive: UnitObservedInactive { unit: a_unit() },
-      act: ActivationObservedAdmitted { unit: a_unit(), detail: "started" })
+      act: ActivationObservedAdmitted {
+      unit: a_unit(), detail: "started", containment: ProbeContained { detail: "stopped" } })
 }
 
 // A MASK EXIT CODE IS NOT A RECEIPT, and the unobserved arm is what says so. A caller that ran the
@@ -304,7 +319,8 @@ test fn an_unplanted_probe_leaves_activation_unobserved_and_refuses() -> Bool {
   !q(unit: a_unit(),
     inactive: UnitObservedInactive { unit: a_unit() },
     act: unit_activation_standing(
-      unit: a_unit(), probe_ran: false, start_succeeded: false, detail: "mask exited 0"))
+      unit: a_unit(), probe_ran: false, start_succeeded: false, detail: "mask exited 0",
+      containment: ProbeContainmentUnobserved { cause: "no probe" }))
 }
 
 // THE ARMS ARE ASSIGNED AGAINST INTUITION AND THIS PINS THE DIRECTION. A start that FAILED is the
@@ -314,11 +330,13 @@ test fn a_failed_planted_start_admits_and_a_successful_one_refuses() -> Bool {
   q(unit: a_unit(),
     inactive: UnitObservedInactive { unit: a_unit() },
     act: unit_activation_standing(
-      unit: a_unit(), probe_ran: true, start_succeeded: false, detail: "Failed to start: unit is masked"))
+      unit: a_unit(), probe_ran: true, start_succeeded: false, detail: "Failed to start: unit is masked",
+      containment: ProbeContainmentUnobserved { cause: "nothing started, nothing to contain" }))
     && !q(unit: a_unit(),
       inactive: UnitObservedInactive { unit: a_unit() },
       act: unit_activation_standing(
-        unit: a_unit(), probe_ran: true, start_succeeded: true, detail: "started"))
+        unit: a_unit(), probe_ran: true, start_succeeded: true, detail: "started",
+        containment: ProbeContained { detail: "stopped" }))
 }
 
 // AN UNOBSERVED INACTIVITY IS NOT AN INACTIVE UNIT. The host not answering is not a permit.
@@ -356,4 +374,58 @@ test fn the_probe_is_a_direct_start_of_the_unit() -> Bool {
   string_contains(s: c, pattern: "start")
     && string_contains(s: c, pattern: a_unit() as String)
     && !string_contains(s: c, pattern: "mask")
+}
+
+
+// A SUCCESSFUL PROBE MUST CARRY WHAT HAPPENED TO WHAT IT STARTED. The admitted arm has a containment
+// field, so "the planted start succeeded" has no spelling that omits it -- the stop is a
+// construction rather than a step someone remembers. All three containments still REFUSE, because a
+// successful start means the mask did not take whatever we then did about it; what differs is the
+// remedy, and an uncontained probe says an actuator is running right now.
+test fn a_successful_probe_refuses_under_every_containment_and_names_which() -> Bool {
+  let contained = unit_quiescence_admission(q: observe_unit_quiescence(
+    unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    activation: unit_activation_standing(
+      unit: a_unit(), probe_ran: true, start_succeeded: true, detail: "started",
+      containment: ProbeContained { detail: "stopped again" }),
+  ))
+  let uncontained = unit_quiescence_admission(q: observe_unit_quiescence(
+    unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    activation: unit_activation_standing(
+      unit: a_unit(), probe_ran: true, start_succeeded: true, detail: "started",
+      containment: ProbeUncontained { detail: "stop exited 1" }),
+  ))
+  !quiescence_admits(a: contained)
+    && !quiescence_admits(a: uncontained)
+    && string_contains(s: refusal_cause(a: uncontained), pattern: "RUNNING")
+    && !string_contains(s: refusal_cause(a: contained), pattern: "RUNNING")
+}
+
+fn refusal_cause(a: QuiescenceAdmission) -> String {
+  match a {
+    QuiescenceInForce => ""
+    QuiescenceRefused { cause: why } => why
+  }
+}
+
+// REBOOT DURABILITY IS OBSERVED, NOT ASSUMED, and unobserved answers false. A runtime mask satisfies
+// "cannot start while I am gone" and not "survives a reboot"; the module used to assert the second
+// without measuring it.
+test fn only_an_observed_persistent_mask_claims_reboot_durability() -> Bool {
+  mask_survives_reboot(p: MaskPersistentObserved {
+    unit: a_unit(), path: "/etc/systemd/system/gunbc-roadmap-belt.timer" })
+    && !mask_survives_reboot(p: MaskRuntimeOnlyObserved {
+      unit: a_unit(), path: "/run/systemd/system/gunbc-roadmap-belt.timer" })
+    && !mask_survives_reboot(p: MaskPersistenceUnobserved {
+      unit: a_unit(), cause: "not inspected" })
+}
+
+// THE CONTAINMENT STOP IS A DIRECT STOP OF THE UNIT THE PROBE STARTED.
+test fn the_containment_command_stops_the_probed_unit() -> Bool {
+  let c = quiescence_probe_stop_command(unit: a_unit(), privileged: true)
+  string_contains(s: c, pattern: "stop")
+    && string_contains(s: c, pattern: a_unit() as String)
+    && !string_contains(s: c, pattern: "start")
 }
