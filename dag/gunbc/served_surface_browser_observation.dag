@@ -250,7 +250,7 @@ data playwright_chromium_151_linux_arm64_headless_navigation_run: PlaywrightChro
       requested_url: local_http_url(locator: "127.0.0.1:43822/refused" as NonEmptyStr),
       origin: LocalSyntheticHarness,
       screenshot: ScreenshotArtifact {
-        path: "dag/test/fixtures/browser/chromium_151_connection_refused.png" as BinaryFilePath,
+        path: "dag/test/fixture/browser/chromium_151_connection_refused.png" as BinaryFilePath,
         digest: sha256_digest(hex: "637bf51bb5163ec58e6f325d1ed304bfa3618940ac75cb493ddd81d4895b29d3" as NonEmptyStr),
         bytes: byte_size(19520),
       },
@@ -260,7 +260,7 @@ data playwright_chromium_151_linux_arm64_headless_navigation_run: PlaywrightChro
       requested_url: local_http_url(locator: "127.0.0.1:43821/empty" as NonEmptyStr),
       origin: LocalSyntheticHarness,
       screenshot: ScreenshotArtifact {
-        path: "dag/test/fixtures/browser/chromium_151_empty_502.png" as BinaryFilePath,
+        path: "dag/test/fixture/browser/chromium_151_empty_502.png" as BinaryFilePath,
         digest: sha256_digest(hex: "f8a0b51701f18c0ff3ea22825103e5016fe68e69c7eca1190ed8162c05df22c6" as NonEmptyStr),
         bytes: byte_size(14089),
       },
@@ -270,7 +270,7 @@ data playwright_chromium_151_linux_arm64_headless_navigation_run: PlaywrightChro
       requested_url: local_http_url(locator: "127.0.0.1:43821/body" as NonEmptyStr),
       origin: LocalSyntheticHarness,
       screenshot: ScreenshotArtifact {
-        path: "dag/test/fixtures/browser/chromium_151_bodied_502.png" as BinaryFilePath,
+        path: "dag/test/fixture/browser/chromium_151_bodied_502.png" as BinaryFilePath,
         digest: sha256_digest(hex: "165dea20b5ecdaa9a864ff11c3924e9e6d3bbd956fa94f6b7827d948acc5bf71" as NonEmptyStr),
         bytes: byte_size(6337),
       },

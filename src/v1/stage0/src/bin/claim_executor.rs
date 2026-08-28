@@ -1878,7 +1878,7 @@ mod tests {
     /// Test-only obligation-subject literals must track gunbc.ci_materialization authority rows.
     #[test]
     fn floor_resolve_obligation_seed_constants_match_dag_authority() {
-        let ci_materialization = dag_source_from_repo("dag/gunbc/ci_materialization.dag");
+        let ci_materialization = dag_source_from_repo("dag/gunbc/ci/ci_materialization.dag");
         assert_eq!(
             dag_record_string_field(
                 &ci_materialization,

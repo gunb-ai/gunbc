@@ -12,7 +12,7 @@ use std::process::{Command, ExitCode, Stdio};
 use super::{make_eval_context, resolve_entry_graph_shared, witness_layer_roots};
 use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
 
-const PLAN_ENTRY: &str = "dag/gunbc/githooks_pre_push_plan.dag";
+const PLAN_ENTRY: &str = "dag/gunbc/githooks/githooks_pre_push_plan.dag";
 
 struct PrePushStdinRow {
     local_ref: String,
