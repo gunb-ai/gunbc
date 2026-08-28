@@ -1,5 +1,6 @@
 module v2.std.compilers.lexing
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Empty }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken }
@@ -17,7 +18,7 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.text { Char, String }
 
@@ -264,7 +265,7 @@ fn lex_void_lex_rules_evidence_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^lex_void_lex_rules_evidence } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

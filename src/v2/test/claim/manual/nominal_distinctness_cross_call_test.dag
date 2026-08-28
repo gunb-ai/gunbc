@@ -1,5 +1,6 @@
 module v2.test.manual.nominal_distinctness_cross_call
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.compile {  compile_ingest_staging
 }
@@ -11,7 +12,7 @@ import v2.extdeps.languages.rust {
 }
 
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 
@@ -35,7 +36,7 @@ fn nominal_distinct_input_node(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

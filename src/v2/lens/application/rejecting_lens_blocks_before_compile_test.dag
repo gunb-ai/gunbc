@@ -1,5 +1,6 @@
 module v2.test.lens_application.rejecting_lens_blocks_before_compile
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.compile {
   CompileOutput,
@@ -17,7 +18,7 @@ import v2.std.collection { empty_map }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_rejected, invariant_port_locus }
 import v2.std.logic { Bool }
 import std.algebra { Empty }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v2.std.witness { Witness }
 import v2.test.lens_application.empty_required_lenses_skip_gate {
   non_empty_diagnostics_contain_reason
@@ -28,7 +29,7 @@ data rejecting_lens_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 },
   lex: VoidLexRules,
   binding_spellings: empty_map(),
@@ -40,7 +41,7 @@ data rejecting_lens_target_model_stub: TargetModel = TargetModel {
 data rejecting_lens_authority_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^rejecting_lens_claim_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn rejecting_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
@@ -54,7 +55,7 @@ data rejecting_lens: CompileLens = CompileLens { gate: rejecting_lens_gate }
 data rejecting_lens_kernel_ambient_source: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_int } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 test fn rejecting_lens_blocks_before_compile_claim_holds() -> Bool {

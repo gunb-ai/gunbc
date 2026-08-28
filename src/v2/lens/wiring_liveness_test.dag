@@ -7,7 +7,7 @@ fn wl_atom(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -21,7 +21,7 @@ fn wl_mid_node() -> Node {
     children: [
       Edge { label: Positional, target: wl_input_leaf() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -31,7 +31,7 @@ fn wl_output_tree() -> Node {
     children: [
       Edge { label: Named { name: ^wiring_liveness_output_field }, target: wl_mid_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

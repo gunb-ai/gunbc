@@ -1,5 +1,6 @@
 module v2.extdeps.languages.llvm_ir
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.fidelity { FidelityDisposition }
 import v2.std.grammar {
   StampClass,
@@ -50,7 +51,7 @@ import v2.std.model_core {
   ModelCoreFactAxisWidth
 }
 import v2.std.nat { Nat }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 
 type FloatKind
   = HalfFloat
@@ -591,7 +592,7 @@ fn llvm_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -631,7 +632,7 @@ fn llvm_integer_facts_node(facts: LlvmIntegerPrimitiveFacts) -> Node {
         target: llvm_inhabitant_atom(id: facts.std_projection)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -652,7 +653,7 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> Node {
         target: llvm_inhabitant_atom(id: facts.std_projection)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

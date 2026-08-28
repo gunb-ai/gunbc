@@ -287,6 +287,7 @@ type NamespaceDeltaDisposition
   | NewAmbiguity
   | NewUnresolvedness
   | NewPoolCoincidenceResolution
+  | AuthoredReferenceResolution
   | UnexplainedSubjectMotion
   | NotEvaluated
 
@@ -301,11 +302,24 @@ type NamespaceDeltaDisposition
 //
 // The partition the operator ruled is therefore recorded HERE, where it cannot
 // be mistaken for an executing mechanism: the wall AUTO-ADMITS a same-declaration
-// -identity rebind, a removal of genuinely unused subject membership, and an
-// explicitly evaluated zero delta. Every other disposition -- a changed target,
-// new ambiguity, new unresolvedness, new pool-coincidence resolution,
-// unexplained subject motion, and NotEvaluated -- REFUSES unless an exact
-// operator-authored transition admission names it.
+// -identity rebind, a removal of genuinely unused subject membership, an
+// explicitly evaluated zero delta, and an authored-reference resolution. Every
+// other disposition -- a changed target, new ambiguity, new unresolvedness, new
+// pool-coincidence resolution, unexplained subject motion, and NotEvaluated --
+// REFUSES unless an exact operator-authored transition admission names it.
+//
+// AuthoredReferenceResolution WAS SPLIT OUT OF NewPoolCoincidenceResolution on
+// 2026-08-27, by operator ruling relayed through swift-badger-524, after the
+// wall refused gunbc#9485 -- a one-line import repair that made three dangling
+// names resolve. `0 -> 1` was one symbol over two states with opposite owners
+// and opposite repairs: the target grew a name this module was already reaching
+// for (the coincidence, cause in another module), versus this module's own
+// author writing the import that resolves a name it was already spelling (the
+// repair the wall exists to want). The wall was refusing the second while
+// naming it the first. The discriminator is the module's own source, and the
+// membership arm already consulted it -- the same change's membership edge was
+// auto-admitted as ExplicitlyEvaluatedZeroDelta, "reached by a name this module
+// authors", while its bindings were refused.
 //
 // When the wall is built it matches on NamespaceDeltaDisposition directly. If a
 // shared projection is wanted at that point, it belongs beside the wall that

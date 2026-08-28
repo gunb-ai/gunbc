@@ -1,6 +1,7 @@
 module v2.compiler.emit_orchestration
 
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Medium }
@@ -122,7 +123,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.node { Node, TypeNode, Conj, Atom, SyntheticOccurrence, Symbol }
+import v2.std.node { Node, TypeNode, Conj, Atom, Symbol }
 import v2.std.text { String }
 
 fn orch_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
@@ -132,7 +133,7 @@ fn orch_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
 data orch_emit_unsupported_step_anchor: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^orch_emit_unsupported_step } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn orch_emit_registry_emitted_root(

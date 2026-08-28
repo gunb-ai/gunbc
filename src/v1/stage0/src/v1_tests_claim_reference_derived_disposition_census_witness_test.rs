@@ -69,15 +69,17 @@ pub fn fixture_disposition(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
 ) -> String {
-    reference_derived_disposition_name(reference_derived_candidate_disposition(
-        "PeerName".to_string(),
-        "fixture.consumer".to_string(),
-        registry.clone(),
-        export_sets.clone(),
-        Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        build_module_index(Rc::new(vec![])),
-    ))
+    crate::v1_compiler_emit_rust::reference_derived_disposition_name(
+        crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
+            "PeerName".to_string(),
+            "fixture.consumer".to_string(),
+            registry.clone(),
+            export_sets.clone(),
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
+        ),
+    )
 }
 
 pub fn candidate_the_registry_does_not_know_is_registry_absent() -> bool {
@@ -102,14 +104,14 @@ pub fn cross_module_candidate_without_export_proof_is_export_proof_failed() -> b
 }
 
 pub fn cross_module_candidate_with_export_proof_survives() -> bool {
-    (reference_derived_candidate_disposition(
+    (crate::v1_compiler_emit_rust::reference_derived_candidate_disposition(
         "PeerName".to_string(),
         "fixture.consumer".to_string(),
         fixture_registry("PeerName".to_string(), "fixture.provider".to_string()),
         fixture_export_sets("fixture.provider".to_string(), "PeerName".to_string()),
         Rc::new(vec![]),
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        build_module_index(Rc::new(vec![])),
+        crate::v1_compiler_emit_rust::build_module_index(Rc::new(vec![])),
     ) == Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
         provider_module: "fixture.provider".to_string(),
     }))
@@ -145,7 +147,7 @@ pub fn census_counts_each_arm_separately() -> bool {
                 ),
             }),
         ]);
-        let census = reference_derived_census(rows.clone());
+        let census = crate::v1_compiler_emit_rust::reference_derived_census(rows.clone());
         ((((((census.candidates.clone() == 4) && (census.survived.clone() == 1))
             && (census.own_module.clone() == 1))
             && (census.registry_absent.clone() == 1))
