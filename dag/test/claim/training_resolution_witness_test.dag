@@ -1,0 +1,979 @@
+module test.claim.training_resolution_witness
+
+import product.training.resolution {
+  AxisResolution, AxisResolved, AxisUnresolved, ResolvedAxis,
+  TrainingResolution, TrainingResolved, TrainingResolutionRefused,
+  TrainingResolutionObservations, TrainingResolvedManifest,
+  TrainingNumericFormat, Bf16, Fp16, Fp32,
+  PackingPolicy, NoPacking, ConcatenatedPacking,
+  LossMaskPolicy, MaskPromptTokens, AllTokens,
+  DropoutPermille, DropoutPermilleAdmission, DropoutPermilleAdmitted, DropoutPermilleOutOfRange,
+  dropout_permille, dropout_permille_value,
+  SeedAxis, BaseArtifactAxis,
+  TrainingRunDesiredAdmitted, TrainingRunDesiredRefused,
+  resolve_training, training_work_for, admit_training_run_desired,
+  effective_global_batch, resolved_training_manifest,
+}
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.envelope { ResourceEnvelope }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
+import product.fabric.identity { FabricIdentity }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.currency { Usd }
+import std.integer { PositiveInt }
+import std.measure { money_amount_micro, hardware_thread_count }
+import std.nat { Nat }
+import std.types { NonEmptyStr, Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE HEADLINE PROPERTY IS THAT EVERY SEMANTIC COORDINATE REACHES THE WORK KEY, and it is not
+// provable by reading the projection: the failure mode is a coordinate present in the manifest and
+// absent from the identity material, which compiles and looks complete. So each control below
+// varies exactly ONE coordinate and requires the key to move, and the negative controls vary things
+// that must NOT move it. A suite checking only the positive direction would pass equally against a
+// projection that hashed the whole manifest and against one that hashed a constant.
+
+fn h(s: NonEmptyStr) -> ContentHash {
+  content_hash_of_value(value: s)
+}
+
+fn axis_with_receipt<T>(v: T, r: NonEmptyStr) -> AxisResolution<T> {
+  AxisResolved { resolved: ResolvedAxis { value: v, receipt: r } }
+}
+
+// The bound is real, so the fixture cannot assume it away: dp returns an Optional and every witness
+// that needs a dropout value matches it. A helper that fabricated a fallback on refusal would be
+// the witness quietly manufacturing the very value the mint exists to refuse.
+fn dp(n: Nat) -> DropoutPermille? {
+  match dropout_permille(permille: n) {
+    DropoutPermilleAdmitted { value: v } => Present { value: v }
+    DropoutPermilleOutOfRange { offered: _ } => none
+  }
+}
+
+data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
+  shape: Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+    envelope: ResourceEnvelope { cpu: none, gpu: none, memory: none, storage: none, network: none },
+  },
+  capabilities: "linux-arm64",
+  trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
+}
+
+fn resolve(o: TrainingResolutionObservations) -> TrainingResolution {
+  resolve_training(observations: o, requirements: fixture_requirements)
+}
+
+fn work_key_of(o: TrainingResolutionObservations) -> NonEmptyStr {
+  match resolve(o: o) {
+    TrainingResolutionRefused { axis: _, cause: _ } => "refused"
+    TrainingResolved { resolved: r } =>
+      training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key as NonEmptyStr
+  }
+}
+
+fn obs(
+  base_artifact: ContentHash,
+  dataset_manifest: ContentHash,
+  tokenizer: ContentHash,
+  chat_template: ContentHash,
+  trainer_closure: ContentHash,
+  target_modules: ContentHash,
+  optimizer_config: ContentHash,
+  scheduler_config: ContentHash,
+  learning_rate_schedule: ContentHash,
+  rank: PositiveInt,
+  scaling: PositiveInt,
+  dropout_permille: DropoutPermille,
+  sequence_length: PositiveInt,
+  packing: PackingPolicy,
+  loss_mask: LossMaskPolicy,
+  mixture: ContentHash,
+  micro_batch: PositiveInt,
+  gradient_accumulation: PositiveInt,
+  numeric_format: TrainingNumericFormat,
+  seed: Nat,
+  data_order_seed: Nat,
+  checkpoint_format: ContentHash,
+  output_contract: ContentHash,
+  receipt: NonEmptyStr,
+) -> TrainingResolutionObservations {
+  TrainingResolutionObservations {
+    base_artifact: axis_with_receipt(v: base_artifact, r: receipt),
+    dataset_manifest: axis_with_receipt(v: dataset_manifest, r: receipt),
+    tokenizer: axis_with_receipt(v: tokenizer, r: receipt),
+    chat_template: axis_with_receipt(v: chat_template, r: receipt),
+    trainer_closure: axis_with_receipt(v: trainer_closure, r: receipt),
+    target_modules: axis_with_receipt(v: target_modules, r: receipt),
+    optimizer_config: axis_with_receipt(v: optimizer_config, r: receipt),
+    scheduler_config: axis_with_receipt(v: scheduler_config, r: receipt),
+    learning_rate_schedule: axis_with_receipt(v: learning_rate_schedule, r: receipt),
+    rank: axis_with_receipt(v: rank, r: receipt),
+    scaling: axis_with_receipt(v: scaling, r: receipt),
+    dropout_permille: axis_with_receipt(v: dropout_permille, r: receipt),
+    sequence_length: axis_with_receipt(v: sequence_length, r: receipt),
+    packing: axis_with_receipt(v: packing, r: receipt),
+    loss_mask: axis_with_receipt(v: loss_mask, r: receipt),
+    mixture: axis_with_receipt(v: mixture, r: receipt),
+    micro_batch: axis_with_receipt(v: micro_batch, r: receipt),
+    gradient_accumulation: axis_with_receipt(v: gradient_accumulation, r: receipt),
+    numeric_format: axis_with_receipt(v: numeric_format, r: receipt),
+    seed: axis_with_receipt(v: seed, r: receipt),
+    data_order_seed: axis_with_receipt(v: data_order_seed, r: receipt),
+    checkpoint_format: axis_with_receipt(v: checkpoint_format, r: receipt),
+    output_contract: axis_with_receipt(v: output_contract, r: receipt),
+  }
+}
+
+fn baseline_obs(d_low: DropoutPermille) -> TrainingResolutionObservations {
+  obs(
+    base_artifact: h(s: "base-A"),
+    dataset_manifest: h(s: "dataset-1"),
+    tokenizer: h(s: "tok-1"),
+    chat_template: h(s: "tmpl-1"),
+    trainer_closure: h(s: "trainer-1"),
+    target_modules: h(s: "qkv"),
+    optimizer_config: h(s: "adamw-1"),
+    scheduler_config: h(s: "cosine-1"),
+    learning_rate_schedule: h(s: "lr-1"),
+    rank: 16,
+    scaling: 32,
+    dropout_permille: d_low,
+    sequence_length: 4096,
+    packing: NoPacking,
+    loss_mask: MaskPromptTokens,
+    mixture: h(s: "mix-1"),
+    micro_batch: 2,
+    gradient_accumulation: 8,
+    numeric_format: Bf16,
+    seed: 7,
+    data_order_seed: 99,
+    checkpoint_format: h(s: "ckpt-v1"),
+    output_contract: h(s: "adapter-out"),
+    receipt: "obs-1",
+  )
+}
+
+// ONE CONTROL PER COORDINATE. A mutation against a single representative field cannot establish
+// a hand-enumerated projection over twenty-three of them: the failure mode is a coordinate that
+// is present in the manifest and absent from the material, which compiles and looks complete,
+// and it is per-field. An earlier revision of this suite varied only the seed and the base
+// artifact while the PR claimed the wall covered every semantic coordinate -- the claim was
+// stronger than its evidence, which is the inflation this repository rates as worse than sitting
+// low, because an overclaimed wall never ranks for the work that would make it real.
+test fn every_semantic_coordinate_reaches_the_work_key() -> Bool {
+  match dp(n: 50) {
+    none => false
+    Present { value: d_low } =>
+      match dp(n: 60) {
+        none => false
+        Present { value: d_high } => {
+          let base_key = work_key_of(o: baseline_obs(d_low: d_low))
+          let k_base_artifact = work_key_of(o: obs(
+              base_artifact: h(s: "base-B"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_dataset_manifest = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-2"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_tokenizer = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-2"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_chat_template = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-2"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_trainer_closure = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-2"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_target_modules = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkvo"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_optimizer_config = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-2"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_scheduler_config = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-2"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_learning_rate_schedule = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-2"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_rank = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 32,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_scaling = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 64,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_dropout_permille = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_high,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_sequence_length = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 8192,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_packing = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: ConcatenatedPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_loss_mask = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: AllTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_mixture = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-2"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_micro_batch = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 4,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_gradient_accumulation = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 16,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_numeric_format = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Fp16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_seed = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 8,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_data_order_seed = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 100,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_checkpoint_format = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v2"),
+              output_contract: h(s: "adapter-out"),
+              receipt: "obs-1",
+            )
+          )
+          let k_output_contract = work_key_of(o: obs(
+              base_artifact: h(s: "base-A"),
+              dataset_manifest: h(s: "dataset-1"),
+              tokenizer: h(s: "tok-1"),
+              chat_template: h(s: "tmpl-1"),
+              trainer_closure: h(s: "trainer-1"),
+              target_modules: h(s: "qkv"),
+              optimizer_config: h(s: "adamw-1"),
+              scheduler_config: h(s: "cosine-1"),
+              learning_rate_schedule: h(s: "lr-1"),
+              rank: 16,
+              scaling: 32,
+              dropout_permille: d_low,
+              sequence_length: 4096,
+              packing: NoPacking,
+              loss_mask: MaskPromptTokens,
+              mixture: h(s: "mix-1"),
+              micro_batch: 2,
+              gradient_accumulation: 8,
+              numeric_format: Bf16,
+              seed: 7,
+              data_order_seed: 99,
+              checkpoint_format: h(s: "ckpt-v1"),
+              output_contract: h(s: "adapter-out-2"),
+              receipt: "obs-1",
+            )
+          )
+          base_key != k_base_artifact &&
+            base_key != k_dataset_manifest &&
+            base_key != k_tokenizer &&
+            base_key != k_chat_template &&
+            base_key != k_trainer_closure &&
+            base_key != k_target_modules &&
+            base_key != k_optimizer_config &&
+            base_key != k_scheduler_config &&
+            base_key != k_learning_rate_schedule &&
+            base_key != k_rank &&
+            base_key != k_scaling &&
+            base_key != k_dropout_permille &&
+            base_key != k_sequence_length &&
+            base_key != k_packing &&
+            base_key != k_loss_mask &&
+            base_key != k_mixture &&
+            base_key != k_micro_batch &&
+            base_key != k_gradient_accumulation &&
+            base_key != k_numeric_format &&
+            base_key != k_seed &&
+            base_key != k_data_order_seed &&
+            base_key != k_checkpoint_format &&
+            base_key != k_output_contract
+        }
+      }
+  }
+}
+
+// THE NEGATIVE CONTROL, and it is what makes the positive population mean something. A receipt is
+// provenance: it records WHERE a value came from, not WHAT it is. If changing it moved the key the
+// projection would be hashing evidence rather than the resolved computation, and two identical runs
+// resolved through different observations would be incomparable.
+test fn a_different_resolution_receipt_derives_the_same_work_key() -> Bool {
+  match dp(n: 50) {
+    none => false
+    Present { value: d } =>
+      work_key_of(o: baseline_obs(d_low: d))
+        == work_key_of(o: obs(
+             base_artifact: h(s: "base-A"), dataset_manifest: h(s: "dataset-1"),
+             tokenizer: h(s: "tok-1"), chat_template: h(s: "tmpl-1"),
+             trainer_closure: h(s: "trainer-1"), target_modules: h(s: "qkv"),
+             optimizer_config: h(s: "adamw-1"), scheduler_config: h(s: "cosine-1"),
+             learning_rate_schedule: h(s: "lr-1"), rank: 16, scaling: 32,
+             dropout_permille: d, sequence_length: 4096, packing: NoPacking,
+             loss_mask: MaskPromptTokens, mixture: h(s: "mix-1"), micro_batch: 2,
+             gradient_accumulation: 8, numeric_format: Bf16, seed: 7, data_order_seed: 99,
+             checkpoint_format: h(s: "ckpt-v1"), output_contract: h(s: "adapter-out"),
+             receipt: "obs-2",
+           ))
+  }
+}
+
+// THE BOUND IS A WALL, NOT A CONVENTION. A permille above one thousand is not a probability, and
+// Nat admits it; the mint refuses it. Both boundary admissions are asserted beside the refusal so
+// the wall cannot be satisfied by refusing everything.
+test fn dropout_admits_zero_and_one_thousand_and_refuses_above() -> Bool {
+  let zero_ok = match dropout_permille(permille: 0) {
+    DropoutPermilleAdmitted { value: v } => dropout_permille_value(d: v) == 0
+    DropoutPermilleOutOfRange { offered: _ } => false
+  }
+  let thousand_ok = match dropout_permille(permille: 1000) {
+    DropoutPermilleAdmitted { value: v } => dropout_permille_value(d: v) == 1000
+    DropoutPermilleOutOfRange { offered: _ } => false
+  }
+  let above_refused = match dropout_permille(permille: 1001) {
+    DropoutPermilleAdmitted { value: _ } => false
+    DropoutPermilleOutOfRange { offered: o } => o == 1001
+  }
+  zero_ok && thousand_ok && above_refused
+}
+
+// GLOBAL BATCH IS DERIVED, so it cannot disagree with the coordinates it descends from.
+test fn global_batch_is_the_product_of_micro_batch_and_accumulation() -> Bool {
+  match dp(n: 50) {
+    none => false
+    Present { value: d } =>
+      match resolve(o: baseline_obs(d_low: d)) {
+        TrainingResolutionRefused { axis: _, cause: _ } => false
+        TrainingResolved { resolved: r } =>
+          effective_global_batch(m: resolved_training_manifest(resolved: r)) == 16
+      }
+  }
+}
+
+test fn an_unresolved_coordinate_refuses_naming_its_axis() -> Bool {
+  match dp(n: 50) {
+    none => false
+    Present { value: d } => {
+      let base = baseline_obs(d_low: d)
+      let broken = TrainingResolutionObservations {
+        base_artifact: base.base_artifact,
+        dataset_manifest: base.dataset_manifest,
+        tokenizer: base.tokenizer,
+        chat_template: base.chat_template,
+        trainer_closure: base.trainer_closure,
+        target_modules: base.target_modules,
+        optimizer_config: base.optimizer_config,
+        scheduler_config: base.scheduler_config,
+        learning_rate_schedule: base.learning_rate_schedule,
+        rank: base.rank,
+        scaling: base.scaling,
+        dropout_permille: base.dropout_permille,
+        sequence_length: base.sequence_length,
+        packing: base.packing,
+        loss_mask: base.loss_mask,
+        mixture: base.mixture,
+        micro_batch: base.micro_batch,
+        gradient_accumulation: base.gradient_accumulation,
+        numeric_format: base.numeric_format,
+        seed: AxisUnresolved { cause: "operator did not pin a seed" },
+        data_order_seed: base.data_order_seed,
+        checkpoint_format: base.checkpoint_format,
+        output_contract: base.output_contract,
+      }
+      match resolve(o: broken) {
+        TrainingResolutionRefused { axis: SeedAxis, cause: _ } => true
+        _ => false
+      }
+    }
+  }
+}
+
+// THE CROSS-PRINCIPAL PAIR. Requester and accounting scope are different roles sharing a
+// representation, and an earlier revision derived the work under the REQUESTER, which refused every
+// legitimate delegated run. The positive arm is load-bearing: a suite with only same-principal
+// fixtures would pass against that collapse.
+fn demand_for(requester: NonEmptyStr, scope: NonEmptyStr, work_key: NonEmptyStr) -> Demand<NonEmptyStr> {
+  Demand {
+    id: FabricIdentity { principal: requester, key: "demand-1" },
+    work: FabricIdentity { principal: scope, key: work_key },
+    origin: "gunbc.observation.training-1",
+    submitted_at: "2026-08-28T00:00:00Z",
+    admission: AdmissionTerms {
+      deadline: none,
+      buy: BuyTerms {
+        budget_account: "training",
+        currency: Usd,
+        reservation_price: money_amount_micro(count: 1),
+        maximum_buy_order: money_amount_micro(count: 1000),
+      },
+    },
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: false,
+      step_reuse_permitted: true,
+    },
+  }
+}
+
+test fn a_requester_may_ask_for_work_scoped_to_another_principal() -> Bool {
+  match dp(n: 50) {
+    none => false
+    Present { value: d } =>
+      match resolve(o: baseline_obs(d_low: d)) {
+        TrainingResolutionRefused { axis: _, cause: _ } => false
+        TrainingResolved { resolved: r } => {
+          let scoped_key = training_work_for(principal: "gunbai" as NonEmptyStr, resolved: r).id.key
+          let dm = demand_for(requester: "brian", scope: "gunbai", work_key: scoped_key as NonEmptyStr)
+          match admit_training_run_desired(demand: dm, resolved: r) {
+            TrainingRunDesiredAdmitted { desired: _ } => true
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => false
+          }
+        }
+      }
+  }
+}
+
+test fn a_demand_naming_a_work_this_resolution_does_not_derive_is_refused() -> Bool {
+  match dp(n: 50) {
+    none => false
+    Present { value: d } =>
+      match resolve(o: baseline_obs(d_low: d)) {
+        TrainingResolutionRefused { axis: _, cause: _ } => false
+        TrainingResolved { resolved: r } => {
+          let dm = demand_for(requester: "brian", scope: "gunbai", work_key: "some-other-work")
+          match admit_training_run_desired(demand: dm, resolved: r) {
+            TrainingRunDesiredAdmitted { desired: _ } => false
+            TrainingRunDesiredRefused { demand_work: _, resolved_work: _ } => true
+          }
+        }
+      }
+  }
+}
