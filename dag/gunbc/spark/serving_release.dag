@@ -51,6 +51,10 @@ fn spark_serving_bind_listen_wire(bind: SparkServingBindListen) -> String {
   join([bind.host as String, ":", to_string(bind.port)], "")
 }
 
+type SparkServingRelease {
+  runtime: RuntimeArtifactIdentity
+  model: ModelArtifact
+}
 
 // THE VALUES THE OLLAMA PROCESS WILL ACTUALLY CONSUME.
 //
