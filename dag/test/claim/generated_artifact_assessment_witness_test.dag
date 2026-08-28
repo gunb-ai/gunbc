@@ -1,5 +1,19 @@
 module test.claim.generated_artifact_assessment
 
+import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact }
+import gunbc.generated_artifact_assessment {
+  GeneratedArtifactObservation,
+  GeneratedArtifactObserved,
+  GeneratedArtifactObservationRefused,
+  GeneratedArtifactPopulationFindings,
+  UnadjudicatedArtifactFinding,
+  generated_artifact_population_findings,
+  generated_artifact_population_findings_count,
+  generated_artifact_population_findings_rendered,
+  observation_finding_rendered
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // EVERY FIXTURE HERE IS AUTHORED, INPUT AND EXPECTATION BOTH. The production population is never
@@ -41,6 +55,7 @@ fn two_drift_observations() -> List<GeneratedArtifactObservation> {
 test fn two_content_drifts_are_both_reported() -> Bool {
   let f = generated_artifact_population_findings(expected: two_drift_expected(), observations: two_drift_observations())
   (f.observation_failures |> count) == 2
+    && (f.unadjudicated |> count) == 0
     && (f.expected_cardinality |> count) == 0
     && (f.unknown_observations |> count) == 0
     && generated_artifact_population_findings_count(f: f) == 2
@@ -91,10 +106,33 @@ fn mixed_observations() -> List<GeneratedArtifactObservation> {
 
 test fn every_cause_is_reported_together() -> Bool {
   let f = generated_artifact_population_findings(expected: mixed_expected(), observations: mixed_observations())
-  (f.observation_failures |> count) == 3
+  (f.observation_failures |> count) == 2
+    && (f.unadjudicated |> count) == 1
     && (f.expected_cardinality |> count) == 1
     && (f.unknown_observations |> count) == 1
     && generated_artifact_population_findings_count(f: f) == 5
+}
+
+// THE SEPARATION, AS A DISCRIMINATING CLAIM RATHER THAN A SHAPE DESCRIPTION.
+//
+// mixed_observations carries exactly one REFUSED observation and two comparison failures. Before
+// the split all three sat in observation_failures and a consumer reading that count could not
+// tell "two artifacts drifted" from "two artifacts could not be read". This pins the refusal to
+// the provenance bucket BY IDENTITY -- the cause travels with it -- and pins its ABSENCE from the
+// comparison bucket, which is the half that would silently regress if the arm were folded back.
+test fn a_refusal_is_provenance_and_never_a_comparison_result() -> Bool {
+  let f = generated_artifact_population_findings(expected: mixed_expected(), observations: mixed_observations())
+  let causes = map(f.unadjudicated, u => u.cause)
+  (f.unadjudicated |> count) == 1
+    && any(causes, c => string_contains(s: c, pattern: "committed read failed"))
+    && (f.observation_failures |> count) == 2
+}
+
+// A CLEAN POPULATION MUST LEAVE THE PROVENANCE BUCKET EMPTY, or the field would report findings
+// for runs that reached every verdict -- the mirror defect of hiding them.
+test fn a_fully_observed_population_has_no_unadjudicated_members() -> Bool {
+  let f = generated_artifact_population_findings(expected: two_drift_expected(), observations: two_drift_observations())
+  (f.unadjudicated |> count) == 0 && (f.observation_failures |> count) == 2
 }
 
 // DUPLICATE AND MISSING ARE SEPARATE ARMS, because their repairs differ: a missing observation

@@ -43,14 +43,34 @@ type UnknownArtifactObservationFinding {
   path: String
 }
 
+// PROVENANCE IS NOT A COMPARISON RESULT, AND THE SEPARATION IS THE POINT OF THE FIELD.
+//
+// A refused observation means ROSTERED, ASKED, NO VERDICT REACHED. A content difference means
+// ASKED AND ANSWERED, and the answer was wrong. They have different owners and opposite repairs:
+// the first is a defect in the authority or the bridge that could not answer, the second is a
+// hand edit or a stale artifact. Held in one list they render identically to any consumer that
+// reads a COUNT -- and a run reaching no verdict on half the roster while reporting zero drifted
+// is exactly the execution-provenance loss DESIGN names, arriving through the count nobody reads.
+//
+// So the refusal is hoisted into its own field rather than left as a fourth arm beside the
+// comparison results. After this split a provenance finding CANNOT inhabit observation_failures:
+// the collapse is unrepresentable rather than merely discouraged, which is the construction move
+// and the reason to do it in the carrier instead of asking every reader to match.
+
+type UnadjudicatedArtifactFinding {
+  artifact: GeneratedArtifact
+  path: String
+  cause: String
+}
+
 type GeneratedArtifactObservationFinding
-  = GeneratedArtifactObservationRefusedFinding { artifact: GeneratedArtifact, path: String, cause: String }
-  | GeneratedArtifactContentDiffers { artifact: GeneratedArtifact, path: String }
+  = GeneratedArtifactContentDiffers { artifact: GeneratedArtifact, path: String }
   | GeneratedArtifactExtraValidationFailed { artifact: GeneratedArtifact, path: String }
 
 type GeneratedArtifactPopulationFindings {
   expected_cardinality: List<ExpectedArtifactCardinalityFinding>
   unknown_observations: List<UnknownArtifactObservationFinding>
+  unadjudicated: List<UnadjudicatedArtifactFinding>
   observation_failures: List<GeneratedArtifactObservationFinding>
 }
 
@@ -58,8 +78,7 @@ data observation_findings_note: String = "THE LEAF, DESCENDED. The former assess
 
 fn observation_findings(o: GeneratedArtifactObservation) -> List<GeneratedArtifactObservationFinding> {
   match o {
-    GeneratedArtifactObservationRefused { artifact, path, cause } =>
-      [GeneratedArtifactObservationRefusedFinding { artifact: artifact, path: path, cause: cause }]
+    GeneratedArtifactObservationRefused { artifact, path, cause } => []
     GeneratedArtifactObserved { artifact, path, generated_content, committed_content, extra_validation } =>
       concat(
         if generated_content == committed_content { [] } else {
@@ -93,6 +112,16 @@ fn unknown_observation_findings(expected: List<GeneratedArtifact>, observations:
   })
 }
 
+fn unadjudicated_findings(observations: List<GeneratedArtifactObservation>) -> List<UnadjudicatedArtifactFinding> {
+  fold(observations, init: [], f: fn(acc, o) {
+    match o {
+      GeneratedArtifactObservationRefused { artifact, path, cause } =>
+        concat(acc, [UnadjudicatedArtifactFinding { artifact: artifact, path: path, cause: cause }])
+      GeneratedArtifactObserved { artifact, path, generated_content, committed_content, extra_validation } => acc
+    }
+  })
+}
+
 fn observation_failure_findings(observations: List<GeneratedArtifactObservation>) -> List<GeneratedArtifactObservationFinding> {
   fold(observations, init: [], f: fn(acc, o) { concat(acc, observation_findings(o: o)) })
 }
@@ -101,12 +130,13 @@ fn generated_artifact_population_findings(expected: List<GeneratedArtifact>, obs
   GeneratedArtifactPopulationFindings {
     expected_cardinality: expected_cardinality_findings(expected: expected, observations: observations),
     unknown_observations: unknown_observation_findings(expected: expected, observations: observations),
+    unadjudicated: unadjudicated_findings(observations: observations),
     observation_failures: observation_failure_findings(observations: observations)
   }
 }
 
 fn generated_artifact_population_findings_count(f: GeneratedArtifactPopulationFindings) -> Int {
-  (f.expected_cardinality |> count) + (f.unknown_observations |> count) + (f.observation_failures |> count)
+  (f.expected_cardinality |> count) + (f.unknown_observations |> count) + (f.unadjudicated |> count) + (f.observation_failures |> count)
 }
 
 fn generated_artifact_population_findings_empty(f: GeneratedArtifactPopulationFindings) -> Bool {
@@ -132,13 +162,15 @@ fn expected_cardinality_finding_rendered(f: ExpectedArtifactCardinalityFinding) 
 
 fn observation_finding_rendered(f: GeneratedArtifactObservationFinding) -> String {
   match f {
-    GeneratedArtifactObservationRefusedFinding { artifact: _, path, cause } =>
-      concat(concat(path, " — observation refused: "), cause)
     GeneratedArtifactContentDiffers { artifact: _, path } =>
       concat(path, " — committed content differs from authority")
     GeneratedArtifactExtraValidationFailed { artifact: _, path } =>
       concat(path, " — extra validation failed")
   }
+}
+
+fn unadjudicated_finding_rendered(f: UnadjudicatedArtifactFinding) -> String {
+  concat(concat(f.path, " — rostered but no verdict reached: "), f.cause)
 }
 
 fn render_section(title: String, lines: List<String>) -> String {
@@ -161,7 +193,10 @@ fn generated_artifact_population_findings_rendered(f: GeneratedArtifactPopulatio
       ),
       concat(
         render_section(title: "expected observation cardinality:", lines: map(f.expected_cardinality, x => expected_cardinality_finding_rendered(f: x))),
-        render_section(title: "unknown observations:", lines: map(f.unknown_observations, x => concat(x.path, " — observation identity is not in committed registry")))
+        concat(
+          render_section(title: "unknown observations:", lines: map(f.unknown_observations, x => concat(x.path, " — observation identity is not in committed registry"))),
+          render_section(title: "unadjudicated:", lines: map(f.unadjudicated, x => unadjudicated_finding_rendered(f: x)))
+        )
       )
     )
   }
