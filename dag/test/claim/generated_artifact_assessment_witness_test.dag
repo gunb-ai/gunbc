@@ -157,6 +157,32 @@ test fn duplicate_and_missing_are_distinct_findings() -> Bool {
     && any(rendered, r => string_contains(s: r, pattern: "more than one"))
 }
 
+// AN EMPTY OBSERVATION POPULATION CANNOT GREEN, which is acceptance item 9 and the one failure mode
+// that is WORSE than the absorbing fallback DESIGN already forbids. A widen is merely expensive; a
+// narrow is silently uncovered. If the producer returns nothing -- the listing walk refused, the
+// roster came back empty, an exception ate the population -- then "no findings" and "nothing is
+// wrong" are the same bytes, and the gate reports clean over a tree it never looked at. That is
+// bottom-as-answer conflated with bottom-as-ignorance.
+//
+// The carrier forecloses it by joining on the EXPECTED roster rather than on the observations: every
+// expected identity with no observation is its own missing finding, so an empty population over a
+// non-empty roster produces one finding per expected member and cannot be empty. The second clause
+// is what makes this a test rather than a restatement -- greenness must come from the ROSTER being
+// empty, never from the observations being empty.
+test fn an_empty_observation_population_cannot_green_a_nonempty_roster() -> Bool {
+  let f = generated_artifact_population_findings(
+    expected: [DesignArtifact, RoadmapArtifact, GitignoreArtifact],
+    observations: []
+  )
+  !generated_artifact_population_findings_empty(f: f)
+    && ((f.expected_cardinality |> count) == 3)
+    && ((f.observation_failures |> count) == 0)
+    && !assess_generated_artifact_population(expected: [DesignArtifact, RoadmapArtifact, GitignoreArtifact], observations: [])
+    && generated_artifact_population_findings_empty(
+         f: generated_artifact_population_findings(expected: [], observations: [])
+       )
+}
+
 // ---------------------------------------------------------------------------------------------
 // COMMITTED-ABSENT: a verdict about the tree, not a failure to reach one.
 // ---------------------------------------------------------------------------------------------
