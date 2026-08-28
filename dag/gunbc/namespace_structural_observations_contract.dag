@@ -11,6 +11,11 @@ import gunbc.namespace_reference_derived_closure_admission {
 import gunbc.namespace_reference_derived_closure_contract {
   closure_missing_capabilities,
 }
+import std.reference_binding_observation {
+  StructuralObservationSubjectModule,
+  SubjectModuleProduced,
+  SubjectModuleProductionRefused,
+}
 import std.types { Bool, Int, List, String }
 
 // THE CLOSING CONDITION for roadmap node namespace-structural-observations, and it is written
@@ -35,7 +40,7 @@ import std.types { Bool, Int, List, String }
 data namespace_structural_observations_contract_note: String = "Closing condition for roadmap node namespace-structural-observations. Four capabilities, established only through assess_reference_binding_observation over production observations, every one of them carrying the module path declared by the single compiled subject."
 
 type OrdinaryCompileStructuralAdmission {
-  compiled_module: String
+  compiled_module: StructuralObservationSubjectModule
   admission: ReferenceDerivedClosureAdmission
 }
 
@@ -91,12 +96,29 @@ fn namespace_structural_observations_subject() -> StructuralObservationSubject {
   }
 }
 
+// A ROW IS OFF-SUBJECT WHEN IT DOES NOT NAME THIS SUBJECT, AND A ROW WHOSE SUBJECT COULD NOT BE
+// PRODUCED IS ONE OF THOSE -- but it is a DIFFERENT one, so it reports its own reason rather than
+// an empty path. Both refuse the row, and the fold below is what makes the distinction survive:
+// a caller reading these strings can tell "this admission came from another module" apart from
+// "the parse never yielded a module", which an empty string could not express.
+fn structural_admission_subject_mismatch(
+  compiled_module: StructuralObservationSubjectModule,
+) -> List<String> {
+  match compiled_module {
+    SubjectModuleProductionRefused { gap: _ } => ["<subject module not produced>"]
+    SubjectModuleProduced { module_path: module_path } =>
+      match module_path == namespace_structural_observations_subject_module() {
+        true => []
+        false => [module_path]
+      }
+  }
+}
+
 fn structural_admission_off_subject_modules(
   rows: List<OrdinaryCompileStructuralAdmission>,
 ) -> List<String> {
   rows
-    |> filter(row => row.compiled_module != namespace_structural_observations_subject_module())
-    |> map(row => row.compiled_module)
+    |> flat_map(row => structural_admission_subject_mismatch(compiled_module: row.compiled_module))
 }
 
 fn namespace_structural_observations_missing_capabilities(

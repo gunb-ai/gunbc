@@ -23,8 +23,12 @@ use crate::std_reference_binding_observation::ReferenceBindingProductionGap::{
     ReferenceBindingParserTransportRefused,
 };
 use crate::std_reference_binding_observation::StructuralBindingResolution::StructuralBindingProductionRefused;
+use crate::std_reference_binding_observation::StructuralObservationSubjectModule::{
+    SubjectModuleProduced, SubjectModuleProductionRefused,
+};
 pub use crate::std_reference_binding_observation::{
     ReferenceBindingObservation, ReferenceBindingProductionGap, StructuralBindingResolution,
+    StructuralObservationSubjectModule,
 };
 pub use crate::std_types::{List, NonEmptyStr};
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource;
@@ -299,14 +303,25 @@ pub fn namespace_structural_observation_admission_module_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn nrdfc_compiled_module(parsed: Rc<NrdfcParsed>) -> String {
+pub fn nrdfc_compiled_module(parsed: Rc<NrdfcParsed>) -> Rc<StructuralObservationSubjectModule> {
     match (*parsed.clone()).clone() {
-        NrdfcParsed::NrdfcParsedRefused => "".to_string(),
-        NrdfcParsed::NrdfcParsedReady { module_path, .. } => module_path.clone(),
+        NrdfcParsed::NrdfcParsedRefused => Rc::new(
+            StructuralObservationSubjectModule::SubjectModuleProductionRefused {
+                gap: ReferenceBindingProductionGap::ReferenceBindingParserTransportRefused,
+            },
+        ),
+        NrdfcParsed::NrdfcParsedReady { module_path, .. } => {
+            Rc::new(StructuralObservationSubjectModule::SubjectModuleProduced {
+                module_path: module_path.clone(),
+            })
+        }
     }
 }
 
-pub fn namespace_structural_observation_compiled_module(file: String, source: String) -> String {
+pub fn namespace_structural_observation_compiled_module(
+    file: String,
+    source: String,
+) -> Rc<StructuralObservationSubjectModule> {
     nrdfc_compiled_module(nrdfc_parse(file.clone(), source.clone()))
 }
 

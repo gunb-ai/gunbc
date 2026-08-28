@@ -9072,8 +9072,52 @@ fn reference_derived_closure_admission_value(
 /// different subject. It is mechanical, never a decision; the split exists because a `.dag`
 /// record embedding a `sole_constructor`-bearing coproduct does not emit compilably today
 /// (see the producer's own note).
+/// Encode the subject's own identity as the observation it is: the module the parse declared, or
+/// a typed refusal naming the gap. There is deliberately no spelling in which "the parse refused"
+/// and "the module path is empty" are the same value.
+fn subject_module_value(
+    subject: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_reference_binding_observation::ReferenceBindingProductionGap as G;
+    use crate::std_reference_binding_observation::StructuralObservationSubjectModule as S;
+    match subject {
+        S::SubjectModuleProduced { module_path } => Value::Variant {
+            type_name: ctx.sym("StructuralObservationSubjectModule"),
+            variant_name: ctx.sym("SubjectModuleProduced"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("module_path"),
+                str_value(module_path.clone()),
+            )])),
+        },
+        S::SubjectModuleProductionRefused { gap } => {
+            let gap_name = match gap {
+                G::ReferenceBindingParserTransportRefused => {
+                    "ReferenceBindingParserTransportRefused"
+                }
+                G::ReferenceBindingNamedReferenceAbsent => "ReferenceBindingNamedReferenceAbsent",
+                G::ReferenceBindingNamedDeclarationAbsent => {
+                    "ReferenceBindingNamedDeclarationAbsent"
+                }
+            };
+            Value::Variant {
+                type_name: ctx.sym("StructuralObservationSubjectModule"),
+                variant_name: ctx.sym("SubjectModuleProductionRefused"),
+                fields: Rc::new(sorted_fields(vec![(
+                    ctx.sym("gap"),
+                    Value::Variant {
+                        type_name: ctx.sym("ReferenceBindingProductionGap"),
+                        variant_name: ctx.sym(gap_name),
+                        fields: Rc::new(Vec::new()),
+                    },
+                )])),
+            }
+        }
+    }
+}
+
 fn namespace_structural_observation_admissions_value(
-    compiled_module: String,
+    compiled_module: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
     admissions: &[Rc<crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
     ctx: &InterpContext,
 ) -> Value {
@@ -9085,7 +9129,7 @@ fn namespace_structural_observation_admissions_value(
                 fields: Rc::new(sorted_fields(vec![
                     (
                         ctx.sym("compiled_module"),
-                        str_value(compiled_module.clone()),
+                        subject_module_value(compiled_module, ctx),
                     ),
                     (
                         ctx.sym("admission"),
@@ -14439,7 +14483,7 @@ macro_rules! v1_builtin_arms {
                 );
                 let admissions: Vec<_> = producer.iter().cloned().collect();
                 Ok(Some(namespace_structural_observation_admissions_value(
-                    compiled_module,
+                    &compiled_module,
                     &admissions,
                     $ctx,
                 )))

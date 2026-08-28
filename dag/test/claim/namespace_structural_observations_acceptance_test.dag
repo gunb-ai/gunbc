@@ -19,6 +19,10 @@ import gunbc.namespace_structural_observations_contract {
 import gunbc.namespace_structural_observations_production {
   namespace_structural_observations_production_admissions,
 }
+import std.reference_binding_observation {
+  SubjectModuleProductionRefused,
+  ReferenceBindingParserTransportRefused,
+}
 import std.types { Bool, Int, List, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -161,4 +165,46 @@ test fn observations_from_another_compiled_module_do_not_close_this_row() -> Boo
       rows: nso_admissions_for(source: nso_other_module_source()),
     )) == 4
     && !nso_contract_holds_for(source: nso_other_module_source())
+}
+
+// THE BRIDGE IS LOAD-BEARING, AND THIS IS THE AUTHORABLE FORM OF SAYING SO.
+//
+// The ruled control reads "bridge registration removed -> closing witness cannot execute". A
+// witness cannot unregister a host builtin, so what is authorable here is the projection of that
+// state onto this contract: with the bridge gone the contract is offered NO rows, and a contract
+// that closed on no rows would be green for a row nothing produced. The count(rows) > 0 conjunct
+// is what forbids it, and this control is the only thing that fails if someone deletes it.
+test fn a_row_nobody_produced_does_not_close_this_row() -> Bool {
+  !namespace_structural_observations_closing_contract_holds(rows: [])
+    && count(namespace_structural_observations_missing_capabilities(rows: [])) == 4
+}
+
+// THE RESULT IS A CARRIER, NOT A BOOLEAN, AND THE SUBJECT HALF IS WHAT PROVES IT.
+//
+// The ruled control reads "result flattened to Bool -> carrier-shape control refuses". Flattening
+// would keep exactly the capability half and lose the subject half, so the discriminating input is
+// rows whose CAPABILITIES ALL ESTABLISH and whose subject identity was not produced. A Bool-shaped
+// result cannot express the difference; this contract refuses, and names the reason rather than
+// reporting an empty module path -- which is the distinction the typed carrier exists for and the
+// one an empty string silently destroyed.
+fn nso_admissions_with_unproduced_subject() -> List<OrdinaryCompileStructuralAdmission> {
+  nso_admissions_for(source: namespace_structural_observations_subject_source())
+    |> map(row => OrdinaryCompileStructuralAdmission {
+         compiled_module: SubjectModuleProductionRefused {
+           gap: ReferenceBindingParserTransportRefused,
+         },
+         admission: row.admission,
+       })
+}
+
+test fn established_capabilities_with_an_unproduced_subject_still_refuse() -> Bool {
+  count(namespace_structural_observations_missing_capabilities(
+    rows: nso_admissions_with_unproduced_subject(),
+  )) == 0
+    && structural_admission_off_subject_modules(
+         rows: nso_admissions_with_unproduced_subject(),
+       ) == ["<subject module not produced>", "<subject module not produced>", "<subject module not produced>", "<subject module not produced>"]
+    && !namespace_structural_observations_closing_contract_holds(
+         rows: nso_admissions_with_unproduced_subject(),
+       )
 }
