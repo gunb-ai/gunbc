@@ -18,7 +18,7 @@ import gunbc.live_deploy.repository_convergence {
   RepositoryConvergenceOutcome,
   ConvergenceCompleted, ConvergenceAlreadyAtCandidate,
   ConvergencePreStateUnobservable, ConvergencePostStateUnobservable,
-  ConvergenceRefDisappeared, ConvergenceWorktreeDisappeared, ConvergenceWorktreeRebound,
+  ConvergenceRefDisappeared, ConvergenceRefRebound, ConvergenceWorktreeDisappeared, ConvergenceWorktreeRebound,
   ConvergenceUnexpectedRef,
   ConvergenceHeadNotAtCandidate, ConvergenceHeadMovedWithoutReflog,
   ConvergenceIndexNotAtCandidateTree, ConvergenceTrackedWorktreeNotAtCandidate,
@@ -254,7 +254,12 @@ test fn a_symref_retargeted_at_the_same_object_refuses() -> Bool {
     reflog: reflog_after(oid: new_sha),
   )
   match repository_convergence_verdict(before: before, after: after, candidate: new_sha, base_ref: base_ref) {
-    ConvergenceRefDisappeared { refname: r, objectname: o } => r == alias && o == dispatch_sha
+    ConvergenceRefRebound { refname: r, before_object: bo, after_object: ao, before_target: bt, after_target: at } =>
+      r == alias
+        && bo == dispatch_sha
+        && ao == dispatch_sha
+        && bt == "refs/heads/dispatch/attempt-a"
+        && at == "refs/dispatch/attempt-a"
     _ => false
   }
 }

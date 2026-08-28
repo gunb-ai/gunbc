@@ -139,6 +139,13 @@ type RepositoryConvergenceOutcome
   | ConvergencePostStateUnobservable { detail: String }
   | ConvergenceBaseRefMoved { expected: String, observed: String }
   | ConvergenceRefDisappeared { refname: String, objectname: String }
+  | ConvergenceRefRebound {
+      refname: String,
+      before_object: String,
+      after_object: String,
+      before_target: String,
+      after_target: String,
+    }
   | ConvergenceUnexpectedRef { refname: String, objectname: String }
   | ConvergenceWorktreeDisappeared { path: String }
   | ConvergenceWorktreeRebound { path: String, detail: String }
@@ -182,6 +189,38 @@ fn convergence_ref_identity_matches(left: GitRefIdentity, right: GitRefIdentity)
 
 fn convergence_refs_contain(refs: List<GitRefIdentity>, refname: String, objectname: GitObjectId) -> Bool {
   any(refs, r => convergence_ref_matches(identity: r, refname: refname, objectname: objectname))
+}
+
+fn convergence_ref_at(refs: List<GitRefIdentity>, refname: String) -> GitRefIdentity? {
+  refs |> filter(r => r.refname == refname) |> first()
+}
+
+fn convergence_first_rebound_ref(
+  before: List<GitRefIdentity>,
+  after: List<GitRefIdentity>,
+  base_ref: String,
+  primary_branch: String?,
+) -> RepositoryConvergenceOutcome? {
+  let changed = before |> filter(r =>
+    r.refname != base_ref && !optional_is_value(o: primary_branch, v: r.refname)
+      && match convergence_ref_at(refs: after, refname: r.refname) {
+        Absent => false
+        Present { value: seen } => !convergence_ref_identity_matches(left: r, right: seen)
+      }
+  )
+  match changed.first() {
+    Absent => none
+    Present { value: prior } => match convergence_ref_at(refs: after, refname: prior.refname) {
+      Absent => none
+      Present { value: seen } => Present { value: ConvergenceRefRebound {
+        refname: prior.refname,
+        before_object: git_object_id_wire_hex(oid: prior.objectname) as String,
+        after_object: git_object_id_wire_hex(oid: seen.objectname) as String,
+        before_target: prior.symref,
+        after_target: seen.symref,
+      } }
+    }
+  }
 }
 
 // PRESERVATION IS CHECKED BY NAME, NOT BY COUNT, and the difference is the whole check. Equal
@@ -552,19 +591,24 @@ fn repository_convergence_compare(
       worktrees: worktrees_before,
       primary_path: primary_path,
     )
-    match convergence_first_lost_ref(
+    match convergence_first_rebound_ref(
       before: refs_before,
       after: refs_after,
       base_ref: base_ref,
       primary_branch: primary_branch,
     ) {
-      Present { value: lost } =>
-        ConvergenceRefDisappeared {
+      Present { value: rebound } => rebound
+      Absent => match convergence_first_lost_ref(
+        before: refs_before,
+        after: refs_after,
+        base_ref: base_ref,
+        primary_branch: primary_branch,
+      ) {
+        Present { value: lost } => ConvergenceRefDisappeared {
           refname: lost.refname,
           objectname: git_object_id_wire_hex(oid: lost.objectname) as String,
         }
-      Absent =>
-        match convergence_first_lost_ref(
+        Absent => match convergence_first_lost_ref(
           before: refs_after,
           after: refs_before,
           base_ref: base_ref,
@@ -619,6 +663,7 @@ fn repository_convergence_compare(
             }
           }
         }
+      }
     }
   }
 }
@@ -632,6 +677,7 @@ fn repository_convergence_converged(outcome: RepositoryConvergenceOutcome) -> Bo
     ConvergencePostStateUnobservable { detail: _ } => false
     ConvergenceBaseRefMoved { expected: _, observed: _ } => false
     ConvergenceRefDisappeared { refname: _, objectname: _ } => false
+    ConvergenceRefRebound { refname: _, before_object: _, after_object: _, before_target: _, after_target: _ } => false
     ConvergenceUnexpectedRef { refname: _, objectname: _ } => false
     ConvergenceWorktreeDisappeared { path: _ } => false
     ConvergenceWorktreeRebound { path: _, detail: _ } => false
@@ -687,6 +733,8 @@ fn repository_convergence_detail(outcome: RepositoryConvergenceOutcome) -> Strin
       ], "")
     ConvergenceRefDisappeared { refname: r, objectname: o } =>
       join(["ref ", r, " at ", o, " existed before the transition and does not after it"], "")
+    ConvergenceRefRebound { refname: r, before_object: bo, after_object: ao, before_target: bt, after_target: at } =>
+      join(["ref ", r, " was rebound during the transition: object ", bo, " -> ", ao, ", symbolic target ", bt, " -> ", at], "")
     ConvergenceUnexpectedRef { refname: r, objectname: o } =>
       join(["ref ", r, " at ", o, " appeared during the transition"], "")
     ConvergenceWorktreeDisappeared { path: p } =>
