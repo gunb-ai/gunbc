@@ -18,7 +18,7 @@
 //! when realization_measurement_loop **Phase 0** (`docs/plans/realization-measurement-loop.md`) lands
 //! a `.dag` `PerformanceReceipt` phase-local tick carrier that a
 //! floor witness consumes by execution (the same retirement event that supersedes `GUNBC_FLOOR_GANTT`
-//! per `docs/plans/ci-floor-fractal-gantt.md` § dissolution). Receipt = that witness green with this
+//! per `ci-floor-fractal-gantt (plan doc deleted 2026-08-28)` § dissolution). Receipt = that witness green with this
 //! module deleted and zero `[phase-profile]` stderr when profiling is enabled on the model path.
 
 use std::io::{self, Write};
