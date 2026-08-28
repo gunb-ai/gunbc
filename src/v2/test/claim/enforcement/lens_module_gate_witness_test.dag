@@ -19,6 +19,7 @@ import v2.lens.enforcement.gate {
 }
 import v2.lens.enforcement.standing_intent { standing_intent_lens_closure_question_zero }
 import v2.lens.registry.completeness { lens_registry_completeness_bound_module_paths }
+import v2.lens.registry { Cost, Synthesis }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -34,6 +35,7 @@ data lens_module_gate_fixture_bound: List<String> = ["v2.lens.alpha_fixture"]
 
 data lens_module_gate_fixture_surfaces: List<LensInvariantSurface> = [
   LensInvariantSurface {
+    lens_id: Cost,
     module: "v2.lens.alpha_fixture",
     projection: ProjectionNodeDag,
     verdict_authority: VerdictLensVerdict,
@@ -41,6 +43,7 @@ data lens_module_gate_fixture_surfaces: List<LensInvariantSurface> = [
     admission: GenuinelyNewInvariant
   },
   LensInvariantSurface {
+    lens_id: Synthesis,
     module: "v2.lens.synthetic_redundant_lens",
     projection: ProjectionNodeDag,
     verdict_authority: VerdictLensVerdict,
@@ -51,6 +54,7 @@ data lens_module_gate_fixture_surfaces: List<LensInvariantSurface> = [
 
 data lens_module_gate_same_authority_duplicate_surfaces: List<LensInvariantSurface> = [
   LensInvariantSurface {
+    lens_id: Cost,
     module: "v2.lens.alpha_fixture",
     projection: ProjectionNodeDag,
     verdict_authority: VerdictLensVerdict,
@@ -58,6 +62,7 @@ data lens_module_gate_same_authority_duplicate_surfaces: List<LensInvariantSurfa
     admission: GenuinelyNewInvariant
   },
   LensInvariantSurface {
+    lens_id: Cost,
     module: "v2.lens.alpha_fixture",
     projection: ProjectionNodeDag,
     verdict_authority: VerdictLensVerdict,
@@ -68,6 +73,7 @@ data lens_module_gate_same_authority_duplicate_surfaces: List<LensInvariantSurfa
 
 data lens_module_gate_genuinely_new_surface: List<LensInvariantSurface> = [
   LensInvariantSurface {
+    lens_id: Cost,
     module: "v2.lens.alpha_fixture",
     projection: ProjectionNodeDag,
     verdict_authority: VerdictVacuityEvidence,
@@ -134,8 +140,8 @@ test fn question_zero_verdict_live_holds() -> Bool {
     && leg_holds(l: v.audit_residue_counted)
 }
 
-test fn audit_residue_counted_for_known_pending_fork() -> Bool {
-  lens_module_gate_audit_residue_count_from_surfaces(surfaces: lens_module_gate_surfaces()) > 0
+test fn no_stale_audit_residue_remains() -> Bool {
+  lens_module_gate_audit_residue_count_from_surfaces(surfaces: lens_module_gate_surfaces()) == 0
 }
 
 test fn question_zero_fixture_redundant_leg_fails() -> Bool {
