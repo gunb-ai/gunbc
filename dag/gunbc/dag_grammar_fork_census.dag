@@ -119,11 +119,19 @@ data lhs_symbol_reach: SymbolReachCensus = SymbolReachCensus {
   lhs_symbol_references_anywhere_else: 0
 }
 
-fn lhs_symbol_reach_invocation(c: SymbolReachCensus) -> List<String> {
+fn lhs_symbol_reach_corpus_invocation() -> List<String> {
   [
     "grep", "-rn",
     "\\^dag_production_fn_(add|pick|bind|loop|match|rec|field_access)\\b",
     "--include=*.dag", "."
+  ]
+}
+
+fn lhs_symbol_reach_inside_module_invocation(c: SymbolReachCensus) -> List<String> {
+  [
+    "grep", "-cn",
+    "\\^dag_production_fn_(add|pick|bind|loop|match|rec|field_access)\\b",
+    c.language_module_path as String
   ]
 }
 
