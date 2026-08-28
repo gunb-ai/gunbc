@@ -1,12 +1,13 @@
 module gunbc.fabric_control_plane
 
-import std.types { Int, List, NonEmptyStr, String, Bool }
+import std.types { Int, List, NonEmptyStr, String, Bool, Timestamp }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.measure { MoneyAmountMicro, MoneyPerSecond }
 import extdeps.currency.currency { CurrencyCode }
 import std.durable_compare_and_set {
   CasExpectation, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasReadableAbsent, CasReadablePresent, CasUnreadableSlot,
+  CasSlotObservation, CasObservedReadable, CasObservedUnreadable, ExpectSlotGeneration,
   cas_attempt, cas_generation_count,
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
@@ -18,14 +19,20 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 import gunbc.durable_cas_file_store {
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch,
   CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
-  admit_cas_attempt, file_compare_and_set,
+  admit_cas_attempt, file_compare_and_set, observe_cas_slot_state,
 }
 import gunbc.fabric_floor_dispatch { floor_supply_selection, floor_execution_requirements }
 import product.fabric.budget {
-  MoneyAccount, MoneyReservationRequest, MoneyRefusal, MoneyOutcome,
-  AccountAdvanced, MoneyRefused, reserve_money,
+  MoneyAccount, MoneyReservationRequest, MoneySettlementRequest, MoneyRefusal, MoneyOutcome,
+  AccountAdvanced, MoneyRefused, reserve_money, release_money, settle_money,
 }
-import product.fabric.execution { ReservationRef }
+import product.fabric.execution {
+  ReservationRef, LeaseIdentity, Receipt, ExecutionGrant,
+  ReceiptPayload, SettlementReceipt, ExecutionReceipt, MaterializationReceipt,
+  ReceiptAdmission, ReceiptAdmissible, ReceiptFromDifferentLease,
+  ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable, ReceiptGenerationStale,
+  admit_receipt_for_grant,
+}
 import gunbc.fabric_executor_class {
   ExecutorSanction, CapacityClassAdmission, CapacityClassAdmitted,
   CapacityClassRefused, ExecutorNotClassified,
@@ -156,7 +163,11 @@ fn reserve_selected_cell(
   offer_id: FabricIdentity<NonEmptyStr, OfferKey>,
   account: MoneyAccount,
 ) -> CellReservation {
-  let payload = fabric_reservation_payload(demand: demand_id, offer: offer_id)
+  let payload = cell_slot_payload(
+    state: CellHeld {
+      reservation: fabric_money_reservation_ref(demand: demand_id, offer: offer_id),
+    },
+  )
   match admit_cas_attempt(
     attempt: cas_attempt(
       key: slot_key,
@@ -455,3 +466,459 @@ fn reserve_priced_cell(
   }
 }
 
+// WHAT THE SLOT SAYS ABOUT ITSELF, AND WHY IT HAS TO SAY ANYTHING AT ALL.
+//
+// Until release existed the slot payload was write-only: the broker wrote the
+// reservation and nothing ever read it back. Release is the first reader, and
+// it needs an answer the payload could not give -- IS THIS CELL HELD, AND BY
+// WHICH RESERVATION. Without it, releasing is a blind write: the actuator
+// would free whatever is in the slot on the strength of a generation the
+// CALLER supplied, which is a second account of who holds the cell and free to
+// disagree with the store.
+//
+// The generation fence alone does not close this. It establishes that the slot
+// has not MOVED since it was observed, which is a different question from
+// whether it is held and by whom -- a slot that is already free at generation
+// N admits a release presenting N and would be "released" a second time. That
+// is not a harmless no-op: it writes a free-over-free generation, so a
+// concurrent re-reservation racing the second release sees its own precondition
+// broken by a release of a hold it never had.
+//
+// So the state is TYPED and the rendering is the boundary. CellHeld carries the
+// reservation reference itself rather than the demand and offer separately,
+// because that reference is already the one identity the money encumbrance and
+// the cell agree on -- re-rendering the pair here would put a second spelling
+// of it in the slot, and the two could disagree.
+type CellSlotState
+  = CellHeld { reservation: ReservationRef }
+  | CellFree { released_by: NonEmptyStr }
+
+// A DECODE THAT REFUSES RATHER THAN GUESSES. An unrecognised payload is not an
+// empty cell and not a held one: it is a slot this module cannot interpret, and
+// answering either of the other two would be the fabricated plausible output.
+// It gets its own arm so the caller can stop rather than proceed on a guess.
+type CellSlotDecode
+  = CellSlotDecoded { state: CellSlotState }
+  | CellSlotUndecodable { detail: NonEmptyStr }
+
+// THE TAGS ARE NAMED ONCE AND THE BODY IS DERIVED FROM THE TAG THAT MATCHED.
+//
+// Both halves of that are the same rule. An earlier cut spelled each tag twice
+// -- once rendering, once decoding -- and computed the body ONCE against the
+// length of the held tag, reusing it for the free arm. That worked only because
+// the two tags happen to be the same length, so a third tag of any other length
+// would have decoded to a body sliced at the wrong offset, silently, with the
+// round trip still green for the two tags that already existed. The coupling
+// bought nothing and it is removed rather than commented (review 57256).
+data cell_held_tag: String = "held|"
+
+data cell_free_tag: String = "free|"
+
+fn cell_slot_body(text: String, tag: String) -> String {
+  substring(s: text, start: string_length(s: tag), end: string_length(s: text))
+}
+
+fn cell_slot_payload(state: CellSlotState) -> NonEmptyStr {
+  match state {
+    CellHeld { reservation: r } => concat(cell_held_tag, r as String) as NonEmptyStr
+    CellFree { released_by: b } => concat(cell_free_tag, b as String) as NonEmptyStr
+  }
+}
+
+// The parse is the render read backwards over the same two tags, not a second
+// grammar. It splits once on the first separator so a reservation reference
+// containing the separator survives the round trip -- the reference is itself a
+// rendering of a demand and an offer joined by that character, so a decode that
+// split on every occurrence would truncate every real payload it was given.
+fn decode_cell_slot_payload(payload: NonEmptyStr) -> CellSlotDecode {
+  let text = payload as String
+  if starts_with(s: text, prefix: cell_held_tag) {
+    CellSlotDecoded {
+      state: CellHeld {
+        reservation: cell_slot_body(text: text, tag: cell_held_tag) as ReservationRef,
+      },
+    }
+  } else {
+    if starts_with(s: text, prefix: cell_free_tag) {
+      CellSlotDecoded {
+        state: CellFree {
+          released_by: cell_slot_body(text: text, tag: cell_free_tag) as NonEmptyStr,
+        },
+      }
+    } else {
+      CellSlotUndecodable {
+        detail: concat("slot payload carries no recognised state tag: ", text) as NonEmptyStr,
+      }
+    }
+  }
+}
+
+// EVERY WAY A RELEASE ENDS, and the separation is the same discipline the
+// reservation carries: a caller must be able to choose a remedy from the symbol
+// it gets back.
+//
+// HoldEndSlotNotHeld is the one that does not exist on the reservation side and
+// is the reason this type is not CellReservation reused. It says the store was
+// read and the cell is NOT held by the reservation being released -- already
+// free, held by someone else, or carrying a payload this module cannot read.
+// Collapsing it into a store failure would tell an operator to look at the
+// filesystem when the actual answer is that their idea of who holds this cell
+// is wrong.
+type CellHoldEnd
+  = CellHoldEnded {
+      slot_key: NonEmptyStr,
+      generation: Int,
+      account: MoneyAccount,
+    }
+  | HoldEndBudgetRefused { slot_key: NonEmptyStr, refusal: MoneyRefusal }
+  | HoldEndSlotNotHeld { slot_key: NonEmptyStr, detail: NonEmptyStr }
+  | HoldEndLost { slot_key: NonEmptyStr }
+  | HoldEndStoreUnavailable { slot_key: NonEmptyStr, cause: CasUnreadableSlot }
+  | HoldEndAttemptRefused { slot_key: NonEmptyStr, detail: NonEmptyStr }
+
+// THE PARTIAL RELEASE HAS NO CONSTRUCTOR EITHER, AND IT LEAKS THE OPPOSITE WAY.
+//
+// The reservation's partial commit leaks a hold nobody is accounting for. The
+// release's partial commit leaks in both directions and they are not the same
+// harm: freeing the cell while the encumbrance stands bills a customer for a
+// machine that is idle, and releasing the money while the cell stays held
+// strands capacity under a work nothing requires -- which is precisely the leak
+// product.fabric.arbitration's ReleaseDirective exists to close, and it would
+// be reopened here at the actuator if the two halves could come apart.
+//
+// So the same construction argument applies unchanged, for the same reason: the
+// money release is a PURE transition producing a new account, and the slot
+// write is the only effect. No arm of CellHoldEnd carries an account without a
+// freed cell, and none carries a freed cell without an account, so neither half
+// can be persisted alone. Source order is again free and is again not the
+// guarantee -- that was established by mutation on the reservation path and the
+// same laziness holds here.
+fn end_cell_hold(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  observed: CasSlotObservation<NonEmptyStr>,
+  reservation: ReservationRef,
+  money: MoneyOutcome,
+  reason: NonEmptyStr,
+) -> CellHoldEnd {
+  match observed {
+    CasObservedUnreadable { cause: c } => HoldEndStoreUnavailable { slot_key: slot_key, cause: c }
+    CasObservedReadable { readable: r } =>
+      match r {
+        CasReadableAbsent =>
+          HoldEndSlotNotHeld {
+            slot_key: slot_key,
+            detail: "the slot is absent, so this cell is held by no reservation",
+          }
+        CasReadablePresent { version: v } =>
+          match decode_cell_slot_payload(payload: v.value) {
+            CellSlotUndecodable { detail: d } =>
+              HoldEndSlotNotHeld { slot_key: slot_key, detail: d }
+            CellSlotDecoded { state: st } =>
+              match st {
+                CellFree { released_by: _ } =>
+                  HoldEndSlotNotHeld {
+                    slot_key: slot_key,
+                    detail: "the slot is already free, so there is no hold to release",
+                  }
+                CellHeld { reservation: holder } =>
+                  if (holder as String) != (reservation as String) {
+                    HoldEndSlotNotHeld {
+                      slot_key: slot_key,
+                      detail: concat(
+                        "the cell is held by another reservation: ",
+                        holder as String,
+                      ) as NonEmptyStr,
+                    }
+                  } else {
+                    commit_hold_end(
+                      root: root,
+                      slot_key: slot_key,
+                      expected: ExpectSlotGeneration { generation: v.generation },
+                      money: money,
+                      reason: reason,
+                    )
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The half that runs once the store has confirmed THIS reservation holds the
+// cell. The generation is the one the store just reported rather than one the
+// caller stated: a caller-supplied generation would be a second account of the
+// slot's version and could name a moment the observation never saw.
+//
+// THE MONEY OUTCOME ARRIVES ALREADY COMPUTED AND THAT IS NOT A CALLER DECIDING
+// IT. Each ending owns its own money transition -- release derives the amount
+// from the ledger entry, settlement presents an actual spend -- and both are
+// fenced on the lease generation inside product.fabric.budget. What this
+// function decides is the only thing both share: an advanced account frees the
+// cell, a refusal does not. Passing the outcome rather than re-deciding it here
+// is what keeps ONE money authority; a match on which ending this is would be a
+// second one, and it would have to be kept in step with budget.dag forever.
+//
+// It is also effect-free to pass: the substrate is lazy, so an unreached money
+// transition is never forced, and the refusal arms above return before this
+// function is entered at all.
+fn commit_hold_end(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  expected: CasExpectation,
+  money: MoneyOutcome,
+  reason: NonEmptyStr,
+) -> CellHoldEnd {
+  match money {
+    MoneyRefused { refusal: f } => HoldEndBudgetRefused { slot_key: slot_key, refusal: f }
+    AccountAdvanced { account: advanced } =>
+      free_cell_slot(
+        root: root,
+        slot_key: slot_key,
+        expected: expected,
+        reason: reason,
+        account: advanced,
+      )
+  }
+}
+
+fn free_cell_slot(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  expected: CasExpectation,
+  reason: NonEmptyStr,
+  account: MoneyAccount,
+) -> CellHoldEnd {
+  let payload = cell_slot_payload(state: CellFree { released_by: reason })
+  match admit_cas_attempt(
+    attempt: cas_attempt(
+      key: slot_key,
+      expected: expected,
+      proposed: payload,
+      proposed_content: content_hash_of_value(value: payload),
+    )
+  ) {
+    CasAttemptAdmitted { verified: v } =>
+      match file_compare_and_set(root: root, verified: v) {
+        CasCommitted { committed: c } =>
+          CellHoldEnded {
+            slot_key: slot_key,
+            generation: cas_generation_count(g: c.generation),
+            account: account,
+          }
+        CasPreconditionFailed { expected: _, observed: _ } => HoldEndLost { slot_key: slot_key }
+        CasStoreRefused { cause: c } => HoldEndStoreUnavailable { slot_key: slot_key, cause: c }
+      }
+    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
+      HoldEndAttemptRefused { slot_key: slot_key, detail: "release payload and its digest disagree" }
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
+      HoldEndAttemptRefused { slot_key: slot_key, detail: "release digest families are incomparable" }
+    CasAttemptKeyNotSlotAddressable { key: _ } =>
+      HoldEndAttemptRefused { slot_key: slot_key, detail: "allocation key is not slot-addressable" }
+  }
+}
+
+// THE TWO ENDINGS, AND WHY THEY ARE ONE OUTCOME TYPE RATHER THAN TWO.
+//
+// A hold ends abandoned or it ends consumed. Both leave the SAME state -- the
+// cell free and the encumbrance closed -- so a second outcome vocabulary for
+// settlement would be five refusal arms renamed, which is the fork DESIGN
+// section 3 forbids and which drifts the moment one of them gains a cause the
+// other lacks. What differs is the money transition and the evidence that
+// authorizes it, and that difference lives in the two entry points below rather
+// than in the answer they return.
+//
+// A caller does not need the outcome to tell it which ending happened, because
+// it called one of them.
+//
+// The observation is READ rather than accepted from the caller, for the reason
+// the store's own compare-and-set gives about attempts: a caller that supplies
+// the observation is the author of the fact it is supposed to be reading, and
+// nothing then relates that fact to the slot being ended. The pure form keeps
+// the parameter because a witness supplying one is a fixture and knows it; a
+// production caller reaching for it would be constructing its own answer.
+fn release_reserved_cell_at(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  lease: LeaseIdentity,
+  reservation: ReservationRef,
+  reason: NonEmptyStr,
+  released_at: Timestamp,
+  account: MoneyAccount,
+) -> CellHoldEnd {
+  end_cell_hold(
+    root: root,
+    slot_key: slot_key,
+    observed: observe_cas_slot_state(root: root, key: slot_key),
+    reservation: reservation,
+    money: release_money(
+      a: account,
+      reference: reservation,
+      generation: lease.generation,
+      reason: reason,
+      released_at: released_at,
+    ),
+    reason: reason,
+  )
+}
+
+// SETTLEMENT IS NOT RELEASE WITH AN AMOUNT ATTACHED, AND THE RECEIPT IS THE
+// DIFFERENCE. Release needs no evidence beyond the lease: abandoning a hold
+// spends nothing, and the released quantity is whatever the ledger already
+// says. Settlement CHARGES, so it needs something that establishes what was
+// actually spent and that the spender was entitled to say so -- which is
+// exactly what product.fabric.execution's receipt admission decides.
+//
+// So the admission runs FIRST and its refusal is typed rather than folded into
+// the budget arm. A receipt from a different attempt, a different lease, an
+// incomparable fingerprint and a stale generation are four different problems
+// with four different remedies, and product.fabric.execution already separates
+// them; collapsing them here into "the budget refused" would discard that work
+// one layer down and tell an operator to look at an account when the actual
+// answer is that the receipt belongs to something else.
+//
+// THE AMOUNT COMES FROM THE RECEIPT AND FROM NOWHERE ELSE. A settlement whose
+// amount was a parameter beside the receipt would let a caller charge one
+// figure while presenting evidence for another, and the two would be free to
+// disagree with nothing able to detect it. Only a SettlementReceipt carries an
+// actual spend, which is why the payload is matched rather than trusted: an
+// execution receipt records billable seconds, which is an OBSERVATION and not
+// authoritative spend -- product.fabric.execution says so in line, because the
+// billing rule is the supplier's and elapsed time is not the charge.
+type CellSettlementAdmission
+  = SettlementAdmitted {
+      reservation: ReservationRef,
+      actual_spend: MoneyAmountMicro,
+      settled_at: Timestamp,
+    }
+  | SettlementReceiptRefused { admission: ReceiptAdmission }
+  | SettlementReceiptCarriesNoSpend { detail: NonEmptyStr }
+
+// THREE GAPS THAT ARE ONE ABSENCE: NOTHING CONSTRUCTS AN ExecutionGrant.
+//
+// This function CONSUMES a grant, which is why the note lives here. Measured on
+// origin/main, 2026-08-28: `ExecutionGrant {` appears at three sites and all
+// three are test fixtures. Every production reference takes a grant as a
+// parameter or filters a list of them. There is no producer.
+//
+// Read as three separate gaps a reader will do three pieces of work; they are
+// one absence seen from three sides, and whoever writes the producer inherits
+// all of it:
+//
+// ONE -- a ReleaseDirective cannot name a cell. product.fabric.arbitration
+// produces the directive and nothing consumes it. It carries
+// resource_reservations as ReservationRefs; the release actuator here needs a
+// SLOT KEY. Nothing relates the two, and the fixtures are opaque literals
+// ("reservation-cpu-1", "res-cpu-1") because no consumer has ever had to
+// interpret one. The relation is not inventable safely: ReservationRef is a
+// branded NonEmptyStr, so ANY string inhabits it and a parse has no shape to
+// validate against -- a wrong guess is undetectable at the type level and
+// releases a cell someone else holds.
+//
+// TWO -- the acquire-side atomic join is a REQUIREMENT with no implementation.
+// product.fabric.execution states that every reservation is applied tentatively
+// and committed only if EVERY ledger admits, and that a partial commit is
+// unreachable only if the join is atomic rather than sequential. With no grant
+// producer that has never been executed.
+//
+// THREE -- the identity layer is unproduced. Measured the same day over dag/,
+// excluding fixtures and the brand declarations: ObservationReceiptRef,
+// ExecutionAttemptKey, LeaseKey, GrantKey and ReceiptKey have ZERO construction
+// sites. ReservationRef has two and both are in this module. So the producer
+// does not merely assemble a grant; it decides five identity conventions that
+// nothing decides today.
+//
+// THE DECIDED DESIGN, so the producer's author inherits a ruling rather than
+// reopening it (operator ruling relayed 2026-08-28): when a directive CAN name
+// a cell, refuse more than one resource reservation per directive as a typed
+// located refusal, and fold over the atomic one-cell release. Do not build the
+// N-cell reconciliation. The plural the model proves load-bearing is a list of
+// DIRECTIVES -- a Work under re-execution holds two grants and two sets of
+// reservations -- and that folds cleanly, leaving whole grants released and
+// whole grants held with no grant in a partial state. Two-phase commit,
+// compensating release and undo logs are all ruled out: they make the partial
+// state reachable and then work to escape it.
+//
+// CITATION TREE, because this note will be read from main and half of it does
+// not resolve there: fabric_reservation_payload and this module do not exist on
+// main -- they are unmerged. On main NEITHER reference is derivable. On this
+// stack the money reference has a modeled derivation and the resource reference
+// still does not, which is the precise gap: the producer owns one derivation,
+// not two.
+fn admit_cell_settlement<P>(
+  receipt: Receipt<P>,
+  grant: ExecutionGrant<P>,
+) -> CellSettlementAdmission {
+  match admit_receipt_for_grant(r: receipt, g: grant) {
+    ReceiptFromDifferentAttempt =>
+      SettlementReceiptRefused { admission: ReceiptFromDifferentAttempt }
+    ReceiptFromDifferentLease =>
+      SettlementReceiptRefused { admission: ReceiptFromDifferentLease }
+    ReceiptFingerprintIncomparable =>
+      SettlementReceiptRefused { admission: ReceiptFingerprintIncomparable }
+    ReceiptGenerationStale { presented: p, current: c } =>
+      SettlementReceiptRefused { admission: ReceiptGenerationStale { presented: p, current: c } }
+    ReceiptAdmissible =>
+      match receipt.payload {
+        SettlementReceipt { reservation: r, actual_spend: a, settled_at: t } =>
+          SettlementAdmitted { reservation: r, actual_spend: a, settled_at: t }
+        ExecutionReceipt { step_id: _, outputs: _, billable: _, completed_at: _ } =>
+          SettlementReceiptCarriesNoSpend {
+            detail: "an execution receipt records billable seconds, which is an observation rather than authoritative spend",
+          }
+        MaterializationReceipt { source: _, verified_at: _ } =>
+          SettlementReceiptCarriesNoSpend {
+            detail: "a materialization receipt establishes an artifact, not a charge",
+          }
+      }
+  }
+}
+
+// The settlement outcome adds ONE arm to the shared ending vocabulary rather
+// than restating it: the receipt can be refused before any hold is touched, and
+// that is a state release genuinely cannot reach.
+type CellSettlement
+  = SettlementEnded { ending: CellHoldEnd }
+  | SettlementNotAdmitted { slot_key: NonEmptyStr, admission: CellSettlementAdmission }
+
+fn settle_reserved_cell_at<P>(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  receipt: Receipt<P>,
+  grant: ExecutionGrant<P>,
+  reason: NonEmptyStr,
+  account: MoneyAccount,
+) -> CellSettlement {
+  match admit_cell_settlement(receipt: receipt, grant: grant) {
+    SettlementReceiptRefused { admission: a } =>
+      SettlementNotAdmitted {
+        slot_key: slot_key,
+        admission: SettlementReceiptRefused { admission: a },
+      }
+    SettlementReceiptCarriesNoSpend { detail: d } =>
+      SettlementNotAdmitted {
+        slot_key: slot_key,
+        admission: SettlementReceiptCarriesNoSpend { detail: d },
+      }
+    SettlementAdmitted { reservation: r, actual_spend: spend, settled_at: t } =>
+      SettlementEnded {
+        ending: end_cell_hold(
+          root: root,
+          slot_key: slot_key,
+          observed: observe_cas_slot_state(root: root, key: slot_key),
+          reservation: r,
+          money: settle_money(
+            a: account,
+            request: MoneySettlementRequest {
+              reference: r,
+              generation: receipt.lease.generation,
+              actual_spend: spend,
+              currency: account.currency,
+              settled_at: t,
+            },
+          ),
+          reason: reason,
+        ),
+      }
+  }
+}
