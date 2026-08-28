@@ -2,7 +2,7 @@ module test.claim.network_mac_witness_test
 
 import std.types { Int, String, Bool, List, NonEmptyStr, list_length }
 import extdeps.network.mac {
-  Eui48Address, MacOctet, mac_address, render_mac_address, parse_mac_address,
+  Eui48Address, mac_address, render_mac_address, parse_mac_address,
   MacParseResult, MacParsed, MacParseFailed,
   MacParseError, MacWrongOctetCount, MacOctetNotHex, MacOctetWrongWidth,
   MacAddressScope, UniversallyAdministered, LocallyAdministered,
@@ -11,7 +11,21 @@ import extdeps.network.mac {
   mac_oui,
 }
 
-data network_mac_witness_note: String = "THE ROUND TRIP AND THE TWO FLAG BITS. The round trip is the standard grounding witness for a parsed carrier and it is asserted in both directions. The flag bits get more rows than their size suggests because they are the reason this module exists rather than a validated brand: a consumer keying a host interface needs to know whether the address it holds is BURNED IN or was chosen by software, and the U/L bit is the only thing that says so.\n\nTHE INVERTED SENSE IS THE TRAP. U/L SET means LOCALLY administered -- the bit reads opposite to how the name sounds -- so a control fixes each direction against a concrete address rather than trusting the predicate to be self-evidently right. srv3's real burned-in address is used as the universally-administered specimen so the rows are anchored to a fact from the fleet rather than to an invented one.\n\nWHAT IS DELIBERATELY REFUSED: hyphen and dotted spellings. They are common in vendor output and accepting them would make the round trip untrue and erase which spelling a source produced, so each is asserted to refuse with a NAMED cause rather than merely to fail."
+// THE ROUND TRIP AND THE TWO FLAG BITS. The round trip is the standard grounding witness for a
+// parsed carrier and it is asserted in both directions. The flag bits get more rows than their
+// size suggests because they are the reason this module exists rather than a validated brand: a
+// consumer keying a host interface needs to know whether the address it holds is BURNED IN or was
+// chosen by software, and the U/L bit is the only thing that says so.
+//
+// THE INVERTED SENSE IS THE TRAP. U/L SET means LOCALLY administered -- the bit reads opposite to
+// how the name sounds -- so a control fixes each direction against a concrete address rather than
+// trusting the predicate to be self-evidently right. srv3's real burned-in address is used as the
+// universally-administered specimen so the rows are anchored to a fact from the fleet rather than
+// to an invented one.
+//
+// WHAT IS DELIBERATELY REFUSED: hyphen and dotted spellings. They are common in vendor output and
+// accepting them would make the round trip untrue and erase which spelling a source produced, so
+// each is asserted to refuse with a NAMED cause rather than merely to fail.
 
 fn srv3_burned_in() -> Eui48Address {
   mac_address(octet1: 72, octet2: 33, octet3: 11, octet4: 129, octet5: 199, octet6: 29)
