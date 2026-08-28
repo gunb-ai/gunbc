@@ -8,7 +8,11 @@ import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
 import product.fabric.envelope { cpu_memory_envelope }
 import product.fabric.isolation { IsolationProfile }
-import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerMinute, OfferEvidence, QuotedSupply }
+import product.fabric.supply {
+  SupplierOffer, OfferQuote, QuotedPerMinute, OfferEvidence, QuotedSupply,
+  UnexpressedSupplyFact, DiskNotExpressibleInShape, IsolationNotObserved,
+  SupplierOfferProjection,
+}
 import extdeps.pricing.ubicloud {
   UbicloudRunnerPriceRow, ubicloud_runner_price_catalog,
 }
@@ -45,10 +49,17 @@ fn ubicloud_quote(row: UbicloudRunnerPriceRow) -> OfferQuote {
 // Sixty seconds, from the vendor's published per-minute billing. Not a default.
 data ubicloud_billing_quantum: Second = second(count: 60)
 
-// WHAT THE FABRIC'S SHAPE CANNOT SAY.
+// WHAT THE FABRIC'S SHAPE CANNOT SAY, NOW STATED IN THE FABRIC'S OWN VOCABULARY.
 //
-// MEMORY CAME OFF THIS LIST, AND ITS REMOVAL IS THE POINT RATHER THAN A TIDY-UP. This row
-// existed because Shape carried only { hard: { threads } }, so a 2-thread runner with 6 GB and a
+// UnexpressedSupplyFact and SupplierOfferProjection were declared here and are now consumed from
+// product.fabric.supply. Neither was ever a Ubicloud fact: "the envelope's storage axis is not
+// populated from this catalog" and "nobody measured what this executor isolates" are limits of the
+// shared model, and the second binding to meet them would otherwise have imported a vendor module
+// for a generic concept or re-minted the arms. The hoist changes the home and nothing else -- the
+// arms this binding emits below are the same two it emitted before.
+//
+// MEMORY CAME OFF THIS LIST, AND ITS REMOVAL IS THE POINT RATHER THAN A TIDY-UP. There was an arm
+// here because Shape carried only { hard: { threads } }, so a 2-thread runner with 6 GB and a
 // 2-thread runner with 8 GB were indistinguishable to a selection fold -- and Ubicloud sells
 // exactly that pair. Shape now carries an `envelope`, added for precisely this binding, so the
 // memory a catalog row publishes is EXPRESSED (see ubicloud_shape) and MemoryNotExpressibleInShape
@@ -57,20 +68,7 @@ data ubicloud_billing_quantum: Second = second(count: 60)
 // while the gap is closed.
 //
 // Disk stays, because nothing in ResourceEnvelope's storage axis is populated from this catalog
-// yet, and the fact is still true. That asymmetry is the whole content of this type now.
-type UnexpressedSupplyFact
-  = DiskNotExpressibleInShape { provided: ByteSize }
-  | IsolationNotObserved
-
-// A PROJECTION BESIDE THE OFFER, NOT A SECOND KIND OF OFFER. The name matters more than it
-// looks: this type was briefly called SupplierOffer, which is also what the fabric carrier is
-// called, and the field below then read as referring to this wrapper rather than to the
-// carrier it wraps. Two types under one name is the ambiguity the corpus resolves by silent
-// last-import-wins, so nothing refuses and the reader cannot tell which one a use means.
-type SupplierOfferProjection<P> {
-  offer: SupplierOffer<P>
-  unexpressed: List<UnexpressedSupplyFact>
-}
+// yet, and the fact is still true.
 
 fn ubicloud_shape(catalog: UbicloudRunnerCatalogRow) -> Shape {
   Shape {

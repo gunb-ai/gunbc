@@ -1,0 +1,344 @@
+module gunbc.spark.fabric_supply
+
+import std.types { String, List, NonEmptyStr, Timestamp, Int }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.measure {
+  ByteSize, Watt, MoneyPerKilowattHour,
+  HardwareThreadCount, hardware_thread_count, measure_add,
+}
+import product.placement_supply { HostIdentity }
+import product.fabric.identity { OfferKey }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.envelope {
+  ResourceEnvelope, CpuRequirement, MemoryRequirement, GpuRequirement, StorageRequirement,
+}
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply {
+  UnexpressedSupplyFact, IsolationNotObserved, UnifiedMemoryPoolNotExpressibleInEnvelope,
+}
+import product.supplier.owned_host {
+  OwnedCapacityInputs, OwnedOfferBinding, bind_owned_offer,
+  OfferableCapacity, CapacityMeasured, CapacityUnmeasured,
+  OwnedReadiness, ReadyAt, NotReady,
+  OwnedCapabilityAdmission, CapabilitiesAdmitted, CapabilitiesNotAdmitted,
+  DrawObservation,
+}
+import extdeps.systems.types { IntegratedComputeSystemCatalogRow }
+import extdeps.storage.types { Persistent }
+import gunbc.spark.capability_observation {
+  SparkCapabilityObservation, SparkServingCapability,
+  ManagedExecutorReachable, AcceleratorAccessible, ArtifactRootWritable, EndpointBindable,
+  CapabilityPresent, CapabilityAbsent, CapabilityObservationRefused, CapabilityUnobserved,
+  observation_for, spark_capability_label, capability_outcome_label,
+}
+import gunbc.spark.serving_terminal_health {
+  SparkServingTerminalHealth, SparkServingServedProof,
+  spark_serving_served_proof, spark_serving_health_wire,
+}
+
+// ── A DGX SPARK AS FABRIC SUPPLY ────────────────────────────────────────────────────────────────
+//
+// gunbc/spark already converges serving on srv5 and srv6, and product/fabric already ranks offers.
+// Nothing joined them, so the fabric could not choose to run work on hardware we own and operate.
+// This module is that join for one kind of machine.
+//
+// THE PROJECTION ITSELF IS NOT HERE. product.supplier.owned_host owns everything true of any
+// capacity we own -- the zero asking price, the running cost on selection's own axis, the refusal
+// order -- because a CI runner is being onboarded from the same shape at the same time, and writing
+// it twice would fork one concept across two modules on the day both were authored. What is here is
+// the part that is only true of a Spark: a unified-memory SoC, a resident model occupying the pool
+// it would sell, an accelerator to reach, and a readiness signal that comes from a serving process.
+//
+// WHY IT LIVES IN gunbc/spark. Every input it reads is one of OUR fleet's observations -- a
+// capability probe against a named account on a named host, a terminal-health verdict from a process
+// we run. Those are gunbc facts, and the direction keeps product/ from importing our observation
+// carriers in order to describe our own machines. The generic projection is in product/supplier
+// precisely so that onboarding a runner never imports spark.
+data spark_fabric_supply_authority_note: String = "Spark specialization of product.supplier.owned_host: GB10 shape from the cited catalog row, capability admission at (host x principal) grain, and readiness derived from a served proof that only a converged terminal-health verdict can produce. Offerable memory is the MEASURED free pool, never the catalogued capacity, because the serving model this offer depends on is resident in it."
+
+// ── Offerable memory: the resident model is occupancy, and the pool is shared ────────────────────
+//
+// THE CATALOGUED CAPACITY IS NOT WHAT IS FOR SALE. A converged Spark is serving, which means a model
+// is resident: the whole point of the host is that gpt-oss:20b is loaded. Offering the cited 128 GiB
+// would offer memory already occupied by the service whose convergence is the very evidence the
+// offer rests on -- the offer's own precondition consuming the capacity the offer states.
+//
+// So the capacity handed to the generic binding is the MEASURED free pool or nothing. Nothing
+// observes free unified memory on a Spark today, so today it refuses, and that is the honest state
+// rather than a gap to fill with the catalog figure.
+data spark_offerable_memory_today: OfferableCapacity = CapacityUnmeasured {
+  obligation: "Free unified memory on a serving Spark is unobserved. The resident model occupies part of the pool, so the catalogued capacity overstates what is for sale by an unknown amount. Read the pool's free bytes on a converged host alongside /api/ps residency, and land the receipt." as NonEmptyStr,
+}
+
+// ── One pool, two envelope axes, and a fail-open the core cannot currently express ───────────────
+//
+// The GB10 is UnifiedShared: extdeps.systems.nvidia derives the system row's memory from the GPU
+// row's memory precisely because they are one physical fact. ResourceEnvelope has a memory axis and
+// a gpu axis, and product.fabric.supply's unmet_shape_axes computes each axis independently, so an
+// offer stating the pool on both axes claims the pool TWICE. Work needing most of the memory and
+// most of the VRAM is then declared fungible and cannot run -- a wrong answer produced by two
+// correct per-axis comparisons, and the same class the fabric already recorded once, when threads
+// were the only axis compared and an 8 GiB workload was declared fungible with a 6 GiB offer.
+//
+// THIS MODULE DOES NOT REPAIR IT. The defect is in the core's comparison and belongs there; a
+// supplier binding teaching the core how to compare axes is the layer inversion, and the fabric
+// would then hold two answers. What is done here is to make the sharing VISIBLE rather than
+// implicit: both axes carry the same measured remainder, because each is a true statement about what
+// this host can provide, and the projection carries the pool once so a reader sees the sharing
+// instead of having to infer it from two equal numbers.
+fn spark_unexpressed(pooled: ByteSize) -> List<UnexpressedSupplyFact> {
+  [
+    UnifiedMemoryPoolNotExpressibleInEnvelope { pooled: pooled },
+    IsolationNotObserved,
+  ]
+}
+
+// THE PROFILE WE MAY HONESTLY CLAIM IS THE EMPTY ONE. SupplierOffer.isolation states what an offer
+// PROVIDES, and nobody has measured what a Spark serving host isolates. The empty list is
+// fail-closed by construction -- unsatisfied_isolation_guarantees filters the REQUIRED set against
+// this one, so every guarantee any work asks for comes back missing and the offer refuses BY NAME --
+// and IsolationNotObserved sits on the projection so the zero is a stated coverage obligation rather
+// than a silent one. The same move product.supplier.ubicloud makes, in the vocabulary both now share.
+fn spark_unobserved_isolation() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
+// ONE CONCURRENT GRANT, BECAUSE CONTENTION ON ONE ACCELERATOR IS UNMEASURED. A Spark has one GB10
+// and one serving process. What happens to either when two customer grants run at once has not been
+// observed, and product.fabric.supply requires a bound because an offer without one cannot be
+// conserved against. One is the bound we can defend today; it is a placement policy of ours, not a
+// vendor capacity claim, and it rises when concurrency is measured.
+data spark_offer_quantity_bound: Int = 1
+
+// ── The capability join, at the grain the observation carrier actually has ───────────────────────
+//
+// gunbc.spark.capability_observation is (host x principal) grained, and its header records why: a
+// host-grained record permits the specific wrong proof that one principal's reachability satisfies
+// another's requirement. An offer names an executor, so the question here is exactly per-principal,
+// and observation_for joins on the pair. It returns Unobserved when no row matches -- nobody asked
+// is not the same as absent -- so a partial sweep can never read as a complete one.
+//
+// gunbc.spark.serving_realization carries a SECOND capability carrier, host-grained and three-armed.
+// It is not consumed here: capability_observation is the carrier written to correct that grain, and
+// it additionally applies the probe-independence admission that downgrades a positive readback the
+// probe itself may have established. Two carriers answering one question is a fork; consolidating
+// them is outside this module's subject, and it is recorded here rather than silently worked around.
+//
+// WHICH CAPABILITIES AN OFFER REQUIRES, as a declared roster rather than a list open-coded in a fold.
+// Reachability, accelerator access, a writable artifact root and a bindable endpoint are what a
+// customer grant on this host consumes. Linger and the user manager are convergence concerns of the
+// serving unit and are already the terminal-health verdict's business: requiring them here would
+// re-ask, with weaker evidence, a question the readiness join already answers.
+data spark_offer_required_capabilities: List<SparkServingCapability> = [
+  ManagedExecutorReachable,
+  AcceleratorAccessible,
+  ArtifactRootWritable,
+  EndpointBindable,
+]
+
+// ONLY AN ADMITTED PRESENT COUNTS, AND THE OUTCOME IS NAMED RATHER THAN COLLAPSED. Absent,
+// observation-refused and unobserved have three different remedies -- provision it, fix the probe, go
+// and look -- so each cause carries which capability and which outcome, never a bare failure.
+// observation_for has already applied admitted_capability_outcome, so a positive readback from a
+// probe that may have established its own subject arrives here as a refusal and is refused.
+fn spark_capability_causes(
+  observations: List<SparkCapabilityObservation>,
+  host: HostIdentity,
+  principal: NonEmptyStr,
+) -> List<NonEmptyStr> {
+  fold(spark_offer_required_capabilities, init: [], f: fn(acc, wanted) {
+    let outcome = observation_for(
+      observations: observations,
+      host: host,
+      principal: principal,
+      capability: wanted,
+    )
+    let cause = join(
+      [
+        spark_capability_label(capability: wanted),
+        " ",
+        capability_outcome_label(outcome: outcome),
+      ],
+      "",
+    ) as NonEmptyStr
+    match outcome {
+      CapabilityPresent { evidence: _ } => acc
+      CapabilityAbsent { evidence: _ } => append(acc, items: [cause])
+      CapabilityObservationRefused { first: _, more: _ } => append(acc, items: [cause])
+      CapabilityUnobserved => append(acc, items: [cause])
+    }
+  })
+}
+
+fn spark_capability_admission(
+  observations: List<SparkCapabilityObservation>,
+  host: HostIdentity,
+  principal: NonEmptyStr,
+) -> OwnedCapabilityAdmission {
+  let causes = spark_capability_causes(
+    observations: observations,
+    host: host,
+    principal: principal,
+  )
+  match list_head(causes) {
+    HeadAbsent => CapabilitiesAdmitted
+    HeadFound { value: first } =>
+      match list_tail(causes) {
+        TailAbsent => CapabilitiesNotAdmitted { first: first, more: [] }
+        TailFound { tail: rest } => CapabilitiesNotAdmitted { first: first, more: rest }
+      }
+  }
+}
+
+// ── The serving join: readiness that cannot be asserted ──────────────────────────────────────────
+//
+// product.supplier.owned_host states plainly that its OwnedReadiness cannot enforce provenance --
+// ReadyAt takes a Timestamp and a prose basis, and nothing generic can tell a derived timestamp from
+// an invented one. This is where that obligation is discharged for a Spark, and it is discharged by
+// CONSTRUCTION rather than by a check.
+//
+// SparkServingServedProof is sole_constructor, and its only producer is spark_serving_served_proof,
+// which returns a value only on the CONVERGED arm of a terminal-health verdict -- a verdict that
+// required a real generation, from the desired model, answering the expected text. So this function
+// cannot be handed a readiness: it is handed a health verdict, and an unconverged one has no
+// readiness to extract. The offer is ready because the host is serving, and there is no spelling in
+// which it is ready for any other reason.
+//
+// THE PROOF IS CARRIED RATHER THAN DISCARDED once it has done its work, because it names the version
+// and the model that were actually answering. A caller holding the binding can say which model made
+// the host ready, which is the fact a residency read needs next.
+type SparkServingReadiness sole_constructor {
+  proof: SparkServingServedProof
+  observed_at: Timestamp
+}
+
+fn spark_serving_readiness(
+  health: SparkServingTerminalHealth,
+  observed_at: Timestamp,
+) -> SparkServingReadiness? {
+  match spark_serving_served_proof(health: health) {
+    Present { value: proof } =>
+      Present { value: SparkServingReadiness { proof: proof, observed_at: observed_at } }
+    Absent => none
+  }
+}
+
+// The basis is prose for a reader, per owned_host's own warning that it is never machine-checked
+// evidence. What makes this readiness real is the arm it was produced from, not the sentence.
+fn spark_owned_readiness(
+  health: SparkServingTerminalHealth,
+  observed_at: Timestamp,
+) -> OwnedReadiness {
+  match spark_serving_readiness(health: health, observed_at: observed_at) {
+    Present { value: readiness } =>
+      ReadyAt {
+        at: readiness.observed_at,
+        basis: join(
+          [
+            "spark serving converged: version ",
+            readiness.proof.reported_version as String,
+            " answering as model ",
+            readiness.proof.served_model as String,
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    Absent =>
+      NotReady { cause: spark_serving_health_wire(health: health) as NonEmptyStr }
+  }
+}
+
+// ── The shape ────────────────────────────────────────────────────────────────────────────────────
+//
+// Threads come from the cited core clusters rather than a literal: extdeps.systems.nvidia declares
+// ten Cortex-X925 and ten Cortex-A725 cores, and summing the rows keeps the count derived from the
+// citation rather than transcribed beside it. The architecture is the row's own cpu_architecture, so
+// an offer never claims an ISA the catalog did not state.
+fn spark_offer_thread_count(catalog: IntegratedComputeSystemCatalogRow) -> HardwareThreadCount {
+  fold(catalog.cpu_core_clusters, init: hardware_thread_count(0), f: fn(acc, cluster) {
+    measure_add(acc, cluster.core_count)
+  })
+}
+
+// The memory and gpu axes both carry the MEASURED remainder and never the catalogued capacity, for
+// the occupancy reason above; the storage axis carries the catalogued figure, which nothing known
+// here occupies, and is Persistent because the cited row is self-encrypting NVMe rather than a
+// scratch volume. The network axis stays unstated -- an unstated axis is a requirement nobody
+// expressed, which product.fabric.envelope is explicit must never read as satisfied-by-everything.
+fn spark_offer_shape(
+  catalog: IntegratedComputeSystemCatalogRow,
+  offerable_bytes: ByteSize,
+) -> Shape {
+  let threads = spark_offer_thread_count(catalog: catalog)
+  Shape {
+    hard: HardRequirements { threads: threads },
+    envelope: ResourceEnvelope {
+      cpu: Present {
+        value: CpuRequirement {
+          min_threads: threads,
+          architecture: Present { value: catalog.cpu_architecture },
+        },
+      },
+      gpu: Present {
+        value: GpuRequirement {
+          min_vram: offerable_bytes,
+          runtimes: catalog.gpu.supported_runtimes,
+        },
+      },
+      memory: Present { value: MemoryRequirement { min_bytes: offerable_bytes } },
+      storage: Present {
+        value: StorageRequirement {
+          min_bytes: catalog.storage_capacity,
+          persistence: Persistent,
+        },
+      },
+      network: none,
+    },
+  }
+}
+
+// ── The binding ──────────────────────────────────────────────────────────────────────────────────
+//
+// THE CAPACITY IS NEVER DESTRUCTURED HERE, AND THAT IS THE WHOLE REASON THE REFUSAL ORDER HOLDS.
+// This function hands product.supplier.owned_host the RULE for building a Spark's shape rather than
+// a finished shape, so the measured bytes are read only if capability and readiness have already
+// cleared. An earlier cut destructured the capacity here in order to build the shape before calling,
+// and it therefore answered "the pool is unmeasured" for a host whose service account could not
+// reach the accelerator -- the furthest of the three answers from its remedy, produced by a
+// specialization quietly deciding an order the generic owns.
+fn bind_spark_offer(
+  host: HostIdentity,
+  principal: NonEmptyStr,
+  observations: List<SparkCapabilityObservation>,
+  health: SparkServingTerminalHealth,
+  observed_at: Timestamp,
+  catalog: IntegratedComputeSystemCatalogRow,
+  offerable: OfferableCapacity,
+  draw: DrawObservation,
+  tariff: MoneyPerKilowattHour,
+  capabilities: CapabilityManifestRef,
+  trust_domain: TrustDomainRef,
+) -> OwnedOfferBinding<HostIdentity> {
+  bind_owned_offer(
+    inputs: OwnedCapacityInputs {
+      executor: host,
+      offer_key: host as OfferKey,
+      shape_for: fn(free) { spark_offer_shape(catalog: catalog, offerable_bytes: free) },
+      unexpressed_for: fn(free) { spark_unexpressed(pooled: free) },
+      capabilities: capabilities,
+      trust_domain: trust_domain,
+      isolation: spark_unobserved_isolation(),
+      quantity_bound: spark_offer_quantity_bound,
+      offerable: offerable,
+      readiness: spark_owned_readiness(health: health, observed_at: observed_at),
+      capability: spark_capability_admission(
+        observations: observations,
+        host: host,
+        principal: principal,
+      ),
+      draw: draw,
+      tariff: tariff,
+    },
+  )
+}

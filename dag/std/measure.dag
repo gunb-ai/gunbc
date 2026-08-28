@@ -754,6 +754,48 @@ fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
   }
 }
 
+// A kilowatt-hour is a thousand watts held for an hour, so the seconds a kilowatt-hour buys at one
+// watt is that product. Named rather than spelled 3600000 at the conversion below, because the
+// number is the definition of the unit and a bare literal reads as a tuning constant.
+fn watt_seconds_per_kilowatt_hour() -> Nat {
+  1000 * seconds_per_hour_count()
+}
+
+// Composed from the two ISO-8601-grounded factors this module already declares rather than written
+// as 3600: a literal here would be a third spelling of a fact seconds_per_minute and minutes_per_hour
+// already hold between them.
+fn seconds_per_hour_count() -> Nat {
+  seconds_per_minute() * minutes_per_hour()
+}
+
+// WHAT A CONTINUOUS DRAW COSTS PER SECOND, which is the unit every consumer of a running cost
+// actually wants and which neither input carries on its own. It sits here, beside
+// energy_from_power_and_time, because both operands are declared in this module: a consumer that
+// derived it locally would be minting a second answer to a pure unit conversion, and the two
+// authorities it joins -- a power figure and a retail tariff -- are cited elsewhere and unchanged
+// by it.
+//
+// IT ROUNDS UP, AND THE DIRECTION IS NOT A DETAIL. The result is a COST, and a cost truncated
+// toward zero is understated: at a commercial tariff and a 140 W draw the exact figure is 6.27
+// micros per second, so flooring publishes 6 and quietly shaves four percent off every comparison
+// the number enters. Overstating a cost we bear can only make our own capacity rank worse than it
+// is, which is the direction a broker may be wrong in; understating it is the direction that lets
+// owned capacity win a comparison it should have lost.
+//
+// IT DERIVES NOTHING ABOUT WHETHER THE DRAW IS REAL. A datasheet thermal design power and a metered
+// wall reading are the same type and this function cannot tell them apart, so whether the output is
+// a measurement is a fact about the Watt handed in, and it stays the caller's obligation to say so.
+fn money_per_second_for_continuous_draw(draw: Watt, tariff: MoneyPerKilowattHour) -> MoneyPerSecond {
+  MoneyPerSecond {
+    amount: measure_scale_fraction_ceil(
+      tariff.amount,
+      num: watt_count(w: draw),
+      den: watt_seconds_per_kilowatt_hour(),
+    ),
+    currency: tariff.currency,
+  }
+}
+
 fn billing_month_as_hour_count() -> Nat {
   730
 }

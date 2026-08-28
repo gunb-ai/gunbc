@@ -1,0 +1,262 @@
+module product.supplier.owned_host
+
+import std.types { String, List, NonEmptyStr, Timestamp, Int }
+import std.measure {
+  ByteSize, Second, second, Watt, MoneyPerKilowattHour, MoneyOnce,
+  money_amount_micro, money_per_second_for_continuous_draw,
+}
+import std.currency { Usd }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply {
+  SupplierOffer, OfferQuote, QuotedFlatPerGrant, ObservedSupply,
+  UnexpressedSupplyFact, SupplierOfferProjection,
+}
+import product.fabric.selection {
+  OperatingCostObservation, OperatingCostMeasured, OperatingCostUnread,
+}
+
+// ── CAPACITY WE OWN AND OPERATE, PROJECTED AS A SUPPLIER OFFER ───────────────────────────────────
+//
+// product.supplier.ubicloud binds a supplier we RENT from: a published catalog, a published price,
+// an expiring quote. This module binds a supplier we ARE. The two differ in almost every input and
+// in exactly one structural way that matters -- for rented capacity the price is the vendor's and
+// the running cost is inside it, while for owned capacity the price is ours and is zero and the
+// running cost is separately real -- so this is a second binding rather than a mode of the first.
+//
+// IT IS GENERIC OVER THE HOST BECAUSE TWO KINDS OF OUR OWN HARDWARE ARE BEING ONBOARDED AT ONCE.
+// A DGX Spark serving from a unified-memory SoC and a CI runner are different machines with
+// different evidence, different readiness signals and different envelope axes; what they share is
+// this projection. Written once here, each becomes a specialization that computes its own Shape and
+// discharges its own evidence and then calls bind_owned_offer. Written twice, one concept would have
+// forked across two modules within a day of both being authored, which is the fork this repository
+// spends most of its review effort undoing.
+data owned_host_supply_note: String = "Projects owned, operated capacity as a fabric SupplierOffer: zero asking price because we do not invoice ourselves, running cost carried separately as selection axis 5, and three refusals a specialization must clear. Generic over the host; the Shape and every piece of evidence are the specialization's to produce."
+
+// ── The quote: an explicit zero, and what that zero does and does not say ────────────────────────
+//
+// product.fabric.selection states it in the file that owns the distinction: "The quote is a
+// supplier-side ASKING PRICE. For owned capacity that price is an explicit zero -- we do not invoice
+// ourselves -- and it would be a serious error to read that zero as the cost of running the
+// machine." So the zero is a complete statement of what we charge, not a missing price:
+// product.fabric.supply requires the amount precisely so that "costs nothing" and "nobody priced
+// this" cannot be the same value, and the safe reading of the second is never zero.
+//
+// FLAT PER GRANT RATHER THAN A ZERO RATE, and the arm follows from what the quote MEANS rather than
+// from the number being zero. quote_billing_basis reads QuotedFlatPerGrant as BillsPerGrant -- no
+// elapsed time is billed, because none is invoiced -- while a zero QuotedPerSecond would claim we
+// bill by the second and happen to charge nothing for each one. The two differ downstream: a rate
+// arm sends the affordability screen looking for a duration, and a per-grant quote prices the grant
+// whole and reaches admission with no duration observed at all.
+//
+// THE ARM IS NOT REACHED BY ARGUING THAT THE MACHINE IS ALREADY BOUGHT. product.fabric.supply rules
+// that reasoning out by name: owned metal is never zero at the margin, because power and cooling are
+// incurred by the ACT of running, and an already-paid rented hour is strictly cheaper at the margin
+// than metal we own. The purchase is sunk and excluded from dispatch; the running cost is real and
+// is priced below, on its own axis. Arriving here through the sunk-cost argument would have put
+// energy in the quote and then charged it a second time.
+fn owned_capacity_quote() -> OfferQuote {
+  QuotedFlatPerGrant(MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd })
+}
+
+// ONE SECOND, MEANING NO ROUNDING, NOT A TARIFF. billing_quantum is where a supplier's rounding
+// lives -- Ubicloud's is sixty seconds because Ubicloud bills whole minutes. We bill nothing, so
+// there is no rounding to declare, and the finest quantum is how "no rounding is applied" is spelled
+// in a field that must carry a duration. It is not a claim that anything meters at one-second grain.
+data owned_capacity_billing_quantum: Second = second(count: 1)
+
+// ── The running cost: selection axis 5, and the two ways a wattage can arrive ────────────────────
+//
+// product.fabric.selection's OperatingCostObservation is where power and cooling belong. Its
+// OperatingCostBorneBySupplier arm is what a rented offer uses -- the vendor's published rate
+// already contains the vendor's kilowatt-hours -- and it is the WRONG arm here: nobody else bears
+// this cost, we do, and an owned offer whose operating cost went unpriced would win every comparison
+// it entered, which is the one outcome that model exists to avoid claiming without evidence.
+//
+// A DATASHEET FIGURE IS NOT A MEASUREMENT, AND THE TWO ARMS ARE THE WALL. A thermal design power is
+// a design ceiling the vendor publishes; a metered draw is what a meter read. Both are a Watt, so no
+// signature can separate them, and a binding that fed a TDP into OperatingCostMeasured would publish
+// a fabricated measurement wearing a real citation. The coproduct carries what the type cannot, and
+// only the metered arm reaches the measured verdict.
+type DrawObservation
+  = MeteredDraw { draw: Watt, receipt: ObservationReceiptRef }
+  | DrawFromThermalDesignPower { ceiling: Watt }
+
+// The arithmetic is std.measure's money_per_second_for_continuous_draw, a unit derivation over two
+// magnitudes this module does not own. The tariff arrives as an argument rather than being fixed
+// here: which retail class a site meters on is a fact about the site, and one fleet can span more
+// than one of them.
+fn owned_capacity_operating_cost(
+  observation: DrawObservation,
+  tariff: MoneyPerKilowattHour,
+) -> OperatingCostObservation {
+  match observation {
+    MeteredDraw { draw: w, receipt: r } =>
+      OperatingCostMeasured {
+        rate: money_per_second_for_continuous_draw(draw: w, tariff: tariff),
+        receipt: r,
+      }
+    DrawFromThermalDesignPower { ceiling: _ } =>
+      OperatingCostUnread {
+        obligation: "Running cost unpriced: only a cited thermal design power is known, which is a design ceiling rather than a wall draw, and pricing it as one would publish a fabricated measurement. Meter the host at the wall under load and at idle, and land the receipt." as NonEmptyStr,
+      }
+  }
+}
+
+// ── What is actually for sale ────────────────────────────────────────────────────────────────────
+//
+// A NOMINAL FIGURE IS NOT AN OFFERABLE ONE, AND THE GAP IS NOT SMALL. Two independent instances of
+// this trap were found on our own fleet while this module was being written: a runner's nominal
+// 512 GiB against roughly 502 GiB usable, and a Spark's catalogued 128 GiB against a pool a resident
+// model is already occupying. Both overstate, both in the direction that overcommits, and neither is
+// visible in the number itself. So the offerable figure is MEASURED or the binding REFUSES; there is
+// no arm that falls back to a catalogued or nominal capacity, because that arm is the fabricated
+// plausible output and a broker would route real work against it.
+//
+// A CONSERVATIVE LOWER BOUND IS NOT ADMITTED HERE EITHER, and its absence is deliberate rather than
+// an omission to fill later. A bound and a measurement are different facts about what may be sold: a
+// bound is safe to plan against and is not a statement of what exists, and letting one in through
+// this arm would put an unfalsifiable number where the receipt goes. A specialization holding only a
+// bound refuses, and says so.
+type OfferableCapacity
+  = CapacityMeasured { free_bytes: ByteSize, receipt: ObservationReceiptRef }
+  | CapacityUnmeasured { obligation: NonEmptyStr }
+
+// ── Readiness, and the honest limit of what a generic projection can enforce ─────────────────────
+//
+// SupplierOffer.ready_at is an INPUT to the selection policy, which values availability delay, so a
+// guessed readiness does not merely add an unmeasured field -- it corrupts the comparison the policy
+// exists to make, silently, in the direction that flatters whoever guessed optimistically.
+//
+// THIS TYPE CANNOT STOP THAT AND MUST NOT BE READ AS DOING SO. ReadyAt carries a Timestamp and a
+// basis, and nothing here can tell a timestamp derived from a proof from one a caller invented; the
+// basis records what established it and is prose, so it is a statement to a reader and never
+// evidence a machine checked. The wall therefore lives in each specialization, at the point where
+// the readiness signal is turned into this value, and each one owes its own: gunbc.spark.fabric_supply
+// derives ReadyAt only from a sole_constructor served proof whose single producer is the converged
+// arm of a terminal-health verdict, so an unconverged host has no readiness to extract at all.
+// Saying this out loud is the point of the paragraph -- a carrier that looks like it enforces
+// provenance and does not is worse than one that plainly does not, because the shape reads as
+// coverage.
+type OwnedReadiness
+  = ReadyAt { at: Timestamp, basis: NonEmptyStr }
+  | NotReady { cause: NonEmptyStr }
+
+// ── Capability admission, decided upstream and reported here ─────────────────────────────────────
+//
+// WHICH capabilities an offer requires, and what evidence proves one, are facts about a kind of host
+// and about the probe that observed it -- a Spark's accelerator reachability under a named service
+// account, a runner's toolchain. A generic projection that enumerated them would either invent a
+// closed roster no host matches or accept a bare Bool, so it takes the verdict and carries the
+// causes. The refusal is not collapsed to a count: a caller fixing three unmet capabilities in order
+// must be told all three, and each cause names the capability and what was observed rather than
+// asserting a failure.
+type OwnedCapabilityAdmission
+  = CapabilitiesAdmitted
+  | CapabilitiesNotAdmitted { first: NonEmptyStr, more: List<NonEmptyStr> }
+
+// ── The inputs, travelling as one record ─────────────────────────────────────────────────────────
+//
+// Eleven arguments passed positionally is a place for two of them to be swapped silently; several
+// here are branded strings over the same representation, so a swap would typecheck. The record also
+// makes a specialization's own binding function read as an assembly of named facts, which is what it
+// is.
+//
+// THE SHAPE ARRIVES AS A FUNCTION OF THE MEASURED BYTES, NOT AS A SHAPE, AND THAT IS WHAT KEEPS THE
+// REFUSAL ORDER IN ONE PLACE. A Shape states what the host provides on each axis, and on any host
+// whose offerable capacity is measured rather than catalogued, those axes cannot be filled in until
+// the measurement is in hand. Taking a finished Shape would therefore force every specialization to
+// destructure the capacity itself before calling here -- and a specialization that destructures the
+// capacity answers the capacity question FIRST, which silently inverts the order stated below. That
+// is not hypothetical: this module's first cut took a Shape, and the Spark binding written against
+// it reported an unmeasured pool on a host whose service account could not reach the accelerator,
+// which is the least useful of the three answers and the furthest from its remedy.
+//
+// So the specialization hands over the RULE for building its shape and never sees the bytes unless
+// the binding got that far. The same argument applies to the unexpressed facts, one of which
+// (UnifiedMemoryPoolNotExpressibleInEnvelope) carries the measured pool.
+type OwnedCapacityInputs<P> {
+  executor: P
+  offer_key: OfferKey
+  shape_for: fn(ByteSize) -> Shape
+  unexpressed_for: fn(ByteSize) -> List<UnexpressedSupplyFact>
+  capabilities: CapabilityManifestRef
+  trust_domain: TrustDomainRef
+  isolation: IsolationProfile
+  quantity_bound: Int
+  offerable: OfferableCapacity
+  readiness: OwnedReadiness
+  capability: OwnedCapabilityAdmission
+  draw: DrawObservation
+  tariff: MoneyPerKilowattHour
+}
+
+// ── The binding ──────────────────────────────────────────────────────────────────────────────────
+//
+// THE ORDER OF THE THREE REFUSALS IS STATED BECAUSE IT IS NOT ARBITRARY, and it is the order of how
+// far upstream the remedy sits. Capabilities first: a host that cannot be reached or lacks what the
+// work needs makes every later question moot. Readiness second: whether the host is serving at all
+// is what makes an availability figure expressible. Capacity last: it is the only one whose remedy
+// is a measurement of a host already working.
+//
+// AN UNPRICED RUNNING COST DOES NOT REFUSE THE BINDING, and the asymmetry is deliberate. The three
+// refusals are facts about whether this host can run the work; an unread operating cost is a fact
+// about whether a ranking can be computed, and product.fabric.selection already owns that with its
+// own OperatingCostUnread arm. Refusing here would answer a pricing question with a capability
+// verdict, and would delete a real offer over a missing meter.
+type OwnedOfferBinding<P>
+  = OwnedOfferBound {
+      bound: SupplierOfferProjection<P>
+      operating: OperatingCostObservation
+    }
+  | OwnedOfferCapabilitiesNotAdmitted { first: NonEmptyStr, more: List<NonEmptyStr> }
+  | OwnedOfferNotReady { cause: NonEmptyStr }
+  | OwnedOfferCapacityUnmeasured { obligation: NonEmptyStr }
+
+// THE EVIDENCE ARM IS ObservedSupply, NOT QuotedSupply. QuotedSupply is a standing willingness to
+// sell until a stated expiry, which is what a vendor publishes and what HAS an expiry to publish.
+// This is a measurement of a host we operate, taken now, and its receipt is the capacity observation
+// that bounded what is for sale -- the one reading the offer's own quantity depends on, rather than
+// a second receipt naming the same event.
+fn bind_owned_offer<P>(inputs: OwnedCapacityInputs<P>) -> OwnedOfferBinding<P> {
+  match inputs.capability {
+    CapabilitiesNotAdmitted { first: f, more: m } =>
+      OwnedOfferCapabilitiesNotAdmitted { first: f, more: m }
+    CapabilitiesAdmitted =>
+      match inputs.readiness {
+        NotReady { cause: c } => OwnedOfferNotReady { cause: c }
+        ReadyAt { at: ready_at, basis: _ } =>
+          match inputs.offerable {
+            CapacityUnmeasured { obligation: o } => OwnedOfferCapacityUnmeasured { obligation: o }
+            CapacityMeasured { free_bytes: free, receipt: capacity_receipt } =>
+              OwnedOfferBound {
+                bound: SupplierOfferProjection {
+                  offer: SupplierOffer {
+                    id: FabricIdentity { principal: inputs.executor, key: inputs.offer_key },
+                    executor: inputs.executor,
+                    shape: inputs.shape_for(free),
+                    capabilities: inputs.capabilities,
+                    trust_domain: inputs.trust_domain,
+                    isolation: inputs.isolation,
+                    quantity_bound: inputs.quantity_bound,
+                    ready_at: ready_at,
+                    quote: owned_capacity_quote(),
+                    billing_quantum: owned_capacity_billing_quantum,
+                    evidence: ObservedSupply {
+                      observed_at: ready_at,
+                      receipt: capacity_receipt,
+                    },
+                  },
+                  unexpressed: inputs.unexpressed_for(free),
+                },
+                operating: owned_capacity_operating_cost(
+                  observation: inputs.draw,
+                  tariff: inputs.tariff,
+                ),
+              }
+          }
+      }
+  }
+}

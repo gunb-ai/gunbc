@@ -1,0 +1,609 @@
+module test.claim.spark_fabric_supply_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr, Timestamp }
+import std.nat { Nat }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.measure {
+  ByteSize, byte_size, byte_size_count, Watt, watt, second_count,
+  MoneyPerKilowattHour, money_rate_micros, money_amount_micro_count,
+  hardware_thread_count_value, money_per_second_for_continuous_draw,
+}
+import product.placement_supply { HostIdentity }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.work { CapabilityManifestRef, TrustDomainRef }
+import product.fabric.supply {
+  OfferQuote, QuotedFlatPerGrant, QuotedPerSecond, QuotedPerMinute, QuotedPerHour,
+  offer_quote_amount, quote_billing_basis, BillsPerGrant, BillsElapsedTime,
+  OfferEvidence, ObservedSupply, QuotedSupply,
+  UnexpressedSupplyFact, IsolationNotObserved, DiskNotExpressibleInShape,
+  UnifiedMemoryPoolNotExpressibleInEnvelope,
+}
+import product.fabric.envelope { ResourceEnvelope, CpuRequirement, MemoryRequirement, GpuRequirement, StorageRequirement }
+import product.supplier.owned_host {
+  OwnedOfferBinding, OwnedOfferBound, OwnedOfferCapabilitiesNotAdmitted,
+  OwnedOfferNotReady, OwnedOfferCapacityUnmeasured,
+  OfferableCapacity, CapacityMeasured, CapacityUnmeasured,
+  OwnedReadiness, ReadyAt, NotReady,
+  DrawObservation, MeteredDraw, DrawFromThermalDesignPower,
+  OperatingCostObservation,
+  owned_capacity_operating_cost, owned_capacity_billing_quantum, owned_capacity_quote,
+}
+import product.fabric.selection {
+  OperatingCostMeasured, OperatingCostUnread, OperatingCostBorneBySupplier,
+}
+import extdeps.systems.nvidia { nvidia_dgx_spark_1tb_catalog }
+import extdeps.energy.nj_electricity { nj_commercial_rate }
+import gunbc.readback_independence { ProbeEffectOnSubject, ProbeInert, ProbeMayEstablish }
+import gunbc.spark.capability_observation {
+  SparkCapabilitySubject, SparkCapabilityObservation, SparkServingCapability,
+  ManagedExecutorReachable, AcceleratorAccessible, ArtifactRootWritable, EndpointBindable,
+  CapabilityObservationOutcome, CapabilityPresent, CapabilityAbsent,
+}
+import gunbc.spark.serving_terminal_health {
+  SparkServingTerminalHealth, ServingConverged, ResourcesConvergedButServingUnhealthy,
+  ServingHealthUnobserved, HealthGenerationIncomplete,
+}
+import gunbc.spark.fabric_supply {
+  bind_spark_offer, spark_offer_shape, spark_offer_thread_count, spark_unexpressed,
+  spark_serving_readiness, spark_owned_readiness, spark_offer_required_capabilities,
+  spark_offerable_memory_today, spark_offer_quantity_bound,
+}
+
+// ── Fixtures ────────────────────────────────────────────────────────────────────────────────────
+//
+// EVERY ARM OF EVERY REFUSAL IS EXERCISED AGAINST A POSITIVE CONTROL BUILT FROM THE SAME FIXTURE.
+// A fold that refuses everything passes any test that only checks refusals, and the whole subject
+// here is a binding whose job is to refuse -- so the admitting case is asserted first and each
+// refusal is produced by changing exactly one input away from it.
+
+fn cred() -> ContentHash {
+  content_hash_of_value(value: "fleet-automation-key" as NonEmptyStr)
+}
+
+fn spark_host() -> HostIdentity {
+  "srv5" as HostIdentity
+}
+
+fn automation() -> NonEmptyStr {
+  "gunbc-automation" as NonEmptyStr
+}
+
+fn observation(
+  capability: SparkServingCapability,
+  outcome: CapabilityObservationOutcome,
+  effect: ProbeEffectOnSubject,
+) -> SparkCapabilityObservation {
+  SparkCapabilityObservation {
+    subject: SparkCapabilitySubject { host: spark_host(), principal: automation() },
+    capability: capability,
+    outcome: outcome,
+    probe_effect: effect,
+    credential_identity: cred(),
+  }
+}
+
+fn present(capability: SparkServingCapability) -> SparkCapabilityObservation {
+  observation(
+    capability: capability,
+    outcome: CapabilityPresent { evidence: "probe read it" as NonEmptyStr },
+    effect: ProbeInert,
+  )
+}
+
+fn all_capabilities_present() -> List<SparkCapabilityObservation> {
+  [
+    present(capability: ManagedExecutorReachable),
+    present(capability: AcceleratorAccessible),
+    present(capability: ArtifactRootWritable),
+    present(capability: EndpointBindable),
+  ]
+}
+
+fn converged_health() -> SparkServingTerminalHealth {
+  ServingConverged {
+    reported_version: "0.12.3" as NonEmptyStr,
+    served_model: "gpt-oss:20b" as NonEmptyStr,
+  }
+}
+
+// A remainder well under the catalogued 128 GiB, because the whole point of the measurement is that
+// the resident model has already taken part of the pool.
+fn measured_free() -> ByteSize {
+  byte_size(count: 64000000000)
+}
+
+fn measured_capacity() -> OfferableCapacity {
+  CapacityMeasured {
+    free_bytes: measured_free(),
+    receipt: "spark-free-pool-2026-08-27" as ObservationReceiptRef,
+  }
+}
+
+fn metered_draw() -> DrawObservation {
+  MeteredDraw {
+    draw: watt(count: 140),
+    receipt: "spark-wall-draw-2026-08-27" as ObservationReceiptRef,
+  }
+}
+
+fn bind_with(
+  observations: List<SparkCapabilityObservation>,
+  health: SparkServingTerminalHealth,
+  offerable: OfferableCapacity,
+  draw: DrawObservation,
+) -> OwnedOfferBinding<HostIdentity> {
+  bind_spark_offer(
+    host: spark_host(),
+    principal: automation(),
+    observations: observations,
+    health: health,
+    observed_at: "2026-08-27T23:00:00Z" as Timestamp,
+    catalog: nvidia_dgx_spark_1tb_catalog,
+    offerable: offerable,
+    draw: draw,
+    tariff: nj_commercial_rate.rate,
+    capabilities: "spark-serving-manifest" as CapabilityManifestRef,
+    trust_domain: "gunbc-fleet" as TrustDomainRef,
+  )
+}
+
+fn admitting_binding() -> OwnedOfferBinding<HostIdentity> {
+  bind_with(
+    observations: all_capabilities_present(),
+    health: converged_health(),
+    offerable: measured_capacity(),
+    draw: metered_draw(),
+  )
+}
+
+fn is_bound(binding: OwnedOfferBinding<HostIdentity>) -> Bool {
+  match binding {
+    OwnedOfferBound { bound: _, operating: _ } => true
+    OwnedOfferCapabilitiesNotAdmitted { first: _, more: _ } => false
+    OwnedOfferNotReady { cause: _ } => false
+    OwnedOfferCapacityUnmeasured { obligation: _ } => false
+  }
+}
+
+// ── THE POSITIVE CONTROL ────────────────────────────────────────────────────────────────────────
+//
+// Without this row every refusal below is satisfied by a fold that refuses unconditionally, which is
+// the wall that eats its own domain. It asserts that a Spark which is reachable, accelerated,
+// writable, bindable, serving a converged model and whose free pool has been measured DOES become an
+// offer.
+test fn w_a_converged_measured_spark_binds_as_supply() -> Bool {
+  is_bound(binding: admitting_binding())
+}
+
+// ── The quote is an explicit zero asking price, per grant, not a zero rate ───────────────────────
+//
+// Two claims, and the second is the one a reader would get wrong. Zero is asserted because absence
+// must never be read as free. BillsPerGrant is asserted because a zero QuotedPerSecond would claim
+// we bill by the second and charge nothing for each one, which sends the affordability screen
+// looking for a duration that a fabric offer of owned metal has no reason to hold.
+test fn w_owned_capacity_quotes_zero_per_grant_and_not_a_zero_rate() -> Bool {
+  match admitting_binding() {
+    OwnedOfferBound { bound: projection, operating: _ } =>
+      money_amount_micro_count(m: offer_quote_amount(q: projection.offer.quote)) == 0
+        && match quote_billing_basis(q: projection.offer.quote) {
+             BillsPerGrant => true
+             BillsElapsedTime => false
+           }
+        && match projection.offer.quote {
+             QuotedFlatPerGrant(_) => true
+             QuotedPerSecond(_) => false
+             QuotedPerMinute(_) => false
+             QuotedPerHour(_) => false
+           }
+    OwnedOfferCapabilitiesNotAdmitted { first: _, more: _ } => false
+    OwnedOfferNotReady { cause: _ } => false
+    OwnedOfferCapacityUnmeasured { obligation: _ } => false
+  }
+}
+
+// The offer is a measurement of a host we run, not a vendor's standing willingness to sell until an
+// expiry. A QuotedSupply arm here would invent an expiry nobody published.
+test fn w_owned_supply_is_observed_evidence_and_not_a_quote() -> Bool {
+  match admitting_binding() {
+    OwnedOfferBound { bound: projection, operating: _ } =>
+      match projection.offer.evidence {
+        ObservedSupply { observed_at: _, receipt: r } =>
+          (r as String) == "spark-free-pool-2026-08-27"
+        QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => false
+      }
+    OwnedOfferCapabilitiesNotAdmitted { first: _, more: _ } => false
+    OwnedOfferNotReady { cause: _ } => false
+    OwnedOfferCapacityUnmeasured { obligation: _ } => false
+  }
+}
+
+// One second means no rounding, and it is asserted so that a later edit raising it to a "sensible"
+// minute is a failing test rather than a silent tariff nobody agreed to.
+test fn w_owned_capacity_applies_no_billing_rounding() -> Bool {
+  second_count(s: owned_capacity_billing_quantum) == 1
+}
+
+// ── The capacity measured is the capacity offered, and the catalogue never leaks into it ────────
+//
+// THE DISCRIMINATING CLAIM IS THE INEQUALITY. Asserting only that the axes carry the measured figure
+// would still pass if the fixture's measurement happened to equal the catalogued capacity, so the
+// row also asserts that the catalogued 128 GiB is NOT what the offer states -- which is exactly the
+// failure mode of taking a nominal number for an offerable one.
+test fn w_both_memory_axes_carry_the_measured_remainder_never_the_catalogue() -> Bool {
+  let catalogued = byte_size_count(nvidia_dgx_spark_1tb_catalog.memory.capacity)
+  let free = byte_size_count(measured_free())
+  match admitting_binding() {
+    OwnedOfferBound { bound: projection, operating: _ } =>
+      free != catalogued
+        && match projection.offer.shape.envelope.memory {
+             Present { value: m } => byte_size_count(m.min_bytes) == free
+             Absent => false
+           }
+        && match projection.offer.shape.envelope.gpu {
+             Present { value: g } => byte_size_count(g.min_vram) == free
+             Absent => false
+           }
+    OwnedOfferCapabilitiesNotAdmitted { first: _, more: _ } => false
+    OwnedOfferNotReady { cause: _ } => false
+    OwnedOfferCapacityUnmeasured { obligation: _ } => false
+  }
+}
+
+// THE POOL IS STATED ONCE ON THE PROJECTION BECAUSE THE ENVELOPE STATES IT TWICE.
+//
+// The row above is what makes this one necessary: both axes carry the same bytes, and a consumer
+// summing them would believe the host provides twice what it has. The unexpressed fact is the only
+// place that sharing is visible, so its absence is a silent fail-open rather than a missing note.
+test fn w_the_unified_pool_is_declared_unexpressible_by_the_envelope() -> Bool {
+  let facts = spark_unexpressed(pooled: measured_free())
+  any(facts, f => match f {
+    UnifiedMemoryPoolNotExpressibleInEnvelope { pooled: p } =>
+      byte_size_count(p) == byte_size_count(measured_free())
+    IsolationNotObserved => false
+    DiskNotExpressibleInShape { provided: _ } => false
+  })
+    && any(facts, f => match f {
+         UnifiedMemoryPoolNotExpressibleInEnvelope { pooled: _ } => false
+         IsolationNotObserved => true
+         DiskNotExpressibleInShape { provided: _ } => false
+       })
+}
+
+// Nobody has measured what a Spark isolates, so the offer provides nothing and every guarantee any
+// work asks for comes back missing. An empty list is the fail-closed value here, not a placeholder.
+test fn w_a_spark_offer_claims_no_isolation_guarantee() -> Bool {
+  match admitting_binding() {
+    OwnedOfferBound { bound: projection, operating: _ } =>
+      (projection.offer.isolation.guarantees |> count) == 0
+        && projection.offer.quantity_bound == 1
+        && projection.offer.quantity_bound == spark_offer_quantity_bound
+    OwnedOfferCapabilitiesNotAdmitted { first: _, more: _ } => false
+    OwnedOfferNotReady { cause: _ } => false
+    OwnedOfferCapacityUnmeasured { obligation: _ } => false
+  }
+}
+
+// ── The shape is derived from the citation, not transcribed beside it ───────────────────────────
+//
+// Twenty threads is ten Cortex-X925 plus ten Cortex-A725, summed from the cited catalog rows. The
+// discriminating value is ten: a fold that took the head cluster rather than summing, or a literal
+// copied from one line of the datasheet, produces exactly that.
+test fn w_thread_count_sums_every_cited_core_cluster() -> Bool {
+  let threads = spark_offer_thread_count(catalog: nvidia_dgx_spark_1tb_catalog)
+  hardware_thread_count_value(threads) == 20
+}
+
+// The architecture comes off the row rather than being asserted by the binding, so an offer can
+// never claim an ISA the catalog did not state; storage carries the catalogued figure because
+// nothing known here occupies it; network stays unstated, which the envelope is explicit must not
+// read as satisfied-by-everything.
+test fn w_shape_states_only_axes_the_catalogue_supports() -> Bool {
+  let shape = spark_offer_shape(
+    catalog: nvidia_dgx_spark_1tb_catalog,
+    offerable_bytes: measured_free(),
+  )
+  match shape.envelope.cpu {
+    Present { value: c } =>
+      hardware_thread_count_value(c.min_threads) == 20
+        && match c.architecture {
+             Present { value: _ } => true
+             Absent => false
+           }
+    Absent => false
+  }
+    && match shape.envelope.storage {
+         Present { value: s } =>
+           byte_size_count(s.min_bytes)
+             == byte_size_count(nvidia_dgx_spark_1tb_catalog.storage_capacity)
+         Absent => false
+       }
+    && match shape.envelope.network {
+         Present { value: _ } => false
+         Absent => true
+       }
+}
+
+// ── Readiness cannot be asserted, only extracted from a converged verdict ───────────────────────
+//
+// THE PAIR IS THE CLAIM. An unconverged host yielding no readiness is only meaningful beside a
+// converged one that does; either row alone passes under a function that always answers the same
+// way. The unhealthy arm here is a host whose resources converged and whose generation did not
+// finish -- the case closest to being ready without being it.
+test fn w_readiness_exists_only_on_the_converged_arm() -> Bool {
+  let at = "2026-08-27T23:00:00Z" as Timestamp
+  let ready = match spark_serving_readiness(health: converged_health(), observed_at: at) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  let unhealthy = match spark_serving_readiness(
+    health: ResourcesConvergedButServingUnhealthy { defect: HealthGenerationIncomplete },
+    observed_at: at,
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  let unobserved = match spark_serving_readiness(
+    health: ServingHealthUnobserved { cause: "ssh transport failed" as NonEmptyStr },
+    observed_at: at,
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  ready && !unhealthy && !unobserved
+}
+
+// The basis is prose for a reader, and it must name what actually established the readiness rather
+// than restating that the host is ready. A basis that omitted the served model would leave the
+// residency read with no key to look the model up by.
+test fn w_readiness_basis_names_the_version_and_model_that_answered() -> Bool {
+  match spark_owned_readiness(
+    health: converged_health(),
+    observed_at: "2026-08-27T23:00:00Z" as Timestamp,
+  ) {
+    ReadyAt { at: _, basis: b } =>
+      string_contains(s: b as String, pattern: "gpt-oss:20b")
+        && string_contains(s: b as String, pattern: "0.12.3")
+    NotReady { cause: _ } => false
+  }
+}
+
+// An unserving host is refused BY THE SERVING VERDICT, and the refusal carries the health wire so a
+// reader is told which defect rather than that something was wrong.
+test fn w_an_unserving_spark_is_refused_and_says_why() -> Bool {
+  match bind_with(
+    observations: all_capabilities_present(),
+    health: ResourcesConvergedButServingUnhealthy { defect: HealthGenerationIncomplete },
+    offerable: measured_capacity(),
+    draw: metered_draw(),
+  ) {
+    OwnedOfferNotReady { cause: c } =>
+      string_contains(s: c as String, pattern: "generation-incomplete")
+    OwnedOfferBound { bound: _, operating: _ } => false
+    OwnedOfferCapabilitiesNotAdmitted { first: _, more: _ } => false
+    OwnedOfferCapacityUnmeasured { obligation: _ } => false
+  }
+}
+
+// ── The capability join refuses at (host x principal) grain and names what it refused on ────────
+//
+// An absent accelerator is the case that matters: everything else about the host is perfect, and a
+// binding that ranked it would route GPU work to a machine whose GPU the service account cannot
+// reach.
+test fn w_an_absent_capability_refuses_and_names_itself() -> Bool {
+  let observations = [
+    present(capability: ManagedExecutorReachable),
+    observation(
+      capability: AcceleratorAccessible,
+      outcome: CapabilityAbsent { evidence: "nvidia-smi not permitted for this account" as NonEmptyStr },
+      effect: ProbeInert,
+    ),
+    present(capability: ArtifactRootWritable),
+    present(capability: EndpointBindable),
+  ]
+  match bind_with(
+    observations: observations,
+    health: converged_health(),
+    offerable: measured_capacity(),
+    draw: metered_draw(),
+  ) {
+    OwnedOfferCapabilitiesNotAdmitted { first: f, more: _ } =>
+      string_contains(s: f as String, pattern: "accelerator-accessible")
+        && string_contains(s: f as String, pattern: "absent")
+    OwnedOfferBound { bound: _, operating: _ } => false
+    OwnedOfferNotReady { cause: _ } => false
+    OwnedOfferCapacityUnmeasured { obligation: _ } => false
+  }
+}
+
+// NOBODY ASKED IS NOT SATISFIED. A required capability with no observation at all refuses, so a
+// partial sweep can never bind an offer by omission -- which is the failure mode where adding a
+// capability to the roster silently admits every host that predates the probe.
+test fn w_an_unobserved_capability_refuses_rather_than_defaulting() -> Bool {
+  let observations = [
+    present(capability: ManagedExecutorReachable),
+    present(capability: AcceleratorAccessible),
+    present(capability: ArtifactRootWritable),
+  ]
+  match bind_with(
+    observations: observations,
+    health: converged_health(),
+    offerable: measured_capacity(),
+    draw: metered_draw(),
+  ) {
+    OwnedOfferCapabilitiesNotAdmitted { first: f, more: _ } =>
+      string_contains(s: f as String, pattern: "endpoint-bindable")
+        && string_contains(s: f as String, pattern: "unobserved")
+    OwnedOfferBound { bound: _, operating: _ } => false
+    OwnedOfferNotReady { cause: _ } => false
+    OwnedOfferCapacityUnmeasured { obligation: _ } => false
+  }
+}
+
+// THE PROBE-INDEPENDENCE ADMISSION REACHES THE OFFER, and this is the row that proves the binding
+// consumes the corrected carrier rather than reading the raw outcome field. The observation says
+// PRESENT; the probe may have established what it reports; the offer refuses anyway. A binding that
+// read observation.outcome directly would bind here, and every other capability row in this file
+// would still pass.
+test fn w_a_positive_readback_from_a_self_establishing_probe_does_not_bind() -> Bool {
+  let observations = [
+    present(capability: ManagedExecutorReachable),
+    present(capability: AcceleratorAccessible),
+    present(capability: ArtifactRootWritable),
+    observation(
+      capability: EndpointBindable,
+      outcome: CapabilityPresent { evidence: "bind trial succeeded" as NonEmptyStr },
+      effect: ProbeMayEstablish {
+        mechanism: "the probe holds the port it reports as bindable" as NonEmptyStr,
+      },
+    ),
+  ]
+  match bind_with(
+    observations: observations,
+    health: converged_health(),
+    offerable: measured_capacity(),
+    draw: metered_draw(),
+  ) {
+    OwnedOfferCapabilitiesNotAdmitted { first: f, more: _ } =>
+      string_contains(s: f as String, pattern: "endpoint-bindable")
+        && string_contains(s: f as String, pattern: "observation-refused")
+    OwnedOfferBound { bound: _, operating: _ } => false
+    OwnedOfferNotReady { cause: _ } => false
+    OwnedOfferCapacityUnmeasured { obligation: _ } => false
+  }
+}
+
+// ── Capacity, and the state the fleet is actually in today ──────────────────────────────────────
+//
+// Everything else perfect, capacity unmeasured, and the binding refuses. This is the live state:
+// nothing observes a Spark's free pool, so the declared row is the unmeasured one and no Spark offer
+// exists yet. The row exists so that landing the measurement is what turns supply on, rather than
+// someone quietly substituting the catalogued capacity to make a green appear.
+test fn w_an_unmeasured_pool_refuses_even_when_everything_else_is_ready() -> Bool {
+  match bind_with(
+    observations: all_capabilities_present(),
+    health: converged_health(),
+    offerable: spark_offerable_memory_today,
+    draw: metered_draw(),
+  ) {
+    OwnedOfferCapacityUnmeasured { obligation: o } =>
+      string_contains(s: o as String, pattern: "resident model occupies")
+    OwnedOfferBound { bound: _, operating: _ } => false
+    OwnedOfferCapabilitiesNotAdmitted { first: _, more: _ } => false
+    OwnedOfferNotReady { cause: _ } => false
+  }
+}
+
+// ── The running cost: metered draw prices, a datasheet ceiling refuses ──────────────────────────
+//
+// THE ARITHMETIC IS ASSERTED AT AN EXACT VALUE AND THE FLOOR IS ASSERTED TO BE WRONG. At the cited
+// commercial tariff of 161300 micros per kilowatt-hour, 140 watts costs 22582000 / 3600000 = 6.27
+// micros per second. Seven is the answer; six is what truncation gives, and it understates our own
+// running cost by four percent in the direction that makes owned capacity look cheaper than it is.
+// Asserting only "greater than zero" would pass under either.
+test fn w_a_metered_draw_prices_the_second_and_rounds_the_cost_up() -> Bool {
+  match owned_capacity_operating_cost(
+    observation: metered_draw(),
+    tariff: nj_commercial_rate.rate,
+  ) {
+    OperatingCostMeasured { rate: r, receipt: _ } => money_rate_micros(q: r) == 7
+    OperatingCostUnread { obligation: _ } => false
+    OperatingCostBorneBySupplier => false
+  }
+}
+
+// The same conversion read directly, so the exactness above is a property of the derivation rather
+// than of one call site, together with the control that a different draw gives a different price --
+// without which a function returning a constant seven would satisfy the row above.
+test fn w_the_conversion_scales_with_the_draw() -> Bool {
+  let at_140 = money_per_second_for_continuous_draw(
+    draw: watt(count: 140),
+    tariff: nj_commercial_rate.rate,
+  )
+  let at_280 = money_per_second_for_continuous_draw(
+    draw: watt(count: 280),
+    tariff: nj_commercial_rate.rate,
+  )
+  money_rate_micros(q: at_140) == 7 && money_rate_micros(q: at_280) == 13
+}
+
+// A THERMAL DESIGN POWER IS NOT A MEASUREMENT, and the refusal is the wall. The fixture hands over
+// the same 140 watts the metered arm priced, so nothing about the NUMBER distinguishes the two: only
+// the arm it arrived in does. A binding that priced this would publish a fabricated measurement
+// wearing the citation of a real datasheet.
+test fn w_a_datasheet_ceiling_refuses_to_price_the_same_watts() -> Bool {
+  match owned_capacity_operating_cost(
+    observation: DrawFromThermalDesignPower {
+      ceiling: nvidia_dgx_spark_1tb_catalog.soc_thermal_design_power,
+    },
+    tariff: nj_commercial_rate.rate,
+  ) {
+    OperatingCostUnread { obligation: o } =>
+      string_contains(s: o as String, pattern: "design ceiling")
+    OperatingCostMeasured { rate: _, receipt: _ } => false
+    OperatingCostBorneBySupplier => false
+  }
+}
+
+// AN UNPRICED RUNNING COST DOES NOT DELETE THE OFFER. Capability, readiness and capacity decide
+// whether the host can run the work; an unread meter decides whether a ranking can be computed, and
+// product.fabric.selection already owns that distinction with its own arm. This asserts the binding
+// still binds and hands the unread verdict out rather than refusing.
+test fn w_an_unpriced_running_cost_still_yields_an_offer() -> Bool {
+  match bind_with(
+    observations: all_capabilities_present(),
+    health: converged_health(),
+    offerable: measured_capacity(),
+    draw: DrawFromThermalDesignPower {
+      ceiling: nvidia_dgx_spark_1tb_catalog.soc_thermal_design_power,
+    },
+  ) {
+    OwnedOfferBound { bound: _, operating: op } =>
+      match op {
+        OperatingCostUnread { obligation: _ } => true
+        OperatingCostMeasured { rate: _, receipt: _ } => false
+        OperatingCostBorneBySupplier => false
+      }
+    OwnedOfferCapabilitiesNotAdmitted { first: _, more: _ } => false
+    OwnedOfferNotReady { cause: _ } => false
+    OwnedOfferCapacityUnmeasured { obligation: _ } => false
+  }
+}
+
+// ── The refusal order is a claim, not an accident ───────────────────────────────────────────────
+//
+// With all three inputs bad, the answer is the capability refusal, because its remedy sits furthest
+// upstream: a host whose service account cannot reach the accelerator is not made offerable by
+// measuring its memory. A fold that reported whichever refusal it happened to reach first would flip
+// this the day the match arms are reordered.
+test fn w_the_upstream_refusal_wins_when_three_are_available() -> Bool {
+  match bind_with(
+    observations: [],
+    health: ServingHealthUnobserved { cause: "ssh transport failed" as NonEmptyStr },
+    offerable: spark_offerable_memory_today,
+    draw: metered_draw(),
+  ) {
+    OwnedOfferCapabilitiesNotAdmitted { first: f, more: m } =>
+      string_contains(s: f as String, pattern: "managed-executor-reachable")
+        && (m |> count) == 3
+    OwnedOfferBound { bound: _, operating: _ } => false
+    OwnedOfferNotReady { cause: _ } => false
+    OwnedOfferCapacityUnmeasured { obligation: _ } => false
+  }
+}
+
+// EVERY REQUIRED CAPABILITY IS REPORTED, NOT THE FIRST ONE. A caller fixing four unmet capabilities
+// in sequence would otherwise pay four round trips to learn what one refusal could have told it.
+test fn w_all_four_required_capabilities_are_reported_together() -> Bool {
+  (spark_offer_required_capabilities |> count) == 4
+    && match bind_with(
+         observations: [],
+         health: converged_health(),
+         offerable: measured_capacity(),
+         draw: metered_draw(),
+       ) {
+         OwnedOfferCapabilitiesNotAdmitted { first: _, more: m } => (m |> count) == 3
+         OwnedOfferBound { bound: _, operating: _ } => false
+         OwnedOfferNotReady { cause: _ } => false
+         OwnedOfferCapacityUnmeasured { obligation: _ } => false
+       }
+}

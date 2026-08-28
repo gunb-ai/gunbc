@@ -677,3 +677,41 @@ fn screen_projected_total(
     }
   }
 }
+
+// WHAT A BINDING KNOWS AND THE OFFER CANNOT SAY, AS ONE AUTHORITY RATHER THAN ONE PER SUPPLIER.
+//
+// These two types were authored inside product.supplier.ubicloud, which is a binding for ONE
+// supplier. Neither is a Ubicloud fact. "The catalog publishes a disk size and the envelope's
+// storage axis is not populated from it" and "nobody has measured what this executor isolates"
+// are statements about the LIMITS OF THIS MODEL, and every binding that consumes SupplierOffer
+// meets the same limits. Leaving them in the first binding that noticed them means the second
+// binding either imports a vendor module for a generic concept or re-mints the arms -- and a
+// re-minted IsolationNotObserved is two names for one coverage obligation, so a census asking
+// "which offers have unobserved isolation" would have to know every binding's private spelling.
+// DESIGN §3: a fact's home is its LAYER.
+//
+// THE ARMS ARE MEASURED LIMITATIONS, NOT A GENERAL ESCAPE HATCH. Each names an axis a real
+// binding could not express and says what it would have carried. A general arm holding a string
+// would admit anything and tell a consumer nothing, which is the anemic modeling this file
+// refuses everywhere else.
+//
+// UnifiedMemoryPoolNotExpressibleInEnvelope is ONE PHYSICAL POOL BACKING TWO ENVELOPE AXES, which
+// offer_covers_shape cannot express because it compares each axis independently. On a unified-memory
+// SoC the memory and gpu axes are the same bytes, so an offer stating the pool's capacity on both
+// axes claims twice what exists, and work needing most of each is declared FUNGIBLE and then cannot
+// run. The arm carries the pool once, so the double count is visible on the projection rather than
+// inferred from the coincidence of two equal numbers.
+type UnexpressedSupplyFact
+  = DiskNotExpressibleInShape { provided: ByteSize }
+  | IsolationNotObserved
+  | UnifiedMemoryPoolNotExpressibleInEnvelope { pooled: ByteSize }
+
+// A PROJECTION BESIDE THE OFFER, NOT A SECOND KIND OF OFFER. The name matters more than it
+// looks: this type was briefly called SupplierOffer, which is also what the fabric carrier is
+// called, and the field below then read as referring to this wrapper rather than to the
+// carrier it wraps. Two types under one name is the ambiguity the corpus resolves by silent
+// last-import-wins, so nothing refuses and the reader cannot tell which one a use means.
+type SupplierOfferProjection<P> {
+  offer: SupplierOffer<P>
+  unexpressed: List<UnexpressedSupplyFact>
+}
