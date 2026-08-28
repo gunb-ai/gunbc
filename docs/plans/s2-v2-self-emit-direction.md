@@ -139,7 +139,7 @@ Byte-matching v1's *exact* decoration is **no longer required** (operator: drop 
 
 Cross-boundary changes (e.g. the `Symbol` carrier decision C6, the reparse fix §5) are a one-message sync with the operator, not a silent edit.
 
-**CI note:** the `emit/` receipts are green by execution but are **not yet in the discovery roster** (`witness_discovery_scan_dirs` in `dag/gunbc/ci_layer_roots.dag` lists only `dag/test/claim` and `src/v2/test/claim/manual`). Adding `src/v2/test/claim/emit` there enrolls them into tree-wide discovery — a floor-lane config change to coordinate, tracked here.
+**CI note:** the `emit/` receipts are green by execution but are **not yet in the discovery roster** (`witness_discovery_scan_dirs` in `dag/gunbc/ci/ci_layer_roots.dag` lists only `dag/test/claim` and `src/v2/test/claim/manual`). Adding `src/v2/test/claim/emit` there enrolls them into tree-wide discovery — a floor-lane config change to coordinate, tracked here.
 
 ---
 

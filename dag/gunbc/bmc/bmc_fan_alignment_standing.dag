@@ -1,0 +1,277 @@
+module gunbc.bmc_fan_alignment_standing
+
+import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
+
+// WHETHER THE INTENT CAN DESCRIBE WHAT IS ACTUALLY RUNNING ON A HOST'S FAN CONTROLLER.
+//
+// This is a SEPARATE AXIS from whether the deployed program is any good, and separating them is
+// the whole reason this module exists. srv3 and srv4 currently run a thermal/acoustic program
+// that measured quieter and cooler than the projected one. Those facts are not in tension and
+// must not be collapsed into one "converged" flag:
+//
+//   qualification  is the running program good?          -> NOT ANSWERED BY THIS CARRIER
+//   alignment      can the intent describe it?           -> YES, since 2026-08-28
+//   adoption       is that description the intent?       -> NO, nobody has adopted it
+//   actuation      may we write the intent to the host?  -> REFUSED
+//
+// THE ALIGNMENT ROW FLIPPED AND THE ACTUATION ROW DID NOT, which is the whole content of the
+// 2026-08-28 change. Gaining a shape for what a host runs says the carrier can DESCRIBE it; it
+// says nothing about whether that description is what we intend, and the projection is still the
+// old single-actuator curve. Treating the first as the second is how a modelling win turns into
+// an overwrite of the quieter program.
+//
+// The qualification row is deliberately blank rather than filled in. This module binds no
+// receipt, no active control-program digest, no observation window and no workload identity, so
+// it has nothing with which to answer that question, and an earlier revision of this block
+// answered it anyway ("qualified by measured receipt") over exactly those absent bindings. It
+// also quoted a delta computed against the wrong end of the range - the old PEAK against the new
+// MINIMUM - which is not a comparison of two states. Both are removed rather than restated with
+// better numbers: the alignment owner states alignment.
+//
+// WHY REFUSAL IS THE ONLY SAFE ANSWER WHILE ALIGNMENT IS ABSENT, and it is worse than a
+// no-op: the apply path rewrites only the PIDs it recognises. It would restore the projected
+// five-step curve (undoing the acoustic result), reset the cooler entry's inputs, and LEAVE THE
+// SECOND ACTUATOR ENTRY IN PLACE because that entry matches nothing it looks for - ending with
+// two controllers driving the same fans at different offsets. Not the old state, not the new
+// one, and invisible to the verifier, which selects fan entries BY NAME and so cannot see a
+// second one at all.
+//
+// This carrier is therefore an interlock, not a note. A comment on a pull request is evidence
+// that someone knew; it is not a thing the apply path consults.
+//
+// HOW FAR THE INTERLOCK IS ACTUALLY PROVEN, at the grain the evidence supports and no further.
+// The gate is read inside bmc_fan_policy_projection_apply_suitability, ahead of that function's
+// board, firmware, curve, config-path and controller-service comparisons, and the witness proves
+// that ordering with a positive control that isolates the standing as the cause. It is NOT first
+// across the whole classification path: an observation must exist, the fleet firmware requirement
+// may refuse, an exact projection must exist, and required_tach_inputs must match the intent,
+// all before this gate runs. Those are earlier refusals and every one of them is safe, so the
+// invariant worth stating is the narrow one -- NO APPLY PLAN IS CONSTRUCTED AFTER PROJECTION
+// SELECTION UNLESS ALIGNMENT ADMITS -- rather than the flattering one, that every invocation
+// consults alignment first.
+//
+// TWO CONSEQUENCES OF THAT, which a reader would otherwise take on the strong reading:
+//
+//   srv3  its converge target carries `projection: none`, so it refuses BEFORE alignment is
+//         evaluated, on the absent exact projection. Safe, by a different cause. It reaches this
+//         gate only once an exact srv3 projection exists.
+//   srv4  reaches the gate and refuses here, on the unrepresentable observed program.
+//
+// AND THE ACTUATOR WRITES NOTHING TODAY. The Apply arm of bmc_fan_converge is a phase-partial
+// refusal pending the content-addressed backup transaction, so no BMC fan write can presently
+// occur by any route. That makes this gate a guard on a path that does not yet actuate, which is
+// the right time to build it and the wrong time to describe it as guarding a live write.
+
+// THE THREE ARMS, and why the third is not a synonym for the second:
+//   IntentMatchesObservedProgram            the projected program IS the program on the host.
+//   ObservedProgramNotRepresentableByIntent something is running that the carrier has no shape
+//                                           for. Carries what is missing, so the remedy is a
+//                                           modelling task with a subject rather than a mystery.
+//   ObservedProgramNotAdopted               nobody has looked. Absence of evidence, not evidence
+//                                           of agreement - and it is the fail-closed default.
+// The second and third are both refused, so collapsing them would change no outcome today. They
+// stay separate because their REMEDIES differ completely: one is answered by extending a type,
+// the other by going and reading a host.
+type BmcFanIntentAlignment
+  = IntentMatchesObservedProgram
+  | ObservedProgramNotRepresentableByIntent { missing: NonEmptyStr }
+  | ObservedProgramRepresentableNotAdopted { representability_authority: DeclarationRef }
+  | ObservedProgramNotAdopted
+
+type HostBmcFanAlignmentStanding {
+  host: HostIdentity
+  alignment: BmcFanIntentAlignment
+}
+
+fn alignment_admits_apply_evaluation(standing: HostBmcFanAlignmentStanding) -> Bool {
+  match standing.alignment {
+    IntentMatchesObservedProgram => true
+    ObservedProgramNotRepresentableByIntent { missing } => false
+    ObservedProgramRepresentableNotAdopted { representability_authority } => false
+    ObservedProgramNotAdopted => false
+  }
+}
+
+fn standings_for_host_count(
+  standings: List<HostBmcFanAlignmentStanding>,
+  host: HostIdentity,
+) -> Int {
+  fold(standings, init: 0, f: (acc, s) => if s.host == host { acc + 1 } else { acc })
+}
+
+// A FIRST-MATCH LOOKUP OVER A ROSTER THAT MAY CONTAIN DUPLICATES IS NOT A LOOKUP, it is a
+// coin toss decided by authoring order. Two rows for one host disagreeing about alignment is a
+// broken roster, and the arm that wins would be whichever was typed first -- so the only safe
+// answer is to refuse the whole question. This is the same defect the tach-health join already
+// refuses, reintroduced here by habit and caught in review; the roster is small and hand-authored,
+// which is exactly the condition under which a duplicate is easy to add and invisible.
+// REFUSAL CARRIES ONLY REFUSAL CAUSES. `AlignmentRefused { alignment: BmcFanIntentAlignment }`
+// admitted `AlignmentRefused { alignment: IntentMatchesObservedProgram }` - a state meaning
+// "refused because it is aligned", which no producer can reach and which two consumers had
+// already read two different ways, one calling it unreachable and the other silently folding it
+// into not-adopted. That divergence is the tell: an impossible state does not stay unread, it
+// gets an arbitrary reading per consumer. Splitting the vocabulary makes it unwritable, which is
+// stronger than either reading, and it deletes both fallback branches rather than reconciling
+// them.
+type AlignmentRefusalCause
+  = RefusedObservedProgramNotAdopted
+  | RefusedObservedProgramNotRepresentableByIntent { missing: NonEmptyStr }
+  | RefusedObservedProgramRepresentableNotAdopted { representability_authority: DeclarationRef }
+
+type AlignmentAdmission
+  = AlignmentAdmitsApplyEvaluation
+  | AlignmentStandingAbsent
+  | AlignmentStandingDuplicate
+  | AlignmentRefused { cause: AlignmentRefusalCause }
+
+fn standing_for(
+  standings: List<HostBmcFanAlignmentStanding>,
+  host: HostIdentity,
+) -> HostBmcFanAlignmentStanding? {
+  fold(
+    standings,
+    init: none,
+    f: (acc, s) =>
+      match acc {
+        Present { value } => Present { value: value }
+        none => if s.host == host { Present { value: s } } else { none }
+      },
+  )
+}
+
+// A HOST WITH NO ROW IS REFUSED, not admitted. An absent standing means nobody has established
+// that the intent describes that host, which is exactly the state where writing the intent is
+// least safe - so the lookup's failure arm refuses rather than falling through to permitted.
+fn host_alignment_admission(
+  standings: List<HostBmcFanAlignmentStanding>,
+  host: HostIdentity,
+) -> AlignmentAdmission {
+  if standings_for_host_count(standings: standings, host: host) > 1 {
+    AlignmentStandingDuplicate
+  } else {
+    match standing_for(standings: standings, host: host) {
+      none => AlignmentStandingAbsent
+      Present { value: standing } =>
+        match standing.alignment {
+          IntentMatchesObservedProgram => AlignmentAdmitsApplyEvaluation
+          ObservedProgramNotAdopted =>
+            AlignmentRefused { cause: RefusedObservedProgramNotAdopted }
+          ObservedProgramNotRepresentableByIntent { missing } =>
+            AlignmentRefused {
+              cause: RefusedObservedProgramNotRepresentableByIntent { missing: missing },
+            }
+          ObservedProgramRepresentableNotAdopted { representability_authority } =>
+            AlignmentRefused {
+              cause: RefusedObservedProgramRepresentableNotAdopted {
+                representability_authority: representability_authority,
+              },
+            }
+        }
+    }
+  }
+}
+
+fn host_alignment_admits_apply_evaluation(
+  standings: List<HostBmcFanAlignmentStanding>,
+  host: HostIdentity,
+) -> Bool {
+  match host_alignment_admission(standings: standings, host: host) {
+    AlignmentAdmitsApplyEvaluation => true
+    AlignmentStandingAbsent => false
+    AlignmentStandingDuplicate => false
+    AlignmentRefused { cause } => false
+  }
+}
+
+// THE PRODUCTION ROSTER IS NOT A PARAMETER. `host_alignment_admission` takes a standings list so
+// that fixtures can author one, which also means a caller could hand it a roster asserting its
+// own target is aligned - the caller-supplied authority the Boolean parameter had, moved rather
+// than removed. Actuating routes call THIS wrapper, which closes the roster over the fleet's own
+// standings and takes only a host. That is a repository rule rather than a type wall, and saying
+// so is the point: it stops the parameterized function being described as a confinement it is
+// not.
+fn fleet_host_alignment_admission(host: HostIdentity) -> AlignmentAdmission {
+  host_alignment_admission(standings: fleet_bmc_fan_alignment_standings, host: host)
+}
+
+fn fleet_host_alignment_admits_apply_evaluation(host: HostIdentity) -> Bool {
+  host_alignment_admits_apply_evaluation(
+    standings: fleet_bmc_fan_alignment_standings,
+    host: host,
+  )
+}
+
+// THE FLEET'S STANDING, 2026-08-26.
+//
+// srv3 and srv4 were reconfigured by hand today to close the operator's dBA-minimisation
+// request. The change that did the work was splitting one fan controller entry into two - a
+// cooler entry and a chassis entry with opposite duty offsets - because a single entry wrote the
+// same duty percentage to fans with a 4x speed difference, and the DIMMs are cooled by chassis
+// air rather than by the cooler.
+//
+// `missing` names the exact modelling gap rather than gesturing at one: BmcFanCurve carries one
+// control sensor, one step series and one duty floor, so a second actuator group with its own
+// transfer function has nowhere to live. Adding steps to the curve does not close this; the
+// carrier needs the actuator-program split first.
+// The two hosts are missing the SAME modelling shape, so the sentence naming it is one fact and
+// lives in one place rather than being typed twice and drifting.
+// THAT GAP IS NOW CLOSED, AND THE ROWS BELOW MOVE OFF IT (2026-08-28). The shape `missing` named
+// -- one thermal demand feeding SEVERAL actuator entries, each with its own transfer function --
+// is what extdeps.bmc.pid_control_program ProgramZone models: `thermal_demand_controllers` and
+// `actuator_controllers` are separate lists, and ActuatorController carries its own feed_forward,
+// output_limits and slew. Established two independent ways rather than by reading the type: the
+// representability gate passes on BOTH captured hosts by execution (#9491), and the captures
+// themselves -- taken 2026-08-27, AFTER the 2026-08-26 hand reconfiguration, so they are the
+// running programs and not their predecessors -- carry exactly one `stepwise` TEMP_SOC controller
+// driving two `fan` entries, FAN1 and CHASSIS.
+//
+// SO THE HOSTS ARE NO LONGER UNREPRESENTABLE, AND THEY ARE ALSO NOT ALIGNED. Those are different
+// facts and this is the entire reason a fourth arm exists rather than a reclassification into an
+// existing one. IntentMatchesObservedProgram is FALSE -- the projection is still the old
+// five-step single-actuator curve and the hosts run the hand-split program -- and it ADMITS
+// APPLY, so writing it here would hand the actuator permission to overwrite the quieter program
+// with the worse one: the precise outcome the interlock above exists to prevent, reached by
+// relabelling rather than by any code change. ObservedProgramNotAdopted is also false; somebody
+// looked, and the reading decoded whole. The true state is representable, read, and DIVERGENT
+// from the intent, whose remedy is an operator ADOPTION decision rather than a modelling task or
+// a host visit -- which is why it may not share a reason symbol with either.
+//
+// THE ARM CITES ITS AUTHORITY BY SYMBOL so the claim is checkable rather than asserted here.
+data fan_program_representability_authority: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.bmc.pid_control_representability",
+  decl_name: "program_representability",
+  field: WholeDeclaration,
+}
+
+data srv3_srv4_expected_missing: NonEmptyStr = "per-actuator-group duty offsets and slew limits: the host runs two fan controller entries and BmcFanCurve models one"
+
+data fleet_bmc_fan_alignment_standings: List<HostBmcFanAlignmentStanding> = [
+  HostBmcFanAlignmentStanding {
+    host: operator_host_srv1,
+    alignment: ObservedProgramNotAdopted,
+  },
+  HostBmcFanAlignmentStanding {
+    host: operator_host_srv2,
+    alignment: ObservedProgramNotAdopted,
+  },
+  HostBmcFanAlignmentStanding {
+    host: operator_host_srv3,
+    alignment: ObservedProgramRepresentableNotAdopted {
+      representability_authority: fan_program_representability_authority,
+    },
+  },
+  HostBmcFanAlignmentStanding {
+    host: operator_host_srv4,
+    alignment: ObservedProgramRepresentableNotAdopted {
+      representability_authority: fan_program_representability_authority,
+    },
+  },
+]
