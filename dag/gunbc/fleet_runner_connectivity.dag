@@ -28,13 +28,44 @@ data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
   reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."
 }
 
-data organization_roster_is_one_org_read_note: String = "THE ROSTER IS ONE CENTRAL ORG READ, not a per-host poll. GitHub's org runners API returns every self-hosted registration for the organization in one response; slot health is derived by joining that roster to stable (host, index) identities. The gunbai-ci GitHub App carries organization_self_hosted_runners read permission for this producer. Local journal mining and per-host gh api calls are not the authority for whether GitHub will schedule work onto a registration."
+data organization_roster_read_locus_note: String = "THE ROSTER IS ONE CENTRAL ORG READ, not a per-host poll: slot health is derived by joining the org-level registration roster to stable (host, index) identities. The gunbai-ci GitHub App carries organization_self_hosted_runners read permission for this producer. Local journal mining and per-host gh api calls are not the authority for whether GitHub will schedule work onto a registration.\n\nTHIS ROW SAYS NOTHING ABOUT COMPLETENESS, AND THAT IS DELIBERATE. It replaces organization_roster_is_one_org_read_note, which asserted that the API 'returns every self-hosted registration for the organization in one response'. That was false and is now decided by OrganizationRunnerRosterEvidence rather than claimed here; a corrected sentence beside a carrier that decides the same question would be a second authority for it (DESIGN section 3). The three facts above are the surviving contents of that row, enumerated rather than swept away with it -- a prose row is deleted for one reason and takes everything in it unless its contents are named first."
 
 data achieved_widths_are_orthogonal_to_desired_width_note: String = "THE ACHIEVED AXES HERE ARE ORTHOGONAL TO gunbc.runner_slot_allocation's desired-side widths (#7930 candidate/actuatable/observed). registered_width counts GitHub org roster rows; connected_width counts status == online; schedulable_width counts online AND NOT busy; executing_width counts online AND busy. desired_width is INTENT from gunbc_runner_slots_per_host and does NOT reconcile down when connected collapses during an outage. materialized_width and unit_active_width are LOCAL incarnation facts pinned from the incident corpus until the local producer grounds them."
 
 type OrganizationRunnerRosterEvidence
   = RosterObserved { observed_on: NonEmptyStr, registrations: List<GitHubSelfHostedRunnerRegistration> }
+  | RosterObservedPartial {
+      observed_on: NonEmptyStr
+      registrations: List<GitHubSelfHostedRunnerRegistration>
+      observed_count: Int
+      authority_total: Int
+    }
   | RosterReadUnavailable { reason: String }
+
+// COMPLETENESS IS DERIVED AT THE BOUNDARY, NEVER ASSERTED BY A CALLER. The org runners API is
+// PAGINATED -- measured 2026-08-27 at total_count 522 against a 100-row page -- so a read that
+// succeeds is not thereby a read that saw everything. A caller cannot hand this constructor a
+// prefix and have it enter as RosterObserved: the only way to reach that variant is for the
+// observed length to equal the authority's own total, so "I saw all of it" is a computed fact
+// about the response rather than a claim about the request (DESIGN section 5, construction over
+// validation).
+fn organization_runner_roster_from_page(
+  observed_on: NonEmptyStr,
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
+  authority_total: Int,
+) -> OrganizationRunnerRosterEvidence {
+  let observed = registrations.length()
+  if observed == authority_total {
+    RosterObserved { observed_on: observed_on, registrations: registrations }
+  } else {
+    RosterObservedPartial {
+      observed_on: observed_on,
+      registrations: registrations,
+      observed_count: observed,
+      authority_total: authority_total,
+    }
+  }
+}
 
 type FleetAchievedRunnerWidths
   = AchievedWidthsObserved {
@@ -359,6 +390,42 @@ fn local_runner_slot_incarnations() -> List<LocalRunnerSlotIncarnation> {
   )
 }
 
+fn partial_roster_unseen_reason(observed_count: Int, authority_total: Int) -> String {
+  concat(
+    concat("roster read was truncated at ", to_string(observed_count)),
+    concat(
+      concat(" of ", to_string(authority_total)),
+      " registrations, so this slot was never looked at -- absence from a prefix is not absence from the authority"
+    )
+  )
+}
+
+// ONE LOOKUP, TWO UNSEEN ANSWERS. The complete and truncated arms must read the prefix the SAME way
+// or they are two decodings of one fact; the only thing that legitimately differs between them is
+// what absence MEANS, so that is the only thing passed in.
+fn registration_verdict_or(
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
+  incarnation: LocalRunnerSlotIncarnation,
+  unseen: RunnerSlotConnectivityVerdict,
+) -> RunnerSlotConnectivityVerdict {
+  match find_registration_by_name(registrations: registrations, name: incarnation.registration_name) {
+    Absent => unseen
+    Present { value: reg } =>
+      match reg.status {
+        GitHubRunnerOnline =>
+          SlotConnectivityHealthy { slot: incarnation.slot, registration_id: reg.id }
+        GitHubRunnerOffline =>
+          SlotConnectivityDetached { slot: incarnation.slot, registration_id: reg.id }
+      }
+  }
+}
+
+// THE REFUSAL IS PER-QUESTION, NOT PER-ROSTER. A truncated read still answers exactly about every
+// slot INSIDE the prefix, so refusing the whole roster would be a widen (DESIGN section 5: a failure
+// arm must refuse, never widen) and would stop reconciliation on hosts this read covered perfectly
+// well. What changes is only the ABSENT arm: a slot missing from a prefix was never observed to be
+// missing, and rendering it Orphaned is the empty-observation narrow -- could-not-see reported as
+// the verdict "it is gone", whose remedy is a restart at connectivity_replace_action.
 fn runner_slot_connectivity_verdict_for_incarnation(
   incarnation: LocalRunnerSlotIncarnation,
   roster: OrganizationRunnerRosterEvidence,
@@ -373,16 +440,25 @@ fn runner_slot_connectivity_verdict_for_incarnation(
       RosterReadUnavailable { reason: r } =>
         SlotConnectivityUnknown { slot: incarnation.slot, reason: r }
       RosterObserved { observed_on: _, registrations: regs } =>
-        match find_registration_by_name(registrations: regs, name: incarnation.registration_name) {
-          Absent => SlotConnectivityOrphaned { slot: incarnation.slot }
-          Present { value: reg } =>
-            match reg.status {
-              GitHubRunnerOnline =>
-                SlotConnectivityHealthy { slot: incarnation.slot, registration_id: reg.id }
-              GitHubRunnerOffline =>
-                SlotConnectivityDetached { slot: incarnation.slot, registration_id: reg.id }
-            }
-        }
+        registration_verdict_or(
+          registrations: regs,
+          incarnation: incarnation,
+          unseen: SlotConnectivityOrphaned { slot: incarnation.slot },
+        )
+      RosterObservedPartial {
+        observed_on: _,
+        registrations: regs,
+        observed_count: seen,
+        authority_total: total,
+      } =>
+        registration_verdict_or(
+          registrations: regs,
+          incarnation: incarnation,
+          unseen: SlotConnectivityUnknown {
+            slot: incarnation.slot,
+            reason: partial_roster_unseen_reason(observed_count: seen, authority_total: total),
+          },
+        )
     }
   }
 }
@@ -493,11 +569,22 @@ fn fleet_unit_active_width_total() -> Int {
   )
 }
 
+// A WIDTH OVER A PREFIX IS WRONG, NOT PARTIAL. Unlike the per-slot question, every field here is an
+// AGGREGATE over the whole roster, so there is no sub-question a prefix answers correctly --
+// reporting counts from a truncated read would understate connected width and read as an outage.
+// The truncated arm is therefore unobserved rather than a smaller number.
 fn fleet_achieved_runner_widths_from_roster(
   roster: OrganizationRunnerRosterEvidence,
 ) -> FleetAchievedRunnerWidths {
   match roster {
     RosterReadUnavailable { reason: r } => AchievedWidthsUnobserved { reason: r }
+    RosterObservedPartial {
+      observed_on: _,
+      registrations: _,
+      observed_count: seen,
+      authority_total: total,
+    } =>
+      AchievedWidthsUnobserved { reason: partial_roster_unseen_reason(observed_count: seen, authority_total: total) }
     RosterObserved { observed_on: _, registrations: regs } =>
       AchievedWidthsObserved {
         registered_width: regs.length(),
@@ -560,6 +647,9 @@ fn connectivity_verdict_is_unknown(v: RunnerSlotConnectivityVerdict) -> Bool {
   }
 }
 
+// TRUNCATION IS NOT THIS LAW'S SUBJECT. This function pins the FAILED-read guarantee; the
+// truncated-read guarantee is a different proposition with its own witness (unseen slots must not be
+// Orphaned), and folding both into one predicate would let either hold up the other's evidence.
 fn roster_unavailable_yields_unknown_not_detached(
   roster: OrganizationRunnerRosterEvidence,
 ) -> Bool {
@@ -570,5 +660,6 @@ fn roster_unavailable_yields_unknown_not_detached(
         v => connectivity_verdict_is_unknown(v: v) && !connectivity_verdict_is_detached(v: v)
       )
     RosterObserved { observed_on: _, registrations: _ } => true
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } => true
   }
 }

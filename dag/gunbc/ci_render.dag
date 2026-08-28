@@ -4,7 +4,7 @@ import extdeps.render.glyphs { resolve_symbol }
 import extdeps.render.terminal { serialize_frame }
 import extdeps.unicode.display { string_display_width, truncate_text }
 import std.measure { Nanosecond, nanosecond, nanosecond_count }
-import std.render { Line, RenderCapability, Span, SpanStyle }
+import std.render { Line, RenderCapability, Span, SpanStyle, plain_span }
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.symbols {
   SymbolId,
@@ -35,10 +35,6 @@ fn pad_to(text: String, width: Int) -> String {
   } else {
     concat(text, repeat_string(s: " ", n: width - w))
   }
-}
-
-fn plain_span(text: String) -> Span {
-  Span { text: text, style: SpanStyle { color: none, bold: false, italic: false, symbol: none } }
 }
 
 fn dim_span(text: String) -> Span {
