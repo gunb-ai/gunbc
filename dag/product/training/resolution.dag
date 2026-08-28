@@ -407,6 +407,58 @@ fn training_manifest_material(m: TrainingResolvedManifest) -> NonEmptyStr {
   ) as NonEmptyStr
 }
 
+// AGREEMENT IS A POPULATION OF DIFFERING COORDINATES, NOT A BOOLEAN. "The manifests differ" sends
+// a reader to twenty-three coordinates; naming the first one that differs hides the rest until it
+// is fixed. Both are answers a hash could have given, which is why this reads the axis-keyed
+// projection rather than comparing a digest: a hash answers same-or-different and can never answer
+// WHICH, and which is the entire purpose of the effective-manifest axis.
+type TrainingManifestAgreement
+  = TrainingManifestIdentical
+  | TrainingManifestDiffers {
+      first: TrainingResolutionAxis,
+      more: List<TrainingResolutionAxis>,
+    }
+
+type AxisDiffSplit {
+  head_taken: Bool
+  more: List<TrainingResolutionAxis>
+}
+
+fn manifest_differing_axes(
+  intended: TrainingResolvedManifest,
+  observed: TrainingResolvedManifest,
+) -> List<TrainingResolutionAxis> {
+  training_resolution_axes().filter(axis =>
+    training_manifest_coordinate_material(m: intended, axis: axis)
+      != training_manifest_coordinate_material(m: observed, axis: axis)
+  )
+}
+
+fn training_manifest_agreement(
+  intended: TrainingResolvedManifest,
+  observed: TrainingResolvedManifest,
+) -> TrainingManifestAgreement {
+  let differing = manifest_differing_axes(intended: intended, observed: observed)
+  match differing.first() {
+    none => TrainingManifestIdentical
+    Present { value: head } =>
+      TrainingManifestDiffers {
+        first: head,
+        more: differing
+          .fold(
+            AxisDiffSplit { head_taken: false, more: [] },
+            (acc, a) =>
+              if acc.head_taken {
+                AxisDiffSplit { head_taken: true, more: [acc.more, [a]].flat_map(x => x) }
+              } else {
+                AxisDiffSplit { head_taken: true, more: acc.more }
+              },
+          )
+          .more,
+      }
+  }
+}
+
 fn training_manifest_reference(m: TrainingResolvedManifest) -> NonEmptyStr {
   serialize_content_hash(
     hash: content_hash_of_value(value: training_manifest_material(m: m))
