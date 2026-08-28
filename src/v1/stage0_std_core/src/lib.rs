@@ -51,8 +51,6 @@ pub mod std_disposition;
 #[path = "../../stage0/src/std_error_primitives.rs"]
 pub mod std_error_primitives;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_http_path.rs"]
-pub mod std_http_path;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_emit_model.rs"]
 pub mod std_emit_model;

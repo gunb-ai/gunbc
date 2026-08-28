@@ -62,7 +62,6 @@ pub mod std_emit_model;
 pub mod std_error_primitives;
 pub mod std_execution_mode;
 pub mod std_graph;
-pub mod std_http_path;
 pub mod std_induction;
 pub mod std_integer;
 pub mod std_interface_summary;

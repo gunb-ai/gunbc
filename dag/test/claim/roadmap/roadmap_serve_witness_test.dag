@@ -44,7 +44,7 @@ import extdeps.http.server {
   parse_http_method_label,
   media_type_wire_label,
 }
-import std.http_path { PathParamBinding, path_param_value }
+import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.types { String, Int, Bool, List, HttpMethod, GET, POST, PUT }
 
 data live_table_or_empty_note: String = "Test-local extraction: a Refused build yields the EMPTY table, so every selection witness below goes RED (nothing selects) — the discriminating direction; the production path never does this (roadmap_serve_respond answers 500 on Refused)."

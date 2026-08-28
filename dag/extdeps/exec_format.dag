@@ -1,5 +1,15 @@
 module extdeps.exec_format
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Comparison_of_executable_file_formats"
+  }
+}
+
 
 type ExecutableFormatFamily
   = Elf

@@ -1,5 +1,15 @@
 module extdeps.abi
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Application_binary_interface"
+  }
+}
+
 
 type ArchitecturalRegister
 
