@@ -6,7 +6,10 @@ import v1.compiler.emit_rust {
   CandidateOwnModule,
   CandidateRegistryAbsent,
   CandidateExportProofFailed,
+  CandidateVariantDelegatedToParent,
+  CandidateVariantParentUnresolved,
   ReferenceDerivedCandidateRow,
+  reference_derived_row_diagnostics,
   ReferenceDerivedCensus,
   reference_derived_candidate_disposition,
   reference_derived_disposition_name,
@@ -16,6 +19,10 @@ import v1.compiler.emit_rust {
   build_module_index
 }
 import v1.compiler.infer_items { ItemInfo, FnItem }
+import v1.std.core {
+  ErrorNode, SourceSpan, no_span, diagnostic_to_message, is_error_diagnostic
+}
+import v1.compiler.infer_emit_info { TypeSummary, EnumRepr }
 import v1.compiler.compile { SourceFile, compile_to_resolved }
 
 data reference_derived_disposition_census_witness_note: String = "THE ROUTE HALF OF THIS FILE IS ABSENT AND THE REASON IS A WALL RATHER THAN A CHOICE, stated here because it is the first thing a reader of a five-row file should know: the end-to-end pair this file was designed around -- a two-module manifest whose consumer calls a peer fn in VALUE position with no import, against a control differing by one authored import line -- was authored and DOES NOT RUN. A nested compile is not evaluable in the interpreter: compile_to_resolved over an authored source vector refuses with NoSuchField Node.ident during the nested pipeline, measured 2026-08-27 on three separate subjects. That is not a property of this change; it is why the two nested-compile instruments the corpus already has (gunbc.compile_diagnostic_census and tools.multi_module_compile_fixture) both route through a HOST BUILTIN rather than calling the pipeline from .dag. The rows are not retained in a form that cannot execute, because a probe that always errors is not a red -- it is an inert artifact that would be counted as coverage. NEXT-RUNG TRIGGER FOR THE ROUTE: a nested-compile builtin returning the resolved graph, the shape tools.multi_module_compile_fixture already has, widened to carry the emitter reference-derived rows.\n\nWHERE THIS RUNS, STATED FIRST AND WITHOUT FLATTERY. THIS WITNESS IS NOT RUN BY CI. gunbc.ci_layer_roots witness_discovery_scan_dirs is [dag/test/claim, src/v2/test/claim/manual, src/v2/test/claim/emit] -- src/v1/tests/claim is not among them -- and the required run invokes claim_executor with --source-root dag --source-root src/v2, which could not resolve this file's import of v1.compiler.emit_rust even if discovery reached it. The scoped batch that once ran this directory died in the 2026-08-15 floor cut; gunbc.ci_layer_roots v1_claim_scoped_witness_batch_deleted_note records that and states the entries here have no executing consumer. The roster its sibling checkpoint_identity_keying_witness_test claims to be enrolled in, v1_claim_scoped_witness_entries, is not declared anywhere in dag/gunbc/ci_layer_roots.dag -- verified by grep in both directions rather than taken from the note. THE FIVE ROWS BELOW WERE RUN DIRECTLY ON 2026-08-27 AND ALL FIVE PASS. Direct execution is evidence the assertions HOLD, never evidence that CI runs them, and conflating those two is the rung inflation this directory has now recorded twice.\n\nWHAT THE SUBJECT IS. Since PR 6848 a cross-module name resolves whether or not it is imported. At TYPE positions the resolver says so advisorily (UnlistedImportUse, is_error_diagnostic false); at VALUE positions it says nothing at all, and the emitter silently synthesizes the use-line the author did not write. That synthesis is unchanged here and deliberately so. What changed is that the per-candidate decision behind it stopped being an inline flat_map whose three non-surviving arms all returned the empty list, and became a four-armed coproduct one census can count.\n\nWHY BOTH HALVES ARE HERE. The four unit rows discriminate the DECISION: each names a distinct arm, and two of them differ ONLY in whether the provider's export set proves the symbol, so no constant, disabled mechanism or name-keyed rule satisfies them together. The end-to-end rows discriminate the CENSUS ROUTE: a two-module manifest compiled through compile_to_resolved, whose consumer references a peer's fn in VALUE position with no import, against a control differing by exactly one authored import line. The unlisted arm must produce a survived row naming peer_answer; the control must produce no row for that name at all, because an already-provided name never reaches the decision. Neither can pass vacuously -- a census that always reported zero fails the first, and one that reported every reference fails the second.\n\nTHE RED IS AUTHORABLE AT THE FIXTURE BOUNDARY, which is what makes this a probe rather than a decoration. No Accepted corpus module can be relied on to hold a value-position unlisted use on demand, but a fixture manifest can author one directly, and this file does. DESIGN 4b: a check whose RED cannot be produced anywhere it runs is permanently green by construction and worse than absent, because it gets cited as coverage. What this file lacks is a RUNNER, not a reachable red.\n\nWHAT THIS DOES NOT ESTABLISH. Nothing about the SIZE of the live population -- these are fixtures; NO PRODUCER FOR A REAL FIGURE EXISTS YET, and this file does not name one: the only route from .dag to a corpus census is a nested compile, which the interpreter refuses, so any figure quoted today names nothing that can produce it. And nothing about the names the census never sees: a candidate already provided by an authored import, the prelude, a carrier use-line or the module's own declarations is filtered before the decision, so every count is a LOWER BOUND and the gap is unmeasured. Quote it as at least N.\n\nNEXT-RUNG TRIGGER FOR THIS FILE'S EVIDENCE, which is NOT the same trigger as the class's and must not be folded into it: one prepared subject spanning dag, src/v1 and src/v2 -- the restoration gunbc.ci_layer_roots already names for the deleted batch -- at which point these rows execute and this first paragraph deletes. The CLASS's own trigger (the value-position case joining the fail-closed wall, retiring the census and the synthesis together) lives on v1.compiler.emit_rust reference_derived_census_rung_note. Either can land first; neither closes the other."
@@ -49,7 +56,9 @@ fn fixture_disposition(registry: Map<String, ItemInfo>, export_sets: Map<String,
     export_sets: export_sets,
     typed_modules: [],
     source_indices: empty_map(),
-    module_index: build_module_index(modules: [])
+    module_index: build_module_index(modules: []),
+    type_summaries: empty_map(),
+    variant_to_enum: empty_map()
   ))
 }
 
@@ -75,7 +84,9 @@ test fn cross_module_candidate_with_export_proof_survives() -> Bool {
     export_sets: fixture_export_sets(module_name: "fixture.provider", name: "PeerName"),
     typed_modules: [],
     source_indices: empty_map(),
-    module_index: build_module_index(modules: [])
+    module_index: build_module_index(modules: []),
+    type_summaries: empty_map(),
+    variant_to_enum: empty_map()
   ) == CandidateSurvived { provider_module: "fixture.provider" }
 }
 
@@ -84,13 +95,129 @@ test fn census_counts_each_arm_separately() -> Bool {
     ReferenceDerivedCandidateRow { module_name: "m", name: "a", disposition: CandidateSurvived { provider_module: "p" } },
     ReferenceDerivedCandidateRow { module_name: "m", name: "b", disposition: CandidateOwnModule },
     ReferenceDerivedCandidateRow { module_name: "m", name: "c", disposition: CandidateRegistryAbsent },
-    ReferenceDerivedCandidateRow { module_name: "m", name: "d", disposition: CandidateExportProofFailed { provider_module: "p" } }
+    ReferenceDerivedCandidateRow { module_name: "m", name: "d", disposition: CandidateExportProofFailed { provider_module: "p" } },
+    ReferenceDerivedCandidateRow { module_name: "m", name: "e", disposition: CandidateVariantDelegatedToParent { parent_enum: "E" } },
+    ReferenceDerivedCandidateRow { module_name: "m", name: "f", disposition: CandidateVariantParentUnresolved }
   ]
   let census = reference_derived_census(rows: rows)
-  census.candidates == 4
+  census.candidates == 6
     && census.survived == 1
     && census.own_module == 1
+    && census.variant_delegated_to_parent == 1
+    && census.variant_parent_unresolved == 1
     && census.registry_absent == 1
     && census.export_proof_failed == 1
     && census.candidates == census.survived + census.own_module + census.registry_absent + census.export_proof_failed
+}
+
+data variant_arm_red_note: String = "THE DISCRIMINATING RED FOR THE FIFTH ARM, and it is the one this file most needs. Before the arm existed a bare variant name reached the registry lookup, missed, and answered registry-absent -- so the fixture below is RED against the four-arm classifier and green against the five-arm one, which is what makes it evidence rather than decoration. The positive control beside it is the census row above: a name that is NOT a known variant still answers registry-absent, so the arm narrows the class rather than emptying it."
+
+fn fixture_variant_type_summaries() -> Map<String, TypeSummary> {
+  map_insert(empty_map(), "E", TypeSummary {
+    name: "E",
+    repr: EnumRepr { unit_only: true },
+    field_summaries: empty_map(),
+    field_type_map: empty_map(),
+    field_import_surface_names: [],
+    variant_name_set: map_insert(empty_map(), "V", true),
+    generic_param_names: [],
+    has_fn_fields: false
+  })
+}
+
+test fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> Bool {
+  reference_derived_candidate_disposition(
+    name: "V",
+    this_module_name: "fixture.consumer",
+    registry: empty_map(),
+    export_sets: empty_map(),
+    typed_modules: [],
+    source_indices: empty_map(),
+    module_index: build_module_index(modules: []),
+    type_summaries: fixture_variant_type_summaries(),
+    variant_to_enum: map_insert(empty_map(), "V", "E")
+  ) == CandidateVariantDelegatedToParent { parent_enum: "E" }
+}
+
+data ambiguous_parent_red_note: String = "THE REACHABLE HALF of the unresolved-parent arm, and the reason it is not merely a tidier name. derive_variant_to_enum inserts the EMPTY STRING as the parent when one variant name appears in two enums, so the lookup answers Present with a parent naming nothing. Without this arm that produced CandidateVariantDelegatedToParent { parent_enum: \"\" } -- a delegation to no one, wearing the payload that was supposed to make delegation honest. This fixture authors the collision directly and is RED against the arm-less form."
+
+fn fixture_colliding_variant_type_summaries() -> Map<String, TypeSummary> {
+  map_insert(fixture_variant_type_summaries(), "F", TypeSummary {
+    name: "F",
+    repr: EnumRepr { unit_only: true },
+    field_summaries: empty_map(),
+    field_type_map: empty_map(),
+    field_import_surface_names: [],
+    variant_name_set: map_insert(empty_map(), "V", true),
+    generic_param_names: [],
+    has_fn_fields: false
+  })
+}
+
+test fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> Bool {
+  reference_derived_candidate_disposition(
+    name: "V",
+    this_module_name: "fixture.consumer",
+    registry: empty_map(),
+    export_sets: empty_map(),
+    typed_modules: [],
+    source_indices: empty_map(),
+    module_index: build_module_index(modules: []),
+    type_summaries: fixture_colliding_variant_type_summaries(),
+    variant_to_enum: map_insert(empty_map(), "V", "")
+  ) == CandidateVariantParentUnresolved
+}
+
+test fn an_unresolved_parent_is_not_reported_as_registry_absent() -> Bool {
+  reference_derived_disposition_name(disposition: CandidateVariantParentUnresolved) != "registry-absent"
+}
+
+test fn non_variant_name_still_answers_registry_absent() -> Bool {
+  reference_derived_disposition_name(disposition: reference_derived_candidate_disposition(
+    name: "NotAVariant",
+    this_module_name: "fixture.consumer",
+    registry: empty_map(),
+    export_sets: empty_map(),
+    typed_modules: [],
+    source_indices: empty_map(),
+    module_index: build_module_index(modules: []),
+    type_summaries: fixture_variant_type_summaries(),
+    variant_to_enum: map_insert(empty_map(), "V", "E")
+  )) == "registry-absent"
+}
+
+test fn only_export_proof_failed_produces_a_diagnostic() -> Bool {
+  let rows = [
+    ReferenceDerivedCandidateRow { module_name: "m", name: "a", disposition: CandidateSurvived { provider_module: "p" } },
+    ReferenceDerivedCandidateRow { module_name: "m", name: "b", disposition: CandidateOwnModule },
+    ReferenceDerivedCandidateRow { module_name: "m", name: "e", disposition: CandidateVariantDelegatedToParent { parent_enum: "E" } },
+    ReferenceDerivedCandidateRow { module_name: "m", name: "c", disposition: CandidateRegistryAbsent },
+    ReferenceDerivedCandidateRow { module_name: "m", name: "d", disposition: CandidateExportProofFailed { provider_module: "p" } }
+  ]
+  reference_derived_row_diagnostics(rows: rows, module_span: no_span()) |> count == 1
+}
+
+test fn the_export_unproven_diagnostic_is_advisory() -> Bool {
+  let rows = [
+    ReferenceDerivedCandidateRow { module_name: "m", name: "d", disposition: CandidateExportProofFailed { provider_module: "p" } }
+  ]
+  reference_derived_row_diagnostics(rows: rows, module_span: no_span())
+    |> all(e => !is_error_diagnostic(d: e.diagnostic))
+}
+
+data registry_absent_not_surfaced_note: String = "The RED that keeps registry-absent OUT of the diagnostic stream. Measured over the regen seed closure, that arm returns 473 rows over 63 names dominated by Rust target-language tokens -- Vec, bool, Option, i64, empty_map -- which the candidate walk proposes by tokenizing the module's own emitted Rust and for which no .dag provider can ever exist. Wiring it would print a false report on every build. This test fails the moment someone adds that arm to reference_derived_row_diagnostics, which is the intended wall until the candidate walk stops proposing target-language vocabulary."
+
+test fn registry_absent_produces_no_diagnostic() -> Bool {
+  let rows = [
+    ReferenceDerivedCandidateRow { module_name: "m", name: "bool", disposition: CandidateRegistryAbsent }
+  ]
+  reference_derived_row_diagnostics(rows: rows, module_span: no_span()) |> count == 0
+}
+
+test fn the_export_unproven_message_names_its_own_remedy() -> Bool {
+  let rows = [
+    ReferenceDerivedCandidateRow { module_name: "m", name: "d", disposition: CandidateExportProofFailed { provider_module: "p" } }
+  ]
+  reference_derived_row_diagnostics(rows: rows, module_span: no_span())
+    |> all(e => string_contains(s: diagnostic_to_message(d: e.diagnostic), pattern: "NOT an import"))
 }
