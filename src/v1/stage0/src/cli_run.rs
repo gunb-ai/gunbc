@@ -10833,6 +10833,46 @@ pub enum ClaimOutcome {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FloorRouteGapExpectedGround {
+    UnpublishedMockCase,
+    NoMockResponse,
+    FilesystemRemoval,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FloorRouteGapExpectation {
+    operation: String,
+    ground: FloorRouteGapExpectedGround,
+}
+
+fn floor_route_gap_expectation_mismatch(
+    expectation: Option<&FloorRouteGapExpectation>,
+    operation: &str,
+    ground: &v1_interpreter::HermeticEffectGround,
+) -> Option<String> {
+    let expectation = expectation?;
+    let observed_ground = match ground {
+        v1_interpreter::HermeticEffectGround::UnpublishedMockCase { .. } => {
+            FloorRouteGapExpectedGround::UnpublishedMockCase
+        }
+        v1_interpreter::HermeticEffectGround::NoMockResponse => {
+            FloorRouteGapExpectedGround::NoMockResponse
+        }
+        v1_interpreter::HermeticEffectGround::FilesystemRemoval => {
+            FloorRouteGapExpectedGround::FilesystemRemoval
+        }
+    };
+    if expectation.operation == operation && expectation.ground == observed_ground {
+        None
+    } else {
+        Some(format!(
+            "typed route-gap enrollment expected operation={} ground={:?}, observed operation={} ground={:?}",
+            expectation.operation, expectation.ground, operation, observed_ground
+        ))
+    }
+}
+
 /// Which clock a completed claim's cost is judged on. Operator ruling 2026-08-19 (BUDGET
 /// POLICY CUT): chosen by the witness's PURPOSE — pure modeled computation is judged on CPU,
 /// external/blocking interaction is judged on wall — and NEVER by which clock happened to
@@ -44381,7 +44421,7 @@ pub fn assemble_prepared_subject(
         // loop used to discard that answer. Since `run_required_floor` builds its whole roster
         // from `witness_files`, a `*_test.dag` file declaring no `test fn` was not declined and
         // not counted — it left the floor's universe entirely, one level ABOVE the
-        // `offered = routed + declined_long + declined_live` partition, which is why that line
+        // `offered = routed + declined_long + declined_fixture` partition, which is why that line
         // can be exact and still say nothing about it.
         //
         // The `.dag` producer has carried a wall for exactly this since it was written
@@ -44390,27 +44430,21 @@ pub fn assemble_prepared_subject(
         // path that reaches it — `invoke_floor_discovery_producer` is reachable only through
         // `discover_floor_witness_roster`, which `run_required_floor` never calls.
         //
-        // AND THE RECORDED SET USES THE RULE'S OWN VOCABULARY, NOT THIS SCANNER'S. `test data `
-        // is a test decl to `floor_discovery_scan_test_decl_names`, which is what
-        // `floor_entry_is_barren_test_sidecar` composes, so a file declaring only `test data`
-        // rows is NOT barren under the rule this wall enforces — measured at 3bbd53c05a, 13 such
-        // files exist and refusing them here would have been this wall over-reaching into a
-        // different defect. That different defect is real and is declared, not fixed here:
-        // `witness_file_from_source` recognises `test fn ` and not `test data `, so those rows
-        // are dropped from the floor's roster whether or not their file carries a `test fn`.
-        let site = witness_file_from_source(module_path, &sf.path, &sf.content);
-        let declares_no_test_decl = site.is_none()
-            && !sf
-                .content
-                .lines()
-                .any(|line| line.starts_with("test data "));
-        match site {
+        // WHAT IS RECORDED HERE IS A CANDIDATE SET, NOT A VERDICT, and the distinction is the
+        // whole reason no second copy of the rule appears in Rust. This records every source
+        // `witness_file_from_source` declined — i.e. carrying no `test fn` — and asks nothing
+        // about suffixes and nothing about `test data`. Both of those questions belong to
+        // `v2.workflow.floor_naming_hygiene` and are put TO it, per candidate, by
+        // `floor_barren_test_sidecars`.
+        //
+        // THE SET IS DELIBERATELY OVER-INCLUSIVE and that is what makes it sound. A file with
+        // only `test data` rows lands in here, and the `.dag` predicate then answers NOT barren,
+        // because its own scan counts `test data ` as a test decl. Rust can only widen the
+        // question, never decide it, so a Rust/`.dag` disagreement cannot produce a wrong
+        // refusal — only a candidate the authority discards.
+        match witness_file_from_source(module_path, &sf.path, &sf.content) {
             Some(site) => witness_files.push(site),
-            None => {
-                if declares_no_test_decl {
-                    test_decl_free_paths.push(p.clone());
-                }
-            }
+            None => test_decl_free_paths.push(p.clone()),
         }
         inventory.push(PreparedSourceView {
             module_path: module_path.clone(),
@@ -45049,7 +45083,7 @@ pub struct RequiredFloorClaim {
 ///
 /// Modeled authority: `v2.workflow.required_floor` `RequiredFloorDisposition`
 /// (`src/v2/workflow/required_floor.dag`). This Rust type is the realization of that `.dag`
-/// declaration, not its origin — the three arms and their meaning are declared there first; this
+/// declaration, not its origin — the arms and their meaning are declared there first; this
 /// enum's shape must track it rather than the reverse.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequiredFloorDisposition {
@@ -45062,18 +45096,18 @@ pub enum RequiredFloorDisposition {
     /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
     /// former bare `long_declined` counter discarded.
     DeclinedLongModule { matched_prefix: String },
-    /// Declined because the module declares `LiveTreeDisposition = ReadsLiveTree`.
+    /// Declined because the module's AUTHORED name matches a `fixture_home_prefixes()` entry:
+    /// a `test fn` that is a plan-driven FIXTURE MEMBER rather than a witness.
     ///
-    /// STAGED FOR DELETION, and the reason is measured rather than intended — see
-    /// `docs/plans/witness-execution-closure.md`. The premise this arm rests on (reaching the
-    /// live tree implies "cannot run in the hermetic frame") is FALSE: hermetic mode's
-    /// checkout-read carve-out reads committed sources for real. Floor run 32345970386 deleted
-    /// this arm and executed the population: of ~783 identities, **626 pass** and only 157
-    /// genuinely lack a hermetic arm. The deletion is not in this change only because it also
-    /// surfaces 55 blockers — 6 witnesses that do not resolve and 49 in a cost tail — that need
-    /// their own owners, and every one of those 55 is newly-admitted, so this change is exactly
-    /// the part that carries none of them.
-    DeclinedLiveTree,
+    /// Not a cost decline and not a capability decline. These sites are the SPECIMENS that
+    /// `claim_executor --plan-entry .../walk_plan_stage/plan.dag --plan-function <recipe>`
+    /// drives; the recipe is the witness and it already executes them. Two of them are red by
+    /// construction (a body of literal `false`, and a self-call whose depth refusal IS the
+    /// observed subject) and can never green, and one of the rest writes the very marker path
+    /// another recipe asserts must stay absent — so the fold running them is not merely useless
+    /// but corrupting. See `v2.workflow.required_floor` `fixture_home_prefixes` for the full
+    /// argument and the dissolution condition.
+    DeclinedFixtureMember { matched_prefix: String },
     /// Declined because the qualified identity is enrolled in `v2.workflow.floor_cost_debt`:
     /// it PASSES and costs more than `required_floor_claim_cpu_safety_limit_ms` allows, so it is
     /// withheld from execution until made cheap. Carries no payload — the roster is the
@@ -45239,14 +45273,10 @@ pub struct RequiredFloorOutcome {
     /// A cost quarantine on a different axis from execution, and it is REPORTED rather than
     /// silently subtracted: these identities have no executing consumer anywhere in the tree.
     pub declined_long_module: usize,
-    /// Discovered sites declined because the module declares `ReadsLiveTree`.
-    ///
-    /// REPORTED IN THE HEADLINE, which is the change this carries: the population was
-    /// previously visible only as an integer in a `[floor-phase]` line, and the run's own
-    /// honesty check (`planned == executed == receipted`) was computed entirely downstream of
-    /// it. A receipt that cannot state what it dropped cannot be read as a statement about
-    /// coverage. Measured at 778 on main; staged for deletion, see `RequiredFloorDisposition`.
-    pub declined_live_tree: usize,
+    /// Discovered sites declined because the module's AUTHORED name matches a fixture-home
+    /// prefix. Unlike the two neighbours, these identities DO have an executing consumer —
+    /// the plan recipes that drive them — so this count is not a coverage gap.
+    pub declined_fixture_member: usize,
     pub claims_planned: usize,
     pub claims_executed: usize,
     pub receipt_identities: usize,
@@ -45849,49 +45879,99 @@ fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result
     }
 }
 
-/// Read one `String` constant from a `.dag` authority, by qualified name.
+/// The barren witnesses among preparation's candidate set, decided by the `.dag` authority
+/// rather than by a second Rust spelling of it.
 ///
-/// The barren-sidecar rule's suffix lives in `v2.workflow.floor_naming_hygiene`
-/// (`floor_test_sidecar_suffix`), and it stays there: re-spelling `"_test.dag"` in Rust would
-/// fork the rule across two representations, which is the defect this whole repair is about.
-fn floor_required_string(
-    ctx: &v1_interpreter::InterpContext,
-    qualified: &str,
-) -> Result<String, String> {
-    match v1_interpreter::run_in_context(ctx, qualified, false) {
-        Ok(v1_interpreter::Value::Str(s)) if !s.is_empty() => Ok(s.to_string()),
-        Ok(other) => Err(format!(
-            "{qualified}: expected a non-empty String, got {}",
-            floor_value_shape(Some(&other))
-        )),
-        Err(e) => Err(format!("{qualified}: {e}")),
-    }
-}
-
-/// The barren witnesses in the prepared subject, judged by the `.dag` rule rather than by a
-/// second Rust spelling of it.
+/// TWO CALLS, AND THE SPLIT IS A COST DECISION, NEVER A POLICY ONE. Both questions
+/// — does this path claim the sidecar place, and does this file declare a test decl —
+/// are answered by `v2.workflow.floor_naming_hygiene`; Rust supplies facts and decides
+/// nothing.
 ///
-/// Preparation records every admitted source with no `test fn` decl; this asks
-/// `floor_naming_hygiene`'s own suffix which of them are `*_test.dag` entries — the same
-/// predicate `floor_entry_is_barren_test_sidecar` composes, consumed here because THIS is the
-/// path the required floor takes.
+///   1. `floor_entries_requiring_test_sidecar` is asked ONCE for the whole candidate roster.
+///      It is a pure string question, so the whole list crosses in one call, and it narrows
+///      thousands of admitted sources to the handful that claim the `*_test.dag` place.
+///   2. `floor_entry_is_barren_test_sidecar` is then asked per survivor, with that file's
+///      content. That is the call that needs bytes, and after step 1 there are typically zero
+///      or a few of them — so consuming the real predicate costs a handful of invocations
+///      rather than one per corpus file, which is what a caller reimplementing the filter
+///      would have been buying.
+///
+/// An earlier revision of this function read the suffix constant out of the `.dag` and then
+/// applied `strip_prefix("./")` and `ends_with` in Rust. Reading the constant does not make
+/// the computation derived from the authority — the two can still drift — and that is the
+/// §2/§3 fork this repository exists to prevent (`review 56971`).
 fn floor_barren_test_sidecars(
     hermetic: &v1_interpreter::InterpContext,
-    test_decl_free_paths: &[String],
+    candidate_paths: &[String],
+    content_for_path: &HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
 ) -> Result<Vec<String>, String> {
-    let suffix = floor_required_string(
-        hermetic,
-        "v2.workflow.floor_naming_hygiene.floor_test_sidecar_suffix",
-    )?;
-    Ok(test_decl_free_paths
+    if candidate_paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    let path_values: Vec<v1_interpreter::Value> = candidate_paths
         .iter()
-        .filter(|path| {
-            path.strip_prefix("./")
-                .unwrap_or(path.as_str())
-                .ends_with(suffix.as_str())
-        })
-        .cloned()
-        .collect())
+        .map(|s| str_value(s.clone()))
+        .collect();
+    let requiring = v1_interpreter::run_in_context_with_args(
+        hermetic,
+        "v2.workflow.floor_naming_hygiene.floor_entries_requiring_test_sidecar",
+        &[(
+            Some("entry_paths".to_string()),
+            list_value_from_vec(path_values),
+        )],
+        false,
+    )
+    .map_err(|e| format!("floor_entries_requiring_test_sidecar: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&requiring))
+        .map_err(|why| format!("floor_entries_requiring_test_sidecar decode: {why}"))?;
+
+    let mut barren = Vec::new();
+    for item in items {
+        let path = match item {
+            v1_interpreter::Value::Str(s) => s.to_string(),
+            other => {
+                return Err(format!(
+                    "floor_entries_requiring_test_sidecar: expected String rows, got {}",
+                    floor_value_shape(Some(other))
+                ))
+            }
+        };
+        // A candidate with no source in hand is not silently skipped: preparation built both
+        // the candidate list and the inventory from the same walk, so a miss here means those
+        // two disagree, and a wall that quietly drops the entries it cannot look up is the
+        // absorbing failure arm DESIGN §5 forbids.
+        let Some(source) = content_for_path.get(&path) else {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=BarrenCandidateSourceMissing — `{path}` was \
+                 recorded as a sidecar candidate but has no prepared source"
+            ));
+        };
+        let verdict = v1_interpreter::run_in_context_with_args(
+            hermetic,
+            "v2.workflow.floor_naming_hygiene.floor_entry_is_barren_test_sidecar",
+            &[
+                (Some("entry_path".to_string()), str_value(path.clone())),
+                (
+                    Some("content".to_string()),
+                    str_value(source.content.to_string()),
+                ),
+            ],
+            false,
+        )
+        .map_err(|e| format!("floor_entry_is_barren_test_sidecar({path}): {e}"))?;
+        match verdict {
+            v1_interpreter::Value::Bool(true) => barren.push(path),
+            v1_interpreter::Value::Bool(false) => {}
+            other => {
+                return Err(format!(
+                    "floor_entry_is_barren_test_sidecar({path}): expected Bool, got {}",
+                    floor_value_shape(Some(&other))
+                ))
+            }
+        }
+    }
+    barren.sort();
+    Ok(barren)
 }
 
 fn floor_decode_list<'a>(
@@ -46215,6 +46295,26 @@ pub fn run_required_floor(
     let prepare_started = std::time::Instant::now();
     let (prepared, prepared_sources) =
         prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
+    // The bytes behind the sidecar candidates, captured here because `prepared_sources` is
+    // moved into the guard on the next line and the barren check needs content, not paths.
+    // Restricted to the candidate set rather than the whole inventory: the `.dag` predicate is
+    // asked only about files preparation already declined, so nothing else is retained.
+    let barren_candidate_sources: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = {
+        let wanted: HashSet<&str> = prepared
+            .test_decl_free_paths
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        prepared_sources
+            .iter()
+            .filter_map(|view| {
+                let path = view.source.path.replace('\\', "/");
+                wanted
+                    .contains(path.as_str())
+                    .then(|| (path, view.source.clone()))
+            })
+            .collect()
+    };
     let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
     // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
     //
@@ -46567,7 +46667,8 @@ pub fn run_required_floor(
     //
     // WHAT THIS REPLACED, and why it was not an optimisation. The required outcome of this whole
     // region is exactly: exclude a witness whose AUTHORED module sits in the long home, exclude
-    // one that reads the live tree, claim everything else Hermetic. That decision used to be
+    // a walk-plan fixture member already driven by its recipe, and plan everything else. That
+    // decision used to be
     // made TWICE — once by `required_floor_manifest` over 10,498 records marshalled into the
     // interpreter, and again here in Rust, applying the same prefix test to explain the
     // difference between sites offered and claims returned. Between the two sat an interpreted
@@ -46612,14 +46713,25 @@ pub fn run_required_floor(
         &hermetic,
         "v2.workflow.required_floor.long_home_prefixes",
     )?;
+    // ONE DECODE, TWO ROSTERS. The fixture-home prefixes are read through the same helper as
+    // the long-home prefixes because they are the same kind of fact — an authored module-name
+    // prefix the floor declines on — and a second hand-rolled decode beside it would be a
+    // second authority for how such a roster is read.
+    let fixture_home_prefixes = floor_decode_module_prefix_roster(
+        &hermetic,
+        "v2.workflow.required_floor.fixture_home_prefixes",
+    )?;
     // THE LINE STOPS BEFORE THE PARTITION IS COMPUTED, because a barren entry is invisible to
     // the partition by construction — it contributes no SITE, so `offered` cannot report it and
-    // `offered == routed + declined_long + declined_live + declined_cost_debt` stays exact while
-    // saying nothing about
+    // `offered == routed + declined_long + declined_fixture + declined_cost_debt` stays exact
+    // while saying nothing about
     // it. A file that claims the `*_test.dag` place and enrolls nothing is a witness nobody asked
     // and everybody reads as covered.
-    let barren_test_sidecars =
-        floor_barren_test_sidecars(&hermetic, &prepared.test_decl_free_paths)?;
+    let barren_test_sidecars = floor_barren_test_sidecars(
+        &hermetic,
+        &prepared.test_decl_free_paths,
+        &barren_candidate_sources,
+    )?;
     if !barren_test_sidecars.is_empty() {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=BarrenTestSidecar count={} — a `*_test.dag` entry must \
@@ -46722,7 +46834,7 @@ pub fn run_required_floor(
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
-    let mut live_declined = 0usize;
+    let mut fixture_declined = 0usize;
     let mut cost_debt_declined = 0usize;
     let mut cost_debt_seen: HashSet<String> = HashSet::new();
     let mut outcome_withheld_cost_debt: Vec<String> = Vec::new();
@@ -46736,6 +46848,9 @@ pub fn run_required_floor(
         let long_home = matched_prefix.is_some();
         // Diagnostic only -- computed once per file and never consulted by the admission
         // branching below. See `LongHomeStorageAgreement`'s doc comment.
+        let fixture_prefix = fixture_home_prefixes
+            .iter()
+            .find(|prefix| file.module_path.starts_with(prefix.as_str()));
         let path_is_long = is_long_home_path(&file.path);
         let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
         for function in &file.functions {
@@ -46757,11 +46872,13 @@ pub fn run_required_floor(
                 });
                 continue;
             }
-            if file.reads_live_tree {
-                live_declined += 1;
+            if let Some(prefix) = fixture_prefix {
+                fixture_declined += 1;
                 disposition_rows.push(RequiredFloorDispositionRow {
                     identity,
-                    disposition: RequiredFloorDisposition::DeclinedLiveTree,
+                    disposition: RequiredFloorDisposition::DeclinedFixtureMember {
+                        matched_prefix: prefix.clone(),
+                    },
                 });
                 continue;
             }
@@ -46834,14 +46951,11 @@ pub fn run_required_floor(
     // it is the construction's own statement of what it guarantees, and it fails loudly the
     // first time an edit adds a third arm that quietly swallows rows, which is precisely how
     // the live-tree decline arrived and stayed invisible.
-    // THE SITE PARTITION GAINS ITS THIRD DECLINE TERM. Every discovered site is exactly one of
-    // planned, long-home declined, live-tree declined, or cost-debt declined; omitting the new
-    // term here would refuse every run the moment the roster became non-empty.
-    if sites_offered != claims.len() + long_declined + live_declined + cost_debt_declined {
+    if sites_offered != claims.len() + long_declined + fixture_declined + cost_debt_declined {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={sites_offered} \
-             routed={} declined_long={long_declined} \
-             declined_live={live_declined} declined_cost_debt={cost_debt_declined} — every \
+             routed={} declined_long={long_declined} declined_fixture={fixture_declined} \
+             declined_cost_debt={cost_debt_declined} — every \
              discovered site must be either routed to a claim or declined with a stated \
              disposition; a gap here is a roster that narrowed without saying so",
             claims.len()
@@ -46849,13 +46963,14 @@ pub fn run_required_floor(
     }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
-         claims={} declined_long={} declined_live={}",
+         claims={} declined_long={} declined_fixture={} declined_cost_debt={}",
         projection_started.elapsed().as_millis(),
         sites_offered,
         files.len(),
         claims.len(),
         long_declined,
-        live_declined
+        fixture_declined,
+        cost_debt_declined
     );
 
     // THE EXPECTED-RED ROSTER, read from its .dag authority in the policy module's frame — it
@@ -46984,6 +47099,92 @@ pub fn run_required_floor(
         "[floor-route-gap] roster carries {} enrolled identity(ies)",
         route_gap_roster.len()
     );
+
+    // New enrollments carry the operation and the closed remedy-ground observed at the
+    // interpreter boundary. Their identities are projected into `floor_route_gap_roster` by
+    // the .dag authority; this decode reads the detail rather than authoring a second identity
+    // list in Rust. A changed operation or ground blocks below instead of being silently held
+    // by an identity-only row whose original fact no longer applies.
+    let route_gap_expectations: HashMap<String, FloorRouteGapExpectation> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_route_gap.floor_route_gap_expectations",
+            false,
+        )
+        .map_err(|e| format!("floor_route_gap_expectations: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_route_gap_expectations: {e}"))?;
+        let mut out = HashMap::new();
+        for item in items {
+            let v1_interpreter::Value::Record { type_name, fields } = item else {
+                return Err(format!(
+                    "floor_route_gap_expectations: expected FloorRouteGapExpectation, got {}",
+                    floor_value_shape(Some(&item))
+                ));
+            };
+            if !hermetic.sym_eq(*type_name, "FloorRouteGapExpectation") {
+                return Err(format!(
+                    "floor_route_gap_expectations: expected FloorRouteGapExpectation, got record {}",
+                    hermetic.resolve(*type_name)
+                ));
+            }
+            let identity = match hermetic.field(&fields, "identity") {
+                Some(v1_interpreter::Value::Str(s)) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "floor_route_gap_expectations: identity must be String, got {}",
+                        floor_value_shape(other)
+                    ));
+                }
+            };
+            let operation = match hermetic.field(&fields, "operation") {
+                Some(v1_interpreter::Value::Str(s)) => s.to_string(),
+                other => {
+                    return Err(format!(
+                        "floor_route_gap_expectations: operation must be String, got {}",
+                        floor_value_shape(other)
+                    ));
+                }
+            };
+            let ground = match hermetic.field(&fields, "ground") {
+                Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+                    match hermetic.resolve(*variant_name).as_str() {
+                        "UnpublishedMockCase" => FloorRouteGapExpectedGround::UnpublishedMockCase,
+                        "NoMockResponse" => FloorRouteGapExpectedGround::NoMockResponse,
+                        "FilesystemRemoval" => FloorRouteGapExpectedGround::FilesystemRemoval,
+                        other => {
+                            return Err(format!(
+                                "floor_route_gap_expectations: unknown ground {other}"
+                            ));
+                        }
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_route_gap_expectations: ground must be a typed variant, got {}",
+                        floor_value_shape(other)
+                    ));
+                }
+            };
+            if !route_gap_roster.contains(identity.as_str()) {
+                return Err(format!(
+                    "floor_route_gap_expectations: located identity is absent from derived roster: {identity}"
+                ));
+            }
+            if out
+                .insert(
+                    identity.clone(),
+                    FloorRouteGapExpectation { operation, ground },
+                )
+                .is_some()
+            {
+                return Err(format!(
+                    "floor_route_gap_expectations: duplicate enrolled identity: {identity}"
+                ));
+            }
+        }
+        out
+    };
 
     // THE TWO ROSTERS MAY NOT NAME THE SAME IDENTITY, and this refusal is the reason the split
     // between them stays a split rather than decaying back into the conflation it was created
@@ -47225,7 +47426,7 @@ pub fn run_required_floor(
         modules_excluded: prepared.modules_excluded,
         sites_offered,
         declined_long_module: long_declined,
-        declined_live_tree: live_declined,
+        declined_fixture_member: fixture_declined,
         claims_planned,
         claims_executed: 0,
         receipt_identities: 0,
@@ -47711,12 +47912,21 @@ pub fn run_required_floor(
                 // enrolled — the failure this whole lane exists to close.
                 ExpectedRedArm::HostEffectRefused => {
                     known_red_host_effect_refused += 1;
-                    let detail = match &result {
-                        ClaimOutcome::HostEffectRefused { operation, ground } => format!(
-                            "hermetic route has no arm for {operation}: {}",
-                            hermetic_effect_ground_label(ground)
+                    let (operation, ground, detail) = match &result {
+                        ClaimOutcome::HostEffectRefused { operation, ground } => (
+                            operation.as_str(),
+                            ground,
+                            format!(
+                                "hermetic route has no arm for {operation}: {}",
+                                hermetic_effect_ground_label(ground)
+                            ),
                         ),
-                        other => format!("{other:?}"),
+                        other => {
+                            return Err(format!(
+                                "required-floor expected-red arm/result disagreement for {}: {other:?}",
+                                claim.qualified
+                            ));
+                        }
                     };
                     // THE TWO ROSTERS ARE DIFFERENT AXES, AND THIS ROW SITS ON BOTH. Being
                     // enrolled as expected-red says nothing about whether the floor has a route
@@ -47725,7 +47935,18 @@ pub fn run_required_floor(
                     // not cover the gap, and the gap does not discharge the enrollment.
                     route_gap_seen.insert(claim.qualified.clone());
                     if route_gap_roster.contains(claim.qualified.as_str()) {
-                        route_gap_held += 1;
+                        if let Some(mismatch) = floor_route_gap_expectation_mismatch(
+                            route_gap_expectations.get(claim.qualified.as_str()),
+                            operation,
+                            ground,
+                        ) {
+                            outcome.route_gap.push(format!(
+                                "{} is enrolled as a route gap, but its observed typed route changed: {}. Update the enrollment only after deciding which route the witness actually requires.",
+                                claim.qualified, mismatch
+                            ));
+                        } else {
+                            route_gap_held += 1;
+                        }
                     } else {
                         outcome.route_gap.push(format!(
                             "{} is enrolled as expected-red but ROUTE-GAPPED, not failed: {}. \
@@ -47855,7 +48076,18 @@ pub fn run_required_floor(
             ClaimOutcome::HostEffectRefused { operation, ground } => {
                 route_gap_seen.insert(claim.qualified.clone());
                 if route_gap_roster.contains(claim.qualified.as_str()) {
-                    route_gap_held += 1;
+                    if let Some(mismatch) = floor_route_gap_expectation_mismatch(
+                        route_gap_expectations.get(claim.qualified.as_str()),
+                        &operation,
+                        &ground,
+                    ) {
+                        outcome.route_gap.push(format!(
+                            "{} is enrolled as a route gap, but its observed typed route changed: {}. Update the enrollment only after deciding which route the witness actually requires.",
+                            claim.qualified, mismatch
+                        ));
+                    } else {
+                        route_gap_held += 1;
+                    }
                 } else {
                     outcome.route_gap.push(format!(
                         "{} never reached its subject: the hermetic route has no arm for {} \
@@ -48625,17 +48857,16 @@ fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &
     match disposition {
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
-        RequiredFloorDisposition::DeclinedLiveTree => "declined_live_tree",
+        RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
         RequiredFloorDisposition::DeclinedCostDebt => "declined_cost_debt",
     }
 }
 
 fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposition) -> &str {
     match disposition {
-        RequiredFloorDisposition::DeclinedLongModule { matched_prefix } => matched_prefix,
-        RequiredFloorDisposition::Planned
-        | RequiredFloorDisposition::DeclinedLiveTree
-        | RequiredFloorDisposition::DeclinedCostDebt => "",
+        RequiredFloorDisposition::DeclinedLongModule { matched_prefix }
+        | RequiredFloorDisposition::DeclinedFixtureMember { matched_prefix } => matched_prefix,
+        RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedCostDebt => "",
     }
 }
 
@@ -48711,23 +48942,24 @@ fn write_required_floor_disposition_tsv(
         .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
     let mut planned = 0usize;
     let mut declined_long = 0usize;
-    let mut declined_live = 0usize;
+    let mut declined_fixture = 0usize;
     let mut declined_cost_debt = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
-            RequiredFloorDisposition::DeclinedLiveTree => declined_live += 1,
+            RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
             RequiredFloorDisposition::DeclinedCostDebt => declined_cost_debt += 1,
         }
     }
     writeln!(
         file,
-        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_live_tree={}\tdeclined_cost_debt={}",
+        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
+         \tdeclined_cost_debt={}",
         rows.len(),
         planned,
         declined_long,
-        declined_live,
+        declined_fixture,
         declined_cost_debt
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
@@ -48932,8 +49164,10 @@ mod required_floor_disposition_and_storage_agreement_law {
                 },
             },
             RequiredFloorDispositionRow {
-                identity: "m.three.c".to_string(),
-                disposition: RequiredFloorDisposition::DeclinedLiveTree,
+                identity: "v2.test.fixture.walk_plan_stage.x.d".to_string(),
+                disposition: RequiredFloorDisposition::DeclinedFixtureMember {
+                    matched_prefix: "v2.test.fixture.walk_plan_stage.".to_string(),
+                },
             },
         ];
 
@@ -48947,14 +49181,19 @@ mod required_floor_disposition_and_storage_agreement_law {
         assert!(lines[0].contains("total=3"));
         assert!(lines[0].contains("planned=1"));
         assert!(lines[0].contains("declined_long_module=1"));
-        assert!(lines[0].contains("declined_live_tree=1"));
+        assert!(lines[0].contains("declined_fixture_member=1"));
         assert_eq!(lines[1], "identity\tdisposition\tmatched_prefix");
         assert_eq!(lines[2], "m.one.a\tplanned\t");
         assert_eq!(
             lines[3],
             "test.claim.long.two.b\tdeclined_long_module\ttest.claim.long."
         );
-        assert_eq!(lines[4], "m.three.c\tdeclined_live_tree\t");
+        // THE FIXTURE ARM CARRIES ITS MATCHED PREFIX, exactly as the long arm does. A decline
+        // that cannot say WHICH prefix admitted it is a count, not a receipt.
+        assert_eq!(
+            lines[4],
+            "v2.test.fixture.walk_plan_stage.x.d\tdeclined_fixture_member\tv2.test.fixture.walk_plan_stage."
+        );
     }
 
     #[test]

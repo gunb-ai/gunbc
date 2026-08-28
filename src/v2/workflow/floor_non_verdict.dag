@@ -123,7 +123,7 @@ import v2.std.text { String }
 // dissolving the machinery, and conflating them would be the climb that deletes its own
 // evidence (DESIGN 4b(4)).
 //
-// THE PRIOR POPULATION NOTE READ 15 IDENTITIES AND THE ROSTER HELD 11 WHEN THIS EDIT FOUND IT.
+// THE PRIOR POPULATION NOTE READ 15 IDENTITIES AND MAIN'S ROSTER HELD 11 WHEN this repair found it.
 // That drift is recorded rather than quietly corrected, because a transcribed count beside a
 // list is exactly the second representation that rots without anyone touching either end; the
 // count above is derived from the rows this edit removed, and it is zero because the rows are
@@ -135,6 +135,10 @@ import v2.std.text { String }
 // `floor_expected_red`, so they could never enter either known-red non-verdict arm. Retiring the
 // exact non-verdict-minus-expected-red set keeps the 15 identities that can classify live debt;
 // enrolling the other 127 as expected-red instead would fabricate semantic verdicts.
+// The composed #9106 branch briefly carried a twelfth identity,
+// gunbc.test.claim.realization_attempt_keystone_test.witness_planted_minimal_module_emits. It was
+// the same ClosureDependentResolution render-shadow specimen and repaid under #9259 before merge;
+// its witness remains executing while its non-verdict and expected-red rows retire here.
 fn floor_non_verdict_roster() -> List<String> {
   Empty {}
 }
