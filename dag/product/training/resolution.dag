@@ -298,7 +298,25 @@ fn training_work_contract(evidence: TrainingResolutionEvidence) -> WorkContract 
   }
 }
 
-data training_resolution_excludes_dispatch_note: String = "WHAT IS DELIBERATELY NOT IN THE MANIFEST, and the rule that decides it. A fact belongs here only if changing it changes the answer the training Work promises. Changing the seed, the optimizer configuration, the data order or the numeric format changes the produced weights, so those are in. The selected host, the supplier quote, the metered electricity rate, the current wall draw, the opportunity cost, the queue position, the free capacity, the lease generation, the checkpoint save CADENCE, the log cadence and the retention duration change none of it, so those are out. The consequence is the point: a change in the electricity tariff must not mint a new semantic training Work, and it cannot, because no field here can carry it. Checkpoint FORMAT is in and checkpoint CADENCE is out, and the split is one rule applied twice -- the format decides whether a resume continues the same trajectory, the cadence decides only how often we pay to write one.\n\nSUBSTRATE-DEPENDENT SEMANTIC RESOLUTION IS REFUSED AT THIS SLICE. A microbatch chosen as the largest that fits the selected host, a precision taken from a runtime default, or a gradient accumulation derived from available memory would let two hosts execute different update trajectories under ONE Work identity. So exact values are required before the demand is dispatched. A later authority may prove two substrate-specific realizations semantically equivalent; that relation does not exist yet, and asserting it early would be a fabricated equivalence rather than a convenience."
+// WHAT IS DELIBERATELY NOT IN THE MANIFEST, and the rule that decides it. A fact belongs here
+// only if changing it changes the answer the training Work promises. Changing the seed, the
+// optimizer configuration, the data order or the numeric format changes the produced weights, so
+// those are in. The selected host, the supplier quote, the metered electricity rate, the current
+// wall draw, the opportunity cost, the queue position, the free capacity, the lease generation,
+// the checkpoint save CADENCE, the log cadence and the retention duration change none of it, so
+// those are out. The consequence is the point: a change in the electricity tariff must not mint a
+// new semantic training Work, and it cannot, because no field here can carry it. Checkpoint
+// FORMAT is in and checkpoint CADENCE is out, and the split is one rule applied twice -- the
+// format decides whether a resume continues the same trajectory, the cadence decides only how
+// often we pay to write one.
+//
+// SUBSTRATE-DEPENDENT SEMANTIC RESOLUTION IS REFUSED AT THIS SLICE. A microbatch chosen as the
+// largest that fits the selected host, a precision taken from a runtime default, or a gradient
+// accumulation derived from available memory would let two hosts execute different update
+// trajectories under ONE Work identity. So exact values are required before the demand is
+// dispatched. A later authority may prove two substrate-specific realizations semantically
+// equivalent; that relation does not exist yet, and asserting it early would be a fabricated
+// equivalence rather than a convenience.
 
 // SEALED. The evidence record is the whole specification and the contract is DERIVED from it, so
 // the only door that yields one is resolve_training below, which cannot produce it while any
