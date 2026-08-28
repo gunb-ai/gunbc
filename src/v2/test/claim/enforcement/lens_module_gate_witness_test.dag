@@ -49,6 +49,23 @@ data lens_module_gate_fixture_surfaces: List<LensInvariantSurface> = [
   }
 ]
 
+data lens_module_gate_same_authority_duplicate_surfaces: List<LensInvariantSurface> = [
+  LensInvariantSurface {
+    module: "v2.lens.alpha_fixture",
+    projection: ProjectionNodeDag,
+    verdict_authority: VerdictLensVerdict,
+    remedy: RemedyShare,
+    admission: GenuinelyNewInvariant
+  },
+  LensInvariantSurface {
+    module: "v2.lens.alpha_fixture",
+    projection: ProjectionNodeDag,
+    verdict_authority: VerdictLensVerdict,
+    remedy: RemedyShare,
+    admission: GenuinelyNewInvariant
+  }
+]
+
 data lens_module_gate_genuinely_new_surface: List<LensInvariantSurface> = [
   LensInvariantSurface {
     module: "v2.lens.alpha_fixture",
@@ -76,8 +93,14 @@ test fn red_control_unenrolled_lens_refused() -> Bool {
 
 test fn red_control_redundant_verdict_remedy_refused() -> Bool {
   lens_module_gate_redundant_blocking_count_from_surfaces(
-    surfaces: lens_module_gate_fixture_surfaces
+    surfaces: lens_module_gate_same_authority_duplicate_surfaces
   ) > 0
+}
+
+test fn same_reporting_metadata_distinct_module_authorities_pass() -> Bool {
+  lens_module_gate_redundant_blocking_count_from_surfaces(
+    surfaces: lens_module_gate_fixture_surfaces
+  ) == 0
 }
 
 test fn red_control_genuinely_new_distinct_surface_passes() -> Bool {
@@ -121,7 +144,7 @@ test fn question_zero_fixture_redundant_leg_fails() -> Bool {
       intent: standing_intent_lens_closure_question_zero,
       facts: lens_module_gate_fixture_facts,
       bound_module_paths: lens_module_gate_fixture_bound,
-      surfaces: lens_module_gate_fixture_surfaces
+      surfaces: lens_module_gate_same_authority_duplicate_surfaces
     ).redundant_claim
   )
 }
