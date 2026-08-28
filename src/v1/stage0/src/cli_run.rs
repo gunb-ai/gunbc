@@ -46260,23 +46260,70 @@ pub struct NonVerdictAdmission {
     pub repaid: Vec<String>,
 }
 
+/// Identity-grain set difference, deterministically ordered for diagnostics and receipts.
+///
+/// This is deliberately not a count comparison. Equal-size sets can have different members,
+/// and that swap is the load-bearing case for every roster whose rows are permissions or debt:
+/// repairing one identity must not buy room for an unrelated identity to appear or disappear.
+pub fn identity_set_difference(left: &HashSet<String>, right: &HashSet<String>) -> Vec<String> {
+    let mut difference: Vec<String> = left.difference(right).cloned().collect();
+    difference.sort();
+    difference
+}
+
 pub fn non_verdict_admission(
     observed: &HashSet<String>,
     roster: &HashSet<String>,
 ) -> NonVerdictAdmission {
-    let mut added: Vec<String> = observed
-        .iter()
-        .filter(|q| !roster.contains(q.as_str()))
-        .cloned()
-        .collect();
-    let mut repaid: Vec<String> = roster
-        .iter()
-        .filter(|q| !observed.contains(q.as_str()))
-        .cloned()
-        .collect();
-    added.sort();
-    repaid.sort();
-    NonVerdictAdmission { added, repaid }
+    NonVerdictAdmission {
+        added: identity_set_difference(observed, roster),
+        repaid: identity_set_difference(roster, observed),
+    }
+}
+
+#[cfg(test)]
+mod identity_set_difference_tests {
+    use super::{identity_set_difference, HashSet};
+
+    fn identities(rows: &[&str]) -> HashSet<String> {
+        rows.iter().map(|row| (*row).to_string()).collect()
+    }
+
+    #[test]
+    fn equal_identity_sets_have_no_difference() {
+        let left = identities(&["m.b", "m.a"]);
+        assert!(identity_set_difference(&left, &left).is_empty());
+    }
+
+    #[test]
+    fn an_equal_cardinality_swap_is_visible_in_both_directions() {
+        let roster = identities(&["m.a", "m.b"]);
+        let observed = identities(&["m.a", "m.c"]);
+
+        assert_eq!(
+            identity_set_difference(&roster, &observed),
+            vec!["m.b".to_string()]
+        );
+        assert_eq!(
+            identity_set_difference(&observed, &roster),
+            vec!["m.c".to_string()]
+        );
+        assert_eq!(
+            roster.len(),
+            observed.len(),
+            "control: counts cannot see the swap"
+        );
+    }
+
+    #[test]
+    fn multiple_missing_identities_are_stably_sorted() {
+        let roster = identities(&["m.z", "m.a", "m.q"]);
+        let observed = identities(&["m.q"]);
+        assert_eq!(
+            identity_set_difference(&roster, &observed),
+            vec!["m.a".to_string(), "m.z".to_string()]
+        );
+    }
 }
 
 /// The admission itself: `added` AND `repaid` are both empty. Kept separate from the sets so a
