@@ -261,7 +261,7 @@ pub fn cargo_workspace_footprint(
             display: "Cargo build artifacts".to_string(),
             upstream: "doc.rust-lang.org/cargo/".to_string(),
         }),
-        artifacts: Rc::new(v1_rt::append(
+        artifacts: v1_rt::concat(
             Rc::new({
                 let mut __result = Vec::new();
                 for p in target_dir_patterns.iter().cloned() {
@@ -279,7 +279,7 @@ pub fn cargo_workspace_footprint(
                 meaning: "CARGO_HOME registry/cache; may include git checkouts".to_string(),
                 reason: Rc::new(IgnoreReason::LocalCacheState),
             })]),
-        )),
+        ),
     })
 }
 
