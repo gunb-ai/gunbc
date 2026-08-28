@@ -16,7 +16,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v2.std.node { Atom, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 import v2.std.symbol_index {
@@ -55,9 +55,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // FIXED. They assert the state as measured today, which means the row FAILS on
 // the day the underlying repair lands. That is intended and it is the whole
 // value: the repair's author gets a located, named row telling them what changed
-// and what to re-state, instead of the fact silently ceasing to be true. Each
-// such row carries its inversion instruction. They are ordinary greens today, so
-// no expected-red admission is involved.
+// instead of the fact silently ceasing to be true. What becomes of the evidence
+// at that point is DESIGN 4b(4)'s to say, not this file's. They are ordinary
+// greens today, so no expected-red admission is involved.
 
 data lcr_producer_text: String = "module lcr.producer\ntype CrossFileMarker { x: Int }\nfn producer_anchor() -> Int {\n  1\n}\n"
 
@@ -138,40 +138,50 @@ fn lcr_globally_bound(name: Symbol) -> Bool {
   }
 }
 
-// Test-local tree readers. They are deliberately NOT a production authority on
-// "what a reference is" -- they count a named edge and an atom identity, nothing
-// more, and exist only so these receipts can state what the carrier contains.
-fn lcr_named_edge_count(node: Node, wanted: Symbol) -> Int {
-  fold_list(
-    xs: node.children,
-    empty: 0,
-    cons: fn(acc, edge) { lcr_named_edge_count_edge(acc: acc, edge: edge, wanted: wanted) }
-  )
+// Tree readers expressed as NodeFold algebras over the canonical catamorphism.
+// They do NOT recurse themselves: fold_node owns the traversal, and these supply
+// only the per-node seed and the combining step. A bespoke walker here would be a
+// second traversal authority over the shared Node carrier, which being test-local
+// does not excuse -- the substrate has one fold and every consumer consumes it.
+fn lcr_atom_seed(self: Node, wanted: Symbol) -> Int {
+  match self.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      if sym == wanted { 1 } else { 0 }
+    _ => 0
+  }
 }
 
-fn lcr_named_edge_count_edge(acc: Int, edge: Edge, wanted: Symbol) -> Int {
-  let here = match edge.label {
+fn lcr_edge_seed(edge: Edge, wanted: Symbol) -> Int {
+  match edge.label {
     Named { name: sym } => if sym == wanted { 1 } else { 0 }
     Positional => 0
   }
-  acc + here + lcr_named_edge_count(node: edge.target, wanted: wanted)
+}
+
+fn lcr_sum_step(acc: Int, sub: Int) -> Int {
+  acc + sub
 }
 
 fn lcr_atom_count(node: Node, wanted: Symbol) -> Int {
-  match node.kind {
-    TypeNode { connective: Atom { identity: sym } } =>
-      if sym == wanted { 1 } else { 0 }
-    _ =>
-      fold_list(
-        xs: node.children,
-        empty: 0,
-        cons: fn(acc, edge) { lcr_atom_count_edge(acc: acc, edge: edge, wanted: wanted) }
-      )
-  }
+  fold_node(
+    n: node,
+    algebra: NodeFold {
+      init: fn(self) { lcr_atom_seed(self: self, wanted: wanted) },
+      step: fn(acc, _edge, sub) { lcr_sum_step(acc: acc, sub: sub) }
+    }
+  )
 }
 
-fn lcr_atom_count_edge(acc: Int, edge: Edge, wanted: Symbol) -> Int {
-  acc + lcr_atom_count(node: edge.target, wanted: wanted)
+fn lcr_named_edge_count(node: Node, wanted: Symbol) -> Int {
+  fold_node(
+    n: node,
+    algebra: NodeFold {
+      init: fn(_self) { 0 },
+      step: fn(acc, edge, sub) {
+        lcr_sum_step(acc: acc + lcr_edge_seed(edge: edge, wanted: wanted), sub: sub)
+      }
+    }
+  )
 }
 
 fn lcr_named_edges_in(module_qn: QualifiedName, wanted: Symbol) -> Int {
@@ -254,9 +264,12 @@ test fn a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_hol
 // corner case becomes the ordinary path. Whether it accounts for any of that
 // axis's emission errors is UNRUN and is not claimed here.
 //
-// WHEN THE GRAFT REPAIR LANDS THIS ROW GOES RED. Invert it then -- assert that
-// BOTH declarations are indexed and named -- rather than deleting it, so the
-// repair keeps an executing control.
+// THIS ROW GOES RED WHEN THE GRAFT REPAIR LANDS. That is a property of what it
+// asserts, not an instruction left for a future editor: DESIGN 4b(4) already
+// governs the disposition -- a climb dissolves the production machinery it
+// obsoletes while the discriminating evidence STAYS ENROLLED, and an
+// expecting-red probe that greens flips to a permanent regression control rather
+// than retiring. The obligation is carried by that clause, not by this comment.
 test fn a_record_type_declaration_does_not_reach_the_index_while_a_fn_does_holds() -> Bool {
   let fn_is_indexed = lcr_indexed(dotted: "lcr.producer.producer_anchor")
   let type_is_not_indexed = lcr_indexed(dotted: "lcr.producer.CrossFileMarker") == false
@@ -283,8 +296,9 @@ test fn a_record_type_declaration_does_not_reach_the_index_while_a_fn_does_holds
 // grammar machinery and misses the real references, which is the shape of a wrong
 // answer rather than a refusal.
 //
-// WHEN BODY LOWERING MOVES AHEAD OF THIS CARRIER THIS ROW GOES RED. Invert it
-// then -- assert the callee IS present as an atom -- rather than deleting it.
+// THIS ROW GOES RED WHEN BODY LOWERING MOVES AHEAD OF THIS CARRIER, for the same
+// reason as the row above and under the same clause: DESIGN 4b(4) owns what
+// happens to the evidence when the state it records changes.
 test fn function_bodies_are_token_level_in_the_normalized_carrier_holds() -> Bool {
   let a_raw_token_is_present = lcr_atoms_in(module_qn: lcr_consumer_qn, wanted: ^dag_token_lbrace) > 0
   let the_callee_is_not_a_node = lcr_atoms_in(module_qn: lcr_consumer_qn, wanted: ^producer_anchor) == 0
