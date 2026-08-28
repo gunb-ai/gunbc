@@ -607,6 +607,21 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
   ]
 }
 
+// The dashboard deploy, invoked as a fleet-converge mode rather than from a workflow of its own.
+// The operation is unchanged and already correct: live_deploy_apply_srv1_wet observes the candidate
+// release BEFORE any mutation and refuses when it cannot name the release it would install, so a
+// deploy that cannot identify itself stops the line with nothing touched. What was missing was only
+// a caller -- gunbc#8676 deleted the invocation, never the operation.
+fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_live_deploy_apply_srv1_target.entry,
+    function: gunbc_ci_live_deploy_apply_srv1_target.function,
+    claim_run: false,
+    receipt_rel: "target/live-deploy-srv1-receipt.txt"
+  )
+}
+
 fn gunbc_ci_fleet_reach_probe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,

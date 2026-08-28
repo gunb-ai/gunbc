@@ -35,12 +35,16 @@ import v2.workflow.legacy_binding_observation {
   LegacyObservationAdmission,
   ObservationAdmitted,
   ObservationRefused,
-  LegacyObservationCompleteness,
-  LegacyObservationMissingExpected,
-  LegacyObservationForeignObserved,
-  LegacyObservationRepeatedObserved,
   admit_complete_observation,
   legacy_subject_identity
+}
+import std.observation_completeness {
+  ObservationCompleteness,
+  ObservationComplete,
+  ObservationMissingExpected,
+  ObservationForeignObserved,
+  ObservationRepeatedObserved,
+  ObservationRepeatedExpected
 }
 import v2.workflow.legacy_binding_delta {
   ProjectionProvenance,
@@ -155,7 +159,7 @@ fn lbd_insertion(target: Int, caused_by: Int) -> ProjectionProvenanceEntry {
 // the test harness, which is the one place it is easiest to leave uncaught.
 type LbdTotalityOutcome
   = TotalityComputed { totality: ProvenanceTotality }
-  | AdmissionRefusedBeforeTotality { completeness: LegacyObservationCompleteness }
+  | AdmissionRefusedBeforeTotality { completeness: ObservationCompleteness<Int> }
   | FixtureTransportRefused
 
 // THE FIXTURE AUTHORS A TRANSPORT BECAUSE THE ADMISSION NOW DERIVES ITS OWN DENOMINATOR, and the
@@ -268,7 +272,7 @@ fn lbd_delta(base: List<Int>, projected: List<Int>, entries: List<ProjectionProv
 
 type LbdDeltaOutcome
   = DeltaComputedOutcome { delta: LegacyBindingDelta }
-  | DeltaAdmissionRefused { completeness: LegacyObservationCompleteness }
+  | DeltaAdmissionRefused { completeness: ObservationCompleteness<Int> }
   | DeltaFixtureTransportRefused
 
 fn lbd_totality(base: List<Int>, projected: List<Int>, entries: List<ProjectionProvenanceEntry>) -> LbdTotalityOutcome {
@@ -592,10 +596,11 @@ test fn two_row_less_observations_over_nonempty_expected_populations_refuse_befo
     entries: []
   ) {
     AdmissionRefusedBeforeTotality { completeness: c } => match c {
-      LegacyObservationMissingExpected { occurrences: missing } => (missing |> count) == 3
-      LegacyObservationForeignObserved { occurrences: _ } => false
-      LegacyObservationRepeatedObserved { occurrences: _ } => false
-      LegacyObservationComplete => false
+      ObservationMissingExpected { keys: missing } => (missing |> count) == 3
+      ObservationForeignObserved { keys: _ } => false
+      ObservationRepeatedObserved { keys: _ } => false
+      ObservationRepeatedExpected { keys: _ } => false
+      ObservationComplete => false
     }
     TotalityComputed { totality: _ } => false
     FixtureTransportRefused => false
