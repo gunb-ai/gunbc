@@ -1,0 +1,208 @@
+module test.claim.deleted_cadence_reference_census_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import std.witness_admission {
+  FalsifierSelfHostWet,
+  FalsifierSubstrateLongLane,
+  DiscoverySelection,
+  OfflineLocalRecipe,
+}
+import gunbc.deleted_cadence_reference_census {
+  DeletedCadenceReference,
+  ExecutingConsumerReceipt,
+  PastExecutionReceipt,
+  CoverageNotEstablished,
+  HistoricalReceipt,
+  ReboundToExecutingConsumer,
+  PremiseInvalidated,
+  LostWithDeletedCadence,
+  deleted_cadence_reference_drop,
+  TerminalVerdictObserved,
+  NeverReachedTerminal,
+  deleted_cadence_reference_row_holds,
+  deleted_cadence_reference_census_live_holds,
+  deleted_cadence_reference_any_rebound,
+}
+import gunbc.legacy_test_behavior_disposition {
+  dag_comment_wall_replacement_coverage_holds,
+  replacement_witness_coverage_standing_holds,
+  ReplacementWitnessesUnconsumed,
+}
+
+// THE DISCRIMINATING RED IS AUTHORABLE HERE AND IS AUTHORED, which is what DESIGN section 4b
+// asks before a wall is claimed: the forbidden state is a row asserting that a population is
+// covered by a consumer whose cadence has no scheduled route. That state cannot be authored
+// truthfully in the corpus -- no such consumer exists -- but a FIXTURE row expresses it
+// perfectly, and a fixture is exactly where a regression probe for an invalid claim belongs.
+//
+// Each red below is paired with a control that differs in ONE decided field, so a predicate
+// that ignored its argument, or answered a constant, agrees with the control and is caught.
+
+// THE FIXTURE SITE REFERENCES NAME THIS MODULE'S OWN ROWS, and the first cut of this file did
+// not -- it invented `test.fixture.red` and `test.fixture.green`, modules that do not exist.
+// The citation wall refused all eleven with CITED-MODULE-ABSENT, which is the defect class this
+// whole change exists to enforce, committed by the change enforcing it and caught by execution
+// rather than by its author. Recorded here rather than quietly corrected, because a wall that
+// catches its own advocate is the best evidence available that it is real.
+//
+// The honest repair is to make the citation TRUE, never to exempt a fixture from the rule: a
+// fixture row IS a declaration in a real module, so it cites itself. The `site` field is not
+// what any predicate below reads -- they match on `standing` alone -- which is exactly why a
+// false value there would have sat unnoticed forever.
+data red_rebound_to_dark_cadence: DeletedCadenceReference = DeletedCadenceReference {
+  site: decl_ref(module_path: "test.claim.deleted_cadence_reference_census_witness_test", decl_name: "red_rebound_to_dark_cadence"),
+  standing: ReboundToExecutingConsumer {
+    consumer: ExecutingConsumerReceipt {
+      scheduled_entry_point: ".github/workflows/falsifier.yml" as NonEmptyStr,
+      exact_command: "claim_executor --plan-entry src/v2/workflow/ci_floor_plan.dag" as NonEmptyStr,
+      witness_population: "falsifier_self_host_wet_entries" as NonEmptyStr,
+      entry_point_exists: true,
+      cadence: FalsifierSelfHostWet,
+      terminal: TerminalVerdictObserved { run_identity: "run 30766839943" as NonEmptyStr },
+    },
+  },
+}
+
+data green_rebound_to_live_cadence: DeletedCadenceReference = DeletedCadenceReference {
+  site: decl_ref(module_path: "test.claim.deleted_cadence_reference_census_witness_test", decl_name: "green_rebound_to_live_cadence"),
+  standing: ReboundToExecutingConsumer {
+    consumer: ExecutingConsumerReceipt {
+      scheduled_entry_point: ".github/workflows/witnesses.yml" as NonEmptyStr,
+      exact_command: "claim_executor --required-ci --source-root dag --source-root src/v2 --required-lane witnesses" as NonEmptyStr,
+      witness_population: "the discovered witness roster routed to the floor fold" as NonEmptyStr,
+      entry_point_exists: true,
+      cadence: DiscoverySelection,
+      terminal: TerminalVerdictObserved { run_identity: "run 32553487573" as NonEmptyStr },
+    },
+  },
+}
+
+data red_rebound_missing_entry_point: DeletedCadenceReference = DeletedCadenceReference {
+  site: decl_ref(module_path: "test.claim.deleted_cadence_reference_census_witness_test", decl_name: "red_rebound_missing_entry_point"),
+  standing: ReboundToExecutingConsumer {
+    consumer: ExecutingConsumerReceipt {
+      scheduled_entry_point: ".github/workflows/does-not-exist.yml" as NonEmptyStr,
+      exact_command: "claim_executor --required-ci" as NonEmptyStr,
+      witness_population: "the discovered witness roster" as NonEmptyStr,
+      entry_point_exists: false,
+      cadence: DiscoverySelection,
+      terminal: TerminalVerdictObserved { run_identity: "run 32553487573" as NonEmptyStr },
+    },
+  },
+}
+
+data red_rebound_never_terminal: DeletedCadenceReference = DeletedCadenceReference {
+  site: decl_ref(module_path: "test.claim.deleted_cadence_reference_census_witness_test", decl_name: "red_rebound_never_terminal"),
+  standing: ReboundToExecutingConsumer {
+    consumer: ExecutingConsumerReceipt {
+      scheduled_entry_point: ".github/workflows/witnesses.yml" as NonEmptyStr,
+      exact_command: "claim_executor --required-ci" as NonEmptyStr,
+      witness_population: "the discovered witness roster" as NonEmptyStr,
+      entry_point_exists: true,
+      cadence: DiscoverySelection,
+      terminal: NeverReachedTerminal,
+    },
+  },
+}
+
+// A no-coverage claim whose cadence DOES have a live route is the mirror defect, and it is the
+// one a transcription can never fail on: a row that says nothing runs this, about something
+// that runs, is a stale pessimism nothing would otherwise notice.
+data red_premise_invalidated_on_live_cadence: DeletedCadenceReference = DeletedCadenceReference {
+  site: decl_ref(module_path: "test.claim.deleted_cadence_reference_census_witness_test", decl_name: "red_premise_invalidated_on_live_cadence"),
+  standing: PremiseInvalidated {
+    affected_decision: decl_ref(module_path: "test.claim.deleted_cadence_reference_census_witness_test", decl_name: "red_premise_invalidated_on_live_cadence"),
+    current_coverage: CoverageNotEstablished {
+      lost_with: OfflineLocalRecipe,
+      restoration_trigger: "never fires, because the cadence already has a route" as NonEmptyStr,
+    },
+  },
+}
+
+data green_premise_invalidated_on_dark_cadence: DeletedCadenceReference = DeletedCadenceReference {
+  site: decl_ref(module_path: "test.claim.deleted_cadence_reference_census_witness_test", decl_name: "green_premise_invalidated_on_dark_cadence"),
+  standing: PremiseInvalidated {
+    affected_decision: decl_ref(module_path: "test.claim.deleted_cadence_reference_census_witness_test", decl_name: "green_premise_invalidated_on_dark_cadence"),
+    current_coverage: CoverageNotEstablished {
+      lost_with: FalsifierSubstrateLongLane,
+      restoration_trigger: "a workflow runs a predict-only cold comparison" as NonEmptyStr,
+    },
+  },
+}
+
+// A historical receipt is NOT gated on the route, and this pair is what keeps that deliberate.
+// It names a dark cadence and holds; it would still hold if that cadence returned, because a
+// later re-add does not falsify a past run.
+data green_historical_receipt_on_dark_cadence: DeletedCadenceReference = DeletedCadenceReference {
+  site: decl_ref(module_path: "test.claim.deleted_cadence_reference_census_witness_test", decl_name: "green_historical_receipt_on_dark_cadence"),
+  standing: HistoricalReceipt {
+    event: PastExecutionReceipt {
+      cadence: FalsifierSelfHostWet,
+      run_identity: "run 30126573464" as NonEmptyStr,
+      observed_population: "six SelfEmitted wet bindings" as NonEmptyStr,
+    },
+  },
+}
+
+// The class-level DESIGN 4b(3) drop row, exercised at both polarities on the same drop, so the
+// arm is covered by execution rather than by existing.
+data green_drop_on_dark_cadence: DeletedCadenceReference = DeletedCadenceReference {
+  site: decl_ref(module_path: "test.claim.deleted_cadence_reference_census_witness_test", decl_name: "green_drop_on_dark_cadence"),
+  standing: LostWithDeletedCadence {
+    drop: deleted_cadence_reference_drop,
+    lost_with: FalsifierSubstrateLongLane,
+  },
+}
+
+data red_drop_on_live_cadence: DeletedCadenceReference = DeletedCadenceReference {
+  site: decl_ref(module_path: "test.claim.deleted_cadence_reference_census_witness_test", decl_name: "red_drop_on_live_cadence"),
+  standing: LostWithDeletedCadence {
+    drop: deleted_cadence_reference_drop,
+    lost_with: DiscoverySelection,
+  },
+}
+
+test fn rung_drop_over_a_live_cadence_refuses() -> Bool {
+  deleted_cadence_reference_row_holds(row: green_drop_on_dark_cadence)
+    && !deleted_cadence_reference_row_holds(row: red_drop_on_live_cadence)
+}
+
+test fn rebound_to_a_cadence_with_no_scheduled_route_refuses() -> Bool {
+  !deleted_cadence_reference_row_holds(row: red_rebound_to_dark_cadence)
+    && deleted_cadence_reference_row_holds(row: green_rebound_to_live_cadence)
+}
+
+test fn rebound_naming_an_absent_entry_point_refuses() -> Bool {
+  !deleted_cadence_reference_row_holds(row: red_rebound_missing_entry_point)
+}
+
+test fn rebound_that_never_reached_a_terminal_verdict_refuses() -> Bool {
+  !deleted_cadence_reference_row_holds(row: red_rebound_never_terminal)
+}
+
+test fn no_coverage_claim_over_a_live_cadence_refuses() -> Bool {
+  !deleted_cadence_reference_row_holds(row: red_premise_invalidated_on_live_cadence)
+    && deleted_cadence_reference_row_holds(row: green_premise_invalidated_on_dark_cadence)
+}
+
+test fn historical_receipt_is_not_gated_on_a_current_route() -> Bool {
+  deleted_cadence_reference_row_holds(row: green_historical_receipt_on_dark_cadence)
+}
+
+test fn live_census_holds_and_claims_no_executing_consumer() -> Bool {
+  deleted_cadence_reference_census_live_holds()
+    && !deleted_cadence_reference_any_rebound()
+}
+
+// The legacy split is asserted at BOTH grains: the standing predicate discriminates, and the
+// live row answers the question the deletion receipt no longer answers.
+test fn legacy_replacement_coverage_is_unconsumed_and_discriminates() -> Bool {
+  dag_comment_wall_replacement_coverage_holds()
+    && !replacement_witness_coverage_standing_holds(
+      standing: ReplacementWitnessesUnconsumed {
+        lost_with: DiscoverySelection,
+        restoration_trigger: "never fires, because the cadence already has a route" as NonEmptyStr,
+      },
+    )
+}

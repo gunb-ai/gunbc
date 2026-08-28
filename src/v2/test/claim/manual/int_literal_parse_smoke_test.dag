@@ -1,5 +1,6 @@
 module v2.test.manual.int_literal_parse_smoke
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.ingested_fixture_arrows { ingested_loop_module_source }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
@@ -22,7 +23,7 @@ import v2.std.integer {
   integer_string_to_decimal_digits_optional
 }
 import v2.std.logic { Bool }
-import v2.std.node { SyntheticOccurrence }
+
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -49,7 +50,7 @@ fn int_literal_smoke_first_int_token_lexeme(source_text: String) -> Optional<Str
 test fn int_literal_loop_token_lexeme_builds_holds() -> Bool {
   match int_literal_smoke_first_int_token_lexeme(source_text: ingested_loop_module_source) {
     Present { value: lexeme } =>
-      match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
+      match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: OccurrenceSynthetic) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -65,7 +66,7 @@ test fn int_literal_from_token_lexeme_holds() -> Bool {
     Accepted { value: stream, diagnostics: _ } =>
       match token_stream_first(stream: stream) {
         Present { value: tok } =>
-          match dag_int_literal_node_from_lexeme(lexeme: tok.lexeme, occurrence_id: SyntheticOccurrence) {
+          match dag_int_literal_node_from_lexeme(lexeme: tok.lexeme, occurrence_id: OccurrenceSynthetic) {
             Accepted { value: _, diagnostics: _ } => true
             Rejected { diagnostics: _ } => false
           }
@@ -93,14 +94,14 @@ test fn int_literal_magnitude_node_holds() -> Bool {
 }
 
 test fn int_literal_node_from_lexeme_one_holds() -> Bool {
-  match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
+  match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: OccurrenceSynthetic) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn int_literal_magnitude_int_from_node_holds() -> Bool {
-  match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
+  match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: OccurrenceSynthetic) {
     Accepted { value: node, diagnostics: _ } =>
       match dag_int_literal_magnitude_int_from_node(node: node) {
         Accepted { value: _, diagnostics: _ } => true

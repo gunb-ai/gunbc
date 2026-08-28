@@ -8,7 +8,7 @@ data std_logic_bool_enum_golden: String = concat(rust_enum_derives_copy, "\nenum
 data std_logic_bool_wrong_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { False, True }")
 
 fn sl_conj(children: List<Edge>) -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }
+  Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: OccurrenceSynthetic }
 }
 
 fn sl_pos(target: Node) -> Edge { Edge { label: Positional, target: target } }
@@ -41,7 +41,7 @@ fn sl_coproduct_enum(variant_edges: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: variant_edges,
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -123,7 +123,7 @@ fn sl_coproduct_derive_binding_rejects_non_disj() -> Bool {
     coproduct: Node {
       kind: TypeNode { connective: Atom { identity: ^sl_non_disj_atom } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   ) {
     Rejected { diagnostics: _ } => true

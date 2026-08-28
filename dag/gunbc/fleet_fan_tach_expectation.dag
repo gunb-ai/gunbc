@@ -1,0 +1,252 @@
+module gunbc.fleet_fan_tach_expectation
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
+
+// WHAT THIS MODULE ANSWERS, AND THE NARROWNESS IS THE POINT:
+//
+//   At which host-scoped tach endpoints is rotation expected?
+//
+// That question is worth answering on its own because a tachometer reading nothing is TWO states
+// with opposite owners - a fan that has failed, and an endpoint where nothing was ever expected
+// to turn. The BMC cannot tell them apart: a service processor knows its header count and
+// nothing about what the chassis was built to carry, so it marks both Critical. Measured on the
+// live fleet 2026-08-26, both states are present at once - srv3's FAN2 has nothing behind it,
+// while srv1's FAN4 has a fan that has stopped.
+//
+// WHAT THIS MODULE DOES NOT ANSWER, enumerated because an earlier revision of it quietly
+// claimed several of these and shipped a function named for one:
+//
+//   how many PHYSICAL FANS are installed        - a header may drive two through a splitter
+//   which physical fan SUPPLIES the tach line   - wiring, unobserved here
+//   which PWM endpoint CONTROLS a header        - board/firmware mapping, not modelled here
+//   whether swampd WRITES a given header        - controller topology, not modelled here
+//   which projected config BYTES realize control - projection identity, not modelled here
+//
+// There is deliberately NO function in this module whose result could be read as controller
+// coverage. That absence is the construction wall, not an oversight: a list named for control
+// would be cited later as the thing its name promises, and the wiring layer would then have to
+// negotiate with an apparently-working authority that never established control at all.
+
+type FanHeaderRole
+  = ProcessorCoolerHeader
+  | ChassisBayHeader
+
+// TachNotExpected says what the evidence supports and no more: this host currently expects no
+// rotation at this endpoint. It deliberately does NOT say the chassis was built without a bay at
+// the corresponding index. An earlier revision named this arm "by design" while the same change
+// recorded that the Z2600U's bay count is unpublished by Rosewill - the name asserted precisely
+// the fact the module admitted it did not have.
+type FanHeaderTachExpectation
+  = TachExpected { role: FanHeaderRole }
+  | TachNotExpected
+
+type FanHeaderExpectationRow {
+  header: NonEmptyStr
+  expectation: FanHeaderTachExpectation
+}
+
+type HostFanTachExpectation {
+  host: HostIdentity
+  headers: List<FanHeaderExpectationRow>
+}
+
+fn cooler_tach_expected(header: NonEmptyStr) -> FanHeaderExpectationRow {
+  FanHeaderExpectationRow {
+    header: header,
+    expectation: TachExpected { role: ProcessorCoolerHeader },
+  }
+}
+
+fn chassis_tach_expected(header: NonEmptyStr) -> FanHeaderExpectationRow {
+  FanHeaderExpectationRow {
+    header: header,
+    expectation: TachExpected { role: ChassisBayHeader },
+  }
+}
+
+fn tach_not_expected(header: NonEmptyStr) -> FanHeaderExpectationRow {
+  FanHeaderExpectationRow { header: header, expectation: TachNotExpected }
+}
+
+fn expected_tach_headers(expectation: HostFanTachExpectation) -> List<NonEmptyStr> {
+  map(
+    filter(
+      expectation.headers,
+      row =>
+        match row.expectation {
+          TachExpected { role } => true
+          TachNotExpected => false
+        },
+    ),
+    row => row.header,
+  )
+}
+
+// THE ROSTER, AND A LOOKUP THAT REFUSES RATHER THAN GUESSING. A host with no expectation row has
+// no answer here, and the arm that would return an empty list instead is the one that turns
+// "nobody modelled this machine" into "this machine expects no tach at all" -- a permanently
+// satisfied requirement, which is the quietest way to stop monitoring a fleet.
+data fleet_fan_tach_expectations: List<HostFanTachExpectation> = [
+  srv1_fan_tach_expectation,
+  srv2_fan_tach_expectation,
+  srv3_fan_tach_expectation,
+  srv4_fan_tach_expectation,
+]
+
+// A DUPLICATE ROW REFUSES; IT IS NOT DECIDED BY AUTHORING ORDER. The first cut of this lookup was
+// a first-match fold with an annotation claiming it "refuses rather than guessing" -- true of the
+// ABSENT case and false of the duplicate one, which is the case the annotation was not thinking
+// about. That is the identical defect already closed in the alignment roster, reintroduced by the
+// same author in the function written to close a different one, three commits later.
+//
+// It is load-bearing rather than theoretical: bmc_fan_policy_apply_suitability consumes this
+// before admitting a projection, so two srv3 rows with different header sets would decide which
+// headers must report by which was typed first.
+//
+// DUPLICATE HEADERS INSIDE THE CHOSEN ROW REFUSE TOO. expected_tach_headers maps rows through
+// unchanged, so one header authored twice would appear twice in the required list and compare
+// unequal against any correctly-authored projection -- a refusal whose stated cause would be
+// topology drift when the real cause is a broken row.
+type HostFanTachExpectationAdmission
+  = HostFanTachExpectationEstablished { expectation: HostFanTachExpectation }
+  | HostFanTachExpectationAbsent
+  | HostFanTachExpectationDuplicate { count: Int }
+  | HostFanTachExpectationHeaderDuplicated { header: NonEmptyStr }
+
+fn expectation_rows_for_host(host: HostIdentity) -> List<HostFanTachExpectation> {
+  filter(fleet_fan_tach_expectations, row => row.host == host)
+}
+
+// The roster is a parameter here ONLY so a fixture can author the broken states the fleet roster
+// must never contain. Production reads host_fan_tach_expectation_admission, which closes it.
+fn tach_expectation_admission_over(
+  rows: List<HostFanTachExpectation>,
+  host: HostIdentity,
+) -> HostFanTachExpectationAdmission {
+  let matching = filter(rows, row => row.host == host)
+  if matching.length() == 0 {
+    HostFanTachExpectationAbsent
+  } else if matching.length() > 1 {
+    HostFanTachExpectationDuplicate { count: matching.length() }
+  } else {
+    fold(
+      matching,
+      init: HostFanTachExpectationAbsent,
+      f: (acc, row) =>
+        match first_duplicated_header(rows: row.headers) {
+          Present { value: header } =>
+            HostFanTachExpectationHeaderDuplicated { header: header }
+          none => HostFanTachExpectationEstablished { expectation: row }
+        },
+    )
+  }
+}
+
+fn first_duplicated_header(rows: List<FanHeaderExpectationRow>) -> NonEmptyStr? {
+  fold(
+    rows,
+    init: none,
+    f: (acc, row) =>
+      match acc {
+        Present { value } => Present { value: value }
+        none =>
+          if filter(rows, other => other.header == row.header).length() > 1 {
+            Present { value: row.header }
+          } else {
+            none
+          }
+      },
+  )
+}
+
+fn host_fan_tach_expectation_admission(host: HostIdentity) -> HostFanTachExpectationAdmission {
+  tach_expectation_admission_over(rows: fleet_fan_tach_expectations, host: host)
+}
+
+fn expected_tach_count(expectation: HostFanTachExpectation) -> Int {
+  expected_tach_headers(expectation: expectation).length()
+}
+
+// PROVENANCE OF THE ROWS BELOW, STATED EXACTLY, because the previous revision of this module got
+// it wrong in a way that survived an approving review.
+//
+// These rows are OPERATOR-DECLARED PER-HOST HEADER EXPECTATION, corroborated by three things:
+// the chassis shipment count, knowledge of which cooler is fitted, and repeated tach observation
+// (five reads per header per host, 2026-08-26).
+//
+// THEY ARE NOT DERIVED FROM THE CHASSIS AND COOLER CATALOGS, and the distinction is decidable
+// rather than stylistic. The catalogs can give a COUNT - three chassis fans plus one cooler
+// header is four. They cannot give the INDICES, and the indices are the entire content: srv3
+// expects {FAN1,FAN3,FAN4,FAN5} and srv4 expects {FAN1,FAN2,FAN3,FAN4}. Both are four. No
+// chassis catalog knows which four, because which header a builder plugged into is not a
+// property of the chassis model.
+//
+// The earlier revision asserted the derivation in prose while importing neither catalog, so
+// reverting Rosewill's included_fan_count to its old wrong value of 0 left every witness green.
+// A reviewer checked the chassis fact and checked the header rows, and the invented part was the
+// arrow between them.
+//
+// Corroboration is also NOT the authority in the other direction: a failed fan reads absent, so
+// an expectation derived from readings alone would silently shrink to match its own faults.
+// srv1/FAN4 and srv1/FAN5 are declared expected and read as absent, which is the finding rather
+// than a reason to drop them.
+
+// srv1/srv2 - 4U, Noctua NH-D9 AMP-4926 4U on FAN1, four chassis bays on FAN2..FAN5.
+// FAN1 is expected to expose the processor-cooler tach. The number of physical fans driven by
+// that header, and which of them supplies the tach conductor, are UNOBSERVED in this layer -
+// the cooler ships two fans and a splitter, but what this fleet did with them is a wiring fact
+// nobody has inspected, and the extdeps catalog describing what Noctua supplies is not evidence
+// of how these two machines were built.
+data srv1_fan_tach_expectation: HostFanTachExpectation = HostFanTachExpectation {
+  host: operator_host_srv1,
+  headers: [
+    cooler_tach_expected(header: "FAN1"),
+    chassis_tach_expected(header: "FAN2"),
+    chassis_tach_expected(header: "FAN3"),
+    chassis_tach_expected(header: "FAN4"),
+    chassis_tach_expected(header: "FAN5"),
+  ],
+}
+
+data srv2_fan_tach_expectation: HostFanTachExpectation = HostFanTachExpectation {
+  host: operator_host_srv2,
+  headers: [
+    cooler_tach_expected(header: "FAN1"),
+    chassis_tach_expected(header: "FAN2"),
+    chassis_tach_expected(header: "FAN3"),
+    chassis_tach_expected(header: "FAN4"),
+    chassis_tach_expected(header: "FAN5"),
+  ],
+}
+
+// srv3/srv4 - 2U, Dynatron W1 on FAN1, three chassis bays. THE TWO HOSTS USE DIFFERENT INDICES
+// at the same cardinality, which is why a fleet-wide list cannot be right for both and why any
+// check comparing counts passes while the configuration is wrong.
+data srv3_fan_tach_expectation: HostFanTachExpectation = HostFanTachExpectation {
+  host: operator_host_srv3,
+  headers: [
+    cooler_tach_expected(header: "FAN1"),
+    tach_not_expected(header: "FAN2"),
+    chassis_tach_expected(header: "FAN3"),
+    chassis_tach_expected(header: "FAN4"),
+    chassis_tach_expected(header: "FAN5"),
+  ],
+}
+
+data srv4_fan_tach_expectation: HostFanTachExpectation = HostFanTachExpectation {
+  host: operator_host_srv4,
+  headers: [
+    cooler_tach_expected(header: "FAN1"),
+    chassis_tach_expected(header: "FAN2"),
+    chassis_tach_expected(header: "FAN3"),
+    chassis_tach_expected(header: "FAN4"),
+    tach_not_expected(header: "FAN5"),
+  ],
+}

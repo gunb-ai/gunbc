@@ -168,7 +168,7 @@ fn scm_image_encoded(n: Node) -> JsonValue {
 }
 
 // The reconstructed program compared on CONTENT IDENTITY, not on occurrence provenance. checkout
-// rebuilds with SyntheticOccurrence throughout, and the store deliberately does not preserve
+// rebuilds with OccurrenceSynthetic throughout, and the store deliberately does not preserve
 // occurrence identity, so asserting on it would assert the one property the model says must not
 // matter. The expectation is canonicalized for the same reason store_node canonicalizes: named-edge
 // order is not a fact this store preserves.

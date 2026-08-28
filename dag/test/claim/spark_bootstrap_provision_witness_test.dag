@@ -30,6 +30,8 @@ import gunbc.spark.bootstrap_provision {
   spark_plan_demand, spark_demand_for_selected, spark_demand_decision,
   WifCredentialIssuanceStanding, WifIssuanceObserved, WifIssuanceUnobserved,
   spark_wif_issuance_standing,
+  spark_effective_access_standing, admit_spark_material_source, admit_spark_readback_version,
+  classify_spark_container, compare_spark_readback, decide_spark_materialization,
   EffectiveAccessStanding, EffectiveAccessExact, EffectiveAccessOverbroad,
   EffectiveAccessPartiallyObserved, EffectiveAccessUnobserved,
   SecretConsumer, SecretDemandStanding, SecretDemandActive, SecretDemandRetainedForRecovery,

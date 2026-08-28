@@ -544,8 +544,8 @@ fn projection_atom_identity_node(ctx: &InterpContext, identity: &str) -> Value {
             (
                 ctx.sym("occurrence_id"),
                 Value::Variant {
-                    type_name: ctx.sym("NodeOccurrenceId"),
-                    variant_name: ctx.sym("SyntheticOccurrence"),
+                    type_name: ctx.sym("NodeOccurrenceIdentity"),
+                    variant_name: ctx.sym("OccurrenceSynthetic"),
                     fields: Rc::new(vec![]),
                 },
             ),
@@ -599,8 +599,8 @@ fn projection_node_record(ctx: &InterpContext, projection_kind: &str, edges: Vec
             (
                 ctx.sym("occurrence_id"),
                 Value::Variant {
-                    type_name: ctx.sym("NodeOccurrenceId"),
-                    variant_name: ctx.sym("SyntheticOccurrence"),
+                    type_name: ctx.sym("NodeOccurrenceIdentity"),
+                    variant_name: ctx.sym("OccurrenceSynthetic"),
                     fields: Rc::new(vec![]),
                 },
             ),

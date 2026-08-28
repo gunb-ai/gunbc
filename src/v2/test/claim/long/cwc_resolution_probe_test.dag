@@ -41,46 +41,48 @@ test fn cwc_norm_three_variant_accepts() -> Bool {
   cwc_norm_accepts(src: cwc_src_type_three)
 }
 
-fn cwc_tree_has_disj(n: Node) -> Bool {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: fn(node) {
-        match node.kind {
-          TypeNode { connective: Disj } => true
-          _ => false
-        }
-      },
-      step: fn(acc, _edge, child_acc) {
-        if acc {
-          true
-        } else {
-          child_acc
-        }
+fn cwc_tree_has_disj_algebra() -> NodeFold<Bool> {
+  NodeFold {
+    init: fn(node) {
+      match node.kind {
+        TypeNode { connective: Disj } => true
+        _ => false
+      }
+    },
+    step: fn(acc, _edge, child_acc) {
+      if acc {
+        true
+      } else {
+        child_acc
       }
     }
-  )
+  }
+}
+
+fn cwc_tree_has_disj(n: Node) -> Bool {
+  fold_node(n: n, algebra: cwc_tree_has_disj_algebra())
+}
+
+fn cwc_disj_arm_count_algebra() -> NodeFold<Int> {
+  NodeFold {
+    init: fn(node) {
+      match node.kind {
+        TypeNode { connective: Disj } => count(node.children)
+        _ => 0
+      }
+    },
+    step: fn(acc, _edge, child_acc) {
+      if acc > 0 {
+        acc
+      } else {
+        child_acc
+      }
+    }
+  }
 }
 
 fn cwc_disj_arm_count(n: Node) -> Int {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: fn(node) {
-        match node.kind {
-          TypeNode { connective: Disj } => count(node.children)
-          _ => 0
-        }
-      },
-      step: fn(acc, _edge, child_acc) {
-        if acc > 0 {
-          acc
-        } else {
-          child_acc
-        }
-      }
-    }
-  )
+  fold_node(n: n, algebra: cwc_disj_arm_count_algebra())
 }
 
 fn cwc_norm_rejects(src: String) -> Bool {
@@ -139,4 +141,3 @@ test fn cwc_review_disj_has_four_arms() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
-

@@ -47,7 +47,7 @@ pub fn is_kernel_type(name: String) -> bool {
 pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, i64>> = {
-            v1_rt::rc_map_insert(carrier_container_arity_rows(), "Witness".to_string(), 1)
+            v1_rt::rc_map_insert(crate::std_algebra::carrier_container_arity_rows(), "Witness".to_string(), 1)
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, i64>>| c.clone())
@@ -69,7 +69,7 @@ pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
         Rc::new(vec!["T".to_string()])
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
-            Some(p) => algebra_type_param_names(p.clone()),
+            Some(p) => crate::std_algebra::algebra_type_param_names(p.clone()),
             None => Rc::new(vec![]),
         }
     }
@@ -134,7 +134,7 @@ pub fn is_ordered_element_collection(name: String) -> bool {
 pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
-            carrier_container_algebra_rows()
+            crate::std_algebra::carrier_container_algebra_rows()
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
@@ -143,7 +143,7 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
 pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
     thread_local! {
         static CACHED: Rc<HashMap<String, String>> = {
-            carrier_container_alias_rows()
+            crate::std_algebra::carrier_container_alias_rows()
         };
     }
     CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
@@ -159,7 +159,7 @@ pub fn container_template_alias_algebra(name: String) -> Option<String> {
 
 pub fn canonical_container_names() -> Rc<Vec<String>> {
     Rc::new(v1_rt::sorted_map_keys(&v1_rt::rc_map_insert(
-        carrier_container_roster_map(),
+        crate::std_algebra::carrier_container_roster_map(),
         "Witness".to_string(),
         true,
     )))

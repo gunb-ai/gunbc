@@ -71,11 +71,11 @@ data rust_wire_serde_review_event_emitted: Node = Node {
       target: Node {
         kind: TypeNode { connective: Atom { identity: ^rust_ws_emitted_review_event } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn rust_ws_review_event_tokens(naming: VariantNaming) -> List<ConcreteSyntaxToken> {
@@ -194,7 +194,7 @@ fn rust_ws_grammar_relation_row_node(row: RustWireSerdeGrammarRow) -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -207,7 +207,7 @@ fn rust_ws_translation_rules_node(naming: VariantNaming) -> Node {
         target: rust_ws_grammar_relation_row_node(row: rust_ws_grammar_relation_row(naming: naming))
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -235,7 +235,7 @@ fn rust_ws_serialize_source_node(naming: VariantNaming) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_ws_serialize_source_prefix_edges(naming: naming),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -260,7 +260,7 @@ fn rust_ws_target_model_bundle(naming: VariantNaming) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: rust_ws_target_model_core_edges(naming: naming),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

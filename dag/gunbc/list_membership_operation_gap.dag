@@ -86,13 +86,6 @@ data list_membership_gap_sites: List<ListMembershipGapSite> = [
     argument_shape: PositionalPair,
   },
   {
-    collection_producer: decl_ref(module_path: "gunbc.session_auto_publish", decl_name: "write_set_refusals"),
-    index_coverage: CitableThroughDeclIndex,
-    element_type: "String",
-    occurrences: 1,
-    argument_shape: PositionalPair,
-  },
-  {
     collection_producer: decl_ref(module_path: "extdeps.unicode.blocks", decl_name: "zero_width_codepoints"),
     index_coverage: CitableThroughDeclIndex,
     element_type: "Int",
