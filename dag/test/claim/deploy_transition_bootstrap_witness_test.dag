@@ -103,23 +103,39 @@ test fn the_quiesced_set_covers_the_timer_the_service_and_the_serve_unit() -> Bo
     && any(units, u => u == names().unit_name)
 }
 
-// `disable --now` AND NOT `stop`, because durability is the whole requirement here. A stopped unit is
-// one reboot -- or one dependency -- away from running against a half-converged tree, and the deploy
-// process that stopped it may be gone. This witness reds if the quiescence is ever weakened to a stop.
-test fn quiescence_disables_rather_than_merely_stopping() -> Bool {
+// `mask --now`, AND THE `disable` ARM IS REFUSED EXPLICITLY RATHER THAN MERELY UNCHOSEN. Durability
+// is why this is not `stop`: a stopped unit is one reboot -- or one dependency -- away from running
+// against a half-converged tree, and the deploy process that stopped it may be gone. But `disable`
+// does not supply that durability either, and this witness exists because the module CLAIMED it did:
+// the belt service is rendered `install: NotInstallable`, so it is static, and `disable` on a static
+// unit removes symlinks that do not exist and does nothing. `mask` refuses activation from any
+// requester -- timer, dependency, or a hand at a terminal -- which is the property a bootstrap
+// quiescence needs and the one `disable` never had.
+//
+// THE NEGATIVE CLAUSES CARRY THE CONTENT. `mask` is a substring of `unmask`, so asserting only that
+// each command contains "mask" would pass for a restore -- the check would be green over the exact
+// inversion of what it claims. Refusing "unmask" and "disable" is what makes this discriminating.
+test fn quiescence_masks_and_does_not_merely_stop_or_disable() -> Bool {
   let cmds = bootstrap_quiesce_commands(names: names(), privileged: true)
   cmds.length() == 3
-    && all(cmds, c => string_contains(s: c, pattern: "disable"))
+    && all(cmds, c => string_contains(s: c, pattern: "mask"))
     && all(cmds, c => string_contains(s: c, pattern: "--now"))
+    && all(cmds, c => !string_contains(s: c, pattern: "unmask"))
+    && all(cmds, c => !string_contains(s: c, pattern: "disable"))
 }
 
-// RESTORATION IS ENABLE AND START, one of each per unit, because a disabled unit that is merely
-// started comes back disabled at the next boot -- the mirror of the property above.
-test fn restoration_re_enables_every_quiesced_unit_and_starts_it() -> Bool {
+// RESTORATION UNMASKS AND ASSERTS NOTHING ELSE, one command per unit, and the absences are the
+// claim. The previous restore enabled and started all three, which asserts that all three were
+// enabled AND running when the transition began -- a fact this module never observed. It would have
+// enabled a unit an operator had deliberately disabled, and `enable` would have failed on the static
+// one for the same reason `disable` did nothing to it. Unmasking removes the override and leaves the
+// prior state exactly as found, so the correct restore is strictly smaller than the one it replaces.
+test fn restoration_unmasks_every_unit_and_asserts_nothing_about_prior_state() -> Bool {
   let cmds = bootstrap_restore_commands(names: names(), privileged: true)
-  cmds.length() == 6
-    && count(filter(cmds, c => string_contains(s: c, pattern: "enable"))) == 3
-    && count(filter(cmds, c => string_contains(s: c, pattern: "start"))) == 3
+  cmds.length() == 3
+    && all(cmds, c => string_contains(s: c, pattern: "unmask"))
+    && all(cmds, c => !string_contains(s: c, pattern: "enable"))
+    && all(cmds, c => !string_contains(s: c, pattern: "start"))
 }
 
 // THE SWITCH IS A WALL. Restoring the units over a release that does not consult the marker

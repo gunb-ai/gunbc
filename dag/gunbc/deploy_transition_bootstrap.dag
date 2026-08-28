@@ -8,9 +8,8 @@ import gunbc.live_deploy.spec {
   deployment_belt_timer_unit_name,
 }
 import gunbc.live_deploy.operations {
-  systemctl_disable_now_command,
-  systemctl_enable_command,
-  systemctl_start_command,
+  systemctl_mask_now_command,
+  systemctl_unmask_command,
 }
 
 // THE FIRST TRANSITION IS NOT PROTECTED BY ANY MARKER, AND THAT IS NOT A GAP IN THE MARKER.
@@ -88,28 +87,50 @@ fn bootstrap_quiesced_units(names: DeploymentNames) -> List<NonEmptyStr> {
   ]
 }
 
-// `disable --now` AND NOT `stop`, because the durability is the whole requirement. `stop` is lost on
-// reboot and lost to any dependency that starts the unit again, so a deploy process that dies after
-// stopping would leave the actuator one reboot away from running against a half-converged tree.
-// Disabling removes the enablement symlinks, which persist until something deliberately restores
-// them -- and the only thing that restores them here is the switch below, which is walled.
+// `mask --now` AND NOT `disable --now`, AND THIS ROW IS A CORRECTION RATHER THAN A PREFERENCE. It
+// previously read `disable --now`, on the argument that disabling removes the enablement symlinks
+// and is therefore durable where `stop` is not. The durability argument against `stop` still holds
+// and is why this is not `stop`. The rest of it was FALSE FOR ONE OF THE THREE UNITS THIS QUIESCES,
+// which is worse than a weak choice because the row asserted a guarantee the operation does not
+// deliver.
+//
+// MEASURED, not reasoned: `gunbc.live_deploy.emit` renders the belt SERVICE with
+// `install: NotInstallable` -- it is a STATIC unit, activated by the belt timer rather than by an
+// [Install] section. A static unit has no enablement symlinks, so `systemctl disable` has nothing
+// to remove and does nothing; only the `--now` half took effect, and that half is exactly the
+// non-durable `stop` the row above rejects. So for the belt service the declared durability was
+// supplied by the timer being disabled separately, and not by anything this function did.
+//
+// `mask` is correct for both kinds and is stronger on the axis that actually matters here: it links
+// the unit to /dev/null, so activation is refused whatever requests it -- the timer, a dependency,
+// or a hand at a terminal. `disable` never prevented a manual `systemctl start`, and a bootstrap
+// quiescence whose whole purpose is that NOTHING actuates during the first transition cannot leave
+// that route open.
+//
+// AND MASK IS STATE-PRESERVING, WHICH IS WHY THE RESTORE BELOW GOT SIMPLER RATHER THAN LONGER.
+// `disable` DESTROYS enablement state, so a restore has to re-decide what that state was -- and the
+// previous restore re-enabled all three unconditionally, which would have ENABLED a unit an
+// operator had deliberately disabled before the transition began, and would additionally have
+// failed on the static one, since `enable` has no install section to act on either. `mask` layers
+// over the existing state and `unmask` removes the layer, leaving prior enablement exactly as
+// found. The restore therefore asserts nothing about what was enabled; it only stops overriding.
 fn bootstrap_quiesce_commands(names: DeploymentNames, privileged: Bool) -> List<String> {
   map(
     bootstrap_quiesced_units(names: names),
-    u => systemctl_disable_now_command(unit: u, privileged: privileged),
+    u => systemctl_mask_now_command(unit: u, privileged: privileged),
   )
 }
 
+// NO `start` HERE, AND ITS ABSENCE IS THE SAME STATE-PRESERVING ARGUMENT. The previous restore
+// started all three units after enabling them, which asserts that all three were RUNNING before the
+// quiescence. The belt timer starts the belt service on its own cadence and the serve unit is
+// started by its enablement at boot, so starting them by hand here would both duplicate that and
+// paper over the case where one of them was legitimately down. Unmasking returns the host to the
+// state the transition found; it does not decide what that state should be.
 fn bootstrap_restore_commands(names: DeploymentNames, privileged: Bool) -> List<String> {
-  concat(
-    map(
-      bootstrap_quiesced_units(names: names),
-      u => systemctl_enable_command(unit: u, privileged: privileged),
-    ),
-    map(
-      bootstrap_quiesced_units(names: names),
-      u => systemctl_start_command(unit: u, privileged: privileged),
-    ),
+  map(
+    bootstrap_quiesced_units(names: names),
+    u => systemctl_unmask_command(unit: u, privileged: privileged),
   )
 }
 
