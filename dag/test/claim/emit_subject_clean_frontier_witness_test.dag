@@ -984,7 +984,8 @@ test fn an_unobserved_subject_boundary_does_not_refuse_the_measurement_it_could_
 
 fn fixture_subject(revision: String, compiler_hex: String, tree: WorkingTreeStanding) -> EmissionMeasurementSubject {
   EmissionMeasurementSubject {
-    entry: fixture_alpha,
+    scope: EntryScope { entry: fixture_alpha },
+    render_target: RustRender,
     source_revision: revision as CommitSha,
     working_tree: tree,
     compiler: sha256_digest(hex: compiler_hex as NonEmptyStr),
@@ -1279,4 +1280,35 @@ test fn the_rendered_gate_refusal_carries_the_reason_text() -> Bool {
   )
   string_contains(s: rendered, pattern: fixture_beta)
     && string_contains(s: rendered, pattern: "the instrument produced no reading")
+}
+
+// A POPULATION-SCOPED MEASUREMENT MUST JOIN TO NOTHING, and the fixture is built to be maximally
+// unkind: the primary root IS fixture_alpha, the very entry the roster carries. So a projection
+// that returned the raw primary root would produce a FALSE ROSTER MATCH on a measurement that was
+// never about that entry -- and the assertion below would fail. Returning the prefixed scope label
+// makes the join answer SubjectReadingAbsent, which is the accurate answer rather than a silent
+// wrong one.
+//
+// This fold never receives a population scope today (its measurements come from
+// measure_entry_emission, which always produces an EntryScope). The arm is witnessed anyway
+// because a state that is currently unreachable through one producer is still authorable HERE,
+// and an unwitnessed arm is where the next producer's mistake lands.
+test fn a_population_scoped_measurement_does_not_match_a_roster_entry() -> Bool {
+  let population_subject = EmissionMeasurementSubject {
+    scope: PrimaryRootScope { primary_root: fixture_alpha, dependency_pools: [] },
+    render_target: RustRender,
+    source_revision: "c271b75829" as CommitSha,
+    working_tree: WorkingTreeClean,
+    compiler: sha256_digest(hex: "aaaa" as NonEmptyStr),
+    assembler: sha256_digest(hex: "bbbb" as NonEmptyStr),
+    assembly_mode: SeedLinkedAssembly { std_bridge_dir: "dag/std" }
+  }
+  emission_subject_entry_text(s: population_subject) != fixture_alpha
+}
+
+// THE ENTRY ARM RETURNS THE BARE PATH, which is the other half and is what keeps the join working
+// at all. Asserted beside its sibling so a change that made BOTH return the label would fail here
+// rather than passing above.
+test fn an_entry_scoped_measurement_still_matches_its_roster_entry() -> Bool {
+  emission_subject_entry_text(s: fixture_subject(revision: "c271b75829", compiler_hex: "aaaa", tree: WorkingTreeClean)) == fixture_alpha
 }
