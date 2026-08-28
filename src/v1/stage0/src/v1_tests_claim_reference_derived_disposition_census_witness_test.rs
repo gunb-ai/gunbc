@@ -182,7 +182,9 @@ pub fn census_counts_each_arm_separately() -> bool {
             && (census.registry_absent.clone() == 1))
             && (census.export_proof_failed.clone() == 1))
             && (census.candidates.clone()
-                == (((census.survived.clone() + census.own_module.clone())
+                == (((((census.survived.clone() + census.own_module.clone())
+                    + census.variant_delegated_to_parent.clone())
+                    + census.variant_parent_unresolved.clone())
                     + census.registry_absent.clone())
                     + census.export_proof_failed.clone())))
     }

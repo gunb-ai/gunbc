@@ -107,7 +107,8 @@ test fn census_counts_each_arm_separately() -> Bool {
     && census.variant_parent_unresolved == 1
     && census.registry_absent == 1
     && census.export_proof_failed == 1
-    && census.candidates == census.survived + census.own_module + census.registry_absent + census.export_proof_failed
+    && census.candidates == census.survived + census.own_module + census.variant_delegated_to_parent
+      + census.variant_parent_unresolved + census.registry_absent + census.export_proof_failed
 }
 
 data variant_arm_red_note: String = "THE DISCRIMINATING RED FOR THE FIFTH ARM, and it is the one this file most needs. Before the arm existed a bare variant name reached the registry lookup, missed, and answered registry-absent -- so the fixture below is RED against the four-arm classifier and green against the five-arm one, which is what makes it evidence rather than decoration. The positive control beside it is the census row above: a name that is NOT a known variant still answers registry-absent, so the arm narrows the class rather than emptying it."
