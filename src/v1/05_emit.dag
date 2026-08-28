@@ -2274,12 +2274,49 @@ fn unmodeled_file_transport_operation_diagnostics(tm: TypedModule, item: Node, t
   })
 }
 
+// WHAT AN EMISSION TARGET DOES WITH A DECLARED TRANSPORT, and it is two things rather than one.
+// A REALIZING target lowers the declared interface into host effects, so "which realization
+// handler answers for `transport file`" is a question it must answer. A SERIALIZING target writes
+// the substrate's own representation of the graph -- `emit = serialize_target . translate`
+// (DESIGN §4) with the translate half at identity -- so it selects no realization for ANY
+// transport and there is no handler for it to be missing.
+//
+// WHY THIS IS A COPRODUCT AND NOT A SECOND BOOL BESIDE target_renders_file_transport. The two
+// predicates answer different questions and only one of them is about the file transport: this one
+// says whether the realization question APPLIES, that one says whether the file realization is
+// BOUND. Fusing them would put "dag realizes a file transport" in the tree, which is false, and
+// would then route a serialization target through file_binding_refusal -- applying verb, path and
+// output-channel requirements that exist because a HOST EFFECT is being rendered, to a target that
+// renders none. The refusal would keep firing, with a different and equally wrong reason.
+type TargetEmissionMode
+  = RealizesTransports
+  | SerializesSubstrate
+
+fn target_emission_mode(target: RenderTarget) -> TargetEmissionMode {
+  match target {
+    Rust   => RealizesTransports
+    Python => RealizesTransports
+    Go     => RealizesTransports
+    Dag    => SerializesSubstrate
+  }
+}
+
+// The realization precondition is asked only of targets that realize. This is not a skip for a
+// target we have not got round to: `emit_dag_artifact` serializes the node table and answers no
+// operation, so the precondition has no subject there. The rest and shell transports never had a
+// target gate at all, which is why they already serialize clean for dag -- the file arm was the
+// only transport asking a realization question ahead of a serializer, and that asymmetry was the
+// defect, not the missing handler the message named.
 fn unmodeled_file_transport_diagnostics(typed: ResolvedGraph, target: RenderTarget) -> List<ErrorNode> {
-  typed.modules |> flat_map(tm =>
-    tm.items
-      |> filter(item => is_service_item(item: item))
-      |> flat_map(item => unmodeled_file_transport_operation_diagnostics(tm: tm, item: item, target: target))
-  )
+  match target_emission_mode(target: target) {
+    SerializesSubstrate => []
+    RealizesTransports =>
+      typed.modules |> flat_map(tm =>
+        tm.items
+          |> filter(item => is_service_item(item: item))
+          |> flat_map(item => unmodeled_file_transport_operation_diagnostics(tm: tm, item: item, target: target))
+      )
+  }
 }
 
 fn emit_unmodeled_file_transport_refusal_with_cause(op_name: String, target: RenderTarget, refusal: FileEmissionRefusal) -> String {
