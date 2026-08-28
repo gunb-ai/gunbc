@@ -611,11 +611,6 @@ fn floor_expected_red_chunk_18() -> List<String> {
   Empty {}
 }
 
-// Authored by silent-bear-842 in #9093. The duplicate-definition row asserts the missing
-// ingestion wall rather than defending today's silent second-definition binding. It
-// dissolves from this roster when same-name declarations in one module refuse at ingestion,
-// then remains as an ordinary permanent regression control; its green single-definition
-// sibling is deliberately not enrolled.
 fn floor_expected_red_chunk_19() -> List<String> {
   Cons { head: "test.claim.direct_call_argument_type_witness_test.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: Empty {} }
 }

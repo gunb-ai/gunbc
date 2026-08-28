@@ -27,7 +27,15 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // the declaration below is `ReadsLiveTree`. Before the root cut, `run_required_floor` routed every
 // such site to `DeclinedLiveTree` -- discovered, counted, never run -- so enrolment would have
 // asserted a verdict that did not exist. The root deletion has now fired that execution trigger:
-// this row executes, reds, and is enrolled in `v2.workflow.floor_expected_red` on the same change.
+// this row executes. It was enrolled in `v2.workflow.floor_expected_red` on that same change,
+// and that enrolment has since been REMOVED because the row now PASSES: the floor reported it as
+// a stale quarantine (enrolled as expected-red and PASSED, on the plain arm rather than the
+// PassedOverBudget one), with its single-definition positive control clean in the same run, so the
+// assertion discriminates rather than having gone green by the probe source breaking some other
+// way. What is NOT claimed here is the mechanism: the row asserts a blocking-diagnostic count and
+// the count is now met; which predicate produces that diagnostic has not been read, and naming one
+// from the row's passing alone would be a situation mistaken for a cause. Per DESIGN 4b(4) the
+// probe does not retire with its roster row -- it stays enrolled as a permanent regression control.
 // The honest ReadsLiveTree declaration remains the affected-set selection fact.
 // An earlier revision of this module WAS enrolled, justified by a sibling census probe that
 // declares no disposition and was inferred to route and pass. That inference was wrong twice over:

@@ -475,7 +475,7 @@ fn source_ref_for_observed_storage_path(path: String) -> SourceRef {
   }
 }
 
-// Read-through for ingest-manifest SourceRef rows (ingest-manifest-source-ref-carrier-design.md stage 3): filesystem_read at consumption, content identity verified against the ref's ContentHash before parse. Hash mismatch refuses with both digests; missing/unreadable paths refuse as read failures rather than misclassified parse errors.
+// Read-through for ingest-manifest SourceRef rows (ingest-manifest-source-ref-carrier-design (deleted) stage 3): filesystem_read at consumption, content identity verified against the ref's ContentHash before parse. Hash mismatch refuses with both digests; missing/unreadable paths refuse as read failures rather than misclassified parse errors.
 data source_ref_read_refused: Symbol = ^source_ref_read_refused
 
 data source_ref_content_hash_mismatch: Symbol = ^source_ref_content_hash_mismatch
