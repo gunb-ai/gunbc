@@ -545,47 +545,54 @@ fn required_floor_claim_cpu_safety_limit_ms() -> Int {
 // 2000ms wall clock condemns it, for the same work, in the same run. Sixteen rows were in that
 // state.
 //
-// 8000ms IS A DECLARED INTERIM, NOT A DERIVED CEILING, and the distinction is the whole content
-// of this block (ruling: snappy-dove-250, 2026-08-20, adjudicating between this branch and the
-// wall-accumulator change).
+// 8000ms TIGHTENS THIS LIMIT. Main carries 10000ms; this figure is a REDUCTION, and the two
+// figures beside it are reductions too (CPU 5000 -> 500, completed-cost line 1552 -> 100). An
+// earlier revision of this block framed 8000 as a loosening that needed a runway, on a reading
+// that it had been raised to accommodate rows a defect was inflating. It had not. The framing
+// was inverted and is deleted rather than annotated, because a constant described as a
+// concession ranks for removal while the same constant described as a tightening does not.
 //
-// WHY IT IS NOT DERIVED. The method was: take the worst wall observed among rows inside the CPU
-// budget, times a headroom factor. That method is blind here, and blind in the one direction it
-// needs to see. A fill payer's WALL carries the whole shared build while its CPU is netted to
-// ~0, so the rows that dominate the wall population are precisely the rows whose wall figure is
-// not about them. The maxima the sample reports -- 3859ms on run 33131296988, 3782ms on run
-// 33136345225 -- are real measurements of the wrong quantity, and doubling one of them produces
-// a figure that LOOKS grounded because the sample is real. The general form, which is worth more
-// than this constant: A DERIVATION WHOSE INPUT IS FILTERED BY THE QUANTITY BEING DERIVED CANNOT
-// SEE ITS OWN WORST CASE. Recording 8000 as derived would assert a soundness the derivation does
-// not have.
+// THE DERIVATION IS STILL BLIND, INDEPENDENTLY OF THAT, and this half survives the correction
+// because it is a fact about the METHOD rather than about the direction of the change. The
+// method was: take the worst wall observed among rows inside the CPU budget, times headroom. A
+// first-touch payer's marginal CPU is netted to ~0 while its wall carries the whole shared
+// build, so the rows that dominate the wall population are precisely the rows whose wall figure
+// is not about them. The general form is worth more than this constant: A DERIVATION WHOSE
+// INPUT IS FILTERED BY THE QUANTITY BEING DERIVED CANNOT SEE ITS OWN WORST CASE. It will look
+// well-grounded, because the sample is real.
 //
-// WHY IT MAY STAND ANYWAY. The cause is now known and the fix is in no tree. Reverting to a
-// tighter figure before the fix exists would red this fold on sixteen rows whose CPU is
-// comfortably inside the ceiling, to satisfy a principle -- the purity trap (DESIGN §6). So the
-// figure stands as an interim envelope with a finite runway, which is what §4b(3) admits, and
-// not as a re-founded ceiling, which it is not.
+// WALL IS NOT NETTED OF FILL, AND MUST NOT BE. Netting was proposed and is REFUSED here, on the
+// carrier that owns the question. Two independent reasons, and the second is the load-bearing
+// one:
 //
-// WHAT THE ACTUAL REPAIR IS, stated precisely because an earlier reading of it was wrong and
-// the wrong reading is the cheaper one to reach. It is NOT "subtract the existing fill
-// accumulator from wall as it is already subtracted from CPU". That accumulator records
-// `v1_interpreter::thread_cpu_nanos`, so subtracting it from a wall figure is a UNITS ERROR: it
-// under-subtracts, because wall fill >= CPU fill always and strictly more under contention
-// (visible in this file's own specimen -- cpu fill 3728 against wall 3782), and it destroys the
-// invariant that makes the split a measurement rather than a discount, since `marginal + fill =
-// measured` holds on CPU by construction and would be false on wall. Two defects being
-// structurally identical does not make their repairs identical.
+//   UNITS. The existing accumulator records `v1_interpreter::thread_cpu_nanos`. Subtracting it
+//   from a wall figure under-subtracts, because wall fill >= CPU fill always and strictly more
+//   under contention -- visible in this file's own specimen, cpu fill 3728 against wall 3782 --
+//   and it breaks the invariant that makes the split a measurement rather than a discount, since
+//   `marginal + fill = measured` holds on CPU by construction and would be false on wall.
 //
-// DISSOLUTION TRIGGER, naming the construction rather than the outcome, because §4b(3) rules
-// that a trigger naming less than the capability it restores will be satisfied while the
-// capability stays dead: this figure is re-derived when A PARALLEL WALL ACCUMULATOR EXISTS
-// ALONGSIDE THE EXISTING CPU FILL ACCUMULATOR -- one monotonic wall clock recorded at the same
-// two `record_shared_artifact_fill_cpu` bracket sites, netted against `wall_nanos` in
-// `v1_compiler.cli_run` `run_claim_measured`, so that each clock nets against its own fill and
-// `marginal + fill = measured` holds on both. Not when wall attribution is "fixed", which is
-// satisfiable by argument; when that accumulator lands and this fold measures against it. The
-// re-derivation is then read from a population that no longer carries other rows' fill, and is
-// expected to come back down substantially.
+//   SUBJECT. The wall deadline's job, declared above, is catching a claim that is genuinely
+//   BLOCKED OR STUCK. Cost accruing inside the shared build reaches no stride-poll checkpoint --
+//   that is exactly the region this file already carries a §4b rung drop for
+//   (`OpaqueHostCallUnbounded`) -- so the raw wall reading is the ONLY detector that region has.
+//   Netting it would delete the sole instrument over the sole blind spot, and would do it
+//   wearing an accounting label rather than announcing itself as a safety regression.
+//
+// SO THE 15 PAYERS ARE NOT A NETTING PROBLEM. Measured on run 33136345225, every row whose fill
+// alone exceeds 2000ms carries marginal CPU of 0-2ms, and NO row in that population has marginal
+// CPU above 500ms -- 15 of 15 are pure borrowed cost, zero are genuine own-work. They failed an
+// earlier 2000ms figure on this branch, which is abandoned; against 8000ms they are inside, and
+// the raw deadline still catches the case it exists for (the specimen it was written against
+// burned 504 SECONDS of wall while its CPU never approached its limit).
+//
+// DISSOLUTION TRIGGER, and it is NOT a wall accumulator. `gunbc.census_memo_seed_growth` rules
+// that the admissible repair is to STOP RECOMPUTING, never to raise the line, and that argument
+// is clock-agnostic. The occupancy these 15 rows exhibit is a shared build being recomputed, not
+// a claim being slow; when that recomputation is eliminated the occupancy disappears from wall
+// and CPU together, no netting is required anywhere, and this figure is re-derived against a
+// population that no longer contains a first-touch payer at all. The trigger is therefore the
+// elimination of the recomputation, not an instrument for attributing it more precisely --
+// attributing borrowed cost better still leaves the process occupied.
 fn required_floor_claim_wall_safety_limit_ms() -> Int {
   8000
 }
