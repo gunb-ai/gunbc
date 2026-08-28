@@ -25,12 +25,16 @@ import product.fabric.selection {
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import extdeps.accounting.budget { Appropriation }
 import extdeps.accounting.encumbrance { EncumbranceLedger }
-import product.fabric.budget { MoneyAccount }
+import product.fabric.budget { MoneyAccount, MoneyReservationRequest, AccountAdvanced, MoneyRefused, reserve_money }
+import product.fabric.execution { ReservationRef, LeaseIdentity }
+import std.content_hash { content_hash_of_value }
 import gunbc.fabric_executor_class { ExecutorSanction, fleet_cell_sanction }
 import gunbc.fabric_floor_dispatch { floor_demand }
 import gunbc.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, ReservationLost,
   StoreUnavailable, AttemptRefused, BudgetRefused,
+  CellRelease, CellReleased, ReleaseBudgetRefused, ReleaseSlotNotHeld,
+  ReleaseLost, ReleaseStoreUnavailable, ReleaseAttemptRefused, release_reserved_cell_at,
   FabricCellCandidate, CellCandidateBound, OfferExecutorIsNotTheCell,
   fabric_cell_allocation_key, reserve_selected_cell, broker_reserve_for_demand,
   bind_fabric_cell_candidate,
@@ -243,5 +247,79 @@ fn cp_live_broker_reserves_the_cell_the_market_chose(root: NonEmptyStr) -> Int {
       maximum_buy_order: money_amount_micro(count: 1000000),
       delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
     )
+  )
+}
+
+// THE RELEASE COMMIT IS THE ONE ARM NO HERMETIC ROW CAN REACH. Every refusal in
+// release_reserved_cell is decided from the slot observation, which is a value,
+// so the witness file covers all of them. The successful free-write is a host
+// effect, refused under the floor's hermetic envelope, so a live run is its
+// only possible evidence -- the same split the reserve path carries, and the
+// reason this file exists.
+//
+// The codes are disjoint from cp_probe_code's so a reader cannot confuse a
+// release outcome with a reservation one, and each refusal keeps its own number
+// because their remedies differ exactly as the reservation's do.
+fn cp_probe_release_code(r: CellRelease) -> Int {
+  match r {
+    CellReleased { slot_key: _, generation: g, account: _ } => 200 + g
+    ReleaseBudgetRefused { slot_key: _, refusal: _ } => 20
+    ReleaseSlotNotHeld { slot_key: _, detail: _ } => 21
+    ReleaseLost { slot_key: _ } => 22
+    ReleaseStoreUnavailable { slot_key: _, cause: _ } => 23
+    ReleaseAttemptRefused { slot_key: _, detail: _ } => 24
+  }
+}
+
+fn cp_probe_reservation_ref() -> ReservationRef {
+  fabric_reservation_payload(
+    demand: cp_probe_demand_id(key: "demand-floor-1"),
+    offer: cp_probe_offer_id(key: "offer-1"),
+  ) as ReservationRef
+}
+
+// The account carries a real hold taken through reserve_money, not an authored
+// ledger entry: an authored hold would let this row pass against a release that
+// never agreed with the reserve path about what a hold looks like.
+fn cp_probe_held_account() -> List<MoneyAccount> {
+  match reserve_money(
+    a: cp_probe_account(),
+    request: MoneyReservationRequest {
+      reference: cp_probe_reservation_ref(),
+      generation: 0,
+      maximum_liability: money_amount_micro(count: 1000),
+      currency: Usd,
+    },
+  ) {
+    AccountAdvanced { account: a } => [a]
+    MoneyRefused { refusal: _ } => []
+  }
+}
+
+// The observation is read by release_reserved_cell_at from the store itself
+// rather than supplied here. A hand-built observation would prove only that the
+// decision agrees with itself; this row exists to establish that the store's
+// own answer flows through the holder comparison and reaches a commit.
+fn cp_live_release_frees_the_cell_it_reserved(root: NonEmptyStr) -> Int {
+  fold(
+    cp_probe_held_account(),
+    init: 0,
+    f: fn(acc, a) {
+      cp_probe_release_code(
+        r: release_reserved_cell_at(
+          root: root,
+          slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
+          lease: LeaseIdentity {
+            lease_key: "cell-lease-probe",
+            resource_fingerprint: content_hash_of_value(value: "srv3-06"),
+            generation: 0,
+          },
+          reservation: cp_probe_reservation_ref(),
+          reason: "probe release",
+          released_at: "2026-08-28T02:00:00Z",
+          account: a,
+        )
+      )
+    },
   )
 }

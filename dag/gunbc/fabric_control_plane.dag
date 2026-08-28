@@ -1,12 +1,13 @@
 module gunbc.fabric_control_plane
 
-import std.types { Int, List, NonEmptyStr, String, Bool }
+import std.types { Int, List, NonEmptyStr, String, Bool, Timestamp }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.measure { MoneyAmountMicro, MoneyPerSecond }
 import std.currency { CurrencyCode }
 import std.durable_compare_and_set {
   CasExpectation, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasReadableAbsent, CasReadablePresent, CasUnreadableSlot,
+  CasSlotObservation, CasObservedReadable, CasObservedUnreadable, ExpectSlotGeneration,
   cas_attempt, cas_generation_count,
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
@@ -18,14 +19,14 @@ import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_nam
 import gunbc.durable_cas_file_store {
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch,
   CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
-  admit_cas_attempt, file_compare_and_set,
+  admit_cas_attempt, file_compare_and_set, observe_cas_slot_state,
 }
 import gunbc.fabric_floor_dispatch { floor_supply_selection, floor_execution_requirements }
 import product.fabric.budget {
   MoneyAccount, MoneyReservationRequest, MoneyRefusal, MoneyOutcome,
-  AccountAdvanced, MoneyRefused, reserve_money,
+  AccountAdvanced, MoneyRefused, reserve_money, release_money,
 }
-import product.fabric.execution { ReservationRef }
+import product.fabric.execution { ReservationRef, LeaseIdentity }
 import gunbc.fabric_executor_class {
   ExecutorSanction, CapacityClassAdmission, CapacityClassAdmitted,
   CapacityClassRefused, ExecutorNotClassified,
@@ -156,7 +157,11 @@ fn reserve_selected_cell(
   offer_id: FabricIdentity<NonEmptyStr, OfferKey>,
   account: MoneyAccount,
 ) -> CellReservation {
-  let payload = fabric_reservation_payload(demand: demand_id, offer: offer_id)
+  let payload = cell_slot_payload(
+    state: CellHeld {
+      reservation: fabric_money_reservation_ref(demand: demand_id, offer: offer_id),
+    },
+  )
   match admit_cas_attempt(
     attempt: cas_attempt(
       key: slot_key,
@@ -455,3 +460,272 @@ fn reserve_priced_cell(
   }
 }
 
+// WHAT THE SLOT SAYS ABOUT ITSELF, AND WHY IT HAS TO SAY ANYTHING AT ALL.
+//
+// Until release existed the slot payload was write-only: the broker wrote the
+// reservation and nothing ever read it back. Release is the first reader, and
+// it needs an answer the payload could not give -- IS THIS CELL HELD, AND BY
+// WHICH RESERVATION. Without it, releasing is a blind write: the actuator
+// would free whatever is in the slot on the strength of a generation the
+// CALLER supplied, which is a second account of who holds the cell and free to
+// disagree with the store.
+//
+// The generation fence alone does not close this. It establishes that the slot
+// has not MOVED since it was observed, which is a different question from
+// whether it is held and by whom -- a slot that is already free at generation
+// N admits a release presenting N and would be "released" a second time. That
+// is not a harmless no-op: it writes a free-over-free generation, so a
+// concurrent re-reservation racing the second release sees its own precondition
+// broken by a release of a hold it never had.
+//
+// So the state is TYPED and the rendering is the boundary. CellHeld carries the
+// reservation reference itself rather than the demand and offer separately,
+// because that reference is already the one identity the money encumbrance and
+// the cell agree on -- re-rendering the pair here would put a second spelling
+// of it in the slot, and the two could disagree.
+type CellSlotState
+  = CellHeld { reservation: ReservationRef }
+  | CellFree { released_by: NonEmptyStr }
+
+// A DECODE THAT REFUSES RATHER THAN GUESSES. An unrecognised payload is not an
+// empty cell and not a held one: it is a slot this module cannot interpret, and
+// answering either of the other two would be the fabricated plausible output.
+// It gets its own arm so the caller can stop rather than proceed on a guess.
+type CellSlotDecode
+  = CellSlotDecoded { state: CellSlotState }
+  | CellSlotUndecodable { detail: NonEmptyStr }
+
+fn cell_slot_payload(state: CellSlotState) -> NonEmptyStr {
+  match state {
+    CellHeld { reservation: r } => concat("held|", r as String) as NonEmptyStr
+    CellFree { released_by: b } => concat("free|", b as String) as NonEmptyStr
+  }
+}
+
+// The parse is the render read backwards over the same two tags, not a second
+// grammar. It splits once on the first separator so a reservation reference
+// containing the separator survives the round trip -- the reference is itself a
+// rendering of a demand and an offer joined by that character, so a decode that
+// split on every occurrence would truncate every real payload it was given.
+fn decode_cell_slot_payload(payload: NonEmptyStr) -> CellSlotDecode {
+  let text = payload as String
+  let tag_len = string_length(s: "held|")
+  let body = substring(s: text, start: tag_len, end: string_length(s: text))
+  if starts_with(s: text, prefix: "held|") {
+    CellSlotDecoded { state: CellHeld { reservation: body as ReservationRef } }
+  } else {
+    if starts_with(s: text, prefix: "free|") {
+      CellSlotDecoded { state: CellFree { released_by: body as NonEmptyStr } }
+    } else {
+      CellSlotUndecodable {
+        detail: concat("slot payload carries no recognised state tag: ", text) as NonEmptyStr,
+      }
+    }
+  }
+}
+
+// EVERY WAY A RELEASE ENDS, and the separation is the same discipline the
+// reservation carries: a caller must be able to choose a remedy from the symbol
+// it gets back.
+//
+// ReleaseSlotNotHeld is the one that does not exist on the reservation side and
+// is the reason this type is not CellReservation reused. It says the store was
+// read and the cell is NOT held by the reservation being released -- already
+// free, held by someone else, or carrying a payload this module cannot read.
+// Collapsing it into a store failure would tell an operator to look at the
+// filesystem when the actual answer is that their idea of who holds this cell
+// is wrong.
+type CellRelease
+  = CellReleased {
+      slot_key: NonEmptyStr,
+      generation: Int,
+      account: MoneyAccount,
+    }
+  | ReleaseBudgetRefused { slot_key: NonEmptyStr, refusal: MoneyRefusal }
+  | ReleaseSlotNotHeld { slot_key: NonEmptyStr, detail: NonEmptyStr }
+  | ReleaseLost { slot_key: NonEmptyStr }
+  | ReleaseStoreUnavailable { slot_key: NonEmptyStr, cause: CasUnreadableSlot }
+  | ReleaseAttemptRefused { slot_key: NonEmptyStr, detail: NonEmptyStr }
+
+// THE PARTIAL RELEASE HAS NO CONSTRUCTOR EITHER, AND IT LEAKS THE OPPOSITE WAY.
+//
+// The reservation's partial commit leaks a hold nobody is accounting for. The
+// release's partial commit leaks in both directions and they are not the same
+// harm: freeing the cell while the encumbrance stands bills a customer for a
+// machine that is idle, and releasing the money while the cell stays held
+// strands capacity under a work nothing requires -- which is precisely the leak
+// product.fabric.arbitration's ReleaseDirective exists to close, and it would
+// be reopened here at the actuator if the two halves could come apart.
+//
+// So the same construction argument applies unchanged, for the same reason: the
+// money release is a PURE transition producing a new account, and the slot
+// write is the only effect. No arm of CellRelease carries an account without a
+// freed cell, and none carries a freed cell without an account, so neither half
+// can be persisted alone. Source order is again free and is again not the
+// guarantee -- that was established by mutation on the reservation path and the
+// same laziness holds here.
+fn release_reserved_cell(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  observed: CasSlotObservation<NonEmptyStr>,
+  lease: LeaseIdentity,
+  reservation: ReservationRef,
+  reason: NonEmptyStr,
+  released_at: Timestamp,
+  account: MoneyAccount,
+) -> CellRelease {
+  match observed {
+    CasObservedUnreadable { cause: c } => ReleaseStoreUnavailable { slot_key: slot_key, cause: c }
+    CasObservedReadable { readable: r } =>
+      match r {
+        CasReadableAbsent =>
+          ReleaseSlotNotHeld {
+            slot_key: slot_key,
+            detail: "the slot is absent, so this cell is held by no reservation",
+          }
+        CasReadablePresent { version: v } =>
+          match decode_cell_slot_payload(payload: v.value) {
+            CellSlotUndecodable { detail: d } =>
+              ReleaseSlotNotHeld { slot_key: slot_key, detail: d }
+            CellSlotDecoded { state: st } =>
+              match st {
+                CellFree { released_by: _ } =>
+                  ReleaseSlotNotHeld {
+                    slot_key: slot_key,
+                    detail: "the slot is already free, so there is no hold to release",
+                  }
+                CellHeld { reservation: holder } =>
+                  if (holder as String) != (reservation as String) {
+                    ReleaseSlotNotHeld {
+                      slot_key: slot_key,
+                      detail: concat(
+                        "the cell is held by another reservation: ",
+                        holder as String,
+                      ) as NonEmptyStr,
+                    }
+                  } else {
+                    release_held_cell(
+                      root: root,
+                      slot_key: slot_key,
+                      expected: ExpectSlotGeneration { generation: v.generation },
+                      lease: lease,
+                      reservation: reservation,
+                      reason: reason,
+                      released_at: released_at,
+                      account: account,
+                    )
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The half that runs once the store has confirmed THIS reservation holds the
+// cell. The generation is the one the store just reported rather than one the
+// caller stated: a caller-supplied generation would be a second account of the
+// slot's version and could name a moment the observation never saw.
+//
+// release_money is fenced on the lease generation the hold was taken under, so
+// a superseded holder refuses here rather than releasing an encumbrance it no
+// longer owns -- and the amount is derived from the ledger entry rather than
+// supplied, which is why no amount is passed through this call.
+fn release_held_cell(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  expected: CasExpectation,
+  lease: LeaseIdentity,
+  reservation: ReservationRef,
+  reason: NonEmptyStr,
+  released_at: Timestamp,
+  account: MoneyAccount,
+) -> CellRelease {
+  match release_money(
+    a: account,
+    reference: reservation,
+    generation: lease.generation,
+    reason: reason,
+    released_at: released_at,
+  ) {
+    MoneyRefused { refusal: f } => ReleaseBudgetRefused { slot_key: slot_key, refusal: f }
+    AccountAdvanced { account: advanced } =>
+      free_cell_slot(
+        root: root,
+        slot_key: slot_key,
+        expected: expected,
+        reason: reason,
+        account: advanced,
+      )
+  }
+}
+
+fn free_cell_slot(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  expected: CasExpectation,
+  reason: NonEmptyStr,
+  account: MoneyAccount,
+) -> CellRelease {
+  let payload = cell_slot_payload(state: CellFree { released_by: reason })
+  match admit_cas_attempt(
+    attempt: cas_attempt(
+      key: slot_key,
+      expected: expected,
+      proposed: payload,
+      proposed_content: content_hash_of_value(value: payload),
+    )
+  ) {
+    CasAttemptAdmitted { verified: v } =>
+      match file_compare_and_set(root: root, verified: v) {
+        CasCommitted { committed: c } =>
+          CellReleased {
+            slot_key: slot_key,
+            generation: cas_generation_count(g: c.generation),
+            account: account,
+          }
+        CasPreconditionFailed { expected: _, observed: _ } => ReleaseLost { slot_key: slot_key }
+        CasStoreRefused { cause: c } => ReleaseStoreUnavailable { slot_key: slot_key, cause: c }
+      }
+    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
+      ReleaseAttemptRefused { slot_key: slot_key, detail: "release payload and its digest disagree" }
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
+      ReleaseAttemptRefused { slot_key: slot_key, detail: "release digest families are incomparable" }
+    CasAttemptKeyNotSlotAddressable { key: _ } =>
+      ReleaseAttemptRefused { slot_key: slot_key, detail: "allocation key is not slot-addressable" }
+  }
+}
+
+// THE ENTRY POINT A REAL CALLER USES, and the split above it is the point.
+//
+// release_reserved_cell is a PURE decision over an observation, which is what
+// lets every one of its refusals be witnessed from a value. This function is
+// the realization beside it: it asks the store for the observation and hands it
+// straight over. Nothing decides here, so there is no second decision procedure
+// to disagree with the first.
+//
+// The observation is READ rather than accepted from the caller for the reason
+// the store's own compare-and-set gives about attempts: a caller that supplies
+// the observation is the author of the fact it is supposed to be reading, and
+// nothing then relates that fact to the slot being released. The pure form
+// keeps the parameter because a witness supplying one is a fixture and knows
+// it; a production caller reaching for it would be constructing its own answer.
+fn release_reserved_cell_at(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  lease: LeaseIdentity,
+  reservation: ReservationRef,
+  reason: NonEmptyStr,
+  released_at: Timestamp,
+  account: MoneyAccount,
+) -> CellRelease {
+  release_reserved_cell(
+    root: root,
+    slot_key: slot_key,
+    observed: observe_cas_slot_state(root: root, key: slot_key),
+    lease: lease,
+    reservation: reservation,
+    reason: reason,
+    released_at: released_at,
+    account: account,
+  )
+}
