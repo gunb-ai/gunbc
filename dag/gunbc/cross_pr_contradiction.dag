@@ -82,6 +82,32 @@ fn identity_extraction_rule_text(rule: IdentityExtractionRule) -> String {
 
 data cross_pr_extraction_rule: IdentityExtractionRule = QuotedDottedName { minimum_segments: 3 }
 
+// THE LOOKUP AND THE EXTRACTION ARE ONE AUTHORITY, and this function is where that is enforced.
+//
+// A key is extracted as a WHOLE QUOTED SEGMENT, so asking the merge target for the bare identity
+// asks a different question than the one the key answers: a raw substring search matches a SHORTER
+// identity inside a LONGER one (`a.b.c` inside `"a.b.cd"`) and matches an unquoted mention in
+// prose. Either produces `PresentOnMain` for a key the target does not carry, and the standing
+// derived from it is then confidently wrong while the report still reports itself complete. That is
+// the failure this instrument exists to refuse, committed in its own lookup (review 57265).
+//
+// So the pattern is DERIVED from the same rule the extraction is parameterised by: re-adding the
+// delimiters the extraction stripped. `"a.b.c"` cannot match inside `"a.b.cd"`, because the closing
+// delimiter must follow the last segment immediately.
+//
+// THE RESIDUAL, NAMED RATHER THAN CLAIMED AWAY: a fixed-string search is delimiter-blind about
+// PARITY. Text of the shape `foo"a.b.c"bar`, where the leading quote CLOSES a previous segment and
+// the trailing one OPENS the next, matches this pattern without the key ever having been a quoted
+// segment. The extraction's parity fold would not have produced the key from that text. No authored
+// `.dag` line has that shape, and closing it exactly means re-running the extraction over the
+// matched file's content rather than asking git for a yes/no -- a different and more expensive
+// observation, and the reason this one is named as a limit instead of being described as exact.
+fn identity_lookup_pattern(identity: String, rule: IdentityExtractionRule) -> String {
+  match rule {
+    QuotedDottedName { minimum_segments: _ } => concat("\"", concat(identity, "\""))
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // READING ONE DIFF.
 
@@ -471,42 +497,82 @@ type KeyMainPresence {
 
 // WHAT THE STANDING IS, AND WHY THERE IS NO `GenuineDisagreement` ARM.
 //
-// The obvious third arm -- both sides disagreeing with main -- has NO AUTHORABLE INPUT and is
-// therefore not written. Main's state at key grain is binary: either the key is there or it is not.
-// If it is there, the net-ADD proposes what main already carries; if it is not, the net-DELETE
-// removes what main already lacks. One side is always the stale one, so a contradiction under this
-// observation is ALWAYS a staleness signature and the only open question is WHICH SIDE. Minting an
-// arm no input can produce would be a decoration cited as coverage (DESIGN 4b) -- worse than
-// absent, because a reader would take its emptiness as evidence that no genuine disagreements
-// exist rather than as evidence that the arm cannot fire.
+// The obvious third arm -- both sides disagreeing with the merge target -- has NO AUTHORABLE INPUT
+// and is therefore not written. The target's state at key grain is binary: either the key is there
+// or it is not. If it is there, the net-ADD proposes what the target already carries; if it is not,
+// the net-DELETE removes what the target already lacks. A both-genuine case would require the
+// target to simultaneously hold and not hold the key, so the arm is not merely unpopulated, it is
+// UNINHABITED. Minting it would be a decoration cited as coverage (DESIGN 4b) -- worse than absent,
+// because a reader takes a permanently empty arm as evidence that genuine disagreements do not
+// happen, when it is only evidence that the arm cannot fire.
 //
-// WHAT THIS DOES NOT ESTABLISH, and the limit is real rather than a hedge. The standing is computed
-// at KEY grain, not at ROW grain: it says the merge target contains this identity somewhere, not
-// that it contains the same roster row in the same file. A pull request that adds a quoted identity
-// in a NEW context, while another removes it from a roster, will read as `AddSideMatchesMain` and
-// the adder is not in fact redundant. The standing names which side to LOOK at first; the file-grain
-// check that settles it is a human reading two diffs.
+// THE ARMS ARE NAMED AFTER WHAT WAS OBSERVED, NOT AFTER THE ACTION THEY SUGGEST, and that is a
+// correction rather than a style choice. An earlier revision named them `AddSideMatchesMain` /
+// STALE-BASE(add) and rendered "rebase the adding branch" as part of the standing itself. That
+// asserts a remedy this observation cannot establish: the scan matches at KEY grain -- the target
+// contains this identity somewhere -- and redundancy is a ROW-grain fact -- the target contains the
+// same roster row in the same file. The two coincide most of the time and come apart in a case the
+// scan cannot distinguish: a pull request adding a quoted identity in a NEW context, while another
+// removes it from a roster, is not redundant at all, and a name asserting staleness would tell
+// someone to discard real work. That is DESIGN's diagnostic-name failure one level up -- a name
+// accurate about the SITUATION and silent about whether the remedy it asserts applies -- and the
+// reader who trusts the name is exactly the reader who never reaches this comment.
+//
+// So the standing states the observation and nothing more. The remedy is DERIVED from it below,
+// separately, and carries the grain caveat in its own text so the gap is visible AT THE POINT OF
+// USE rather than here.
 type ContradictionStanding
-  = AddSideMatchesMain
-  | DeleteSideMatchesMain
+  = AddSideKeyPresentOnTarget
+  | DeleteSideKeyAbsentFromTarget
   | StandingUndecided
 
 fn contradiction_standing(presence: MainPresence) -> ContradictionStanding {
   match presence {
-    PresentOnMain => AddSideMatchesMain
-    AbsentFromMain => DeleteSideMatchesMain
+    PresentOnMain => AddSideKeyPresentOnTarget
+    AbsentFromMain => DeleteSideKeyAbsentFromTarget
     MainPresenceUnobserved { detail: _ } => StandingUndecided
   }
 }
 
 fn contradiction_standing_text(standing: ContradictionStanding) -> String {
   match standing {
-    AddSideMatchesMain =>
-      "STALE-BASE(add) — the merge target already carries this key, so the net-add is re-adding what a newer pull request removes on purpose; rebase the adding branch"
-    DeleteSideMatchesMain =>
-      "STALE-BASE(delete) — the merge target already lacks this key, so the net-delete removes what main does not have; rebase the deleting branch"
+    AddSideKeyPresentOnTarget =>
+      "ADD-SIDE-PRESENT-ON-TARGET — the merge target already contains this key"
+    DeleteSideKeyAbsentFromTarget =>
+      "DELETE-SIDE-ABSENT-FROM-TARGET — the merge target does not contain this key"
     StandingUndecided =>
-      "UNDECIDED — the merge target could not be read for this key, so which side is stale is unknown"
+      "UNDECIDED — the merge target could not be read for this key"
+  }
+}
+
+// THE REMEDY IS DERIVED, NEVER STORED. It is a function of the standing, so a row carrying both as
+// fields would hold two representations of one fact and let them drift; the report renders this
+// beside the standing instead.
+//
+// EVERY REMEDY IS CONDITIONAL AND SAYS SO IN ITS OWN TEXT. The condition is the key-versus-row
+// grain gap above, and it is written here rather than in a footnote because this string is what a
+// reader acts on.
+type ContradictionRemedy
+  = RebaseAddingBranch
+  | RebaseDeletingBranch
+  | RemedyUndecided
+
+fn contradiction_remedy(standing: ContradictionStanding) -> ContradictionRemedy {
+  match standing {
+    AddSideKeyPresentOnTarget => RebaseAddingBranch
+    DeleteSideKeyAbsentFromTarget => RebaseDeletingBranch
+    StandingUndecided => RemedyUndecided
+  }
+}
+
+fn contradiction_remedy_text(remedy: ContradictionRemedy) -> String {
+  match remedy {
+    RebaseAddingBranch =>
+      "IF the two diffs touch the same row in the same file, rebase the ADDING branch — one rebase settles every key on it. This scan matched at key grain and does not establish row grain, so read both diffs before acting: an add in a NEW context is not redundant."
+    RebaseDeletingBranch =>
+      "IF the two diffs touch the same row in the same file, rebase the DELETING branch — one rebase settles every key on it. This scan matched at key grain and does not establish row grain, so read both diffs before acting: a delete from a DIFFERENT context is not redundant."
+    RemedyUndecided =>
+      "none — which side is stale is unknown while the merge target is unread, and a row naming no action must not be read as naming one"
   }
 }
 
@@ -538,8 +604,8 @@ fn contradiction_row(key: KeyDirections, presences: List<KeyMainPresence>) -> Co
 fn contradiction_row_is_undecided(row: ContradictionRow) -> Bool {
   match row.standing {
     StandingUndecided => true
-    AddSideMatchesMain => false
-    DeleteSideMatchesMain => false
+    AddSideKeyPresentOnTarget => false
+    DeleteSideKeyAbsentFromTarget => false
   }
 }
 
@@ -600,8 +666,14 @@ fn int_list_text(xs: List<Int>) -> String {
 
 fn contradiction_row_text(row: ContradictionRow) -> String {
   concat(
-    concat(key_directions_row(key: row.key), "\tstanding\t"),
-    contradiction_standing_text(standing: row.standing)
+    concat(
+      concat(key_directions_row(key: row.key), "\tstanding\t"),
+      contradiction_standing_text(standing: row.standing)
+    ),
+    concat(
+      "\tremedy\t",
+      contradiction_remedy_text(remedy: contradiction_remedy(standing: row.standing))
+    )
   )
 }
 

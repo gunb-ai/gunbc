@@ -35,7 +35,8 @@ import gunbc.cross_pr_contradiction {
   contradiction_report_text,
   report_is_complete,
   report_unobserved,
-  cross_pr_extraction_rule
+  cross_pr_extraction_rule,
+  identity_lookup_pattern
 }
 
 // THE CROSS-PR CONTRADICTION INSTRUMENT: the observation half.
@@ -273,11 +274,17 @@ fn observe_pull_request(
 // live population -- while the added-key set across every open pull request is hundreds, and the
 // standing is only meaningful for a key that already has an adding side and a deleting side.
 //
+// THE PATTERN IS THE MODEL'S, NOT THIS MODULE'S. Asking the merge target for the bare identity
+// would ask a different question than the extraction answers -- see `identity_lookup_pattern`.
+//
 // git grep's exit code IS the answer here and the three codes are kept apart: 0 is a match, 1 is a
 // revision that genuinely does not contain the pattern, and anything else is a lookup that did not
 // happen. Reading `exit_success` alone would render the third as the second.
-fn observe_main_presence(base: String, identity: String) -> MainPresence {
-  let found = git.Inspect.GrepFixedAtRevision(pattern: identity, ref: base as GitRef)
+fn observe_main_presence(base: String, extraction: IdentityExtractionRule, identity: String) -> MainPresence {
+  let found = git.Inspect.GrepFixedAtRevision(
+    pattern: identity_lookup_pattern(identity: identity, rule: extraction),
+    ref: base as GitRef
+  )
   if found.exit_code == 0 {
     PresentOnMain
   } else {
@@ -328,7 +335,7 @@ fn scan_open_pull_requests(repo: String, base: String, repository_path: String) 
                 cross_pr_contradictions(observations: observations),
                 key => KeyMainPresence {
                   identity: key.identity,
-                  presence: observe_main_presence(base: base, identity: key.identity)
+                  presence: observe_main_presence(base: base, extraction: cross_pr_extraction_rule, identity: key.identity)
                 }
               )
             )

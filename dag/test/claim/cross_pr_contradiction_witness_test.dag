@@ -36,10 +36,17 @@ import gunbc.cross_pr_contradiction {
   PresentOnMain,
   AbsentFromMain,
   MainPresenceUnobserved,
-  AddSideMatchesMain,
-  DeleteSideMatchesMain,
+  AddSideKeyPresentOnTarget,
+  DeleteSideKeyAbsentFromTarget,
   StandingUndecided,
   contradiction_standing,
+  contradiction_standing_text,
+  contradiction_remedy,
+  contradiction_remedy_text,
+  ContradictionRemedy,
+  RebaseAddingBranch,
+  RebaseDeletingBranch,
+  RemedyUndecided,
   ContradictionStanding,
   ContradictionRow,
   MainPresence,
@@ -47,7 +54,8 @@ import gunbc.cross_pr_contradiction {
   contradiction_report_text,
   report_is_complete,
   report_unobserved,
-  cross_pr_extraction_rule
+  cross_pr_extraction_rule,
+  identity_lookup_pattern
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -290,13 +298,13 @@ test fn the_merge_target_decides_which_side_is_stale() -> Bool {
   let present = report_with_presence(presence: PresentOnMain)
   let absent = report_with_presence(presence: AbsentFromMain)
   match only_standing(report: present) {
-    AddSideMatchesMain => true
-    DeleteSideMatchesMain => false
+    AddSideKeyPresentOnTarget => true
+    DeleteSideKeyAbsentFromTarget => false
     StandingUndecided => false
   }
     && match only_standing(report: absent) {
-         DeleteSideMatchesMain => true
-         AddSideMatchesMain => false
+         DeleteSideKeyAbsentFromTarget => true
+         AddSideKeyPresentOnTarget => false
          StandingUndecided => false
        }
     && report_is_complete(report: present)
@@ -312,8 +320,8 @@ test fn an_undecided_standing_makes_the_report_incomplete() -> Bool {
   )
   match only_standing(report: unobserved) {
     StandingUndecided => true
-    AddSideMatchesMain => false
-    DeleteSideMatchesMain => false
+    AddSideKeyPresentOnTarget => false
+    DeleteSideKeyAbsentFromTarget => false
   }
     && !report_is_complete(report: unobserved)
     && report_undecided(report: unobserved).length() == 1
@@ -341,6 +349,75 @@ test fn the_report_row_carries_the_standing_beside_the_directions() -> Bool {
   let text = contradiction_report_text(report: report_with_presence(presence: PresentOnMain))
   string_contains(s: text, pattern: "net_add\t9569")
     && string_contains(s: text, pattern: "net_delete\t9589")
-    && string_contains(s: text, pattern: "standing\tSTALE-BASE(add)")
+    && string_contains(s: text, pattern: "standing\tADD-SIDE-PRESENT-ON-TARGET")
     && string_contains(s: text, pattern: "undecided\t0")
+}
+
+// THE STANDING STATES AN OBSERVATION AND THE REMEDY STATES AN ACTION, and they are different rows
+// of the report on purpose. An earlier revision folded the rebase recommendation into the standing
+// name, which asserts at ROW grain a redundancy the scan established at KEY grain -- confidently
+// wrong in exactly the case the model's own limitation note describes, and wrong in the direction
+// that tells someone to discard real work. This witness fails if the standing text ever asserts an
+// action again, and if the remedy text ever drops the condition that qualifies it.
+test fn the_standing_asserts_no_remedy_and_the_remedy_carries_its_condition() -> Bool {
+  let present = contradiction_standing_text(standing: AddSideKeyPresentOnTarget)
+  let absent = contradiction_standing_text(standing: DeleteSideKeyAbsentFromTarget)
+  !string_contains(s: present, pattern: "rebase")
+    && !string_contains(s: absent, pattern: "rebase")
+    && !string_contains(s: present, pattern: "stale")
+    && string_contains(s: contradiction_remedy_text(remedy: RebaseAddingBranch), pattern: "IF the two diffs touch the same row in the same file")
+    && string_contains(s: contradiction_remedy_text(remedy: RebaseAddingBranch), pattern: "does not establish row grain")
+    && string_contains(s: contradiction_remedy_text(remedy: RebaseDeletingBranch), pattern: "does not establish row grain")
+}
+
+// THE CONDITIONAL TRAVELS WITH THE ROW, not with the model comment. A reader who trusts the report
+// and never opens the source is exactly the reader the grain gap catches, so the caveat has to be
+// in the bytes they read.
+test fn the_report_row_carries_the_remedy_and_its_caveat() -> Bool {
+  let text = contradiction_report_text(report: report_with_presence(presence: PresentOnMain))
+  string_contains(s: text, pattern: "standing\tADD-SIDE-PRESENT-ON-TARGET")
+    && string_contains(s: text, pattern: "remedy\tIF the two diffs touch the same row")
+    && string_contains(s: text, pattern: "rebase the ADDING branch")
+}
+
+test fn an_undecided_row_recommends_nothing() -> Bool {
+  match contradiction_remedy(standing: StandingUndecided) {
+    RemedyUndecided => true
+    RebaseAddingBranch => false
+    RebaseDeletingBranch => false
+  }
+    && !string_contains(s: contradiction_remedy_text(remedy: RemedyUndecided), pattern: "rebase the")
+}
+
+// THE MERGE-TARGET LOOKUP ASKS THE QUESTION THE EXTRACTION ANSWERS. An earlier cut searched for the
+// bare identity, which matches a SHORTER key inside a LONGER one and matches an unquoted mention in
+// prose -- either produces a present-on-target answer for a key the target does not carry, and the
+// standing derived from it is confidently wrong while the report still calls itself complete
+// (review 57265). The delimiters the extraction stripped are put back by the model, so the two
+// cannot drift.
+test fn the_merge_target_lookup_uses_the_extraction_semantics() -> Bool {
+  let pattern = identity_lookup_pattern(identity: "test.claim.a.b", rule: cross_pr_extraction_rule)
+  let quoted_exact = "  Cons { head: \"test.claim.a.b\", tail: Empty {} }"
+  let quoted_longer = "  Cons { head: \"test.claim.a.b_extended\", tail: Empty {} }"
+  let unquoted_prose = "  // see test.claim.a.b for the reason"
+  string_contains(s: quoted_exact, pattern: pattern)
+    && !string_contains(s: quoted_longer, pattern: pattern)
+    && !string_contains(s: unquoted_prose, pattern: pattern)
+}
+
+// AND THE EXTRACTION IS THE INVERSE OF THE LOOKUP ON THE SAME LINE: a key this rule extracts from a
+// changed line is a key whose lookup pattern that line contains. Asserting the pair is what makes
+// them one authority rather than two spellings that happen to agree today.
+test fn extraction_and_lookup_agree_on_the_same_line() -> Bool {
+  let line = "+  Cons { head: \"test.claim.a.b\", tail: Empty {} }"
+  let keys = line_identity_keys(line: line, rule: cross_pr_extraction_rule)
+  keys.length() == 1
+    && match get(xs: keys, index: 0) {
+         Absent => false
+         Present { value: key } =>
+           string_contains(
+             s: line,
+             pattern: identity_lookup_pattern(identity: key, rule: cross_pr_extraction_rule)
+           )
+       }
 }
