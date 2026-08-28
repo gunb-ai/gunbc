@@ -42,7 +42,7 @@ import gunbc.fabric_control_plane {
 // entry point.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/tools/fabric_control_plane_live_probe.dag \
+//     --entry dag/gunbc/instruments/fabric_control_plane_live_probe.dag \
 //     --function cp_live_reservation_is_exclusive --arg root=<an EMPTY directory>
 //
 // THE SECOND FUNCTION'S ASSERTION IS NOT ITS RETURN VALUE. Run

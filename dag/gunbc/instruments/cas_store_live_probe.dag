@@ -13,7 +13,7 @@ import gunbc.durable_cas_file_store { CasAttemptAdmission, CasAttemptAdmitted, C
 // re-deriving it is worth an entry point. Run it as
 //
 //   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/tools/cas_store_live_probe.dag --function cas_store_live_probe \
+//     --entry dag/gunbc/instruments/cas_store_live_probe.dag --function cas_store_live_probe \
 //     --arg root=<an existing EMPTY directory>
 //
 // WHY IT COVERS WHAT IT COVERS. An earlier revision of this probe asserted only

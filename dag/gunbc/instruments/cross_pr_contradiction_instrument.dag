@@ -48,7 +48,7 @@ import gunbc.cross_pr_contradiction {
 // nothing, and it is enrolled in no required phase.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/tools/cross_pr_contradiction_instrument.dag --function scan \
+//     --entry dag/gunbc/instruments/cross_pr_contradiction_instrument.dag --function scan \
 //     --arg repo=gunb-ai/gunbc --arg report=/tmp/cross-pr-contradictions.tsv
 //
 // THE DIFF IS READ FROM THE LOCAL CLONE, NOT FROM THE FORGE, and the staleness that route invites

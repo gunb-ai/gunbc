@@ -72,7 +72,7 @@ Measured on `dag/**` and `src/v2/**`, excluding `/test/`, `*_test.dag` and fixtu
 
 | population | production count |
 |---|---|
-| `transport shell` blocks | 236 lines across 48 files — **230 lines / 45 files in `dag/extdeps`**, 5 lines / 2 files in `dag/gunbc`, 1 in `dag/tools` |
+| `transport shell` blocks | 236 lines across 48 files — **230 lines / 45 files in `dag/extdeps`**, 5 lines / 2 files in `dag/gunbc`, 1 in `dag/gunbc/instruments` |
 | `argv:` lines | 457 — 275 in `dag/extdeps`, 172 in `dag/gunbc`, 10 in `src/v2` |
 | counted retained-script bridge call sites | 48 across 13 files, enumerated below |
 | distinct `fn *_argv` builders (whole tree) | 333, of which ~158 lead with `shape`/`witness`/`operation`/`typed` and model no tool at all |
@@ -419,7 +419,7 @@ Residue only (not construction to migrate):
 | ~~`ci_deploy_target_host.dag`~~ **LANDED** | `"hostname -s 2>/dev/null \|\| hostname"` | `os.Hostname.ReadShort` via `gunbc.hostname_read` `hostname_short_read_local` | **A2 DONE** — the `\|\| hostname` widen is gone with the string; the file's remaining `extdeps.shell` import is `shell.Env.Get`, which is not the confined `extdeps.shell.exec` module (see `non_exec_import_is_not_leak_holds`) |
 | `host_identity_assimilation.dag`, `host_identity_adopt.dag`, `srv3_install_diagnostic_checklist.dag` | `"echo <receipt>"` | typed receipt emit (a stdout write, not shell) | A4 |
 | `host_effect_realize.dag` · `shell_exec_via_bash` dispatch | realization-core script dispatch | the `LocalShell`/`SshShell` typed-argv edge (C5) | A4 realization core — confirm before edit |
-| `dag/tools/{host_prelude,gunbc_ci,emit_host_gate,merge_admission_stamp}`, `gunbc/tools/review.dag` | witness/CI transports invoked from `claim_executor` | typed `WitnessBin.Run`/argv (host_prelude precedent) | A4 |
+| `dag/gunbc/instruments/{host_prelude,gunbc_ci,emit_host_gate,merge_admission_stamp}`, `gunbc/tools/review.dag` | witness/CI transports invoked from `claim_executor` | typed `WitnessBin.Run`/argv (host_prelude precedent) | A4 |
 
 ### 4.D — `ssh.Session.Exec` command-string (vs typed `ExecArgv`)
 
@@ -508,7 +508,7 @@ These are correct as shell (GHA `run:`, cron, git hooks, pre-runtime bootstrap �
 | --- | --- | --- |
 | `RawLine` (bash-AST node) | **zero** — tree-wide | **six** occurrences **excluding this document** (see the self-reference note below), none a construction site: one prose string at `ubuntu_seeded_install_media_remaster.dag:43` (a dissolution `reason:` attesting to its own removal), and **five in two frozen `.diff` fixtures** — `src/v1/stage0/testdata/module_grain_affected_{dag_only_6edafbb,v2_only_bb6e656}.diff` (4 + 1). Two of those five are `-` **deletion** lines (`-  RawLine,`, `-      RawLine { text: … }`) — i.e. the recorded removal itself |
 | `ShellProgram` / `serialize_bash` / `ShellStmt` | **zero** — the defining module `dag/extdeps/languages/bash/program.dag` was **DELETED** (#6831, Phase 0). There is no bash-AST sidecar left to construct from | prose and frozen fixtures only — `design_document.dag:157`, `DESIGN.md` (its rendered twin), `plans/{shell_emission_model,emission_ingestion_inverse,host_convergence_circuit_residue}.dag`, the two ubuntu-media `reason:` fields, and `src/v1/stage0/testdata/module_grain_affected_dag_only_6edafbb.diff` — plus `srv3_host_effect_apply_witness_test.dag:71`, a witness asserting the string is **absent**. (`lens_module_gate`'s `ProjectionShellProgram` is a different identifier — a lens projection variant, not this type.) |
-| `bash_command_fold` / `bash_build` | **live, and this is the actual replacement machinery** — `src/v2/extdeps/languages/bash_command_fold.dag`, consumed by `bash_orchestration_emit.dag`, `dag/tools/build_step.dag` (which constructs plain `Node`, **not** `ShellStmt`), `realization_vocabulary_containment.dag`, and the fold tests | — |
+| `bash_command_fold` / `bash_build` | **live, and this is the actual replacement machinery** — `src/v2/extdeps/languages/bash_command_fold.dag`, consumed by `bash_orchestration_emit.dag`, `dag/gunbc/instruments/build_step.dag` (which constructs plain `Node`, **not** `ShellStmt`), `realization_vocabulary_containment.dag`, and the fold tests | — |
 | `nbd_proxy_serve` | **none of it** | (§1.C, §3 P6 and §5.D each carried a pre-dissolution copy of that row; all three corrected in the same pass) |
 
 **Method note, because this row has now been wrong three times and every error had the same cause.** `git grep -l` answers *"which files contain this string"*, which is **not** *"which files construct this thing"*. **Four** distinct classes match the string and none of them is a construction site:
@@ -802,7 +802,7 @@ That is the entire new-modeling surface. (A sixth, optional: a typed stdout/rece
 | `host_effect_realize` · ssh `command -v <tool>` (×2) | `command -v` | `shell.Which.Check` · `extdeps/shell/*` (via `ExecArgv`) |
 | `tools/review` · `design`, `algebra_ref` | `git fetch` + `git show origin:FILE` | `git.Core.FetchNoTags` + `git.Core.Show` · `extdeps/git/git.dag` (`|| echo '(not found)'` → typed error→Absent) |
 | `merge_admission_stamp` · `mkdir -p` | `mkdir -p` | `Filesystem` / `shell.Find.Dir` · `extdeps/filesystem/filesystem_io.dag` |
-| `dag/tools` · `host_prelude`/`gunbc_ci`/`emit_host_gate` witness+build transports | witness/build run | `gunbc.WitnessBin.Run` · `extdeps/gunbc/gunbc.dag`; `cargo.Build.*` · `extdeps/rust/cargo_build.dag` (`host_prelude` already has the typed precedent) |
+| `dag/gunbc/instruments` · `host_prelude`/`gunbc_ci`/`emit_host_gate` witness+build transports | witness/build run | `gunbc.WitnessBin.Run` · `extdeps/gunbc/gunbc.dag`; `cargo.Build.*` · `extdeps/rust/cargo_build.dag` (`host_prelude` already has the typed precedent) |
 | `live_deploy/readiness.dag` · `live_deploy_healthz_probe_script_for_port` → `intent.dag` · `live_deploy_health_probe_curl_command` | `curl` localhost `/healthz` | `http.Client.Get` · `extdeps/http/client.dag` (already exists) |
 | `host_identity_assimilation`/`adopt` · `echo <receipt>` | `echo <msg>` | typed receipt/stdout emit (`Filesystem.Write` or a print op) — not a shell need |
 

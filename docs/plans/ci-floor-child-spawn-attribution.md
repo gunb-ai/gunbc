@@ -34,7 +34,7 @@ about the work that happens **outside** that process.
 ## 2. The dominant class #7106 missed: cold child processes (≈48% of the floor)
 
 Every wet gate discharges its witnesses through `run_gunbc_claims`
-(`dag/tools/host_prelude.dag:177`, `run_gunbc_claims_ready`), whose fold spawns **one cold
+(`dag/gunbc/instruments/host_prelude.dag:177`, `run_gunbc_claims_ready`), whose fold spawns **one cold
 `gunbc` process per `ClaimRun`**. Each child rebuilds the module index and closure resolve from
 scratch; each costs ~35–73 s on srv **regardless of which claim it runs** (the cost is
 startup + resolve, not gate semantics). None of it is visible to `resolves_total = 4`, which counts

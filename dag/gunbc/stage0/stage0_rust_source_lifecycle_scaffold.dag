@@ -296,7 +296,7 @@ data rust_source_prefix_stage0_test: String = "src/v1/stage0/tests/"
 
 data rust_source_prefix_stage0_example: String = "src/v1/stage0/examples/"
 
-data rust_source_prefix_tooling: String = "dag/tools/"
+data rust_source_prefix_tooling: String = "dag/gunbc/instruments/"
 
 data rust_source_discovery_prefix_hints: List<String> = [
   rust_source_prefix_test_harness,

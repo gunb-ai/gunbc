@@ -1019,7 +1019,7 @@ fn containment_report_text(report: ContainmentReport) -> String {
 // THE CLI SURFACE.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/tools/pr_containment_instrument.dag --function measure \
+//     --entry dag/gunbc/instruments/pr_containment_instrument.dag --function measure \
 //     --arg repo=gunb-ai/gunbc --arg base=origin/main --arg remote=origin \
 //     --arg report=/tmp/containment.tsv
 //

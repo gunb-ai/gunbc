@@ -771,7 +771,7 @@ fn emission_report_text(m: EmissionMeasurement) -> String {
 // THE CLI SURFACE.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/tools/emission_entry_instrument.dag --function measure \
+//     --entry dag/gunbc/instruments/emission_entry_instrument.dag --function measure \
 //     --arg entry=dag/extdeps/cpu/ampere.dag --arg report=/tmp/board.tsv
 //
 // The report is WRITTEN rather than returned because `gunbc run` maps a returned value to an exit

@@ -4033,7 +4033,7 @@ fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>
     }
 }
 
-const COMPILE_CLEAN_SCOPE_ENTRY: &str = "dag/tools/dag_compile_clean_scope.dag";
+const COMPILE_CLEAN_SCOPE_ENTRY: &str = "dag/gunbc/instruments/dag_compile_clean_scope.dag";
 const FLOOR_COMPILE_CLEAN_PREDICATES_ENTRY: &str =
     "src/v2/workflow/floor_compile_clean_predicates.dag";
 
@@ -6922,7 +6922,7 @@ import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_do
 
     /// §5 discriminating RED: a typecheck-stage red must red BOTH paths. The planted
     /// module is the same variant-mismatch shape as the transport's canonical
-    /// `perturb_module_source` (`dag/tools/dag_compile_clean_transport.dag`) — `Some`
+    /// `perturb_module_source` (`dag/gunbc/instruments/dag_compile_clean_transport.dag`) — `Some`
     /// matched against a `Present`-constructed optional — a proven raw-pipeline red.
     #[test]
     fn planted_typecheck_red_agrees_red() {
@@ -9067,7 +9067,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
             // Measured on the specimen that produced this fix: compiling `src/v2` with `dag` as
             // the pool refused with 36 blocking diagnostics, of which 16 were exactly this --
             // `ContextAccess` and `StringLiteral` in `dag/extdeps/github/expressions.dag`,
-            // `run_bootstrap_witness` in `dag/tools/bootstrap_witness_transport.dag`,
+            // `run_bootstrap_witness` in `dag/gunbc/instruments/bootstrap_witness_transport.dag`,
             // `KvmObservedScreen` in `dag/gunbc/os_install_deduction.dag`, every one of them a
             // live module the walk could not reach. They are not 16 defects; they are one
             // closure being derived from the wrong relation.
@@ -29616,17 +29616,17 @@ deleted file mode 100644
     #[test]
     fn parse_unified_diff_added_paths_detects_new_files() {
         let diff = "\
-diff --git a/dag/tools/new_transport.dag b/dag/tools/new_transport.dag
+diff --git a/dag/gunbc/instruments/new_transport.dag b/dag/gunbc/instruments/new_transport.dag
 new file mode 100644
 --- /dev/null
-+++ b/dag/tools/new_transport.dag
++++ b/dag/gunbc/instruments/new_transport.dag
 @@ -0,0 +1,3 @@
 +module tools.new_transport
 +
 +fn run() -> Bool { true }
 ";
         let added = parse_unified_diff_added_paths(diff);
-        assert!(added.contains("dag/tools/new_transport.dag"));
+        assert!(added.contains("dag/gunbc/instruments/new_transport.dag"));
     }
 
     #[test]
@@ -30731,8 +30731,8 @@ mod module_grain_affected_equivalence_tests {
             "dag/test/claim/ebay_listing_witness_test.dag",
             "src/v2/test/claim/bash_program_fold_test.dag",
             "dag/test/claim/v1_dag_parse_witness_test.dag",
-            "dag/tools/host_prelude.dag",
-            "dag/tools/build_step.dag",
+            "dag/gunbc/instruments/host_prelude.dag",
+            "dag/gunbc/instruments/build_step.dag",
             "dag/gunbc/ci/ci_layer_roots.dag",
             "src/v2/test/claim/bash_command_fold_test.dag",
             "src/v2/workflow/orchestration_emit_test.dag",
@@ -30758,7 +30758,7 @@ mod module_grain_affected_equivalence_tests {
             "src/v2/workflow/orchestration_retry_emit_test.dag",
             "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators_test.dag",
             "dag/test/claim/card_intake_risk_witness_test.dag",
-            "dag/tools/host_prelude.dag",
+            "dag/gunbc/instruments/host_prelude.dag",
             "src/v2/test/claim/affected_set_universe_test.dag",
             "dag/test/claim/long/import_closure_live_test.dag",
         ]
@@ -39868,7 +39868,7 @@ mod witness_layer_roots_compile_clean_tests {
         with_workspace_cwd(|| {
             let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
                 &[
-                    "dag/tools/dag_compile_clean_transport.dag".to_string(),
+                    "dag/gunbc/instruments/dag_compile_clean_transport.dag".to_string(),
                     "src/v1/stage0/src/cli_run.rs".to_string(),
                 ],
                 &HashSet::new(),
@@ -40677,7 +40677,7 @@ mod witness_layer_roots_compile_clean_tests {
         with_workspace_cwd(|| {
             let plan = compile_clean_scope_plan_from_touched_paths(
                 &[
-                    "dag/tools/dag_compile_clean_transport.dag".to_string(),
+                    "dag/gunbc/instruments/dag_compile_clean_transport.dag".to_string(),
                     "src/v1/stage0/src/cli_run.rs".to_string(),
                 ],
                 &HashSet::new(),
@@ -43312,7 +43312,7 @@ mod import_closure_equivalence_tests {
     #[test]
     fn import_closure_live_matches_legacy_bfs_on_floor_gate_entry() {
         let roots = default_source_roots();
-        assert_bfs_matches_import_closure_live("dag/tools/floor_effect_gate_witness.dag", &roots);
+        assert_bfs_matches_import_closure_live("dag/gunbc/instruments/floor_effect_gate_witness.dag", &roots);
     }
 
     #[test]
@@ -43350,7 +43350,7 @@ mod import_closure_equivalence_tests {
         let roots = default_source_roots();
         let entries = [
             "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
-            "dag/tools/floor_effect_gate_witness.dag",
+            "dag/gunbc/instruments/floor_effect_gate_witness.dag",
             "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag",
             "src/v2/test/claim/fold_list_generic_instantiation.dag",
         ];

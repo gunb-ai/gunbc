@@ -329,7 +329,7 @@ fn write_ratchet_report(report: String, run: RatchetRun) -> Bool {
 // THE CLI SURFACE: TWO VERBS, BECAUSE ENROLMENT IS TWO QUESTIONS.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/tools/emit_subject_clean_ratchet.dag --function observe \
+//     --entry dag/gunbc/instruments/emit_subject_clean_ratchet.dag --function observe \
 //     --arg entries=dag/std/logic.dag --arg report=/tmp/ratchet.tsv
 //
 // The report is WRITTEN rather than returned for the same reason the instrument's is: `gunbc run`

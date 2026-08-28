@@ -7,7 +7,7 @@ import std.realization_schedule {
 }
 import std.types { List }
 
-data phase_profile_gate_entry: String = "dag/tools/floor_effect_gate_witness.dag"
+data phase_profile_gate_entry: String = "dag/gunbc/instruments/floor_effect_gate_witness.dag"
 
 fn phase_profile_proof_batches() -> List<List<Runnable>> {
   [[

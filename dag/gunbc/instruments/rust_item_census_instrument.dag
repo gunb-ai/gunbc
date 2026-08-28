@@ -30,7 +30,7 @@ import v2.std.algebra { length, list_append, list_map }
 // THE NAMED INSTRUMENT FOR THE ITEM-GRAIN CENSUS.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/tools/rust_item_census_instrument.dag --function census \
+//     --entry dag/gunbc/instruments/rust_item_census_instrument.dag --function census \
 //     --arg report=/tmp/seed-growth.txt
 //
 // DESIGN's standing rule is name the instrument, never transcribe its output, and until this module

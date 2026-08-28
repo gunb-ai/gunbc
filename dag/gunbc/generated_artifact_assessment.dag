@@ -176,7 +176,7 @@ fn expected_cardinality_finding_rendered(f: ExpectedArtifactCardinalityFinding) 
 fn observation_finding_rendered(f: GeneratedArtifactObservationFinding) -> String {
   match f {
     GeneratedArtifactContentDiffers { artifact: _, path } =>
-      concat(path, " — committed content differs from authority → this is a GENERATED projection; do not hand-edit, regenerate via main_wet on dag/tools/generated_artifact_gate.dag")
+      concat(path, " — committed content differs from authority → this is a GENERATED projection; do not hand-edit, regenerate via main_wet on dag/gunbc/instruments/generated_artifact_gate.dag")
     GeneratedArtifactCommittedArtifactAbsent { artifact: _, path, detail } =>
       concat(
         concat(concat(path, " — committed artifact is absent: "), detail),

@@ -20,7 +20,7 @@ import gunbc.bare_name_fork_lens {
 // where those were would repeat a cost the repository has already measured and rejected.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/tools/bare_name_fork_check.dag --function check --arg subject=<rel path>
+//     --entry dag/gunbc/instruments/bare_name_fork_check.dag --function check --arg subject=<rel path>
 //
 // The exit is a refusal on a fork AND on an unread subject: a lens whose only failure mode is
 // "found something" reads clean whenever it could not read at all.
