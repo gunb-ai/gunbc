@@ -70,7 +70,15 @@ fn mixed_sites() -> List<DiscoveredSite> {
     hermetic_site(module_path: "test.claim.alpha_witness", function: "w_beta"),
     hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow"),
     live_tree_site(module_path: "v2.test.fixture.walk_plan_stage.common", function: "w_member"),
-    live_tree_site(module_path: "test.claim.reads_tree_witness", function: "w_reads")
+    live_tree_site(module_path: "test.claim.reads_tree_witness", function: "w_reads"),
+    // A REAL MEMBER OF `floor_cost_debt_roster`, spelled as the module/function pair whose
+    // qualified identity the roster holds. Without it every partition assertion over the fourth
+    // arm would pass at 0 == 0 -- an empty arm makes its own guard vacuous, and the sum below
+    // would balance whether or not the census could classify a withheld row at all.
+    hermetic_site(
+      module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
+      function: "no_raw_lifecycle_string_survivors_remain"
+    )
   ]
 }
 
@@ -191,7 +199,8 @@ test fn w_empty_module_path_and_empty_function_refuse_apart() -> Bool {
 // A fixture member reports the exact prefix whose recipe owns its execution.
 test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
   match required_floor_site_disposition(
-    module_path: "v2.test.fixture.walk_plan_stage.common"
+    module_path: "v2.test.fixture.walk_plan_stage.common",
+    identity: "v2.test.fixture.walk_plan_stage.common.some_member"
   ) {
     DeclinedFixtureMember { matched_prefix: p } => p == "v2.test.fixture.walk_plan_stage."
     Planned => false
@@ -202,7 +211,8 @@ test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
 
 test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.long.slow_witness"
+    module_path: "test.claim.long.slow_witness",
+    identity: "test.claim.long.slow_witness.a_claim"
   ) {
     DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
     Planned => false
@@ -216,7 +226,8 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
 // control beside the decline above: without it the decline could pass under a `contains` test.
 test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.not_test_claim_long.witness"
+    module_path: "test.claim.not_test_claim_long.witness",
+    identity: "test.claim.not_test_claim_long.witness.a_claim"
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
@@ -227,7 +238,8 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
 
 test fn w_site_is_planned_when_no_home_matched() -> Bool {
   match required_floor_site_disposition(
-    module_path: "test.claim.ordinary_witness"
+    module_path: "test.claim.ordinary_witness",
+    identity: "test.claim.ordinary_witness.a_claim"
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
@@ -245,11 +257,11 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
 // the executing evidence for that construction rather than a second wall beside it.
 test fn w_counts_partition_the_offered_population() -> Bool {
   let counts = census_counts(rows: census_rows_of(sites: mixed_sites()))
-  (counts.offered == 5)
+  (counts.offered == 6)
     && (counts.planned == 3)
     && (counts.declined_long_module == 1)
     && (counts.declined_fixture_member == 1)
-    && (counts.declined_cost_debt == 0)
+    && (counts.declined_cost_debt == 1)
     && (counts.offered ==
         counts.planned + counts.declined_long_module
           + counts.declined_fixture_member
@@ -263,20 +275,61 @@ test fn w_counts_partition_the_offered_population() -> Bool {
 // from here, and this witness is what keeps that true: an edit that taught the site function to
 // answer cost debt from a prefix would go red on all three inputs at once.
 //
-// The `declined_cost_debt == 0` conjunct above is the same claim read from the census side --
-// the site fixture cannot produce the arm, so the counted population is empty by construction
-// rather than by the fixture happening to omit one.
-test fn w_site_disposition_never_answers_cost_debt() -> Bool {
-  let long_home = match required_floor_site_disposition(
-    module_path: "test.claim.long.slow_witness"
-  ) { DeclinedCostDebt => false  Planned => true  DeclinedLongModule { matched_prefix: _ } => true  DeclinedFixtureMember { matched_prefix: _ } => true }
-  let fixture_home = match required_floor_site_disposition(
-    module_path: "v2.test.fixture.walk_plan_stage.specimen"
-  ) { DeclinedCostDebt => false  Planned => true  DeclinedLongModule { matched_prefix: _ } => true  DeclinedFixtureMember { matched_prefix: _ } => true }
-  let ordinary = match required_floor_site_disposition(
-    module_path: "test.claim.ordinary_witness"
-  ) { DeclinedCostDebt => false  Planned => true  DeclinedLongModule { matched_prefix: _ } => true  DeclinedFixtureMember { matched_prefix: _ } => true }
-  long_home && fixture_home && ordinary
+// THE FOURTH ARM IS REACHABLE FROM THE MODEL, AND THESE ARE ITS DISCRIMINATING ROWS.
+//
+// AN EARLIER REVISION OF THIS FILE ASSERTED THE OPPOSITE -- `w_site_disposition_never_answers_cost_debt`
+// claimed the modeled disposition could never produce `DeclinedCostDebt`. That was TRUE of the
+// code and it was the DEFECT, not a property worth guarding: the fold declined 266 identities by
+// name while the model called every one of them `Planned`, so the witness was enshrining a §3
+// single-authority divergence as if it were a contract. Review 57235 named it. The function now
+// takes the qualified identity and consults the roster, so the assertion is inverted rather than
+// deleted: what is checked is that the arm IS produced, and produced in the right precedence.
+
+// A ROSTERED IDENTITY IN AN ORDINARY HOME DECLINES FOR COST. The identity is a real member of
+// `floor_cost_debt_roster`, so this row goes red the moment that roster stops holding it -- it is
+// not a fixture spelling that can drift away from the population it describes.
+test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
+    identity: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain"
+  ) {
+    DeclinedCostDebt => true
+    Planned => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL BESIDE IT: the same module, an identity the roster does not hold, is
+// planned. Without this the row above would pass under a disposition that declined the whole
+// module, which is exactly the module-grain reading the fourth arm exists to refuse.
+test fn w_unrostered_sibling_in_the_same_module_is_planned() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
+    identity: "dag.test.claim.lifecycle_survivor_corpus_census.a_sibling_the_roster_does_not_hold"
+  ) {
+    Planned => true
+    DeclinedCostDebt => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+  }
+}
+
+// PRECEDENCE: COST DEBT IS LAST. A rostered identity that ALSO declines for a home reason keeps
+// its HOME decline. That is what makes such a roster line surface as STALE -- it never enters the
+// fold's cost-debt seen set -- rather than as a withhold nobody can distinguish from a real one.
+// The host loop mirrors this order and cites this function for it; before review 57235 that
+// citation named a precedence the model did not carry.
+test fn w_home_decline_outranks_cost_debt() -> Bool {
+  match required_floor_site_disposition(
+    module_path: "test.claim.long.slow_witness",
+    identity: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain"
+  ) {
+    DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
+    DeclinedCostDebt => false
+    Planned => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+  }
 }
 
 // EVERY DISCOVERED SITE GETS A ROW, DECLINED OR NOT. A census that dropped the declines would
@@ -304,10 +357,14 @@ test fn w_partition_returns_both_sides_and_loses_no_row() -> Bool {
 test fn w_declined_sites_are_rows_not_omissions() -> Bool {
   let rows = census_rows_of(sites: mixed_sites())
   let rendered = fold(rows, init: [], f: fn(acc, row) { concat([render_label(l: row.label)], acc) })
-  ((rows |> count) == 5)
+  ((rows |> count) == 6)
     && list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
     && list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
     && list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
+    && list_holds(
+         xs: rendered,
+         wanted: "//dag/test/claim/lifecycle_survivor_corpus_census:no_raw_lifecycle_string_survivors_remain"
+       )
 }
 
 // ---------------------------------------------------------------------------------------------

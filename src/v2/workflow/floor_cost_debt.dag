@@ -4,7 +4,12 @@ import v2.std.algebra { Cons, Empty, list_flat_map, any }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-// THE OVER-COST WITHHOLDING MECHANISM, CURRENTLY CARRYING NO IDENTITIES.
+// THE OVER-COST WITHHOLDING MECHANISM, CARRYING 266 IDENTITIES.
+//
+// The count is stated once, here, and derived nowhere else in this file's prose. An earlier
+// revision of this header read "CURRENTLY CARRYING NO IDENTITIES" -- true of the empty carrier
+// that landed first, false from the moment the roster was enrolled, and it then stood in direct
+// contradiction with the population block below on the same authority. Caught by review 57235.
 //
 // WHY IT IS NOT THE EXPECTED-RED ROSTER, stated first because the two are easy to fuse.
 //
