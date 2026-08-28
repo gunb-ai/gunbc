@@ -96,16 +96,32 @@ data emitted_record_deserialize_gap_evidence: List<EmittedRecordDeserializeEvide
   workaround_in_this_repository,
 ]
 
-// RUNG, STATED HONESTLY. The class sits at MITIGATABLE: the failure occurs, and it is contained
-// only by the seed build refusing loudly at a distance from its cause. It is not mechanically
-// preventable, because nothing in the ordinary .dag compile path refuses the shape.
+// RUNG: MITIGATABLE, AND THE PATH DECOMPOSITION IS WHY -- review 57088 read an earlier revision of
+// this comment as claiming a working gate, and that reading was fair because the sentence it read
+// was false.
 //
-// NO EXECUTING RED IS ENROLLED HERE, AND THE REASON IS THE FIXTURE BOUNDARY RATHER THAN A CHOICE.
-// The only way to author this shape today is to put it in the seed's emit closure, which by
-// construction stops the required build for every subject at once -- so the probe cannot be a
-// witness that goes red on its own; it goes red by breaking the tree. That missing harness is this
-// class's next-rung trigger, exactly as DESIGN 4b prescribes, and not a permanent ceiling.
+// DESIGN 4b(1) sets a class's rung at the MINIMUM across its in-scope paths, so the question is not
+// whether SOME path refuses the shape but whether EVERY path does. Measured on this branch, over the
+// 4234 modules indexed under src/v1 + dag + src/v2: the seed closure is 134 modules and the
+// emit-compile roster's closures add 5 more, for 139 covered. THE REMAINING 4095 CAN CARRY THIS
+// SHAPE WITH NOTHING REFUSING IT -- no required phase emits them, so the .dag is accepted, the bad
+// state is written, and no build ever fails. That is the path that sets the rung.
+//
+// On the 139 covered modules the seed build does refuse, and mechanically preventable is still the
+// wrong reading of it: 4b reserves that rung for a mechanism that EXPOSES AND BLOCKS the invalid
+// state, and a build break at a distance from its cause, in generated code the author did not write,
+// with no typed located diagnostic naming the source construct, is containment after failure rather
+// than prevention of it. The invalid state remains writable on every path, including that one.
+//
+// NO EXECUTING RED IS ENROLLED, AND THE REASON FOLLOWS FROM THE SAME SPLIT rather than from the
+// seed-closure claim an earlier revision made here -- that claim was false and is deleted, not
+// softened. On the 4095 uncovered modules authoring the shape produces NO SIGNAL AT ALL, so there is
+// nothing for a probe to observe. On the 139 covered ones it stops the required build for every
+// subject at once, so the probe cannot go red on its own; it goes red by breaking the tree. Neither
+// half yields an enrollable red, which is exactly the capability the trigger below names.
 data emitted_record_deserialize_gap_rung: String = "mitigatable"
+
+data emitted_record_deserialize_gap_path_coverage_measurement: String = "Measured 2026-08-28 on this branch over 4234 modules indexed under src/v1 + dag + src/v2: seed closure 134, emit-compile roster closures add 5, 139 covered, 4095 uncovered. On the uncovered majority the shape is accepted and nothing refuses it, which is the path that sets the rung under DESIGN 4b(1) minimum-across-paths."
 
 // THE PREMISE BEHIND THE TRIGGER WAS MEASURED, AFTER AN EARLIER REVISION ASSERTED IT.
 //
