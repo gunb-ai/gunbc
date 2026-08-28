@@ -1,5 +1,6 @@
 module v2.test.lens_common.infer_fixture
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree, infer_facts_lookup_miss_diagnostic }
 import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection { Map }
@@ -7,7 +8,7 @@ import v2.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness
 }
-import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.optional { Present }
 import v2.std.witness { Holds, StructuralPropertyWitness, Witness, witness_from_optional }
 
@@ -15,7 +16,7 @@ fn claim_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

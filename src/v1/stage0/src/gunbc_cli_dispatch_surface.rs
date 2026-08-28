@@ -86,6 +86,7 @@ pub enum CliArmRealization {
 #[serde(tag = "_variant")]
 pub enum CliOperandValue {
     CliAbsoluteLabelOperand,
+    CliScmReadVerbOperand,
 }
 
 #[derive(
@@ -162,7 +163,7 @@ pub fn gunbc_cli_version_text(identity: Rc<CliVersionIdentity>) -> String {
 pub fn gunbc_cli_build_identity_seed_dissolve_trigger() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            unbound_dissolution("🟡 dissolve-on: the GUNBC_BUILD_IDENTITY observation block in src/v1/stage0/build.rs — exactly one removable seed unit. DISSOLVES WHEN the v1-zero-hand-maintained-rust ROADMAP lane (gunbc.roadmap_authority roadmap_nodes) emits the build-time Git observation from gunbc.cli_dispatch_surface, at which point git_output and the identity block delete together rather than leaving a second producer. Checkable until deletion: GUNBC_BUILD_IDENTITY has exactly one cargo:rustc-env producer in src/v1/stage0/build.rs and gunbc_cli_version_text is its sole formatting authority.".to_string())
+            crate::std_dissolution::unbound_dissolution("🟡 dissolve-on: the GUNBC_BUILD_IDENTITY observation block in src/v1/stage0/build.rs — exactly one removable seed unit. DISSOLVES WHEN the v1-zero-hand-maintained-rust ROADMAP lane (gunbc.roadmap_authority roadmap_nodes) emits the build-time Git observation from gunbc.cli_dispatch_surface, at which point git_output and the identity block delete together rather than leaving a second producer. Checkable until deletion: GUNBC_BUILD_IDENTITY has exactly one cargo:rustc-env producer in src/v1/stage0/build.rs and gunbc_cli_version_text is its sole formatting authority.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -301,6 +302,32 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 })]),
     realization: Rc::new(CliArmRealization::CliRefusesUnwired {
     successor: "gunbc.fleet_converge_apply".to_string(),
+}),
+    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+}), Rc::new(CliSubcommandRow {
+    verb: "scm".to_string(),
+    variant: "Scm".to_string(),
+    doc: Rc::new(vec!["Read a gunbc repository: `gunbc scm log` lists its commits,".to_string(), "`gunbc scm status` reports what is checked out and staged.".to_string(), "Both answer from the repository document alone and mutate nothing.".to_string()]),
+    operands: Rc::new(vec![Rc::new(CliOperandRow {
+    field: "verb".to_string(),
+    placeholder: "VERB".to_string(),
+    value: CliOperandValue::CliScmReadVerbOperand {},
+    arity: CliOperandArity::CliExactlyOneOperand {},
+    doc: Rc::new(vec!["Which read to perform: `log` or `status`".to_string()]),
+    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+})]),
+    options: Rc::new(vec![Rc::new(CliOptionRow {
+    field: "path".to_string(),
+    long: "path".to_string(),
+    value: Rc::new(CliOptionValue::CliTextValue {
+    text_default: None,
+}),
+    arity: CliOptionArity::CliRequired,
+    doc: Rc::new(vec!["Path to the repository document to read".to_string()]),
+    emission: CliSurfaceEmission::AbsentFromEmitMainRs,
+})]),
+    realization: Rc::new(CliArmRealization::CliRefusesUnwired {
+    successor: "unwired: gunbc.cli_wire CliWireResponse has no host renderer bound. MEASURED, not assumed -- `gunbc run --entry dag/gunbc/scm/read_command.dag --function scm_read_log --arg path=<p>` binds its argument and READS THE FILE, then the host refuses with `returned ScmReadResult, not ProcessExit`, so the answer is computed and discarded. There is therefore NO route a user can invoke today that yields this answer, and naming one would be a dead end dressed as a redirect.".to_string(),
 }),
     emission: CliSurfaceEmission::AbsentFromEmitMainRs,
 }), Rc::new(CliSubcommandRow {
@@ -527,5 +554,7 @@ pub struct EmittedByEmitMainRs;
 pub struct AbsentFromEmitMainRs;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CliAbsoluteLabelOperand;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CliScmReadVerbOperand;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CliExactlyOneOperand;

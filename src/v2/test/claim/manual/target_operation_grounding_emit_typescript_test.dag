@@ -1,5 +1,6 @@
 module v2.test.manual.target_operation_grounding_emit_typescript
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.compilers.target_model {
   ProducedDeclUnwired,
   CanonicalOperation,
@@ -50,7 +51,7 @@ import v2.std.algebra { Equal, Greater, Less, Ordering, zip_eq }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.logic { Bool }
-import v2.std.node { Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.node { Conj, Node, Symbol, TypeNode }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -72,7 +73,7 @@ fn op_grounding_test_bundle() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

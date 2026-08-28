@@ -1,5 +1,6 @@
 module v2.test.long.add_arrow_eval_by_execution
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.ingested_fixture_arrows {
   ingested_add_module_source
 }
@@ -85,7 +86,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.runtime {
@@ -126,7 +126,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn add_arrow_eval_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: []
   }
 }
@@ -136,7 +136,7 @@ fn add_arrow_eval_i64_node() -> Node {
 }
 
 fn add_arrow_eval_int_literal_optional(lexeme: String) -> Optional<Node> {
-  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
+  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: OccurrenceSynthetic) {
     Accepted { value: node, diagnostics: _ } => Present { value: node }
     Rejected { diagnostics: _ } => Absent
   }
@@ -242,7 +242,7 @@ fn add_arrow_eval_lazy_arm_branch_node() -> Node {
         Present { value: five_lit } =>
           Node {
             kind: ComputationNode { behavior: Branch },
-            occurrence_id: SyntheticOccurrence,
+            occurrence_id: OccurrenceSynthetic,
             children: [
               Edge { label: Positional, target: two_lit },
               Edge { label: Positional, target: five_lit },
@@ -370,7 +370,7 @@ fn add_arrow_eval_add_call_optional(
           Present {
             value: Node {
               kind: ComputationNode { behavior: Transform },
-              occurrence_id: SyntheticOccurrence,
+              occurrence_id: OccurrenceSynthetic,
               children: [
                 Edge { label: Positional, target: callee },
                 Edge { label: Positional, target: left },
@@ -387,7 +387,7 @@ fn add_arrow_eval_add_call_optional(
 fn add_arrow_eval_tree_root(call: Node, expected: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Named { name: ^add_arrow_eval_actual }, target: call },
       Edge { label: Named { name: ^add_arrow_eval_expected }, target: expected }
@@ -511,7 +511,7 @@ fn add_arrow_eval_run(
 fn add_arrow_swapped_operand_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus) },
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_y) },
@@ -523,7 +523,7 @@ fn add_arrow_swapped_operand_body() -> Node {
 fn add_arrow_swapped_add_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
@@ -536,7 +536,7 @@ fn add_arrow_swapped_add_arrow() -> Node {
 fn add_arrow_excess_signature_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
@@ -550,7 +550,7 @@ fn add_arrow_excess_signature_arrow() -> Node {
 fn add_arrow_eval_canonical_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus) },
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x) },
@@ -562,7 +562,7 @@ fn add_arrow_eval_canonical_body() -> Node {
 fn add_arrow_excess_body_arrow() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_type_int) },
@@ -575,7 +575,7 @@ fn add_arrow_excess_body_arrow() -> Node {
 fn add_arrow_excess_body() -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_token_plus) },
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^dag_binding_param_x) },
@@ -593,7 +593,7 @@ fn add_arrow_excess_actual_call_optional(callee: Node) -> Optional<Node> {
           Present {
             value: Node {
               kind: ComputationNode { behavior: Transform },
-              occurrence_id: SyntheticOccurrence,
+              occurrence_id: OccurrenceSynthetic,
               children: [
                 Edge { label: Positional, target: callee },
                 Edge { label: Positional, target: two_lit },
@@ -823,7 +823,7 @@ fn add_arrow_eval_lazy_arm_loop_interpretation() -> InterpretationAlgebra {
 fn add_arrow_eval_lazy_arm_loop_node() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
-    occurrence_id: SyntheticOccurrence,
+    occurrence_id: OccurrenceSynthetic,
     children: [
       Edge { label: Positional, target: add_arrow_eval_atom(s: ^add_arrow_eval_unknown_arm_literal) },
       Edge {

@@ -1,7 +1,7 @@
 module test.claim.spark_serving_release_witness_test
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
-import std.measure { byte_size }
+import std.measure { token_count, token_count_value }
 import std.content_hash { content_hash_of_value, ContentHash }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_realization {
@@ -14,8 +14,8 @@ import gunbc.spark.serving_realization {
 import gunbc.spark.serving_release {
   SparkServingReleaseIdentity, SparkServingOccurrence,
   SparkServingRelease, RuntimeArtifactIdentity,
-  ServingConfigurationIdentity, InferenceCapacityPolicy,
-  SparkServingServingPolicy,
+  OllamaServingLaunchProfile,
+  SparkServingBindListen,
   spark_serving_release_identity,
   SparkServingReconciliation, SparkServingAlreadyConverged, SparkServingDeltaRequired,
   SparkServingInstallRequired,
@@ -73,29 +73,29 @@ fn release_other_revision() -> SparkServingRelease {
   }
 }
 
-fn policy_base() -> SparkServingServingPolicy {
-  SparkServingServingPolicy {
-    serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" },
-    capacity: InferenceCapacityPolicy {
-      max_model_len: 4096,
-      shared_memory_budget_bytes: byte_size(127600816),
-    },
+fn witness_bind() -> SparkServingBindListen {
+  SparkServingBindListen { host: "0.0.0.0", port: 11434 }
+}
+
+fn profile_base() -> OllamaServingLaunchProfile {
+  OllamaServingLaunchProfile {
+    bind: witness_bind(),
+    configured_context: token_count(count: 4096),
   }
 }
 
-fn policy_other_capacity() -> SparkServingServingPolicy {
-  SparkServingServingPolicy {
-    serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" },
-    capacity: InferenceCapacityPolicy {
-      max_model_len: 8192,
-      shared_memory_budget_bytes: byte_size(127600816),
-    },
+fn profile_other_window() -> OllamaServingLaunchProfile {
+  OllamaServingLaunchProfile {
+    bind: witness_bind(),
+    configured_context: token_count(count: 8192),
   }
 }
 
 // CONTROL 5: the identity is a FUNCTION OF THE RELEASE, both directions. An independently
 // constructed but identical release yields the IDENTICAL digest, and changing the model manifest
-// digest CHANGES it. Capacity lives on serving_policy and must not affect release identity.
+// digest CHANGES it. Launch values live on the occurrence's profile and must not affect release
+// identity -- srv5 and srv6 share one release precisely so that a per-host launch difference cannot
+// fork it.
 fn digest_of(spec: SparkServingRelease) -> String {
   spark_serving_release_identity(spec: spec).digest.digest as String
 }
@@ -105,9 +105,10 @@ test fn release_identity_is_derived_not_authored() -> Bool {
     && digest_of(spec: release_base()) != digest_of(spec: release_other_revision())
 }
 
-test fn serving_policy_capacity_does_not_change_release_identity() -> Bool {
+test fn launch_profile_window_does_not_change_release_identity() -> Bool {
   digest_of(spec: release_base()) == digest_of(spec: release_base())
-    && policy_base().capacity.max_model_len != policy_other_capacity().capacity.max_model_len
+    && token_count_value(t: profile_base().configured_context)
+       != token_count_value(t: profile_other_window().configured_context)
 }
 
 fn refusal_specimen() -> SparkServingReconciliation {
@@ -118,7 +119,7 @@ fn occ_srv5() -> SparkServingOccurrence {
   SparkServingOccurrence {
     host: "srv5",
     release_identity: spark_serving_release_identity(spec: release_base()),
-    serving_policy: policy_base(),
+    launch_profile: profile_base(),
   }
 }
 
@@ -126,7 +127,7 @@ fn occ_srv6_same() -> SparkServingOccurrence {
   SparkServingOccurrence {
     host: "srv6",
     release_identity: spark_serving_release_identity(spec: release_base()),
-    serving_policy: policy_base(),
+    launch_profile: profile_base(),
   }
 }
 
@@ -134,7 +135,7 @@ fn occ_srv6_other() -> SparkServingOccurrence {
   SparkServingOccurrence {
     host: "srv6",
     release_identity: spark_serving_release_identity(spec: release_other_revision()),
-    serving_policy: policy_base(),
+    launch_profile: profile_base(),
   }
 }
 

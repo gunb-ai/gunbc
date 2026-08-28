@@ -41,6 +41,17 @@ data entropy_password_count_chars_unit_debt: Disposition = Scaffold {
   }
 }
 
+data entropy_read_password_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.entropy",
+    decl_name: "Urandom",
+    field: WholeDeclaration
+  }
+}
+
+data entropy_read_password_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: extdeps.entropy Urandom.ReadPassword — the character-class draws, exact-length refusals, concatenation, and truncation remain an opaque shell transport string. DISSOLVES WHEN the ReadPassword process is modeled as Bash grammar Nodes and its transport is derived through v2.workflow.bash_emit bash_emit_program (or a typed host-effect realization), leaving no hand-authored medium-as-string process logic in this operation.")
+
 // A PIPELINE REPORTS ITS LAST STAGE'S STATUS, AND base64 SUCCEEDS ON EMPTY INPUT.
 //
 // The argv was `head -c {count} /dev/urandom | base64 -w 0`, so a failing `head` was reported
@@ -56,12 +67,16 @@ data entropy_password_count_chars_unit_debt: Disposition = Scaffold {
 // bytes travel through a file rather than a shell variable because command substitution strips
 // NULs and trailing newlines and would corrupt the draw.
 //
-// NOT REPAIRED HERE and needing its own owner: ReadPassword below builds its components with
-// unchecked `$(tr ... | head -c1)` substitutions, so a failing component silently yields a
-// SHORTER password rather than a refusal -- a different and more serious defect than the pipe
-// status, and fixing it is a redesign of the generator rather than an argv repair.
+// THE ReadPassword HALF THIS PARAGRAPH DEFERRED HAS SINCE BEEN REPAIRED ON MAIN by #9526, and the
+// sentence is corrected here rather than left standing, because a deferral naming a live defect is
+// read as a live defect. What it said: ReadPassword built its components with unchecked
+// `$(tr ... | head -c1)` substitutions, so a failing component silently yielded a SHORTER password
+// rather than a refusal. #9526 closed exactly that, asserting each component's length and exiting
+// nonzero when it is short. The two repairs are COMPLEMENTARY rather than overlapping -- this one
+// captures a producing stage's exit status through a pipe, that one checks the length of a command
+// substitution's result -- and they collided here only because both added a dissolution row to the
+// same region and the same import at different positions.
 data urandom_read_bytes_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: Urandom.ReadBytes / Urandom.ReadPassword transport argv -- hand-authored shell program expanded as a string literal to capture the producing stage's exit status; this edits the failure arm of an EXISTING transport and adds no new emission site, per the gunbc.githooks_pre_push_emit precedent. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes these operations through orchestration emit or typed host_effect_apply without a medium-as-string scaffold.")
-
 service Urandom {
   operation ReadBytes {
     input { count: Int }
@@ -78,7 +93,7 @@ service Urandom {
     input { count: Int }
     output { password: String from "stdout" }
     readonly
-    transport shell { argv: ["sh", "-c", "U=$(LC_ALL=C tr -dc 'A-Z' </dev/urandom | head -c1); L=$(LC_ALL=C tr -dc 'a-z' </dev/urandom | head -c1); D=$(LC_ALL=C tr -dc '0-9' </dev/urandom | head -c1); S=$(LC_ALL=C tr -dc '_.@#%-' </dev/urandom | head -c1); R=$(LC_ALL=C tr -dc 'A-Za-z0-9_.@#%-' </dev/urandom | head -c {count}); printf '%s%s%s%s%s' \"$U\" \"$L\" \"$D\" \"$S\" \"$R\" | head -c {count}"] }
+    transport shell { argv: ["sh", "-c", "U=$(LC_ALL=C tr -dc 'A-Z' </dev/urandom | head -c1); [ \"${#U}\" -eq 1 ] || exit 1; L=$(LC_ALL=C tr -dc 'a-z' </dev/urandom | head -c1); [ \"${#L}\" -eq 1 ] || exit 1; D=$(LC_ALL=C tr -dc '0-9' </dev/urandom | head -c1); [ \"${#D}\" -eq 1 ] || exit 1; S=$(LC_ALL=C tr -dc '_.@#%-' </dev/urandom | head -c1); [ \"${#S}\" -eq 1 ] || exit 1; R=$(LC_ALL=C tr -dc 'A-Za-z0-9_.@#%-' </dev/urandom | head -c {count}); [ \"${#R}\" -eq {count} ] || exit 1; printf '%s%s%s%s%s' \"$U\" \"$L\" \"$D\" \"$S\" \"$R\" | head -c {count}"] }
     exit {
       0 => Unit
       nonzero => String "Urandom.ReadPassword: /dev/urandom failed"

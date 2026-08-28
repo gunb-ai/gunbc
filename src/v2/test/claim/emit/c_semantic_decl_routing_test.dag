@@ -1,12 +1,13 @@
 module v2.test.emit.c_semantic_decl_routing
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.c { c_target_model }
 import v2.extdeps.languages.c_decl { c_stage1_type_decl_frontier_deferred_count }
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -26,11 +27,11 @@ data c_semantic_answer_golden: String = concat(
 )
 
 fn cdr_empty_conj() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
 fn cdr_atom_type(name: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
 fn cdr_field_edge(name: Symbol, type_name: Symbol) -> Edge {
@@ -47,7 +48,7 @@ fn cdr_variant_edge_payload(name: Symbol, fields: List<Edge>) -> Edge {
     target: Node {
       kind: TypeNode { connective: Conj },
       children: fields,
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     }
   }
 }
@@ -73,7 +74,7 @@ fn cdr_point_record() -> Node {
       cdr_field_edge(name: ^x, type_name: ^Int),
       cdr_field_edge(name: ^y, type_name: ^Int)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -81,7 +82,7 @@ fn cdr_bool_coproduct() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [ cdr_variant_edge(name: ^True), cdr_variant_edge(name: ^False) ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -92,7 +93,7 @@ fn cdr_answer_coproduct() -> Node {
       cdr_variant_edge_payload(name: ^Yes, fields: [ cdr_field_edge(name: ^n, type_name: ^Int) ]),
       cdr_variant_edge_payload(name: ^No, fields: [ cdr_field_edge(name: ^code, type_name: ^Int) ])
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -114,7 +115,7 @@ fn cdr_bool_field_record() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [ cdr_field_edge(name: ^flag, type_name: ^Bool) ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -138,7 +139,7 @@ fn cdr_arrow_type() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [ Edge { label: Positional, target: cdr_atom_type(name: ^Int) } ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

@@ -3,14 +3,18 @@ module gunbc.seed_growth_admission
 import gunbc.anonymous_record_resolution_seed_growth { anonymous_record_resolution_seed_growth_justification }
 import gunbc.reference_closure_binder_seed_growth { reference_closure_binder_seed_growth_justification }
 import gunbc.bare_reference_scanner_admission { bare_reference_scanner_seed_growth_justification }
+import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
 import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
 import gunbc.declaration_index_seed_growth { declaration_index_seed_growth_justification }
 import gunbc.emitted_closure_compile_seed_growth { emitted_closure_compile_seed_growth_justification }
+import gunbc.namespace_structural_observation_bridge_seed_growth { namespace_structural_observation_bridge_seed_growth_justification }
 import gunbc.namespace_wave_admission { namespace_wave_admission_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
 import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_growth_justification }
+import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
+import gunbc.generated_artifact_boundary_seed_growth { generated_artifact_boundary_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjection,
@@ -39,6 +43,8 @@ import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_key }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_justification }
 import gunbc.floor_non_verdict_enrollment { floor_non_verdict_seed_growth_justification }
+import gunbc.floor_route_gap_seed_growth { floor_route_gap_seed_growth_justification }
+import gunbc.floor_cost_debt_seed_growth { floor_cost_debt_seed_growth_justification }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition }
@@ -143,6 +149,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
   [
     anonymous_record_resolution_seed_growth_justification,
     floor_non_verdict_seed_growth_justification,
+    floor_route_gap_seed_growth_justification,
+    floor_cost_debt_seed_growth_justification,
     stage0_rust_observation_seed_growth_justification,
     observation_scoped_run_seed_growth_justification(),
     whole_corpus_compile_seed_growth_justification,
@@ -151,11 +159,15 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     witness_runtime_cause_seed_growth_justification,
     parse_refusal_location_seed_growth_justification,
     claim_unwind_seed_growth_justification,
+    shared_fill_attribution_seed_growth_justification,
+    census_memo_seed_growth_justification,
     declaration_index_seed_growth_justification,
     emitted_closure_compile_seed_growth_justification,
+    namespace_structural_observation_bridge_seed_growth_justification,
     namespace_wave_admission_seed_growth_justification,
     qualified_pipe_callee_seed_growth_justification,
-    target_invocation_seed_growth_justification
+    target_invocation_seed_growth_justification,
+    generated_artifact_boundary_seed_growth_justification
   ]
 }
 

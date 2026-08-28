@@ -1,7 +1,7 @@
 module gunbc.plans.ci_performance_tanking_evidence
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
 
@@ -89,6 +89,7 @@ fn ci_performance_tanking_evidence_body() -> List<MarkdownBlock> {
 }
 
 data ci_performance_tanking_evidence_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "ci-performance-tanking-evidence",
   title: "Why CI performance is tanking - the evidence, argued serially (2026-07-10/11 main-red incident)",
   body: ci_performance_tanking_evidence_body(),

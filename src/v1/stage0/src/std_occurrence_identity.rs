@@ -384,7 +384,7 @@ pub fn scoped_occurrence_ref_in_scope(
 pub fn occurrence_identity_constructor_spelling_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global: the legacy v2 SyntheticOccurrence/MintedOccurrence facade and identically named shared constructors cannot coexist in one conversion closure. The constructor spelling is representation; this shared carrier and its allocator remain the semantic authority.".to_string()
+            "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global. The spelling was chosen while a second, identically named v2 coproduct still existed and could not coexist with these constructors in one closure; that coproduct and its conversions are deleted and this carrier is now the only occurrence-identity carrier a Node holds. The spelling is kept because renaming it would be a corpus-wide rewrite that buys nothing: the constructor spelling is representation, and this shared carrier and its allocator remain the semantic authority.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -960,7 +960,7 @@ pub fn occurrence_transport_refusal(
 pub fn authored_token_ordinal_typed_bridge_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            unbound_dissolution("feature:occurrence-ordinal-value-measure — DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows.".to_string())
+            crate::std_dissolution::unbound_dissolution("feature:occurrence-ordinal-value-measure — DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -969,7 +969,7 @@ pub fn authored_token_ordinal_typed_bridge_dissolve_on() -> Rc<DissolutionCondit
 pub fn authored_token_ordinal_value_bridge_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            unbound_dissolution("feature:occurrence-ordinal-value-measure — DISSOLVE-ON: same trigger as authored_token_ordinal_typed_bridge_dissolve_on; replace AuthoredTokenOrdinal.value with Measure<Count, One, Nat> (or the converged Nat inhabitant) and delete both value-bridge rows with the space-bridge rows.".to_string())
+            crate::std_dissolution::unbound_dissolution("feature:occurrence-ordinal-value-measure — DISSOLVE-ON: same trigger as authored_token_ordinal_typed_bridge_dissolve_on; replace AuthoredTokenOrdinal.value with Measure<Count, One, Nat> (or the converged Nat inhabitant) and delete both value-bridge rows with the space-bridge rows.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -978,7 +978,7 @@ pub fn authored_token_ordinal_value_bridge_dissolve_on() -> Rc<DissolutionCondit
 pub fn occurrence_containment_storage_projection_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            unbound_dissolution("DISSOLVE-ON: PR #7515 lands std_occurrence_binding on the stage0 roster and proves ContainmentPath<OccurrenceId> compiles without supplemental derive bounds; then replace OccurrenceContainmentPath with std.occurrence_binding.ContainmentPath<OccurrenceId> across consumers and delete both storage-projection rows.".to_string())
+            crate::std_dissolution::unbound_dissolution("DISSOLVE-ON: PR #7515 lands std_occurrence_binding on the stage0 roster and proves ContainmentPath<OccurrenceId> compiles without supplemental derive bounds; then replace OccurrenceContainmentPath with std.occurrence_binding.ContainmentPath<OccurrenceId> across consumers and delete both storage-projection rows.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

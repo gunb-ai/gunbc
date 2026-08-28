@@ -1,5 +1,6 @@
 module v2.test.manual.dissolution_subsumption_reverification
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
   TestClaimRun,
@@ -56,7 +57,6 @@ import v2.std.node {
   Symbol,
   TypeNode,
   Value,
-  SyntheticOccurrence
 }
 import v2.std.runtime {
   BindInterpreter,
@@ -125,7 +125,7 @@ fn subsumption_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -170,7 +170,7 @@ fn subsumption_receipt_node(row: DissolutionSubsumption) -> Node {
             target: subsumption_symbol_node(s: claim.id)
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     ProducerStageDerivation { derivation_path: _ } =>
       subsumption_symbol_node(s: ^subsumption_runtime_rejected)
@@ -198,7 +198,7 @@ fn expected_rust_language_model_emit_receipt_node() -> Node {
         target: subsumption_symbol_node(s: ^rust_language_model_emit_mechanical_reverification_claim)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

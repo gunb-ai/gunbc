@@ -3,8 +3,6 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
-#[cfg(test)]
-use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::PhaseProfile;
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -427,7 +425,10 @@ fn run() -> Result<ExitCode, ExitCode> {
                     // identically is the failure DESIGN §5 names, not a tidy report.
                     eprintln!(
                         "required-ci: declarations modules={} declared={} import_members={} \
-                         citations={} debt={} in_fixtures={} outside_index={} kernel_named={} lens_modules={}",
+                         citations={} debt={} in_fixtures={} outside_index={} kernel_named={} lens_modules={} \
+                         cited_authorities_without_import_edges={} retained={:?} \
+                         cited_and_called={} called_retained={:?} cited_not_called={} not_called_retained={:?} \
+                         primary_dag_entries={} primary_dag_retained={:?} src_v2_pool_only={} pool_only_retained={:?}",
                         population.modules,
                         population.declarations,
                         population.import_members,
@@ -437,6 +438,16 @@ fn run() -> Result<ExitCode, ExitCode> {
                         population.citations_outside_index,
                         population.import_members_kernel_named,
                         population.lens_modules,
+                        population.cited_authorities_without_import_edges.len(),
+                        population.cited_authorities_without_import_edges,
+                        population.cited_and_called_without_import_edges.len(),
+                        population.cited_and_called_without_import_edges,
+                        population.cited_not_called_without_import_edges.len(),
+                        population.cited_not_called_without_import_edges,
+                        population.cited_authorities_under_primary_dag_entry_root.len(),
+                        population.cited_authorities_under_primary_dag_entry_root,
+                        population.cited_authorities_in_src_v2_dependency_pool_only.len(),
+                        population.cited_authorities_in_src_v2_dependency_pool_only,
                     );
                     for finding in &findings {
                         eprintln!(
@@ -673,8 +684,11 @@ fn run() -> Result<ExitCode, ExitCode> {
                 "required-ci: phase emit-compile (one entry's emitted closure, compiled, \
                  with its own mutation-established red)"
             );
-            match v1_compiler::cli_run::run_required_emit_compile(&source_roots) {
-                Ok(outcomes) => {
+            match v1_compiler::cli_run::required_ci_emit_compile_probe_root().and_then(|root| {
+                v1_compiler::cli_run::run_required_emit_compile(&source_roots, &root)
+                    .map(|outcomes| (outcomes, root))
+            }) {
+                Ok((outcomes, probe_root)) => {
                     let mut not_passed = 0usize;
                     for outcome in &outcomes {
                         eprintln!(
@@ -712,6 +726,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     let (report, retention_error) = v1_compiler::cli_run::emit_compile_report(
                         &outcomes,
                         &source_roots,
+                        &probe_root,
                         "required-ci: emit-compile",
                     );
                     for line in report {
@@ -843,6 +858,120 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.push("partition-crates");
         }
 
+        // PHASE — the committed generated-artifact population, adjudicated against its
+        // authority. Independent of everything above it; runs whatever they answered.
+        //
+        // WHY THIS PHASE EXISTS. The generated-artifact drift gates went out with the
+        // 2026-08-15 floor cut and sit on the re-add queue that cut declared. In the interval,
+        // `DESIGN.md` and `ROADMAP.md` -- projections of `gunbc.design_document` and
+        // `gunbc.roadmap_authority` -- were maintained BY HAND in lockstep with their
+        // authorities, and gunbc#9392 found the accumulated result the only way an unguarded
+        // artifact is ever found: by accident, 2198 characters into the drift. The producer was
+        // never missing; the caller was.
+        //
+        // ONE POPULATION, NOT A SAMPLE. The roster is asked of the authority
+        // (`committed_generated_artifact_paths`), so an artifact added to the registry is
+        // enrolled here with no edit to this file, and the two counts below -- verdicts reached
+        // and members left unanswered -- are printed side by side so a run that asked nothing
+        // cannot render as a run that found nothing.
+        if required_ci_phase_selected(RequiredCiPhase::GeneratedArtifact, required_ci_lane) {
+            eprintln!(
+                "required-ci: phase generated-artifact (every committed projection vs its authority)"
+            );
+            let outcome = v1_compiler::cli_run::run_generated_artifact_boundary(&source_roots);
+            // THE PHASE'S VERDICT IS THE CARRIER'S, NOT A SECOND DEFINITION OF CLEAN. The two
+            // reporting branches below name WHAT went wrong; whether anything did is decided by
+            // `boundary_is_clean` alone, so a state neither branch happens to describe -- an
+            // empty population being the one review found -- cannot pass by falling between
+            // them. A second predicate here is exactly the fork that lets a ledger and a gate
+            // disagree about one run.
+            let failures_before = phase_failures.len();
+            match &outcome {
+                v1_compiler::cli_run::GeneratedArtifactBoundaryOutcome::CarrierRefused {
+                    cause,
+                } => {
+                    eprintln!(
+                        "required-ci: generated-artifact CarrierRefused cause={cause} \
+                         (the authority declined to answer; nothing was compared)"
+                    );
+                    phase_failures.push(format!("generated-artifact carrier refused: {cause}"));
+                }
+                v1_compiler::cli_run::GeneratedArtifactBoundaryOutcome::Adjudicated {
+                    artifacts,
+                    unadjudicated,
+                } => {
+                    let divergent = v1_compiler::cli_run::boundary_divergent(&outcome);
+                    eprintln!(
+                        "required-ci: generated-artifact rostered={} adjudicated={} matches={} \
+                         drifted={} absent={} unadjudicated={}",
+                        artifacts.len() + unadjudicated.len(),
+                        artifacts.len(),
+                        artifacts.len() - divergent.len(),
+                        divergent
+                            .iter()
+                            .filter(|a| v1_compiler::cli_run::artifact_disposition(a)
+                                == v1_compiler::cli_run::ArtifactDisposition::Drifted)
+                            .count(),
+                        divergent
+                            .iter()
+                            .filter(|a| v1_compiler::cli_run::artifact_disposition(a)
+                                == v1_compiler::cli_run::ArtifactDisposition::Absent)
+                            .count(),
+                        unadjudicated.len(),
+                    );
+                    for a in &divergent {
+                        eprintln!(
+                            "required-ci: generated-artifact {} {}",
+                            v1_compiler::cli_run::artifact_disposition_name(
+                                v1_compiler::cli_run::artifact_disposition(a)
+                            ),
+                            a.path
+                        );
+                    }
+                    for u in unadjudicated {
+                        eprintln!(
+                            "required-ci: generated-artifact UNADJUDICATED {} — {}",
+                            u.path, u.cause
+                        );
+                    }
+                    if !divergent.is_empty() {
+                        // THE REFUSAL NAMES A ROUTE THAT EXISTS -- the same discipline the
+                        // partition-crate header had to learn after it named a producer that had
+                        // been deleted. A stop whose only sanctioned move is unavailable does not
+                        // stop the line, it launders a hand edit.
+                        eprintln!(
+                            "required-ci: generated-artifact these are GENERATED projections of \
+                             their .dag authorities — do not hand-edit; regenerate with: {}",
+                            v1_compiler::cli_run::GENERATED_ARTIFACT_PRODUCING_COMMAND
+                        );
+                        phase_failures.push(format!(
+                            "generated-artifact ({} projection(s) not derived)",
+                            divergent.len()
+                        ));
+                    }
+                    if !unadjudicated.is_empty() {
+                        // KEPT SEPARATE FROM DRIFT. An unanswered member is not a clean member,
+                        // and it is not a drifted one either: it is a defect in the authority or
+                        // in this bridge, and it ranks differently from work an author does now.
+                        phase_failures.push(format!(
+                            "generated-artifact ({} rostered artifact(s) reached no verdict)",
+                            unadjudicated.len()
+                        ));
+                    }
+                }
+            }
+            if !v1_compiler::cli_run::boundary_is_clean(&outcome)
+                && phase_failures.len() == failures_before
+            {
+                eprintln!(
+                    "required-ci: generated-artifact REFUSED — the outcome is not clean and no \
+                     branch above named why. Reporting the refusal rather than the silence"
+                );
+                phase_failures.push("generated-artifact (not clean, unnamed cause)".to_string());
+            }
+            ran.push("generated-artifact");
+        }
+
         // PHASE 4 — the witness floor. Independent; runs whatever happened above.
         if required_ci_phase_selected(RequiredCiPhase::Floor, required_ci_lane) {
             eprintln!("required-ci: phase floor (one prepared subject, one fold)");
@@ -890,7 +1019,8 @@ fn run() -> Result<ExitCode, ExitCode> {
         } else {
             source_roots.clone()
         };
-        match v1_compiler::cli_run::run_required_emit_compile(&roots) {
+        let probe_root = v1_compiler::cli_run::local_emit_compile_probe_root();
+        match v1_compiler::cli_run::run_required_emit_compile(&roots, &probe_root) {
             Ok(outcomes) => {
                 let mut not_passed = 0usize;
                 for outcome in &outcomes {
@@ -915,6 +1045,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 let (report, retention_error) = v1_compiler::cli_run::emit_compile_report(
                     &outcomes,
                     &roots,
+                    &probe_root,
                     "required-emit-compile:",
                 );
                 for line in report {
@@ -1273,6 +1404,7 @@ enum RequiredCiPhase {
     V2Emission,
     EmitCompile,
     PartitionCrates,
+    GeneratedArtifact,
     Floor,
 }
 
@@ -1285,6 +1417,7 @@ impl RequiredCiPhase {
             RequiredCiPhase::V2Emission => "v2-emission",
             RequiredCiPhase::EmitCompile => "emit-compile",
             RequiredCiPhase::PartitionCrates => "partition-crates",
+            RequiredCiPhase::GeneratedArtifact => "generated-artifact",
             RequiredCiPhase::Floor => "floor",
         }
     }
@@ -1317,18 +1450,24 @@ impl RequiredCiPhase {
             // `needs` edge, so this costs nothing until the build lane exceeds the floor's
             // wall clock; beside the floor it would be pure addition to the critical path.
             RequiredCiPhase::PartitionCrates => RequiredCiLane::Build,
+            // THE SAME QUESTION AS PARTITION-CRATES OVER A DIFFERENT POPULATION -- does a
+            // committed projection still equal what its authority generates -- so it sits in
+            // the same lane for the same reason. It resolves one .dag closure and evaluates a
+            // pure projection per rostered artifact; no build, no subprocess.
+            RequiredCiPhase::GeneratedArtifact => RequiredCiLane::Build,
             RequiredCiPhase::Floor => RequiredCiLane::Witnesses,
         }
     }
 }
 
-const REQUIRED_CI_PHASES: [RequiredCiPhase; 7] = [
+const REQUIRED_CI_PHASES: [RequiredCiPhase; 8] = [
     RequiredCiPhase::Parse,
     RequiredCiPhase::NamespaceWaveAdmission,
     RequiredCiPhase::Regen,
     RequiredCiPhase::V2Emission,
     RequiredCiPhase::EmitCompile,
     RequiredCiPhase::PartitionCrates,
+    RequiredCiPhase::GeneratedArtifact,
     RequiredCiPhase::Floor,
 ];
 
@@ -1421,17 +1560,25 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     );
     // THE SUBJECT THE ROSTER WAS PROJECTED FROM, STATED BEFORE THE ROSTER.
     // `planned` is the population that SURVIVED site projection; printing it
-    // without `offered` and `declined_long` made the receipt unable to say what it
+    // without `offered` and the declines made the receipt unable to say what it
     // dropped, which is how a roster that narrowed read exactly like one that did
-    // not. The three are printed together so the subtraction is visible rather
+    // not. The categories are printed together so the subtraction is visible rather
     // than inferable.
+    // AND THE SENTENCE IS NOW BOUNDED ABOVE, WHICH IT WAS NOT.
+    // "every discovered site is exactly one of these" is a totality claim over SITES, and it was
+    // exact and silent at the same time: a `*_test.dag` entry declaring no `test fn` contributes
+    // no site at all, so it could never appear in any of the four numbers, and the line read as a
+    // coverage guarantee over a denominator that had already dropped it. It cannot now — a barren
+    // entry stops the line in `run_required_floor` before this point — so the guarantee is stated
+    // rather than left for a reader to discover it was never claimed.
     eprintln!(
-        "required-floor: offered={} routed={} declined_long={} \
-         declined_live={} — every discovered site is exactly one of these",
+        "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
+         — every discovered site is exactly one of these, and no `*_test.dag` \
+         entry offered zero sites (BarrenTestSidecar refuses upstream of this line)",
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
-        outcome.declined_live_tree
+        outcome.declined_fixture_member
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
     // The old field printed `outcome.route_gap.len()` under the bare name `route_gap` — the
@@ -1463,7 +1610,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
          stale_route_gap={} known_red_now_passing={} known_red_budget_refused={} \
          known_red_passed_over_budget={} known_red_host_tool_unresolved={} \
          known_red_host_effect_refused={} known_red_runtime_errored={} \
-         known_red_observation_unreadable={} over_cost_line_diagnostic={}",
+         known_red_observation_unreadable={} over_cost_line_diagnostic={} \
+         withheld_cost_debt={} stale_cost_debt={}",
         outcome.claims_planned,
         outcome.claims_executed,
         outcome.not_attempted_after_abort,
@@ -1485,7 +1633,9 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.known_red_host_effect_refused,
         outcome.known_red_runtime_errored.len(),
         outcome.known_red_observation_unreadable.len(),
-        outcome.over_cost_line_diagnostic
+        outcome.over_cost_line_diagnostic,
+        outcome.withheld_cost_debt.len(),
+        outcome.stale_cost_debt.len()
     );
     // ONE receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit
     // counterpart, so the ratio it is really about was never readable.
@@ -1502,6 +1652,15 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     eprintln!(
         "required-floor: compile_dag_rust_emit_check_memo hits={memo_hits} \
          misses={memo_misses}"
+    );
+    // The sibling census memo, reported on its own line for the reason the emit-check line
+    // carries both halves: a hit count without its denominator is not a measurement. These are
+    // two different memos over two different builtins and must never be summed into one ratio.
+    let (census_hits, census_misses) =
+        v1_compiler::cli_run::compile_dag_diagnostic_census_memo_counts();
+    eprintln!(
+        "required-floor: compile_dag_diagnostic_census_memo hits={census_hits} \
+         misses={census_misses}"
     );
     for failure in &outcome.failures {
         eprintln!("required-floor: FAIL {failure}");
@@ -1536,6 +1695,22 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     }
     for unresolved in &outcome.host_tool_unresolved {
         eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
+    }
+    // STALE WITHHOLDS ARE NAMED INDIVIDUALLY; WITHHELD ROWS ARE NOT. The stale population
+    // blocks and every member is a line to delete, so each one is printed. The withheld
+    // population is large enough that printing it per-row would bury every other diagnostic in
+    // the run — it is counted in the summary above and enumerated in full in
+    // `v2.workflow.floor_cost_debt`, which is the authority a reader should be sent to anyway.
+    //
+    // NO SIZE IS STATED HERE, DELIBERATELY. This comment carried a numeral until review 57254,
+    // and it had gone stale against the roster it described — two hand-transcribed counts for one
+    // population, disagreeing at the two points a reader is most likely to trust. That is the
+    // failure DESIGN's "name the instrument, never transcribe its output" rule exists to prevent,
+    // and the fix is not to re-transcribe the current figure: the roster is a function, its size
+    // is a property of that function, and any numeral here is a second representation that goes
+    // stale the next time a row is enrolled or released. The authority is named instead.
+    for stale in &outcome.stale_cost_debt {
+        eprintln!("required-floor: STALE-COST-DEBT {stale}");
     }
     for errored in &outcome.known_red_runtime_errored {
         eprintln!("required-floor: KNOWN-RED-RUNTIME-ERRORED {errored}");
@@ -1625,6 +1800,12 @@ fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloor
         && outcome.host_tool_unresolved.is_empty()
         && outcome.route_gap.is_empty()
         && outcome.stale_route_gap.is_empty()
+        // WITHHELD ROWS DO NOT BLOCK; A STALE WITHHOLD DOES. `withheld_cost_debt` is the frozen
+        // population the 2026-08-27 ceiling restoration declared, and blocking on it would red
+        // main for precisely the debt the contract exists to carry down. `stale_cost_debt` is a
+        // roster that has stopped describing the tree, which voids the contract's monotone
+        // claim, so it blocks exactly as `stale_quarantine` and `stale_route_gap` do.
+        && outcome.stale_cost_debt.is_empty()
 }
 
 fn main() -> ExitCode {
