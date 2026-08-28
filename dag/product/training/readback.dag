@@ -1,0 +1,253 @@
+module product.training.readback
+
+import product.training.resolution { TrainingRunDesired, TrainingResolvedManifest }
+import product.fabric.demand { ObservationReceiptRef }
+import product.fabric.identity {
+  FabricIdentity,
+  DemandKey,
+  WorkKey,
+  ExecutionAttemptKey,
+  fabric_identity_eq,
+}
+import std.content_hash { Sha256Digest }
+import std.nat { Nat }
+import std.types { NonEmptyStr, List }
+
+// READBACK IS AN INDEPENDENT OBSERVATION, NOT THE RUNNER'S OWN RECEIPT.
+//
+// A trainer that writes "success" has said one thing: that it believed it finished. It has not
+// established that the artifact still exists and hashes correctly, that no process is still
+// running, that the receipt belongs to THIS run rather than another using the same recipe, or that
+// a partial checkpoint is complete. Convergence that trusted the receipt would be reading the
+// claim of the thing it is supposed to be checking, so the axes below are observed separately and
+// the reconciliation fold is what may draw a conclusion from them.
+
+// THE SUBJECT IS SEALED AND DERIVED FROM THE DESIRED RUN, never authored beside it. If each
+// observer could write its own Demand/Work pair, an observation of one run could be filed against
+// another and every axis below would be describing something the reconciler thinks it is not.
+//
+// The pair is not redundant. The demand identity names the requested OCCURRENCE; the work identity
+// names the SEMANTIC COMPUTATION. A demand identity does not encode its work, so a subject carrying
+// only one of them cannot answer both "which request is this" and "what was it asking for".
+type TrainingRunSubject<P> sole_constructor {
+  demand: FabricIdentity<P, DemandKey>
+  work: FabricIdentity<P, WorkKey>
+}
+
+fn training_run_subject_seal<P>(
+  demand: FabricIdentity<P, DemandKey>,
+  work: FabricIdentity<P, WorkKey>,
+) -> TrainingRunSubject<P>
+  admit_callers: [
+    decl_ref(module_path: "product.training.readback", decl_name: "subject_of_desired"),
+  ]
+  = TrainingRunSubject { demand: demand, work: work }
+
+fn subject_of_desired<P>(desired: TrainingRunDesired<P>) -> TrainingRunSubject<P> {
+  training_run_subject_seal(demand: desired.demand.id, work: desired.demand.work)
+}
+
+fn training_run_subject_eq<P>(
+  left: TrainingRunSubject<P>,
+  right: TrainingRunSubject<P>,
+) -> Bool {
+  fabric_identity_eq(left: left.demand, right: right.demand)
+    && fabric_identity_eq(left: left.work, right: right.work)
+}
+
+// EVERY RAW AXIS IS A POPULATION, AND NONE OF THEM IS A SINGLETON. One demand may reach several
+// execution attempts -- infrastructure retry, capability escalation, requested re-execution are all
+// new attempts rather than mutations of an earlier one -- so every axis can honestly hold zero, one
+// or many members. A singular output field would make two produced artifacts unrepresentable; a
+// singular terminal field would discard a local failure the moment an escalated attempt succeeded;
+// a singular effective manifest would hide the exact disagreement that axis exists to detect. A
+// carrier that admits only one member has selected a winner before the reconciler ever runs.
+//
+// THERE IS DELIBERATELY NO ABSENT ARM. A complete read that found nothing is an observed population
+// with zero members, and that is a different fact from "nobody ran the observation" and from "the
+// observation ran and could not produce a reading". An unread population must never become an empty
+// one, because empty licenses a conclusion -- and an actuation -- that ignorance does not.
+//
+// The two negative arms are kept apart because they have different OWNERS and opposite remedies:
+// not-attempted is owed to the scheduling driver and is repaired by dispatching an observer;
+// refused is owed to the transport, store or parser and is repaired by fixing that path. The
+// refused arm carries the attempt receipt so a refusal cannot be recorded anonymously -- without
+// it the two negative arms would be two differently-named strings.
+type TrainingPopulationObservation<T>
+  = TrainingPopulationObserved {
+      members: List<T>,
+      enumeration_receipt: ObservationReceiptRef,
+    }
+  | TrainingPopulationNotAttempted { obligation: NonEmptyStr }
+  | TrainingPopulationObservationRefused {
+      attempt_receipt: ObservationReceiptRef,
+      cause: NonEmptyStr,
+    }
+
+type TrainingProcessObservation<P> {
+  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  liveness: TrainingProcessLiveness
+  receipt: ObservationReceiptRef
+}
+
+type TrainingProcessLiveness
+  = TrainingProcessRunning
+  | TrainingProcessExited { detail: NonEmptyStr }
+
+type TrainingCheckpointReceipt<P> {
+  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  global_step: Nat
+  artifact: Sha256Digest
+  receipt: ObservationReceiptRef
+}
+
+type TrainingAttemptTerminalReceipt<P> {
+  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  standing: TrainingTerminalStanding
+  receipt: ObservationReceiptRef
+}
+
+type TrainingTerminalStanding
+  = TrainingAttemptSucceeded
+  | TrainingAttemptFailed { detail: NonEmptyStr }
+
+// THE OUTPUT MEMBER IS NOT A BARE HASH. A structural hash cannot serve as the model-artifact
+// authority: the downstream path needs an exact produced artifact, which means a cryptographic
+// digest, the attempt that produced it, and evidence of where it was materialized. A hash alone
+// would name bytes with no established producer and no established location.
+type TrainingOutputArtifactReceipt<P> {
+  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  artifact: Sha256Digest
+  materialization: NonEmptyStr
+  receipt: ObservationReceiptRef
+}
+
+// THE EFFECTIVE MANIFEST IS THE TYPED MANIFEST, NOT ITS HASH, and the reason is the question this
+// axis exists to answer: WHICH coordinate did the trainer actually run under. A hash answers only
+// "the same or not the same" -- it cannot name the axis that disagreed, and it does not establish
+// that the bytes were read under this manifest authority at all.
+type TrainingEffectiveManifestReceipt<P> {
+  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  manifest: TrainingResolvedManifest
+  receipt: ObservationReceiptRef
+}
+
+// A RAW READ NAMES ITS OWN SUBJECT. Putting the right subject at the top of an assembled readback
+// does not bind anonymous evidence underneath it: without this wrapper the shape permits a readback
+// whose subject is run A while its checkpoints were copied from run B and its terminal from run C,
+// and every field would typecheck. The binder below compares each supplied subject against the one
+// derived from the desired run and refuses before any axis fact enters the readback.
+type TrainingSubjectBoundPopulation<P, T> {
+  subject: TrainingRunSubject<P>
+  observation: TrainingPopulationObservation<T>
+}
+
+type TrainingReadbackAxis
+  = ExecutionReadbackAxis
+  | CheckpointReadbackAxis
+  | TerminalReadbackAxis
+  | OutputReadbackAxis
+  | EffectiveManifestReadbackAxis
+
+// THE AXES ARE INDEPENDENT FIELDS RATHER THAN ONE COPRODUCT, and that is the whole shape. A single
+// sum such as Absent | Running | Checkpointed | Completed cannot express a process that is running
+// AND has checkpoints, or one that failed terminally AND left a resumable checkpoint -- both of
+// which occur, and the second is exactly the state whose remedy differs most from its neighbours.
+// Collapsing them would decide the reconciliation before the reconciler runs.
+type TrainingRunReadback<P> sole_constructor {
+  subject: TrainingRunSubject<P>
+  execution: TrainingPopulationObservation<TrainingProcessObservation<P>>
+  checkpoints: TrainingPopulationObservation<TrainingCheckpointReceipt<P>>
+  terminals: TrainingPopulationObservation<TrainingAttemptTerminalReceipt<P>>
+  outputs: TrainingPopulationObservation<TrainingOutputArtifactReceipt<P>>
+  effective_manifests: TrainingPopulationObservation<TrainingEffectiveManifestReceipt<P>>
+}
+
+type TrainingRunReadbackAdmission<P>
+  = TrainingRunReadbackAdmitted { readback: TrainingRunReadback<P> }
+  | TrainingRunReadbackSubjectMismatch {
+      axis: TrainingReadbackAxis,
+      expected: TrainingRunSubject<P>,
+      observed: TrainingRunSubject<P>,
+    }
+
+fn training_run_readback_seal<P>(
+  subject: TrainingRunSubject<P>,
+  execution: TrainingPopulationObservation<TrainingProcessObservation<P>>,
+  checkpoints: TrainingPopulationObservation<TrainingCheckpointReceipt<P>>,
+  terminals: TrainingPopulationObservation<TrainingAttemptTerminalReceipt<P>>,
+  outputs: TrainingPopulationObservation<TrainingOutputArtifactReceipt<P>>,
+  effective_manifests: TrainingPopulationObservation<TrainingEffectiveManifestReceipt<P>>,
+) -> TrainingRunReadback<P>
+  admit_callers: [
+    decl_ref(module_path: "product.training.readback", decl_name: "bind_training_run_readback"),
+  ]
+  = TrainingRunReadback {
+      subject: subject,
+      execution: execution,
+      checkpoints: checkpoints,
+      terminals: terminals,
+      outputs: outputs,
+      effective_manifests: effective_manifests,
+    }
+
+fn bind_training_run_readback<P>(
+  desired: TrainingRunDesired<P>,
+  execution: TrainingSubjectBoundPopulation<P, TrainingProcessObservation<P>>,
+  checkpoints: TrainingSubjectBoundPopulation<P, TrainingCheckpointReceipt<P>>,
+  terminals: TrainingSubjectBoundPopulation<P, TrainingAttemptTerminalReceipt<P>>,
+  outputs: TrainingSubjectBoundPopulation<P, TrainingOutputArtifactReceipt<P>>,
+  effective_manifests: TrainingSubjectBoundPopulation<P, TrainingEffectiveManifestReceipt<P>>,
+) -> TrainingRunReadbackAdmission<P> {
+  let expected = subject_of_desired(desired: desired)
+  if !training_run_subject_eq(left: expected, right: execution.subject) {
+    TrainingRunReadbackSubjectMismatch {
+      axis: ExecutionReadbackAxis,
+      expected: expected,
+      observed: execution.subject,
+    }
+  } else {
+    if !training_run_subject_eq(left: expected, right: checkpoints.subject) {
+      TrainingRunReadbackSubjectMismatch {
+        axis: CheckpointReadbackAxis,
+        expected: expected,
+        observed: checkpoints.subject,
+      }
+    } else {
+      if !training_run_subject_eq(left: expected, right: terminals.subject) {
+        TrainingRunReadbackSubjectMismatch {
+          axis: TerminalReadbackAxis,
+          expected: expected,
+          observed: terminals.subject,
+        }
+      } else {
+        if !training_run_subject_eq(left: expected, right: outputs.subject) {
+          TrainingRunReadbackSubjectMismatch {
+            axis: OutputReadbackAxis,
+            expected: expected,
+            observed: outputs.subject,
+          }
+        } else {
+          if !training_run_subject_eq(left: expected, right: effective_manifests.subject) {
+            TrainingRunReadbackSubjectMismatch {
+              axis: EffectiveManifestReadbackAxis,
+              expected: expected,
+              observed: effective_manifests.subject,
+            }
+          } else {
+            TrainingRunReadbackAdmitted {
+              readback: training_run_readback_seal(
+                subject: expected,
+                execution: execution.observation,
+                checkpoints: checkpoints.observation,
+                terminals: terminals.observation,
+                outputs: outputs.observation,
+                effective_manifests: effective_manifests.observation,
+              ),
+            }
+          }
+        }
+      }
+    }
+  }
+}
