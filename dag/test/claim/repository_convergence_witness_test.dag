@@ -19,6 +19,7 @@ import gunbc.live_deploy.repository_convergence {
   ConvergenceCompleted, ConvergenceAlreadyAtCandidate,
   ConvergencePreStateUnobservable, ConvergencePostStateUnobservable,
   ConvergenceRefDisappeared, ConvergenceRefRebound, ConvergenceWorktreeDisappeared, ConvergenceWorktreeRebound,
+  ConvergenceUnexpectedWorktree,
   ConvergenceUnexpectedRef,
   ConvergenceHeadNotAtCandidate, ConvergenceHeadMovedWithoutReflog,
   ConvergenceIndexNotAtCandidateTree, ConvergenceTrackedWorktreeNotAtCandidate,
@@ -35,6 +36,7 @@ data dispatch_sha: String = "3333333333333333333333333333333333333333"
 data base_ref: String = "refs/remotes/origin/main"
 data primary: String = "/opt/gunbc/gunbc"
 data linked: String = "/opt/gunbc/dispatch-worktrees/attempt-a"
+data unexpected_linked: String = "/opt/gunbc/dispatch-worktrees/concurrent-attempt"
 
 // FIXTURES ARE BUILT FROM GIT'S OWN WIRE TEXT AND DECODED, not hand-constructed. `GitObjectId` is a
 // sole-constructor validated type -- `git_sha1_object_id` refuses anything that is not lowercase hex
@@ -117,6 +119,14 @@ fn linked_entry() -> String {
 fn linked_entry_detached() -> String {
   wt_entry(attributes: [
     concat("worktree ", linked),
+    concat("HEAD ", dispatch_sha),
+    "detached",
+  ])
+}
+
+fn unexpected_linked_entry() -> String {
+  wt_entry(attributes: [
+    concat("worktree ", unexpected_linked),
     concat("HEAD ", dispatch_sha),
     "detached",
   ])
@@ -349,6 +359,23 @@ test fn a_linked_worktree_rebound_to_detached_refuses() -> Bool {
   }
 }
 
+// THE REVERSE PRESERVATION JOIN. Every pre-existing worktree remains byte-for-byte identical, but
+// a concurrent writer registered another linked worktree during convergence. A one-way join over
+// the before roster calls this preservation; the reverse pass identifies the new registration.
+test fn a_linked_worktree_added_during_transition_refuses() -> Bool {
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry(), unexpected_linked_entry()]),
+    head: new_sha,
+    reflog: reflog_after(oid: new_sha),
+    untracked: clean_tree(),
+  )
+  match verdict_for(after: after) {
+    ConvergenceUnexpectedWorktree { path: p } => p == unexpected_linked
+    _ => false
+  }
+}
+
 // THE SIGNATURE OF THE REALIZATION THIS REPLACES. HEAD reached the candidate and the reflog did not
 // grow, so whatever moved it was not git -- a file written over `refs/**` leaves exactly this trace.
 // Everything else about the post-state looks correct, which is why the check has to exist.
@@ -391,6 +418,30 @@ test fn an_already_converged_repository_is_not_the_reflog_defect() -> Bool {
   )
   match v {
     ConvergenceAlreadyAtCandidate { candidate: c } => c == new_sha
+    _ => false
+  }
+}
+
+// HEAD and tracked content were already correct, but the base ref was stale. The wet sequence CASes
+// that ref to the candidate, so calling the result "no transition performed" would deny the only
+// mutation that occurred. The fixture differs from the no-op control only in the pre-state base ref.
+test fn an_already_converged_head_with_a_repaired_base_ref_reports_repair() -> Bool {
+  let before = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: old_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: "same-reflog",
+    untracked: clean_tree(),
+  )
+  let after = state_of(
+    refs: refs_wire(records: [dispatch_ref_record(), heads_dispatch_record(), heads_main_record(oid: new_sha), base_ref_record(oid: new_sha)]),
+    worktrees: worktrees_wire(entries: [primary_entry(oid: new_sha), linked_entry()]),
+    head: new_sha,
+    reflog: "same-reflog",
+    untracked: clean_tree(),
+  )
+  match repository_convergence_verdict(before: before, after: after, candidate: new_sha, base_ref: base_ref) {
+    ConvergenceRepairedAtCandidate { candidate: c } => c == new_sha
     _ => false
   }
 }

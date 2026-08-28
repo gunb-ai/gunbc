@@ -149,6 +149,7 @@ type RepositoryConvergenceOutcome
   | ConvergenceUnexpectedRef { refname: String, objectname: String }
   | ConvergenceWorktreeDisappeared { path: String }
   | ConvergenceWorktreeRebound { path: String, detail: String }
+  | ConvergenceUnexpectedWorktree { path: String }
   | ConvergenceHeadNotAtCandidate { candidate: String, observed: String }
   | ConvergenceHeadMovedWithoutReflog { candidate: String }
   | ConvergenceUntrackedResidue { first_path: String }
@@ -292,7 +293,17 @@ fn convergence_first_worktree_fault(
     }
   )
   match faults.first() {
-    Absent => Absent
+    Absent => match after |> filter(w =>
+      w.path != primary_path
+        && match convergence_worktree_at(worktrees: before, path: w.path) {
+          Absent => true
+          Present { value: _ } => false
+        }
+    ) |> first() {
+      Absent => Absent
+      Present { value: added } =>
+        Present { value: ConvergenceUnexpectedWorktree { path: added.path } }
+    }
     Present { value: w } =>
       match convergence_worktree_at(worktrees: after, path: w.path) {
         Absent => Present { value: ConvergenceWorktreeDisappeared { path: w.path } }
@@ -638,7 +649,8 @@ fn repository_convergence_compare(
                     Present { value: residue } => residue
                     Absent =>
                       if before_head == candidate {
-                        if convergence_coherence_is_clean(coherence: before_coherence) {
+                        if convergence_coherence_is_clean(coherence: before_coherence)
+                          && convergence_ref_object_at(refs: refs_before, refname: base_ref) == candidate {
                           ConvergenceAlreadyAtCandidate { candidate: candidate }
                         } else {
                           ConvergenceRepairedAtCandidate { candidate: candidate }
@@ -681,6 +693,7 @@ fn repository_convergence_converged(outcome: RepositoryConvergenceOutcome) -> Bo
     ConvergenceUnexpectedRef { refname: _, objectname: _ } => false
     ConvergenceWorktreeDisappeared { path: _ } => false
     ConvergenceWorktreeRebound { path: _, detail: _ } => false
+    ConvergenceUnexpectedWorktree { path: _ } => false
     ConvergenceHeadNotAtCandidate { candidate: _, observed: _ } => false
     ConvergenceHeadMovedWithoutReflog { candidate: _ } => false
     ConvergenceUntrackedResidue { first_path: _ } => false
@@ -721,7 +734,7 @@ fn repository_convergence_detail(outcome: RepositoryConvergenceOutcome) -> Strin
     ConvergenceAlreadyAtCandidate { candidate: c } =>
       join(["already at ", c, "; no transition performed"], "")
     ConvergenceRepairedAtCandidate { candidate: c } =>
-      join(["repaired index or tracked worktree content while HEAD was already at ", c], "")
+      join(["repaired the base ref, index, or tracked worktree content while HEAD was already at ", c], "")
     ConvergencePreStateUnobservable { detail: d } =>
       join(["the repository state before the transition could not be observed: ", d], "")
     ConvergencePostStateUnobservable { detail: d } =>
@@ -741,6 +754,8 @@ fn repository_convergence_detail(outcome: RepositoryConvergenceOutcome) -> Strin
       join(["linked worktree ", p, " lost its registration during the transition"], "")
     ConvergenceWorktreeRebound { path: p, detail: d } =>
       join(["linked worktree ", p, " changed binding during the transition: ", d], "")
+    ConvergenceUnexpectedWorktree { path: p } =>
+      join(["linked worktree ", p, " appeared during the transition"], "")
     ConvergenceHeadNotAtCandidate { candidate: c, observed: o } =>
       join(["HEAD is ", o, " after a transition to ", c], "")
     ConvergenceHeadMovedWithoutReflog { candidate: c } =>
