@@ -1340,3 +1340,85 @@ fn a_removed_import_whose_name_survives_only_as_a_type_alias_right_hand_side_is_
 // verdict there would pass with this repair and pass with it reverted, carrying no information
 // about the thing it appeared to cover. The argument was good and the receipt refused it, which is
 // the whole reason the receipt is taken.
+
+// THE ADD-SIDE CONTROL THAT SURVIVES THE READER REPAIR, AND WHY THE SIBLING ABOVE DOES NOT.
+//
+// This was authored predicting that
+// `membership_declared_by_an_import_whose_names_appear_only_in_pattern_arms` would stop
+// discriminating once an authored-reference channel landed beneath it. IT HAS, AND THE
+// PREDICTION IS NOW A MEASUREMENT. Running the whole file with the import-claim disjunct
+// deleted from `membership_declared`, against this tree:
+//
+//     membership_declared_by_..._appear_only_in_pattern_arms          ok
+//     membership_declared_by_..._authored_and_never_referenced        FAILED
+//
+// One failure, where the same two arms on the pre-merge tree gave two. The sibling is green
+// with the disjunct AND without it, so it now carries no information about the disjunct.
+// Nothing edited that test; a repair landing UNDERNEATH it removed its power.
+//
+// WHICH REPAIR, AND WHY THIS ANNOTATION DOES NOT SAY. The obvious candidate is the new
+// `authored_type_references` channel, and the obvious mechanism -- import member names being
+// stamped as `TypeOccurrence` -- is REFUTED by the producer: `authored_type_references_from_transport`
+// filters those out deliberately, and says so. So the mechanism is unverified and is deliberately
+// not named here. A cause invented to fit a real measurement is the failure this file keeps
+// catching in other places; recording the measurement without it costs nothing.
+//
+// AND THE DISJUNCT *IS* LOAD-BEARING, on a case no reader channel can ever reach. An import whose
+// member is authored and never referenced has NO reference by construction -- there is nothing in
+// the tree, and nothing in any transport, for a projection to find, however many channels are
+// added. Removing the disjunct therefore does not degrade to the reference set, it FABRICATES A
+// REFUSAL over an import that is declared, correct, and merely unused: the mirror of the false
+// green the reader repair closes.
+//
+// So DESIGN 4b(4) does not fire the way it first appears. The clause deletes machinery a climb
+// made REDUNDANT; here the climb made the sibling TEST redundant and left the MACHINERY answering
+// a case that test never covered. Deleting the disjunct on the strength of the sibling's green
+// arm alone would have opened a false-refusal direction and looked principled doing it.
+const UNUSED_MEMBER_HOME: &str = "module probe.payload\n\ntype Wrapper\n  = Wrapped\n";
+
+const UNUSED_MEMBER_CONSUMER: &str =
+    "module probe.consumer\n\nimport probe.payload { Wrapper }\n\nfn decide() -> String { \"unset\" }\n";
+
+#[test]
+fn membership_declared_by_an_import_whose_member_is_authored_and_never_referenced() {
+    let base = "module probe.consumer\n\nfn decide() -> String { \"unset\" }\n";
+    let report = compare(
+        "unused_member_membership",
+        &[("payload.dag", UNUSED_MEMBER_HOME), ("consumer.dag", base)],
+        &[
+            ("payload.dag", UNUSED_MEMBER_HOME),
+            ("consumer.dag", UNUSED_MEMBER_CONSUMER),
+        ],
+    );
+
+    // PLANT ASSERTION FIRST: a disposition read off a delta that was never produced is a verdict
+    // about nothing.
+    assert!(
+        report.deltas.iter().any(|d| matches!(
+            &d.subject,
+            DeltaSubject::Membership { target, .. } if target == "probe.payload"
+        )),
+        "PLANT NEVER REACHED: no membership delta for probe.payload, got: {:?}",
+        report.deltas
+    );
+
+    let dispositions = membership_dispositions(&report, "probe.payload");
+    assert!(
+        !dispositions.contains(&NamespaceDeltaDisposition::UnexplainedSubjectMotion),
+        "an import whose member is authored and never referenced is a DECLARED dependency that \
+         no reference channel can ever see -- refusing it fabricates a refusal over correct \
+         source, which is the mirror of the false green the reader repair closes, got: {:?}",
+        dispositions
+            .iter()
+            .map(|d| disposition_label(*d))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        report_unadjudicated(&report).is_empty(),
+        "nothing here needs adjudicating, got: {:?}",
+        report_unadjudicated(&report)
+            .iter()
+            .map(|d| (disposition_label(d.disposition), d.detail.clone()))
+            .collect::<Vec<_>>()
+    );
+}
