@@ -196,6 +196,76 @@ import v2.std.text { String }
 // Verified against the same cost receipt before enrolment: all 46 are `budget_interrupted` or
 // `completed_over_budget` and NONE has outcome `fail`.
 //
+// HOW UNINFORMATIVE THAT LOWER BOUND IS, MEASURED RATHER THAN ASSERTED -- and the number is the
+// point, because THREE READERS INDEPENDENTLY TREATED IT AS A POINT ESTIMATE. This carrier says
+// above that a censored figure is a lower bound. It is, and the sentence is not enough: the bound
+// and the true cost are essentially UNCORRELATED in this population, so any reasoning that sorts,
+// buckets or thresholds on the reported figure is unsound even when every individual figure is
+// honest.
+//
+// THE INSTRUMENT IS A PAIR OF FLOOR RUNS DIFFERING ONLY IN THE CEILING, so the join is a
+// controlled measurement and not two observations of two trees. Censored: run 33191118450
+// (`session/witty-wren-148`), 500ms CPU. Uncensored: run 33190645319 (`probe/ceiling-uncensor-9517`),
+// ceiling raised, same tree. Both emit `required_floor_claim_cost.tsv`; the rows below are that
+// artifact's own `cpu_ms` column joined on `identity`. The figures are transcribed here, as a
+// declared exception to "name the instrument, never transcribe its output", for the reason this
+// document grants that exception elsewhere: the probe branch is DELETED, so no producer on this
+// side of the boundary can re-derive the uncensored half, and the subject of the row IS the
+// divergence between the two runs rather than either run's state.
+//
+//   identity                                                          censored -> true (cpu_ms)
+//   ..cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies      506 -> 2897
+//   ..cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke   506 -> 2907
+//   ..cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl..     502 -> 2902
+//   ..identity_captured_navigation_roster_gate.green_control_sanctioned..    507 -> 2227
+//   ..emit_on_demand_classical_not_ingested_family_witness.emit_on_demand..  502 -> 2374
+//   ..emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest..    527 -> 1658
+//   ..nominal_distinctness_cross_call.nominal_distinct_control_compiles_ok   505 -> 1596
+//   ..lens_module_gate_witness.lens_closure_question_zero_holds_live        1655 -> 1713
+//   ..external_model_scope_live_cover_witness.frontier_cover_of_live..       501 ->  559
+//   ..operation_argv_corpus_witness.operation_argv_corpus_every_row_is..     502 ->  520
+//   ..roadmap_belt_witness.witness_belt_plan_equals_step_composition         502 ->  355
+//   ..roadmap_belt_witness.witness_belt_plan_paused_holds_on_authority       502 ->  380
+//
+// READ THE FIRST AND THE ELEVENTH LINES TOGETHER. `502 -> 2902` and `502 -> 355` are THE SAME
+// REPORTED NUMBER. One row costs nearly six times the ceiling; the other is comfortably under it
+// and was interrupted only because the fold's charged clock crossed the line during it. The
+// reported figure does not distinguish them, and no amount of care in reading it can, because the
+// information is not in the column.
+//
+// WHAT THAT REFUTES, NAMED SO THE READING DOES NOT RETURN. Two decisions on this axis were argued
+// from the shape of this cluster, and both arguments are void:
+//   - "membership is decided by run-to-run variance" (this branch's own PR body, over four
+//     `bootstrap_footprint` siblings at 492/502/502/506ms). TRUE OF THOSE FOUR -- they measure
+//     460ms uncensored -- and FALSE of the seven rows above them, which measure 1596-2907ms. The
+//     reasoning could not tell the two groups apart, so it was right by luck on the group it was
+//     applied to.
+//   - "26 of 44 sit within 2% of the 5000ms ceiling, so scheduling noise decides them" (the
+//     handoff for the 5000ms-era population, `calm-ram-380`). Same shape one ceiling up, and
+//     the same refutation: those 26 rows' true costs are UNMEASURED and unbounded above.
+//
+// AND THE AGREEMENT WAS NOT CORROBORATION. Three readers reached the marginality reading
+// independently, which reads as confirmation and is not: a shared input is a shared potential
+// defect, and all three were reading one column that cannot express the distinction they were
+// drawing. That is this document's own recognition rule applied to its own authors.
+//
+// WHAT THIS DOES NOT LICENSE. It is not an argument to move the ceiling -- if anything it is the
+// opposite, since the rows nearest the line are the ones most likely to be far over it. It is not
+// an argument to enrol or release any row here; the four `bootstrap_footprint` siblings measure
+// under the ceiling uncensored and are NOT on this roster, which is correct. It settles one thing
+// only: a censored figure may not be used as a cost, and a decision that needs a cost for an
+// interrupted row must uncensor and re-measure, as the pair above did.
+//
+// THE CONSTRUCTION THIS WANTS IS NOT BUILT, AND THAT IS A DECLARED OMISSION RATHER THAN AN
+// OVERSIGHT. `write_required_floor_claim_cost_tsv` renders a censored lower bound into the same
+// `cpu_ms`/`wall_ms` columns a completed row's exact measurement occupies, distinguished only by
+// the adjacent `verdict_reached` column -- which is an exact discriminator (false for exactly the
+// 12 `budget_interrupted` rows and nothing else) that every reader above failed to join. Making
+// the bound unable to inhabit the measured-cost slot is the DESIGN section 5 construction move,
+// and it was deliberately not landed here: forward implementation is frozen under the 2026-08-28
+// wind-down. TRIGGER: when that freeze lifts, a censored figure gets a rendering a numeric reader
+// cannot silently consume, and this paragraph's warning becomes the regression control for it.
+//
 // THE ONE THING NEITHER POPULATION MAY CONTAIN IS A KNOWN FAILURE, and the reason is a live
 // receipt rather than a principle. A first attempt at this roster was measured on THIS branch,
 // with the 500ms ceiling already in place, and enrolled 276 interrupted rows. The tightened
