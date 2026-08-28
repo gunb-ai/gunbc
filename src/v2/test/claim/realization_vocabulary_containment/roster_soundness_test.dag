@@ -44,7 +44,7 @@ data ts0_frozen_census_facts: List<LayerImportFact> = [
   },
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dag/tools/build_step.dag",
+    path: "dag/gunbc/instruments/build_step.dag",
     import_module: bash_build_module
   }
 ]
@@ -93,12 +93,12 @@ test fn realization_vocab_grandfathered_edge_roster_keys_are_distinct_holds() ->
 test fn realization_vocab_grandfathered_edge_keys_distinct_red_on_planted_duplicate_holds() -> Bool {
   let planted = [
     "dag/gunbc/roadmap/roadmap_component.dag -> extdeps.languages.typescript.program",
-    "dag/tools/build_step.dag -> v2.extdeps.languages.bash_build",
+    "dag/gunbc/instruments/build_step.dag -> v2.extdeps.languages.bash_build",
     "dag/gunbc/roadmap/roadmap_component.dag -> extdeps.languages.typescript.program"
   ]
   let distinct = [
     "dag/gunbc/roadmap/roadmap_component.dag -> extdeps.languages.typescript.program",
-    "dag/tools/build_step.dag -> v2.extdeps.languages.bash_build"
+    "dag/gunbc/instruments/build_step.dag -> v2.extdeps.languages.bash_build"
   ]
   !realization_vocab_grandfathered_edge_keys_are_distinct(keys: planted)
     && realization_vocab_grandfathered_edge_keys_are_distinct(keys: distinct)

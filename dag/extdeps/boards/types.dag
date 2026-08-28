@@ -1,7 +1,7 @@
 module extdeps.boards.types
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.bmc { BmcFirmwareFamily, BmcEndpoint }
+import extdeps.bmc.endpoint { BmcFirmwareFamily, BmcEndpoint }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 

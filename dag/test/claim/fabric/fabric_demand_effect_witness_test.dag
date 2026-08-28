@@ -1,7 +1,7 @@
 module test.claim.fabric_demand_effect_witness_test
 
 import std.types { NonEmptyStr, Bool, List }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure { money_amount_micro, MoneyOnce }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

@@ -3,7 +3,7 @@ module extdeps.realestate.nj_industrial
 import std.types { NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { MoneyPerMonth, MoneyPerSquareFootYear, money_amount_micro, SquareFoot, square_foot }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }

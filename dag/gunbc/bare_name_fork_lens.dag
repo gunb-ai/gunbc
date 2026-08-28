@@ -14,7 +14,7 @@ import std.materialization_ladder { string_list_contains }
 // backwards, and expensive: the cheap check cannot see it and the check that can costs a CI round
 // trip.
 //
-// MEASURED SPECIMEN (2026-08-25, gunbc#9213, run 32896104450). `dag/tools/frontier_ingestion_probe`
+// MEASURED SPECIMEN (2026-08-25, gunbc#9213, run 32896104450). `dag/gunbc/instruments/frontier_ingestion_probe`
 // declares `roster_identity` over a list of frontier members; a second module declared the same name
 // over a different subject returning a different type. `gunbc compile --entry <the caller>` reported
 // zero blocking errors. The floor refused with `function 'roster_identity' not found in scope`.

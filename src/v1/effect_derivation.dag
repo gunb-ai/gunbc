@@ -20,7 +20,7 @@ import std.effects {
   LatticeEffect, IdentityEffect, NonIdempotent
 }
 
-import std.http_path {
+import extdeps.uri_path {
   UrlPathToken, LiteralToken, ParamToken,
   PathTemplate,
   has_path_params,

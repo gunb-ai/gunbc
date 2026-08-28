@@ -7,7 +7,7 @@ import extdeps.cloud.ubicloud {
   ubicloud_standard_2_arm_catalog,
   ubicloud_standard_16_arm_catalog,
 }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.measure { MoneyPerMinute, money_amount_micro }
 import std.types { NonEmptyStr, List }
 

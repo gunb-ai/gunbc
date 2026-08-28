@@ -5,7 +5,7 @@ import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { Mebibyte, Millicore, mebibyte, millicore }
-import std.http_path { PathTemplate, LiteralToken, ParamToken }
+import extdeps.uri_path { PathTemplate, LiteralToken, ParamToken }
 import extdeps.uri_path { ParsedPathTemplate, MalformedPathTemplate, parse_path_template }
 import extdeps.http.server {
   MediaType,

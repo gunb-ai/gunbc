@@ -77,7 +77,7 @@ import gunbc.os_install_mechanism {
   srv3_install_mechanism_solution,
   srv4_install_mechanism_solution,
 }
-import std.bmc { BmcEndpoint, OpenBmc, Redfish }
+import extdeps.bmc.endpoint { BmcEndpoint, OpenBmc, Redfish }
 import std.types { Bool, List, list_length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.firmware.types { firmware_semantic_version }

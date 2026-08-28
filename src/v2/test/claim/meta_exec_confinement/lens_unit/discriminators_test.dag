@@ -31,7 +31,7 @@ test fn fresh_non_edge_import_is_leak_holds() -> Bool {
 data edge_import_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixExtdeps,
-    path: "dag/tools/dag_compile_clean_transport.dag",
+    path: "dag/gunbc/instruments/dag_compile_clean_transport.dag",
     import_module: target_meta_exec_module
   }
 ]

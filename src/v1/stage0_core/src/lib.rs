@@ -72,8 +72,6 @@ pub mod std_error_primitives;
 pub mod std_execution_mode;
 #[path = "../../stage0/src/std_graph.rs"]
 pub mod std_graph;
-#[path = "../../stage0/src/std_http_path.rs"]
-pub mod std_http_path;
 #[path = "../../stage0/src/std_induction.rs"]
 pub mod std_induction;
 #[path = "../../stage0/src/std_interface_summary.rs"]

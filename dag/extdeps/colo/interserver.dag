@@ -3,7 +3,7 @@ module extdeps.colo.interserver
 import std.types { NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { MoneyPerMonth, money_amount_micro, watt, bandwidth, rack_unit }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed,

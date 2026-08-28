@@ -1005,7 +1005,7 @@ pub fn render_phase_concluded_line_mirror(phase: &str, elapsed_ms: u64, emoji: b
 /// the interpreter arm in `v1_interpreter.rs` when realization_measurement_loop **Phase 0**
 /// (`docs/plans/realization-measurement-loop.md`) lands a `.dag` `PerformanceReceipt`
 /// per-stage carrier that a floor witness consumes by execution (the same retirement event
-/// as `phase_profile.rs` / `GUNBC_FLOOR_GANTT`, per `ci-floor-fractal-gantt (plan doc deleted 2026-08-28)`
+/// as `phase_profile.rs` / `GUNBC_FLOOR_GANTT`, per `docs/plans/ci-floor-fractal-gantt.md`
 /// § dissolution). Receipt = that witness green with these marks deleted and stage walls
 /// still attributable from the model path.
 pub fn trace_mark(label: String) {

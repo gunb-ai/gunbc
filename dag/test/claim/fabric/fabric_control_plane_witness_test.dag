@@ -3,7 +3,7 @@ module test.claim.fabric_control_plane_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.durable_compare_and_set { CasUnreadableReadRefused, ExpectSlotAbsent }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
-import std.currency { Usd, Eur, CurrencyCode }
+import extdeps.currency.currency { Usd, Eur, CurrencyCode }
 import std.measure {
   MoneyOnce, MoneyPerSecond, money_amount_micro, Second, second, hardware_thread_count,
 }

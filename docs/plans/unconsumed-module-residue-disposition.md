@@ -645,9 +645,9 @@ and that alone is what publication would buy.
 | `std.binding` | `dag/std/binding.dag` | STILL-UNCONSUMED |
 | `std.containers` | `dag/std/containers.dag` | STILL-UNCONSUMED |
 | `std.list` | `dag/std/list.dag` | STILL-UNCONSUMED |
-| `tools.build` | `dag/tools/build.dag` | STILL-UNCONSUMED |
-| `tools.codegen` | `dag/tools/codegen.dag` | STILL-UNCONSUMED |
-| `tools.readme` | `dag/tools/readme.dag` | STILL-UNCONSUMED |
+| `tools.build` | `dag/gunbc/instruments/build.dag` | STILL-UNCONSUMED |
+| `tools.codegen` | `dag/gunbc/instruments/codegen.dag` | STILL-UNCONSUMED |
+| `tools.readme` | `dag/gunbc/instruments/readme.dag` | STILL-UNCONSUMED |
 | `v2.bin.main` | `src/v2/bin/main.dag` | STILL-UNCONSUMED |
 | `v2.extdeps.formats.csv` | `src/v2/extdeps/formats/csv.dag` | STILL-UNCONSUMED |
 | `v2.extdeps.formats.json_schema` | `src/v2/extdeps/formats/json_schema.dag` | DEAD-CONSUMER-ONLY |
@@ -768,8 +768,8 @@ DESIGN §3 frozen-X. Deleting these deletes what the re-add queue exists to re-a
 
 | module | path | bucket |
 | --- | --- | --- |
-| `tools.dag_compile_clean_seam_transport` | `dag/tools/dag_compile_clean_seam_transport.dag` | DEAD-CONSUMER-ONLY |
-| `tools.merge_admission_capture_transport` | `dag/tools/merge_admission_capture_transport.dag` | STILL-UNCONSUMED |
+| `tools.dag_compile_clean_seam_transport` | `dag/gunbc/instruments/dag_compile_clean_seam_transport.dag` | DEAD-CONSUMER-ONLY |
+| `tools.merge_admission_capture_transport` | `dag/gunbc/instruments/merge_admission_capture_transport.dag` | STILL-UNCONSUMED |
 
 ## 7. What this change does NOT claim
 

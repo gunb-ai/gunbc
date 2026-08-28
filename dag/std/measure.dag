@@ -2,7 +2,7 @@ module std.measure
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.currency { CurrencyCode }
+import extdeps.currency.currency { CurrencyCode }
 import std.nat { Nat }
 import std.types { Int, Bool, String, NonEmptyStr }
 import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }

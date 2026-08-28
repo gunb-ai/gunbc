@@ -8,7 +8,7 @@ fn synthetic_plan_total() -> CostAccount<Nano> {
 }
 
 data compile_gate_fn: String = "dag_compile_clean_gate_passes"
-data gate_entry: String = "dag/tools/floor_effect_gate_witness.dag"
+data gate_entry: String = "dag/gunbc/instruments/floor_effect_gate_witness.dag"
 
 fn witness_threads_64() -> HardwareThreadCount {
   hardware_thread_count(64)

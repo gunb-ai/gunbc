@@ -32,7 +32,7 @@ import product.fabric.identity {
   FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, fabric_identity_eq,
 }
 import std.content_hash { ContentHash, content_hash_of_value }
-import std.currency { Usd }
+import extdeps.currency.currency { Usd }
 import std.measure { money_amount_micro, hardware_thread_count }
 import std.nat { Nat }
 import std.types { NonEmptyStr, Bool, List }

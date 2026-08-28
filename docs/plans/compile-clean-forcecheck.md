@@ -6,7 +6,7 @@
 
 ## 0. Verdict — the brief's mechanism is wrong; the leak is a global seed allowlist
 
-At the 2026-06-21 capture, the compile-clean gate (`dag/tools/dag_compile_clean_gate.dag` → `gunbc compile --target rust` over `dag/` with `src/v2` as the import pool) was **fail-open**: `gunbc compile` on `main` returned 0 diagnostics / EXIT 0 even though `extdeps.cloud.gcp.secret_manager` `utf8_secret_from_access_payload` called `utf8_decode_bytes`, which was then **defined nowhere in `dag/` or `src/v2`**. The current tree now defines `std.encoding` `utf8_decode_bytes`; this paragraph is a historical execution receipt, not a claim that the literal leak remains live.
+At the 2026-06-21 capture, the compile-clean gate (`dag/gunbc/instruments/dag_compile_clean_gate.dag` → `gunbc compile --target rust` over `dag/` with `src/v2` as the import pool) was **fail-open**: `gunbc compile` on `main` returned 0 diagnostics / EXIT 0 even though `extdeps.cloud.gcp.secret_manager` `utf8_secret_from_access_payload` called `utf8_decode_bytes`, which was then **defined nowhere in `dag/` or `src/v2`**. The current tree now defines `std.encoding` `utf8_decode_bytes`; this paragraph is a historical execution receipt, not a claim that the literal leak remains live.
 
 The brief framed this as "unreached fn bodies escape typecheck." **That was false** — bodies were always visited. At the captured run, the execution-proven mechanism (§1 below) was two independent fail-open holes:
 
