@@ -23,6 +23,7 @@ import product.fabric.selection {
   OpportunityCostObservation, NoFeasibleAlternativeUse,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric_executor_class { ExecutorSanction, fleet_cell_sanction }
 import gunbc.fabric_floor_dispatch { floor_demand }
 import gunbc.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, ReservationLost,
@@ -132,6 +133,7 @@ fn cp_live_nothing_admissible_touches_no_store(root: NonEmptyStr) -> Int {
       demand: cp_probe_demand(),
       expected: ExpectSlotAbsent,
       roster: [],
+      sanctions: [],
       maximum_buy_order: money_amount_micro(count: 1000000),
       delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },
     )
@@ -205,6 +207,7 @@ fn cp_live_broker_reserves_the_cell_the_market_chose(root: NonEmptyStr) -> Int {
       root: root,
       demand: cp_probe_demand(),
       roster: cp_probe_roster(executor: "srv3-06"),
+      sanctions: [fleet_cell_sanction(slot: cp_probe_slot())],
       expected: ExpectSlotAbsent,
       maximum_buy_order: money_amount_micro(count: 1000000),
       delay_valuation: MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd },

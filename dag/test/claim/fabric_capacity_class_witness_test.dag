@@ -1,0 +1,166 @@
+module test.claim.fabric_capacity_class_witness
+
+import std.logic { Bool }
+import std.types { List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { hardware_thread_count }
+import product.fabric.work {
+  CapacityClass, ControlPlaneCapacity, CustomerExecutableCapacity,
+  ExecutionRequirements, Shape, HardRequirements,
+  capacity_class_eq, capacity_class_wire, work_identity_material, WorkContract, WorkStep,
+}
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fabric_executor_class {
+  ExecutorSanction, ExecutorSanctioned, ExecutorUnclassified,
+  CapacityClassAdmission, CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified,
+  admit_executor_capacity, capacity_admission_is_admitted, fleet_cell_sanction,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn cc_requirements(class: CapacityClass) -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: class,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+      envelope: unstated_envelope(),
+    },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: "gunbc.trust.internal-fleet",
+    isolation: IsolationProfile { guarantees: [] },
+  }
+}
+
+fn cc_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: "srv3", slot_index: 6 }
+}
+
+fn cc_contract() -> WorkContract {
+  WorkContract {
+    program: "gunbc.program.floor",
+    steps: [],
+    source: "gunbc.source.manifest-1",
+    inputs: "gunbc.artifact.manifest-1",
+    runtime_closure: "gunbc.runtime.closure-1",
+    effect_contract: "gunbc.effect.contract-1",
+    output_contract: "gunbc.output.contract-1",
+  }
+}
+
+// THE ROW THAT CATCHES THE FIELD BEING ABSENT FROM THE IDENTITY, and the reason
+// it has to exist separately from the collapse guard already in the corpus.
+//
+// work_identity_material HAND-ENUMERATES its inputs. It does not walk the
+// record, so every field added to ExecutionRequirements is absent from the
+// material until someone remembers to add it -- and the existing guard,
+// unstated_and_stated_do_not_collapse_in_the_material, varies the ENVELOPE, so
+// it stays green while a capacity class silently collapses. A row that would
+// have passed over the bug it is cited for is not coverage of that bug.
+//
+// This one varies ONLY the class. Two demands alike in every other respect must
+// not share an identity, because identity is what decides whether two pieces of
+// work are the same work -- and control-plane work and customer-executable work
+// are never the same work, however identical their shape.
+//
+// This has already happened twice in that function. Its own annotation records
+// isolation being omitted and repaired "ONE FIELD LATER". This is the third
+// field, and the row rather than the diligence is what makes it the last.
+test fn two_demands_differing_only_in_capacity_class_do_not_share_an_identity() -> Bool {
+  let control = work_identity_material(
+    contract: cc_contract(),
+    requirements: cc_requirements(class: ControlPlaneCapacity),
+  )
+  let customer = work_identity_material(
+    contract: cc_contract(),
+    requirements: cc_requirements(class: CustomerExecutableCapacity),
+  )
+  (control as String) != (customer as String)
+}
+
+// The positive control for the row above. Without it the assertion is satisfied
+// by a material function that returns something different every call, which
+// would break identity entirely rather than fix it.
+test fn two_identical_demands_do_share_an_identity() -> Bool {
+  let first = work_identity_material(
+    contract: cc_contract(),
+    requirements: cc_requirements(class: ControlPlaneCapacity),
+  )
+  let second = work_identity_material(
+    contract: cc_contract(),
+    requirements: cc_requirements(class: ControlPlaneCapacity),
+  )
+  (first as String) == (second as String)
+}
+
+// THE SAFETY WALL ITSELF: control-plane work must not be admitted onto capacity
+// sanctioned for customer execution. This is the state that was representable
+// and unremarked before this cut -- not a failure that was contained, an
+// invalid state with nothing to contain it.
+test fn control_plane_work_is_refused_on_customer_sanctioned_capacity() -> Bool {
+  !capacity_admission_is_admitted(
+    admission: admit_executor_capacity(
+      requirements: cc_requirements(class: ControlPlaneCapacity),
+      roster: [ExecutorSanctioned { executor: "spark-01", sanctioned: CustomerExecutableCapacity }],
+      executor: "spark-01",
+    )
+  )
+}
+
+// And the reverse direction, which is the one that actually loses money and
+// trust: customer work must not land on the cells running our control plane.
+test fn customer_work_is_refused_on_control_plane_capacity() -> Bool {
+  !capacity_admission_is_admitted(
+    admission: admit_executor_capacity(
+      requirements: cc_requirements(class: CustomerExecutableCapacity),
+      roster: [fleet_cell_sanction(slot: cc_slot())],
+      executor: "srv3-06",
+    )
+  )
+}
+
+// The positive control for both walls. Without it they are satisfied by an
+// admission that refuses everything, which is a fabric that can never run.
+test fn control_plane_work_is_admitted_on_a_fleet_cell() -> Bool {
+  capacity_admission_is_admitted(
+    admission: admit_executor_capacity(
+      requirements: cc_requirements(class: ControlPlaneCapacity),
+      roster: [fleet_cell_sanction(slot: cc_slot())],
+      executor: "srv3-06",
+    )
+  )
+}
+
+// AN UNCLASSIFIED EXECUTOR REFUSES RATHER THAN DEFAULTING. "We have not
+// classified this executor" and "this executor serves customers" are different
+// states with different remedies, and a default would let the roster grow a
+// sanction nobody authored. The remedy for this refusal is to classify it,
+// which is a thing a person does once and deliberately.
+test fn an_unclassified_executor_is_refused_rather_than_defaulted() -> Bool {
+  !capacity_admission_is_admitted(
+    admission: admit_executor_capacity(
+      requirements: cc_requirements(class: ControlPlaneCapacity),
+      roster: [],
+      executor: "srv9-99",
+    )
+  )
+}
+
+// The class is a categorical, so equality is the only relation over it. There is
+// no ordering in which one class covers another, and this row exists so that a
+// later reader does not add one: an offered class is never "at least" a needed
+// class the way threads are.
+test fn the_class_relation_is_equality_and_not_an_ordering() -> Bool {
+  capacity_class_eq(left: ControlPlaneCapacity, right: ControlPlaneCapacity)
+    && capacity_class_eq(left: CustomerExecutableCapacity, right: CustomerExecutableCapacity)
+    && !capacity_class_eq(left: ControlPlaneCapacity, right: CustomerExecutableCapacity)
+    && !capacity_class_eq(left: CustomerExecutableCapacity, right: ControlPlaneCapacity)
+}
+
+// The two classes must render distinctly, or the material row above is satisfied
+// by a wire function that is itself collapsing them.
+test fn the_two_classes_render_distinctly() -> Bool {
+  (capacity_class_wire(c: ControlPlaneCapacity) as String)
+    != (capacity_class_wire(c: CustomerExecutableCapacity) as String)
+}

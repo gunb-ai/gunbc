@@ -12,7 +12,7 @@ import product.fabric.identity {
 }
 import product.fabric.work {
   Work, WorkContract, WorkStep, ResumabilityTier, ReceiptSatisfiable,
-  ExecutionRequirements, Shape, HardRequirements,
+  ExecutionRequirements, Shape, HardRequirements, CapacityClass, ControlPlaneCapacity,
   CapabilityManifestRef, TrustDomainRef,
   ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
 }
@@ -189,8 +189,14 @@ fn floor_isolation_requirement() -> IsolationProfile {
   IsolationProfile { guarantees: [] }
 }
 
+// THE FLOOR IS CONTROL-PLANE WORK AND SAYS SO. This is the demand the capacity
+// class exists to protect: our own scheduler, reconciliation, admission and
+// receipt work, which must never be satisfied by capacity sanctioned for
+// customer execution. Declared on the side we ORIGINATE, so no supplier can
+// author it and the refusal is decided at admission rather than after ranking.
 fn floor_execution_requirements() -> ExecutionRequirements {
   ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
     shape: Shape {
       hard: HardRequirements { threads: hardware_thread_count(count: 8) },
       envelope: unstated_envelope(),

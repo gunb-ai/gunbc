@@ -11,6 +11,7 @@ import std.durable_compare_and_set {
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
 import product.fabric.demand { Demand }
 import product.fabric.supply { SupplierOffer }
+import product.fabric.work { ExecutionRequirements }
 import product.fabric.selection { CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, SelectionCost, OfferCandidacy }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.durable_cas_file_store {
@@ -18,7 +19,12 @@ import gunbc.durable_cas_file_store {
   CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
   admit_cas_attempt, file_compare_and_set,
 }
-import gunbc.fabric_floor_dispatch { floor_supply_selection }
+import gunbc.fabric_floor_dispatch { floor_supply_selection, floor_execution_requirements }
+import gunbc.fabric_executor_class {
+  ExecutorSanction, CapacityClassAdmission, CapacityClassAdmitted,
+  CapacityClassRefused, ExecutorNotClassified,
+  admit_executor_capacity, capacity_admission_is_admitted, capacity_admission_wire,
+}
 
 // THE BROKER: SELECTION DECIDES WHICH CELL, THE STORE DECIDES WHETHER WE GET IT.
 //
@@ -237,16 +243,77 @@ fn fabric_cell_roster_candidates(roster: List<FabricCellCandidate>) -> List<Cand
   fold(roster, init: [], f: (acc, member) => acc + [member.candidate])
 }
 
+// ADMISSION RUNS BEFORE SELECTION, AND THE ORDER IS THE SAFETY PROPERTY.
+//
+// Fungibility asks whether an executor CAN satisfy the work. Once two offers are
+// fungible they are interchangeable by definition, so a capacity-class boundary
+// checked after ranking is a boundary already crossed. This removes unsanctioned
+// executors from the roster before anything is ranked, so a control-plane cell
+// is never a candidate for customer-executable demand and cannot be chosen by a
+// tie-break, a price, or a later change to the ranking.
+//
+// The refusals are COUNTED rather than silently filtered. A roster that shrinks
+// without saying why is the absorbing fallback in reverse: the demand looks
+// unsatisfiable and nobody can tell whether nothing was offered or everything
+// was refused across a safety line, which have opposite remedies.
+fn admitted_cell_roster(
+  requirements: ExecutionRequirements,
+  sanctions: List<ExecutorSanction>,
+  roster: List<FabricCellCandidate>,
+) -> List<FabricCellCandidate> {
+  fold(
+    roster,
+    init: [],
+    f: (acc, member) =>
+      if capacity_admission_is_admitted(
+           admission: admit_executor_capacity(
+             requirements: requirements,
+             roster: sanctions,
+             executor: member.candidate.offer.executor,
+           )
+         ) { acc + [member] } else { acc },
+  )
+}
+
+fn refused_cell_admissions(
+  requirements: ExecutionRequirements,
+  sanctions: List<ExecutorSanction>,
+  roster: List<FabricCellCandidate>,
+) -> List<CapacityClassAdmission> {
+  fold(
+    roster,
+    init: [],
+    f: (acc, member) =>
+      match admit_executor_capacity(
+        requirements: requirements,
+        roster: sanctions,
+        executor: member.candidate.offer.executor,
+      ) {
+        CapacityClassAdmitted { executor: _, class: _ } => acc
+        CapacityClassRefused { executor: e, required: r, sanctioned: sd } =>
+          acc + [CapacityClassRefused { executor: e, required: r, sanctioned: sd }]
+        ExecutorNotClassified { executor: e } => acc + [ExecutorNotClassified { executor: e }]
+      },
+  )
+}
+
 fn broker_reserve_for_demand(
   root: NonEmptyStr,
   demand: Demand<NonEmptyStr>,
   roster: List<FabricCellCandidate>,
+  sanctions: List<ExecutorSanction>,
   expected: CasExpectation,
   maximum_buy_order: MoneyAmountMicro,
   delay_valuation: MoneyPerSecond,
 ) -> CellReservation {
   match floor_supply_selection(
-    candidates: fabric_cell_roster_candidates(roster: roster),
+    candidates: fabric_cell_roster_candidates(
+      roster: admitted_cell_roster(
+        requirements: floor_execution_requirements(),
+        sanctions: sanctions,
+        roster: roster,
+      ),
+    ),
     maximum_buy_order: maximum_buy_order,
     delay_valuation: delay_valuation,
   ) {
