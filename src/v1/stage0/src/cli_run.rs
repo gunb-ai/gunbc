@@ -47,10 +47,20 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
+mod active_workset;
 mod census_heads;
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
+pub(crate) use active_workset::*;
+mod live_read_decode;
+pub(crate) use live_read_decode::*;
+mod owned_data;
+pub(crate) use owned_data::*;
+mod p1_cohort;
+pub(crate) use p1_cohort::*;
+mod fallback_arm_census;
 pub(crate) use census_heads::*;
+pub(crate) use fallback_arm_census::*;
 mod declared_refs;
 pub(crate) use declared_refs::*;
 mod doc_graph;
@@ -10145,12 +10155,6 @@ impl LiveReadSelectionManifest {
     }
 }
 
-/// Declaration-grain key. Entry path plus function name, which is the identity the floor already
-/// enrolls rows under.
-pub fn live_read_manifest_key(entry_path: &str, fn_name: &str) -> String {
-    format!("{}::{}", workspace_relative_repo_path(entry_path), fn_name)
-}
-
 /// One enrolled declaration to classify. Mirrors `v2.lens.live_read_classification`
 /// `LiveReadSelectionRequest` field for field.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10323,56 +10327,6 @@ impl MultiEntryIndex {
     }
 }
 
-/// Decode one `v2.std.live_read.LiveReadSelectionProjection` value.
-///
-/// `LiveReadSelectionRefused` decodes to `Refused`, NOT to a decode error: it is a legitimate,
-/// modelled state of the authority (the classification could not be established), and the seed's
-/// job is to carry it through so the consumer forbids a skip. Collapsing it into an error here
-/// would lose the located cause the authority already computed.
-///
-/// Everything else refuses. An earlier revision of this decoder accepted carrier list items only
-/// as `Value::Str` or a record with a `module` field and fell through to an empty carrier vector
-/// on anything else — but `LiveReadCarrier` is a coproduct, so every real carrier arrives as
-/// `Value::Variant` and took that fallthrough. The result was a `RuntimeRead` whose carriers were
-/// silently empty, which reads to a consumer as "runtime read, intersecting nothing" — the
-/// under-selection direction, produced by an absorbing arm sitting directly beneath a comment
-/// claiming fail-closed behaviour. There is no such arm now: an unrecognised shape at any depth
-/// refuses.
-fn decode_live_read_selection_row(
-    ctx: &v1_interpreter::InterpContext,
-    projection: &v1_interpreter::Value,
-) -> Result<LiveReadSelectionRow, String> {
-    let (variant_name, fields) = variant_parts(projection).ok_or_else(|| {
-        format!(
-            "LIVE-READ MANIFEST REFUSAL cause=ProjectionShapeUnexpected got={} — expected a \
-             LiveReadSelectionProjection variant.",
-            projection.type_label_public()
-        )
-    })?;
-    if ctx.sym_eq(variant_name, "LiveReadSelectionRefused") {
-        let cause = match ctx.field(fields, "cause") {
-            Some(Value::Str(c)) => c.to_string(),
-            _ => "typed refusal without a String cause".to_string(),
-        };
-        return Ok(LiveReadSelectionRow::Refused { cause });
-    }
-    if !ctx.sym_eq(variant_name, "LiveReadSelectionClassified") {
-        return Err(
-            "LIVE-READ MANIFEST REFUSAL cause=ProjectionVariantUnknown — the projection carried a \
-             variant this seed does not model, so its classification cannot be attributed."
-                .to_string(),
-        );
-    }
-    let classification = ctx.field(fields, "classification").ok_or_else(|| {
-        "LIVE-READ MANIFEST REFUSAL cause=ClassificationAbsent — a Classified projection with no \
-         classification."
-            .to_string()
-    })?;
-    Ok(LiveReadSelectionRow::Classified(
-        decode_live_read_classification(ctx, classification)?,
-    ))
-}
-
 /// `Value::Variant`'s name and fields, or `None` for anything else. Factored out because the
 /// decoder walks four nested coproducts and each one needs the same refusal on a non-variant.
 fn variant_parts(
@@ -10389,128 +10343,6 @@ fn variant_parts(
         } => Some((*variant_name, fields.as_slice())),
         _ => None,
     }
-}
-
-fn decode_live_read_classification(
-    ctx: &v1_interpreter::InterpContext,
-    value: &v1_interpreter::Value,
-) -> Result<LiveReadClassification, String> {
-    let (name, fields) = variant_parts(value).ok_or_else(|| {
-        format!(
-            "LIVE-READ MANIFEST REFUSAL cause=ClassificationShapeUnexpected got={} — expected a \
-             LiveReadClassification variant.",
-            value.type_label_public()
-        )
-    })?;
-    if ctx.sym_eq(name, "LocalRead") {
-        return Ok(LiveReadClassification::LocalRead);
-    }
-    if !ctx.sym_eq(name, "RuntimeRead") {
-        return Err(
-            "LIVE-READ MANIFEST REFUSAL cause=ClassificationVariantUnknown — neither LocalRead nor \
-             RuntimeRead; this seed cannot decide whether a skip is licensed."
-                .to_string(),
-        );
-    }
-    let Some(v1_interpreter::Value::List(items)) = ctx.field(fields, "carriers") else {
-        return Err(
-            "LIVE-READ MANIFEST REFUSAL cause=CarrierListAbsent — a RuntimeRead whose carrier list \
-             is missing or not a list. An empty carrier set intersects no diff, so accepting this \
-             shape would license exactly the skip the runtime read forbids."
-                .to_string(),
-        );
-    };
-    let carriers = items
-        .iter()
-        .map(|item| decode_live_read_carrier(ctx, item))
-        .collect::<Result<Vec<LiveReadCarrier>, String>>()?;
-    Ok(LiveReadClassification::RuntimeRead { carriers })
-}
-
-fn decode_live_read_carrier(
-    ctx: &v1_interpreter::InterpContext,
-    value: &v1_interpreter::Value,
-) -> Result<LiveReadCarrier, String> {
-    let (name, fields) = variant_parts(value).ok_or_else(|| {
-        format!(
-            "LIVE-READ MANIFEST REFUSAL cause=CarrierShapeUnexpected got={} — expected a \
-             LiveReadCarrier variant.",
-            value.type_label_public()
-        )
-    })?;
-    if ctx.sym_eq(name, "ModuleDeclarationFactsScan") {
-        return Ok(LiveReadCarrier::ModuleDeclarationFactsScan);
-    }
-    if ctx.sym_eq(name, "DeclFactsReflection") {
-        let home =
-            match ctx.field(fields, "home") {
-                Some(Value::Str(h)) => h.to_string(),
-                _ => return Err(
-                    "LIVE-READ MANIFEST REFUSAL cause=CarrierHomeUnexpected — DeclFactsReflection \
-                     without a String home."
-                        .to_string(),
-                ),
-            };
-        return Ok(LiveReadCarrier::DeclFactsReflection { home });
-    }
-    if !ctx.sym_eq(name, "FilesystemReadPath") {
-        return Err(
-            "LIVE-READ MANIFEST REFUSAL cause=CarrierVariantUnknown — a carrier variant this seed \
-             does not model. Its read target is therefore unknown, and an unknown target cannot be \
-             intersected with a diff."
-                .to_string(),
-        );
-    }
-    let pattern = ctx.field(fields, "path_pattern").ok_or_else(|| {
-        "LIVE-READ MANIFEST REFUSAL cause=PathPatternAbsent — FilesystemReadPath without a \
-         path_pattern."
-            .to_string()
-    })?;
-    Ok(LiveReadCarrier::FilesystemReadPath(
-        decode_live_read_path_pattern(ctx, pattern)?,
-    ))
-}
-
-fn decode_live_read_path_pattern(
-    ctx: &v1_interpreter::InterpContext,
-    value: &v1_interpreter::Value,
-) -> Result<LiveReadPathPattern, String> {
-    let (name, fields) = variant_parts(value).ok_or_else(|| {
-        format!(
-            "LIVE-READ MANIFEST REFUSAL cause=PathPatternShapeUnexpected got={} — expected a \
-             PathPattern variant.",
-            value.type_label_public()
-        )
-    })?;
-    if ctx.sym_eq(name, "UnknownPath") {
-        return Ok(LiveReadPathPattern::UnknownPath);
-    }
-    if ctx.sym_eq(name, "LiteralPath") {
-        return match ctx.field(fields, "path") {
-            Some(Value::Str(p)) => Ok(LiveReadPathPattern::LiteralPath(p.to_string())),
-            _ => Err(
-                "LIVE-READ MANIFEST REFUSAL cause=LiteralPathUnexpected — LiteralPath without a \
-                 String path. Treating it as unknown would silently widen; refusing keeps the \
-                 defect countable."
-                    .to_string(),
-            ),
-        };
-    }
-    if ctx.sym_eq(name, "ParamRef") {
-        return match ctx.field(fields, "name") {
-            Some(Value::Str(n)) => Ok(LiveReadPathPattern::ParamRef(n.to_string())),
-            _ => Err(
-                "LIVE-READ MANIFEST REFUSAL cause=ParamRefUnexpected — ParamRef without a String \
-                 name."
-                    .to_string(),
-            ),
-        };
-    }
-    Err(
-        "LIVE-READ MANIFEST REFUSAL cause=PathPatternVariantUnknown — a path pattern this seed does \
-         not model."
-            .to_string(),
-    )
 }
 
 // The producer's executing consumer. A `pub fn` that compiles is not evidence it works (§5:
@@ -12238,49 +12070,6 @@ pub fn witness_attempt_id(entry: &str, function: &str) -> String {
     )
 }
 
-pub fn active_workset_admit(entry: &str, function: &str) {
-    let attempt_id = witness_attempt_id(entry, function);
-    append_active_workset_phase_journal(
-        "admitted",
-        &format!("attempt_id={attempt_id} entry={entry} function={function}"),
-    );
-    let mut g = ACTIVE_WORKSET.lock().unwrap_or_else(|p| p.into_inner());
-    g.entries.retain(|e| e.attempt_id != attempt_id);
-    g.entries.push(ActiveWorksetEntry {
-        attempt_id,
-        entry: entry.to_string(),
-        function: function.to_string(),
-    });
-}
-
-pub fn active_workset_complete(entry: &str, function: &str) {
-    let attempt_id = witness_attempt_id(entry, function);
-    append_active_workset_phase_journal(
-        "completed",
-        &format!("attempt_id={attempt_id} entry={entry} function={function}"),
-    );
-    let mut g = ACTIVE_WORKSET.lock().unwrap_or_else(|p| p.into_inner());
-    g.entries.retain(|e| e.attempt_id != attempt_id);
-}
-
-pub fn active_workset_snapshot() -> Vec<ActiveWorksetEntry> {
-    ACTIVE_WORKSET
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .entries
-        .clone()
-}
-
-/// Test helper: clears the process-wide active-workset registry between discriminating tests.
-#[doc(hidden)]
-pub fn active_workset_reset_for_test() {
-    ACTIVE_WORKSET
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .entries
-        .clear();
-}
-
 /// Drive one entry-completion: decrement the entry's closure refcounts, drop the
 /// per-module state that reached zero from every per-module cache (typed, parse,
 /// normalize-diag, ownership-diag, source-hash), AND drop the entry's assembled
@@ -13140,44 +12929,6 @@ fn emit_floor_drain_group_line(
     );
 }
 
-/// P1 retention-vs-drain cohort receipt (floor-prep-tax-program (plan doc deleted 2026-08-28) §P1):
-/// per-entry-group instrumentation distinct from `emit_floor_drain_group_line`'s
-/// cumulative cache-size line — this line prices the per-group wall/resolve/eval
-/// tax the program's diagnosing, plus the typecheck-cache-hit / resolved-graph-hit
-/// / eviction facts needed to tell "shared prep reused" from "shared prep re-paid":
-/// `typecheck_cache_hit` is whether `typecheck_compute_count()` moved during this
-/// group (a typecheck-memo hit/miss signal, NOT schedule-retention cache
-/// occupancy — schedule-retention has no per-group hit/miss concept to read,
-/// only cumulative eviction counters, which is why `modules_evicted`/
-/// `graphs_evicted` carry that side of the story instead). Gated on its own env var
-/// (never folded into `GUNBC_FLOOR_DRAIN_RETENTION`) so enabling one measurement
-/// mode does not silently change the other's log shape (§3 — two distinct facts,
-/// two distinct switches).
-///
-/// Scaffold, not a second production floor driver: this instrumentation and its
-/// sole consumer, `p1_cohort_probe`, are diagnostic-only (opt-in, zero effect on
-/// default eviction behavior — see `p1-retention-vs-drain-cohort-receipt (plan doc deleted 2026-08-28)`).
-/// Dissolve-on: once P1 is banked and no other open lane needs cohort-scoped A/B
-/// retention receipts, delete `emit_p1_cohort_entry_line`/`p1_cohort_receipt_enabled`/
-/// `p1_cohort_cgroup_memory`, `resolved_graph_evictions` on `IndexRetentionSnapshot`,
-/// and `src/v1/stage0/src/bin/p1_cohort_probe.rs` together (§6 — no parallel-ledger
-/// mechanism kept around past the measurement it was built for).
-fn p1_cohort_receipt_enabled() -> bool {
-    std::env::var("GUNBC_P1_COHORT_RECEIPT")
-        .ok()
-        .as_deref()
-        .map(|v| matches!(v, "1" | "true" | "TRUE"))
-        .unwrap_or(false)
-}
-
-/// P1 cohort / 2×2 matrix experiment is active — gates optional shared-store arms on Serial
-/// and private-store arms on ControlledWidthTwo without affecting production defaults.
-fn p1_cohort_experiment_active() -> bool {
-    p1_cohort_receipt_enabled()
-        || std::env::var("GUNBC_P1_MATRIX_CELL").is_ok()
-        || std::env::var("GUNBC_P1_SHARED_TYPED_STORE").is_ok()
-}
-
 fn p1_matrix_cell() -> Option<char> {
     let raw = std::env::var("GUNBC_P1_MATRIX_CELL")
         .unwrap_or_default()
@@ -13245,20 +12996,6 @@ fn emit_p1_cohort_entry_line(
             .map(|b| b.to_string())
             .unwrap_or_else(|| "unreadable".into()),
     );
-}
-
-/// Best-effort cgroup `memory.current` / `memory.peak` readback for the P1 cohort
-/// receipt (§3 reuse of `memory_governor`'s cgroup-walk authority — no second
-/// cgroup-path derivation here). `memory.peak` is absent on some kernels; that
-/// arm reads `None` rather than fabricating a value (§5).
-pub fn p1_cohort_cgroup_memory() -> (Option<u64>, Option<u64>) {
-    match crate::memory_governor::leaf_cgroup_dir() {
-        Some(dir) => (
-            crate::memory_governor::read_cgroup_u64(&dir, "memory.current"),
-            crate::memory_governor::read_cgroup_u64(&dir, "memory.peak"),
-        ),
-        None => (None, None),
-    }
 }
 
 fn emit_floor_drain_receipt(
@@ -20501,130 +20238,6 @@ fn entry_typed_module(
         })
 }
 
-fn owned_data_initializer_from_body(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    entry_path: &str,
-    decl_name: &str,
-    body: &Rc<Node>,
-    type_annotation: Option<&Rc<Node>>,
-) -> Result<OwnedDataDeclInitializer, String> {
-    let resolved_initializer =
-        resolved_initializer_decl_ref(graph, source_indices, body, type_annotation)
-            .map_err(|e| format!("{entry_path}: owned data '{decl_name}': {e}"))?;
-    if is_resolved_bool_witness_claim(&resolved_initializer) {
-        let (witness_entry, witness_function) =
-            extract_bool_witness_transport(body, source_indices);
-        if witness_entry.is_empty() || witness_function.is_empty() {
-            return Err(format!(
-                "{}: owned data '{}' has malformed BoolWitnessClaim witness (missing entry and/or function)",
-                entry_path, decl_name
-            ));
-        }
-        return Ok(OwnedDataDeclInitializer::BoolWitnessClaim {
-            witness_entry,
-            witness_function,
-        });
-    }
-    if is_resolved_node_corpus(&resolved_initializer) {
-        return Ok(OwnedDataDeclInitializer::NodeCorpus);
-    }
-    Ok(OwnedDataDeclInitializer::Other {
-        resolved: resolved_initializer,
-    })
-}
-
-pub fn owned_data_decls_for_entry(
-    graph: &ResolvedGraph,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    entry_path: &str,
-    entry_module: &str,
-) -> Result<Vec<OwnedDataDeclRecord>, String> {
-    let si = Rc::new(source_indices.clone());
-    let typed_module = entry_typed_module(graph, source_indices, entry_module)
-        .map_err(|e| format!("{entry_path}: {e}"))?;
-
-    let mut records = Vec::new();
-    for item in typed_module.items.iter() {
-        if item.body.is_none() || item.type_annotation.is_none() {
-            continue;
-        }
-        let decl_name = authored_name_at(si.clone(), item.clone());
-        if decl_name.is_empty() {
-            return Err(format!(
-                "{entry_path}: owned data item in module '{}' missing authored name",
-                entry_module
-            ));
-        }
-        let info = typed_module.item_registry.get(&decl_name).ok_or_else(|| {
-            format!(
-                "{entry_path}: owned data '{}' missing from item_registry",
-                decl_name
-            )
-        })?;
-        if info.kind != ItemKind::DataItem {
-            continue;
-        }
-        if info.module_name != entry_module {
-            return Err(format!(
-                "{entry_path}: item_registry module mismatch for '{}' (expected {}, got {})",
-                decl_name, entry_module, info.module_name
-            ));
-        }
-        if info.name != decl_name {
-            return Err(format!(
-                "{entry_path}: item_registry name mismatch for '{}' (registry name '{}')",
-                decl_name, info.name
-            ));
-        }
-        if !decl_name.starts_with("unified_claim_") {
-            continue;
-        }
-        let body = item.body.as_ref().ok_or_else(|| {
-            format!(
-                "{entry_path}: owned data '{}' missing initializer body",
-                decl_name
-            )
-        })?;
-        let initializer = owned_data_initializer_from_body(
-            graph,
-            source_indices,
-            entry_path,
-            &decl_name,
-            body,
-            item.type_annotation.as_ref(),
-        )?;
-        records.push(OwnedDataDeclRecord {
-            entry: entry_path.to_string(),
-            module: entry_module.to_string(),
-            decl_name,
-            initializer,
-        });
-    }
-
-    let discovered: HashSet<&str> = records.iter().map(|r| r.decl_name.as_str()).collect();
-    for (decl_name, info) in typed_module.item_registry.iter() {
-        if info.kind == ItemKind::DataItem
-            && info.module_name == entry_module
-            && decl_name.starts_with("unified_claim_")
-        {
-            if !discovered.contains(decl_name.as_str()) {
-                return Err(format!(
-                    "{entry_path}: item_registry data '{}' not found in entry module items",
-                    decl_name
-                ));
-            }
-        }
-    }
-
-    records.sort_by(|a, b| {
-        a.entry
-            .cmp(&b.entry)
-            .then_with(|| a.decl_name.cmp(&b.decl_name))
-    });
-    Ok(records)
-}
-
 fn path_excluded(path: &Path, exclude_subpaths: &[String]) -> bool {
     let path_str = path.to_string_lossy();
     exclude_subpaths
@@ -21053,38 +20666,6 @@ pub fn emit_owned_data_manifest(
     out.push_str("\n]\n");
 
     std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
-}
-
-pub fn owned_data_bool_witness_transport_tsv(
-    records: &[OwnedDataDeclRecord],
-) -> Result<String, String> {
-    let mut rows = Vec::new();
-    for rec in records {
-        let OwnedDataDeclInitializer::BoolWitnessClaim {
-            witness_entry,
-            witness_function,
-        } = &rec.initializer
-        else {
-            continue;
-        };
-        if witness_entry.is_empty() || witness_function.is_empty() {
-            return Err(format!(
-                "{}: owned data '{}' has malformed BoolWitnessClaim witness transport (missing entry and/or function)",
-                rec.entry, rec.decl_name
-            ));
-        }
-        let label = rec
-            .decl_name
-            .strip_prefix("unified_claim_")
-            .unwrap_or(rec.decl_name.as_str());
-        rows.push(format!("{label}\t{witness_entry}\t{witness_function}"));
-    }
-    rows.sort();
-    let mut out = rows.join("\n");
-    if !out.is_empty() {
-        out.push('\n');
-    }
-    Ok(out)
 }
 
 #[derive(Clone)]
@@ -22839,58 +22420,6 @@ fn resolve_workspace_entry(
 > {
     let anchored = process_workspace_root().join(entry.0);
     resolve_entry_graph_shared(source_roots, &anchored.to_string_lossy())
-}
-
-fn owned_data_decl_record_to_value(
-    rec: &OwnedDataDeclRecord,
-    ctx: &v1_interpreter::InterpContext,
-) -> v1_interpreter::Value {
-    use std::rc::Rc;
-    use v1_interpreter::{sorted_fields, Value};
-    let initializer = match &rec.initializer {
-        OwnedDataDeclInitializer::BoolWitnessClaim {
-            witness_entry,
-            witness_function,
-        } => Value::Variant {
-            type_name: ctx.sym("OwnedDataDeclInitializer"),
-            variant_name: ctx.sym("OwnedBoolWitnessClaimInit"),
-            fields: Rc::new(sorted_fields(vec![
-                (ctx.sym("witness_entry"), str_value(witness_entry.clone())),
-                (
-                    ctx.sym("witness_function"),
-                    str_value(witness_function.clone()),
-                ),
-            ])),
-        },
-        OwnedDataDeclInitializer::NodeCorpus => Value::Variant {
-            type_name: ctx.sym("OwnedDataDeclInitializer"),
-            variant_name: ctx.sym("OwnedNodeCorpusInit"),
-            fields: Rc::new(vec![]),
-        },
-        OwnedDataDeclInitializer::Other { resolved } => Value::Variant {
-            type_name: ctx.sym("OwnedDataDeclInitializer"),
-            variant_name: ctx.sym("OwnedOtherInit"),
-            fields: Rc::new(sorted_fields(vec![(
-                ctx.sym("resolved"),
-                Value::Record {
-                    type_name: ctx.sym("ResolvedDeclRef"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("module"), str_value(resolved.module.clone())),
-                        (ctx.sym("name"), str_value(resolved.name.clone())),
-                    ])),
-                },
-            )])),
-        },
-    };
-    Value::Record {
-        type_name: ctx.sym("OwnedDataDeclRecord"),
-        fields: Rc::new(sorted_fields(vec![
-            (ctx.sym("entry"), str_value(rec.entry.clone())),
-            (ctx.sym("module"), str_value(rec.module.clone())),
-            (ctx.sym("decl_name"), str_value(rec.decl_name.clone())),
-            (ctx.sym("initializer"), initializer),
-        ])),
-    }
 }
 
 fn parse_reads_live_tree_disposition(
@@ -35189,31 +34718,6 @@ fn fac_cached_census_facts() -> &'static FacCensusCache {
             facts: fac_compute_census_facts(&witness_layer_roots()),
         }
     })
-}
-
-pub fn fallback_arm_census_facts() -> &'static [FallbackArmCensusFactRaw] {
-    &fac_cached_census_facts().facts
-}
-
-pub fn fallback_arm_census_class_count(class: &str) -> i64 {
-    fallback_arm_census_facts()
-        .iter()
-        .filter(|f| f.class == class)
-        .count() as i64
-}
-
-pub fn fallback_arm_census_total() -> i64 {
-    fallback_arm_census_facts().len() as i64
-}
-
-pub fn fallback_arm_census_reconciliation_holds() -> bool {
-    let total = fallback_arm_census_total();
-    let sum = fallback_arm_census_class_count("refuses")
-        + fallback_arm_census_class_count("completes_closed_total")
-        + fallback_arm_census_class_count("declared_interim")
-        + fallback_arm_census_class_count("answers_on_open")
-        + fallback_arm_census_class_count("unknown");
-    total == sum && total > 0
 }
 
 #[cfg(test)]
