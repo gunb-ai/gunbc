@@ -4,7 +4,7 @@ import v2.std.algebra { Cons, Empty, list_flat_map, any }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-// THE OVER-COST WITHHOLDING MECHANISM, CARRYING 266 IDENTITIES.
+// THE OVER-COST WITHHOLDING MECHANISM, CARRYING 268 IDENTITIES.
 //
 // The count is stated once, here, and derived nowhere else in this file's prose. An earlier
 // revision of this header read "CURRENTLY CARRYING NO IDENTITIES" -- true of the empty carrier
@@ -163,16 +163,16 @@ import v2.std.text { String }
 // Nothing here needs to be re-measured to release a row, and nothing may be added to release
 // one.
 
-// THE ROSTER CARRIES 266 IDENTITIES, IN TWO POPULATIONS THAT ARE ENROLLED FOR DIFFERENT REASONS
+// THE ROSTER CARRIES 268 IDENTITIES, IN TWO POPULATIONS THAT ARE ENROLLED FOR DIFFERENT REASONS
 // AND MUST NOT BE READ AS ONE.
 //
-// POPULATION A -- 220 EXPENSIVE PASSES. Claims that REACHED A VERDICT, PASSED, and whose measured
+// POPULATION A -- 221 EXPENSIVE PASSES. Claims that REACHED A VERDICT, PASSED, and whose measured
 // CPU exceeded `required_floor_claim_cpu_safety_limit_ms`. Read from main run 33141550579's
 // per-claim cost receipt (`required_floor_claim_cost.tsv`, 12936 rows, `cost_basis=cpu`), so every
 // figure is that run's own and none is transcribed by hand. Measured range 511..3757ms. For these
 // rows the carrier's ordinary premise holds exactly: the witness works and costs too much.
 //
-// POPULATION B -- 46 ROWS TOO EXPENSIVE TO REACH A VERDICT AT ALL. 44 `budget_interrupted` on the
+// POPULATION B -- 47 ROWS TOO EXPENSIVE TO REACH A VERDICT AT ALL. 44 `budget_interrupted` on the
 // CPU clock against 5000ms and 2 `completed_over_budget` on the wall clock against 10000ms
 // (18882ms and 19024ms), measured on main run 33145062452 and supplied at identity grain by
 // warm-tern-34. THESE ARE NOT CLAIMED TO PASS. An interrupted claim went UNDECIDED -- it may pass,
@@ -280,11 +280,57 @@ import v2.std.text { String }
 // against genuinely unrecorded shared work it is inert, and a relocated bill is indistinguishable
 // from own work at the instrument the ceiling actually reads.
 //
-// SO ENROLMENT CANNOT DRAIN THIS TO ZERO, AND THAT IS STRUCTURAL RATHER THAN A MATTER OF DEPTH.
-// The fill must be paid by someone; there is always a first-toucher; so each round of enrolment
-// produces a fresh population, and the process terminates only if the inherited fill falls under
-// the ceiling -- which it cannot while the fills are multi-second. Anyone planning to close this
-// roster by adding rows until the floor greens is planning a non-terminating loop.
+// ENROLMENT TERMINATES PER KEY, AND AN EARLIER REVISION OF THIS BLOCK SAID IT COULD NOT. That
+// revision read: "the fill must be paid by someone; there is always a first-toucher; so each
+// round of enrolment produces a fresh population, and the process terminates only if the
+// inherited fill falls under the ceiling -- which it cannot while the fills are multi-second."
+// The first two clauses are true and the conclusion does not follow from them, because it treats
+// the inheritor set as open.
+//
+// THE FIELD THAT DECIDES IT WAS IN THE LINE ALREADY BEING QUOTED. Every per-cache fill line
+// carries `consumer_modules` beside `consumer_claims`, and the relocation receipt above quotes
+// that line without reading it. Measured across both runs, EVERY claim-paid key has
+// `consumer_modules` of 1 or 2 -- the consumers of a claim-paid artifact are one module, or two.
+// So a relocated bill cannot leave that module, and enrolment terminates BY EXHAUSTION of the
+// module's own membership rather than by the fill shrinking.
+//
+// WORKED ON THE KEY THAT PRODUCED THE CASCADE. `reference_edges`' four claim-paid keys report
+// `consumer_modules=1`, all in `rest_path_reaches_no_cli`. That module has EIGHT members. An
+// earlier cut of this roster withheld six; the two it left were `widened_scans_actually_read_the_tree`
+// and `withdrawing_the_consumer_admissions_surfaces_exactly_three`, and the branch run shows the
+// ~26s bill landing on exactly those two and breaching in both -- 59817ms completed-over-budget
+// and an interrupt at 27939ms. Enrolling them closes the module 8/8, and there is no ninth member
+// to inherit. Found by calm-ram-380, who joined main's fill attribution against this roster and
+// predicted both inheritors by name before the branch run was consulted.
+//
+// THE BREADTH SPLIT IS THE WHOLE OF WHY THE WARM IS NOT ALSO REQUIRED HERE. The keys with broad
+// consumption are ALREADY charged to nobody: `module_path_index` fills for 70826ms across
+// `consumer_claims=454 consumer_modules=109` and reports `paid_by=<outside-fold>`. Preparation
+// warming is done precisely where breadth made a first-toucher unaffordable, and the keys still
+// paid by a claim are the narrow ones, where exhaustion is cheap. Narrow means enrolment closes
+// it; broad means the warm already did.
+//
+// WHAT IS NOT CLAIMED: that every cache in the corpus is narrow. This is measured over the keys
+// appearing in these two runs. A key with BROAD claim-paid consumption would behave the way the
+// deleted argument described -- each round finding a fresh payer in a different module -- and for
+// such a key the warm would be the only fix. None appears here, and if one appears later this
+// paragraph is the thing that must be re-measured rather than reused.
+//
+// HOW THE FALSE UNIVERSAL SURVIVED, RECORDED BECAUSE THE SHAPE IS GENERAL AND CHEAP TO REPEAT. It
+// had TWO supports that looked independent and were not. One was a peer's general claim that the
+// population re-forms every run and enumeration never converges. The other was this file's own
+// relocation receipt, which appeared to confirm it. Neither reader had checked `consumer_modules`,
+// and the receipt CANNOT confirm a universal: it shows one bill moving once, which is equally
+// consistent with bounded relocation inside a closed module. So the second support was not
+// evidence for the general claim at all -- it was evidence for the mechanism, promoted to
+// evidence for the generalisation because it arrived beside one.
+//
+// THE RULE: agreement between a general assertion and a single receipt is not corroboration when
+// the receipt cannot discriminate the general case from the bounded one. Ask what the receipt
+// would look like if the universal were FALSE -- here, identical -- and if the answer is "the
+// same", it supports nothing about scope. Both readers also quoted the very line carrying the
+// field that refutes them, which is the tell: a datum adjacent to the one being cited, in the
+// same line, unread twice in one night by two people.
 //
 // THE MOVE THAT ACTUALLY STABILISES IT is to stop charging the fill to a claim at all: build the
 // artifact at PREPARATION and charge it to nobody, exactly as `module-path-index-warm`,
@@ -347,7 +393,7 @@ fn floor_cost_debt_chunk_12() -> List<String> {
 }
 
 fn floor_cost_debt_chunk_13() -> List<String> {
-  Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.compiler_substrate_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.dropping_the_transport_realization_roster_surfaces_more", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.extdeps_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.gunbc_consumers_reach_transport_vocabulary_only_by_named_admission", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.test_corpus_reaches_cli_vocabulary_only_as_declared_exercise", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_admission_surfaces_the_edge_under_the_wide_root", tail: Empty {} } } } } } }
+  Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.compiler_substrate_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.dropping_the_transport_realization_roster_surfaces_more", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.extdeps_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.gunbc_consumers_reach_transport_vocabulary_only_by_named_admission", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.test_corpus_reaches_cli_vocabulary_only_as_declared_exercise", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_admission_surfaces_the_edge_under_the_wide_root", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.widened_scans_actually_read_the_tree", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Empty {} } } } } } } } }
 }
 
 fn floor_cost_debt_chunks() -> List<List<String>> {
