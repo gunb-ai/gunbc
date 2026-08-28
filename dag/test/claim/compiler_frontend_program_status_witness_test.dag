@@ -33,6 +33,7 @@ import gunbc.compiler_frontend_program_status {
   InstrumentObstacle,
   NotBuilt,
   RefusedByAuthority,
+  NotBuiltRefusalFalsified,
   missing_instrument_obstacle,
   instrument_obstacle_label,
   StandingCensus,
@@ -462,24 +463,45 @@ test fn every_declared_instrument_is_distinct_and_awaited() -> Bool {
 // The cited authority in the refused fixture is an arbitrary RESOLVING declaration, carried because
 // a DeclarationRef naming nothing is refused at ingestion and because the assertion never reads it.
 // It is not a claim that instrument_obstacle_label refuses anything.
-test fn the_obstacle_axis_renders_its_two_arms_distinguishably() -> Bool {
+test fn the_obstacle_axis_renders_its_three_arms_distinguishably() -> Bool {
   let unbuilt = NotBuilt
   let refused = RefusedByAuthority {
     authority: decl_ref(module_path: "gunbc.compiler_frontend_program_status", decl_name: "instrument_obstacle_label"),
     why: "fixture" as NonEmptyStr,
   }
+  let falsified = NotBuiltRefusalFalsified {
+    authority: decl_ref(module_path: "gunbc.compiler_frontend_program_status", decl_name: "instrument_obstacle_label"),
+    falsified_by: "fixture" as NonEmptyStr,
+  }
   instrument_obstacle_label(o: unbuilt) != instrument_obstacle_label(o: refused)
+    && instrument_obstacle_label(o: unbuilt) != instrument_obstacle_label(o: falsified)
+    && instrument_obstacle_label(o: refused) != instrument_obstacle_label(o: falsified)
     && instrument_obstacle_label(o: unbuilt) != ""
     && instrument_obstacle_label(o: refused) != ""
+    && instrument_obstacle_label(o: falsified) != ""
 }
 
-// A REFUSAL NAMES ITS AUTHORITY AS A CITATION, NEVER AS PROSE. This asserts the refusing row cites
-// the module that actually decides -- so a rename or deletion of that authority is caught by the
-// ingestion-time citation wall rather than leaving this row reading as current.
-test fn the_refused_instrument_cites_the_authority_that_refuses_it() -> Bool {
+// AN OBSTACLE THAT NAMES AN AUTHORITY NAMES IT AS A CITATION, NEVER AS PROSE -- so a rename or
+// deletion of that authority is caught by the ingestion-time citation wall rather than leaving this
+// row reading as current.
+//
+// IT ASKS ACROSS BOTH CITING ARMS DELIBERATELY, and that is a repair rather than a widening. The
+// previous form matched RefusedByAuthority alone and was correct until 2026-08-28, when the board
+// row's refusal was falsified by execution and the arm moved to NotBuiltRefusalFalsified. A test
+// pinned to ONE arm asserts the arm rather than the property, so it goes red on a legitimate state
+// change and its closing move is to edit the expectation -- the backward contract this file has now
+// been corrected for twice. What is actually being asserted is that an obstacle carrying an
+// authority carries a RESOLVABLE one, and that survives the row moving between citing arms in
+// either direction, including back.
+//
+// NotBuilt still answers false, and that is not laxity: a row with no citation cannot satisfy a
+// claim about which authority it names, and the board row is not in that state.
+test fn the_board_obstacle_cites_the_authority_it_is_about() -> Bool {
   match missing_instrument_obstacle(i: WholeCorpusEmissionBoard) {
     NotBuilt => false
     RefusedByAuthority { authority, why: _ } =>
+      authority.module_path == "gunbc.whole_corpus_compile_admission"
+    NotBuiltRefusalFalsified { authority, falsified_by: _ } =>
       authority.module_path == "gunbc.whole_corpus_compile_admission"
   }
 }

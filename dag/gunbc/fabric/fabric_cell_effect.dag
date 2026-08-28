@@ -1,0 +1,216 @@
+module gunbc.fabric_cell_effect
+
+import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
+import std.disposition { Disposition, SingleAuthority }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.mkdir { mkdir_exact_command }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.membership_reconcile {
+  MemberAction,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
+  TeardownRefusalCause,
+}
+import gunbc.fabric_cell_converge {
+  FabricCellMember,
+  FabricCellResourceAddress,
+  FabricCellRootAddress,
+  FabricCellAttemptRootAddress,
+  FabricCellResourceBoundaryAddress,
+  fabric_cell_root_path,
+  fabric_cell_attempt_root_path,
+  fabric_cell_resource_address_wire,
+}
+
+data fabric_cell_effect_authority_disposition: Disposition = SingleAuthority
+
+// WHAT THIS FAMILY CAN ACTUALLY DO TO A HOST, AS A CLOSED SUM. Before this module the fabric cell
+// family emitted NO effects at all -- gunbc.fabric_cell_converge has no membership_effects and no
+// EffectsOrRefusal, and both gunbc.runner_lifecycle and gunbc.fleet_converge_plan record in their
+// own words that its host-effect realization is absent. So this is the family's first realization
+// surface, and it is closed rather than open because an effect nobody enumerated is an effect
+// nobody reviewed.
+type FabricCellEffect = FabricCellDirectoryCreate { path: NonEmptyStr, command: ArgvCommand }
+
+// THE CREATE IS THE EXACT FORM AND NOT -p, AND THAT IS THE WHOLE SAFETY CONTENT OF THIS FUNCTION.
+// extdeps.tools.mkdir's own annotation calls -p an ENSURE rather than a CREATE, because a missing
+// parent is not an error to it. /opt/fabric-cells is classified Ensured by
+// gunbc.fabric_cell_subject -- required present, never created by this family -- so -p here would
+// have the cell family silently create the exact directory its ownership model says is not its to
+// make, and nothing would report it. The exact form turns a missing base directory into a non-zero
+// exit instead of a fabricated parent chain.
+fn fabric_cell_directory_create(path: String) -> FabricCellEffect {
+  FabricCellDirectoryCreate {
+    path: path as NonEmptyStr,
+    command: mkdir_exact_command(path: path),
+  }
+}
+
+// THE THREE DIRECTIVES THIS FAMILY NEEDS AND systemd's MODELED VOCABULARY DOES NOT CARRY.
+// extdeps.systemd.unit_file SystemdSliceDirective has exactly two arms -- SliceMemoryMax and
+// SliceMemoryHigh -- while fabric_cell_resource_boundary_state_digest declares five values. The
+// three below have no modeled directive, so the boundary cannot be realized without either
+// rendering raw text (which gunbc.build_cache_ensure argues against at length) or growing a fork
+// another lane is actively shrinking.
+//
+// THEY ARE THREE DIFFERENT VALUE GRAINS, WHICH IS WHY THIS IS NOT ONE ROW. MemorySwapMax is a byte
+// magnitude and sits inside gunbc.systemd_directive_value_grain's stated scope, whose terminal
+// shape replaces the stringly `bytes` field with a modeled magnitude. TasksMax is a count or the
+// literal infinity, and CPUWeight is a bounded weight; neither is a byte magnitude and neither is
+// in that roster's stated scope, so two of the three have no owner today.
+data fabric_cell_boundary_missing_directives: List<String> = [
+  "MemorySwapMax (byte magnitude; inside gunbc.systemd_directive_value_grain scope)",
+  "TasksMax (count or infinity; unscoped)",
+  "CPUWeight (bounded weight; unscoped)",
+]
+
+// EVERY REFUSAL THIS REALIZATION CAN PRODUCE, TYPED AND LOCATED. A Bool or a dropped effect would
+// make one silence answer for a vocabulary gap, an ownership wall, a duplicate key and an
+// unclassifiable change -- four causes with four different owners and four different remedies.
+type FabricCellRealizationRefusal
+  = BoundaryDirectiveVocabularyIncomplete { address_wire: String, missing: List<String> }
+  | CellTeardownRefusedByOwnership { address_wire: String, cause: TeardownRefusalCause }
+  | CellRosterDuplicateKey { address_wire: String }
+  | CellChangeNotYetRealizable { address_wire: String }
+  | CellTeardownNotYetRealizable { address_wire: String }
+
+type FabricCellAddressRealization
+  = AddressRealizable { effect: FabricCellEffect }
+  | AddressRefused { refusal: FabricCellRealizationRefusal }
+
+// ONE ADDRESS AT A TIME, TOTAL OVER BOTH AXES. The address decides WHAT the effect is; the action
+// decides WHETHER there is one. Neither axis is collapsed into the other, so a new address and a
+// new action each fail to compile here rather than inheriting an arm that happened to fit.
+//
+// TEARDOWN AND CHANGE REFUSE RATHER THAN BEING REALIZED, and they refuse for a different reason
+// than the boundary does. The boundary is blocked on a vocabulary gap that is decidable and
+// buildable. Teardown of a cell root is a DESTRUCTIVE effect on a directory that may hold live
+// attempt state, and change realization is gunbc.change_realization's question -- it classifies a
+// MemberChanged by whether the runtime address survived, and this family has not yet declared its
+// staged intermediates. Realizing either by guessing is how a safe transformation acquires an
+// unsafe realization, which is that module's own warning. Both carry their own refusal arms so the
+// two are countable separately and neither is mistaken for the other.
+fn fabric_cell_address_realization(
+  action: MemberAction<FabricCellMember, String>,
+) -> FabricCellAddressRealization {
+  match action {
+    MemberAdded { at: _, to: m } =>
+      match m.address {
+        FabricCellRootAddress =>
+          AddressRealizable {
+            effect: fabric_cell_directory_create(path: fabric_cell_root_path(slot: m.slot)),
+          }
+        FabricCellAttemptRootAddress =>
+          AddressRealizable {
+            effect: fabric_cell_directory_create(path: fabric_cell_attempt_root_path(slot: m.slot)),
+          }
+        FabricCellResourceBoundaryAddress =>
+          AddressRefused {
+            refusal: BoundaryDirectiveVocabularyIncomplete {
+              address_wire: fabric_cell_resource_address_wire(address: m.address),
+              missing: fabric_cell_boundary_missing_directives,
+            },
+          }
+      }
+    MemberChanged { at: _, from: _, to: m } =>
+      AddressRefused {
+        refusal: CellChangeNotYetRealizable {
+          address_wire: fabric_cell_resource_address_wire(address: m.address),
+        },
+      }
+    MemberRemoved { at: _, from: m } =>
+      AddressRefused {
+        refusal: CellTeardownNotYetRealizable {
+          address_wire: fabric_cell_resource_address_wire(address: m.address),
+        },
+      }
+    MemberRemovalRefused { from: m, cause: c } =>
+      AddressRefused {
+        refusal: CellTeardownRefusedByOwnership {
+          address_wire: fabric_cell_resource_address_wire(address: m.address),
+          cause: c,
+        },
+      }
+    MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: _ } =>
+      AddressRefused {
+        refusal: CellRosterDuplicateKey {
+          address_wire: fabric_cell_resource_address_wire(address: f.address),
+        },
+      }
+  }
+}
+
+// THE ALL-OR-NOTHING FOLD, AND IT IS THE POINT OF THE MODULE RATHER THAN A GUARD ON IT.
+//
+// AN EARLIER READING WOULD HAVE EMITTED THE TWO DIRECTORY CREATES AND REFUSED ONLY THE BOUNDARY,
+// on the reasoning that a typed located refusal is fail-closed. It is not, and the objection is
+// decisive rather than a caveat: a refusal that fires AFTER two directories exist has not stopped
+// the line, it has stopped half of it and left the other half standing. That is exactly "a
+// partially applied infrastructure change without convergence", which DESIGN 4b names as a class
+// the ladder exists to catch.
+//
+// THE OPERATIONAL FORM OF THE SAME ARGUMENT IS STRONGER THAN THE DOCTRINAL ONE. A cgroup slice
+// carrying no resource directives is UNBOUNDED. So the partial form would not merely leave a cell
+// incomplete -- it would create cells with no memory ceiling, no task ceiling and no weight, on a
+// fleet whose dominant failure is jobs evicted under resource pressure. An unbounded cell is worse
+// than an absent one, because absent is honest and unbounded LOOKS provisioned.
+//
+// So a single refused address refuses the whole plan, and the refusals are ACCUMULATED rather than
+// short-circuited: an operator fixing one deficit should see the others in the same report instead
+// of rediscovering them one run at a time.
+type FabricCellRealization
+  = CellPlanRealizable { effects: List<FabricCellEffect> }
+  | CellPlanRefused { refusals: List<FabricCellRealizationRefusal> }
+
+fn fabric_cell_plan_refusals(
+  actions: List<MemberAction<FabricCellMember, String>>,
+) -> List<FabricCellRealizationRefusal> {
+  fold(
+    actions,
+    init: [],
+    f: (acc, a) =>
+      match fabric_cell_address_realization(action: a) {
+        AddressRefused { refusal: r } => concat(acc, [r])
+        AddressRealizable { effect: _ } => acc
+      }
+  )
+}
+
+fn fabric_cell_plan_effects(
+  actions: List<MemberAction<FabricCellMember, String>>,
+) -> List<FabricCellEffect> {
+  fold(
+    actions,
+    init: [],
+    f: (acc, a) =>
+      match fabric_cell_address_realization(action: a) {
+        AddressRealizable { effect: e } => concat(acc, [e])
+        AddressRefused { refusal: _ } => acc
+      }
+  )
+}
+
+// THE EFFECTS ARE STILL CONSTRUCTED ON THE REFUSED PATH AND THEN NOT RETURNED, WHICH IS
+// DELIBERATE. Building them costs nothing, and it means the create construction -- including its
+// exact-form mkdir -- is exercised by every plan rather than only by the plans that survive. A
+// realization surface that is only built once the vocabulary lands would be a surface nobody had
+// run.
+fn fabric_cell_realization(
+  actions: List<MemberAction<FabricCellMember, String>>,
+) -> FabricCellRealization {
+  let refusals = fabric_cell_plan_refusals(actions: actions)
+  if list_length(items: refusals) > 0 {
+    CellPlanRefused { refusals: refusals }
+  } else {
+    CellPlanRealizable { effects: fabric_cell_plan_effects(actions: actions) }
+  }
+}
+
+fn fabric_cell_realization_refusal_count(
+  actions: List<MemberAction<FabricCellMember, String>>,
+) -> Int {
+  list_length(items: fabric_cell_plan_refusals(actions: actions))
+}

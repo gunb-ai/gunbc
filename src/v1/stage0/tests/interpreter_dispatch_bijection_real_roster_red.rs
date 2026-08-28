@@ -109,7 +109,7 @@ fn cargo_build_v1_compiler(clone_root: &Path) -> Output {
         .expect("cargo build -p v1-compiler")
 }
 
-const ROSTER_REL: &str = "dag/gunbc/v1_interpreter_primitive_surface.dag";
+const ROSTER_REL: &str = "dag/gunbc/v1/v1_interpreter_primitive_surface.dag";
 const INTERPRETER_REL: &str = "src/v1/stage0/src/v1_interpreter.rs";
 
 /// Direction 1: add a roster row at `eval_builtin_inner` with a fresh identity/spelling that has

@@ -611,13 +611,8 @@ fn floor_expected_red_chunk_18() -> List<String> {
   Empty {}
 }
 
-// Authored by silent-bear-842 in #9093. The duplicate-definition row asserts the missing
-// ingestion wall rather than defending today's silent second-definition binding. It
-// dissolves from this roster when same-name declarations in one module refuse at ingestion,
-// then remains as an ordinary permanent regression control; its green single-definition
-// sibling is deliberately not enrolled.
 fn floor_expected_red_chunk_19() -> List<String> {
-  Cons { head: "test.claim.direct_call_argument_type_witness_test.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: Cons { head: "test.claim.duplicate_definition_binding_probe.duplicate_definition_in_one_module_is_refused", tail: Empty {} } }
+  Cons { head: "test.claim.direct_call_argument_type_witness_test.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: Empty {} }
 }
 
 // FIVE IDENTITIES ENROLLED 2026-08-22, and they arrive by a route this roster has not carried
@@ -805,8 +800,261 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // THE ROWS ARE REMOVED AND THE WITNESSES ARE NOT (DESIGN 4b(4)). Every one of those claims stays
 // enrolled and now passes, which is what keeps the repair's reach measured rather than asserted:
 // if the gate regresses, thirteen independent modules go red before the shadow fixture does.
+
+// THE LIVE-TREE-ADMISSION CHUNK -- THE OTHER HALF OF gunbc#9106, a completion rather than a new
+// admission.
+//
+// IT IS NOT NUMBERED, AND THE REASON IS A DEFECT THAT WAS ABOUT TO LAND RATHER THAN A STYLE
+// PREFERENCE. Three open branches each mint a `floor_expected_red_chunk_24` into this file:
+// gunbc#9591 (this one), gunbc#9587 (one add-slice row) and gunbc#9569 (six
+// `sole_constructor_completeness_audit_probe` rows, which are also six of the 47 below). The
+// numeric suffix is a SHARED MUTABLE COUNTER whose next value every concurrent lane computes
+// independently from the same base, so collision is not a risk under concurrency -- it is the
+// expected outcome.
+//
+// WHAT MAKES IT WORSE THAN AN ORDINARY CONFLICT, and why a distinct name is the construction
+// rather than the courtesy: two lanes appending a same-named `fn` at DIFFERENT offsets can merge
+// with NO CONFLICT MARKERS, leaving one file carrying two definitions of one name. This
+// repository has measured what happens next -- `test.claim.duplicate_definition_binding_probe`
+// exists because a duplicate definition is SILENTLY ACCEPTED and the later binding wins, so the
+// merge would not fail, it would quietly drop one lane's rows and stay green. A position-derived
+// name is a second naming scheme for something the declaration already names (DESIGN section 3),
+// and this is that rule's cost arriving in the merge graph.
+//
+// So the chunk is named for WHAT IT ADMITS. A meaning-carrying name cannot be independently
+// derived by two lanes, which makes the collision unrepresentable instead of detected.
+//
+// #9106 deleted the floor's stale live-tree decline. That decline was a FILE-GRAIN PREDICTION
+// that a witness reading the live tree could not participate in the hermetic fold, and it had
+// stopped agreeing with what the interpreter does. Deleting it was correct and it admitted a
+// population that had never executed: on main run 33145062452 (3a8344b5c3) the floor reports
+// failed=47, and these are those 47.
+//
+// WHY THEY BELONG HERE AND NOT SOMEWHERE ELSE, which is the question this roster's header says
+// to ask before enrolling anything. Every one of them EXECUTES AND ANSWERS FALSE -- the run
+// classifies each as `FAIL ... returned Bool(false)`, which is the semantic verdict this roster
+// is defined over. None of them route-gaps (no overlap with `v2.workflow.floor_route_gap`), none
+// produces a non-verdict, and none is a budget outcome.
+//
+// AN EARLIER REVISION OF THAT SENTENCE ALSO CLAIMED EACH ROW "REACHES ITS SUBJECT", AND THE RUN
+// DOES NOT ESTABLISH THAT. `Bool` has no spelling for "I could not observe my subject", so an
+// unreached subject and a genuine NO render identically as `returned Bool(false)`. Execution is
+// established; subject-reachability is not, and the difference is exactly the class this
+// document names as execution-provenance loss. The clause is removed rather than softened,
+// because a reader quoting it would have been quoting a property nothing measured. The live
+// candidate is named in the follow-ups below.
+// That last exclusion is load-bearing and it is the reason this chunk closes two of the run's
+// four causes rather than all four. The same run reports 44 `interrupted_before_verdict` and 2
+// `completed_over_cost_requirement`, and NONE of them is here.
+//
+// WHY NOT, stated as a refusal rather than as a scope note: an interrupted row produced NO
+// VERDICT. Enrolling it would assert "this witness runs and fails, and someone is fixing it"
+// about an identity that never answered -- which is precisely the 101-row mistake this file's
+// own header opens with, and `ExpectedRedArm` refuses budget outcomes by construction so the
+// enrolment would not even take. The 2 completed-over-cost rows answered, but what they owe is
+// a COST and not a failure; enrolling them would assert an expected FAILURE they do not
+// exhibit. Cost is not a verdict, and the verdict roster cannot carry it.
+//
+// THE POPULATION IS BOUNDED AND MEASURED, at identity grain, on the run named above: 44
+// interrupted, all on the CPU clock against `required_floor_claim_cpu_safety_limit_ms`'s
+// 5000ms, concentrated in live-tree corpus witnesses (13 in
+// `v2.test.claim.enforcement.grammar_coverage_witness`, 6 in
+// `v2.test.claim.enforcement_live_witness`, 6 in
+// `v2.test.claim.complexity.accumulator_copy_roster_gate`, the rest spread across 10 modules);
+// and 2 completed-over-cost, both in `test.claim.transport_script_wall_compile_red`, on the
+// wall clock at 18882ms and 19024ms against 10000ms. Every interrupted figure is a LOWER BOUND
+// -- the deadline preempted the measurement -- so their real cost is unmeasured and the sum is
+// not this population's cost.
+//
+// WHERE THEY GO, AND IT IS NOT A NEW MECHANISM. `v2.workflow.required_floor` states the
+// remedies exhaustively -- reduce what the witness reaches for, or enrol it in a lane declaring
+// its own dated ceiling -- and names relocation as forbidden. A carrier for exactly this axis is
+// built and open as gunbc#9517 (`v2.workflow.floor_cost_debt`, joined by a `DeclinedCostDebt`
+// arm in `required_floor`). These 46 identities were handed to that lane at identity grain with
+// clock, figure and limit per row, rather than duplicated here: authoring them into a module
+// that is not on main would fork the authority this chunk exists to respect.
+//
+// AN EARLIER REVISION OF THIS PARAGRAPH ASSERTED THAT #9517's ROSTER RETURNS `Empty`, AND SAID
+// SO AS A FIRST-HAND READING. The reading was honest -- `floor_cost_debt_chunks()` on
+// `origin/session/witty-wren-148` was `Empty {}` when it was taken -- and it was WRONG WITHIN
+// THE HOUR, because the branch was moving while I read it. That is this document's own
+// transcribed-measurement class arriving on the shortest possible clock: a bare present-tense
+// claim about ANOTHER LANE'S HEAD is not merely stale-prone, it has no producer on this side of
+// the boundary that could ever re-derive it, so nothing here refuses when it goes false. The
+// sentence is deleted rather than re-pinned to a newer number, because a second number would
+// rot the same way.
+//
+// WHAT IS KNOWN AND WHAT IS NOT, kept separate: that lane reports the 46 enrolled as a
+// separately-labelled cost population, explicitly NOT claimed to pass, keyed on MARGINAL cpu so
+// that draining a row displaces no shared fill onto its successor. That is their measurement,
+// reported to this lane and not re-derived by it. What THIS module can stand behind is only its
+// own side: these 46 are absent from this roster, deliberately, and the reason is stated above.
+//
+// RUNG, DECLARED HONESTLY (DESIGN 4b(3)): on MAIN the cost axis stays BELOW the floor's own bar
+// -- the run still stops on it, so nothing is silently admitted, but 46 identities reach no
+// usable verdict every run and no mechanism ON MAIN holds them. Bounded, identity-grain,
+// re-measurable. RESTORATION TRIGGER: a roster ON MAIN carries these 46 under an O=R admission,
+// at which point they are counted debt on the cost axis instead of an ungoverned cause. The
+// trigger names the CAPABILITY and deliberately not an artifact (DESIGN 4b(3), 2026-08-26): NOT
+// "#9517 merges", because a merge of an empty roster closes none of them, and NOT "that lane
+// enrols them", because an enrolment on an unmerged branch changes nothing about what the
+// required run on main observes.
+//
+// THE TREE ALREADY DEMANDED THIS, AND THE RUN CONFIRMED IT BY EXECUTION.
+//
+// The prediction was registered before the run: enrolling
+// `legacy_test_behavior_unclassified_frontier_is_zero` would satisfy the assertion the
+// `quarantine_probe_disposition_witness_test` claims make ABOUT this roster, so they would stop
+// failing and report STALE-QUARANTINE. Run 33154432928 answered `failed=0 stale_quarantine=3`,
+// naming exactly those three, and they are removed here -- by the roster's own removal path,
+// which is the mechanism working rather than an edit correcting a mistake.
+//
+// THE PREDICTION SAID FOUR AND THE ANSWER WAS THREE, and the error is recorded because it is
+// the more instructive half. The fourth name was
+// `legacy_test_behavior_unclassified_frontier_is_zero` itself, and it did NOT flip -- correctly.
+// It is the row the join is ABOUT, not a row that passes as a consequence: it still fails on its
+// own subject, and this roster still holds it. Conflating "the identity a witness names" with
+// "an identity that changes state when the witness is satisfied" is what produced the extra row,
+// and a join has both roles in it at once.
+//
+// WHY THE ENROLMENT WAS STILL RIGHT FOR ALL THREE. They failed on main and they answer false, so
+// they met this roster's admission when they were added; what removed them is that the same
+// change repaired their subject. A roster that could not hold a row for one run and release it
+// on the next would force the author to predict the repair perfectly before landing it.
+// `test.claim.quarantine_probe_disposition_witness_test.the_former_live_tree_declined_row_is_now_expected_red`
+// asserts that `test.claim.legacy_test_behavior_disposition_acceptance_test.legacy_test_behavior_unclassified_frontier_is_zero`
+// is held by this roster -- it was authored against the post-#9106 world and has been failing
+// since, because the row it names was never added. That witness is itself one of the 47. So
+// four of these rows (the three `quarantine_probe_disposition_witness_test` claims and the
+// `legacy_test_behavior` one they join against) are expected to leave this chunk on the first
+// run after it lands, by this roster's own removal path rather than by an edit.
+//
+// THE 47 ARE NOT ONE CAUSE, AND THREE GROUPS INSIDE THEM CARRY A REMEDY THIS ROSTER CANNOT
+// STATE. A row here is a bare identity string with no reason field, so enrolment says exactly
+// one thing -- this is expected to fail -- about rows that fail for at least six distinct
+// causes with different remedies. That is a real limit of the mechanism, not of this chunk, and
+// the three groups are named here so the next reader does not conclude one cause. All three are
+// FOLLOW-UPS rather than reasons to withhold enrolment, because enrolment is a REVERSIBLE
+// HOLDING STATE WITH A LOUD EXIT: the floor refuses on an enrolled row that starts passing and
+// names it, which is the same path by which this very change removes one.
+//
+//   1. THE THREE `guarantee_floor_class_probe_witness` GENERIC-INSTANTIATION ROWS FAIL BECAUSE
+//      A WALL LANDED, NOT BECAUSE THE HOLE IS OPEN. They assert a hole is still open; it is
+//      not. The discriminating evidence is that BOTH of that hole's controls PASS
+//      (`floor_generic_instantiation_monomorphic_control_refuses`,
+//      `floor_generic_instantiation_green_control_is_clean`) and the SIBLING hole probe
+//      `floor_field_through_generics_is_still_silently_accepted` also passes -- so the harness
+//      reached the judgment and the other hole is genuinely still open. A harness that saw
+//      nothing would have taken the sibling down too. That module's own
+//      `guarantee_floor_class_probe_scope_note` prescribes the remedy verbatim: such a probe
+//      "flip[s] RED on the day the wall lands, which is the signal to rewrite the row as
+//      `ExpectBlockingRefusal` rather than to delete the probe" -- which is DESIGN 4b(4)'s rule
+//      that a greened expecting-red probe becomes a permanent regression control. Enrolment
+//      holds them honestly (they do fail) while recording nothing about WHY, so the rewrite is
+//      owed and the roster's stale-quarantine arm is what will demand it.
+//
+//   2. THE FOUR `sole_constructor_completeness_audit_probe` f10 ROWS ANSWERED AN OPEN QUESTION
+//      THE FIRST TIME THEY RAN. Their block annotation states a question rather than a marked
+//      red -- "to test whether resolution of an unqualified bare-name construction depends on
+//      import statement order" -- and the answer is YES: `_ab` fails while `_ba` passes on
+//      identical source with the imports swapped, and the two direct probes fail in OPPOSITE
+//      directions, both predicted by last-import-wins. That is the census-AMBIGUOUS resolution
+//      hole DESIGN 4b already records as decidable once scoped. The distinction is decidable in
+//      the file rather than a matter of judgement: f13 and f19, which ARE enrolled here on the
+//      same footing, carry an explicit "Deliberately RED" marking and the f10 four do not.
+//
+//   3. THE THREE `cost_coverage_witness` ROWS ARE THE SUBJECT-REACHABILITY CANDIDATE. That
+//      module has 10 test fns; the 7 that pass are the ones that survive an empty subject (one
+//      reads `(receipt.files_attempted == 0) || ...`) and the 3 that fail are the ones demanding
+//      non-zero content. That is consistent with a genuine NO and equally consistent with a
+//      subject that was never reached, and no run distinguishes them. Enrolled as failing, which
+//      is what was observed; NOT asserted to be semantic.
+//
+// The classification, controls and per-row execution behind all three are crisp-newt-899's
+// triage, verified here against the cited files rather than accepted on report.
+//
+// ONE STALE PREMISE FOUND WHILE CHECKING THE ABOVE, recorded because it is load-bearing for a
+// carrier this chunk overlaps. `gunbc.declined_live_tree_defect_classification` states that it
+// "is not an expected-red enrolment and must never become one: enrolling a row here would assert
+// that the floor runs it and that it fails, and the floor does not run it at all." Eight of the
+// modules it classifies contain rows enrolled here, and the floor DOES now run them -- they are
+// in run 33145062452's FAIL lines. So that clause's REASON has been overtaken by #9106; the
+// clause is not wrong about authority substitution in general, it is premised on a
+// non-execution that no longer holds. Not edited here, because it is that carrier's to correct
+// and a second account of one fact is the defect either way -- reported to its owner instead.
+//
+// WHAT THIS CHUNK IS NOT. It is not a coverage claim and it is not a disposition. Each row is a
+// defect somebody owns, visible at identity grain, and the chunk can only shrink under an
+// honest run -- a member that starts passing reds the build naming itself. Its length is the
+// debt #9106 surfaced, and the debt was always there; what changed is that it is now counted.
+// ONE MEMBER OF THIS CHUNK HAS A PER-ROW MECHANISM, MEASURED BY EXECUTION, and it is written
+// here because the bulk enrolment above establishes THAT the row fails and not WHY -- and for
+// this row the why is what stops the next reader closing it the cheap way.
+//
+// `v2.test.execution.self_host_candidate_generation.candidate_generation_translate_self_emit_dag_add_slice_holds`
+// runs `generate_translate_self_emit_candidate` -- `infer` composed with `translate` -- over the
+// dag add slice and holds only on `Accepted`, with the emitted node equal to
+// `dag_emitted_add_fn_node()` and no diagnostic carried.
+//
+// A RECEIPT, AND EXPLICITLY NOT AN INSTRUMENT -- the distinction is stated because DESIGN's
+// name-the-instrument-never-transcribe-its-output ruling reaches this paragraph, and half of it
+// bites here. At main 3a8344b5c, a probe module returning each stage's verdict as a Symbol
+// answered `infer_accepted` for `infer(dag_add_emitted_root)` and `infer_grounding_not_derived`
+// for `generate_translate_self_emit_candidate` over that same root and `dag_add_target_model`.
+// Infer ACCEPTS; the composition refuses.
+//
+// WHAT THE RULING DOES AND DOES NOT REACH HERE. Its subject is a live claim transcribed as a
+// standing figure, which rots because the thing it describes moves. This one names a fixed tree,
+// so it stays true of that tree forever -- the dated-receipt half the ruling preserves. What it
+// DOES reach is reproducibility: the probe was a throwaway module and no `.dag` entry point
+// re-derives this, so a reader cannot re-run it. That gap is recorded here rather than papered
+// over, and it is this note's own next-rung trigger: a `.dag` entry returning the per-stage
+// verdicts for one root would let this paragraph name a producer instead of a commit.
+//
+// IT IS NOT DELETED IN FAVOUR OF THE STRUCTURAL ACCOUNT BELOW, because that account cannot
+// establish it. Reading the gate tells you translate CAN refuse an underived grounding; it
+// cannot tell you that infer ACCEPTED this input rather than rejecting it earlier, and that is
+// the fact locating the work in the derivation rules rather than in translate. A structural
+// argument that reached the same conclusion without the observation would be the inference this
+// repository keeps recording as a diagnostic name read as a mechanism.
+//
+// THE REFUSAL IS THE DECLARED FRONTIER, NOT A DEFECT IN EITHER STAGE. The fixture root is
+// `TypeNode { connective: Arrow }` over `Conj` inhabitants, and `v2.compiler.infer`
+// `node_grounding_frontier_note` states that v2 derives grounding for four of the closed
+// vocabulary's twelve kinds (Branch, Match, Loop, and Transform in its add shape) and no other.
+// So infer records `GroundingNotDerived`, and `translate_grounding_derived_gate_subtree` routes
+// that variant through `canonical_grounding_from_inferred_facts` and refuses with the frontier's
+// own typed reason. The gate is doing what it was built to do on a tree the frontier has not
+// reached.
+//
+// AND NO REPAIR TO THE GATE ALONE WOULD GREEN THIS ROW, so a reader must not read the refusal as
+// locating the work in translate: `inferred_facts_not_derived` returns the frontier diagnostic on
+// infer's ACCEPTED path, so even an accepting translate leaves the witness's `d == None` conjunct
+// false. Both conjuncts fail for the one cause.
+//
+// WHY THE CHEAP GREEN IS FORBIDDEN, which is the whole reason this note exists. The sibling
+// witnesses in `v2.test.execution.dag_add_emit_round_trip` pass on the SAME fixture because they
+// build their `InferredTree` from a hand-authored facts lookup answering `DerivedGrounding`.
+// Making `infer` answer that way for connective nodes generally is precisely the `root == root`
+// grounding `node_grounding_frontier_note` records as the defect the frontier carrier REPLACED --
+// every node typed as itself, read downstream as an established judgment. The honest repair is a
+// derivation rule for the kinds this slice uses, which is v2 self-host lane work and not a
+// witness edit.
+//
+// ITS REMOVAL TRIGGER IS NOT RESTATED HERE AND DELIBERATELY SO: it is already modeled, with its
+// population and blocker, in `gunbc.guarantee_rung_drop`
+// `self_host_candidate_generation_add_slice_stall`. Copying those fields into a comment would
+// fork that authority into prose that drifts on its own (DESIGN 2/3, and 4c's rule that an
+// annotation must not restate what a declaration says), and no `Accepted` program can read a
+// comment, so the copy could never be the thing that is checked. What this roster owns is the
+// RELATION: this row is that stall's executing consumer, so when the stall's trigger is met the
+// witness passes, stale quarantine reds the build naming the row, and the two delete together.
+fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
+  Cons { head: "test.claim.ci_budget_tree_witness.witness_live_is_fail_closed", tail: Cons { head: "test.claim.ci_budget_tree_witness.witness_srv2_symmetric_to_srv1", tail: Cons { head: "test.claim.ci_budget_tree_witness.witness_srv3_outbudgets_srv1_by_exactly_the_overhead_gap", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_dangling_links", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_has_no_orphan_docs", tail: Cons { head: "test.claim.doc_reachability_witness.doc_graph_registered_plan_roots_all_admitted", tail: Cons { head: "test.claim.external_model_scope_live_cover_witness.frontier_cover_of_live_extdeps_tree_holds", tail: Cons { head: "test.claim.external_model_scope_witness.carriers_declare_scope_on_disk", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_generic_instantiation_is_still_silently_accepted", tail: Cons { head: "test.claim.guarantee_floor_class_probe_witness.floor_hole_receipt_records_acceptance_as_the_observation", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness_test.bare_none_generic_parameter_field_is_outside_the_wall_boundary", tail: Cons { head: "test.claim.guarantee_probe_corpus_witness_test.dark_suite_dispositions_cover_migrated_v1_probes", tail: Cons { head: "test.claim.language_source_scaffold_index_test.compiler_tests_rust_blobs_are_all_rostered", tail: Cons { head: "test.claim.legacy_test_behavior_disposition_acceptance_test.legacy_test_behavior_unclassified_frontier_is_zero", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_executable_position_wall_fires_on_the_fixture_only", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_expression_residue_is_pinned", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_direct_selected_open_type_is_clean", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_direct_selected_sealed_type_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_neither_direct_ab_at_least_one_violation", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f10_neither_direct_order_independent", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f13_variant_construction_refuses", tail: Cons { head: "test.claim.sole_constructor_completeness_audit_probe.f19_record_lit_default_value_position_refuses", tail: Cons { head: "v2.lens.mandatory_tag.corpus_scan_witness_test.corpus_live_clean_tree_wall_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_module_gate_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.question_zero_verdict_live_holds", tail: Cons { head: "v2.test.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Cons { head: "v2.test.execution.self_host_candidate_generation.candidate_generation_translate_self_emit_dag_add_slice_holds", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_dangling_links", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_orphan_docs", tail: Cons { head: "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_is_clean", tail: Cons { head: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_no_unrostered_or_stale", tail: Cons { head: "v2.test.lens_test_migration_debt.test_migration_debt_test.retained_rust_kernel_wall_holds_against_live_tree", tail: Cons { head: "v2.test.program_assembly.real_ingest.program_assembly_real_ingest_host_manifest_receipt_holds", tail: Cons { head: "v2.test.program_assembly.real_ingest.program_assembly_real_ingest_module_roots_parse_holds", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.self_host.compiler_closure_emit_from_ingest.compiler_closure_ingest_overflow_refuses_never_empty_holds", tail: Cons { head: "v2.test.self_host.compiler_closure_emit_from_ingest.compiler_closure_ingest_receipt_describes_carrier_holds", tail: Cons { head: "v2.test.self_host.compiler_closure_emit_from_ingest.compiler_closure_scoped_ingest_module_count_ok_holds", tail: Cons { head: "v2.test.self_host.compiler_closure_ingest_boundary_witness.compiler_closure_ingest_boundary_exact_cap_transport_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+}
+
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import
