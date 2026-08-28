@@ -1,0 +1,509 @@
+module test.claim.deploy_transition_bootstrap_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.live_deploy.spec {
+  DeploymentNames,
+  srv1_live_deployment_names,
+  deployment_belt_timer_unit_name,
+  deployment_belt_service_unit_name,
+}
+import gunbc.deploy_transition_bootstrap {
+  ReleaseMarkerAwareness,
+  MarkerAware,
+  MarkerUnaware,
+  MarkerAwarenessUnobserved,
+  QuiescenceRegime,
+  BootstrapExternalQuiescence,
+  SteadyStateInProcessInhibition,
+  QuiescenceRegimeDecision,
+  QuiescenceRegimeIs,
+  QuiescenceRegimeUndecidable,
+  SteadyStateAdoption,
+  SteadyStateAdopted,
+  SteadyStateRefused,
+  TransitionStep,
+  StepPrincipalAdmitted,
+  StepLeaseHeld,
+  StepExternallyQuiesced,
+  StepInhibitionPersisted,
+  StepReleaseInstalled,
+  StepSteadyStateAdopted,
+  StepInhibitionCleared,
+  StepLeaseReleased,
+  StepAdmission,
+  StepAdmitted,
+  StepOutOfOrder,
+  StepAfterCompletion,
+  quiescence_regime,
+  adopt_steady_state,
+  bootstrap_quiesced_units,
+  bootstrap_quiesce_commands,
+  bootstrap_restore_commands,
+  transition_step_advance,
+  transition_step_label,
+  UnitInactiveStanding,
+  UnitObservedInactive,
+  UnitObservedActive,
+  UnitInactivityUnobserved,
+  UnitActivationInhibitedStanding,
+  ActivationObservedRefused,
+  ActivationObservedAdmitted,
+  ActivationInhibitionUnobserved,
+  ExternalQuiescence,
+  observe_unit_quiescence,
+  unit_inactive_standing,
+  unit_activation_standing,
+  unit_quiescence_admission,
+  roster_quiescence_admission,
+  quiescence_survives_reboot,
+  quiescence_probe_start_command,
+  quiescence_probe_stop_command,
+  QuiescenceAdmission,
+  QuiescenceInForce,
+  QuiescenceRefused,
+  ProbeContainment,
+  ProbeContained,
+  ProbeUncontained,
+  ProbeContainmentUnobserved,
+  probe_containment,
+  MaskPersistence,
+  MaskPersistentObserved,
+  MaskRuntimeOnlyObserved,
+  MaskPersistenceUnobserved,
+  mask_survives_reboot,
+}
+
+fn names() -> DeploymentNames {
+  srv1_live_deployment_names(instance: srv1_live_dashboard_instance())
+}
+
+fn regime_key(d: QuiescenceRegimeDecision) -> String {
+  match d {
+    QuiescenceRegimeIs { regime: r } =>
+      match r {
+        BootstrapExternalQuiescence => "bootstrap"
+        SteadyStateInProcessInhibition => "steady-state"
+      }
+    QuiescenceRegimeUndecidable { cause: _ } => "undecidable"
+  }
+}
+
+fn adoption_admits(a: SteadyStateAdoption) -> Bool {
+  match a {
+    SteadyStateAdopted { release_identity: _ } => true
+    SteadyStateRefused { cause: _ } => false
+  }
+}
+
+fn adoption_cause(a: SteadyStateAdoption) -> String {
+  match a {
+    SteadyStateAdopted { release_identity: _ } => ""
+    SteadyStateRefused { cause: c } => c
+  }
+}
+
+// THE RUNNING RELEASE DECIDES THE REGIME, and the two answers are genuinely different mechanisms
+// rather than two strengths of one. Asserting either alone would be satisfied by a fold that
+// answered it unconditionally.
+test fn the_running_releases_awareness_selects_the_regime() -> Bool {
+  regime_key(d: quiescence_regime(awareness: MarkerUnaware { release_identity: "old" })) == "bootstrap"
+    && regime_key(d: quiescence_regime(awareness: MarkerAware { release_identity: "new" })) == "steady-state"
+}
+
+// AN UNOBSERVED AWARENESS REFUSES RATHER THAN DEFAULTING TO THE STRONGER REGIME. Choosing bootstrap
+// on ignorance would be safe in outcome and wrong in kind: it answers a question it could not compute
+// with the most protective value, which zeroes the observation deficit's frequency by construction
+// and makes an unobservable release indistinguishable from an old one.
+test fn an_unobserved_release_refuses_rather_than_widening_to_bootstrap() -> Bool {
+  regime_key(d: quiescence_regime(
+    awareness: MarkerAwarenessUnobserved { cause: "health endpoint unreachable" },
+  )) == "undecidable"
+}
+
+// EVERY UNIT THAT CAN ACTUATE A RELEASE IS QUIESCED, not the timer alone. Disabling only the timer
+// leaves the one-shot belt service startable and leaves the HTTP dispatcher inside the serve unit
+// running -- which is the same defect one layer out, and the deploy-convergence design record
+// already records it as the reason the seam is the shared admission and not either ingress.
+test fn the_quiesced_set_covers_the_timer_the_service_and_the_serve_unit() -> Bool {
+  let units = bootstrap_quiesced_units(names: names())
+  units.length() == 3
+    && any(units, u => u == deployment_belt_timer_unit_name(names: names()))
+    && any(units, u => u == deployment_belt_service_unit_name(names: names()))
+    && any(units, u => u == names().unit_name)
+}
+
+// `mask --now`, AND THE `disable` ARM IS REFUSED EXPLICITLY RATHER THAN MERELY UNCHOSEN. Durability
+// is why this is not `stop`: a stopped unit is one reboot -- or one dependency -- away from running
+// against a half-converged tree, and the deploy process that stopped it may be gone. But `disable`
+// does not supply that durability either, and this witness exists because the module CLAIMED it did:
+// the belt service is rendered `install: NotInstallable`, so it is static, and `disable` on a static
+// unit removes symlinks that do not exist and does nothing. `mask` refuses activation from any
+// requester -- timer, dependency, or a hand at a terminal -- which is the property a bootstrap
+// quiescence needs and the one `disable` never had.
+//
+// THE NEGATIVE CLAUSES CARRY THE CONTENT. `mask` is a substring of `unmask`, so asserting only that
+// each command contains "mask" would pass for a restore -- the check would be green over the exact
+// inversion of what it claims. Refusing "unmask" and "disable" is what makes this discriminating.
+test fn quiescence_masks_and_does_not_merely_stop_or_disable() -> Bool {
+  let cmds = bootstrap_quiesce_commands(names: names(), privileged: true)
+  cmds.length() == 3
+    && all(cmds, c => string_contains(s: c, pattern: "mask"))
+    && all(cmds, c => string_contains(s: c, pattern: "--now"))
+    && all(cmds, c => !string_contains(s: c, pattern: "unmask"))
+    && all(cmds, c => !string_contains(s: c, pattern: "disable"))
+}
+
+// RESTORATION UNMASKS AND ASSERTS NOTHING ELSE, one command per unit, and the absences are the
+// claim. The previous restore enabled and started all three, which asserts that all three were
+// enabled AND running when the transition began -- a fact this module never observed. It would have
+// enabled a unit an operator had deliberately disabled, and `enable` would have failed on the static
+// one for the same reason `disable` did nothing to it. Unmasking removes the override and leaves the
+// prior state exactly as found, so the correct restore is strictly smaller than the one it replaces.
+test fn restoration_unmasks_every_unit_and_asserts_nothing_about_prior_state() -> Bool {
+  let cmds = bootstrap_restore_commands(names: names(), privileged: true)
+  cmds.length() == 3
+    && all(cmds, c => string_contains(s: c, pattern: "unmask"))
+    && all(cmds, c => !string_contains(s: c, pattern: "enable"))
+    && all(cmds, c => !string_contains(s: c, pattern: "start"))
+}
+
+// THE SWITCH IS A WALL. Restoring the units over a release that does not consult the marker
+// reinstates exactly the unprotected actuator the bootstrap regime exists to stop, at the moment the
+// tree is most likely half-converged -- and it would look like progress. Both refusing arms are
+// driven beside the admitting one, so a collapse in either direction reds.
+test fn the_units_are_restored_only_over_a_marker_aware_release() -> Bool {
+  adoption_admits(a: adopt_steady_state(installed: MarkerAware { release_identity: "new" }))
+    && !adoption_admits(a: adopt_steady_state(installed: MarkerUnaware { release_identity: "old" }))
+    && !adoption_admits(a: adopt_steady_state(
+      installed: MarkerAwarenessUnobserved { cause: "binary not readable" },
+    ))
+}
+
+// THE REFUSAL SAYS THAT QUIESCENCE STAYS IN FORCE, because the operator's reading of a failed deploy
+// otherwise leaves them wondering whether the dashboard is down by accident or on purpose.
+test fn a_refused_switch_states_that_quiescence_remains() -> Bool {
+  string_contains(
+    s: adoption_cause(a: adopt_steady_state(installed: MarkerUnaware { release_identity: "old" })),
+    pattern: "external quiescence stays in force",
+  )
+}
+
+// THE WITNESS HELPER MATCHES THE ADMISSION COPRODUCT DIRECTLY rather than routing through a Bool
+// exported from the production module. A `StepAdmission -> Bool` on the module surface collapsed two
+// different refusals -- sequenced wrong, versus continuing past the end -- into one `false`, and it
+// had no production consumer: only this file called it. Deleting it removes an unconsumed surface,
+// and matching here means a new admission arm fails to compile in the witness instead of silently
+// joining the false side.
+fn advance_ok(from: TransitionStep, to: TransitionStep) -> Bool {
+  match transition_step_advance(from: from, to: to) {
+    StepAdmitted { step: _ } => true
+    StepOutOfOrder { expected: _, attempted: _ } => false
+    StepAfterCompletion { attempted: _ } => false
+  }
+}
+
+// THE WHOLE DECLARED ORDER IS ADMITTED, END TO END. This is the positive control for the refusals
+// below: without it, a successor relation that admitted nothing would satisfy every one of them.
+test fn the_declared_sequence_advances_step_by_step() -> Bool {
+  advance_ok(from: StepPrincipalAdmitted, to: StepLeaseHeld)
+    && advance_ok(from: StepLeaseHeld, to: StepExternallyQuiesced)
+    && advance_ok(from: StepExternallyQuiesced, to: StepInhibitionPersisted)
+    && advance_ok(from: StepInhibitionPersisted, to: StepReleaseInstalled)
+    && advance_ok(from: StepReleaseInstalled, to: StepSteadyStateAdopted)
+    && advance_ok(from: StepSteadyStateAdopted, to: StepInhibitionCleared)
+    && advance_ok(from: StepInhibitionCleared, to: StepLeaseReleased)
+}
+
+// NOTHING MUTATES BEFORE THE OLD ACTUATORS ARE QUIESCED AND THE MARKER IS PERSISTED. Each of these is
+// a shortcut a plausible implementation takes when it is in a hurry, and each one is the hazard this
+// lane exists to close: publishing before quiescing leaves the old belt spawning into the transition.
+test fn the_mutation_cannot_begin_before_quiescence_and_the_marker() -> Bool {
+  !advance_ok(from: StepLeaseHeld, to: StepInhibitionPersisted)
+    && !advance_ok(from: StepLeaseHeld, to: StepReleaseInstalled)
+    && !advance_ok(from: StepExternallyQuiesced, to: StepReleaseInstalled)
+}
+
+// AND NOTHING IS GIVEN BACK EARLY. Clearing the marker before the switch hands the tree to actuators
+// still running under bootstrap quiescence with nothing enforcing anything; releasing the lease before
+// the marker is cleared lets a second transition start while the first is still outstanding.
+test fn the_release_order_cannot_be_short_circuited() -> Bool {
+  !advance_ok(from: StepReleaseInstalled, to: StepInhibitionCleared)
+    && !advance_ok(from: StepSteadyStateAdopted, to: StepLeaseReleased)
+    && !advance_ok(from: StepInhibitionPersisted, to: StepLeaseReleased)
+}
+
+// THE ORDER IS A SEQUENCE AND NOT A SET, so going backwards is refused too -- a re-quiesce after the
+// switch would read as progress while undoing it.
+test fn the_sequence_does_not_run_backwards_and_does_not_continue_past_its_end() -> Bool {
+  !advance_ok(from: StepSteadyStateAdopted, to: StepExternallyQuiesced)
+    && match transition_step_advance(from: StepLeaseReleased, to: StepLeaseHeld) {
+      StepAfterCompletion { attempted: _ } => true
+      StepAdmitted { step: _ } => false
+      StepOutOfOrder { expected: _, attempted: _ } => false
+    }
+}
+
+// AN OUT-OF-ORDER REFUSAL NAMES BOTH STEPS, so the caller learns what was expected rather than only
+// that something was wrong.
+test fn an_out_of_order_step_names_what_was_expected() -> Bool {
+  match transition_step_advance(from: StepLeaseHeld, to: StepReleaseInstalled) {
+    StepOutOfOrder { expected: e, attempted: a } =>
+      e == transition_step_label(step: StepExternallyQuiesced)
+        && a == transition_step_label(step: StepReleaseInstalled)
+    StepAdmitted { step: _ } => false
+    StepAfterCompletion { attempted: _ } => false
+  }
+}
+
+// ACQUISITION IS ITSELF A PRIVILEGED WRITE, so the principal is admitted BEFORE the lease and not
+// beside it. An earlier revision of this vocabulary began at `StepLeaseHeld`, which reads as harmless
+// and is not: a unit that acquires before establishing which principal it runs as creates the lease
+// as mode 0600 owned by whoever happened to be executing, which is exactly the unreadable-marker
+// state this lane exists to remove -- manufactured by the guard itself. The guard must not be the
+// thing that produces the hazard it detects.
+//
+// Both directions are driven, because an ordering witness that only asserts the refusal would be
+// satisfied by a relation that admits nothing.
+test fn the_principal_is_admitted_before_the_lease_is_acquired() -> Bool {
+  advance_ok(from: StepPrincipalAdmitted, to: StepLeaseHeld)
+    && !advance_ok(from: StepLeaseHeld, to: StepPrincipalAdmitted)
+}
+
+// AND NOTHING SKIPS THE PRINCIPAL. Quiescing, persisting the marker or installing a release straight
+// from the principal step are three different ways of acquiring nothing and mutating anyway; each is
+// refused naming the step that was expected.
+test fn no_step_reaches_past_the_lease_from_the_principal() -> Bool {
+  !advance_ok(from: StepPrincipalAdmitted, to: StepExternallyQuiesced)
+    && !advance_ok(from: StepPrincipalAdmitted, to: StepInhibitionPersisted)
+    && !advance_ok(from: StepPrincipalAdmitted, to: StepReleaseInstalled)
+    && match transition_step_advance(from: StepPrincipalAdmitted, to: StepReleaseInstalled) {
+      StepOutOfOrder { expected: e, attempted: _ } =>
+        e == transition_step_label(step: StepLeaseHeld)
+      StepAdmitted { step: _ } => false
+      StepAfterCompletion { attempted: _ } => false
+    }
+}
+
+
+// QUIESCENCE IS TWO FACTS AND EACH ONE ALONE ADMITS NOTHING. The four combinations are driven
+// through one fold so that a version answering from either arm alone is red: inactive-and-refused
+// is the only admission, and the other three each refuse with their own cause.
+// THE Bool PROJECTION LIVES HERE, NOT IN THE MODULE. `quiescence_admits` was a production surface
+// with no production consumer -- only these witnesses -- so it is deleted and the match is local. A
+// new QuiescenceAdmission arm now fails to compile in THIS file rather than silently joining the
+// false side, which is stronger than the fold it replaces.
+fn admits(a: QuiescenceAdmission) -> Bool {
+  match a {
+    QuiescenceInForce => true
+    QuiescenceRefused { cause: _ } => false
+  }
+}
+
+fn q(unit: NonEmptyStr, inactive: UnitInactiveStanding, act: UnitActivationInhibitedStanding) -> Bool {
+  admits(a: unit_quiescence_admission(
+    q: observe_unit_quiescence(
+      unit: unit, inactive: inactive, activation: act,
+      persistence: MaskPersistenceUnobserved { unit: unit, cause: "not inspected by this witness" },
+    ),
+  ))
+}
+
+fn a_unit() -> NonEmptyStr {
+  "gunbc-roadmap-belt.timer" as NonEmptyStr
+}
+
+test fn quiescence_needs_both_inactive_and_activation_refused() -> Bool {
+  q(unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    act: ActivationObservedRefused { unit: a_unit(), detail: "Unit is masked." })
+    && !q(unit: a_unit(),
+      inactive: UnitObservedActive { unit: a_unit() },
+      act: ActivationObservedRefused { unit: a_unit(), detail: "Unit is masked." })
+    && !q(unit: a_unit(),
+      inactive: UnitObservedInactive { unit: a_unit() },
+      act: ActivationObservedAdmitted {
+      unit: a_unit(), detail: "started", containment: ProbeContained { detail: "stopped" } })
+}
+
+// A MASK EXIT CODE IS NOT A RECEIPT, and the unobserved arm is what says so. A caller that ran the
+// mask and never planted a start has NOT established activation inhibition, and this refuses --
+// which is the whole content of the ruling that the law is phrased on the observed refusal.
+test fn an_unplanted_probe_leaves_activation_unobserved_and_refuses() -> Bool {
+  !q(unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    act: unit_activation_standing(
+      unit: a_unit(), probe_ran: false, start_succeeded: false, detail: "mask exited 0",
+      containment: ProbeContainmentUnobserved { cause: "no probe" }))
+}
+
+// THE ARMS ARE ASSIGNED AGAINST INTUITION AND THIS PINS THE DIRECTION. A start that FAILED is the
+// admitting evidence; a start that SUCCEEDED refuses. A fold that read the boolean the natural way
+// round would admit exactly the state this module exists to refuse.
+test fn a_failed_planted_start_admits_and_a_successful_one_refuses() -> Bool {
+  q(unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    act: unit_activation_standing(
+      unit: a_unit(), probe_ran: true, start_succeeded: false, detail: "Failed to start: unit is masked",
+      containment: ProbeContainmentUnobserved { cause: "nothing started, nothing to contain" }))
+    && !q(unit: a_unit(),
+      inactive: UnitObservedInactive { unit: a_unit() },
+      act: unit_activation_standing(
+        unit: a_unit(), probe_ran: true, start_succeeded: true, detail: "started",
+        containment: ProbeContained { detail: "stopped" }))
+}
+
+// AN UNOBSERVED INACTIVITY IS NOT AN INACTIVE UNIT. The host not answering is not a permit.
+test fn an_unobserved_inactivity_refuses_rather_than_admitting() -> Bool {
+  !q(unit: a_unit(),
+    inactive: unit_inactive_standing(
+      unit: a_unit(), observed: false, active: false, cause: "ssh timed out"),
+    act: ActivationObservedRefused { unit: a_unit(), detail: "Unit is masked." })
+}
+
+// THE ROSTER IS AN IDENTITY JOIN. Three observations of two units must not pass, so a roster missing
+// one unit refuses even when every observation it DOES carry admits.
+test fn a_roster_missing_one_unit_refuses_even_when_the_rest_admit() -> Bool {
+  let units = bootstrap_quiesced_units(names: names())
+  let good = map(units, u => observe_unit_quiescence(
+    unit: u,
+    inactive: UnitObservedInactive { unit: u },
+    activation: ActivationObservedRefused { unit: u, detail: "Unit is masked." },
+    persistence: MaskPersistentObserved { unit: u, path: "/etc/systemd/system" },
+  ))
+  match first(units) {
+    Absent => false
+    Present { value: dropped } =>
+      admits(a: roster_quiescence_admission(names: names(), observed: good))
+        && !admits(a: roster_quiescence_admission(
+          names: names(),
+          observed: filter(good, g => (g.unit as String) != (dropped as String)),
+        ))
+  }
+}
+
+// THE PROBE IS A DIRECT START, not a timer trigger, because the timer is itself quiesced and a probe
+// routed through it would measure the timer rather than the unit.
+test fn the_probe_is_a_direct_start_of_the_unit() -> Bool {
+  let c = quiescence_probe_start_command(unit: a_unit(), privileged: true)
+  string_contains(s: c, pattern: "start")
+    && string_contains(s: c, pattern: a_unit() as String)
+    && !string_contains(s: c, pattern: "mask")
+}
+
+
+// A SUCCESSFUL PROBE MUST CARRY WHAT HAPPENED TO WHAT IT STARTED. The admitted arm has a containment
+// field, so "the planted start succeeded" has no spelling that omits it -- the stop is a
+// construction rather than a step someone remembers. All three containments still REFUSE, because a
+// successful start means the mask did not take whatever we then did about it; what differs is the
+// remedy, and an uncontained probe says an actuator is running right now.
+test fn a_successful_probe_refuses_under_every_containment_and_names_which() -> Bool {
+  let contained = unit_quiescence_admission(q: observe_unit_quiescence(
+    unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    activation: unit_activation_standing(
+      unit: a_unit(), probe_ran: true, start_succeeded: true, detail: "started",
+      containment: probe_containment(
+        stopped_ok: true, observed: true, detail: "stopped again")),
+    persistence: MaskPersistenceUnobserved { unit: a_unit(), cause: "n/a" },
+  ))
+  let uncontained = unit_quiescence_admission(q: observe_unit_quiescence(
+    unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    activation: unit_activation_standing(
+      unit: a_unit(), probe_ran: true, start_succeeded: true, detail: "started",
+      containment: probe_containment(
+        stopped_ok: false, observed: true, detail: "stop exited 1")),
+    persistence: MaskPersistenceUnobserved { unit: a_unit(), cause: "n/a" },
+  ))
+  !admits(a: contained)
+    && !admits(a: uncontained)
+    && string_contains(s: refusal_cause(a: uncontained), pattern: "RUNNING")
+    && !string_contains(s: refusal_cause(a: contained), pattern: "RUNNING")
+}
+
+fn refusal_cause(a: QuiescenceAdmission) -> String {
+  match a {
+    QuiescenceInForce => ""
+    QuiescenceRefused { cause: why } => why
+  }
+}
+
+// REBOOT DURABILITY IS OBSERVED, NOT ASSUMED, and unobserved answers false. A runtime mask satisfies
+// "cannot start while I am gone" and not "survives a reboot"; the module used to assert the second
+// without measuring it.
+test fn only_an_observed_persistent_mask_claims_reboot_durability() -> Bool {
+  mask_survives_reboot(p: MaskPersistentObserved {
+    unit: a_unit(), path: "/etc/systemd/system/gunbc-roadmap-belt.timer" })
+    && !mask_survives_reboot(p: MaskRuntimeOnlyObserved {
+      unit: a_unit(), path: "/run/systemd/system/gunbc-roadmap-belt.timer" })
+    && !mask_survives_reboot(p: MaskPersistenceUnobserved {
+      unit: a_unit(), cause: "not inspected" })
+}
+
+// THE CONTAINMENT STOP IS A DIRECT STOP OF THE UNIT THE PROBE STARTED.
+test fn the_containment_command_stops_the_probed_unit() -> Bool {
+  let c = quiescence_probe_stop_command(unit: a_unit(), privileged: true)
+  string_contains(s: c, pattern: "stop")
+    && string_contains(s: c, pattern: a_unit() as String)
+    && !string_contains(s: c, pattern: "start")
+}
+
+
+// THE CONTAINMENT PRODUCER'S OWN ARMS, and this witness exists because the containment witness above
+// originally HAND-BUILT `ProbeUncontained` and never called `probe_containment` at all. The producer
+// was imported and unreached, so its arm assignment could have been inverted -- a failed stop
+// reported as contained -- with nothing going red, in the arm that matters most. That is the same
+// defect this PR already found one layer out: a value denoting a state, asserted rather than
+// produced. The fold above now routes through the mint, and this drives the mint directly.
+fn containment_key(c: ProbeContainment) -> String {
+  match c {
+    ProbeContained { detail: _ } => "contained"
+    ProbeUncontained { detail: _ } => "uncontained"
+    ProbeContainmentUnobserved { cause: _ } => "unobserved"
+  }
+}
+
+test fn the_containment_producer_maps_a_failed_stop_to_uncontained() -> Bool {
+  containment_key(c: probe_containment(stopped_ok: true, observed: true, detail: "d")) == "contained"
+    && containment_key(c: probe_containment(stopped_ok: false, observed: true, detail: "d")) == "uncontained"
+    && containment_key(c: probe_containment(stopped_ok: true, observed: false, detail: "d")) == "unobserved"
+    && containment_key(c: probe_containment(stopped_ok: false, observed: false, detail: "d")) == "unobserved"
+}
+
+// AN UNOBSERVED STOP IS NOT A CONTAINED ONE. If the stop's outcome was never read, the unit may still
+// be running, so it must not read as contained -- the two clauses above pin that the `observed`
+// input dominates `stopped_ok`, which is the direction a fold reading the booleans in the obvious
+// order would get wrong.
+test fn an_unobserved_stop_does_not_read_as_contained() -> Bool {
+  containment_key(c: probe_containment(stopped_ok: true, observed: false, detail: "no ssh"))
+    != containment_key(c: probe_containment(stopped_ok: true, observed: true, detail: "stopped"))
+}
+
+
+// REBOOT DURABILITY IS CARRIED ON THE RECORD AND DOES NOT GATE THE ADMISSION, and those are two
+// separate claims this witness makes together because either alone would be satisfied by a wrong
+// implementation. A runtime mask satisfies "nothing can start while I am gone" -- so a transition
+// that does not span a reboot is CORRECTLY admitted over one -- while answering false to "does the
+// inhibition survive a reboot". A version that refused on a runtime mask would be over-strict; a
+// version that reported it as reboot-durable would be the unmeasured claim this field replaced.
+test fn a_runtime_mask_is_quiesced_now_and_not_durable_across_a_reboot() -> Bool {
+  let runtime = observe_unit_quiescence(
+    unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    activation: ActivationObservedRefused { unit: a_unit(), detail: "Unit is masked." },
+    persistence: MaskRuntimeOnlyObserved {
+      unit: a_unit(), path: "/run/systemd/system/gunbc-roadmap-belt.timer" },
+  )
+  let persistent = observe_unit_quiescence(
+    unit: a_unit(),
+    inactive: UnitObservedInactive { unit: a_unit() },
+    activation: ActivationObservedRefused { unit: a_unit(), detail: "Unit is masked." },
+    persistence: MaskPersistentObserved {
+      unit: a_unit(), path: "/etc/systemd/system/gunbc-roadmap-belt.timer" },
+  )
+  admits(a: unit_quiescence_admission(q: runtime))
+    && admits(a: unit_quiescence_admission(q: persistent))
+    && !quiescence_survives_reboot(q: runtime)
+    && quiescence_survives_reboot(q: persistent)
+}

@@ -654,12 +654,13 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 13
+  belt_dispatch_label_band_rows().length() == 14
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "session_liveness_unobserved") == "loud"
     && band_key_for_label(label: "deployed_revision_drifted") == "loud"
     && band_key_for_label(label: "deployed_revision_unobserved") == "loud"
     && band_key_for_label(label: "session_multiplicity_conflict") == "loud"
+    && band_key_for_label(label: "deployment_transition_inhibited") == "loud"
     && band_key_for_label(label: "spawned") == "ok"
     && band_key_for_label(label: "already_live") == "ok"
     && band_key_for_label(label: "disabled") == "fail"
@@ -702,6 +703,7 @@ fn d4_wire_contract_labels() -> List<String> {
     "session_liveness_unobserved",
     "deployed_revision_drifted",
     "deployed_revision_unobserved",
+    "deployment_transition_inhibited",
     "session_multiplicity_conflict",
   ]
 }
