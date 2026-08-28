@@ -1,6 +1,6 @@
 module test.claim.generated_artifact_assessment
 
-import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact }
+import gunbc.generated_artifact { GeneratedArtifact, DesignArtifact, RoadmapArtifact, GitignoreArtifact, GitattributesArtifact, GithooksPrePushArtifact, GeneratedArtifactMergeDriverArtifact, WitnessFloorYamlArtifact, Stage0CrateLayoutGeneratedRsArtifact, artifact_path, artifact_directory, artifact_name }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
   GeneratedArtifactObserved,
@@ -153,6 +153,36 @@ test fn duplicate_and_missing_are_distinct_findings() -> Bool {
   (f.expected_cardinality |> count) == 2
     && any(rendered, r => string_contains(s: r, pattern: "found 0"))
     && any(rendered, r => string_contains(s: r, pattern: "more than one"))
+}
+
+// THE PATH BYTES ARE PINNED AGAINST INDEPENDENTLY AUTHORED LITERALS, because artifact_path stopped
+// being a match over variants and became a projection of artifact_location. That refactor is only
+// safe if it is byte-preserving: artifact_path is what the drift gate reads the committed file at,
+// so a single changed separator would silently repoint an adjudicated artifact and the gate would
+// then compare authority bytes against the wrong file. The expectations here are written out by
+// hand rather than folded from the registry -- folding the live population and asserting what it
+// returns would be measure() == measure(), which cannot fail.
+//
+// ONE ROW PER CONSTRUCTION SHAPE, since that is what the refactor could break differently: a root
+// artifact (no directory prefix in the join), a nested literal, a directory carried by a constant
+// in another module, and a name computed from a slug.
+test fn artifact_path_is_byte_identical_after_the_location_split() -> Bool {
+  (artifact_path(a: DesignArtifact) == "DESIGN.md")
+    && (artifact_path(a: GitignoreArtifact) == ".gitignore")
+    && (artifact_path(a: WitnessFloorYamlArtifact) == ".github/workflows/witnesses.yml")
+    && (artifact_path(a: GithooksPrePushArtifact) == ".githooks/pre-push")
+    && (artifact_path(a: GeneratedArtifactMergeDriverArtifact) == ".githooks/generated-artifact-merge")
+    && (artifact_path(a: Stage0CrateLayoutGeneratedRsArtifact) == "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs")
+}
+
+// THE ROOT IS A LISTABLE DIRECTORY, NOT AN ABSENT ONE. A consumer that lists the directory to
+// establish whether the entry is present needs a directory it can actually pass to a listing; the
+// empty string is not one. This is the clause that fails if the root is ever modelled as "".
+test fn root_level_artifacts_carry_a_listable_directory() -> Bool {
+  (artifact_directory(a: DesignArtifact) == ".")
+    && (artifact_name(a: DesignArtifact) == "DESIGN.md")
+    && (artifact_directory(a: WitnessFloorYamlArtifact) == ".github/workflows")
+    && (artifact_name(a: WitnessFloorYamlArtifact) == "witnesses.yml")
 }
 
 // EACH CLASS CARRIES ITS OWN REMEDY, AND THE SECOND CLAUSE IS THE WHOLE POINT. The gate body used
