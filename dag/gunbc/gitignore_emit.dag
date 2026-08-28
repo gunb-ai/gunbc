@@ -1,35 +1,14 @@
 module gunbc.gitignore_emit
 
-import gunbc.gitignore_model {
-  Producer, IgnoreGroup, IgnoreArtifact,
-  CargoArtifacts, CargoCacheLocal, CodegenSymlink, CoverageReport,
-  GeneratorStamp, WorkflowRuntime, TestgenOutput, RegenTempDir,
-  ClaudeCodeSession, ClaimMapOutput, OpenClawArtifact, GithubCLICache,
-  AuthSessionTranscript, PythonLocalDevScript, SupersededPlanningDir,
-  JetBrainsIDE, VSCodeIDE, VimEditor, EmacsEditor, GenericEditorBackup,
-  MacOSFinder, WindowsExplorer, Tmux, NodeJS, SecretsConvention, CPythonInterpreter,
-  Derivable, Cited,
-  CargoTargetDir, CargoTargetCodexDir, LocalCargoHome, CodegenBinSymlink,
-  TarpaulinHtmlReport, TarpaulinJsonReport, CoberturaReport, LcovReport, CoverageOutputDir,
-  JetBrainsProjectDir, VSCodeWorkspaceDir,
-  VimSwapFile, VimSwapFileAlt, EmacsBackupFile, GenericBackupFile,
-  MacOSFinderMetadata, WindowsThumbnailCache, TmuxLogFile,
-  DotEnvFile, DotEnvLocalFile, DotEnvLocalWildcard,
-  GeneratorStampFile, GunbcWorkflowDir, TestgenOutputDir, NodeModulesDir,
-  ClaudeSessionDir, RegenSourcesDir, RegenOutputDir, RegenGeneratedSourceRootDir,
-  FreshnessCheckDir, AuthTranscriptFile,
-  OpenClawControlDir, OpenClawAgentsFile, OpenClawHeartbeatFile, OpenClawIdentityFile,
-  OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
-  OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
-  PythonLocalDevScriptFile,
-  PythonBytecodeCacheDir, PythonCompiledBytecode,
-  ClaimMapDir, ScratchProbeFile,
-  GunbcPlanningDir, ScriptsFixturesDir
+import std.types { String, List, Bool }
+import std.workspace_artifact {
+  WorkspaceFootprint, WorkspaceArtifact, FootprintProvenance,
+  footprint_display, ignore_reason_label
 }
+import gunbc.repo_workspace { repo_workspace_footprints }
 import gunbc.generated_artifact {
   GeneratedArtifact, generated_artifact_registry, artifact_is_committed, artifact_path
 }
-import gunbc.gitignore_authority { gitignore_authority }
 import std.languages { gitignore_format }
 import std.layout {
   Doc, DocEmpty, DocConcat,
@@ -39,122 +18,11 @@ import std.layout {
 }
 import std.render { config_comment_prefix }
 
-fn artifact_pattern(a: IgnoreArtifact) -> String {
-  match a {
-    CargoTargetDir => "/target/"
-    CargoTargetCodexDir => "/target-codex/"
-    LocalCargoHome => "/.cargo-home/"
-    CodegenBinSymlink => "/bin/"
-    TarpaulinHtmlReport => "tarpaulin-report.html"
-    TarpaulinJsonReport => "tarpaulin-report.json"
-    CoberturaReport => "cobertura.xml"
-    LcovReport => "lcov.info"
-    CoverageOutputDir => "/coverage/"
-    JetBrainsProjectDir => ".idea/"
-    VSCodeWorkspaceDir => ".vscode/"
-    VimSwapFile => "*.swp"
-    VimSwapFileAlt => "*.swo"
-    EmacsBackupFile => "*~"
-    GenericBackupFile => "*.bak"
-    MacOSFinderMetadata => ".DS_Store"
-    WindowsThumbnailCache => "Thumbs.db"
-    TmuxLogFile => "tmux-*.log"
-    DotEnvFile => ".env"
-    DotEnvLocalFile => ".env.local"
-    DotEnvLocalWildcard => ".env.*.local"
-    GeneratorStampFile => ".*-stamp"
-    GunbcWorkflowDir => "/.gunbc/"
-    TestgenOutputDir => "src/v1/10_test/generated-tests/src/generated/"
-    NodeModulesDir => "node_modules/"
-    ClaudeSessionDir => ".claude/"
-    RegenSourcesDir => ".regen-sources/"
-    RegenOutputDir => ".regen-output/"
-    RegenGeneratedSourceRootDir => ".regen-generated-source-root/"
-    FreshnessCheckDir => ".freshness-check/"
-    AuthTranscriptFile => "out.txt"
-    OpenClawControlDir => "/.openclaw/"
-    OpenClawAgentsFile => "/AGENTS.md"
-    OpenClawHeartbeatFile => "/HEARTBEAT.md"
-    OpenClawIdentityFile => "/IDENTITY.md"
-    OpenClawSoulFile => "/SOUL.md"
-    OpenClawToolsFile => "/TOOLS.md"
-    OpenClawUserFile => "/USER.md"
-    OpenClawWorkboardFile => "/WORKBOARD.md"
-    OpenClawScriptsDir => "/scripts/openclaw/"
-    V2InspectFile => ".v2-inspect"
-    V2InspectErrorsFile => ".v2-inspect-errors.txt"
-    GithubCLICacheDir => ".gh-cache/"
-    PythonLocalDevScriptFile => "*.py"
-    PythonBytecodeCacheDir => "__pycache__/"
-    PythonCompiledBytecode => "*.pyc"
-    ClaimMapDir => ".claim-map/"
-    ScratchProbeFile => "src/v2/test/claim/manual/sg2_scratch_probe.dag"
-    GunbcPlanningDir => "/gunbc-planning/"
-    ScriptsFixturesDir => "/scripts/fixtures/"
-  }
-}
-
-fn producer_display(p: Producer) -> String {
-  match p {
-    Derivable { kind: CargoArtifacts } => "Cargo build artifacts (from cargo)"
-    Derivable { kind: CargoCacheLocal } => "Cargo cache (local CARGO_HOME) (from tool/rust)"
-    Derivable { kind: CodegenSymlink } => "Codegen bin symlink (from codegen)"
-    Derivable { kind: CoverageReport } => "Coverage reports (from cargo-tarpaulin)"
-    Derivable { kind: GeneratorStamp } => "Generator stamp files (from generators)"
-    Derivable { kind: WorkflowRuntime } => "Workflow runtime state (from workflow)"
-    Derivable { kind: TestgenOutput } => "testgen outputs (from testgen)"
-    Derivable { kind: RegenTempDir } => "Stage0 regeneration temp dirs"
-    Derivable { kind: ClaudeCodeSession } => "Claude Code session state"
-    Derivable { kind: ClaimMapOutput } => "claim-corpus execution-map output"
-    Derivable { kind: OpenClawArtifact } => "OpenClaw workspace artifacts"
-    Derivable { kind: GithubCLICache } => "GitHub CLI local cache (dashboard / gh API)"
-    Derivable { kind: AuthSessionTranscript } => "Interactive auth/session transcripts"
-    Derivable { kind: PythonLocalDevScript } => "Python local dev scripts"
-    Derivable { kind: SupersededPlanningDir } => "Superseded planning scratch directories (canonical home: docs/plans/ or DESIGN.md)"
-    Cited { kind: JetBrainsIDE, upstream: u } => concat("JetBrains IDE project state [cited: ", concat(u, "]"))
-    Cited { kind: VSCodeIDE, upstream: u } => concat("VS Code workspace state [cited: ", concat(u, "]"))
-    Cited { kind: VimEditor, upstream: u } => concat("Vim editor state [cited: ", concat(u, "]"))
-    Cited { kind: EmacsEditor, upstream: u } => concat("Emacs backup convention [cited: ", concat(u, "]"))
-    Cited { kind: GenericEditorBackup, upstream: u } => concat("Generic editor backup files [cited: ", concat(u, "]"))
-    Cited { kind: MacOSFinder, upstream: u } => concat("macOS Finder metadata [cited: ", concat(u, "]"))
-    Cited { kind: WindowsExplorer, upstream: u } => concat("Windows Explorer cache [cited: ", concat(u, "]"))
-    Cited { kind: Tmux, upstream: u } => concat("tmux terminal multiplexer logs [cited: ", concat(u, "]"))
-    Cited { kind: NodeJS, upstream: u } => concat("Node.js [cited: ", concat(u, "]"))
-    Cited { kind: SecretsConvention, upstream: u } => concat("Secrets and local config [cited: ", concat(u, "]"))
-    Cited { kind: CPythonInterpreter, upstream: u } => concat("CPython bytecode cache (PEP 3147) [cited: ", concat(u, "]"))
-  }
-}
-
-fn producer_rationale_line(p: Producer) -> String {
-  match p {
-    Derivable { kind: CargoArtifacts } => "Reproducible from source via cargo build"
-    Derivable { kind: CargoCacheLocal } => "Local Cargo cache may include git checkouts; not project state"
-    Derivable { kind: CodegenSymlink } => "Symlink to target/release created by codegen"
-    Derivable { kind: CoverageReport } => "Generated, often large, reproducible"
-    Derivable { kind: GeneratorStamp } => "Producer-centric model stamps"
-    Derivable { kind: WorkflowRuntime } => "Local execution ledger and config; not source-of-truth"
-    Derivable { kind: TestgenOutput } => "Generated by testgen; not source-of-truth"
-    Derivable { kind: RegenTempDir } => ""
-    Derivable { kind: ClaudeCodeSession } => ""
-    Derivable { kind: ClaimMapOutput } => ""
-    Derivable { kind: OpenClawArtifact } => "The OpenClaw control plane lives in ~/ctrl, not in this repo"
-    Derivable { kind: GithubCLICache } => ""
-    Derivable { kind: AuthSessionTranscript } => "Should never be committed; may contain OAuth URLs or session state"
-    Derivable { kind: PythonLocalDevScript } => "Python is used only for local dev tooling; never committed to the .dag/.rs substrate"
-    Derivable { kind: SupersededPlanningDir } => "Superseded by docs/plans/ (generated PlanArtifact) and DESIGN.md/ROADMAP.md as canonical authorities"
-    Cited { kind: JetBrainsIDE, upstream: _ } => "Per-developer configuration, not project state"
-    Cited { kind: VSCodeIDE, upstream: _ } => "Per-developer configuration, not project state"
-    Cited { kind: VimEditor, upstream: _ } => "Per-developer configuration, not project state"
-    Cited { kind: EmacsEditor, upstream: _ } => "Per-developer configuration, not project state"
-    Cited { kind: GenericEditorBackup, upstream: _ } => "Per-developer configuration, not project state"
-    Cited { kind: MacOSFinder, upstream: _ } => "OS-generated, not project state"
-    Cited { kind: WindowsExplorer, upstream: _ } => "OS-generated, not project state"
-    Cited { kind: Tmux, upstream: _ } => "Session log; not project state"
-    Cited { kind: NodeJS, upstream: _ } => "Not part of this project"
-    Cited { kind: SecretsConvention, upstream: _ } => "Environment-specific, may contain secrets"
-    Cited { kind: CPythonInterpreter, upstream: _ } => ""
-  }
-}
+// THE committed byte projection of gunbc.repo_workspace (tool footprints, each artifact
+// carrying its meaning and typed ignore reason) joined with the generated-artifact arm
+// derived from gunbc.generated_artifact commit policy. This module is a renderer only:
+// it declares no pattern of its own — a pattern with no declaring producer has no
+// spelling here, which is what retired the hand-coproduct model this replaced.
 
 data gitignore_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
@@ -168,48 +36,55 @@ fn gitignore_section_header(title: String) -> Doc {
   gitignore_comment_line(text: concat("--- ", concat(title, " ---")))
 }
 
-fn group_doc(g: IgnoreGroup) -> Doc {
-  let header = gitignore_section_header(title: producer_display(p: g.producer))
-  let rationale = producer_rationale_line(p: g.producer)
-  let rat_doc = if rationale == "" { DocEmpty } else { gitignore_comment_line(text: rationale) }
-  let pattern_docs = map(g.artifacts, a => doc_line_of(text: artifact_pattern(a: a)))
-  doc_concat(parts: append([header, rat_doc], items: pattern_docs))
+fn artifact_doc(a: WorkspaceArtifact) -> Doc {
+  let annotation = concat(ignore_reason_label(r: a.reason), concat(" — ", a.meaning))
+  doc_concat(parts: [
+    gitignore_comment_line(text: annotation),
+    doc_line_of(text: a.pattern)
+  ])
+}
+
+fn footprint_doc(f: WorkspaceFootprint) -> Doc {
+  let header = gitignore_section_header(title: footprint_display(p: f.provenance))
+  doc_concat(parts: append([header], items: map(f.artifacts, a => artifact_doc(a: a))))
 }
 
 fn gitignore_header_doc() -> Doc {
   doc_concat(parts: [
-    gitignore_comment_line(text: "gunbc .gitignore — generated from dag/gunbc/gitignore_authority.dag — do not hand-edit."),
+    gitignore_comment_line(text: "gunbc .gitignore — generated from gunbc.repo_workspace via gunbc.gitignore_emit — do not hand-edit."),
     gitignore_comment_line(text: ""),
-    gitignore_comment_line(text: "Rule: Ignore anything that is (a) reproducible from committed source-of-truth files, or (b) environment-specific and not shared across developers."),
+    gitignore_comment_line(text: "Every pattern is declared by its producer (an extdeps product's workspace footprint, or a repo tool's own declaration) with its meaning and a typed ignore reason; the trailing section is derived from gunbc.generated_artifact commit policy."),
     doc_blank()
   ])
 }
 
-fn groups_doc(groups: List<IgnoreGroup>) -> Doc {
-  doc_concat(parts: fold(groups, init: [], f: fn(acc, g) {
-    let gd = group_doc(g: g)
-    if count(acc) == 0 { [gd] } else { append(acc, items: [doc_blank(), gd]) }
+fn footprints_doc(footprints: List<WorkspaceFootprint>) -> Doc {
+  doc_concat(parts: fold(footprints, init: [], f: fn(acc, f) {
+    let fd = footprint_doc(f: f)
+    if count(acc) == 0 { [fd] } else { append(acc, items: [doc_blank(), fd]) }
   }))
 }
 
-fn project_gitignore_to_doc(groups: List<IgnoreGroup>) -> Doc {
-  doc_concat(parts: [gitignore_header_doc(), groups_doc(groups: groups), doc_blank(), generated_artifacts_section_doc()])
-}
-
 fn expected_gitignore() -> String {
-  render(doc: project_gitignore_to_doc(groups: gitignore_authority), proto: gitignore_protocol)
+  let body = doc_concat(parts: [
+    gitignore_header_doc(),
+    footprints_doc(footprints: repo_workspace_footprints()),
+    doc_blank(),
+    generated_artifacts_section_doc()
+  ])
+  render(doc: body, proto: gitignore_protocol)
 }
 
 fn gitignore_drifted(committed: String) -> Bool {
   !(committed == expected_gitignore())
 }
 
-fn group_patterns(g: IgnoreGroup) -> List<String> {
-  fold(g.artifacts, init: [], f: fn(acc, a) { concat(acc, [artifact_pattern(a: a)]) })
+fn footprint_patterns(f: WorkspaceFootprint) -> List<String> {
+  map(f.artifacts, a => a.pattern)
 }
 
 fn ignore_patterns() -> List<String> {
-  let tool_patterns = fold(gitignore_authority, init: [], f: fn(acc, g) { concat(acc, group_patterns(g: g)) })
+  let tool_patterns = fold(repo_workspace_footprints(), init: [], f: fn(acc, f) { concat(acc, footprint_patterns(f: f)) })
   concat(tool_patterns, map(non_committed_artifacts(), a => generated_artifact_ignore_pattern(a: a)))
 }
 

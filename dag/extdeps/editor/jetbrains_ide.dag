@@ -1,0 +1,23 @@
+module extdeps.editor.jetbrains_ide
+
+import std.types { String, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, PerDeveloperState }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "jetbrains.com/idea"
+  }
+}
+
+// WORKSPACE FOOTPRINT. JetBrains IDEs keep per-project workspace state in .idea/.
+fn jetbrains_workspace_footprint() -> WorkspaceFootprint {
+  WorkspaceFootprint {
+    provenance: CitedUpstream { display: "JetBrains IDE project state", upstream: "jetbrains.com/idea" },
+    artifacts: [
+      WorkspaceArtifact { pattern: ".idea/", meaning: "per-project IDE workspace configuration", reason: PerDeveloperState }
+    ]
+  }
+}

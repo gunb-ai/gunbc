@@ -17,7 +17,7 @@ test fn witness_has_editor_and_os_patterns() -> Bool {
 
 test fn witness_has_header() -> Bool {
   let eg = expected_gitignore()
-  string_contains(s: eg, pattern: "generated from dag/gunbc/gitignore_authority.dag")
+  string_contains(s: eg, pattern: "generated from gunbc.repo_workspace via gunbc.gitignore_emit")
     && string_contains(s: eg, pattern: "do not hand-edit")
 }
 

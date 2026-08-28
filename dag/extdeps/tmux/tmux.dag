@@ -3,6 +3,7 @@ module extdeps.tmux
 import std.algebra { trim }
 
 import std.types { List, String, NonEmptyStr, Int, Bool, RenderedTerminalText }
+import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, SessionRuntimeState }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -572,5 +573,17 @@ service tmux.Session {
       0 => Unit
       nonzero => String "tmux kill-session failed"
     }
+  }
+}
+
+// WORKSPACE FOOTPRINT. tmux pipe-pane streams a pane's output wherever the invoker points
+// it; the log NAMING is the invoking repository's policy, so the pattern is a parameter,
+// while what such a file is — a session transcript, never source — is a fact about tmux.
+fn pipe_pane_log_footprint(log_pattern: String) -> WorkspaceFootprint {
+  WorkspaceFootprint {
+    provenance: CitedUpstream { display: "tmux pipe-pane session logs", upstream: "github.com/tmux/tmux (pipe-pane)" },
+    artifacts: [
+      WorkspaceArtifact { pattern: log_pattern, meaning: "captured pane output from a local session", reason: SessionRuntimeState }
+    ]
   }
 }
