@@ -161,8 +161,10 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
 //                                          <- discover_floor_witness_roster, whose entire caller
 //                                          set is claim_batch and the discovery-corpus mode
 //   cli_run.rs scan_test_decl_lines        `test fn ` / `test data `
-//   cli_run.rs witness_file_from_source    `test fn ` ONLY -- and THIS is the required floor's
-//                                          roster, via assemble_prepared_subject
+//   cli_run.rs witness_file_from_source    `test fn ` / `test data ` -- and THIS is the required
+//                                          floor's roster, via assemble_prepared_subject. It read
+//                                          `test fn ` ONLY until the repair recorded below; that
+//                                          divergence is what forked this one fact three ways
 //
 // Each is locally reasonable, which is why nobody saw it. The Rust unit test asserting the
 // wiring (cli_run.rs mod sidecar_placement_hygiene_tests) is not the missing piece either: it
@@ -170,10 +172,10 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
 // run of it says nothing about whether the required floor can reach the wall.
 //
 // WHAT LANDED: the required floor now asks this module's own `floor_test_sidecar_suffix` about
-// the files its preparation found carrying no `test fn`, so the RULE keeps one home and only its
-// consumer moved. The two scanners are NOT unified here -- collapsing them needs the canonical
-// parser to retain the authored `test` marker, and the note below states why that is blocked on
-// a GrammarExpr contextual-keyword terminal that does not exist yet.
+// the files its preparation found carrying no test decl of either form, so the RULE keeps one
+// home and only its consumer moved. The two scanners are NOT unified here -- collapsing them
+// needs the canonical parser to retain the authored `test` marker, and the note below states why
+// that is blocked on a GrammarExpr contextual-keyword terminal that does not exist yet.
 //
 // THAT SEPARATE REPAIR HAS LANDED, and the population it named is the population it closed.
 // witness_file_from_source recognised `test fn ` and not `test data `, so every `test data`
