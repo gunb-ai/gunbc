@@ -805,8 +805,80 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // THE ROWS ARE REMOVED AND THE WITNESSES ARE NOT (DESIGN 4b(4)). Every one of those claims stays
 // enrolled and now passes, which is what keeps the repair's reach measured rather than asserted:
 // if the gate regresses, thirteen independent modules go red before the shadow fixture does.
+// chunk_24 CARRIES ONE ROW AND IT ENTERS THIS ROSTER BY THE ROUTE chunk_23 DESCRIBES -- a
+// witness whose repair is not a repair to the witness -- but for a different and larger reason,
+// so the four facts are carried here rather than cited.
+//
+//   1. WHAT THE WITNESS ASSERTS. `candidate_generation_translate_self_emit_dag_add_slice_holds`
+//      runs the self-host candidate generator over the dag add slice --
+//      `generate_translate_self_emit_candidate`, which is `infer` composed with `translate` --
+//      and holds only when the result is `Accepted`, its emitted node equals
+//      `dag_emitted_add_fn_node()`, and no diagnostic is carried. It is the claim that
+//      generation and translation AGREE on that slice.
+//
+//   2. THEY DISAGREE, AND THE MECHANISM IS THE DECLARED INFERENCE FRONTIER RATHER THAN A DEFECT
+//      IN EITHER STAGE. `infer` ACCEPTS the slice and records `GroundingNotDerived` for its
+//      nodes: the fixture root is `TypeNode { connective: Arrow }` over `Conj` inhabitants, and
+//      `v2.compiler.infer` `node_grounding_frontier_note` states that v2 derives grounding for
+//      four of the closed vocabulary's twelve kinds (Branch, Match, Loop, and Transform in its
+//      add shape) and for no other. `translate` then opens on
+//      `translate_grounding_derived_gate_subtree`, whose `GroundingNotDerived` arm routes
+//      through `canonical_grounding_from_inferred_facts` and refuses with the typed
+//      `^infer_grounding_not_derived` diagnostic. So the refusal is the grounding gate doing
+//      exactly what it was built to do on a tree the frontier has not reached.
+//
+//      MEASURED BY EXECUTION, not read off the code: at main head 3a8344b5c, a probe returning the
+//      stage verdict as a Symbol answers `infer_accepted` for `infer(dag_add_emitted_root)` and
+//      `infer_grounding_not_derived` for `generate_translate_self_emit_candidate` over the same
+//      root and `dag_add_target_model`. Infer accepts; the composition refuses; the reason is the
+//      frontier's own.
+//
+//      AND NO REPAIR TO THE GATE ALONE WOULD GREEN THIS ROW, which is why the trigger below names
+//      a derivation rule rather than a gate change: `inferred_facts_not_derived` returns the
+//      frontier diagnostic on infer's ACCEPTED path, so even an accepting translate would leave
+//      the witness's `d == None` conjunct false. Both conjuncts fail for the one cause.
+//
+//   3. WHY THE ROW IS NOT REPAIRABLE BY THIS ENROLMENT'S AUTHOR, stated because the header asks
+//      whether someone is fixing it. Its sibling witnesses in
+//      `v2.test.execution.dag_add_emit_round_trip` pass on the SAME fixture because they build
+//      their `InferredTree` from a hand-authored facts lookup that answers `DerivedGrounding`.
+//      Making `infer` answer that way for connective nodes generally is precisely the
+//      `root == root` grounding `node_grounding_frontier_note` records as the defect the
+//      frontier carrier REPLACED -- every node typed as itself, read downstream as an
+//      established judgment. So the cheap green here is the removal of a real distinction, and
+//      the honest repair is a derivation rule for the kinds the slice uses, which is v2
+//      self-host lane work and not a witness edit.
+//
+//   4. REMOVAL TRIGGER, and it is not minted here: it is the one the repository already filed.
+//      `gunbc.guarantee_rung_drop` `self_host_candidate_generation_add_slice_stall` carries this
+//      exact identity as its bounded population, `ClimbableButUnbuilt`, with the trigger
+//      "candidate generation, translation, and self-emission agree on the add slice". This row
+//      is that stall's executing consumer: when the derivation lands the witness passes, stale
+//      quarantine reds the build naming this row, and both delete together.
+//
+// HOW IT CAME TO BE RED ON MAIN WITH NO ENROLMENT, because that is a fact about this mechanism
+// and not only about this row. The identity was `DeclinedLiveTree` -- discovered, counted, never
+// run -- until gunbc#9106 deleted that decline. That change filed the stall above and retired the
+// witness's `LegacyFrozenPathDeferral` rows, recording in
+// `gunbc.witness_deferral_freeze` `witness_deferral_freeze_shrink_log_note` that "the expected-red
+// roster proves they now have an executing required-floor consumer". The roster did not: this
+// identity was never added to it. The freeze retirement was correct -- the row does execute -- and
+// its stated evidence named a roster membership that does not exist, so the witness began
+// executing with nothing holding its red. This enrolment supplies the membership the shrink log
+// already claimed.
+//
+// FOUR SIBLING IDENTITIES ARE IN THE SAME STATE AND ARE DELIBERATELY NOT ENROLLED HERE. The same
+// shrink-log entry covers five identities across three files, and none of the five is in this
+// roster; the other four have their own owners in
+// `gunbc.declined_live_tree_defect_classification` and their own stall rows. Enrolling them from
+// here would be one author asserting a red standing on behalf of four lanes that did not measure
+// it, so they are named as a finding rather than swept in.
+fn floor_expected_red_chunk_24() -> List<String> {
+  Cons { head: "v2.test.execution.self_host_candidate_generation.candidate_generation_translate_self_emit_dag_add_slice_holds", tail: Empty {} }
+}
+
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import
