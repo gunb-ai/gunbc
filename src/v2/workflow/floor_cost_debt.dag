@@ -200,6 +200,11 @@ import v2.std.text { String }
 // not a payer for someone else's compile -- and it is enrolled here with its measured marginal
 // figure and its run cited. Until such a row is measured, enrolling anything would be freezing
 // coverage on a number that was never about the row.
+// NO RUNG DROP IS DECLARED WHILE THIS ROSTER IS EMPTY, DELIBERATELY. §4b(3) requires a drop to
+// carry a bounded population; an empty roster withholds nothing, so there is nothing lost to
+// restore. A drop row kept "in case" would be inflation from the other direction -- a class
+// reported as degraded that is not -- and it would rank for a restoration with nothing to
+// restore. The drop returns with the population the moment any identity is enrolled.
 fn floor_cost_debt_chunks() -> List<List<String>> {
   Empty {}
 }
@@ -216,8 +221,3 @@ fn floor_cost_debt_holds(name: String) -> Bool {
   any(xs: floor_cost_debt_roster(), predicate: fn(row) { row == name })
 }
 
-// NO RUNG DROP IS DECLARED HERE, DELIBERATELY. §4b(3) requires a drop to carry a bounded
-// population; this roster's population is empty, so there is nothing bounded to declare and
-// nothing lost to restore. A drop row kept "in case" would be the inflation §4b(1) names from the
-// other direction -- a class reported as degraded that is not -- and it would rank for a
-// restoration that has nothing to restore.
