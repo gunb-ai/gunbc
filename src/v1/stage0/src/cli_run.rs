@@ -44574,7 +44574,8 @@ pub struct PreparedRepository {
     pub modules_excluded: usize,
     /// The witness sites preparation found, already folded. NOT the corpus bytes.
     pub witness_files: Vec<InventoryWitnessFile>,
-    /// Admitted sources carrying zero `test fn` decls. See `PreparedSubject::test_decl_free_paths`.
+    /// Admitted sources carrying zero `test` decls (`test fn` or `test data`). See
+    /// `PreparedSubject::test_decl_free_paths`.
     pub test_decl_free_paths: Vec<String>,
 }
 
@@ -44764,7 +44765,11 @@ pub struct PreparedSubject {
     pub sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     pub inventory: Vec<PreparedSourceView>,
     pub witness_files: Vec<InventoryWitnessFile>,
-    /// Admitted sources carrying ZERO `test fn` decls, by repo-relative path.
+    /// Admitted sources carrying ZERO `test` decls — neither `test fn` nor `test data` — by
+    /// repo-relative path. The vocabulary is `floor_discovery_scan_test_decl_names`'s, so this
+    /// population is the wall's own denominator rather than a narrower one that happens to
+    /// agree.
+    ///
     ///
     /// Preparation records the fact and judges nothing with it. Whether a path in here is a
     /// VIOLATION is a policy question owned by `v2.workflow.floor_naming_hygiene`
@@ -44826,16 +44831,27 @@ pub fn assemble_prepared_subject(
         //
         // WHAT IS RECORDED HERE IS A CANDIDATE SET, NOT A VERDICT, and the distinction is the
         // whole reason no second copy of the rule appears in Rust. This records every source
-        // `witness_file_from_source` declined — i.e. carrying no `test fn` — and asks nothing
-        // about suffixes and nothing about `test data`. Both of those questions belong to
-        // `v2.workflow.floor_naming_hygiene` and are put TO it, per candidate, by
-        // `floor_barren_test_sidecars`.
+        // `witness_file_from_source` declined, and asks nothing about suffixes. That question
+        // belongs to `v2.workflow.floor_naming_hygiene` and is put TO it, per candidate, by
+        // `floor_barren_test_sidecars`. Rust can only widen the question, never decide it, so a
+        // Rust/`.dag` disagreement cannot produce a wrong refusal — only a candidate the
+        // authority discards.
         //
-        // THE SET IS DELIBERATELY OVER-INCLUSIVE and that is what makes it sound. A file with
-        // only `test data` rows lands in here, and the `.dag` predicate then answers NOT barren,
-        // because its own scan counts `test data ` as a test decl. Rust can only widen the
-        // question, never decide it, so a Rust/`.dag` disagreement cannot produce a wrong
-        // refusal — only a candidate the authority discards.
+        // AND THE RECORDED SET NOW USES THE RULE'S OWN VOCABULARY BY CONSTRUCTION, rather than by
+        // a second test standing beside it. `test data ` is a test decl to
+        // `floor_discovery_scan_test_decl_names`, which is what `floor_entry_is_barren_test_sidecar`
+        // composes; this loop used to agree with that rule by asking a SEPARATE question here
+        // (`site.is_none() && no line starts with "test data "`) because the roster builder below
+        // could not see `test data` at all. It can now, so `site.is_none()` means exactly
+        // "declares no test decl" in the wall's own vocabulary and the compensating second scan is
+        // deleted rather than left as a third spelling of the same fact (DESIGN §3, and §4b(4):
+        // a climb deletes the lower-rung machinery it obsoletes). A `test data`-only file
+        // therefore no longer reaches this set at all, where before the repair it did and the
+        // `.dag` predicate discarded it.
+        //
+        // The 40 `test data` claims that compensating scan was protecting from a
+        // wall-over-reach are, for the same reason, no longer dropped from the roster: they are
+        // offered, routed and executed like any other claim. See `witness_file_from_source`.
         match witness_file_from_source(module_path, &sf.path, &sf.content) {
             Some(site) => witness_files.push(site),
             None => test_decl_free_paths.push(p.clone()),
@@ -45815,8 +45831,8 @@ pub struct RequiredFloorOutcome {
     pub long_home_storage_agreement: Vec<LongHomeStorageAgreementRow>,
 }
 
-/// A witness site as preparation found it — the file's path, its module, and the `test fn`
-/// names it declares. Produced from bytes preparation had in hand, and retained INSTEAD of
+/// A witness site as preparation found it — the file's path, its module, and the `test fn` /
+/// `test data` names it declares. Produced from bytes preparation had in hand, and retained INSTEAD of
 /// those bytes.
 pub struct InventoryWitnessFile {
     pub path: String,
@@ -45836,12 +45852,39 @@ pub struct InventoryWitnessFile {
 /// every floor run, acquired the repository a second time, and additionally built a
 /// whole-corpus module graph to answer a question about one file at a time.
 ///
-/// `None` means the file declares no `test fn`, which is how a non-witness module is excluded
+/// `None` means the file declares no `test` decl, which is how a non-witness module is excluded
 /// — the predecessor expressed the same rule as `if !functions.is_empty()` after building the
 /// record.
 ///
-/// A `test fn` is recognised at column zero only, which is the same rule the parser applies to
+/// A `test` decl is recognised at column zero only, which is the same rule the parser applies to
 /// a top-level declaration: an indented occurrence is inside a body and is not a declaration.
+///
+/// BOTH `test fn ` AND `test data ` ARE TEST DECLS HERE, and making that true is the whole of
+/// this function's most recent change. What a test decl IS had two answers in one binary:
+/// `v2.workflow.floor_naming_hygiene` `floor_discovery_scan_test_decl_names` — the authority the
+/// `BarrenTestSidecar` wall composes — counts both forms, while this roster builder counted only
+/// `test fn `. A file whose test decls are all `test data ` therefore SATISFIED the wall (its
+/// predicate found decls) and enrolled ZERO claims (this scan found none), which is partial
+/// enrollment made invisible by construction: nothing refuses, nothing runs, and the run's own
+/// `offered = routed + declined_long + declined_live` partition stays exact because the site was
+/// never offered. That is §3's two-authorities-for-one-fact defect with the two halves wired to
+/// opposite sides of the same gate.
+///
+/// The population this closed is exact and was declared before it was repaired (the note at
+/// `floor_entry_is_barren_test_sidecar`): 40 `test data` decls in 15 files over both source
+/// roots — 34 in 13 files carrying no `test fn` at all, 6 in 2 files the floor already enrolled
+/// partially. The second group is the one no wall could ever have caught.
+///
+/// The two SCANNERS are still two scanners, and that residue is unchanged by this: collapsing
+/// them needs the canonical parser to retain the authored `test` marker, which
+/// `v1_compiler_parse.rs` `drop_leading_test_marker` discards, and `test` cannot become a lex
+/// keyword because it is a live module-path segment. What is repaired here is that they no
+/// longer DISAGREE; what remains is that they are separately spelled.
+///
+/// A `test data` claim executes on exactly the same path as a `test fn` one: `run_claim` calls
+/// `run_in_context`, whose `lookup_fn` resolves a `DataItem` as readily as a function node and
+/// evaluates its initializer with no arguments. There is no second execution mechanism here,
+/// which is why the roster is the only thing that had to move.
 fn witness_file_from_source(
     module_path: &str,
     path: &str,
@@ -45849,7 +45892,10 @@ fn witness_file_from_source(
 ) -> Option<InventoryWitnessFile> {
     let mut functions: Vec<String> = Vec::new();
     for line in content.lines() {
-        let Some(rest) = line.strip_prefix("test fn ") else {
+        let Some(rest) = line
+            .strip_prefix("test fn ")
+            .or_else(|| line.strip_prefix("test data "))
+        else {
             continue;
         };
         let name: String = rest
@@ -46280,6 +46326,11 @@ fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result
 /// — does this path claim the sidecar place, and does this file declare a test decl —
 /// are answered by `v2.workflow.floor_naming_hygiene`; Rust supplies facts and decides
 /// nothing.
+///
+/// Preparation records every admitted source with no `test fn` or `test data` decl; this asks
+/// `floor_naming_hygiene`'s own suffix which of them are `*_test.dag` entries — the same
+/// predicate `floor_entry_is_barren_test_sidecar` composes, consumed here because THIS is the
+/// path the required floor takes.
 ///
 ///   1. `floor_entries_requiring_test_sidecar` is asked ONCE for the whole candidate roster.
 ///      It is a pure string question, so the whole list crosses in one call, and it narrows
@@ -47129,7 +47180,8 @@ pub fn run_required_floor(
     if !barren_test_sidecars.is_empty() {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=BarrenTestSidecar count={} — a `*_test.dag` entry must \
-             declare at least one `test fn`; the required floor enrolls nothing from: {}",
+             declare at least one `test fn` or `test data` decl; the required floor enrolls \
+             nothing from: {}",
             barren_test_sidecars.len(),
             barren_test_sidecars.join(", ")
         ));
