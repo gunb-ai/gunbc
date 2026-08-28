@@ -206,7 +206,7 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
   ) {
     DeclinedLongModule { matched_prefix: p } => p == "test.claim.long."
     Planned => false
-    DeclinedFixtureMember { matched_prefix: _ } => false,
+    DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedCostDebt => false
   }
 }
@@ -220,7 +220,7 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
-    DeclinedFixtureMember { matched_prefix: _ } => false,
+    DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedCostDebt => false
   }
 }
@@ -231,7 +231,7 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
   ) {
     Planned => true
     DeclinedLongModule { matched_prefix: _ } => false
-    DeclinedFixtureMember { matched_prefix: _ } => false,
+    DeclinedFixtureMember { matched_prefix: _ } => false
     DeclinedCostDebt => false
   }
 }

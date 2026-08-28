@@ -201,7 +201,93 @@ import v2.std.text { String }
 // a charged-basis payer does not even remove the cost: fill is paid inside execution on a memo
 // that starts empty, so it moves to the next claim naming those sources, which then goes over and
 // joins the roster in turn. A marginal figure is a property of the ROW, so declining a
-// marginal-over row moves nothing to anyone and the population cannot regenerate itself.
+// marginal-over row does not move THAT ROW'S OWN COST onto anybody else.
+//
+// THAT IS NARROWER THAN AN EARLIER REVISION OF THIS FILE CLAIMED, AND THE DIFFERENCE IS MEASURED.
+// It read "moves nothing to anyone and the population cannot regenerate itself". The second half
+// is FALSE and the run that installed this roster proved it: withholding 266 rows left 16 others
+// tripping the same conjuncts, and 9 of them measured UNDER the ceiling on main -- one at 98ms,
+// one at 1ms, one at 0ms. A witness that cost 1ms did not become expensive. It INHERITED A BILL.
+//
+// THE MECHANISM, AND IT IS NOT THE BRACKETED FILL -- a first hypothesis said it was, and the same
+// run refutes that. Shared work is paid INSIDE execution by whichever claim reaches it first, so
+// withholding the first-toucher moves the bill to the next claim naming that work. But only TWO
+// call sites are bracketed by `record_shared_artifact_fill_cpu` (the diagnostic census and the
+// rust emit check). Every OTHER memoised shared construction is relocated the same way and
+// recorded NOWHERE.
+//
+// THE DISCRIMINATING OBSERVATION IS ON THE SIX ROWS THAT COMPLETED. An interrupted row emits no
+// per-claim fill line whatever it paid, so absence proves nothing there; a COMPLETED row reaches
+// the emission site, so for these six the record is readable. Their marginal costs moved 89ms ->
+// 59817ms, 98ms -> 25216ms, 1ms -> 1157ms, 0ms -> 645ms. Nothing got slower by 672x.
+//
+// AND THERE ARE TWO `[floor-shared-fill]` FORMATS, WHICH IS WHERE A FIRST READING OF THIS WENT
+// WRONG. The per-claim form (`claim=... marginal_cpu_ms=... fill_cpu_ms=...`) is the one netted
+// out of `cpu_nanos`. A SECOND, per-cache form (`cache=... fill_ms=... paid_by=...`) records who
+// paid to fill a named cache and IS NOT SUBTRACTED FROM ANYTHING. An earlier revision of this
+// block said all six emitted nothing and concluded the work was unrecorded; that was a regex
+// reading only the first form, and swift-badger-524 caught it by counting both.
+//
+// MEASURED, the six split three ways:
+//   `widened_scans_actually_read_the_tree`   cpu 59817ms, recorded fill 54267ms (reference_edges,
+//                                            two payments) -- ~91% relocated, recorded, NOT netted
+//   `inert_carrier_universe_is_nonempty`     cpu  1157ms, recorded fill  1160ms (inert_carrier_data)
+//                                            -- essentially all of it, recorded, NOT netted
+//   `scan_denominator_is_a_real_corpus`      cpu 25216ms, no fill recorded in either form
+//   `corpus_per_language_row_ratchet_holds`  cpu   645ms, none
+//   `bootstrap_footprint_*` (two rows)       cpu   512ms / 502ms, none
+//
+// THE MECHANISM IS OBSERVED END TO END ON ONE ARTIFACT, NOT INFERRED FROM MAGNITUDE. The floor's
+// per-cache attribution names a payer, so the same artifact can be followed across two runs:
+//
+//   main run 33141550579   cache=inert_carrier_data fill_ms=1224
+//                          paid_by=...inert_carrier_test.inert_carrier_no_unrostered_or_stale
+//   this branch, 33152885910
+//                          cache=inert_carrier_data fill_ms=1160
+//                          paid_by=...inert_carrier_test.inert_carrier_universe_is_nonempty
+//
+// `inert_carrier_no_unrostered_or_stale` IS ENROLLED IN THIS ROSTER. It was withheld, and the
+// identical bill -- same cache, same magnitude -- landed on its sibling in the same module, whose
+// marginal cost went from 1ms on main to 1157ms here. Same artifact, same work, different payer,
+// and the new payer is one of the six rows that then breached the ceiling.
+//
+// That is a withheld first-toucher's bill relocating, watched from both ends, and it is the
+// evidence this file's non-termination argument rests on. Found by calm-ram-380 in main's own log
+// while withdrawing a competing explanation; verified here at identity grain.
+//
+// THE SAME LOG SHOWS THE REMEDY ALREADY WORKING ON THE LARGEST ARTIFACTS, which is why the fix is
+// a construction that exists rather than one to invent: `cache=module_path_index fill_ms=73088
+// consumer_claims=454 paid_by=<outside-fold>` and `cache=module_graph_facts inclusive_ms=47737
+// paid_by=<outside-fold>`. Seventy-three seconds across 454 consumers, charged to NOBODY, because
+// the artifact is built before any claim runs. A warmed artifact has no first-toucher, so there is
+// no bill to relocate and the population is stable under ANY ceiling. The open question is only
+// which artifacts are outside that treatment, never whether the treatment works.
+//
+// SO THE UNIFYING FACT IS NARROWER AND SHARPER THAN "UNRECORDED": RELOCATED SHARED COST LANDS IN A
+// ROW'S MARGINAL FIGURE WHETHER OR NOT IT IS RECORDED, because only ONE of the two recording
+// mechanisms feeds the subtraction. For `widened_scans` the evidence is sitting in the log naming
+// it as payer for 54 seconds it does not own, and its marginal figure still carries all 54. That
+// is worse than the unrecorded case rather than better: the information exists and the ceiling
+// does not consult it.
+//
+// WHAT THAT DOES TO THIS ROSTER'S DEFENCE: marginal keying prevents a row being enrolled for cost
+// it never owned ONLY where that cost was netted as per-claim fill. Against per-cache fills and
+// against genuinely unrecorded shared work it is inert, and a relocated bill is indistinguishable
+// from own work at the instrument the ceiling actually reads.
+//
+// SO ENROLMENT CANNOT DRAIN THIS TO ZERO, AND THAT IS STRUCTURAL RATHER THAN A MATTER OF DEPTH.
+// The fill must be paid by someone; there is always a first-toucher; so each round of enrolment
+// produces a fresh population, and the process terminates only if the inherited fill falls under
+// the ceiling -- which it cannot while the fills are multi-second. Anyone planning to close this
+// roster by adding rows until the floor greens is planning a non-terminating loop.
+//
+// THE MOVE THAT ACTUALLY STABILISES IT is to stop charging the fill to a claim at all: build the
+// artifact at PREPARATION and charge it to nobody, exactly as `module-path-index-warm`,
+// `shared-index-warm` and `bare-reference-edge-index-warm` already are (each reports
+// `provenance=built-by-preparation` and appears in no claim's cost). A warmed artifact has no
+// first-toucher, so there is no bill to relocate and the population is stable under ANY ceiling.
+// The artifacts behind this cascade never got such a warm. That is the repair; this roster is
+// containment while it is absent.
 
 fn floor_cost_debt_chunk_00() -> List<String> {
   Cons { head: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain", tail: Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_assembled_cross_module_subject_reaches_typed_standing", tail: Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_assembled_identity_absent_refuses_RED", tail: Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_planted_garbage_refuses_frontend_RED", tail: Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_planted_minimal_module_emits", tail: Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_real_corpus_entry_produces_typed_standing", tail: Cons { head: "gunbc.test.claim.witness_execution_class_live_census_test.witness_live_roster_census_holds", tail: Cons { head: "test.claim.altra_contact_map_witness.w_ingested_contact_map_admits_at_declared_population", tail: Cons { head: "test.claim.belt_tick_receipt_home_witness.the_belt_member_bootstraps_its_own_receipts_directory", tail: Cons { head: "test.claim.belt_tick_receipt_home_witness.the_bootstrapped_directory_is_where_the_receipt_goes", tail: Cons { head: "test.claim.fleet_converge_plan_witness.lease_guard_sudoes_only_granted_binaries", tail: Cons { head: "test.claim.fleet_converge_plan_witness.locked_apply_guard_compares_the_modelled_prior_generation", tail: Cons { head: "test.claim.fleet_converge_plan_witness.locked_apply_guard_does_not_coerce_an_unreadable_store_to_zero", tail: Cons { head: "test.claim.fleet_converge_plan_witness.locked_apply_inner_program_is_quoted_not_spliced", tail: Cons { head: "test.claim.fleet_converge_plan_witness.locked_apply_script_serializes_generation_under_flock", tail: Cons { head: "test.claim.fleet_converge_plan_witness.locked_apply_stale_diagnostic_keeps_observed_value_in_one_word", tail: Cons { head: "test.claim.floor_attempt_standing_witness_test.w_RED_no_emitted_gate_arm_reaches_superseded", tail: Cons { head: "test.claim.floor_attempt_standing_witness_test.w_RED_the_attempt_receipt_labels_are_one_authority", tail: Cons { head: "test.claim.floor_attempt_standing_witness_test.w_RED_the_emitted_gate_renders_both_interruption_axes", tail: Cons { head: "test.claim.floor_attempt_standing_witness_test.w_RED_the_head_axis_branches_on_event_type_not_an_empty_subject", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
@@ -285,14 +371,162 @@ fn floor_cost_debt_roster() -> List<String> {
 // corresponds to a discovered site, so a row cannot be quietly retained after its subject moves,
 // and no row can be added without a measurement that names it.
 //
-// RESTORATION TRIGGER, NAMING THE CAPABILITY AND NOT AN ARTIFACT: a row leaves when its MARGINAL
-// CPU, measured by the required floor on a tree carrying the fill attribution, falls at or under
-// `required_floor_claim_cpu_safety_limit_ms` -- at which point it is deleted from the roster and
+// RESTORATION TRIGGER -- AND THE INSTRUMENT IT REQUIRES DOES NOT EXIST YET, WHICH IS DECLARED
+// HERE RATHER THAN DISCOVERED LATER.
+//
+// A row leaves when its MARGINAL CPU, measured on a tree carrying the fill attribution, falls at
+// or under `required_floor_claim_cpu_safety_limit_ms`; it is then deleted from the roster and
 // simply executes. The capability being restored is the EXECUTION of these assertions, so nothing
-// short of a row running and passing under the ceiling retires it. In particular: a plan to make
-// it cheap does not, a measurement on a tree without the fill bracket does not, and neither does
-// RAISING THE CEILING, which would retire the row by moving the line rather than restoring
-// anything.
+// short of a row running and passing under the ceiling retires it: not a plan to make it cheap,
+// not a measurement on a tree without the fill bracket, and NOT raising the ceiling, which would
+// retire the row by moving the line rather than by restoring anything.
+//
+// THE PROBLEM: A WITHHELD ROW IS NEVER MEASURED. Until this lands, these 266 could be priced
+// because main executed them; once it lands, main declines them, and the required floor's cost
+// receipt -- the instrument every figure above was read from -- stops containing them. So the
+// trigger as stated cannot be satisfied by any run this repository currently performs. That is
+// not a small gap: a shrink-only contract whose shrink condition is unobservable is a PERMANENT
+// FREEZE wearing a debt contract's costume, and it would read as healthy forever because nothing
+// contradicts it.
+//
+// AN EARLIER REVISION OF THIS BLOCK SAID "measured by the required floor" AND WAS EXACTLY THAT
+// DEFECT -- a trigger naming a measurement that the change it accompanies makes impossible. It is
+// corrected rather than quietly reworded, because the failure mode is the one DESIGN §4b(3) names:
+// a trigger that will never fire while the class it protects stays dead.
+//
+// WHAT THE INSTRUMENT MUST BE, stated so the obligation is buildable and not an aspiration: a
+// COST-ONLY REPLAY that executes the withheld population and ledgers each row's marginal figure
+// WITHOUT admitting its verdict and WITHOUT greening anything. DESIGN §5 already sanctions exactly
+// this shape and only this shape -- the stopped-line audit that "replays the run to ledger every
+// deficit ... it reports, it does not green". It must not be a flag that suppresses the withhold
+// on the required path, which would be the escape hatch §5 forbids: one config edit from silently
+// running the population this roster exists to keep off the floor. Until that mode exists, this
+// roster can grow and cannot shrink, and no one should describe it as a debt contract without
+// saying so.
+//
+// FOUR ROWS CARRY A FIGURE THAT IS NOT A COST, AND THE NOTE IS HERE SO A COMING ~29s DROP IS NOT
+// READ AS A WIN. The `v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli`
+// family -- `extdeps_reaches_no_cli_construction_vocabulary`,
+// `compiler_substrate_reaches_no_cli_construction_vocabulary`,
+// `gunbc_consumers_reach_transport_vocabulary_only_by_named_admission`,
+// `test_corpus_reaches_cli_vocabulary_only_as_declared_exercise` -- are budget-refused with roughly
+// 90% of each figure being a whole-pool re-parse that four sibling witnesses each perform
+// separately. `cli_run.rs` `reference_resolution_facts` caches on (pool_roots, importer_roots,
+// excludes), but pass 1 -- the pool parse -- reads only pool_roots and never touches
+// importer_roots, so five fills sharing pool_roots [dag, src/v2] each re-parse the entire pool.
+// cool-seal-638 traced it and owns the repair.
+//
+// THEY ARE ENROLLED AND THEY STAY ENROLLED WHEN THAT REPAIR LANDS, which is the opposite of what
+// an earlier revision of this block said. It called them first drain candidates on the reasoning
+// that their cause was being removed. cool-seal-638 supplied the residuals and refuted it against
+// their own work: interrupt point minus the shared fill leaves 3176 / 3143 / 3157 / 3337ms on run
+// 33143126515, and crisp-newt-899 -- who had made the exclude recommendation -- reproduced it
+// independently on run 33140608194 at 3104 / 3142 / 3189 / 3170ms. Two runs, two readers, same
+// answer: with the ~29s construction gone ENTIRELY all four remain 6.2x to 6.4x over a 500ms
+// ceiling. The fix changes WHY they are over, not WHETHER. Dropping them would have left this
+// contract short four members it should hold.
+//
+// AND THE RESIDUALS ARE THEMSELVES CENSORED, which makes enrolment decisive rather than merely
+// well-supported. These rows were INTERRUPTED, so 3104ms is what had been spent outside the fill
+// at the instant the deadline cut in, not what the row costs; true own-cost can only be larger. A
+// censored observation cannot establish that a row would pass ANY ceiling, so no figure obtainable
+// from these rows today could have justified excluding them.
+//
+// WHY THE WRONG RECOMMENDATION LOOKED REASONABLE, recorded because the trap is general: ~3.1s is
+// decisively over the 500ms ceiling THIS change restores, and comfortably under the 5000ms ceiling
+// that was live while the analysis was being done. Reasoning against the ceiling in the tree
+// rather than the ceiling in the diff inverts the answer.
+//
+// WHAT MUST NOT BE MISREAD LATER: when that cache key is split these four will appear to improve
+// by ~29 SECONDS EACH, and that improvement is ENTIRELY ATTRIBUTION. Nothing about what the
+// witnesses do will have changed. A monotone contract reading its own recorded numbers would
+// score that as a large win against the debt line; it is not one, and the residuals above are the
+// figures that actually bear on enrolment.
+//
+// AND THE SAME CAVEAT REACHES THE WHOLE OF POPULATION B, not just those four -- with a mechanism,
+// because the mechanism decides whether the caveat is real or merely cautious.
+//
+// The temptation is to reason: no `[floor-shared-fill]` line was emitted for these rows, therefore
+// they touched no shared artifact, therefore their cost is their own work. THAT INFERENCE IS
+// UNSOUND, and the reason is visible at the emission site. `record_shared_artifact_fill_cpu` is
+// called AFTER the uncached computation it brackets returns -- both call sites have this shape --
+// so a claim whose deadline fires DURING a fill never advances the counter, `fill_cpu_nanos` stays
+// 0, and the `if fill_cpu_nanos > 0` guard emits nothing. An interrupted claim that was mid-fill
+// and one that touched no shared artifact RENDER IDENTICALLY: no line either way. So for an
+// interrupted row the absence of a fill line carries NO information.
+//
+// ONE PROPOSED MECHANISM FOR THAT ABSENCE IS WRONG AND IS RECORDED SO IT IS NOT RE-DERIVED: it is
+// NOT that the interrupt unwinds before the emission is reached. A budget interrupt returns
+// `ClaimOutcome::BudgetInterrupted` as an ordinary VALUE from `run_claim`, so `run_claim_measured`
+// continues normally and the emission site IS reached. The counter simply has nothing to report.
+// The conclusion is the same and the route is different, which matters because only the second
+// route tells you what to build to settle it.
+//
+// THE PRECISE CAUSE IS A HALF-IMPLEMENTED RULING, AND IT IS VERIFIED AT BOTH SITES. The
+// 2026-08-27 operator ruling is that shared-artifact fill is not a claim's marginal cost, because
+// charging it makes a merge-blocking ceiling a function of EXECUTION ORDER rather than of the
+// tree. The COMPLETION check honours it -- `v1_compiler.cli_run` computes
+// `cpu_nanos = measured_cpu_nanos - fill_cpu_nanos` and hands that to
+// `budget_completion_outcome`. The PRE-EMPTIVE POLL does not: `v1_interpreter`
+// `eval_deadline_remaining_ms` reads `thread_cpu_nanos() - baseline` raw, with no fill term
+// anywhere in it.
+//
+// So a claim that RUNS TO COMPLETION is judged on marginal cost, and a claim that is KILLED
+// MID-FLIGHT is killed on charged cost -- the two paths enforce different quantities, and the
+// deadline charges precisely what the ruling forbids charging. Found by cool-seal-638 and
+// crisp-newt-899; verified here at both sites before being written down.
+//
+// WHAT THAT MEANS FOR THESE 46: their interrupt points are FILL-INCLUSIVE. A row that spent most
+// of its budget filling a shared artifact was killed for cost the ruling says is not its own, so
+// membership in population B is evidence that a row exceeded the ceiling ON THE CHARGED CLOCK and
+// is NOT evidence that it exceeds it on its own work. Four are known to breach on residual alone
+// (above). For the other 42 nothing has established it either way, and this roster does not claim
+// it.
+//
+// THEY ARE STILL ENROLLED, because the alternative is worse in both directions: today they are
+// interrupted, so they answer nothing AND refuse the floor, and leaving them out buys neither
+// coverage nor a green run. But when the poll is repaired to subtract accumulated fill the way
+// completion already does, these figures will move sharply downward WITH NO WITNESS GETTING
+// FASTER, and some of the 42 may fall under the ceiling. That is the second accounting-shift
+// trap in this file, and it is the same trap as the cli_vocabulary one: a number improving
+// because the charge moved, not because the work shrank. Whoever re-prices this population after
+// that repair should expect it, and the cost-only replay named in the restoration trigger is the
+// instrument that would settle it.
+//
+// ONE MEMBER OF POPULATION B HAS NOW BEEN MEASURED DIRECTLY, AND IT IS GENUINELY EXPENSIVE.
+// `v2.test.claim.enforcement.grammar_coverage_witness`
+// `grammar_coverage_take_n_fixed_roster_saturates_by_execution`, run by crisp-newt-899 as one
+// dispatch with two arms on the same binary and host: at a 5000ms ceiling it FAILS with "at least
+// 5002ms elapsed"; at a 300000ms ceiling it PASSES its assertion at 7296ms CPU. Over its own work
+// by 46%, and no fill is involved -- the completing arm reached the `if fill_cpu_nanos > 0`
+// emission site and printed nothing, which is a zero rather than an absence, unlike the
+// interrupted case above where the site is reached but the counter never advanced.
+//
+// SO THE POLL ASYMMETRY DOES NOT REACH EVERY MEMBER OF B. Repairing it would change nothing for
+// this row. That does not resolve the other 41 and this file does not claim it does -- but it
+// does mean population B is not uniformly mischarged, and enrolling it while claiming nothing
+// about own-work cost is right on evidence rather than merely prudent.
+//
+// AND IT QUANTIFIES WHY AN INTERRUPT POINT IS NOT A COST: the bound said "at least 5002ms", the
+// truth was 7296ms -- 46% higher. That is the gap between a censored observation and a
+// measurement, on a real row, and it is the concrete figure behind this file's 501..505ms lesson.
+//
+// TWO LIMITS ON THAT NUMBER, kept because dropping them would make it say more than it can. It is
+// ONE row of 44, and it was run STANDALONE rather than in-fold, so it pays a corpus-wide load term
+// per claim that the fold amortises -- 7296ms is plausibly inflated and is indicative, not
+// comparable to a floor line. What survives that confound is the BOOLEAN -- whether any fill
+// occurred -- because that does not depend on magnitude. The same run also emits a
+// `[cost-partition]` attribution whose own verdict is `Refused / OverAttributed` with
+// `shares_quotable: false`; those shares are deliberately not quoted here and must not be, because
+// the instrument refuses its own accounting on a standalone claim run.
+//
+// SO: population A is attribution-clean by construction -- read from completed rows carrying exact
+// marginal figures. Population B is enrolled on a lower bound with the attribution question OPEN,
+// and this roster cannot distinguish a witness doing expensive work of its own from one paying a
+// shared construction it merely reached first. Four of the 46 are known to be substantially the
+// second kind (above) and remain enrolled on their measured residuals. Nothing establishes what
+// the other 42 are. Settling it is a PROFILE question, not a log question, for exactly the reason
+// above -- the logs cannot answer it.
 //
 // WHAT WOULD MAKE THIS DROP DISHONEST: reporting the roster as a cost-management success. It is
 // not. It is 266 assertions that no longer run, carried because the alternative was a floor that

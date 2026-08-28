@@ -318,7 +318,7 @@ type CensusCounts {
   offered: Int
   planned: Int
   declined_long_module: Int
-  declined_fixture_member: Int,
+  declined_fixture_member: Int
   declined_cost_debt: Int
 }
 
