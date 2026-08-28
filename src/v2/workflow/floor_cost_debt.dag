@@ -4,7 +4,7 @@ import v2.std.algebra { Cons, Empty, list_flat_map, any }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-// THE OVER-COST WITHHOLDING MECHANISM, CARRYING 272 IDENTITIES.
+// THE OVER-COST WITHHOLDING MECHANISM, CARRYING 276 IDENTITIES.
 //
 // The count is stated once, here, and derived nowhere else in this file's prose. An earlier
 // revision of this header read "CURRENTLY CARRYING NO IDENTITIES" -- true of the empty carrier
@@ -176,10 +176,10 @@ import v2.std.text { String }
 // Nothing here needs to be re-measured to release a row, and nothing may be added to release
 // one.
 
-// THE ROSTER CARRIES 272 IDENTITIES, IN TWO POPULATIONS THAT ARE ENROLLED FOR DIFFERENT REASONS
+// THE ROSTER CARRIES 276 IDENTITIES, IN TWO POPULATIONS THAT ARE ENROLLED FOR DIFFERENT REASONS
 // AND MUST NOT BE READ AS ONE.
 //
-// POPULATION A -- 221 EXPENSIVE PASSES. Claims that REACHED A VERDICT, PASSED, and whose measured
+// POPULATION A -- 225 EXPENSIVE PASSES. Claims that REACHED A VERDICT, PASSED, and whose measured
 // CPU exceeded `required_floor_claim_cpu_safety_limit_ms`. Read from main run 33141550579's
 // per-claim cost receipt (`required_floor_claim_cost.tsv`, 12936 rows, `cost_basis=cpu`), so every
 // figure is that run's own and none is transcribed by hand. Measured range 511..3757ms. For these
@@ -260,6 +260,72 @@ import v2.std.text { String }
 // instrument. Population B's interrupt points are therefore NOT fill-inflated -- they are the rows'
 // own charged cost up to the deadline -- so the enrolment rests on better evidence than this file
 // was claiming for itself.
+//
+// THE CEILING LANDS INSIDE A DENSE BAND, AND THAT BOUNDS WHAT THIS ROSTER CAN ACHIEVE ALONE.
+//
+// Run 33191118450 confirmed the exhaustion argument: with all twelve `rest_path_reaches_no_cli`
+// members withheld, `reference_edges` carries NO claim-paid key at all -- only `<outside-fold>`
+// warms -- so the 25995ms fill STOPPED HAPPENING rather than relocating, and its payer left the
+// interrupted set. Relocation is dissolved, not deferred.
+//
+// THE COUNTERS STILL ROSE, 11 -> 12 interrupted and 3 -> 5 over-cost, AND THE CAUSE IS UNRELATED.
+// The newly tripping rows pay NO fill; the cost is their own. Four siblings in
+// `v2.test.manual.bootstrap_footprint_anchor` measure 492 / 502 / 502 / 506ms against a 500ms
+// ceiling. An earlier run recorded two of them at 512 / 502 and different members trip now. Which
+// side of the line a row falls on is decided by a few milliseconds of run-to-run variance.
+//
+// MEASURED DISTRIBUTION, exact because the `[over-cost]` print is rank-ordered and these thresholds
+// each admit fewer rows than its 25-row cap: 21 rows at or above 400ms, 15 at 450ms, 8 at 500ms,
+// 5 at 550ms, 4 at 600ms, 3 at 1000ms. (The `>=100ms` figure is NOT readable from that print -- it
+// saturates the cap. The population above the diagnostic cost line is the run's own
+// `over_cost_line_diagnostic` counter, 701 on this run, and quoting 25 for it would be reading a
+// print limit as a population.)
+//
+// SO PER-ROW ENROLMENT CANNOT CONVERGE HERE, for a reason that has nothing to do with the
+// relocation this file spent most of its length on. Enrol the 8 that trip today and some of the 15
+// at 450ms trip tomorrow; the roster would grow every run while no witness got slower and no cost
+// changed. That is a treadmill produced by a THRESHOLD SITTING IN A CLUSTER, not by a mechanism.
+//
+// THIS FILE DOES NOT RESOLVE IT, AND SAYING SO IS THE POINT. The 500ms ceiling is an operator
+// ruling and the band is new information about what that ruling costs, not grounds for this carrier
+// to move the line by itself. Three responses exist -- enrol the whole band as a unit so membership
+// stops being decided by variance; move the line clear of the cluster; or accept per-run
+// re-enrolment. Only the first is convergent at this ceiling, and choosing among them is an
+// operator decision this roster records rather than pre-empts.
+//
+// WHAT A COST ROSTER MUST NOT ABSORB, AND HOW CLOSE THIS ONE CAME. The floor's first completed run
+// left 11 interrupted and 3 over-cost rows outside the roster, and the obvious move was to enrol the
+// ones that looked expensive and stable. Eight were characterised that way, across three baseline
+// runs, correctly. SEVEN OF THEM REACH A VERDICT AND FAIL.
+//
+// A 500ms ceiling does not create those failures; it changes how they PRESENT. A row interrupted
+// before its verdict never reports the failure it would have reported, so a defect arrives dressed
+// as a cost. Enrolling one puts a broken witness into a roster whose proven class asserts the
+// witness WORKS and merely costs too much -- the debt contract then carries a correctness regression
+// and reports it as budget. Joined at identity grain against main run 33145062452, SIX of the 11
+// are in main's 47 unexpected failures: inherited defects belonging to the verdict-axis lane, not
+// to this one.
+//
+// THE DECIDING FIELD IS `outcome`, NOT COST, AND BOTH READERS HAD IT IN FRONT OF THEM. deep-ant-102
+// reported the outcome column in the same message that framed the set by expense, and this file's
+// author was ready to act on the framing. Cost is what makes a row a candidate; outcome is what
+// makes it eligible.
+//
+// THE FOUR ENROLLED FROM THAT RESIDUAL ARE VERIFIED AT A CEILING THAT LETS THEM FINISH -- run
+// 33190645319, same tree, ceiling raised, nothing else changed:
+//   operation_argv_corpus_every_row_is_materialized_or_counted  cpu=520   PASS
+//   corpus_per_language_row_ratchet_holds                       cpu=646   PASS
+//   inert_carrier_universe_is_nonempty                          cpu=1146  PASS
+//   scan_denominator_is_a_real_corpus                           cpu=23794 COMPLETED_OVER_BUDGET
+// All four reach a verdict. The first three pass and are caught only by the 500ms line; the fourth
+// is a genuine 24-second row that is over budget at any ceiling anyone has proposed.
+//
+// THREE MORE WERE REFUSED ENROLMENT AFTER THE SAME CHECK, and their main-side disposition is why a
+// row absent from main's 47 is not thereby new: `green_control_sanctioned_reader_body_not_flagged`
+// and `nominal_distinct_control_compiles_ok` are KNOWN-RED on main, and
+// `emit_on_demand_classical_not_native_one_build_holds` is NO-ROUTE. The 47 are UNEXPECTED failures,
+// so an enrolled red and a hermetically-refused row are outside that population by construction.
+// This branch introduces none of the three.
 //
 // PROVENANCE, because two readers were wrong in sequence and in opposite directions: crisp-newt-899
 // first argued the emission site is unreachable for an interrupted row, then retracted that at
@@ -457,7 +523,7 @@ fn floor_cost_debt_proven_chunk_10() -> List<String> {
 }
 
 fn floor_cost_debt_proven_chunk_11() -> List<String> {
-  Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.widened_scans_actually_read_the_tree", tail: Empty {} }
+  Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.widened_scans_actually_read_the_tree", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_every_row_is_materialized_or_counted", tail: Cons { head: "v2.test.lens_inert_carrier.inert_carrier_test.inert_carrier_universe_is_nonempty", tail: Cons { head: "v2.test.languages_consumer_census.corpus.per_language_row_ratchet.corpus_per_language_row_ratchet_holds", tail: Cons { head: "dag.test.claim.lifecycle_survivor_corpus_census.scan_denominator_is_a_real_corpus", tail: Empty {} } } } } }
 }
 
 fn floor_cost_debt_censored_chunk_00() -> List<String> {
