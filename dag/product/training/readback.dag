@@ -11,7 +11,7 @@ import product.fabric.identity {
 }
 import std.content_hash { Sha256Digest }
 import std.nat { Nat }
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Bool }
 
 // READBACK IS AN INDEPENDENT OBSERVATION, NOT THE RUNNER'S OWN RECEIPT.
 //
@@ -94,7 +94,13 @@ type TrainingProcessLiveness
   = TrainingProcessRunning
   | TrainingProcessExited { detail: NonEmptyStr }
 
-type TrainingCheckpointReceipt<P> {
+// AN OBSERVATION, NOT A RESUME AUTHORITY, and the name carries that. This records that a
+// checkpoint-like artifact was seen; it does not bind optimizer state, scheduler state, RNG state,
+// data-order position, trainer state, atomic publication standing, effective-manifest equality, or
+// a materialization readback -- so nothing here establishes that training could resume from it.
+// A separate admission produces the authority a resume actuation may consume; until that lands,
+// no arm anywhere may derive "resume required" from this carrier.
+type TrainingCheckpointObservation<P> {
   attempt: FabricIdentity<P, ExecutionAttemptKey>
   global_step: Nat
   artifact: Sha256Digest
@@ -157,24 +163,78 @@ type TrainingReadbackAxis
 type TrainingRunReadback<P> sole_constructor {
   subject: TrainingRunSubject<P>
   execution: TrainingPopulationObservation<TrainingProcessObservation<P>>
-  checkpoints: TrainingPopulationObservation<TrainingCheckpointReceipt<P>>
+  checkpoints: TrainingPopulationObservation<TrainingCheckpointObservation<P>>
   terminals: TrainingPopulationObservation<TrainingAttemptTerminalReceipt<P>>
   outputs: TrainingPopulationObservation<TrainingOutputArtifactReceipt<P>>
   effective_manifests: TrainingPopulationObservation<TrainingEffectiveManifestReceipt<P>>
 }
 
+type TrainingRunReadbackSubjectMismatch<P> {
+  axis: TrainingReadbackAxis
+  expected: TrainingRunSubject<P>
+  observed: TrainingRunSubject<P>
+}
+
+// THE REFUSAL CARRIES EVERY FOREIGN AXIS, NOT THE FIRST ONE FOUND. An earlier revision compared
+// the five subjects in a nested if-chain and returned on the first mismatch, so a readback whose
+// execution AND output both came from another run reported only execution -- and the second defect
+// would have surfaced as a fresh regression the moment the first was repaired. The witness suite
+// could not see it either: one control per axis proves each comparison EXISTS, and proves nothing
+// about whether simultaneous mismatches are conserved. That is the same first-wins failure this
+// module's own reconciliation notes reject, committed one layer down.
+//
+// first + more makes the population non-empty structurally, so a refusal carrying no mismatch is
+// unrepresentable.
 type TrainingRunReadbackAdmission<P>
   = TrainingRunReadbackAdmitted { readback: TrainingRunReadback<P> }
-  | TrainingRunReadbackSubjectMismatch {
-      axis: TrainingReadbackAxis,
-      expected: TrainingRunSubject<P>,
-      observed: TrainingRunSubject<P>,
+  | TrainingRunReadbackRefused {
+      first: TrainingRunReadbackSubjectMismatch<P>,
+      more: List<TrainingRunReadbackSubjectMismatch<P>>,
     }
+
+type MismatchSplit<P> {
+  head_taken: Bool
+  more: List<TrainingRunReadbackSubjectMismatch<P>>
+}
+
+fn mismatches_after_head<P>(
+  ms: List<TrainingRunReadbackSubjectMismatch<P>>,
+) -> List<TrainingRunReadbackSubjectMismatch<P>> {
+  ms
+    .fold(
+      MismatchSplit { head_taken: false, more: [] },
+      (acc, m) =>
+        if acc.head_taken {
+          MismatchSplit { head_taken: true, more: [acc.more, [m]].flat_map(x => x) }
+        } else {
+          MismatchSplit { head_taken: true, more: acc.more }
+        },
+    )
+    .more
+}
+
+fn mismatch_for<P, T>(
+  axis: TrainingReadbackAxis,
+  expected: TrainingRunSubject<P>,
+  supplied: TrainingSubjectBoundPopulation<P, T>,
+) -> List<TrainingRunReadbackSubjectMismatch<P>> {
+  if training_run_subject_eq(left: expected, right: supplied.subject) {
+    []
+  } else {
+    [
+      TrainingRunReadbackSubjectMismatch {
+        axis: axis,
+        expected: expected,
+        observed: supplied.subject,
+      },
+    ]
+  }
+}
 
 fn training_run_readback_seal<P>(
   subject: TrainingRunSubject<P>,
   execution: TrainingPopulationObservation<TrainingProcessObservation<P>>,
-  checkpoints: TrainingPopulationObservation<TrainingCheckpointReceipt<P>>,
+  checkpoints: TrainingPopulationObservation<TrainingCheckpointObservation<P>>,
   terminals: TrainingPopulationObservation<TrainingAttemptTerminalReceipt<P>>,
   outputs: TrainingPopulationObservation<TrainingOutputArtifactReceipt<P>>,
   effective_manifests: TrainingPopulationObservation<TrainingEffectiveManifestReceipt<P>>,
@@ -194,60 +254,37 @@ fn training_run_readback_seal<P>(
 fn bind_training_run_readback<P>(
   desired: TrainingRunDesired<P>,
   execution: TrainingSubjectBoundPopulation<P, TrainingProcessObservation<P>>,
-  checkpoints: TrainingSubjectBoundPopulation<P, TrainingCheckpointReceipt<P>>,
+  checkpoints: TrainingSubjectBoundPopulation<P, TrainingCheckpointObservation<P>>,
   terminals: TrainingSubjectBoundPopulation<P, TrainingAttemptTerminalReceipt<P>>,
   outputs: TrainingSubjectBoundPopulation<P, TrainingOutputArtifactReceipt<P>>,
   effective_manifests: TrainingSubjectBoundPopulation<P, TrainingEffectiveManifestReceipt<P>>,
 ) -> TrainingRunReadbackAdmission<P> {
   let expected = subject_of_desired(desired: desired)
-  if !training_run_subject_eq(left: expected, right: execution.subject) {
-    TrainingRunReadbackSubjectMismatch {
-      axis: ExecutionReadbackAxis,
-      expected: expected,
-      observed: execution.subject,
-    }
-  } else {
-    if !training_run_subject_eq(left: expected, right: checkpoints.subject) {
-      TrainingRunReadbackSubjectMismatch {
-        axis: CheckpointReadbackAxis,
+  let mismatches =
+    [
+      mismatch_for(axis: ExecutionReadbackAxis, expected: expected, supplied: execution),
+      mismatch_for(axis: CheckpointReadbackAxis, expected: expected, supplied: checkpoints),
+      mismatch_for(axis: TerminalReadbackAxis, expected: expected, supplied: terminals),
+      mismatch_for(axis: OutputReadbackAxis, expected: expected, supplied: outputs),
+      mismatch_for(
+        axis: EffectiveManifestReadbackAxis,
         expected: expected,
-        observed: checkpoints.subject,
+        supplied: effective_manifests,
+      ),
+    ].flat_map(m => m)
+  match mismatches.first() {
+    Present { value: head } =>
+      TrainingRunReadbackRefused { first: head, more: mismatches_after_head(ms: mismatches) }
+    none =>
+      TrainingRunReadbackAdmitted {
+        readback: training_run_readback_seal(
+          subject: expected,
+          execution: execution.observation,
+          checkpoints: checkpoints.observation,
+          terminals: terminals.observation,
+          outputs: outputs.observation,
+          effective_manifests: effective_manifests.observation,
+        ),
       }
-    } else {
-      if !training_run_subject_eq(left: expected, right: terminals.subject) {
-        TrainingRunReadbackSubjectMismatch {
-          axis: TerminalReadbackAxis,
-          expected: expected,
-          observed: terminals.subject,
-        }
-      } else {
-        if !training_run_subject_eq(left: expected, right: outputs.subject) {
-          TrainingRunReadbackSubjectMismatch {
-            axis: OutputReadbackAxis,
-            expected: expected,
-            observed: outputs.subject,
-          }
-        } else {
-          if !training_run_subject_eq(left: expected, right: effective_manifests.subject) {
-            TrainingRunReadbackSubjectMismatch {
-              axis: EffectiveManifestReadbackAxis,
-              expected: expected,
-              observed: effective_manifests.subject,
-            }
-          } else {
-            TrainingRunReadbackAdmitted {
-              readback: training_run_readback_seal(
-                subject: expected,
-                execution: execution.observation,
-                checkpoints: checkpoints.observation,
-                terminals: terminals.observation,
-                outputs: outputs.observation,
-                effective_manifests: effective_manifests.observation,
-              ),
-            }
-          }
-        }
-      }
-    }
   }
 }

@@ -5,11 +5,11 @@ import product.training.readback {
   TrainingPopulationObservation,
   TrainingPopulationObserved, TrainingPopulationNotAttempted, TrainingPopulationObservationRefused,
   TrainingProcessObservation, TrainingProcessRunning, TrainingProcessExited,
-  TrainingCheckpointReceipt,
+  TrainingCheckpointObservation,
   TrainingAttemptTerminalReceipt, TrainingAttemptSucceeded, TrainingAttemptFailed,
   TrainingOutputArtifactReceipt, TrainingEffectiveManifestReceipt,
   TrainingSubjectBoundPopulation, TrainingRunReadback,
-  TrainingRunReadbackAdmitted, TrainingRunReadbackSubjectMismatch,
+  TrainingRunReadbackAdmitted, TrainingRunReadbackRefused, TrainingRunReadbackSubjectMismatch,
   ExecutionReadbackAxis, CheckpointReadbackAxis, TerminalReadbackAxis,
   OutputReadbackAxis, EffectiveManifestReadbackAxis,
   bind_training_run_readback,
@@ -234,7 +234,7 @@ test fn a_subject_differing_only_in_the_demand_identity_is_refused() -> Bool {
                  effective_manifests: bound(s: good, o: empty_observed()),
                ) {
                  TrainingRunReadbackAdmitted { readback: _ } => false
-                 TrainingRunReadbackSubjectMismatch { axis: _, expected: _, observed: _ } => true
+                 TrainingRunReadbackRefused { first: _, more: _ } => true
                }
       }
     }
@@ -283,8 +283,8 @@ fn mismatch_axis_for(which: Nat) -> NonEmptyStr {
             effective_manifests: bound(s: s5, o: empty_observed()),
           ) {
             TrainingRunReadbackAdmitted { readback: _ } => "admitted"
-            TrainingRunReadbackSubjectMismatch { axis: a, expected: _, observed: _ } =>
-              match a {
+            TrainingRunReadbackRefused { first: f, more: _ } =>
+              match f.axis {
                 ExecutionReadbackAxis => "execution"
                 CheckpointReadbackAxis => "checkpoints"
                 TerminalReadbackAxis => "terminals"
@@ -322,7 +322,50 @@ test fn five_readings_of_the_same_subject_are_admitted() -> Bool {
         effective_manifests: bound(s: s, o: empty_observed()),
       ) {
         TrainingRunReadbackAdmitted { readback: rb } => training_run_subject_eq(left: rb.subject, right: s)
-        TrainingRunReadbackSubjectMismatch { axis: _, expected: _, observed: _ } => false
+        TrainingRunReadbackRefused { first: _, more: _ } => false
+      }
+    }
+  }
+}
+
+// SIMULTANEOUS MISMATCHES ARE CONSERVED, and this is the witness the earlier suite could not
+// express. One control per axis proves each comparison EXISTS; it says nothing about what happens
+// when two axes are foreign at once, and the binder that passed all five of those returned on the
+// first mismatch -- so a readback with foreign execution AND foreign outputs reported only
+// execution, and the hidden defect would have read as a new regression the moment the visible one
+// was fixed. Per-axis controls and this one are not redundant: they fail on different bugs.
+test fn two_foreign_axes_are_both_reported() -> Bool {
+  match desired_fixture(demand_work_key_override: none) {
+    none => false
+    Present { value: d } => {
+      let good = subject_of_desired(desired: d)
+      match other_subject(d: d) {
+        none => false
+        Present { value: bad } =>
+          match bind_training_run_readback(
+            desired: d,
+            execution: bound(s: bad, o: empty_observed()),
+            checkpoints: bound(s: good, o: empty_observed()),
+            terminals: bound(s: good, o: empty_observed()),
+            outputs: bound(s: bad, o: empty_observed()),
+            effective_manifests: bound(s: good, o: empty_observed()),
+          ) {
+            TrainingRunReadbackAdmitted { readback: _ } => false
+            TrainingRunReadbackRefused { first: f, more: m } => {
+              let axes = [[f], m].flat_map(x => x).map(x =>
+                match x.axis {
+                  ExecutionReadbackAxis => "execution"
+                  CheckpointReadbackAxis => "checkpoints"
+                  TerminalReadbackAxis => "terminals"
+                  OutputReadbackAxis => "outputs"
+                  EffectiveManifestReadbackAxis => "effective_manifests"
+                }
+              )
+              axes.length() == 2
+                && axes.any(a => a == "execution")
+                && axes.any(a => a == "outputs")
+            }
+          }
       }
     }
   }
@@ -332,7 +375,7 @@ test fn five_readings_of_the_same_subject_are_admitted() -> Bool {
 // the witness that would go red if an absent arm were reintroduced, or if a read that found nothing
 // were folded into the not-attempted arm: an unread population becoming an empty one licenses a
 // conclusion -- restart the run -- that ignorance does not license.
-fn checkpoint_state(o: TrainingPopulationObservation<TrainingCheckpointReceipt<NonEmptyStr>>) -> NonEmptyStr {
+fn checkpoint_state(o: TrainingPopulationObservation<TrainingCheckpointObservation<NonEmptyStr>>) -> NonEmptyStr {
   match o {
     TrainingPopulationObserved { members: m, enumeration_receipt: _ } =>
       if m.length() == 0 { "read-and-empty" } else { "read-and-populated" }
@@ -413,8 +456,8 @@ test fn a_terminally_failed_run_may_still_hold_a_checkpoint() -> Bool {
     none => false
     Present { value: d } => {
       let s = subject_of_desired(desired: d)
-      let ck: List<TrainingCheckpointReceipt<NonEmptyStr>> = [
-        TrainingCheckpointReceipt {
+      let ck: List<TrainingCheckpointObservation<NonEmptyStr>> = [
+        TrainingCheckpointObservation {
           attempt: attempt(k: "attempt-1"),
           global_step: 500,
           artifact: digest(hex: digest_a),
@@ -450,7 +493,7 @@ test fn a_terminally_failed_run_may_still_hold_a_checkpoint() -> Bool {
                  TrainingPopulationNotAttempted { obligation: _ } => false
                  TrainingPopulationObservationRefused { attempt_receipt: _, cause: _ } => false
                }
-        TrainingRunReadbackSubjectMismatch { axis: _, expected: _, observed: _ } => false
+        TrainingRunReadbackRefused { first: _, more: _ } => false
       }
     }
   }
