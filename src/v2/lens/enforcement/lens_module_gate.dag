@@ -580,15 +580,55 @@ data lens_module_gate_consolidated_surfaces: List<LensInvariantSurface> = [
   }
 ]
 
+fn lens_module_gate_residue_row(left_module: String, right_module: String) -> LensModuleGateResidueRow {
+  LensModuleGateResidueRow { left_module: left_module, right_module: right_module }
+}
+
+data lens_module_gate_audit_residue_note: String = "The rows below are the explicit, bounded rung drop for every currently enrolled GenuinelyNewInvariant surface after the first surface with the same verdict authority and remedy. They are audit residue, not a claim that the duplicates are consolidated: each row dissolves when either module leaves the registry, changes its on-carrier invariant surface, or is honestly reclassified as a handler on a shared kernel. Keeping module pairs explicit makes a newly introduced duplicate block instead of inheriting an open-ended family exemption."
+
 data lens_module_gate_audit_residue_rows: List<LensModuleGateResidueRow> = [
-  LensModuleGateResidueRow {
-    left_module: "v2.lens.structural_similarity",
-    right_module: "v2.lens.simulated_relationship"
-  },
-  LensModuleGateResidueRow {
-    left_module: "v2.lens.effect",
-    right_module: "v2.lens.effect_reach"
-  }
+  lens_module_gate_residue_row(left_module: "v2.lens.complexity", right_module: "v2.lens.complexity"),
+  lens_module_gate_residue_row(left_module: "v2.lens.complexity", right_module: "v2.lens.cost"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.unused_parameters"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.structural_resolution"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.table_decision_tree"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.complexity_linearity_audit"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.fallback_arm_census"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.coverage"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.discrimination"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.disposition_redundancy"),
+  lens_module_gate_residue_row(left_module: "v2.lens.effect", right_module: "v2.lens.effect_reach"),
+  lens_module_gate_residue_row(left_module: "v2.lens.emitted_binary_effect_confinement", right_module: "v2.lens.mandatory_tag"),
+  lens_module_gate_residue_row(left_module: "v2.lens.dependency_fidelity", right_module: "v2.lens.extdeps_shape_transport_policy"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.fact_cardinality"),
+  lens_module_gate_residue_row(left_module: "v2.lens.complexity_lowering", right_module: "v2.lens.fn_family"),
+  lens_module_gate_residue_row(left_module: "v2.lens.fact_density", right_module: "v2.lens.grounding"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.host_language_transport_script"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.identical_variant_payload"),
+  lens_module_gate_residue_row(left_module: "v2.lens.doc_reachability", right_module: "v2.lens.inert_carrier"),
+  lens_module_gate_residue_row(left_module: "v2.lens.complexity_lowering", right_module: "v2.lens.intent_linearity"),
+  lens_module_gate_residue_row(left_module: "v2.lens.dependency_fidelity", right_module: "v2.lens.interface_summary"),
+  lens_module_gate_residue_row(left_module: "v2.lens.dependency_fidelity", right_module: "v2.lens.languages_consumer_census"),
+  lens_module_gate_residue_row(left_module: "v2.lens.fact_density", right_module: "v2.lens.leaf_model_verification"),
+  lens_module_gate_residue_row(left_module: "v2.lens.dependency_fidelity", right_module: "v2.lens.live_read_classification"),
+  lens_module_gate_residue_row(left_module: "v2.lens.emitted_binary_effect_confinement", right_module: "v2.lens.machine_shape"),
+  lens_module_gate_residue_row(left_module: "v2.lens.dependency_fidelity", right_module: "v2.lens.meta_exec_confinement"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.mock_totality"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.mutation_adequacy"),
+  lens_module_gate_residue_row(left_module: "v2.lens.doc_reachability", right_module: "v2.lens.non_fold_residue"),
+  lens_module_gate_residue_row(left_module: "v2.lens.dependency_fidelity", right_module: "v2.lens.realization_vocabulary_containment"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.roster_registry"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.schedule_lens"),
+  lens_module_gate_residue_row(left_module: "v2.lens.complexity_lowering", right_module: "v2.lens.simulated_relationship"),
+  lens_module_gate_residue_row(left_module: "v2.lens.complexity_lowering", right_module: "v2.lens.structural_similarity"),
+  lens_module_gate_residue_row(left_module: "v2.lens.duplicate_computation", right_module: "v2.lens.subsumption"),
+  lens_module_gate_residue_row(left_module: "v2.lens.complexity", right_module: "v2.lens.synthesis"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.test_migration_debt"),
+  lens_module_gate_residue_row(left_module: "v2.lens.fact_density", right_module: "v2.lens.lifecycle_carrier"),
+  lens_module_gate_residue_row(left_module: "v2.lens.fact_density", right_module: "v2.lens.unit_modeling"),
+  lens_module_gate_residue_row(left_module: "v2.lens.dependency_fidelity", right_module: "v2.lens.visibility"),
+  lens_module_gate_residue_row(left_module: "v2.lens.doc_reachability", right_module: "v2.lens.wiring_liveness"),
+  lens_module_gate_residue_row(left_module: "v2.lens.production_qualification_origin_probe", right_module: "v2.lens.witness_cost_locality")
 ]
 
 fn lens_module_gate_surfaces() -> List<LensInvariantSurface> {
