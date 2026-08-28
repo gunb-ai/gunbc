@@ -91,3 +91,21 @@ service Filesystem {
     transport file { path: "{path}", verb: "list" }
   }
 }
+
+// THE LISTING IS ONE NEWLINE-JOINED BLOB, so asking whether it NAMES an entry is a question about
+// this operation's own output channel and belongs beside it rather than in each consumer. It is a
+// whole-line containment test, not a substring one: `head.json` is a member of a listing that also
+// carries `other-head.json`, and a bare substring match would answer yes for the second while the
+// first is absent. The sentinel newlines on both ends are what make the first and last entries
+// ordinary members rather than special cases.
+//
+// ESTABLISHING ABSENCE IS WHY THIS EXISTS. A failed Read answers the same way for a file that does
+// not exist and one that exists and cannot be read, and those have opposite correct actions, so a
+// consumer that needs to conclude `not there` must conclude it from a listing that SUCCEEDED. This
+// predicate is that conclusion; the success channel is the caller's to check first.
+fn filesystem_listing_names_entry(listing: String, name: String) -> Bool {
+  string_contains(
+    s: join(["\n", listing, "\n"], ""),
+    pattern: join(["\n", name, "\n"], ""),
+  )
+}

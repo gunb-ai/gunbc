@@ -1,0 +1,295 @@
+module test.claim.roadmap_publication_helper_witness
+
+import std.types { Bool, String, NonEmptyStr, CommitSha }
+import std.layout { render }
+import extdeps.github.github { Repository }
+import gunbc.repository { gunbc_repository }
+import gunbc.roadmap_publish {
+  RoadmapPublicationSubject,
+  PublicationReceipt,
+  publication_receipt_of,
+  PublicationBranchNotPublished,
+}
+import gunbc.roadmap_publication_helper {
+  PublicationSpoolAddress, SpoolAddressed, SpoolUnaddressable,
+  publication_spool_address,
+  publication_spool_entry_name,
+  publication_request_json,
+  publication_request_decode,
+  PublicationRequestDecode, RequestDecoded, RequestUndecodable,
+  publication_request_path_for,
+  publication_answer_path_for,
+  PublicationHelperOutcome,
+  HelperAnswered, HelperAlreadyAnswered, HelperRequestUnreadable,
+  HelperAnswerWriteFailed, HelperSpoolRefused,
+  publication_helper_outcome_is_fault,
+  publication_helper_answer_request,
+  publication_helper_credential_env_var,
+}
+import gunbc.roadmap_publish_observe {
+  PublicationCredentialSource, CredentialSourceAbsent,
+}
+import gunbc.host_layout {
+  publication_request_dir,
+  publication_answer_dir,
+}
+import gunbc.live_deploy.emit {
+  live_deploy_protocol,
+  emit_publication_service_unit_doc,
+  emit_belt_service_unit_doc,
+  emit_systemd_unit_doc,
+  ReleaseRevisionBinding,
+  RevisionBoundAtEmission,
+}
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  deployment_spec_srv1,
+  deployment_credential_env_path,
+}
+
+// WHAT THIS FILE ASSERTS, AND WHAT IT CANNOT.
+//
+// The deliverable is a NEGATIVE property -- the belt and serve units never hold a GitHub token --
+// and a negative over a whole process is not something a hermetic witness can establish. What is
+// establishable is the two facts the property is built from, and both are asserted here by
+// execution: the units that spawn children bind no credential while the unit that does bind one
+// spawns nothing (over rendered unit bytes, which is where a credential binding is either present
+// or absent), and the request document the belt hands across carries a subject and nothing that
+// could direct a write.
+//
+// WHAT IS DELIBERATELY NOT CLAIMED. Nothing here observes a host, so this says nothing about
+// whether the publication account exists on srv1, whether the credential file is placed, or what
+// its mode is. Those are the operator's half, declared in gunbc.live_deploy.spec
+// deployment_credential_env_path, and asserting them from a fixture would be the authored-versus-
+// executed collapse this repository keeps paying for.
+
+fn live_spec() -> DeploymentSpec {
+  deployment_spec_srv1()
+}
+
+fn live_revision() -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: "0000000000000000000000000000000000000000" as CommitSha }
+}
+
+fn subject_at(node_id: String, attempt_key: String, head: String) -> RoadmapPublicationSubject {
+  RoadmapPublicationSubject {
+    node_id: node_id,
+    attempt_key: attempt_key,
+    repository: gunbc_repository,
+    branch: "session/sharp-crab-95" as NonEmptyStr,
+    expected_base: gunbc_repository.default_branch as NonEmptyStr,
+    expected_head: head as CommitSha,
+  }
+}
+
+fn ordinary_subject() -> RoadmapPublicationSubject {
+  subject_at(
+    node_id: "adhoc-27aa0eed-025",
+    attempt_key: "a1",
+    head: "1111111111111111111111111111111111111111",
+  )
+}
+
+// ── The spool address refuses what it cannot safely name ────────────────────────────────────────
+//
+// A DISCRIMINATING PAIR, not a single green. The subject's three identifying fields arrive from an
+// attempts ledger on disk rather than from a constructor that constrains them, so a separator in
+// any of them would address a file outside the spool -- and this is a wall that would look exactly
+// as healthy while accepting everything, which is why the refusal is asserted beside the accept.
+
+test fn an_ordinary_subject_addresses_its_own_spool_entry() -> Bool {
+  match publication_spool_address(subject: ordinary_subject()) {
+    SpoolAddressed { key } =>
+      key == "adhoc-27aa0eed-025.a1.1111111111111111111111111111111111111111"
+      && publication_spool_entry_name(key: key) == "adhoc-27aa0eed-025.a1.1111111111111111111111111111111111111111.json"
+    SpoolUnaddressable { reason: _ } => false
+  }
+}
+
+test fn a_subject_carrying_a_path_separator_is_refused_in_every_field() -> Bool {
+  let node = match publication_spool_address(
+    subject: subject_at(node_id: "../etc", attempt_key: "a1", head: "1111111111111111111111111111111111111111"),
+  ) {
+    SpoolUnaddressable { reason: _ } => true
+    SpoolAddressed { key: _ } => false
+  }
+  let attempt = match publication_spool_address(
+    subject: subject_at(node_id: "n", attempt_key: "a/1", head: "1111111111111111111111111111111111111111"),
+  ) {
+    SpoolUnaddressable { reason: _ } => true
+    SpoolAddressed { key: _ } => false
+  }
+  let head = match publication_spool_address(
+    subject: subject_at(node_id: "n", attempt_key: "a1", head: "../../answers/other"),
+  ) {
+    SpoolUnaddressable { reason: _ } => true
+    SpoolAddressed { key: _ } => false
+  }
+  node && attempt && head
+}
+
+test fn an_empty_identifying_field_is_refused_rather_than_addressed() -> Bool {
+  match publication_spool_address(
+    subject: subject_at(node_id: "n", attempt_key: "", head: "1111111111111111111111111111111111111111"),
+  ) {
+    SpoolUnaddressable { reason: _ } => true
+    SpoolAddressed { key: _ } => false
+  }
+}
+
+// ── The request round-trips, and refuses a document that is not one ──────────────────────────────
+
+test fn a_request_decodes_back_to_the_subject_it_was_written_from() -> Bool {
+  match publication_request_decode(request: publication_request_json(subject: ordinary_subject())) {
+    RequestUndecodable { reason: _ } => false
+    RequestDecoded { subject } =>
+      subject.node_id == ordinary_subject().node_id
+      && subject.attempt_key == ordinary_subject().attempt_key
+      && (subject.branch as String) == (ordinary_subject().branch as String)
+      && (subject.expected_base as String) == (ordinary_subject().expected_base as String)
+      && (subject.expected_head as String) == (ordinary_subject().expected_head as String)
+      && subject.repository.owner == ordinary_subject().repository.owner
+      && subject.repository.name == ordinary_subject().repository.name
+  }
+}
+
+test fn a_document_of_another_schema_is_refused_rather_than_read_as_a_request() -> Bool {
+  match publication_request_decode(
+    request: "{\"schema\":\"roadmap-publication-receipt/v2\",\"subject\":{}}",
+  ) {
+    RequestUndecodable { reason: _ } => true
+    RequestDecoded { subject: _ } => false
+  }
+}
+
+test fn a_document_that_is_not_json_is_refused_rather_than_read_as_a_request() -> Bool {
+  match publication_request_decode(request: "not a document at all") {
+    RequestUndecodable { reason: _ } => true
+    RequestDecoded { subject: _ } => false
+  }
+}
+
+// ── A request whose subject does not match its own entry name is refused ─────────────────────────
+//
+// THIS IS THE ANTI-FORGERY ARM AND IT IS REACHED WITHOUT A NETWORK READ. The helper derives the
+// answer's address from the subject it decodes, never from the request's name, so a document placed
+// under one name carrying a subject that addresses another is a document whose name lies. It is
+// refused before any observation, which is what makes this arm hermetic: the credential is never
+// consulted, and the check runs ahead of the branch that would consult it.
+
+test fn a_request_whose_subject_addresses_another_entry_is_refused_before_any_observation() -> Bool {
+  match publication_helper_answer_request(
+    instance_root: "/opt/gunbc",
+    credential: CredentialSourceAbsent { reason: "no credential in this witness" },
+    entry: "some-other-node.a1.2222222222222222222222222222222222222222.json",
+    request_text: publication_request_json(subject: ordinary_subject()),
+  ) {
+    HelperRequestUnreadable { entry: e, detail: _ } =>
+      e == "some-other-node.a1.2222222222222222222222222222222222222222.json"
+    HelperAnswered { key: _, outcome_key: _ } => false
+    HelperAlreadyAnswered { key: _ } => false
+    HelperAnswerWriteFailed { key: _, detail: _ } => false
+    HelperSpoolRefused { detail: _ } => false
+  }
+}
+
+test fn a_request_document_that_does_not_decode_is_refused_rather_than_skipped() -> Bool {
+  match publication_helper_answer_request(
+    instance_root: "/opt/gunbc",
+    credential: CredentialSourceAbsent { reason: "no credential in this witness" },
+    entry: "n.a1.1111111111111111111111111111111111111111.json",
+    request_text: "{}",
+  ) {
+    HelperRequestUnreadable { entry: _, detail: _ } => true
+    HelperAnswered { key: _, outcome_key: _ } => false
+    HelperAlreadyAnswered { key: _ } => false
+    HelperAnswerWriteFailed { key: _, detail: _ } => false
+    HelperSpoolRefused { detail: _ } => false
+  }
+}
+
+// ── The fault partition is exact ─────────────────────────────────────────────────────────────────
+//
+// The helper's exit status is derived from this predicate, so a new outcome arm silently classified
+// as non-fault would be a helper that exits 0 having done nothing. Both poles are asserted, because
+// a predicate that answered true for everything would satisfy a one-sided check.
+
+test fn only_the_helpers_own_failures_are_faults() -> Bool {
+  !publication_helper_outcome_is_fault(o: HelperAnswered { key: "k", outcome_key: "branch-not-published" })
+  && !publication_helper_outcome_is_fault(o: HelperAlreadyAnswered { key: "k" })
+  && publication_helper_outcome_is_fault(o: HelperRequestUnreadable { entry: "e", detail: "d" })
+  && publication_helper_outcome_is_fault(o: HelperAnswerWriteFailed { key: "k", detail: "d" })
+  && publication_helper_outcome_is_fault(o: HelperSpoolRefused { detail: "d" })
+}
+
+// ── The credential is bound to exactly one unit, and it is the one that spawns nothing ───────────
+//
+// THE DISCRIMINATOR IS THE PAIR, ASSERTED OVER THE SAME BYTES A DEPLOY INSTALLS. A witness that
+// only checked the publication unit HAS a credential would pass just as well with the belt unit
+// carrying one too, which is precisely the state this lane exists to end; a witness that only
+// checked the belt unit has none would pass with a helper that cannot authenticate at all.
+
+fn publication_unit_text() -> String {
+  render(doc: emit_publication_service_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
+}
+
+fn belt_unit_text() -> String {
+  render(doc: emit_belt_service_unit_doc(spec: live_spec()), proto: live_deploy_protocol)
+}
+
+fn serve_unit_text() -> String {
+  render(doc: emit_systemd_unit_doc(spec: live_spec(), revision: live_revision()), proto: live_deploy_protocol)
+}
+
+test fn the_publication_unit_binds_the_credential_and_the_other_two_do_not() -> Bool {
+  string_contains(
+    s: publication_unit_text(),
+    pattern: join(["EnvironmentFile=-", deployment_credential_env_path(names: live_spec().names) as String], ""),
+  )
+  && !string_contains(s: belt_unit_text(), pattern: "EnvironmentFile")
+  && !string_contains(s: serve_unit_text(), pattern: "EnvironmentFile")
+}
+
+test fn the_credential_variable_is_named_in_no_unit_that_spawns_a_worker() -> Bool {
+  !string_contains(s: belt_unit_text(), pattern: publication_helper_credential_env_var as String)
+  && !string_contains(s: serve_unit_text(), pattern: publication_helper_credential_env_var as String)
+}
+
+// THE PRINCIPAL IS THE BOUNDARY, so the unit that reads the credential must not run as the account
+// the belt and serve units run as. Asserted as a DIFFERENCE rather than against a literal name: the
+// account's host-local handle is an allocation (see DeploymentNames' header), and a witness pinning
+// the spelling would fail on any host that allocated a different one while saying nothing about the
+// property that matters.
+test fn the_publication_unit_runs_as_a_principal_the_service_units_do_not() -> Bool {
+  let principal = live_spec().names.publication_principal as String
+  let service_user = live_spec().service.service_user as String
+  principal != service_user
+  && string_contains(s: publication_unit_text(), pattern: join(["User=", principal], ""))
+  && string_contains(s: belt_unit_text(), pattern: join(["User=", service_user], ""))
+  && string_contains(s: serve_unit_text(), pattern: join(["User=", service_user], ""))
+}
+
+// THE HELPER IS HANDED ONE ARGUMENT AND NO SPAWN ROOT. The belt unit carries a spawn workdir
+// because a tick launches provider sessions; a publication unit that carried one would be a
+// credentialed process with a tree to act on, which is the shape the boundary refuses.
+test fn the_publication_unit_carries_no_spawn_environment() -> Bool {
+  !string_contains(s: publication_unit_text(), pattern: "Environment=")
+  && string_contains(s: publication_unit_text(), pattern: "--function publication_helper_run_once_cli")
+}
+
+// ── The two spool directories are addressed apart ────────────────────────────────────────────────
+//
+// A single directory could not carry the opposite permissions the boundary needs, so their
+// distinctness is a property the emitter and the reader must agree on rather than a detail.
+
+test fn a_request_and_its_answer_are_addressed_in_different_directories() -> Bool {
+  publication_request_dir(instance_root: "/opt/gunbc")
+    != publication_answer_dir(instance_root: "/opt/gunbc")
+  && publication_request_path_for(instance_root: "/opt/gunbc", key: "k")
+    != publication_answer_path_for(instance_root: "/opt/gunbc", key: "k")
+}
+
+test fn two_instances_do_not_share_a_spool() -> Bool {
+  publication_request_dir(instance_root: "/opt/gunbc")
+    != publication_request_dir(instance_root: "/opt/gunbc-lab")
+}

@@ -1,0 +1,635 @@
+module gunbc.roadmap_publication_helper
+
+import std.algebra { trim }
+import std.types { String, NonEmptyStr, List, Bool, CommitSha }
+import std.credentials { CredentialSource }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_string,
+  json_object,
+  json_kv,
+  serialize_json,
+}
+import extdeps.languages.json.parse {
+  parse_json_document,
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  json_document_gap_text,
+  json_object_unique_member,
+  JsonMemberFound,
+}
+import gunbc.host_layout { publication_request_dir, publication_answer_dir }
+import gunbc.roadmap_publish {
+  RoadmapPublicationSubject,
+  PublicationReceipt,
+  publication_subject_json,
+  publication_subject_decode,
+  publication_receipt_member,
+  ReceiptMemberRead,
+  ReceiptMemberUnreadable,
+  SubjectDecoded,
+  SubjectUndecodable,
+  publication_receipt_of,
+  publication_receipt_json,
+  publication_receipt_decode,
+  ReceiptDecoded,
+  ReceiptUndecodable,
+  publication_receipt_outcome_key,
+  publication_receipt_subject_match,
+  SubjectMatches,
+  SubjectDiffers,
+}
+import gunbc.roadmap_publish_observe {
+  PublicationCredentialSource,
+  CredentialSourceConfigured,
+  CredentialSourceAbsent,
+  observe_publication_for_subject,
+}
+
+// THE PUBLICATION CREDENTIAL BOUNDARY IS A UNIX PRINCIPAL, NOT A TRANSPORT.
+//
+// gunbc.live_deploy.spec deployment_credential_env_path records why the obvious repairs were
+// withdrawn, and both of its arguments are about WHO can read, never about HOW the token is
+// carried. A service-wide environment source reaches the whole process AND every child, and the
+// belt spawns providers through `env -C <workdir> <program>` with neither -i nor -u, so a token
+// bound into the belt unit reaches git, tmux and the dispatched provider session -- where `gh`
+// consults GH_TOKEN then GITHUB_TOKEN and OVERRIDES the identity that worker was meant to act as.
+// Moving the token from a variable to a file stops the automatic inheritance and creates no
+// authorization boundary at all, because both units run as the deployment service user and the
+// worker is spawned beneath that process.
+//
+// SO THE BOUNDARY IS THE PRINCIPAL. This module is the whole of what runs under it: a request
+// carrying a publication SUBJECT is handed across, a receipt is handed back, and the process that
+// holds the credential has no tmux, no provider, no workspace, no git worktree and no children.
+// gunbc.fleet_posix_accounts fleet_posix_publication_helper_sudo_grants states the other half --
+// the principal holds no sudo grant of any shape, so it cannot act as anybody else either.
+//
+// WHY THE CREDENTIAL SOURCE IS STILL AN ENVIRONMENT VARIABLE, which looks like the very thing that
+// was withdrawn and is not. The withdrawal was of a variable bound into a unit WHOSE CHILDREN ARE
+// THE LEAK, and this unit has none; the transport was never the defect. A file-backed
+// std.credentials.CredentialSource variant was considered and is not built here, for a reason worth
+// recording rather than rediscovering: the v1 seed's REST realization resolves svc_auth_source by
+// reading a `name` field as an environment variable and nothing else, so a file variant is a change
+// to the frozen seed's interpreter that does not serve the v2 self-host program and would therefore
+// need its own operator ruling. The variant would buy no boundary this principal does not already
+// provide.
+//
+// THE REQUEST IS A DOCUMENT AND NOT A CALL, and that is forced rather than chosen. The service user
+// holds no sudo grant and no systemctl grant, so it cannot start a unit under another principal;
+// the only verb it has across the boundary is creating a file in a directory the helper owns. A
+// timer drives the helper on the same cadence as the belt, so a request is answered within one
+// period and every state in between is a named, recorded one.
+//
+// WHAT IS NOT CLAIMED. This does not model a WORKER credential and does not strip GH_TOKEN or
+// GITHUB_TOKEN at the provider spawn. That ordering was ruled explicitly: with no worker source
+// modeled or observed, removing those variables could take away the only authentication a worker
+// currently has, trading a scope defect for a capability loss.
+// THE SPOOL KEY IS THE SUBJECT'S OWN IDENTITY, RENDERED, and it is checked rather than trusted.
+// node id, attempt key and head are the three fields that make a publication judgment unique, and
+// they arrive from an attempts ledger on disk rather than from a constructor that constrains them,
+// so a value carrying a path separator would address a file outside the spool. That is a decidable
+// property of a string this module is about to use as a filename, so it refuses here rather than
+// producing a path and hoping.
+type PublicationSpoolAddress
+  = SpoolAddressed { key: String }
+  | SpoolUnaddressable { reason: String }
+
+fn publication_spool_segment_is_addressable(segment: String) -> Bool {
+  if trim(segment) == "" {
+    false
+  } else if string_contains(s: segment, pattern: "/") {
+    false
+  } else {
+    !string_contains(s: segment, pattern: "..")
+  }
+}
+
+fn publication_spool_address(subject: RoadmapPublicationSubject) -> PublicationSpoolAddress {
+  if !publication_spool_segment_is_addressable(segment: subject.node_id) {
+    SpoolUnaddressable {
+      reason: join([
+        "the node id is empty or carries a path separator, so it cannot address a spool entry: ",
+        subject.node_id,
+      ], ""),
+    }
+  } else if !publication_spool_segment_is_addressable(segment: subject.attempt_key) {
+    SpoolUnaddressable {
+      reason: join([
+        "the attempt key is empty or carries a path separator, so it cannot address a spool entry: ",
+        subject.attempt_key,
+      ], ""),
+    }
+  } else if !publication_spool_segment_is_addressable(segment: subject.expected_head as String) {
+    SpoolUnaddressable {
+      reason: join([
+        "the expected head is empty or carries a path separator, so it cannot address a spool entry: ",
+        subject.expected_head as String,
+      ], ""),
+    }
+  } else {
+    SpoolAddressed {
+      key: join([
+        subject.node_id, ".", subject.attempt_key, ".", subject.expected_head as String,
+      ], ""),
+    }
+  }
+}
+
+fn publication_spool_entry_name(key: String) -> String {
+  join([key, ".json"], "")
+}
+
+fn publication_request_path_for(instance_root: String, key: String) -> String {
+  join([
+    publication_request_dir(instance_root: instance_root),
+    "/",
+    publication_spool_entry_name(key: key),
+  ], "")
+}
+
+fn publication_answer_path_for(instance_root: String, key: String) -> String {
+  join([
+    publication_answer_dir(instance_root: instance_root),
+    "/",
+    publication_spool_entry_name(key: key),
+  ], "")
+}
+
+// THE REQUEST CARRIES THE SUBJECT AND NOTHING ELSE, AND CARRIES NO DESTINATION.
+//
+// The tempting shape is a request that names the path its answer should be written to, because the
+// belt already knows that path and the helper would then need no addressing of its own. It is the
+// one field that must never exist: the requester sits on the far side of a privilege boundary, so a
+// caller-supplied destination is a caller-supplied write position for a principal the caller cannot
+// otherwise reach. The helper derives the answer address from the subject by the same function the
+// belt used to derive the request address, so the two agree by construction and neither is stated.
+//
+// THE SCHEMA IS A WALL RATHER THAN A HINT, on the precedent publication_receipt_schema_v2_note sets
+// in gunbc.roadmap_publish: a document whose schema is not exactly this string is refused, so a
+// future request shape cannot be silently read as this one with members missing.
+data publication_request_schema: NonEmptyStr = "roadmap-publication-request/v1"
+
+fn publication_request_json(subject: RoadmapPublicationSubject) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: publication_request_schema as String)),
+    json_kv(key: "subject", value: publication_subject_json(subject: subject)),
+  ]))
+}
+
+type PublicationRequestDecode
+  = RequestDecoded { subject: RoadmapPublicationSubject }
+  | RequestUndecodable { reason: String }
+
+fn publication_request_decode_document(doc: JsonValue) -> PublicationRequestDecode {
+  match publication_receipt_member(doc: doc, key: "schema") {
+    ReceiptMemberUnreadable { reason: r } => RequestUndecodable { reason: r }
+    ReceiptMemberRead { value: schema } =>
+      if schema != (publication_request_schema as String) {
+        RequestUndecodable {
+          reason: join([
+            "publication request schema is ", schema,
+            ", not ", publication_request_schema as String,
+          ], ""),
+        }
+      } else {
+        match json_object_unique_member(v: doc, key: "subject") {
+          JsonMemberFound { value: subject_doc } =>
+            match publication_subject_decode(doc: subject_doc) {
+              SubjectUndecodable { reason: r } => RequestUndecodable { reason: r }
+              SubjectDecoded { subject } => RequestDecoded { subject: subject }
+            }
+          _ =>
+            RequestUndecodable {
+              reason: "publication request subject member is absent or duplicated",
+            }
+        }
+      }
+  }
+}
+
+fn publication_request_decode(request: String) -> PublicationRequestDecode {
+  match parse_json_document(s: request) {
+    JsonDocumentUnreadable { gap: gap } =>
+      RequestUndecodable {
+        reason: concat("the publication request is ", json_document_gap_text(gap: gap)),
+      }
+    JsonDocumentParsed { value: doc } => publication_request_decode_document(doc: doc)
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE REQUESTING SIDE -- what the belt and the serve route do, holding no credential.
+// ---------------------------------------------------------------------------------------------
+
+// ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ, which is the same rule
+// gunbc.roadmap_belt_actuate publication_receipt_absence_is_established_note states for the
+// attempt's own receipt and for the same reason: Filesystem.Read answers success=false both for a
+// file that does not exist and for one that exists and cannot be read, and those two worlds have
+// opposite correct actions -- ask again, versus stop and say what broke.
+//
+// A DECODABLE ANSWER ABOUT ANOTHER SUBJECT IS NOT AN ANSWER, and it is refused rather than being
+// treated as absent. The answer's address is derived from the subject, so a mismatch means
+// something wrote a receipt for a different judgment into this judgment's slot -- unexplained
+// state, and the belt's move on unexplained state is to stop. Treating it as absent would enqueue a
+// second request whose answer would land at the same address, which is a silent overwrite of the
+// only evidence that it happened.
+type PublicationAnswerRead
+  = AnswerAbsent
+  | AnswerPresent { receipt: PublicationReceipt }
+  | AnswerUnreadable { reason: String }
+
+fn publication_answer_read_at(path: String, expected: RoadmapPublicationSubject) -> PublicationAnswerRead {
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    AnswerUnreadable {
+      reason: join([
+        "a publication answer for this head was listed and then could not be read, so it exists and its content is unavailable: ",
+        path, " (", read.error, ")",
+      ], ""),
+    }
+  } else {
+    match publication_receipt_decode(receipt: read.content) {
+      ReceiptUndecodable { reason: r } =>
+        AnswerUnreadable {
+          reason: join([
+            "the publication answer at ", path, " does not decode: ", r,
+          ], ""),
+        }
+      ReceiptDecoded { receipt } =>
+        match publication_receipt_subject_match(expected: expected, found: receipt.subject) {
+          SubjectMatches => AnswerPresent { receipt: receipt }
+          SubjectDiffers { field, expected: e, found: f } =>
+            AnswerUnreadable {
+              reason: join([
+                "the publication answer at this subject's own address is about another subject (",
+                field as String, " expected ", e, ", found ", f,
+                "), which is unexplained state rather than a missing answer",
+              ], ""),
+            }
+        }
+    }
+  }
+}
+
+fn publication_answer_read(
+  instance_root: String,
+  key: String,
+  expected: RoadmapPublicationSubject,
+) -> PublicationAnswerRead {
+  let dir = publication_answer_dir(instance_root: instance_root)
+  let listing = Filesystem.List(path: dir)
+  if !listing.success {
+    AnswerUnreadable {
+      reason: join([
+        "the publication answer directory could not be listed, so whether an answer exists was not established: ",
+        dir, " (", listing.error, ") — the publication helper's spool is created by the deploy and owned by its own principal",
+      ], ""),
+    }
+  } else if !filesystem_listing_names_entry(
+    listing: listing.entries,
+    name: publication_spool_entry_name(key: key),
+  ) {
+    AnswerAbsent
+  } else {
+    publication_answer_read_at(
+      path: publication_answer_path_for(instance_root: instance_root, key: key),
+      expected: expected,
+    )
+  }
+}
+
+// THE ENQUEUE IS IDEMPOTENT BY ADDRESS, not by a check. The request's name is the subject's own
+// identity, and its content is a pure function of that subject, so writing it twice writes the same
+// bytes to the same path -- there is no `already queued` state to observe and get wrong, and a
+// re-enqueue while the helper is mid-answer costs one identical write.
+type PublicationRequestEnqueue
+  = RequestEnqueued { path: String }
+  | RequestNotEnqueued { detail: String }
+
+fn publication_request_enqueue(
+  instance_root: String,
+  key: String,
+  subject: RoadmapPublicationSubject,
+) -> PublicationRequestEnqueue {
+  let path = publication_request_path_for(instance_root: instance_root, key: key)
+  let write = Filesystem.Write(
+    path: path,
+    content: publication_request_json(subject: subject),
+  )
+  if write.success {
+    RequestEnqueued { path: path }
+  } else {
+    RequestNotEnqueued {
+      detail: join([
+        "the publication request could not be written, so nothing was asked of the publication helper: ",
+        path, " (", write.error, ")",
+      ], ""),
+    }
+  }
+}
+
+// FOUR STATES, BECAUSE FOUR REMEDIES. An answer that is ready, a request that is now waiting, a
+// subject that cannot address a spool entry at all, and a spool that could not be reached are what
+// a caller does four different things about, and an Optional over the receipt would collapse the
+// last three into one silence. The waiting arm in particular must NOT read as `nothing to publish`:
+// that is the empty-observation narrow -- an observation that could not answer rendered as the
+// verdict `nothing is affected` -- and it is what a Pending lamp looked like for the whole time
+// this lane was broken.
+type PublicationAnswerStanding
+  = AnswerReady { receipt: PublicationReceipt }
+  | AnswerAwaited { request_path: String }
+  | AnswerUnaddressable { reason: String }
+  | AnswerSpoolRefused { reason: String }
+
+fn publication_answer_standing(
+  instance_root: String,
+  subject: RoadmapPublicationSubject,
+) -> PublicationAnswerStanding {
+  match publication_spool_address(subject: subject) {
+    SpoolUnaddressable { reason } => AnswerUnaddressable { reason: reason }
+    SpoolAddressed { key } =>
+      match publication_answer_read(
+        instance_root: instance_root,
+        key: key,
+        expected: subject,
+      ) {
+        AnswerUnreadable { reason } => AnswerSpoolRefused { reason: reason }
+        AnswerPresent { receipt } => AnswerReady { receipt: receipt }
+        AnswerAbsent =>
+          match publication_request_enqueue(
+            instance_root: instance_root,
+            key: key,
+            subject: subject,
+          ) {
+            RequestNotEnqueued { detail } => AnswerSpoolRefused { reason: detail }
+            RequestEnqueued { path } => AnswerAwaited { request_path: path }
+          }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ANSWERING SIDE -- the only code in this repository that resolves a publication credential.
+// ---------------------------------------------------------------------------------------------
+
+// THE PROBE, MOVED HERE FROM THE BELT RATHER THAN COPIED. gunbc.roadmap_belt_actuate carried
+// belt_publication_credential and its source row until this change; both are DELETED there, which
+// is the deliverable rather than a tidy-up -- the belt now has no function that can name, read or
+// hold a publication token, so the boundary is a property of what exists rather than of what the
+// units happen to bind.
+//
+// WHY THE PROBE EXISTS AT ALL, unchanged from the argument it carried in the belt: a publication
+// read without a usable token is not a failed read, it is a read that must not be attempted.
+// Sending an empty bearer produces a 401 whose only content is that we sent nothing. Probing turns
+// the most decidable failure on a fresh host into an ordinary value that becomes a recorded
+// refusal, which is why an absent credential still produces an ANSWER rather than silence.
+//
+// THE VALUE DOES TRANSIT this function, and pretending otherwise would be the overclaim.
+// shell.Env.Get returns the variable's contents, so the token is briefly a String inside this
+// process; only its emptiness escapes, and nothing stores or renders it. Dissolve-on: a modeled
+// presence-only environment probe, at which point this reads nothing.
+//
+// OutcomeIsData ADMISSIBILITY: printenv exits 1 when the variable is unset, and that exit IS the
+// answer being asked for, not a fault. The result is a PublicationCredentialSource whose two arms
+// ARE the adjudication, never unit.
+data publication_helper_credential_env_var: NonEmptyStr = "GITHUB_TOKEN" as NonEmptyStr
+
+data publication_helper_credential_source: CredentialSource = std.credentials.EnvVar { name: "GITHUB_TOKEN" }
+
+fn publication_helper_credential() -> PublicationCredentialSource {
+  match shell.Env.Get(name: publication_helper_credential_env_var, expect: OutcomeIsData).value {
+    Present { value } =>
+      if trim(value) == "" {
+        CredentialSourceAbsent {
+          reason: "GITHUB_TOKEN is set to an empty value in the publication helper's environment",
+        }
+      } else {
+        CredentialSourceConfigured { source: publication_helper_credential_source }
+      }
+    Absent =>
+      CredentialSourceAbsent {
+        reason: "GITHUB_TOKEN is not set in the publication helper's environment",
+      }
+  }
+}
+
+// EVERY REQUEST GETS AN ANSWER OR A NAMED REFUSAL, and no arm is silent. A request that does not
+// decode is not skipped: skipping it would leave the requester waiting forever on a document only
+// the helper can see, which is a deadlock whose observable form is an ordinary Pending lamp.
+type PublicationHelperOutcome
+  = HelperAnswered { key: String, outcome_key: String }
+  | HelperAlreadyAnswered { key: String }
+  | HelperRequestUnreadable { entry: String, detail: String }
+  | HelperAnswerWriteFailed { key: String, detail: String }
+  | HelperSpoolRefused { detail: String }
+
+fn publication_helper_outcome_key(o: PublicationHelperOutcome) -> String {
+  match o {
+    HelperAnswered { key: _, outcome_key: _ } => "answered"
+    HelperAlreadyAnswered { key: _ } => "already-answered"
+    HelperRequestUnreadable { entry: _, detail: _ } => "request-unreadable"
+    HelperAnswerWriteFailed { key: _, detail: _ } => "answer-write-failed"
+    HelperSpoolRefused { detail: _ } => "spool-refused"
+  }
+}
+
+fn publication_helper_outcome_is_fault(o: PublicationHelperOutcome) -> Bool {
+  match o {
+    HelperAnswered { key: _, outcome_key: _ } => false
+    HelperAlreadyAnswered { key: _ } => false
+    HelperRequestUnreadable { entry: _, detail: _ } => true
+    HelperAnswerWriteFailed { key: _, detail: _ } => true
+    HelperSpoolRefused { detail: _ } => true
+  }
+}
+
+// THE ANSWER IS WRITTEN AT AN ADDRESS THE HELPER DERIVES FROM THE SUBJECT IT JUST DECODED, never at
+// one the request named. See publication_request_schema's header: a caller-supplied destination
+// would be a caller-supplied write position for a principal the caller cannot otherwise reach.
+fn publication_helper_answer_request(
+  instance_root: String,
+  credential: PublicationCredentialSource,
+  entry: String,
+  request_text: String,
+) -> PublicationHelperOutcome {
+  match publication_request_decode(request: request_text) {
+    RequestUndecodable { reason } =>
+      HelperRequestUnreadable { entry: entry, detail: reason }
+    RequestDecoded { subject } =>
+      match publication_spool_address(subject: subject) {
+        SpoolUnaddressable { reason } =>
+          HelperRequestUnreadable { entry: entry, detail: reason }
+        SpoolAddressed { key } =>
+          if publication_spool_entry_name(key: key) != entry {
+            HelperRequestUnreadable {
+              entry: entry,
+              detail: join([
+                "the request's own subject addresses ",
+                publication_spool_entry_name(key: key),
+                ", so the document at this entry is not about the judgment its name claims",
+              ], ""),
+            }
+          } else {
+            let receipt = publication_receipt_of(
+              subject: subject,
+              outcome: observe_publication_for_subject(
+                credential: credential,
+                subject: subject,
+              ),
+            )
+            let write = Filesystem.Write(
+              path: publication_answer_path_for(instance_root: instance_root, key: key),
+              content: publication_receipt_json(receipt: receipt),
+            )
+            if write.success {
+              HelperAnswered {
+                key: key,
+                outcome_key: publication_receipt_outcome_key(outcome: receipt.outcome) as String,
+              }
+            } else {
+              HelperAnswerWriteFailed {
+                key: key,
+                detail: join([
+                  "the publication answer could not be written: ", write.error,
+                ], ""),
+              }
+            }
+          }
+      }
+  }
+}
+
+fn publication_helper_entry_outcome(
+  instance_root: String,
+  credential: PublicationCredentialSource,
+  answers: String,
+  entry: String,
+) -> PublicationHelperOutcome {
+  if trim(entry) == "" {
+    HelperSpoolRefused { detail: "the request listing carried an empty entry name" }
+  } else if filesystem_listing_names_entry(listing: answers, name: entry) {
+    HelperAlreadyAnswered { key: entry }
+  } else {
+    let path = join([
+      publication_request_dir(instance_root: instance_root), "/", entry,
+    ], "")
+    let read = Filesystem.Read(path: path)
+    if !read.success {
+      HelperRequestUnreadable {
+        entry: entry,
+        detail: join([
+          "a publication request was listed and then could not be read: ",
+          path, " (", read.error, ")",
+        ], ""),
+      }
+    } else {
+      publication_helper_answer_request(
+        instance_root: instance_root,
+        credential: credential,
+        entry: entry,
+        request_text: read.content,
+      )
+    }
+  }
+}
+
+// ONE CREDENTIAL PROBE PER RUN, not one per request, for the reason belt_publish_pass_note gives
+// for the probe it replaces: the environment does not change between requests within a run, and
+// probing per request would multiply a process spawn by the request count for an answer that
+// cannot differ.
+//
+// AN UNLISTABLE REQUEST SPOOL REFUSES AND DOES NOT WIDEN. There is no arm that answers `assume
+// there is nothing to do` -- that is the empty-observation narrow, and it would render a helper
+// whose spool the deploy never created as a helper with no work, forever.
+fn publication_helper_run_once(instance_root: String) -> List<PublicationHelperOutcome> {
+  let requests_dir = publication_request_dir(instance_root: instance_root)
+  let requests = Filesystem.List(path: requests_dir)
+  if !requests.success {
+    [
+      HelperSpoolRefused {
+        detail: join([
+          "the publication request directory could not be listed, so it is unknown whether anything was asked: ",
+          requests_dir, " (", requests.error, ")",
+        ], ""),
+      },
+    ]
+  } else {
+    let answers = Filesystem.List(path: publication_answer_dir(instance_root: instance_root))
+    if !answers.success {
+      [
+        HelperSpoolRefused {
+          detail: join([
+            "the publication answer directory could not be listed, so an already-answered request is indistinguishable from a new one: ",
+            publication_answer_dir(instance_root: instance_root), " (", answers.error, ")",
+          ], ""),
+        },
+      ]
+    } else {
+      let credential = publication_helper_credential()
+      map(
+        filter(xs: split(s: requests.entries, delimiter: "\n"), f: e => trim(e) != ""),
+        entry => publication_helper_entry_outcome(
+          instance_root: instance_root,
+          credential: credential,
+          answers: answers.entries,
+          entry: trim(entry),
+        ),
+      )
+    }
+  }
+}
+
+fn publication_helper_run_json(outcomes: List<PublicationHelperOutcome>) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-publication-helper-run/v1")),
+    json_kv(
+      key: "outcomes",
+      value: json_array(elements: map(outcomes, o => json_object(members: [
+        json_kv(key: "outcome", value: json_string(s: publication_helper_outcome_key(o: o))),
+        json_kv(key: "detail", value: json_string(s: publication_helper_outcome_detail(o: o))),
+      ]))),
+    ),
+  ]))
+}
+
+fn publication_helper_outcome_detail(o: PublicationHelperOutcome) -> String {
+  match o {
+    HelperAnswered { key, outcome_key } => join([key, " → ", outcome_key], "")
+    HelperAlreadyAnswered { key } => key
+    HelperRequestUnreadable { entry, detail } => join([entry, ": ", detail], "")
+    HelperAnswerWriteFailed { key, detail } => join([key, ": ", detail], "")
+    HelperSpoolRefused { detail } => detail
+  }
+}
+
+// EXIT SEMANTICS, on the belt's own precedent (belt_run_once_cli_note): a recorded refusal is a
+// counted outcome and not a failure to run, so an answer recording an absent credential exits 0 --
+// the fact reached disk and the requester will read it. Nonzero is reserved for the helper failing
+// to do its job at all: a spool it cannot reach, a request it cannot read, an answer it cannot
+// write. That is what lets systemd distinguish `the helper is broken` from `the helper ran and
+// GitHub said no`.
+fn publication_helper_run_once_cli_in(instance_root: String) -> ProcessExit {
+  let outcomes = publication_helper_run_once(instance_root: instance_root)
+  if any(outcomes, o => publication_helper_outcome_is_fault(o: o)) {
+    exit_failure(reason: publication_helper_run_json(outcomes: outcomes))
+  } else {
+    ExitSuccess
+  }
+}
+
+// THE INSTANCE ROOT IS A REQUIRED ARGUMENT AND HAS NO DEFAULT, for the reason
+// belt_timer_is_a_deploy_member_note gives after the belt's own workdir was a literal projection of
+// production's tree: a helper that defaults would answer requests for whichever instance the
+// default names, whatever instance installed it, and two slots on one host would fuse their spools
+// silently. An empty argument REFUSES rather than falling back.
+fn publication_helper_run_once_cli(instance_root: String) -> ProcessExit {
+  if trim(instance_root) == "" {
+    exit_failure(reason: "publication_helper_run_once_cli: instance_root is empty — the helper has no spool to answer from (fail-closed)")
+  } else {
+    publication_helper_run_once_cli_in(instance_root: trim(instance_root))
+  }
+}

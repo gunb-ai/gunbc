@@ -131,7 +131,7 @@ import gunbc.roadmap_belt_actuate {
   belt_listing_names_entry,
   belt_publish_write_outcome,
   BeltPublishOutcome,
-  PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable,
+  PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable, PublishRequested,
   PublishWriteFailed, PublishDeferred,
   BeltPassOutcome,
   BeltPassRecorded, BeltPassDeferred, BeltPassRefused, BeltPassFailed,
@@ -1511,6 +1511,7 @@ fn belt_pub_gate_key(gate: BeltPublishGate) -> String {
         PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => "recorded"
         PublishWriteFailed { node_id: _, detail: _ } => "write-failed"
         PublishDeferred { node_id: _, reason: _ } => "deferred"
+        PublishRequested { node_id: _, head_sha: _, request_path: _ } => "deferred"
       }
   }
 }
@@ -1553,6 +1554,7 @@ test fn a_receipt_about_another_subject_is_not_overwritten() -> Bool {
         PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
         PublishWriteFailed { node_id: _, detail: _ } => false
         PublishDeferred { node_id: _, reason: _ } => false
+        PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
       }
   }
 }
@@ -1575,6 +1577,7 @@ test fn an_unreadable_receipt_halts_rather_than_being_overwritten() -> Bool {
         PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
         PublishWriteFailed { node_id: _, detail: _ } => false
         PublishDeferred { node_id: _, reason: _ } => false
+        PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
       }
   }
 }
@@ -1593,6 +1596,7 @@ test fn a_present_but_empty_receipt_is_a_fault_not_an_absence() -> Bool {
         PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
         PublishWriteFailed { node_id: _, detail: _ } => false
         PublishDeferred { node_id: _, reason: _ } => false
+        PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
       }
   }
 }
@@ -1626,6 +1630,7 @@ test fn an_undecodable_receipt_is_not_overwritten_either() -> Bool {
         PublishRecorded { node_id: _, head_sha: _, outcome_key: _ } => false
         PublishWriteFailed { node_id: _, detail: _ } => false
         PublishDeferred { node_id: _, reason: _ } => false
+        PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
       }
   }
 }
@@ -1671,11 +1676,13 @@ test fn a_failed_write_reports_loss_rather_than_the_outcome_it_computed() -> Boo
           PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
           PublishEvidenceUnreadable { node_id: _, detail: _ } => false
           PublishDeferred { node_id: _, reason: _ } => false
+          PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
         }
     PublishWriteFailed { node_id: _, detail: _ } => false
     PublishAlreadyRecorded { node_id: _, head_sha: _ } => false
     PublishEvidenceUnreadable { node_id: _, detail: _ } => false
     PublishDeferred { node_id: _, reason: _ } => false
+    PublishRequested { node_id: _, head_sha: _, request_path: _ } => false
   }
 }
 
