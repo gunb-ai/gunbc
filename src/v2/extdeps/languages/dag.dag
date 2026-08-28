@@ -1,4 +1,5 @@
 module v2.extdeps.languages.dag
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
 import v2.std.model_core { bool_model_core }
 import v2.std.language_model { LanguageModel }
 
@@ -101,8 +102,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  SyntheticOccurrence,
-  NodeOccurrenceId,
   is_empty_conj_root,
 }
 import v2.std.node_query { find_named_child }
@@ -576,7 +575,7 @@ fn dag_grammar_atom(id: Symbol) -> Node {
       connective: Atom { identity: id }
     },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -628,7 +627,7 @@ fn emit_grammar_relation_row(
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -2979,7 +2978,7 @@ fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
         target: qualified_name
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3024,7 +3023,7 @@ fn emit_import_decl_emitted_node(
         )
       Absent => prefix
     },
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3070,7 +3069,7 @@ fn emit_alias_decl_emitted_node(binding: Node, target: Node) -> Node {
         target: target
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3116,7 +3115,7 @@ fn emit_data_decl_emitted_node(
         target: expr
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3533,7 +3532,7 @@ fn dag_fidelity_disposition_node(
             target: dag_trivia_normalization_feature_node(feature: feature)
           )
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     FailClosed { feature: feature } =>
       Node {
@@ -3548,7 +3547,7 @@ fn dag_fidelity_disposition_node(
             target: dag_trivia_normalization_feature_node(feature: feature)
           )
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
   }
 }
@@ -3570,7 +3569,7 @@ fn dag_fidelity_quotient_node() -> Node {
         target: dag_fidelity_disposition_node(disposition: dag_block_comment_fidelity())
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3591,7 +3590,7 @@ fn dag_fidelity_quotient_all_modeled_node() -> Node {
         target: dag_fidelity_disposition_node(disposition: Modeled)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3620,7 +3619,7 @@ fn dag_target_model_bundle_with_fidelity_quotient(quotient: Node) -> Node {
         target: quotient
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -3684,7 +3683,7 @@ fn dag_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3698,7 +3697,7 @@ fn dag_int_inhabitant_node() -> Node {
         target: dag_inhabitant_atom(id: ^dag_surface_spelling_int)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3708,7 +3707,7 @@ fn dag_declared_inhabitants_core() -> Node {
     children: [
       dag_named_edge(name: ^dag_inhabitant_field_int, target: dag_int_inhabitant_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3721,7 +3720,7 @@ data dag_fixture_emitted_add_fn: Node = Node {
     Edge { label: Positional, target: dag_fixture_int_inhabitant },
     Edge { label: Positional, target: dag_fixture_int_inhabitant }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn dag_pick_zip_fold_closure_edges() -> List<Edge> {
@@ -3802,7 +3801,7 @@ fn dag_declared_inhabitants_root() -> Node {
       left: dag_declared_inhabitants_core().children,
       right: dag_zip_fold_closure_edges()
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -3977,7 +3976,7 @@ fn dag_type_decl_productions_only_translation_rules() -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4013,7 +4012,7 @@ fn dag_type_decl_structural_target_model() -> TargetModel {
           target: dag_type_decl_productions_only_translation_rules()
         )
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     lex: dag_type_decl_structural_lex(),
     binding_spellings: empty_map(),
@@ -4042,7 +4041,7 @@ fn dag_translation_rules_node() -> Node {
         target: dag_add_grammar_relation_row_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -4071,7 +4070,7 @@ fn dag_target_model_bundle_core() -> Node {
         target: dag_fidelity_quotient_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -4135,7 +4134,7 @@ fn dag_loop_body_from_literal(lit: Node) -> Node {
         target: dag_loop_measure_node()
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4226,16 +4225,16 @@ fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
 }
 
 // THE PARAMETER IS THE NODE-LEVEL OCCURRENCE, NOT THE RAW ID. It is assigned straight into
-// Node.occurrence_id, which is a NodeOccurrenceId -- the coproduct of SyntheticOccurrence and
-// MintedOccurrence. A bare OccurrenceId is the PAYLOAD INSIDE one of those arms, never a member of
+// Node.occurrence_id, which is a NodeOccurrenceIdentity -- the coproduct of OccurrenceSynthetic and
+// OccurrenceMinted. A bare OccurrenceId is the PAYLOAD INSIDE one of those arms, never a member of
 // the coproduct itself, which is the whole modeling error in one line.
 // Declaring the raw OccurrenceId here meant a caller could satisfy the signature
 // with an unwrapped id and build a Node whose occurrence field held a value outside the coproduct;
 // every downstream match over the two variants then failed at run time with a non-exhaustive
 // pattern on OccurrenceId, which is what took the required floor red at #8833. Every real caller
-// was already passing a NodeOccurrenceId (SyntheticOccurrence at the fixtures, node.occurrence_id
+// was already passing a NodeOccurrenceIdentity (OccurrenceSynthetic at the fixtures, node.occurrence_id
 // in the body-lowering fold), so this declaration was the outlier, not them.
-fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: NodeOccurrenceId) -> Node {
+fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: NodeOccurrenceIdentity) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
     children: [
@@ -4248,7 +4247,7 @@ fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_i
   }
 }
 
-fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceId) -> Outcome<Node> {
+fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<Node> {
   match integer_string_to_decimal_digits_optional(s: lexeme) {
     Present { value: digits } =>
       outcome_accepted(
@@ -4359,7 +4358,7 @@ fn dag_type_atom_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4382,7 +4381,7 @@ fn dag_arrow_with_body_node(
       },
       Edge { label: Named { name: ^arrow_body_edge }, target: body }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4407,7 +4406,7 @@ fn dag_arrow_domain_conj_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: children,
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4425,7 +4424,7 @@ fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Sym
         target: dag_type_atom_node(identity: right_binding)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4446,7 +4445,7 @@ fn dag_add_arrow_signature_node() -> Node {
         target: dag_type_atom_node(identity: ^dag_binding_type_int)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4492,7 +4491,7 @@ fn dag_pick_arrow_domain_conj_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4508,7 +4507,7 @@ fn dag_pick_if_body_from_arms(
       Edge { label: Positional, target: then_arm },
       Edge { label: Positional, target: else_arm }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4517,7 +4516,7 @@ fn dag_int_literal_fixture_one() -> Node {
     magnitude: DecimalNonZero {
       magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }
     },
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   )
 }
 
@@ -4526,12 +4525,12 @@ fn dag_int_literal_fixture_two() -> Node {
     magnitude: DecimalNonZero {
       magnitude: DecimalNonZeroMagnitude { lead: NonZeroD2, tail: Empty }
     },
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   )
 }
 
 fn dag_int_literal_fixture_node(lexeme: String) -> Outcome<Node> {
-  dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence)
+  dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: OccurrenceSynthetic)
 }
 
 fn dag_pick_if_body_node() -> Node {
@@ -4603,7 +4602,7 @@ fn dag_match_arm_node(pattern_lit: Symbol, body_lit: Symbol) -> Node {
         target: dag_type_atom_node(identity: body_lit)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4619,7 +4618,7 @@ fn dag_match_body_from_arms(
       Edge { label: Positional, target: true_arm },
       Edge { label: Positional, target: false_arm }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4686,7 +4685,7 @@ fn dag_rec_construct_body_node() -> Node {
         target: dag_type_atom_node(identity: ^dag_rec_lit_nine)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4715,7 +4714,7 @@ fn dag_variant_holds_construct_node(value_lit: Symbol) -> Node {
         target: dag_type_atom_node(identity: value_lit)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4733,7 +4732,7 @@ fn dag_variant_match_arm_node(pattern_target: Node, body_lit: Symbol) -> Node {
         target: dag_type_atom_node(identity: body_lit)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4812,7 +4811,7 @@ fn dag_complement_arrow_domain_node() -> Node {
         target: dag_type_atom_node(identity: ^dag_binding_type_bool)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4874,7 +4873,7 @@ fn dag_bool_binop_arrow_domain_node() -> Node {
         target: dag_type_atom_node(identity: ^dag_binding_type_bool)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4958,7 +4957,7 @@ fn dag_field_access_body_node() -> Node {
         target: dag_type_atom_node(identity: ^dag_binding_rec_v)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -4971,7 +4970,7 @@ fn dag_field_access_arrow_domain_conj_node() -> Node {
         target: dag_type_atom_node(identity: ^dag_binding_type_rec)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -5008,7 +5007,7 @@ fn dag_bind_let_body_from_parts(
         target: dag_type_atom_node(identity: body_binding)
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -5179,7 +5178,7 @@ fn dag_family_serialize_source_node(
         )
       ]
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -5202,7 +5201,7 @@ fn dag_bodied_fn_declared_inhabitants_root(spec: DagBodiedFnFamilySpec) -> Node 
       ),
       right: dag_bodied_fn_zip_fold_closure_edges(spec: spec)
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -5222,7 +5221,7 @@ fn dag_bodied_fn_translation_rules_node(spec: DagBodiedFnFamilySpec) -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -5270,7 +5269,7 @@ fn dag_bodied_fn_target_model_bundle_node(spec: DagBodiedFnFamilySpec) -> Node {
         target: dag_operator_realizations_catalog_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -5658,7 +5657,7 @@ fn dag_target_model() -> TargetModel {
 
 fn dag_round_trip_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 

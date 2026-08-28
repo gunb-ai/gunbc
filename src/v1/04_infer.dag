@@ -2340,8 +2340,8 @@ fn type_name_transparently_aliases_to(
 //
 // The receipt is #8865's minimal pair, and the class is not synthetic: it is the mechanism that
 // permitted the 2026-08-22 outage. v2.extdeps.languages.dag built `Node { occurrence_id: <raw
-// OccurrenceId> }` where the field is declared `NodeOccurrenceId` and `OccurrenceId` is the
-// payload of its `MintedOccurrence` arm; the value entered the bad state at that record literal,
+// OccurrenceId> }` where the field is declared `NodeOccurrenceIdentity` and `OccurrenceId` is the
+// payload of its `OccurrenceMinted` arm; the value entered the bad state at that record literal,
 // stayed latent two months, and surfaced 2,000 lines and one pipeline stage away as
 // `non-exhaustive pattern match on: OccurrenceId { value: 79 }` in sixteen floor claims.
 //
@@ -9807,7 +9807,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
 // DELIBERATELY NOT PEELED, because each of these is an intentional distinction and erasing it
 // would recreate the class this relation exists to expose: a coproduct arm is never reduced to its
 // payload (the arm is a different type from what it wraps -- exactly the
-// OccurrenceId/NodeOccurrenceId shape whose absence of a wall made main red on 2026-08-22,
+// OccurrenceId/NodeOccurrenceIdentity shape whose absence of a wall made main red on 2026-08-22,
 // gunbc#8854); a where-refinement (`type A = String where p`) parses as a Conj carrying its
 // predicate and is refused by the connective test; an applied generic (`type A = B<C>`) carries
 // its arguments as children and is refused by the children test; a parameterized alias (`type A<T>
@@ -10035,7 +10035,7 @@ fn transparent_alias_representative(index: SymbolIndex, name: String) -> String 
 // actually chase through `transparent_alias_rep`; when neither does, the reps are the inputs and
 // a last-segment comparison would make any two homonymous nominal types from different modules
 // agree -- a fail-open widening in the exact arm that exists to exculpate, and precisely the
-// distinction whose erasure caused the OccurrenceId/NodeOccurrenceId incident. The caller has
+// distinction whose erasure caused the OccurrenceId/NodeOccurrenceIdentity incident. The caller has
 // already established the names are not equal, so an unchased pair is a refusal, not a question.
 // The last-segment reduction survives only for the chased case, because an alias target is the
 // authored RHS name and may be bare where the other side is qualified. Residual, stated rather

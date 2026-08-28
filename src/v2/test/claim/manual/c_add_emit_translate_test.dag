@@ -1,5 +1,6 @@
 module v2.test.manual.c_add_emit_translate
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.emit { emit }
 import v2.compiler.translate { target_serialize_source_from_model }
@@ -53,7 +54,6 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -70,7 +70,7 @@ data c_add_wrong_emitted_root: Node = Node {
     Edge { label: Positional, target: c_add_int_inhabitant },
     Edge { label: Positional, target: c_add_int_inhabitant }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data c_add_target_model: TargetModel = c_target_model()
@@ -78,7 +78,7 @@ data c_add_target_model: TargetModel = c_target_model()
 data c_add_empty_translation_rules_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data c_add_missing_translation_rules_target: TargetModel = TargetModel {

@@ -1,5 +1,6 @@
 module tools.emit_host_transport
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import extdeps.shell
@@ -29,7 +30,7 @@ import v2.std.host_transport {
   HostRuntimeRowPresent
 }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
+import v2.std.node { Atom, Node, TypeNode }
 import tools.emit_host_fixtures {
   rust_stdout_fixture_source,
   python_stdout_fixture_source,
@@ -173,7 +174,7 @@ fn c_run_probe_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^c_emit_host_run_probe } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

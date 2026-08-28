@@ -1,4 +1,5 @@
 module v2.extdeps.languages.cpp
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.language_model { LanguageModel }
 
 import v2.std.host_transport {
@@ -54,7 +55,7 @@ import v2.std.model_core {
   ModelCoreFactAxisSurfaceSpelling,
   ModelCoreFactAxisWidth
 }
-import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v2.extdeps.cpp_abi { CppTargetProfile }
 import v2.std.text { String }
 
@@ -184,7 +185,7 @@ fn cpp_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -233,7 +234,7 @@ fn cpp_width_selection_node(spelling: Node, target_profile: Node) -> Node {
         target: target_profile
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -244,7 +245,7 @@ fn cpp_target_profile_selection_node(kind: Symbol, target_profile: Node) -> Node
       cpp_named_edge(name: ^cpp_field_scalar, target: cpp_atom(id: kind)),
       cpp_named_edge(name: ^cpp_field_target_profile, target: target_profile)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -257,7 +258,7 @@ fn cpp_integer_scalar_fact_node(facts: CppIntegerPrimitiveFacts) -> Node {
       cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact),
       cpp_named_edge(name: ^cpp_field_overflow_disposition, target: facts.overflow_fact)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -269,7 +270,7 @@ fn cpp_character_scalar_fact_node(facts: CppCharacterPrimitiveFacts) -> Node {
       cpp_named_edge(name: ^cpp_field_width_selection, target: facts.width_fact),
       cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -280,7 +281,7 @@ fn cpp_integer_facts_node(facts: CppIntegerPrimitiveFacts) -> Node {
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
       cpp_named_edge(name: ^cpp_field_scalar, target: cpp_integer_scalar_fact_node(facts: facts))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -291,7 +292,7 @@ fn cpp_character_facts_node(facts: CppCharacterPrimitiveFacts) -> Node {
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
       cpp_named_edge(name: ^cpp_field_scalar, target: cpp_character_scalar_fact_node(facts: facts))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -303,7 +304,7 @@ fn cpp_bool_facts_node(facts: CppBoolPrimitiveFacts) -> Node {
       cpp_named_edge(name: ^cpp_field_scalar, target: cpp_atom(id: ^cpp_tag_bool)),
       cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -737,7 +738,7 @@ fn cpp_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts, witness: Sy
       cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact),
       cpp_named_edge(name: ^cpp_field_overflow_disposition, target: facts.overflow_fact)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -759,7 +760,7 @@ fn cpp_signed_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts) -> N
       cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact),
       cpp_named_edge(name: ^cpp_field_overflow_disposition, target: facts.overflow_fact)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -792,7 +793,7 @@ fn cpp_bool_algebra_witness_node(facts: CppBoolPrimitiveFacts) -> Node {
       cpp_named_edge(name: ^cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
       cpp_named_edge(name: ^cpp_field_signed_representation, target: facts.encoding_fact)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -923,7 +924,7 @@ fn cpp_int_inhabitant_node(target_profile: Node) -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -933,7 +934,7 @@ fn cpp_declared_inhabitants_root(target_profile: Node) -> Node {
     children: [
       cpp_named_edge(name: ^cpp_inhabitant_field_int, target: cpp_int_inhabitant_node(target_profile: target_profile))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1007,7 +1008,7 @@ fn cpp_add_declared_inhabitants_root(target_profile: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: cpp_coercion_candidate_edges(target_profile: target_profile),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1023,7 +1024,7 @@ fn cpp_emitted_add_fn_node(target_profile: Node) -> Node {
       Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) },
       Edge { label: Positional, target: cpp_int_inhabitant_node(target_profile: target_profile) }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1052,7 +1053,7 @@ fn cpp_serialize_source_children() -> List<Edge> {
 
 fn cpp_serialize_source_node() -> Node {
   Node { kind: TypeNode { connective: Conj }, children: cpp_serialize_source_children(),
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1144,7 +1145,7 @@ fn cpp_grammar_relation_row_node(row: CppGrammarRelationRow) -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1154,7 +1155,7 @@ fn cpp_translation_rules_node(target_profile: Node) -> Node {
     children: [
       cpp_named_edge(name: ^cpp_relation_rule_fn_add, target: cpp_grammar_relation_row_node(row: cpp_grammar_relation_row(target_profile: target_profile)))
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1167,7 +1168,7 @@ fn cpp_target_model_node(target_profile: Node) -> Node {
       cpp_named_edge(name: ^target_model_edge_translation_rules, target: cpp_translation_rules_node(target_profile: target_profile)),
       cpp_named_edge(name: ^target_model_edge_serialize_source, target: cpp_serialize_source_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1185,7 +1186,7 @@ fn cpp_binding_spellings() -> Map<Symbol, String> {
 data cpp_target_profile: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^cpp_target_profile_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn cpp_target_model() -> TargetModel {

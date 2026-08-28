@@ -1,5 +1,6 @@
 module v2.test.manual.dependency_recompute_plan
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.change {
   AffectedDependency,
   AffectedSet,
@@ -17,18 +18,18 @@ import v2.std.dependency {
   topological_layers
 }
 import v2.std.diagnostic { Accepted, None }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
 
 data refinement_subject_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^refinement_subject_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data refinement_new_field_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^refinement_new_field_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data refinement_after_node: Node = Node {
@@ -39,25 +40,25 @@ data refinement_after_node: Node = Node {
       target: refinement_new_field_node
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data testclaim_lens_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^testclaim_lens_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data boundary_test_lens_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^boundary_test_lens_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data target_test_projection_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^target_test_projection_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data dependency_projection_subgraph: Node = Node {
@@ -76,7 +77,7 @@ data dependency_projection_subgraph: Node = Node {
       target: target_test_projection_node
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data refinement_change_path: Path = Path {

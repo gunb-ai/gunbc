@@ -1,5 +1,6 @@
 module v2.test.manual.resolve_compile_anchor
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots, admit_normalized_tree }
 import v2.compiler.name_resolve {
   Admission,
@@ -35,7 +36,6 @@ import v2.std.node {
   Node,
   Positional,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.resolution_policy { ImportScoped }
@@ -51,11 +51,11 @@ fn service_atom_conj_tree() -> Node {
             connective: Atom { identity: ^dag_c3_surface_sugar_service }
           },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -85,7 +85,7 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTre
               connective: Atom { identity: ^dag_c3_surface_sugar_service }
             },
             children: [],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: OccurrenceSynthetic
           }
         },
         Edge {
@@ -95,11 +95,11 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTre
               connective: Atom { identity: ^dag_c3_surface_sugar_type }
             },
             children: [],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: OccurrenceSynthetic
           }
         }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 },
     diagnostics: None
   ) {
@@ -125,7 +125,7 @@ fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
                     connective: Atom { identity: ^dag_c3_surface_sugar_fn }
                   },
                   children: [],
-                  occurrence_id: SyntheticOccurrence
+                  occurrence_id: OccurrenceSynthetic
                 }
               },
               Edge {
@@ -135,7 +135,7 @@ fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
                     connective: Atom { identity: ^dag_c3_surface_sugar_service }
                   },
                   children: [],
-                  occurrence_id: SyntheticOccurrence
+                  occurrence_id: OccurrenceSynthetic
                 }
               },
               Edge {
@@ -145,15 +145,15 @@ fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
                     connective: Atom { identity: ^dag_c3_surface_sugar_fn }
                   },
                   children: [],
-                  occurrence_id: SyntheticOccurrence
+                  occurrence_id: OccurrenceSynthetic
                 }
               }
             ],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: OccurrenceSynthetic
           }
         }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
 },
     diagnostics: None
   ) {
@@ -169,7 +169,7 @@ fn resolve_imported_qn_node() -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     }
   )
@@ -194,11 +194,11 @@ fn resolve_imported_module_root() -> Node {
             connective: Atom { identity: ^dag_c3_surface_sugar_service }
           },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -209,7 +209,7 @@ fn resolve_subject_qn_node() -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
 }
     }
   )
@@ -228,7 +228,7 @@ fn resolve_subject_module_root() -> Node {
         target: resolve_subject_qn_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -249,7 +249,7 @@ fn resolve_subject_module_root_with_import_use() -> Node {
         target: resolve_imported_use_tree()
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -274,7 +274,7 @@ fn resolve_imported_use_tree() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^anchor_imported_decl } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
