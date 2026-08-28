@@ -1,7 +1,7 @@
 module gunbc.plans.seed_debt_bundle_item_2
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ol, ul, cell, row }
 
@@ -48,7 +48,7 @@ fn seed_debt_bundle_item_2_body() -> List<MarkdownBlock> {
 }
 
 data seed_debt_bundle_item_2_plan: Plan = Plan {
-  projection: PlanProjectsCommittedMarkdown,
+  projection: PlanIsAuthorityOnly { ruling: "operator ruling 2026-08-28 (stability cleanup, PR 9635): the committed markdown projection for this stale plan is deleted; the .dag carrier remains the authority, per the a295e17415 precedent." },
   slug: "seed-debt-bundle-item-2",
   title: "Seed-only debt bundle item 2 — CLI dep-pool authority model (#5894)",
   body: seed_debt_bundle_item_2_body(),
