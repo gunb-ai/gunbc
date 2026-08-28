@@ -33,8 +33,8 @@ import gunbc.fabric_floor_dispatch { floor_demand }
 import gunbc.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, ReservationLost,
   StoreUnavailable, AttemptRefused, BudgetRefused,
-  CellRelease, CellReleased, ReleaseBudgetRefused, ReleaseSlotNotHeld,
-  ReleaseLost, ReleaseStoreUnavailable, ReleaseAttemptRefused, release_reserved_cell_at,
+  CellHoldEnd, CellHoldEnded, HoldEndBudgetRefused, HoldEndSlotNotHeld,
+  HoldEndLost, HoldEndStoreUnavailable, HoldEndAttemptRefused, release_reserved_cell_at,
   FabricCellCandidate, CellCandidateBound, OfferExecutorIsNotTheCell,
   fabric_cell_allocation_key, reserve_selected_cell, broker_reserve_for_demand,
   bind_fabric_cell_candidate,
@@ -260,14 +260,14 @@ fn cp_live_broker_reserves_the_cell_the_market_chose(root: NonEmptyStr) -> Int {
 // The codes are disjoint from cp_probe_code's so a reader cannot confuse a
 // release outcome with a reservation one, and each refusal keeps its own number
 // because their remedies differ exactly as the reservation's do.
-fn cp_probe_release_code(r: CellRelease) -> Int {
+fn cp_probe_release_code(r: CellHoldEnd) -> Int {
   match r {
-    CellReleased { slot_key: _, generation: g, account: _ } => 200 + g
-    ReleaseBudgetRefused { slot_key: _, refusal: _ } => 20
-    ReleaseSlotNotHeld { slot_key: _, detail: _ } => 21
-    ReleaseLost { slot_key: _ } => 22
-    ReleaseStoreUnavailable { slot_key: _, cause: _ } => 23
-    ReleaseAttemptRefused { slot_key: _, detail: _ } => 24
+    CellHoldEnded { slot_key: _, generation: g, account: _ } => 200 + g
+    HoldEndBudgetRefused { slot_key: _, refusal: _ } => 20
+    HoldEndSlotNotHeld { slot_key: _, detail: _ } => 21
+    HoldEndLost { slot_key: _ } => 22
+    HoldEndStoreUnavailable { slot_key: _, cause: _ } => 23
+    HoldEndAttemptRefused { slot_key: _, detail: _ } => 24
   }
 }
 

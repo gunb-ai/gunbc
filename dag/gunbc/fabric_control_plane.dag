@@ -23,10 +23,16 @@ import gunbc.durable_cas_file_store {
 }
 import gunbc.fabric_floor_dispatch { floor_supply_selection, floor_execution_requirements }
 import product.fabric.budget {
-  MoneyAccount, MoneyReservationRequest, MoneyRefusal, MoneyOutcome,
-  AccountAdvanced, MoneyRefused, reserve_money, release_money,
+  MoneyAccount, MoneyReservationRequest, MoneySettlementRequest, MoneyRefusal, MoneyOutcome,
+  AccountAdvanced, MoneyRefused, reserve_money, release_money, settle_money,
 }
-import product.fabric.execution { ReservationRef, LeaseIdentity }
+import product.fabric.execution {
+  ReservationRef, LeaseIdentity, Receipt, ExecutionGrant,
+  ReceiptPayload, SettlementReceipt, ExecutionReceipt, MaterializationReceipt,
+  ReceiptAdmission, ReceiptAdmissible, ReceiptFromDifferentLease,
+  ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable, ReceiptGenerationStale,
+  admit_receipt_for_grant,
+}
 import gunbc.fabric_executor_class {
   ExecutorSanction, CapacityClassAdmission, CapacityClassAdmitted,
   CapacityClassRefused, ExecutorNotClassified,
@@ -551,24 +557,24 @@ fn decode_cell_slot_payload(payload: NonEmptyStr) -> CellSlotDecode {
 // reservation carries: a caller must be able to choose a remedy from the symbol
 // it gets back.
 //
-// ReleaseSlotNotHeld is the one that does not exist on the reservation side and
+// HoldEndSlotNotHeld is the one that does not exist on the reservation side and
 // is the reason this type is not CellReservation reused. It says the store was
 // read and the cell is NOT held by the reservation being released -- already
 // free, held by someone else, or carrying a payload this module cannot read.
 // Collapsing it into a store failure would tell an operator to look at the
 // filesystem when the actual answer is that their idea of who holds this cell
 // is wrong.
-type CellRelease
-  = CellReleased {
+type CellHoldEnd
+  = CellHoldEnded {
       slot_key: NonEmptyStr,
       generation: Int,
       account: MoneyAccount,
     }
-  | ReleaseBudgetRefused { slot_key: NonEmptyStr, refusal: MoneyRefusal }
-  | ReleaseSlotNotHeld { slot_key: NonEmptyStr, detail: NonEmptyStr }
-  | ReleaseLost { slot_key: NonEmptyStr }
-  | ReleaseStoreUnavailable { slot_key: NonEmptyStr, cause: CasUnreadableSlot }
-  | ReleaseAttemptRefused { slot_key: NonEmptyStr, detail: NonEmptyStr }
+  | HoldEndBudgetRefused { slot_key: NonEmptyStr, refusal: MoneyRefusal }
+  | HoldEndSlotNotHeld { slot_key: NonEmptyStr, detail: NonEmptyStr }
+  | HoldEndLost { slot_key: NonEmptyStr }
+  | HoldEndStoreUnavailable { slot_key: NonEmptyStr, cause: CasUnreadableSlot }
+  | HoldEndAttemptRefused { slot_key: NonEmptyStr, detail: NonEmptyStr }
 
 // THE PARTIAL RELEASE HAS NO CONSTRUCTOR EITHER, AND IT LEAKS THE OPPOSITE WAY.
 //
@@ -582,44 +588,42 @@ type CellRelease
 //
 // So the same construction argument applies unchanged, for the same reason: the
 // money release is a PURE transition producing a new account, and the slot
-// write is the only effect. No arm of CellRelease carries an account without a
+// write is the only effect. No arm of CellHoldEnd carries an account without a
 // freed cell, and none carries a freed cell without an account, so neither half
 // can be persisted alone. Source order is again free and is again not the
 // guarantee -- that was established by mutation on the reservation path and the
 // same laziness holds here.
-fn release_reserved_cell(
+fn end_cell_hold(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
   observed: CasSlotObservation<NonEmptyStr>,
-  lease: LeaseIdentity,
   reservation: ReservationRef,
+  money: MoneyOutcome,
   reason: NonEmptyStr,
-  released_at: Timestamp,
-  account: MoneyAccount,
-) -> CellRelease {
+) -> CellHoldEnd {
   match observed {
-    CasObservedUnreadable { cause: c } => ReleaseStoreUnavailable { slot_key: slot_key, cause: c }
+    CasObservedUnreadable { cause: c } => HoldEndStoreUnavailable { slot_key: slot_key, cause: c }
     CasObservedReadable { readable: r } =>
       match r {
         CasReadableAbsent =>
-          ReleaseSlotNotHeld {
+          HoldEndSlotNotHeld {
             slot_key: slot_key,
             detail: "the slot is absent, so this cell is held by no reservation",
           }
         CasReadablePresent { version: v } =>
           match decode_cell_slot_payload(payload: v.value) {
             CellSlotUndecodable { detail: d } =>
-              ReleaseSlotNotHeld { slot_key: slot_key, detail: d }
+              HoldEndSlotNotHeld { slot_key: slot_key, detail: d }
             CellSlotDecoded { state: st } =>
               match st {
                 CellFree { released_by: _ } =>
-                  ReleaseSlotNotHeld {
+                  HoldEndSlotNotHeld {
                     slot_key: slot_key,
                     detail: "the slot is already free, so there is no hold to release",
                   }
                 CellHeld { reservation: holder } =>
                   if (holder as String) != (reservation as String) {
-                    ReleaseSlotNotHeld {
+                    HoldEndSlotNotHeld {
                       slot_key: slot_key,
                       detail: concat(
                         "the cell is held by another reservation: ",
@@ -627,15 +631,12 @@ fn release_reserved_cell(
                       ) as NonEmptyStr,
                     }
                   } else {
-                    release_held_cell(
+                    commit_hold_end(
                       root: root,
                       slot_key: slot_key,
                       expected: ExpectSlotGeneration { generation: v.generation },
-                      lease: lease,
-                      reservation: reservation,
+                      money: money,
                       reason: reason,
-                      released_at: released_at,
-                      account: account,
                     )
                   }
               }
@@ -649,28 +650,27 @@ fn release_reserved_cell(
 // caller stated: a caller-supplied generation would be a second account of the
 // slot's version and could name a moment the observation never saw.
 //
-// release_money is fenced on the lease generation the hold was taken under, so
-// a superseded holder refuses here rather than releasing an encumbrance it no
-// longer owns -- and the amount is derived from the ledger entry rather than
-// supplied, which is why no amount is passed through this call.
-fn release_held_cell(
+// THE MONEY OUTCOME ARRIVES ALREADY COMPUTED AND THAT IS NOT A CALLER DECIDING
+// IT. Each ending owns its own money transition -- release derives the amount
+// from the ledger entry, settlement presents an actual spend -- and both are
+// fenced on the lease generation inside product.fabric.budget. What this
+// function decides is the only thing both share: an advanced account frees the
+// cell, a refusal does not. Passing the outcome rather than re-deciding it here
+// is what keeps ONE money authority; a match on which ending this is would be a
+// second one, and it would have to be kept in step with budget.dag forever.
+//
+// It is also effect-free to pass: the substrate is lazy, so an unreached money
+// transition is never forced, and the refusal arms above return before this
+// function is entered at all.
+fn commit_hold_end(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
   expected: CasExpectation,
-  lease: LeaseIdentity,
-  reservation: ReservationRef,
+  money: MoneyOutcome,
   reason: NonEmptyStr,
-  released_at: Timestamp,
-  account: MoneyAccount,
-) -> CellRelease {
-  match release_money(
-    a: account,
-    reference: reservation,
-    generation: lease.generation,
-    reason: reason,
-    released_at: released_at,
-  ) {
-    MoneyRefused { refusal: f } => ReleaseBudgetRefused { slot_key: slot_key, refusal: f }
+) -> CellHoldEnd {
+  match money {
+    MoneyRefused { refusal: f } => HoldEndBudgetRefused { slot_key: slot_key, refusal: f }
     AccountAdvanced { account: advanced } =>
       free_cell_slot(
         root: root,
@@ -688,7 +688,7 @@ fn free_cell_slot(
   expected: CasExpectation,
   reason: NonEmptyStr,
   account: MoneyAccount,
-) -> CellRelease {
+) -> CellHoldEnd {
   let payload = cell_slot_payload(state: CellFree { released_by: reason })
   match admit_cas_attempt(
     attempt: cas_attempt(
@@ -701,37 +701,42 @@ fn free_cell_slot(
     CasAttemptAdmitted { verified: v } =>
       match file_compare_and_set(root: root, verified: v) {
         CasCommitted { committed: c } =>
-          CellReleased {
+          CellHoldEnded {
             slot_key: slot_key,
             generation: cas_generation_count(g: c.generation),
             account: account,
           }
-        CasPreconditionFailed { expected: _, observed: _ } => ReleaseLost { slot_key: slot_key }
-        CasStoreRefused { cause: c } => ReleaseStoreUnavailable { slot_key: slot_key, cause: c }
+        CasPreconditionFailed { expected: _, observed: _ } => HoldEndLost { slot_key: slot_key }
+        CasStoreRefused { cause: c } => HoldEndStoreUnavailable { slot_key: slot_key, cause: c }
       }
     CasAttemptDigestMismatch { claimed: _, actual: _ } =>
-      ReleaseAttemptRefused { slot_key: slot_key, detail: "release payload and its digest disagree" }
+      HoldEndAttemptRefused { slot_key: slot_key, detail: "release payload and its digest disagree" }
     CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
-      ReleaseAttemptRefused { slot_key: slot_key, detail: "release digest families are incomparable" }
+      HoldEndAttemptRefused { slot_key: slot_key, detail: "release digest families are incomparable" }
     CasAttemptKeyNotSlotAddressable { key: _ } =>
-      ReleaseAttemptRefused { slot_key: slot_key, detail: "allocation key is not slot-addressable" }
+      HoldEndAttemptRefused { slot_key: slot_key, detail: "allocation key is not slot-addressable" }
   }
 }
 
-// THE ENTRY POINT A REAL CALLER USES, and the split above it is the point.
+// THE TWO ENDINGS, AND WHY THEY ARE ONE OUTCOME TYPE RATHER THAN TWO.
 //
-// release_reserved_cell is a PURE decision over an observation, which is what
-// lets every one of its refusals be witnessed from a value. This function is
-// the realization beside it: it asks the store for the observation and hands it
-// straight over. Nothing decides here, so there is no second decision procedure
-// to disagree with the first.
+// A hold ends abandoned or it ends consumed. Both leave the SAME state -- the
+// cell free and the encumbrance closed -- so a second outcome vocabulary for
+// settlement would be five refusal arms renamed, which is the fork DESIGN
+// section 3 forbids and which drifts the moment one of them gains a cause the
+// other lacks. What differs is the money transition and the evidence that
+// authorizes it, and that difference lives in the two entry points below rather
+// than in the answer they return.
 //
-// The observation is READ rather than accepted from the caller for the reason
+// A caller does not need the outcome to tell it which ending happened, because
+// it called one of them.
+//
+// The observation is READ rather than accepted from the caller, for the reason
 // the store's own compare-and-set gives about attempts: a caller that supplies
 // the observation is the author of the fact it is supposed to be reading, and
-// nothing then relates that fact to the slot being released. The pure form
-// keeps the parameter because a witness supplying one is a fixture and knows
-// it; a production caller reaching for it would be constructing its own answer.
+// nothing then relates that fact to the slot being ended. The pure form keeps
+// the parameter because a witness supplying one is a fixture and knows it; a
+// production caller reaching for it would be constructing its own answer.
 fn release_reserved_cell_at(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
@@ -740,15 +745,129 @@ fn release_reserved_cell_at(
   reason: NonEmptyStr,
   released_at: Timestamp,
   account: MoneyAccount,
-) -> CellRelease {
-  release_reserved_cell(
+) -> CellHoldEnd {
+  end_cell_hold(
     root: root,
     slot_key: slot_key,
     observed: observe_cas_slot_state(root: root, key: slot_key),
-    lease: lease,
     reservation: reservation,
+    money: release_money(
+      a: account,
+      reference: reservation,
+      generation: lease.generation,
+      reason: reason,
+      released_at: released_at,
+    ),
     reason: reason,
-    released_at: released_at,
-    account: account,
   )
+}
+
+// SETTLEMENT IS NOT RELEASE WITH AN AMOUNT ATTACHED, AND THE RECEIPT IS THE
+// DIFFERENCE. Release needs no evidence beyond the lease: abandoning a hold
+// spends nothing, and the released quantity is whatever the ledger already
+// says. Settlement CHARGES, so it needs something that establishes what was
+// actually spent and that the spender was entitled to say so -- which is
+// exactly what product.fabric.execution's receipt admission decides.
+//
+// So the admission runs FIRST and its refusal is typed rather than folded into
+// the budget arm. A receipt from a different attempt, a different lease, an
+// incomparable fingerprint and a stale generation are four different problems
+// with four different remedies, and product.fabric.execution already separates
+// them; collapsing them here into "the budget refused" would discard that work
+// one layer down and tell an operator to look at an account when the actual
+// answer is that the receipt belongs to something else.
+//
+// THE AMOUNT COMES FROM THE RECEIPT AND FROM NOWHERE ELSE. A settlement whose
+// amount was a parameter beside the receipt would let a caller charge one
+// figure while presenting evidence for another, and the two would be free to
+// disagree with nothing able to detect it. Only a SettlementReceipt carries an
+// actual spend, which is why the payload is matched rather than trusted: an
+// execution receipt records billable seconds, which is an OBSERVATION and not
+// authoritative spend -- product.fabric.execution says so in line, because the
+// billing rule is the supplier's and elapsed time is not the charge.
+type CellSettlementAdmission
+  = SettlementAdmitted {
+      reservation: ReservationRef,
+      actual_spend: MoneyAmountMicro,
+      settled_at: Timestamp,
+    }
+  | SettlementReceiptRefused { admission: ReceiptAdmission }
+  | SettlementReceiptCarriesNoSpend { detail: NonEmptyStr }
+
+fn admit_cell_settlement<P>(
+  receipt: Receipt<P>,
+  grant: ExecutionGrant<P>,
+) -> CellSettlementAdmission {
+  match admit_receipt_for_grant(r: receipt, g: grant) {
+    ReceiptFromDifferentAttempt =>
+      SettlementReceiptRefused { admission: ReceiptFromDifferentAttempt }
+    ReceiptFromDifferentLease =>
+      SettlementReceiptRefused { admission: ReceiptFromDifferentLease }
+    ReceiptFingerprintIncomparable =>
+      SettlementReceiptRefused { admission: ReceiptFingerprintIncomparable }
+    ReceiptGenerationStale { presented: p, current: c } =>
+      SettlementReceiptRefused { admission: ReceiptGenerationStale { presented: p, current: c } }
+    ReceiptAdmissible =>
+      match receipt.payload {
+        SettlementReceipt { reservation: r, actual_spend: a, settled_at: t } =>
+          SettlementAdmitted { reservation: r, actual_spend: a, settled_at: t }
+        ExecutionReceipt { step_id: _, outputs: _, billable: _, completed_at: _ } =>
+          SettlementReceiptCarriesNoSpend {
+            detail: "an execution receipt records billable seconds, which is an observation rather than authoritative spend",
+          }
+        MaterializationReceipt { source: _, verified_at: _ } =>
+          SettlementReceiptCarriesNoSpend {
+            detail: "a materialization receipt establishes an artifact, not a charge",
+          }
+      }
+  }
+}
+
+// The settlement outcome adds ONE arm to the shared ending vocabulary rather
+// than restating it: the receipt can be refused before any hold is touched, and
+// that is a state release genuinely cannot reach.
+type CellSettlement
+  = SettlementEnded { ending: CellHoldEnd }
+  | SettlementNotAdmitted { slot_key: NonEmptyStr, admission: CellSettlementAdmission }
+
+fn settle_reserved_cell_at<P>(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  receipt: Receipt<P>,
+  grant: ExecutionGrant<P>,
+  reason: NonEmptyStr,
+  account: MoneyAccount,
+) -> CellSettlement {
+  match admit_cell_settlement(receipt: receipt, grant: grant) {
+    SettlementReceiptRefused { admission: a } =>
+      SettlementNotAdmitted {
+        slot_key: slot_key,
+        admission: SettlementReceiptRefused { admission: a },
+      }
+    SettlementReceiptCarriesNoSpend { detail: d } =>
+      SettlementNotAdmitted {
+        slot_key: slot_key,
+        admission: SettlementReceiptCarriesNoSpend { detail: d },
+      }
+    SettlementAdmitted { reservation: r, actual_spend: spend, settled_at: t } =>
+      SettlementEnded {
+        ending: end_cell_hold(
+          root: root,
+          slot_key: slot_key,
+          observed: observe_cas_slot_state(root: root, key: slot_key),
+          reservation: r,
+          money: settle_money(
+            a: account,
+            request: MoneySettlementRequest {
+              reference: r,
+              generation: receipt.lease.generation,
+              actual_spend: spend,
+              currency: account.currency,
+              settled_at: t,
+            },
+          ),
+          reason: reason,
+        ),
+      }
+  }
 }
