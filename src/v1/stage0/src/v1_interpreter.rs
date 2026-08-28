@@ -8968,6 +8968,107 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
 /// The two arms stay distinct all the way to the substrate — `CensusNotRunnable` must never
 /// arrive as `CensusObserved` with an empty row list, because that is byte-identical to a clean
 /// compile and would let could-not-measure read as the subject passing (DESIGN §5).
+/// Encode one `ReferenceDerivedClosureAdmission` as an interpreter value.
+///
+/// Pure encoding. The judgement it carries was made by
+/// `gunbc.namespace_reference_derived_closure_admission assess_reference_binding_observation`,
+/// which the `.dag` producer calls; nothing here decides, reclassifies, or defaults. The three
+/// payload vocabularies are nullary coproducts, so each is carried by name.
+fn reference_derived_closure_admission_value(
+    admission: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission as A;
+    let nullary = |type_name: &str, variant_name: String| Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(&variant_name),
+        fields: Rc::new(Vec::new()),
+    };
+    let capability = |c: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability| {
+        nullary("ReferenceDerivedClosureCapability", format!("{c:?}"))
+    };
+    match admission {
+        A::ReferenceDerivedClosureEstablished { receipt } => Value::Variant {
+            type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
+            variant_name: ctx.sym("ReferenceDerivedClosureEstablished"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("receipt"),
+                Value::Record {
+                    type_name: ctx.sym("ReferenceDerivedClosureAcceptanceReceipt"),
+                    fields: Rc::new(sorted_fields(vec![(
+                        ctx.sym("capability"),
+                        capability(&receipt.capability()),
+                    )])),
+                },
+            )])),
+        },
+        A::ReferenceDerivedClosureRefused {
+            capability: c,
+            failure,
+        } => Value::Variant {
+            type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
+            variant_name: ctx.sym("ReferenceDerivedClosureRefused"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("capability"), capability(c)),
+                (
+                    ctx.sym("failure"),
+                    nullary(
+                        "ReferenceDerivedClosureScenarioFailure",
+                        format!("{failure:?}"),
+                    ),
+                ),
+            ])),
+        },
+        A::ReferenceDerivedClosureUnavailable {
+            capability: c,
+            trigger,
+        } => Value::Variant {
+            type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
+            variant_name: ctx.sym("ReferenceDerivedClosureUnavailable"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("capability"), capability(c)),
+                (
+                    ctx.sym("trigger"),
+                    nullary("ReferenceDerivedClosureTrigger", format!("{trigger:?}")),
+                ),
+            ])),
+        },
+    }
+}
+
+/// Encode the rows for one in-memory source: each admission the `.dag` producer computed,
+/// paired with the module path that producer read out of the same parse.
+///
+/// The two producer exports are pure functions of `(file, source)` and the caller passes one
+/// pair of strings to both, so this join cannot pair a module path with admissions from a
+/// different subject. It is mechanical, never a decision; the split exists because a `.dag`
+/// record embedding a `sole_constructor`-bearing coproduct does not emit compilably today
+/// (see the producer's own note).
+fn namespace_structural_observation_admissions_value(
+    compiled_module: String,
+    admissions: &[Rc<crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
+    ctx: &InterpContext,
+) -> Value {
+    list_value(
+        admissions
+            .iter()
+            .map(|admission| Value::Record {
+                type_name: ctx.sym("OrdinaryCompileStructuralAdmission"),
+                fields: Rc::new(sorted_fields(vec![
+                    (
+                        ctx.sym("compiled_module"),
+                        str_value(compiled_module.clone()),
+                    ),
+                    (
+                        ctx.sym("admission"),
+                        reference_derived_closure_admission_value(admission, ctx),
+                    ),
+                ])),
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
 fn compile_diagnostic_census_value(
     census: crate::cli_run::CompileDiagnosticCensus,
     ctx: &InterpContext,
@@ -14288,6 +14389,33 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::doc_graph_dangling_link_count(),
             ))),
             arm "free_call.doc_graph_doc_count" { "doc_graph_doc_count" } => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
+
+            arm "free_call.namespace_structural_observation_admissions" { "namespace_structural_observation_admissions" } => {
+                let file = expect_str($positional.first().copied(), $name)?;
+                let source = expect_str($positional.get(1).copied(), $name)?;
+                let neighbour_name = expect_str($positional.get(2).copied(), $name)?;
+                let branch_binder_name = expect_str($positional.get(3).copied(), $name)?;
+                let later_name = expect_str($positional.get(4).copied(), $name)?;
+                let homonym_name = expect_str($positional.get(5).copied(), $name)?;
+                let producer = crate::v1_gunbc_namespace_reference_derived_closure_production_observations::namespace_structural_observation_admissions(
+                    file.clone(),
+                    source.clone(),
+                    neighbour_name,
+                    branch_binder_name,
+                    later_name,
+                    homonym_name,
+                );
+                let compiled_module = crate::v1_gunbc_namespace_reference_derived_closure_production_observations::namespace_structural_observation_compiled_module(
+                    file,
+                    source,
+                );
+                let admissions: Vec<_> = producer.iter().cloned().collect();
+                Ok(Some(namespace_structural_observation_admissions_value(
+                    compiled_module,
+                    &admissions,
+                    $ctx,
+                )))
+            },
 
             arm "free_call.compile_dag_rust_emit_check" { "compile_dag_rust_emit_check" } => {
                 let source = expect_str($positional.first().copied(), $name)?;

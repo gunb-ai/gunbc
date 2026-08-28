@@ -2,6 +2,10 @@
 // Source module: v1.gunbc.namespace_reference_derived_closure_production_observations
 
 use self::NrdfcParsed::*;
+pub use crate::gunbc_namespace_reference_derived_closure_admission::assess_reference_binding_observation;
+pub use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission;
+use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission::*;
+pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_occurrence_binding::{BindingCandidate, OccurrenceBinding};
 use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 pub use crate::std_occurrence_binding_candidates::{
@@ -22,7 +26,7 @@ use crate::std_reference_binding_observation::StructuralBindingResolution::Struc
 pub use crate::std_reference_binding_observation::{
     ReferenceBindingObservation, ReferenceBindingProductionGap, StructuralBindingResolution,
 };
-pub use crate::std_types::List;
+pub use crate::std_types::{List, NonEmptyStr};
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource;
 use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource::{
     ParsedOccurrenceBindingSourceReady, ParsedOccurrenceBindingSourceRefused,
@@ -41,16 +45,16 @@ use std::rc::Rc;
 pub fn namespace_reference_derived_closure_production_observations_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "N3-A production observers for namespace-reference-derived-closure clauses (a-d). Returns neutral std.reference_binding_observation.ReferenceBindingObservation carriers only — no roadmap capability vocabulary and no assessment at this seam. namespace_structural_binding_observations_a_through_d is the sole export; capability projection lives in dag witnesses.".to_string()
+            "N3-A production observers for namespace-reference-derived-closure clauses (a-d), and the closing production for roadmap node namespace-structural-observations. Every observer takes ONE parsed subject: the four clauses are read out of a single ordinary compiled file, never out of four sources shaped one per clause. Observation production returns neutral std.reference_binding_observation carriers; the capability judgement is delegated, unchanged, to the one assessment authority (gunbc.namespace_reference_derived_closure_admission), and the module path each admission carries is the one THE PARSE DECLARED.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn namespace_reference_derived_closure_production_fixture_note() -> String {
+pub fn namespace_reference_derived_closure_production_one_subject_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Four independent hand-built fixtures — one per structural clause — exercised as discriminating evidence in src/v1/tests/claim/namespace_reference_derived_closure_production_admissions_witness_test.dag. They do NOT satisfy the namespace-structural-observations closing contract, which waits for ONE ORDINARY COMPILED FILE producing all four observations; each case shown failing on its own is the per-clause red-control requirement, not a licence for four separate fixture strings. Same-file neighbour and source-order/ambiguity fixtures mirror occurrence_binding_parser_walk_witness_test shapes; sibling decision-branch uses if/else let arms (parse_block nesting) because match-arm bodies remain siblings of pattern binders in v1.parse containment.".to_string()
+            "THE FOUR HARD-CODED FIXTURE SOURCES ARE DELETED, and the deletion is the point rather than tidying. They were four independent strings, one per clause, and their own note recorded that they did NOT satisfy the namespace-structural-observations closing contract because that row asks for ONE ORDINARY COMPILED FILE. Keeping them beside a subject-parameterized producer would have left two ways to answer one question, and the easier one would have been the one that cannot close the row. The per-clause red control the deleted note describes is preserved and strengthened: a caller mutates the ONE subject so that exactly one rule breaks, and the assessment refuses exactly that capability. The subject and its probe spellings are supplied by the caller (gunbc.namespace_structural_observations_contract), so this module knows no fixture text.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -62,6 +66,7 @@ pub enum NrdfcParsed {
     NrdfcParsedReady {
         transport: Rc<OccurrenceTransport>,
         inputs: Rc<OccurrenceBindingCandidateInputs>,
+        module_path: NonEmptyStr,
     },
     NrdfcParsedRefused,
 }
@@ -80,6 +85,14 @@ impl NrdfcParsed {
             NrdfcParsed::NrdfcParsedRefused => panic!("no inputs on unit variant"),
         }
     }
+    pub fn module_path(&self) -> NonEmptyStr {
+        match self {
+            NrdfcParsed::NrdfcParsedReady {
+                module_path: __val, ..
+            } => __val.clone(),
+            NrdfcParsed::NrdfcParsedRefused => panic!("no module_path on unit variant"),
+        }
+    }
 }
 
 pub fn nrdfc_parse(file: String, source: String) -> Rc<NrdfcParsed> {
@@ -88,36 +101,24 @@ pub fn nrdfc_parse(file: String, source: String) -> Rc<NrdfcParsed> {
     ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady { transport, module_path, .. } => Rc::new(NrdfcParsed::NrdfcParsedReady {
     transport: transport.clone(),
     inputs: crate::v1_gunbc_occurrence_binding_parser_walk::occurrence_binding_inputs_from_transport(module_path.clone(), transport.clone(), DeclarationExposureGrounding::ModuleLocalMemberExposure),
+    module_path: module_path.clone(),
 }),
 }
 }
 
-pub fn nrdfc_same_file_neighbour_source() -> String {
-    "module gunbc.closure_fixture.same_file_neighbour\n\nfn fn_a() -> Int {\n  10\n}\n\nfn fn_b() -> Int {\n  fn_a()\n}\n".to_string()
-}
-
-pub fn nrdfc_sibling_branch_source() -> String {
-    "module gunbc.closure_fixture.sibling_branch\n\nfn demo(b: Bool) -> Int {\n  if b {\n    let x = 1\n    x\n  } else {\n    let x = 2\n    x\n  }\n}\n".to_string()
-}
-
-pub fn nrdfc_later_declaration_source() -> String {
-    "module gunbc.closure_fixture.later_declaration\n\nfn demo() -> Int {\n  fn_later()\n}\n\nfn fn_later() -> Int {\n  0\n}\n".to_string()
-}
-
-pub fn nrdfc_distinct_homonym_source() -> String {
-    "module gunbc.closure_fixture.distinct_homonym\n\nfn helper() -> Int {\n  0\n}\n\nfn helper() -> Int {\n  1\n}\n\nfn demo() -> Int {\n  helper()\n}\n".to_string()
-}
-
-pub fn same_file_neighbour_observation() -> Rc<ReferenceBindingObservation> {
-    match (*nrdfc_parse("gunbc/closure_fixture/same_file_neighbour.dag".to_string(), nrdfc_same_file_neighbour_source())).clone() {
+pub fn same_file_neighbour_observation(
+    parsed: Rc<NrdfcParsed>,
+    neighbour_name: String,
+) -> Rc<ReferenceBindingObservation> {
+    match (*parsed.clone()).clone() {
     NrdfcParsed::NrdfcParsedRefused => Rc::new(ReferenceBindingObservation::SameFileNeighbourProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingParserTransportRefused,
 }),
-    NrdfcParsed::NrdfcParsedReady { transport, inputs, .. } => match crate::v1_gunbc_occurrence_binding_parser_walk::reference_named(transport.clone(), "fn_a".to_string()) {
+    NrdfcParsed::NrdfcParsedReady { transport, inputs, .. } => match crate::v1_gunbc_occurrence_binding_parser_walk::reference_named(transport.clone(), neighbour_name.clone()) {
     None => Rc::new(ReferenceBindingObservation::SameFileNeighbourProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
 }),
-    Some(reference) => match crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(transport.clone(), "fn_a".to_string()).first().cloned() {
+    Some(reference) => match crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(transport.clone(), neighbour_name.clone()).first().cloned() {
     None => Rc::new(ReferenceBindingObservation::SameFileNeighbourProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
@@ -130,13 +131,11 @@ pub fn same_file_neighbour_observation() -> Rc<ReferenceBindingObservation> {
 }
 }
 
-pub fn sibling_branch_observation() -> Rc<ReferenceBindingObservation> {
-    match (*nrdfc_parse(
-        "gunbc/closure_fixture/sibling_branch.dag".to_string(),
-        nrdfc_sibling_branch_source(),
-    ))
-    .clone()
-    {
+pub fn sibling_branch_observation(
+    parsed: Rc<NrdfcParsed>,
+    branch_binder_name: String,
+) -> Rc<ReferenceBindingObservation> {
+    match (*parsed.clone()).clone() {
         NrdfcParsed::NrdfcParsedRefused => Rc::new(
             ReferenceBindingObservation::SiblingBranchProductionRefused {
                 gap: ReferenceBindingProductionGap::ReferenceBindingParserTransportRefused,
@@ -145,33 +144,35 @@ pub fn sibling_branch_observation() -> Rc<ReferenceBindingObservation> {
         NrdfcParsed::NrdfcParsedReady {
             transport, inputs, ..
         } => {
-            let x_declarations = crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(
-                transport.clone(),
-                "x".to_string(),
-            );
-            let x_references = crate::v1_gunbc_occurrence_binding_parser_walk::references_named(
-                transport.clone(),
-                "x".to_string(),
-            );
-            match x_declarations.clone().first().cloned() {
+            let branch_declarations =
+                crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(
+                    transport.clone(),
+                    branch_binder_name.clone(),
+                );
+            let branch_references =
+                crate::v1_gunbc_occurrence_binding_parser_walk::references_named(
+                    transport.clone(),
+                    branch_binder_name.clone(),
+                );
+            match branch_declarations.clone().first().cloned() {
     None => Rc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
-    Some(then_branch_x) => match v1_rt::reverse(x_declarations.clone()).first().cloned() {
+    Some(then_branch_binder) => match v1_rt::reverse(branch_declarations.clone()).first().cloned() {
     None => Rc::new(ReferenceBindingObservation::SiblingBranchProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
-    Some(else_branch_x) => match v1_rt::reverse(x_references.clone()).first().cloned() {
+    Some(else_branch_binder) => match v1_rt::reverse(branch_references.clone()).first().cloned() {
     None => Rc::new(ReferenceBindingObservation::SiblingBranchObservation {
-    own_branch_declaration: else_branch_x.occurrence.clone(),
-    sibling_branch_declaration: then_branch_x.occurrence.clone(),
+    own_branch_declaration: else_branch_binder.occurrence.clone(),
+    sibling_branch_declaration: then_branch_binder.occurrence.clone(),
     resolution: Rc::new(StructuralBindingResolution::StructuralBindingProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
 }),
 }),
     Some(else_branch_ref) => Rc::new(ReferenceBindingObservation::SiblingBranchObservation {
-    own_branch_declaration: else_branch_x.occurrence.clone(),
-    sibling_branch_declaration: then_branch_x.occurrence.clone(),
+    own_branch_declaration: else_branch_binder.occurrence.clone(),
+    sibling_branch_declaration: then_branch_binder.occurrence.clone(),
     resolution: crate::std_reference_binding_observation::structural_binding_resolution_from_candidates(transport.clone(), inputs.clone(), else_branch_ref.clone()),
 }),
 },
@@ -181,16 +182,19 @@ pub fn sibling_branch_observation() -> Rc<ReferenceBindingObservation> {
     }
 }
 
-pub fn later_declaration_observation() -> Rc<ReferenceBindingObservation> {
-    match (*nrdfc_parse("gunbc/closure_fixture/later_declaration.dag".to_string(), nrdfc_later_declaration_source())).clone() {
+pub fn later_declaration_observation(
+    parsed: Rc<NrdfcParsed>,
+    later_name: String,
+) -> Rc<ReferenceBindingObservation> {
+    match (*parsed.clone()).clone() {
     NrdfcParsed::NrdfcParsedRefused => Rc::new(ReferenceBindingObservation::LaterDeclarationProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingParserTransportRefused,
 }),
-    NrdfcParsed::NrdfcParsedReady { transport, inputs, .. } => match crate::v1_gunbc_occurrence_binding_parser_walk::reference_named(transport.clone(), "fn_later".to_string()) {
+    NrdfcParsed::NrdfcParsedReady { transport, inputs, .. } => match crate::v1_gunbc_occurrence_binding_parser_walk::reference_named(transport.clone(), later_name.clone()) {
     None => Rc::new(ReferenceBindingObservation::LaterDeclarationProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
 }),
-    Some(reference) => match crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(transport.clone(), "fn_later".to_string()).first().cloned() {
+    Some(reference) => match crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(transport.clone(), later_name.clone()).first().cloned() {
     None => Rc::new(ReferenceBindingObservation::LaterDeclarationProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
@@ -203,13 +207,11 @@ pub fn later_declaration_observation() -> Rc<ReferenceBindingObservation> {
 }
 }
 
-pub fn distinct_homonym_observation() -> Rc<ReferenceBindingObservation> {
-    match (*nrdfc_parse(
-        "gunbc/closure_fixture/distinct_homonym.dag".to_string(),
-        nrdfc_distinct_homonym_source(),
-    ))
-    .clone()
-    {
+pub fn distinct_homonym_observation(
+    parsed: Rc<NrdfcParsed>,
+    homonym_name: String,
+) -> Rc<ReferenceBindingObservation> {
+    match (*parsed.clone()).clone() {
         NrdfcParsed::NrdfcParsedRefused => Rc::new(
             ReferenceBindingObservation::DistinctHomonymProductionRefused {
                 gap: ReferenceBindingProductionGap::ReferenceBindingParserTransportRefused,
@@ -217,31 +219,36 @@ pub fn distinct_homonym_observation() -> Rc<ReferenceBindingObservation> {
         ),
         NrdfcParsed::NrdfcParsedReady {
             transport, inputs, ..
-        } => match crate::v1_gunbc_occurrence_binding_parser_walk::reference_named(
-            transport.clone(),
-            "helper".to_string(),
-        ) {
+        } => match v1_rt::reverse(
+            crate::v1_gunbc_occurrence_binding_parser_walk::references_named(
+                transport.clone(),
+                homonym_name.clone(),
+            ),
+        )
+        .first()
+        .cloned()
+        {
             None => Rc::new(
                 ReferenceBindingObservation::DistinctHomonymProductionRefused {
                     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
                 },
             ),
             Some(reference) => {
-                let helpers = crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(
+                let homonyms = crate::v1_gunbc_occurrence_binding_parser_walk::declarations_named(
                     transport.clone(),
-                    "helper".to_string(),
+                    homonym_name.clone(),
                 );
-                match helpers.clone().first().cloned() {
+                match homonyms.clone().first().cloned() {
     None => Rc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
-    Some(first_helper) => match v1_rt::reverse(helpers.clone()).first().cloned() {
+    Some(first_homonym) => match v1_rt::reverse(homonyms.clone()).first().cloned() {
     None => Rc::new(ReferenceBindingObservation::DistinctHomonymProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedDeclarationAbsent,
 }),
-    Some(second_helper) => Rc::new(ReferenceBindingObservation::DistinctHomonymObservation {
-    first_declaration: first_helper.occurrence.clone(),
-    second_declaration: second_helper.occurrence.clone(),
+    Some(second_homonym) => Rc::new(ReferenceBindingObservation::DistinctHomonymObservation {
+    first_declaration: first_homonym.occurrence.clone(),
+    second_declaration: second_homonym.occurrence.clone(),
     resolution: crate::std_reference_binding_observation::structural_binding_resolution_from_candidates(transport.clone(), inputs.clone(), reference.clone()),
 }),
 },
@@ -251,12 +258,81 @@ pub fn distinct_homonym_observation() -> Rc<ReferenceBindingObservation> {
     }
 }
 
-pub fn namespace_structural_binding_observations_a_through_d(
+pub fn namespace_structural_binding_observations_from_parsed(
+    parsed: Rc<NrdfcParsed>,
+    neighbour_name: String,
+    branch_binder_name: String,
+    later_name: String,
+    homonym_name: String,
 ) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
     Rc::new(vec![
-        same_file_neighbour_observation(),
-        sibling_branch_observation(),
-        later_declaration_observation(),
-        distinct_homonym_observation(),
+        same_file_neighbour_observation(parsed.clone(), neighbour_name.clone()),
+        sibling_branch_observation(parsed.clone(), branch_binder_name.clone()),
+        later_declaration_observation(parsed.clone(), later_name.clone()),
+        distinct_homonym_observation(parsed.clone(), homonym_name.clone()),
     ])
+}
+
+pub fn namespace_structural_binding_observations_a_through_d(
+    file: String,
+    source: String,
+    neighbour_name: String,
+    branch_binder_name: String,
+    later_name: String,
+    homonym_name: String,
+) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
+    namespace_structural_binding_observations_from_parsed(
+        nrdfc_parse(file.clone(), source.clone()),
+        neighbour_name.clone(),
+        branch_binder_name.clone(),
+        later_name.clone(),
+        homonym_name.clone(),
+    )
+}
+
+pub fn namespace_structural_observation_admission_module_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE COMPILED MODULE AND THE ADMISSIONS ARE TWO EXPORTS OF ONE SUBJECT, and the split is forced rather than chosen. A single export pairing them needs a record whose field is a ReferenceDerivedClosureAdmission, and that coproduct carries a sole_constructor receipt, which the v1 emitter renders Serialize-only with a private field -- so any record embedding it fails to derive serde::Deserialize and the seed does not compile. Measured, not predicted: E0277 on the emitted OrdinaryCompileStructuralAdmission, E0616 on the receipt's field. Both exports are pure functions of (file, source), so a caller passing one pair of strings to both cannot pair a module path with admissions from a different subject; the join is mechanical, never a decision. The module path itself is READ OUT OF THE PARSE (ParsedOccurrenceBindingSourceReady.module_path), never echoed from the caller's file argument -- which is what makes the closing check's single-subject clause falsifiable, since a source declaring a different module reports that module and a source that does not parse reports no module at all.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn nrdfc_compiled_module(parsed: Rc<NrdfcParsed>) -> String {
+    match (*parsed.clone()).clone() {
+        NrdfcParsed::NrdfcParsedRefused => "".to_string(),
+        NrdfcParsed::NrdfcParsedReady { module_path, .. } => module_path.clone(),
+    }
+}
+
+pub fn namespace_structural_observation_compiled_module(file: String, source: String) -> String {
+    nrdfc_compiled_module(nrdfc_parse(file.clone(), source.clone()))
+}
+
+pub fn namespace_structural_observation_admissions(
+    file: String,
+    source: String,
+    neighbour_name: String,
+    branch_binder_name: String,
+    later_name: String,
+    homonym_name: String,
+) -> Rc<Vec<Rc<ReferenceDerivedClosureAdmission>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for observation in namespace_structural_binding_observations_a_through_d(
+            file.clone(),
+            source.clone(),
+            neighbour_name.clone(),
+            branch_binder_name.clone(),
+            later_name.clone(),
+            homonym_name.clone(),
+        )
+        .iter()
+        .cloned()
+        {
+            __result.push(crate::gunbc_namespace_reference_derived_closure_admission::assess_reference_binding_observation(observation.clone()));
+        }
+        __result
+    })
 }
