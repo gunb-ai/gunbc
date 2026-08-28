@@ -13,6 +13,9 @@ import product.training.readback {
 }
 import product.training.attempt_graph { TrainingRunAttemptGraph, graph_admits_attempt }
 import product.training.composition { TrainingRunEvidenceComposition }
+import product.training.execution_control {
+  TrainingRunConvergenceInput, TrainingExecutionClaim,
+}
 import product.training.resolution { TrainingRunDesired, resolved_training_manifest }
 import product.training.observation_cut {
   TrainingRunReadbackCut, CrossAxisTemporalRelation,
@@ -94,6 +97,9 @@ type TrainingRunBlocker<P>
       running: List<TrainingProcessObservation<P>>,
       terminals: List<TrainingAttemptTerminalReceipt<P>>,
     }
+  | TrainingAttemptWithoutExecutionClaim {
+      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+    }
   | TrainingCompletionAmbiguous {
       first: FabricIdentity<P, ExecutionAttemptKey>,
       more: List<FabricIdentity<P, ExecutionAttemptKey>>,
@@ -132,6 +138,14 @@ fn completion_candidate_seal<P>(
 type TrainingRunDisposition<P>
   = TrainingRunAlreadyConverged { completion: TrainingCompletionCandidate<P> }
   | TrainingRunInProgress { running: List<TrainingProcessObservation<P>> }
+  | TrainingRunLaunchDispatchRequired {
+      first: TrainingExecutionClaim<P>,
+      more: List<TrainingExecutionClaim<P>>,
+    }
+  | TrainingRunLaunchPending {
+      first: TrainingExecutionClaim<P>,
+      more: List<TrainingExecutionClaim<P>>,
+    }
   | TrainingRunExecutionRequired
   | TrainingRunRestartAuthorizationRequired {
       failed: List<TrainingAttemptTerminalReceipt<P>>,
@@ -368,9 +382,77 @@ fn blockers_after_head<P>(bs: List<TrainingRunBlocker<P>>) -> List<TrainingRunBl
 // enumerated empty populations contain no contradiction whatsoever and are plainly not a converged
 // run -- they are a run nobody has started. So convergence is reached from POSITIVE evidence
 // (exactly one completion candidate) rather than from the absence of complaints.
+// AN ATTEMPT THE GRAPH HOLDS WITH NO EXECUTION CLAIM IS A CONTROL-STATE DEFECT, NOT A REASON TO
+// LAUNCH. It is the state a retrospective writer produces -- an attempt recorded after the fact with
+// nothing durable inhibiting a second launch -- and treating it as "execution required" is exactly
+// the race this whole slice exists to close.
+fn unclaimed_attempt_blockers<P>(
+  input: TrainingRunConvergenceInput<P>,
+) -> List<TrainingRunBlocker<P>> {
+  input.control.graph.attempts
+    .filter(a =>
+      !input.control.active_claims.any(c => fabric_identity_eq(left: c.attempt, right: a.id))
+    )
+    .map(a => TrainingAttemptWithoutExecutionClaim { attempt: a.id })
+}
+
+type ClaimSplit<P> {
+  head_taken: Bool
+  more: List<TrainingExecutionClaim<P>>
+}
+
+fn claims_after_head<P>(cs: List<TrainingExecutionClaim<P>>) -> List<TrainingExecutionClaim<P>> {
+  cs
+    .fold(
+      ClaimSplit { head_taken: false, more: [] },
+      (acc, c) =>
+        if acc.head_taken {
+          ClaimSplit { head_taken: true, more: [acc.more, [c]].flat_map(x => x) }
+        } else {
+          ClaimSplit { head_taken: true, more: acc.more }
+        },
+    )
+    .more
+}
+
+fn claim_is_dispatched<P>(c: TrainingExecutionClaim<P>) -> Bool {
+  match c.dispatch {
+    none => false
+    Present { value: _ } => true
+  }
+}
+
+// A CLAIM POPULATION, NOT A CLAIM. Two active claims on two lawful transitions -- an initial and a
+// retry -- are both awaiting their launch, and reporting only the first would send a caller to
+// dispatch one and report the run handled. That is the first-wins defect this lane already repaired
+// in the readback binder, and there is no reason it is safer here.
+//
+// UNDISPATCHED OUTRANKS DISPATCHED because the two carry different instructions: the undispatched
+// claims need an actuation, the dispatched ones need only an observer. A pass that answered
+// "pending" while a claim had never been dispatched would wait forever on a launch nobody made.
+fn launch_disposition<P>(
+  claims: List<TrainingExecutionClaim<P>>,
+) -> TrainingRunDisposition<P> {
+  let undispatched = claims.filter(c => !claim_is_dispatched(c: c))
+  match undispatched.first() {
+    Present { value: head } =>
+      TrainingRunLaunchDispatchRequired {
+        first: head,
+        more: claims_after_head(cs: undispatched),
+      }
+    none =>
+      match claims.first() {
+        Present { value: head } =>
+          TrainingRunLaunchPending { first: head, more: claims_after_head(cs: claims) }
+        none => TrainingRunExecutionRequired
+      }
+  }
+}
+
 fn reconcile_training_run<P>(
-  composition: TrainingRunEvidenceComposition<P>,
+  input: TrainingRunConvergenceInput<P>,
 ) -> TrainingRunReconciliation<P> {
+  let composition = input.evidence
   let subject = composition.readback.subject
   let graph = composition.graph
   let rb = composition.readback
@@ -381,6 +463,7 @@ fn reconcile_training_run<P>(
       observation_blockers(rb: rb),
       foreign_attempt_blockers(graph: graph, rb: rb),
       assessments.flat_map(a => attempt_blockers(a: a, intended: intended)),
+      unclaimed_attempt_blockers(input: input),
     ].flat_map(x => x)
   let candidates =
     assessments.flat_map(a =>
@@ -422,7 +505,7 @@ fn reconcile_training_run<P>(
               if failed.length() > 0 {
                 TrainingRunRestartAuthorizationRequired { failed: failed }
               } else {
-                TrainingRunExecutionRequired
+                launch_disposition(claims: input.control.active_claims)
               }
             }
           }

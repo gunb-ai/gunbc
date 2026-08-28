@@ -39,7 +39,8 @@ import product.training.reconciliation {
   TrainingReadbackAttemptOutsideRun, TrainingAttemptTerminalConflict,
   TrainingAttemptOutputConflict, TrainingEffectiveManifestMismatch,
   TrainingSucceededWithoutObservedOutput, TrainingProcessTerminalContradiction,
-  TrainingCompletionAmbiguous,
+  TrainingCompletionAmbiguous, TrainingAttemptWithoutExecutionClaim,
+  TrainingRunLaunchPending, TrainingRunLaunchDispatchRequired,
   reconcile_training_run,
 }
 import product.training.checkpoint {
@@ -65,6 +66,18 @@ import product.training.resolution {
 import product.fabric.execution {
   Attempt, ExecutionAttemptLineage,
   InitialAttempt, InfrastructureRetry, CapabilityEscalation, RequestedReexecution,
+  ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, LeaseIdentity,
+}
+import product.fabric.supply { OfferQuote, QuotedFlatPerGrant }
+import product.training.execution_control {
+  TrainingStartCause, ClaimInitialAttempt, ClaimInfrastructureRetry,
+  TrainingStartTransitionKey, TrainingExecutionClaim, record_claim_dispatch,
+  TrainingStartClaimAdmission, TrainingStartClaimCommitted, TrainingStartClaimAlreadyCommitted,
+  TrainingStartClaimSnapshotStale, TrainingStartClaimRefused, admit_start_claim,
+  TrainingRunExecutionControl, TrainingControlAdmission, TrainingControlAdmitted,
+  TrainingControlRefused, admit_execution_control,
+  TrainingRunConvergenceInput, TrainingConvergenceInputAdmitted,
+  TrainingConvergenceInputSubjectMismatch, admit_convergence_input,
 }
 import product.fabric.work { ExecutionRequirements, Shape, HardRequirements }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
@@ -75,7 +88,7 @@ import product.fabric.identity {
 }
 import std.content_hash { ContentHash, Sha256Digest, content_hash_of_value }
 import std.currency { Usd }
-import std.measure { money_amount_micro, hardware_thread_count }
+import std.measure { MoneyOnce, money_amount_micro, hardware_thread_count }
 import std.integer { PositiveInt }
 import std.nat { Nat }
 import std.types { NonEmptyStr, Bool, List }
@@ -376,6 +389,7 @@ fn blocker_name(b: TrainingRunBlocker<NonEmptyStr>) -> NonEmptyStr {
     TrainingSucceededWithoutObservedOutput { attempt: _, terminal: _ } => "success-without-output"
     TrainingProcessTerminalContradiction { attempt: _, running: _, terminals: _ } => "process-terminal"
     TrainingCompletionAmbiguous { first: _, more: _ } => "completion-ambiguous"
+    TrainingAttemptWithoutExecutionClaim { attempt: _ } => "attempt-without-claim"
   }
 }
 
@@ -384,6 +398,8 @@ fn disposition_name(v: TrainingRunDisposition<NonEmptyStr>) -> NonEmptyStr {
     TrainingRunAlreadyConverged { completion: _ } => "converged"
     TrainingRunInProgress { running: _ } => "in-progress"
     TrainingRunExecutionRequired => "execution-required"
+    TrainingRunLaunchDispatchRequired { first: _, more: _ } => "launch-dispatch-required"
+    TrainingRunLaunchPending { first: _, more: _ } => "launch-pending"
     TrainingRunRestartAuthorizationRequired { failed: _ } => "restart-required"
     TrainingRunBlocked { first: _, more: _ } => "blocked"
   }
@@ -396,12 +412,142 @@ fn blocker_names(v: TrainingRunDisposition<NonEmptyStr>) -> List<NonEmptyStr> {
     TrainingRunAlreadyConverged { completion: _ } => []
     TrainingRunInProgress { running: _ } => []
     TrainingRunExecutionRequired => []
+    TrainingRunLaunchDispatchRequired { first: _, more: _ } => []
+    TrainingRunLaunchPending { first: _, more: _ } => []
     TrainingRunRestartAuthorizationRequired { failed: _ } => []
   }
 }
 
+fn grant_for(
+  s: TrainingRunSubject<NonEmptyStr>,
+  key: NonEmptyStr,
+  attempt: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>,
+) -> ExecutionGrant<NonEmptyStr> {
+  ExecutionGrant {
+    id: FabricIdentity { principal: "gunbai", key: key },
+    object: FabricGrantObject {
+      offer: FabricIdentity { principal: "gunbai", key: "offer-1" },
+      quote: QuotedFlatPerGrant(MoneyOnce {
+        amount: money_amount_micro(count: 1000),
+        currency: Usd,
+      }),
+    },
+    context: FabricGrantContext {
+      demand: s.demand,
+      work: s.work,
+      attempt: attempt,
+      executor: "spark-1",
+      lease: LeaseIdentity {
+        lease_key: "lease-1",
+        resource_fingerprint: h(s: "slice-1"),
+        generation: 9,
+      },
+      issued_at: "2026-08-28T01:00:00Z",
+      maximum_liability: money_amount_micro(count: 1000000),
+    },
+    evidence: FabricGrantEvidence {
+      fungibility_receipt: "fungibility-1",
+      offer_authority: "offer-authority-1",
+      resource_conservation: "resource-conservation-1",
+      budget_conservation: "budget-conservation-1",
+      principal_authority: "principal-authority-1",
+    },
+    resource_reservations: ["reservation-gpu-1"],
+    money_reservation: "reservation-money-1",
+  }
+}
+
+fn claim_of(
+  a: TrainingStartClaimAdmission<NonEmptyStr>,
+) -> TrainingExecutionClaim<NonEmptyStr>? {
+  match a {
+    TrainingStartClaimCommitted { claim: c } => Present { value: c }
+    TrainingStartClaimAlreadyCommitted { claim: c } => Present { value: c }
+    TrainingStartClaimSnapshotStale { expected_generation: _, observed_generation: _ } => none
+    TrainingStartClaimRefused { cause: _ } => none
+  }
+}
+
+fn claim_for(
+  s: TrainingRunSubject<NonEmptyStr>,
+  existing: List<TrainingExecutionClaim<NonEmptyStr>>,
+  cause: TrainingStartCause<NonEmptyStr>,
+  k: NonEmptyStr,
+) -> TrainingExecutionClaim<NonEmptyStr>? {
+  claim_of(a: admit_start_claim(
+    observed_generation: 4,
+    ledger_generation: 4,
+    existing: existing,
+    transition: TrainingStartTransitionKey { demand: s.demand, work: s.work, cause: cause },
+    attempt: attempt_id(k: k),
+    grant: grant_for(s: s, key: k, attempt: attempt_id(k: k)),
+  ))
+}
+
+// THE CLAIMS THE ORDINARY FIXTURE CARRIES: one per attempt the graph holds, each on its own
+// transition. Without them every witness below would additionally report attempt-without-claim,
+// which is a real blocker and would make the grain assertions unreadable.
+fn both_claims(
+  s: TrainingRunSubject<NonEmptyStr>,
+) -> List<TrainingExecutionClaim<NonEmptyStr>> {
+  match claim_for(s: s, existing: [], cause: ClaimInitialAttempt, k: "e1") {
+    none => []
+    Present { value: c1 } =>
+      match claim_for(
+        s: s,
+        existing: [c1],
+        cause: ClaimInfrastructureRetry {
+          prior_attempt: attempt_id(k: "e1"),
+          cause_receipt: "gunbc.observation.loss",
+        },
+        k: "e2",
+      ) {
+        none => []
+        Present { value: c2 } => [c1, c2]
+      }
+  }
+}
+
+fn join_control(
+  c: TrainingRunEvidenceComposition<NonEmptyStr>,
+  claims: List<TrainingExecutionClaim<NonEmptyStr>>,
+) -> TrainingRunConvergenceInput<NonEmptyStr>? {
+  match admit_execution_control(
+    graph: c.graph,
+    active_claims: claims,
+    ledger_generation: 4,
+    observation: "gunbc.observation.control",
+  ) {
+    TrainingControlRefused { first: _, more: _ } => none
+    TrainingControlAdmitted { control: ctl } =>
+      match admit_convergence_input(evidence: c, control: ctl) {
+        TrainingConvergenceInputSubjectMismatch { evidence_subject: _, control_subject: _ } => none
+        TrainingConvergenceInputAdmitted { input: i } => Present { value: i }
+      }
+  }
+}
+
+// A FIXTURE THAT CANNOT ADMIT ITS CONTROL JOIN REPORTS A BLOCKER NO WITNESS BELOW ASSERTS, so a
+// broken fixture reddens rather than quietly satisfying an assertion about something else.
+fn reconcile_with(
+  c: TrainingRunEvidenceComposition<NonEmptyStr>,
+  claims: List<TrainingExecutionClaim<NonEmptyStr>>,
+) -> TrainingRunDisposition<NonEmptyStr> {
+  match join_control(c: c, claims: claims) {
+    none =>
+      TrainingRunBlocked {
+        first: TrainingObservationNotAttempted {
+          axis: ExecutionReadbackAxis,
+          obligation: "fixture could not admit the control join",
+        },
+        more: [],
+      }
+    Present { value: i } => reconcile_training_run(input: i).disposition
+  }
+}
+
 fn reconcile(c: TrainingRunEvidenceComposition<NonEmptyStr>) -> TrainingRunDisposition<NonEmptyStr> {
-  reconcile_training_run(composition: c).disposition
+  reconcile_with(c: c, claims: both_claims(s: c.readback.subject))
 }
 
 // THE GRAIN WITNESS, AND THE ONE AN EARLIER REVISION OF THIS MODULE GOT BACKWARDS. Attempt e1
@@ -501,19 +647,61 @@ test fn one_attempt_with_two_digests_is_an_output_conflict() -> Bool {
 // FIVE SUCCESSFULLY ENUMERATED EMPTY POPULATIONS ARE NOT A CONVERGED RUN. There is no contradiction
 // anywhere in this input, which is exactly why an empty blocker population cannot be the test for
 // convergence: this is a run nobody has started.
-test fn no_blockers_over_empty_populations_requires_execution_rather_than_converging() -> Bool {
+//
+// THE ASSERTION NARROWED WHEN THE CONTROL COMPOSITION LANDED, and the earlier form of this witness
+// is why it is written this way now. It asserted "execution-required" over the ordinary two-attempt
+// fixture, which was true only while the fold could not see whether anything had been claimed.
+// ExecutionRequired now means NOTHING IS COMMITTED AND NOTHING IS RUNNING, so the fixture has to be
+// a run with no attempts and no claims -- otherwise the witness would be asserting that a run with
+// two live claims should have a third trainer started.
+fn empty_graph_composition(
+  d: TrainingRunDesired<NonEmptyStr>,
+) -> TrainingRunEvidenceComposition<NonEmptyStr>? {
+  let s = subject_of_desired(desired: d)
+  match admit_attempt_graph(subject: s, attempts: []) {
+    AttemptGraphRefused { first: _, more: _ } => none
+    AttemptGraphAdmitted { graph: g } =>
+      match bind_training_run_readback(
+        desired: d,
+        execution: TrainingSubjectBoundPopulation {
+          subject: s,
+          observation: observed(members: [], receipt: "obs.proc"),
+        },
+        checkpoints: TrainingSubjectBoundPopulation {
+          subject: s,
+          observation: observed(members: [], receipt: "obs.ckpt"),
+        },
+        terminals: TrainingSubjectBoundPopulation {
+          subject: s,
+          observation: observed(members: [], receipt: "obs.term"),
+        },
+        outputs: TrainingSubjectBoundPopulation {
+          subject: s,
+          observation: observed(members: [], receipt: "obs.out"),
+        },
+        effective_manifests: TrainingSubjectBoundPopulation {
+          subject: s,
+          observation: observed(members: [], receipt: "obs.manifest"),
+        },
+      ) {
+        TrainingRunReadbackRefused { first: _, more: _ } => none
+        TrainingRunReadbackAdmitted { readback: rb } =>
+          match admit_training_evidence(desired: d, graph: g, readback: rb, cut: sweep(s: s)) {
+            TrainingRunCompositionRefused { first: _, more: _ } => none
+            TrainingRunEvidenceComposed { composition: c } => Present { value: c }
+          }
+      }
+  }
+}
+
+test fn no_attempts_and_no_claims_over_empty_populations_requires_execution() -> Bool {
   match desired_fixture() {
     none => false
     Present { value: d } =>
-      match compose(
-        d: d,
-        processes: observed(members: [], receipt: "obs.proc"),
-        terminals: observed(members: [], receipt: "obs.term"),
-        outputs: observed(members: [], receipt: "obs.out"),
-        manifests: observed(members: [], receipt: "obs.manifest"),
-      ) {
+      match empty_graph_composition(d: d) {
         none => false
-        Present { value: c } => disposition_name(v: reconcile(c: c)) == "execution-required"
+        Present { value: c } =>
+          disposition_name(v: reconcile_with(c: c, claims: [])) == "execution-required"
       }
   }
 }
@@ -658,8 +846,165 @@ test fn a_single_clean_completion_converges_and_names_its_attempt() -> Bool {
             TrainingRunBlocked { first: _, more: _ } => false
             TrainingRunInProgress { running: _ } => false
             TrainingRunExecutionRequired => false
+            TrainingRunLaunchDispatchRequired { first: _, more: _ } => false
+            TrainingRunLaunchPending { first: _, more: _ } => false
             TrainingRunRestartAuthorizationRequired { failed: _ } => false
           }
+      }
+  }
+}
+
+// AN ATTEMPT THE GRAPH HOLDS WITH NO EXECUTION CLAIM IS A CONTROL-STATE DEFECT, NOT A REASON TO
+// LAUNCH. This is exactly the state a retrospective writer produces -- an attempt recorded after the
+// process started, with nothing durable inhibiting a second launch -- and the previous fold answered
+// it with "execution required", which is an instruction to start another trainer.
+test fn an_attempt_with_no_execution_claim_blocks_rather_than_requiring_execution() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } => {
+          let v = reconcile_with(c: c, claims: [])
+          disposition_name(v: v) == "blocked"
+            && blocker_names(v: v).filter(n => n == "attempt-without-claim").length() == 2
+        }
+      }
+  }
+}
+
+// A COMMITTED CLAIM WITH NO DISPATCH RECEIPT IS NOT A REASON TO START A NEW EXECUTION -- it is a
+// reason to dispatch THE SAME ONE. Folding it into ExecutionRequired is how a controller that died
+// between commitment and launch produces a second attempt on the next pass.
+test fn a_committed_undispatched_claim_asks_for_dispatch_not_a_new_execution() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } =>
+          disposition_name(v: reconcile(c: c)) == "launch-dispatch-required"
+      }
+  }
+}
+
+// A DISPATCHED CLAIM WITH NO OBSERVED PROCESS IS A DIFFERENT STATE WITH A DIFFERENT REMEDY: wait for
+// the observer, do not re-dispatch. One axis apart from the witness above, and the two were one
+// absorbing arm before the control record carried a dispatch receipt.
+test fn a_dispatched_claim_awaiting_a_process_observation_is_launch_pending() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } =>
+          disposition_name(v: reconcile_with(
+            c: c,
+            claims: both_claims(s: c.readback.subject)
+              .map(cl => record_claim_dispatch(claim: cl, dispatch: "gunbc.observation.dispatch")),
+          )) == "launch-pending"
+      }
+  }
+}
+
+// A RUNNING PROCESS STILL OUTRANKS A CLAIM. The claim says a launch was authorized; the process
+// observation says one is running, and confusing the two would let control state inhabit the
+// observed-world arm -- the one thing the readback discipline forbids.
+test fn a_running_process_outranks_a_dispatched_claim() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [running_at(k: "e2")], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } => disposition_name(v: reconcile(c: c)) == "in-progress"
+      }
+  }
+}
+
+fn launch_claim_count(v: TrainingRunDisposition<NonEmptyStr>) -> Nat {
+  match v {
+    TrainingRunLaunchDispatchRequired { first: _, more: m } => m.length() + 1
+    TrainingRunLaunchPending { first: _, more: m } => m.length() + 1
+    TrainingRunAlreadyConverged { completion: _ } => 0
+    TrainingRunInProgress { running: _ } => 0
+    TrainingRunExecutionRequired => 0
+    TrainingRunRestartAuthorizationRequired { failed: _ } => 0
+    TrainingRunBlocked { first: _, more: _ } => 0
+  }
+}
+
+// EVERY UNDISPATCHED CLAIM IS REPORTED, NOT ONLY THE FIRST. Two lawful transitions -- an initial and
+// a retry -- are both awaiting a launch. Reporting one would have a caller dispatch it and read the
+// run as handled, which is the first-wins defect this lane already repaired once in the readback
+// binder. Without this control the disposition witnesses above are satisfied by a fold that drops
+// the tail.
+test fn every_undispatched_claim_is_reported_not_only_the_first() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } => launch_claim_count(v: reconcile(c: c)) == 2
+      }
+  }
+}
+
+// AN UNDISPATCHED CLAIM BESIDE A DISPATCHED ONE ASKS FOR DISPATCH, and reports only the claim that
+// still needs one. Answering "pending" here would wait forever on a launch nobody made.
+test fn an_undispatched_claim_outranks_a_dispatched_one_and_reports_only_itself() -> Bool {
+  match desired_fixture() {
+    none => false
+    Present { value: d } =>
+      match compose(
+        d: d,
+        processes: observed(members: [], receipt: "obs.proc"),
+        terminals: observed(members: [], receipt: "obs.term"),
+        outputs: observed(members: [], receipt: "obs.out"),
+        manifests: observed(members: [], receipt: "obs.manifest"),
+      ) {
+        none => false
+        Present { value: c } => {
+          let cs = both_claims(s: c.readback.subject)
+          let mixed =
+            cs.flat_map(cl =>
+              if cl.attempt.key == "e1" {
+                [record_claim_dispatch(claim: cl, dispatch: "gunbc.observation.dispatch")]
+              } else {
+                [cl]
+              })
+          let v = reconcile_with(c: c, claims: mixed)
+          disposition_name(v: v) == "launch-dispatch-required" && launch_claim_count(v: v) == 1
+        }
       }
   }
 }
