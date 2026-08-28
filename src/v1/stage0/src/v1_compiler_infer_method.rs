@@ -355,6 +355,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "namespace_structural_observation_admissions".to_string(),
+            list_of_type_variable("ordinary_compile_structural_admission_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "extdeps_shape_transport_policy_facts_for_qualified_name".to_string(),
             type_variable_node("extdeps_module_facts_record".to_string()),
         );

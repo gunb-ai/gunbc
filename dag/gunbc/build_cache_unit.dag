@@ -10,7 +10,7 @@ import extdeps.systemd.unit_file {
   SystemdInstallSection, Installable, NotInstallable,
   Description, After, Before, Requires,
   ServiceType, ExecStart, Restart, Environment, ServiceUser, ServiceGroup, ServiceSlice,
-  SliceMemoryMax, SliceMemoryHigh,
+  slice_memory_max, slice_memory_high,
   WantedBy,
   serialize_systemd_unit_file,
   systemd_unit_file_lines, systemd_drop_in_lines,
@@ -157,8 +157,8 @@ fn compile_pool_slice_unit_file(slice_unit: NonEmptyStr, sized: ByteSize) -> Sys
       Before { target: "slices.target" as NonEmptyStr },
     ],
     slice: [
-      SliceMemoryMax { bytes: to_string(byte_size_count(b: sized)) as NonEmptyStr },
-      SliceMemoryHigh { bytes: to_string(byte_size_count(b: sized)) as NonEmptyStr },
+      slice_memory_max(bytes: sized),
+      slice_memory_high(bytes: sized),
     ],
     install: NotInstallable,
   }

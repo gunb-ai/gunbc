@@ -183,7 +183,8 @@ use crate::v1_std_core::CallTargetIdentity::{
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded,
-    InternalError, ParameterDefaultFormNotAdmitted, UnlistedImportUse,
+    InternalError, ParameterDefaultFormNotAdmitted, ReferenceDerivedImportExportUnproven,
+    ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
 };
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -5556,18 +5557,28 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             });
         }
         let test_projections = ctx.test_projections.clone();
-        let module_files = Rc::new({
+        let module_emissions = Rc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
-                __result.push(
-                    emit_module_full_with_dispositions(
-                        tm.clone(),
-                        ctx.clone(),
-                        typed.modules.clone(),
-                    )
-                    .file
-                    .clone(),
-                );
+                __result.push(emit_module_full_with_dispositions(
+                    tm.clone(),
+                    ctx.clone(),
+                    typed.modules.clone(),
+                ));
+            }
+            __result
+        });
+        let module_files = Rc::new({
+            let mut __result = Vec::new();
+            for e in module_emissions.iter().cloned() {
+                __result.push(e.file.clone());
+            }
+            __result
+        });
+        let import_refusals = Rc::new({
+            let mut __result = Vec::new();
+            for e in module_emissions.iter().cloned() {
+                __result.extend((*e.import_refusals.clone()).iter().cloned());
             }
             __result
         });
@@ -5689,7 +5700,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         );
         Rc::new(EmitResult {
             files: files.clone(),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: import_refusals.clone(),
         })
     }
 }
@@ -7474,7 +7485,7 @@ pub fn imported_names_in_use_line(line: String) -> Rc<Vec<String>> {
 pub fn reference_derived_use_lines_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_item_emit_surface_names (collect_item_type_surface_names + collect_value_emit_type_surface_names over data bodies) over each item's type_annotation, param types, inferred Resolved return/signature, AND value-position record-literal / variant-parent-enum surfaces the emitter will qualify (e.g. UriScheme::Https in a data anchor) — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. CONSTRUCTION WALL (ROOT 3, §5): a candidate that registry-resolves to a provider module MUST also pass provider_proven_exports_symbol (name_in_transitive_export_surface) before any use-line is synthesized — never a plausible guess from the bare-name registry alone (the v1_rt::member fabrication class: registry homonym without export proof). NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider AND export-proven). A candidate that registry-resolves to nothing, or resolves but fails export proof, is left unsynthesized (typed refusal at step-2 is future work); it never fabricates a use-line. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. SUPERSEDED-MECHANISM, THIS CUT (eager-deer-389): the two sentences that follow describe the corpus_repr_is_faithful / HostNative gate, which NO LONGER EXISTS -- RustCorpusRepr and both its variants are deleted and the gate is gone, so import-bearing modules are no longer split by corpus mode. They are retained as the history of WHY the walk was gated at all (the spurious-use-line and seed zero-drift hazards below are real and still constrain any future gating), not as a live description; reference_use_lines_representation_invariant_note in this module carries the post-cut statement. Read them as quarry. AS WRITTEN BEFORE THE CUT: Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen.".to_string()
+            "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_item_emit_surface_names (collect_item_type_surface_names + collect_value_emit_type_surface_names over data bodies) over each item's type_annotation, param types, inferred Resolved return/signature, AND value-position record-literal / variant-parent-enum surfaces the emitter will qualify (e.g. UriScheme::Https in a data anchor) — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. CONSTRUCTION WALL (ROOT 3, §5): a candidate that registry-resolves to a provider module MUST also pass provider_proven_exports_symbol (name_in_transitive_export_surface) before any use-line is synthesized — never a plausible guess from the bare-name registry alone (the v1_rt::member fabrication class: registry homonym without export proof). NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider AND export-proven). A candidate that registry-resolves to nothing, or resolves but fails export proof, is left unsynthesized, and it never fabricates a use-line. STEP 2 HAS LANDED: the reason is no longer silent. Each such candidate carries a ReferenceDerivedCandidateDisposition -- CandidateRegistryAbsent or CandidateExportProofFailed, distinct because the remedies are opposite -- and CandidateExportProofFailed emits the typed, located, counted ReferenceDerivedImportExportUnproven. THE EMISSION IS NOT REFUSED, and the distinction matters because a reader of the phrase typed refusal will otherwise expect one: the diagnostic is ADVISORY, so emission completes and produces its files beside it. Measured on the required build lane at this branch head, entry:src/v2/compiler/00_compile.dag: emitted=175 blocking=0 -- so what step 2 closed is the SILENCE, not the emission. Whether the line stops is the severity question, and v1.compiler.core reference_derived_import_refusal_severity_note owns it, including why the blocking flip was executed and then falsified by its own first run over a second closure. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. SUPERSEDED-MECHANISM, THIS CUT (eager-deer-389): the two sentences that follow describe the corpus_repr_is_faithful / HostNative gate, which NO LONGER EXISTS -- RustCorpusRepr and both its variants are deleted and the gate is gone, so import-bearing modules are no longer split by corpus mode. They are retained as the history of WHY the walk was gated at all (the spurious-use-line and seed zero-drift hazards below are real and still constrain any future gating), not as a live description; reference_use_lines_representation_invariant_note in this module carries the post-cut statement. Read them as quarry. AS WRITTEN BEFORE THE CUT: Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -7867,28 +7878,10 @@ pub fn local_coproduct_variant_names(
 pub enum ReferenceDerivedCandidateDisposition {
     CandidateSurvived { provider_module: String },
     CandidateOwnModule,
+    CandidateVariantDelegatedToParent { parent_enum: String },
+    CandidateVariantParentUnresolved,
     CandidateRegistryAbsent,
     CandidateExportProofFailed { provider_module: String },
-}
-impl ReferenceDerivedCandidateDisposition {
-    pub fn provider_module(&self) -> String {
-        match self {
-            ReferenceDerivedCandidateDisposition::CandidateSurvived {
-                provider_module: __val,
-                ..
-            } => __val.clone(),
-            ReferenceDerivedCandidateDisposition::CandidateOwnModule => {
-                panic!("no provider_module on unit variant")
-            }
-            ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
-                panic!("no provider_module on unit variant")
-            }
-            ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
-                provider_module: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -7906,34 +7899,98 @@ pub fn reference_derived_candidate_disposition(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
 ) -> Rc<ReferenceDerivedCandidateDisposition> {
-    match v1_rt::map_get(&registry, name.clone()) {
-        Some(info) => {
-            if (info.module_name.clone() == this_module_name.clone()) {
-                Rc::new(ReferenceDerivedCandidateDisposition::CandidateOwnModule)
-            } else {
-                if provider_proven_exports_symbol(
-                    name.clone(),
-                    info.module_name.clone(),
-                    export_sets.clone(),
-                    typed_modules.clone(),
-                    source_indices.clone(),
-                    module_index.clone(),
-                ) {
-                    Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
-                        provider_module: info.module_name.clone(),
-                    })
+    if crate::v1_compiler_infer_emit_info::is_known_variant(type_summaries.clone(), name.clone()) {
+        match v1_rt::map_get(&variant_to_enum, name.clone()) {
+            Some(parent) => {
+                if (parent.clone() == "".to_string()) {
+                    Rc::new(ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved)
                 } else {
                     Rc::new(
-                        ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
-                            provider_module: info.module_name.clone(),
+                        ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
+                            parent_enum: parent.clone(),
                         },
                     )
                 }
             }
+            None => Rc::new(ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved),
         }
-        None => Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
+    } else {
+        match v1_rt::map_get(&registry, name.clone()) {
+            Some(info) => {
+                if (info.module_name.clone() == this_module_name.clone()) {
+                    Rc::new(ReferenceDerivedCandidateDisposition::CandidateOwnModule)
+                } else {
+                    if provider_proven_exports_symbol(
+                        name.clone(),
+                        info.module_name.clone(),
+                        export_sets.clone(),
+                        typed_modules.clone(),
+                        source_indices.clone(),
+                        module_index.clone(),
+                    ) {
+                        Rc::new(ReferenceDerivedCandidateDisposition::CandidateSurvived {
+                            provider_module: info.module_name.clone(),
+                        })
+                    } else {
+                        Rc::new(
+                            ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+                                provider_module: info.module_name.clone(),
+                            },
+                        )
+                    }
+                }
+            }
+            None => Rc::new(ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent),
+        }
     }
+}
+
+pub fn reference_derived_row_diagnostics(
+    rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
+    module_span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for r in rows.iter().cloned() {
+            __result.extend(
+                (*match (*r.disposition.clone()).clone() {
+                    ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+                        provider_module: p,
+                        ..
+                    } => Rc::new(vec![crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::ReferenceDerivedImportExportUnproven {
+                            name: r.name.clone(),
+                            referencing_module: r.module_name.clone(),
+                            provider_module: p.clone(),
+                            span: module_span.clone(),
+                        }),
+                        r.module_name.clone(),
+                    )]),
+                    ReferenceDerivedCandidateDisposition::CandidateSurvived {
+                        provider_module: _,
+                        ..
+                    } => Rc::new(vec![]),
+                    ReferenceDerivedCandidateDisposition::CandidateOwnModule => Rc::new(vec![]),
+                    ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
+                        parent_enum: _,
+                        ..
+                    } => Rc::new(vec![]),
+                    ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved => {
+                        Rc::new(vec![])
+                    }
+                    ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
+                        Rc::new(vec![])
+                    }
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
 }
 
 pub fn reference_derived_candidate_survived(
@@ -7955,6 +8012,13 @@ pub fn reference_derived_disposition_name(
             provider_module: _, ..
         } => "survived".to_string(),
         ReferenceDerivedCandidateDisposition::CandidateOwnModule => "own-module".to_string(),
+        ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
+            parent_enum: _,
+            ..
+        } => "variant-delegated-to-parent".to_string(),
+        ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved => {
+            "variant-parent-unresolved".to_string()
+        }
         ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
             "registry-absent".to_string()
         }
@@ -7970,6 +8034,8 @@ pub struct ReferenceDerivedCensus {
     pub candidates: i64,
     pub survived: i64,
     pub own_module: i64,
+    pub variant_delegated_to_parent: i64,
+    pub variant_parent_unresolved: i64,
     pub registry_absent: i64,
     pub export_proof_failed: i64,
 }
@@ -7977,57 +8043,89 @@ pub struct ReferenceDerivedCensus {
 pub fn reference_derived_census(
     rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
 ) -> ReferenceDerivedCensus {
-    ReferenceDerivedCensus {
-        candidates: (rows.clone().len() as i64),
-        survived: (Rc::new({
-            let mut __result = Vec::new();
-            for r in rows.iter().cloned() {
-                if (reference_derived_disposition_name(r.disposition.clone())
-                    == "survived".to_string())
-                {
-                    __result.push(r);
+    rows.iter().cloned().fold(
+        ReferenceDerivedCensus {
+            candidates: 0,
+            survived: 0,
+            own_module: 0,
+            variant_delegated_to_parent: 0,
+            variant_parent_unresolved: 0,
+            registry_absent: 0,
+            export_proof_failed: 0,
+        },
+        |acc: ReferenceDerivedCensus, r: Rc<ReferenceDerivedCandidateRow>| match (*r
+            .disposition
+            .clone())
+        .clone()
+        {
+            ReferenceDerivedCandidateDisposition::CandidateSurvived {
+                provider_module: _, ..
+            } => ReferenceDerivedCensus {
+                candidates: (acc.candidates.clone() + 1),
+                survived: (acc.survived.clone() + 1),
+                own_module: acc.own_module.clone(),
+                variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
+                variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
+                registry_absent: acc.registry_absent.clone(),
+                export_proof_failed: acc.export_proof_failed.clone(),
+            },
+            ReferenceDerivedCandidateDisposition::CandidateOwnModule => ReferenceDerivedCensus {
+                candidates: (acc.candidates.clone() + 1),
+                survived: acc.survived.clone(),
+                own_module: (acc.own_module.clone() + 1),
+                variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
+                variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
+                registry_absent: acc.registry_absent.clone(),
+                export_proof_failed: acc.export_proof_failed.clone(),
+            },
+            ReferenceDerivedCandidateDisposition::CandidateVariantDelegatedToParent {
+                parent_enum: _,
+                ..
+            } => ReferenceDerivedCensus {
+                candidates: (acc.candidates.clone() + 1),
+                survived: acc.survived.clone(),
+                own_module: acc.own_module.clone(),
+                variant_delegated_to_parent: (acc.variant_delegated_to_parent.clone() + 1),
+                variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
+                registry_absent: acc.registry_absent.clone(),
+                export_proof_failed: acc.export_proof_failed.clone(),
+            },
+            ReferenceDerivedCandidateDisposition::CandidateVariantParentUnresolved => {
+                ReferenceDerivedCensus {
+                    candidates: (acc.candidates.clone() + 1),
+                    survived: acc.survived.clone(),
+                    own_module: acc.own_module.clone(),
+                    variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
+                    variant_parent_unresolved: (acc.variant_parent_unresolved.clone() + 1),
+                    registry_absent: acc.registry_absent.clone(),
+                    export_proof_failed: acc.export_proof_failed.clone(),
                 }
             }
-            __result
-        })
-        .len() as i64),
-        own_module: (Rc::new({
-            let mut __result = Vec::new();
-            for r in rows.iter().cloned() {
-                if (reference_derived_disposition_name(r.disposition.clone())
-                    == "own-module".to_string())
-                {
-                    __result.push(r);
+            ReferenceDerivedCandidateDisposition::CandidateRegistryAbsent => {
+                ReferenceDerivedCensus {
+                    candidates: (acc.candidates.clone() + 1),
+                    survived: acc.survived.clone(),
+                    own_module: acc.own_module.clone(),
+                    variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
+                    variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
+                    registry_absent: (acc.registry_absent.clone() + 1),
+                    export_proof_failed: acc.export_proof_failed.clone(),
                 }
             }
-            __result
-        })
-        .len() as i64),
-        registry_absent: (Rc::new({
-            let mut __result = Vec::new();
-            for r in rows.iter().cloned() {
-                if (reference_derived_disposition_name(r.disposition.clone())
-                    == "registry-absent".to_string())
-                {
-                    __result.push(r);
-                }
-            }
-            __result
-        })
-        .len() as i64),
-        export_proof_failed: (Rc::new({
-            let mut __result = Vec::new();
-            for r in rows.iter().cloned() {
-                if (reference_derived_disposition_name(r.disposition.clone())
-                    == "export-proof-failed".to_string())
-                {
-                    __result.push(r);
-                }
-            }
-            __result
-        })
-        .len() as i64),
-    }
+            ReferenceDerivedCandidateDisposition::CandidateExportProofFailed {
+                provider_module: _,
+                ..
+            } => ReferenceDerivedCensus {
+                candidates: (acc.candidates.clone() + 1),
+                survived: acc.survived.clone(),
+                own_module: acc.own_module.clone(),
+                variant_delegated_to_parent: acc.variant_delegated_to_parent.clone(),
+                variant_parent_unresolved: acc.variant_parent_unresolved.clone(),
+                registry_absent: acc.registry_absent.clone(),
+                export_proof_failed: (acc.export_proof_failed.clone() + 1),
+            },
+        },
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -8262,6 +8360,8 @@ pub fn reference_derived_use_line_plan(
                                 typed_modules.clone(),
                                 source_indices.clone(),
                                 module_index.clone(),
+                                emit_info.type_summaries.clone(),
+                                emit_info.variant_to_enum.clone(),
                             ),
                         })])
                     })
@@ -8378,6 +8478,7 @@ pub fn reference_derived_use_lines(
 pub struct ModuleEmission {
     pub file: Rc<TextFile>,
     pub reference_rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
+    pub import_refusals: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn emit_module_full_with_dispositions(
@@ -8817,6 +8918,10 @@ pub fn emit_module_full(
                 content: content.clone(),
             }),
             reference_rows: reference_plan.rows.clone(),
+            import_refusals: reference_derived_row_diagnostics(
+                reference_plan.rows.clone(),
+                m.span.clone(),
+            ),
         })
     }
 }

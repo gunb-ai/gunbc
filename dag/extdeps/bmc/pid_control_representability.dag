@@ -12,7 +12,10 @@ import extdeps.languages.json.member_conservation {
   MemberConsumed,
   ObjectMemberPartition,
 }
-import extdeps.bmc.pid_control_program { BmcFanControlProgram }
+import extdeps.bmc.pid_control_program {
+  BmcFanControlProgram,
+  phosphor_pid_control_external_authority_anchor,
+}
 import extdeps.bmc.pid_control_semantic_identity { semantic_program_digest }
 import extdeps.bmc.pid_control_decode {
   ProgramDecode,
@@ -22,6 +25,11 @@ import extdeps.bmc.pid_control_decode {
   ProgramRefusal,
   decode_program,
 }
+import extdeps.external_authority { ExternalAuthority }
+
+// THE ANCHOR IS A BINDING, NOT A SECOND URI -- the gate is over programs whose authority
+// extdeps.bmc.pid_control_program declares.
+data extdeps_external_authority_anchor: ExternalAuthority = phosphor_pid_control_external_authority_anchor
 
 // THE GATE THAT STOPS A PARTIAL OBSERVATION FROM BEING CITED AS A COMPLETE PROGRAM. A decode can
 // succeed while leaving members it does not model, and such a program is a perfectly good

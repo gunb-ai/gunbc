@@ -56,6 +56,23 @@ type ReferenceBindingProductionGap
   | ReferenceBindingNamedReferenceAbsent
   | ReferenceBindingNamedDeclarationAbsent
 
+// THE SUBJECT'S OWN IDENTITY IS AN OBSERVATION, NOT A STRING.
+//
+// A consumer asking "which module did this subject declare itself to be" gets an answer only when
+// the parse produced one. Rendering the no-answer case as an empty path would make "the parse
+// refused" and "the module path is empty" the same value, so a consumer comparing paths reads a
+// refusal as a subject that simply does not match -- fail-closed by accident of what that one
+// consumer does with the string, and silent for the next one. The refusal reuses the same
+// ReferenceBindingProductionGap vocabulary as every other production refusal in this carrier, so
+// there is one gap authority and not a second spelling beside it.
+type StructuralObservationSubjectModule
+  = SubjectModuleProduced {
+      module_path: String,
+    }
+  | SubjectModuleProductionRefused {
+      gap: ReferenceBindingProductionGap,
+    }
+
 type ReferenceBindingObservation
   = SameFileNeighbourObservation {
       neighbour: OccurrenceId,
