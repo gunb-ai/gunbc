@@ -422,7 +422,8 @@ test fn an_entry_scoped_compile_is_read_normally() -> Bool {
 // ---------------------------------------------------------------------------------------------
 
 data specimen_subject: EmissionMeasurementSubject = EmissionMeasurementSubject {
-  entry: "dag/extdeps/cpu/ampere.dag",
+  scope: EntryScope { entry: "dag/extdeps/cpu/ampere.dag" },
+  render_target: RustRender,
   source_revision: "c271b75829" as CommitSha,
   working_tree: WorkingTreeClean,
   compiler: sha256_digest(hex: "aa" as NonEmptyStr),
@@ -506,4 +507,89 @@ test fn no_report_states_an_emit_population_without_its_extent() -> Bool {
 test fn an_unestablished_subject_carries_no_provenance_and_no_population() -> Bool {
   !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "compiler\t")
     && !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "emit_population")
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SCOPE DECIDES THE ARGV. These exist because a String entry could not express the
+// primary/pool distinction, and three whole-corpus runs on 2026-08-28 were reported as
+// whole-corpus while measuring 3109 of 4170 sources -- the compiler said
+// `primary-root population root=dag ... 1061 indexed modules in the name census only` and nothing
+// downstream could contradict it. Asserting the ORDER is the point: primary-precedence means the
+// FIRST --source-root is the subject, so an argv that lists the pool first measures something
+// else under the same name.
+// ---------------------------------------------------------------------------------------------
+
+// ASSERTED AS THE WHOLE ARGV RATHER THAN AS A PREDICATE OVER IT, because ORDER is the fact under
+// test and a membership check cannot see order at all -- an argv listing the pool first contains
+// exactly the same elements and measures a different subject.
+test fn a_primary_root_scope_renders_the_primary_root_before_its_pools() -> Bool {
+  emission_compile_args(
+    scope: PrimaryRootScope { primary_root: "src/v2", dependency_pools: ["dag"] },
+    render_target: RustRender,
+    out_dir: "/tmp/o"
+  ) |> join(separator: " ")
+    == "compile --source-root src/v2 --source-root dag --output-dir /tmp/o --target rust --dependency-pool-index primary-precedence"
+}
+
+// THE MIRROR OF THE ABOVE, and the pair is the point: the SAME two roots in the other order is the
+// argv that produced 2026-08-28's misreported runs, and it must render differently.
+test fn swapping_which_root_is_primary_renders_a_different_argv() -> Bool {
+  emission_compile_args(
+    scope: PrimaryRootScope { primary_root: "src/v2", dependency_pools: ["dag"] },
+    render_target: RustRender, out_dir: "/tmp/o"
+  ) |> join(separator: " ")
+  != (emission_compile_args(
+    scope: PrimaryRootScope { primary_root: "dag", dependency_pools: ["src/v2"] },
+    render_target: RustRender, out_dir: "/tmp/o"
+  ) |> join(separator: " "))
+}
+
+test fn a_primary_root_scope_names_no_entry() -> Bool {
+  let args = emission_compile_args(
+    scope: PrimaryRootScope { primary_root: "src/v2", dependency_pools: ["dag"] },
+    render_target: RustRender,
+    out_dir: "/tmp/o"
+  )
+  !any(args, a => a == "--entry")
+}
+
+test fn an_entry_scope_names_its_entry() -> Bool {
+  let args = emission_compile_args(
+    scope: EntryScope { entry: "dag/std/node.dag" },
+    render_target: RustRender,
+    out_dir: "/tmp/o"
+  )
+  any(args, a => a == "--entry") && any(args, a => a == "dag/std/node.dag")
+}
+
+// THE TARGET REACHES THE ARGV RATHER THAN BEING DESCRIBED BESIDE IT. A subject field that did not
+// render into the invocation would be free to disagree with the run it claims to describe.
+test fn the_render_target_reaches_the_invocation() -> Bool {
+  let rust = emission_compile_args(scope: EntryScope { entry: "e" }, render_target: RustRender, out_dir: "/tmp/o")
+  let dag = emission_compile_args(scope: EntryScope { entry: "e" }, render_target: DagRender, out_dir: "/tmp/o")
+  any(rust, a => a == "rust") && any(dag, a => a == "dag") && !any(rust, a => a == "--target-dag")
+}
+
+// ASSEMBLY REFUSES RATHER THAN FABRICATING AN ENTRY. cssl_assemble takes one --entry-dag; handing
+// it the primary root would assemble a subject the measurement never named.
+test fn assembly_refuses_a_population_scope_instead_of_inventing_an_entry() -> Bool {
+  match emission_assembly_entry(sc: PrimaryRootScope { primary_root: "src/v2", dependency_pools: [] }) {
+    AssemblyEntry { entry: _ } => false
+    AssemblyEntryAbsent { why: w } => w != ""
+  }
+}
+
+test fn assembly_takes_the_entry_when_the_scope_has_one() -> Bool {
+  match emission_assembly_entry(sc: EntryScope { entry: "dag/std/node.dag" }) {
+    AssemblyEntry { entry: e } => e == "dag/std/node.dag"
+    AssemblyEntryAbsent { why: _ } => false
+  }
+}
+
+// THE LABEL DISTINGUISHES THE TWO SCOPES, so a persisted receipt cannot render a partial subject
+// as a whole one -- which is exactly what the prose around those three runs did.
+test fn the_scope_label_distinguishes_an_entry_from_a_population() -> Bool {
+  let e = emission_scope_label(sc: EntryScope { entry: "dag/std/node.dag" })
+  let p = emission_scope_label(sc: PrimaryRootScope { primary_root: "dag", dependency_pools: ["src/v2"] })
+  e != p && e != "" && p != "" && string_contains(s: p, pattern: "src/v2")
 }

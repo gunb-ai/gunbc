@@ -127,12 +127,67 @@ type WorkingTreeStanding
 type EmissionAssemblyMode
   = SeedLinkedAssembly { std_bridge_dir: String }
 
+// THE SUBJECT IS A SCOPE, NOT AN ENTRY STRING, AND THE REASON IS A MEASURED DEFECT RATHER THAN
+// GENERALITY FOR ITS OWN SAKE. Three whole-corpus runs were taken on 2026-08-28 under
+// `--source-root dag --source-root src/v2` and every one reported, in the compiler's own words,
+// `resolved 3109 sources (primary-root population root=dag), 1061 indexed modules in the name
+// census only`. The CLI takes the FIRST source root as the PRIMARY POPULATION and later roots as
+// DEPENDENCY POOLS, so src/v2 -- the v2 compiler, which is what self-host is about -- was indexed
+// and never compiled as subject. The runs were reported as whole-corpus by everyone including the
+// session that took them.
+//
+// A `String` entry cannot express that distinction, so no receipt built on one can be wrong about
+// it OUT LOUD -- it is simply silent, and a silent subject is read as the subject the reader
+// expected. The scope is therefore a closed coproduct whose PrimaryRootScope arm carries the pool
+// list SEPARATELY from the primary root, which makes the confusion that produced this
+// unrepresentable rather than merely documented (DESIGN section 5, construction over validation).
+type EmissionScope
+  = EntryScope { entry: String }
+  | PrimaryRootScope { primary_root: String, dependency_pools: List<String> }
+
+// THE RENDER TARGET DECIDES THE ARGV RATHER THAN DESCRIBING IT. An earlier shape hardwired
+// `--target rust` in measure_with_subject and would have carried a target field beside it, which
+// is a second representation of one fact and free to disagree with the invocation it claims to
+// describe. Here the subject's own field is what renders into the argv, so a receipt that says
+// Rust was produced by a run that passed rust, by construction.
+type EmissionRenderTarget
+  = RustRender
+  | DagRender
+
+fn emission_render_target_flag(t: EmissionRenderTarget) -> String {
+  match t {
+    RustRender => "rust"
+    DagRender => "dag"
+  }
+}
+
+fn emission_scope_label(sc: EmissionScope) -> String {
+  match sc {
+    EntryScope { entry: e } => concat("entry ", e)
+    PrimaryRootScope { primary_root: r, dependency_pools: pools } =>
+      concat(
+        concat("primary-root ", r),
+        if count(pools) == 0 { " (no dependency pools)" }
+        else { concat(" + dependency pools ", pools |> join(separator: ", ")) }
+      )
+  }
+}
+
 type EmissionSubjectRead
   = SubjectRead { subject: EmissionMeasurementSubject }
   | SubjectUnreadable { cause: String }
 
+// THE MODULE ROSTER'S CONTENT-ADDRESSED IDENTITY IS DELIBERATELY ABSENT AND IS NAMED HERE RATHER
+// THAN LEFT TO BE DISCOVERED. A subject binds the revision, the tree standing, both binaries, the
+// scope and the target -- which is enough to say WHAT WAS ASKED FOR, and not enough to say WHICH
+// MODULES ANSWERED. A dirty tree is flagged but not enumerated, and a primary root's population is
+// whatever the filesystem held at read time. NEXT-RUNG TRIGGER: a digest over the resolved module
+// roster, at which point two receipts can be compared for subject identity instead of for argv
+// equality. Until then WorkingTreeDirty is the honest boundary and this carrier does not pretend
+// otherwise.
 type EmissionMeasurementSubject {
-  entry: String
+  scope: EmissionScope
+  render_target: EmissionRenderTarget
   source_revision: CommitSha
   working_tree: WorkingTreeStanding
   compiler: Digest
@@ -169,7 +224,8 @@ fn emit_population_rows(ds: List<GunbcDiagnostic>, files: EmittedFileCount) -> L
 
 fn emission_subject_rows(subject: EmissionMeasurementSubject) -> List<String> {
   [
-    concat("subject\t", subject.entry),
+    concat("subject\t", emission_scope_label(sc: subject.scope)),
+    concat("render_target\t", emission_render_target_flag(t: subject.render_target)),
     concat("source_revision\t", subject.source_revision as String),
     concat("working_tree\t", working_tree_standing_text(standing: subject.working_tree)),
     concat("compiler\t", subject.compiler.hex as String),
@@ -319,6 +375,44 @@ fn emit_decode_unreached(subject: EmissionMeasurementSubject, read: EmitDiagnost
 // AND THE CLEAN VERDICT COMES FROM CARGO'S OWN TERMINAL MESSAGE, not from the transport's exit
 // status beside it: `build-finished` is emitted BY the run being measured, which is what makes it
 // a fact about that run rather than about a process someone observed nearby.
+// THE ARGV IS DERIVED FROM THE SCOPE, WHICH IS THE WHOLE POINT OF THE SCOPE EXISTING. An entry
+// measurement passes both roots and names the entry; a primary-root measurement passes the primary
+// root FIRST and each pool after it, and names no entry -- so the primary/pool ORDER that decided
+// what 2026-08-28's runs actually measured is produced here from a structure that states it,
+// rather than by a caller spelling two flags in the right sequence.
+fn emission_compile_args(scope: EmissionScope, render_target: EmissionRenderTarget, out_dir: String) -> List<String> {
+  let tail = ["--output-dir", out_dir, "--target", emission_render_target_flag(t: render_target), "--dependency-pool-index", "primary-precedence"]
+  match scope {
+    EntryScope { entry: e } =>
+      concat(["compile", "--source-root", "dag", "--source-root", "src/v2", "--entry", e], tail)
+    PrimaryRootScope { primary_root: r, dependency_pools: pools } =>
+      concat(
+        concat(["compile", "--source-root", r], pools |> flat_map(pl => ["--source-root", pl])),
+        tail
+      )
+  }
+}
+
+// ASSEMBLY IS ENTRY-SHAPED TODAY AND SAYS SO RATHER THAN GUESSING. cssl_assemble takes an
+// --entry-dag, and a primary-root scope has no single entry to give it. Fabricating one -- the
+// primary root's own path, say -- would hand the assembler a subject the measurement never named,
+// so this returns the entry only where one exists and the caller refuses otherwise. NEXT-RUNG
+// TRIGGER: an assembler that takes a population rather than an entry, at which point this
+// distinction dissolves into EmissionAssemblyMode.
+type EmissionAssemblyEntry
+  = AssemblyEntry { entry: String }
+  | AssemblyEntryAbsent { why: String }
+
+fn emission_assembly_entry(sc: EmissionScope) -> EmissionAssemblyEntry {
+  match sc {
+    EntryScope { entry: e } => AssemblyEntry { entry: e }
+    PrimaryRootScope { primary_root: _, dependency_pools: _ } =>
+      AssemblyEntryAbsent {
+        why: "cssl_assemble takes a single --entry-dag and a primary-root scope names a population rather than an entry; assembling one would measure a subject this run never asked for"
+      }
+  }
+}
+
 fn measure_cargo_half(
   subject: EmissionMeasurementSubject,
   root: String,
@@ -337,12 +431,22 @@ fn measure_cargo_half(
       emitted_files: emitted_files
     }
   } else {
+    match emission_assembly_entry(sc: subject.scope) {
+      AssemblyEntryAbsent { why: w } =>
+        EmissionCargoUnreached {
+          subject: subject,
+          stage: StageAssemble,
+          cause: w,
+          emit_diagnostics: emit_diagnostics,
+          emitted_files: emitted_files
+        }
+      AssemblyEntry { entry: assembly_entry } => {
     let assemble = gunbc.WitnessBin.Run(
       workdir: root,
       bin_path: cssl_assemble_bin,
       args: [
         "--out-dir", out_dir,
-        "--entry-dag", subject.entry,
+        "--entry-dag", assembly_entry,
         "--root", root,
         "--std-bridge-dir", cssl_std_bridge_shims_rel
       ]
@@ -399,6 +503,8 @@ fn measure_cargo_half(
         }
       }
     }
+      }
+    }
   }
 }
 
@@ -410,7 +516,7 @@ fn measure_cargo_half(
 // ESTABLISHING THE SUBJECT, and every component that cannot be observed REFUSES the run. There is
 // deliberately no partial subject: a measurement whose compiler digest is "unavailable" is a
 // population nobody can attribute, which is the state this receipt exists to make unrepresentable.
-fn establish_subject(entry: String, root: String, gunbc_bin: String, cssl_assemble_bin: String) -> EmissionSubjectRead {
+fn establish_subject(scope: EmissionScope, render_target: EmissionRenderTarget, root: String, gunbc_bin: String, cssl_assemble_bin: String) -> EmissionSubjectRead {
   let head = git.Inspect.HeadCommit()
   if !head.success {
     SubjectUnreadable { cause: "could not read the source revision (git rev-parse HEAD)" }
@@ -429,7 +535,8 @@ fn establish_subject(entry: String, root: String, gunbc_bin: String, cssl_assemb
             Sha256FileDigest { digest: assembler } =>
               SubjectRead {
                 subject: EmissionMeasurementSubject {
-                  entry: entry,
+                  scope: scope,
+                  render_target: render_target,
                   source_revision: head.sha,
                   working_tree: if status.entries_nul == "" { WorkingTreeClean } else { WorkingTreeDirty },
                   compiler: compiler,
@@ -444,6 +551,15 @@ fn establish_subject(entry: String, root: String, gunbc_bin: String, cssl_assemb
 }
 
 fn measure_entry_emission(entry: String) -> EmissionMeasurement {
+  measure_scope_emission(scope: EntryScope { entry: entry }, render_target: RustRender)
+}
+
+// THE SCOPE-GENERAL BODY. measure_entry_emission is the entry-shaped face of it and is retained
+// because its callers ask an entry-shaped question; it is one call, not a second implementation
+// (DESIGN section 3 -- an entry measurement and a primary-root measurement are one operation at
+// two breadths, which is section 2's horizontal move, not two instruments).
+fn measure_scope_emission(scope: EmissionScope, render_target: EmissionRenderTarget) -> EmissionMeasurement {
+  let entry = emission_scope_label(sc: scope)
   let root = git.Inspect.Toplevel()
   let out_dir = shell.Mktemp.Dir()
   if !out_dir.success {
@@ -464,7 +580,7 @@ fn measure_entry_emission(entry: String) -> EmissionMeasurement {
     } else {
       let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
       let cssl_assemble_bin = witness_bin_release_path(root: root.path, bin_name: "cssl_assemble")
-      match establish_subject(entry: entry, root: root.path, gunbc_bin: gunbc_bin, cssl_assemble_bin: cssl_assemble_bin) {
+      match establish_subject(scope: scope, render_target: render_target, root: root.path, gunbc_bin: gunbc_bin, cssl_assemble_bin: cssl_assemble_bin) {
         SubjectUnreadable { cause: c } =>
           EmissionSubjectUnestablished { entry: entry, stage: StageSubject, cause: c }
         SubjectRead { subject: subject } =>
@@ -493,15 +609,7 @@ fn measure_with_subject(
   let emit = gunbc.WitnessBin.Run(
     workdir: root,
     bin_path: gunbc_bin,
-    args: [
-      "compile",
-      "--source-root", "dag",
-      "--source-root", "src/v2",
-      "--entry", subject.entry,
-      "--output-dir", out_dir,
-      "--target", "rust",
-      "--dependency-pool-index", "primary-precedence"
-    ]
+    args: emission_compile_args(scope: subject.scope, render_target: subject.render_target, out_dir: out_dir)
   )
   let read = read_emit_diagnostics(
     stderr: emit.stderr,
