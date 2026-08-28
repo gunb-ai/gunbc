@@ -1,5 +1,6 @@
 module v2.test.claim.long.live_read_classification_test
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.live_read_classification {
   live_read_classification,
   live_read_classification_from_facts,
@@ -30,7 +31,7 @@ import v2.std.live_read {
   live_read_carrier_homes_v0
 }
 import v2.std.collection { List }
-import v2.std.node { Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
+import v2.std.node { Atom, Conj, Edge, Node, Positional, TypeNode }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.fn_index {
   FnArrowDecl,
@@ -289,7 +290,7 @@ fn selection_atom_node(lexeme: String) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -297,7 +298,7 @@ fn selection_body_node(callee: String) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [ Edge { label: Positional, target: selection_atom_node(lexeme: callee) } ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

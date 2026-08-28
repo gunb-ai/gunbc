@@ -29,8 +29,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  SyntheticOccurrence,
-  arrow_body_target_lookup
+  arrow_body_target_lookup,
 }
 import v2.std.algebra { CopiedPortFact, fold_list }
 

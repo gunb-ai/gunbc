@@ -1,5 +1,6 @@
 module v2.test.claim.namespace_graft.graft_shape_test
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
@@ -18,7 +19,7 @@ import v2.compiler.namespace_graft {
   namespace_graft_strip_provenance_marker
 }
 import v2.std.node_query { find_named_child }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, SyntheticOccurrence, TypeNode, ComputationNode }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, ComputationNode }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_dotted_string,
@@ -38,7 +39,7 @@ fn ng_sym_node(sym: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -68,7 +69,7 @@ fn ng_pre_graft_module_root(
       ],
       body_edges
     ),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -204,7 +205,7 @@ data ng_empty_qn_node: Node = emit_module_header_emitted_node(
   qualified_name: Node {
     kind: TypeNode { connective: Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 )
 
@@ -237,7 +238,7 @@ data ng_dual_position_root: Node = ng_pre_graft_module_root(
       target: Node {
         kind: TypeNode { connective: Conj },
         children: [ng_export_edge(name: ^NgDualPilot)],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   ]

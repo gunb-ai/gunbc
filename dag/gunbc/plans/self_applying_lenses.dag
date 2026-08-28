@@ -1,7 +1,7 @@
 module gunbc.plans.self_applying_lenses
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, MarkdownListItem, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
@@ -126,6 +126,7 @@ fn self_applying_lenses_body() -> List<MarkdownBlock> {
 }
 
 data self_applying_lenses_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "self-applying-lenses",
   title: "Self-applying lenses — detect → generalize → emit → write",
   body: self_applying_lenses_body(),

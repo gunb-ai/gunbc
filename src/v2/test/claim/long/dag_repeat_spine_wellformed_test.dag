@@ -38,13 +38,13 @@ test fn repeat_spine_bare_fn_normalizes_holds() -> Bool {
 data repeat_spine_dup_named_atom_a: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^probe } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data repeat_spine_dup_named_atom_b: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^dag_token_ident } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data repeat_spine_dup_named_conj: Node = Node {
@@ -59,7 +59,7 @@ data repeat_spine_dup_named_conj: Node = Node {
       target: repeat_spine_dup_named_atom_b
     )
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 test fn repeat_spine_dup_named_conj_still_ill_formed_control_holds() -> Bool {

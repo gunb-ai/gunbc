@@ -14,7 +14,7 @@ data dc_vendor_golden: String = concat(rust_struct_derives, "\nstruct Vendor<Dom
 data dc_pair_golden: String = concat(rust_struct_derives, "\nstruct Pair<K, V> { key: K, value: V }")
 
 fn dc_conj(children: List<Edge>) -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }
+  Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: OccurrenceSynthetic }
 }
 
 fn dc_pos(target: Node) -> Edge { Edge { label: Positional, target: target } }
@@ -83,7 +83,7 @@ fn dc_coproduct_enum(variant_edges: List<Edge>) -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: variant_edges,
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -201,7 +201,7 @@ fn dc_struct_refused(emitted: Node) -> Bool {
 }
 
 fn dc_atom_type(t: String) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: t } }, children: [], occurrence_id: SyntheticOccurrence }
+  Node { kind: TypeNode { connective: Atom { identity: t } }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
 fn dc_coproduct_field_edge(name: String, t: String) -> Edge {

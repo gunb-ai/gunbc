@@ -457,8 +457,44 @@ data gunbc_ci_prelude_allowance_minutes: Duration = 5
 
 data gunbc_ci_release_build_step_timeout_minutes: Duration = 45
 
+// Its own tier rather than a borrowed one. The aux tier (5m) is sized for a small command and this
+// step rsyncs a tree, writes a unit, restarts and waits on readiness; the spark tier (60m) is the
+// right magnitude but wrong name, and spending a `spark_serving` constant on a dashboard deploy
+// would be the second-name-for-one-concept violation DESIGN section 3 forbids. 30m is a ceiling on a
+// hung deploy, not a budget: the observe-then-cutover path either converges or refuses well inside
+// it, and exceeding it means the host mutation is stuck rather than slow.
+data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
+
+// WHY THIS GROUP EXISTS, STATED AGAINST THE DEPLOYMENT THAT ACTUALLY RUNS TODAY. An earlier
+// revision of this reason said blue/green selection is observe-then-mutate, so two jobs could both
+// observe blue active and the second would restart what had become the active green slot. THAT
+// MECHANISM DOES NOT EXIST: blue/green was deleted at the root on 2026-08-19 by operator directive
+// (gunbc.live_deploy.apply single_deployment_note), and apply now converges deployment_spec_srv1 IN
+// PLACE. The conclusion survived the deletion and its stated reason did not, which is the §3
+// stale-citation failure -- and it is the load-bearing kind, because a reader who checks the cited
+// mechanism finds it gone and can correctly conclude the group is obsolete.
+//
+// THE CURRENT REASON IS INTERLEAVING ON ONE TARGET, and in-place convergence makes it stronger
+// rather than weaker. Two candidate transactions write the same source tree, the same binary path,
+// the same unit, the same process and the same readiness subject, so each transaction's readback can
+// observe artifacts the other installed:
+//
+//   A observes candidate A -> B observes candidate B -> A installs tree A -> B installs tree B
+//   -> A installs binary A -> B restarts on a mixed pair -> A's readiness gate observes B's process
+//
+// The gate then reports a healthy service that is not the one A published. Job-grain concurrency
+// with cancel_in_progress=false serializes the whole window; QueueNotMax may replace an older
+// PENDING deployment, but never interrupts the one holding the host.
+//
+// WHAT THIS GROUP DOES NOT ESTABLISH, named so it is not mistaken for a wall it is not:
+// serialization is not ORDERING -- a slow build of an older revision can acquire the lease after a
+// fast build of a newer one and install backwards -- and it is not COMPLETE INGRESS, because
+// `gunbc.apply` DashboardSrv1 reaches live_deploy_apply_srv1_wet directly and never traverses a
+// GitHub concurrency group at all. Both are open; the closing construction for the second is a
+// host-local lease the host effect owns, since GitHub owns only one transport into the critical
+// section. Recorded here rather than left implicit because a concurrency group is exactly the kind
+// of artifact a later reader cites as the serialization authority.
 data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
-data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
 
 fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
@@ -472,7 +508,7 @@ data gunbc_ci_fleet_job_worst_case_mode_aux_step_count: Int = 1
 
 data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
 
-data gunbc_ci_fleet_job_backstop_timeout_note: String = "SUPERSEDES the 2026-08-21 first correction (prelude + 7*aux + 3*transfer + 5*spark = 370m), which fixed the tier miscount in the prior 11*aux+2*spark formula but kept its structural error: summing every tier-step COUNT as though every step in fleet_converge_job() executes in one run. It does not. The job's steps are gated by the single-select `mode` DispatchInput (InputChoice, exactly one value per dispatch — fleet_converge_workflow.dag DispatchInput \"mode\"), so plan/apply/spark_linger/spark_grants/spark_observe/spark_reboot/spark_durability are MUTUALLY EXCLUSIVE per run, not concurrent tiers to sum. Recounted from fleet_converge_job()'s actual step list (fleet_converge_workflow.dag:280-303) by what a single dispatch can actually execute: ALWAYS-RUN, no if_condition or if_condition: always() — ci_release_bins_download_step (transfer), ci_release_bins_unpack_verify_step, ci_fleet_wif_auth_step, ci_fleet_key_agent_step, ci_spark_admin_credential_cleanup_step, ci_fleet_key_agent_cleanup_step (5 aux + 1 transfer, always). MODE-GATED, at most one bundle applies per dispatch: mode=plan adds fleet_converge_plan_step(aux)+fleet_converge_plan_upload_step(transfer)=15m; mode=apply adds fleet_converge_plan_download_step(transfer)+fleet_converge_apply_step(aux)=15m; mode=spark_linger/spark_observe/spark_reboot/spark_durability each add exactly one spark step=60m; mode=session_demand_observe adds exactly one read-only observation step, budgeted at the same spark-tier 60m because it reuses gunbc_ci_spark_serving_step_timeout_minutes, and it is NOT additive with any other mode; mode=spark_grants adds ci_spark_admin_credential_step(aux)+fleet_converge_spark_grants_step(spark)=65m, the WORST CASE because it is the only mode combining an aux-tier step with a spark-tier step. Worst-case single-run total: 5 + (5+1)*5 + 1*10 + 1*60 = 105m, comfortably inside extdeps.github.actions max_job_timeout_minutes (360m) — the >360 conflict raised on review of the first correction (bright-ferret-335, gunbc#8782) dissolves under the corrected model rather than needing a rounded-down number or a job split; checked_job_timeout_minutes below still guards the class for any future per-tier raise. Adding session_demand_observe does NOT move the worst case: it is one aux-tier-shaped step under a spark-tier budget, strictly below the spark_grants worst case (aux + spark = 65m) that sets the bound, so the 105m single-run total stands unchanged. These counts remain hand-authored cardinals against fleet_converge_job()'s step list (fleet_workflow_steps cannot import fleet_converge_workflow without a cycle), so this note is the single authority to update alongside any change to that job's step composition, if_condition gating, or mode set."
+data gunbc_ci_fleet_job_backstop_timeout_note: String = "SUPERSEDES the 2026-08-21 first correction (prelude + 7*aux + 3*transfer + 5*spark = 370m), which fixed the tier miscount in the prior 11*aux+2*spark formula but kept its structural error: summing every tier-step COUNT as though every step in fleet_converge_job() executes in one run. It does not. The job's steps are gated by the single-select `mode` DispatchInput (InputChoice, exactly one value per dispatch — fleet_converge_workflow.dag DispatchInput \"mode\"), so plan/apply/spark_linger/spark_grants/spark_observe/spark_reboot/spark_durability are MUTUALLY EXCLUSIVE per run, not concurrent tiers to sum. Recounted from fleet_converge_job()'s actual step list (fleet_converge_workflow.dag:280-303) by what a single dispatch can actually execute: ALWAYS-RUN, no if_condition or if_condition: always() — ci_release_bins_download_step (transfer), ci_release_bins_unpack_verify_step, ci_fleet_wif_auth_step, ci_fleet_key_agent_step, ci_spark_admin_credential_cleanup_step, ci_fleet_key_agent_cleanup_step (5 aux + 1 transfer, always). MODE-GATED, at most one bundle applies per dispatch: mode=plan adds fleet_converge_plan_step(aux)+fleet_converge_plan_upload_step(transfer)=15m; mode=apply adds fleet_converge_plan_download_step(transfer)+fleet_converge_apply_step(aux)=15m; mode=spark_linger/spark_observe/spark_reboot/spark_durability each add exactly one spark step=60m; mode=spark_grants adds ci_spark_admin_credential_step(aux)+fleet_converge_spark_grants_step(spark)=65m, the WORST CASE because it is the only mode combining an aux-tier step with a spark-tier step. Worst-case single-run total: 5 + (5+1)*5 + 1*10 + 1*60 = 105m, comfortably inside extdeps.github.actions max_job_timeout_minutes (360m) — the >360 conflict raised on review of the first correction (bright-ferret-335, gunbc#8782) dissolves under the corrected model rather than needing a rounded-down number or a job split; checked_job_timeout_minutes below still guards the class for any future per-tier raise. The mode roster shrank on 2026-08-27 when the session-container lane was deleted; session_demand_observe was one aux-tier-shaped step under a spark-tier budget, strictly below the spark_grants worst case, so removing it does not move this figure either -- the value derives from the always-run counts plus that worst case and never from the roster size. These counts remain hand-authored cardinals against fleet_converge_job()'s step list (fleet_workflow_steps cannot import fleet_converge_workflow without a cycle), so this note is the single authority to update alongside any change to that job's step composition, if_condition gating, or mode set. UPDATED for the dashboard_deploy mode, which was added after that deletion: THIS job's bound is unchanged, and the reason is the load-bearing part rather than the arithmetic. dashboard_deploy does not add a step to fleet_converge_job() at all -- it is a separate job (fleet_converge_workflow fleet_converge_dashboard_deploy_job), because srv1_dashboard_deploy_concurrency_group requires JOB-GRAIN concurrency that a step inside this job could not carry. So the mode is gated by that job's own if_condition and budgeted by its own backstop (gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, a straight sum because every step in it runs on every dispatch of it), and the 105m worst case here still belongs to spark_grants. A future reader checking whether a new mode moved this bound should ask FIRST whether the mode added a step to this job: adding a mode and adding a step to this job are different events, and only the second one moves this number."
 
 type JobTimeoutBudget
   = JobTimeoutWithinCeiling { minutes: Int }
@@ -486,6 +522,23 @@ fn checked_job_timeout_minutes(computed: Int) -> JobTimeoutBudget {
   } else {
     JobTimeoutExceedsCeiling { minutes: computed, ceiling: max_job_timeout_minutes }
   }
+}
+
+// The deploy job's own backstop, derived the same way and kept SEPARATE from the converge job's.
+// The two are different jobs with different step lists, so one number cannot answer for both, and
+// folding the deploy into the converge backstop would inflate a bound that already documents itself
+// as a hand-authored cardinal count over one specific step list.
+//
+// Composition, from fleet_converge_dashboard_deploy_job(): the consumer prelude (allowance), the
+// release-bins download (transfer tier), the unpack-and-verify (aux tier), and the deploy itself
+// (live-deploy tier). Every step in that job runs on every dispatch of it -- there is no mode gating
+// WITHIN the job, because the mode gate is the job's own if_condition -- so unlike the converge
+// job's bound this really is a straight sum rather than a worst-case-branch selection.
+fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_prelude_allowance_minutes
+    + gunbc_ci_artifact_transfer_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes
+    + gunbc_ci_live_deploy_step_timeout_minutes
 }
 
 fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {

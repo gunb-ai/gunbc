@@ -1,5 +1,6 @@
 module v2.test.manual.nodefold_topdown_inline_algebra
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node {
   Atom,
   Conj,
@@ -8,8 +9,7 @@ import v2.std.node {
   Node,
   NodeFoldTopDown,
   TypeNode,
-  SyntheticOccurrence,
-  fold_node_topdown
+  fold_node_topdown,
 }
 import v2.std.verification {
   CompilesClaim,
@@ -31,7 +31,7 @@ fn my_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^inline_leaf } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

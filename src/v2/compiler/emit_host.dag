@@ -91,7 +91,7 @@ import v2.std.test_claim_falsification {
 }
 import v2.std.integer { Int }
 import v2.std.machine { Byte }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
 import v2.std.runtime { RuntimeValue }
 import v2.std.compilers.target_model { TargetModel, runtime_row_from_target }
 import v2.std.text { String }

@@ -1,0 +1,219 @@
+module test.claim.reference_realization_witness
+
+import std.coercion { TypeCheckpoint, TypeRealizationDecision, Realized, Unrealized, Refused }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.reference_realization {
+  InlineTargetRepresentation,
+  PreserveProviderDeclaration,
+  ProviderGroundExaminedNeitherHolds,
+  ProviderIdentityUnknown,
+  ProviderIsOpaque,
+  ProviderIsTheTargetPrimitive,
+  ProviderRefinesItsRepresentation,
+  ReferenceGroundDecidesNoMode,
+  ReferencePositionRendering,
+  ReferenceRealizationDeclared,
+  ReferenceRealizationGround,
+  ReferenceRealizationDerived,
+  ReferenceRealizationNotDerivable,
+  ReferenceRealizationPolicyUndeclared,
+  ReferenceRealizationUndeclared,
+  ReferenceRenderingRefused,
+  RenderProviderDeclarationByPolicy,
+  RenderProviderDeclarationNoRealization,
+  RenderTargetRepresentation,
+  reference_position_rendering,
+  reference_realization_from_ground
+}
+import gunbc.reference_realization_policy { reference_realization_rendering }
+import std.types { Bool, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// HOW TO CHECK THAT THESE ROWS DISCRIMINATE, AS A PROCEDURE RATHER THAN A TRANSCRIBED RESULT.
+// Perturb one thing in std.reference_realization or gunbc.reference_realization_policy and run this
+// module again. Each perturbation must turn exactly the named row(s) red and leave the rest green:
+//
+//   reference_realization_from_ground answering Derived{InlineTargetRepresentation} for
+//   ProviderIsOpaque -> w_opaque_provider_preserves_the_provider_declaration and
+//      w_mode_is_derived_from_the_ground_and_never_authored_beside_it. Two rows, and they are not
+//      redundant: the first asserts the roster's opaque row reaches the preserve arm through the
+//      whole join, the second asserts the derivation itself, with no roster in the picture.
+//
+//   the ReferenceRealizationUndeclared arm of reference_position_rendering answering
+//   RenderTargetRepresentation instead of refusing -- which is precisely what the emitter does today
+//   -> only w_undeclared_provider_refuses_instead_of_inlining and
+//      w_a_second_declaration_of_the_same_spelling_does_not_inherit_the_row
+//
+//   reference_position_rendering collapsing its Unrealized arm into RenderProviderDeclarationByPolicy
+//   -> only w_unrealized_decision_names_the_provider_without_claiming_a_policy
+//
+//   ProviderGroundExaminedNeitherHolds deriving a mode instead of ReferenceRealizationNotDerivable
+//   -> only w_examined_ground_that_decides_neither_mode_refuses_as_its_own_state
+//
+//   deleting the std.integer Int row from reference_realization_policy_rows
+//   -> only w_target_primitive_provider_inlines_the_checkpoints_own_spelling
+//
+// A perturbation that turns nothing red means the row agrees with the shape rather than testing the
+// decision; one that turns several red means the rows are not independent, unless the two rows are
+// asserting the same decision at two altitudes and the entry above says which.
+//
+// THE PROCEDURE WAS RUN, in one dispatch, on this branch: the unperturbed tree exits 0 with no
+// output, and each of the five perturbations above exits 1 naming exactly the rows written beside
+// it. That is stated as a receipt for the arms below, not as a standing measurement -- rerun the
+// procedure rather than trusting this sentence, which is why it is written as one.
+
+// A FIXTURE CHECKPOINT, not a claim about any target's table. It exists so a Realized decision can be
+// handed to the join with a spelling that is visibly the fixture's own, which is what lets the
+// inline row assert that the SPELLING TRAVELLED rather than that some inline arm was taken.
+fn fixture_checkpoint(dag_name: String, target_type: String) -> TypeCheckpoint {
+  TypeCheckpoint {
+    dag_name: dag_name,
+    target_type: target_type,
+    grounding_type: target_type,
+    default_expr: none,
+    is_copy: none,
+    literal_suffix: none
+  }
+}
+
+fn fixture_realized(dag_name: String, target_type: String) -> TypeRealizationDecision {
+  Realized { checkpoint: fixture_checkpoint(dag_name: dag_name, target_type: target_type) }
+}
+
+// One tag per rendering arm, so a row asserts WHICH arm was taken rather than merely that some
+// non-refusal happened. The refusal arms carry their own cause in the tag for the same reason: the
+// three refusals have three owners and a row that could not tell them apart would pass on the wrong
+// one.
+fn rendering_tag(rendering: ReferencePositionRendering) -> String {
+  match rendering {
+    RenderProviderDeclarationByPolicy => "preserve-by-policy"
+    RenderProviderDeclarationNoRealization => "preserve-no-realization"
+    RenderTargetRepresentation { spelling: s } => concat("inline:", s)
+    ReferenceRenderingRefused { refusal: r } =>
+      match r {
+        ProviderIdentityUnknown { cause: c } => concat("refused-identity:", c)
+        ReferenceRealizationPolicyUndeclared { provider_key: k } => concat("refused-undeclared:", k)
+        ReferenceGroundDecidesNoMode { ground: _ } => "refused-no-mode"
+      }
+  }
+}
+
+fn policy_tag(module_path: String, decl_name: String, dag_name: String, target_type: String) -> String {
+  rendering_tag(
+    rendering: reference_realization_rendering(
+      provider: decl_ref(module_path: module_path, decl_name: decl_name),
+      decision: fixture_realized(dag_name: dag_name, target_type: target_type)
+    )
+  )
+}
+
+test fn w_opaque_provider_preserves_the_provider_declaration() -> Bool {
+  policy_tag(module_path: "v2.std.node", decl_name: "Symbol", dag_name: "Symbol", target_type: "String")
+    == "preserve-by-policy"
+}
+
+test fn w_refining_provider_preserves_the_provider_declaration() -> Bool {
+  policy_tag(module_path: "std.types", decl_name: "NonEmptyStr", dag_name: "NonEmptyStr", target_type: "String")
+    == "preserve-by-policy"
+}
+
+// The spelling in the expected value is the FIXTURE's, not i64 read back from a target table: this
+// row asserts that an inline rendering carries the checkpoint it was handed, which is the whole
+// content of "the representation is written at the use site".
+test fn w_target_primitive_provider_inlines_the_checkpoints_own_spelling() -> Bool {
+  policy_tag(module_path: "std.integer", decl_name: "Int", dag_name: "Int", target_type: "i64")
+    == "inline:i64"
+    && policy_tag(module_path: "std.nat", decl_name: "Nat", dag_name: "Nat", target_type: "i64")
+      == "inline:i64"
+}
+
+// THE CONTROL FOR WHAT THE EMITTER DOES TODAY. A provider with no authored row is handed a perfectly
+// good Realized decision, and the answer is a refusal naming the provider rather than the checkpoint
+// spelling. If this row ever reads inline:..., the model has adopted the artifact's silent policy.
+test fn w_undeclared_provider_refuses_instead_of_inlining() -> Bool {
+  policy_tag(module_path: "v2.std.diagnostic", decl_name: "Diagnostics", dag_name: "Diagnostics", target_type: "String")
+    == "refused-undeclared:v2.std.diagnostic::Diagnostics"
+}
+
+// IDENTITY KEYING, AT THE ONE PLACE IT DECIDES SOMETHING. std.nat Nat carries an inline row;
+// v2.std.nat Nat is the Peano coproduct that v1.compiler.coercion numeric_realization_identity_note
+// says must NOT realize natively. Same spelling, opposite answers, and the roster reaches only the
+// declaration it names.
+test fn w_a_second_declaration_of_the_same_spelling_does_not_inherit_the_row() -> Bool {
+  policy_tag(module_path: "v2.std.nat", decl_name: "Nat", dag_name: "Nat", target_type: "i64")
+    == "refused-undeclared:v2.std.nat::Nat"
+}
+
+// THE THIRD GROUND STATE, authored here because no corpus row carries it: a provider examined and
+// found to hold neither deciding ground. The refusal is its own arm, distinct from the undeclared
+// refusal above -- somebody looked and neither ground held is not the same fact as nobody having
+// looked, and the two have different remedies.
+test fn w_examined_ground_that_decides_neither_mode_refuses_as_its_own_state() -> Bool {
+  rendering_tag(
+    rendering: reference_position_rendering(
+      decision: fixture_realized(dag_name: "SemVer", target_type: "String"),
+      standing: ReferenceRealizationDeclared {
+        ground: ProviderGroundExaminedNeitherHolds {
+          examined: "a naming alias carrying no invariant its representation does not, and not itself the machine primitive" as NonEmptyStr
+        }
+      }
+    )
+  ) == "refused-no-mode"
+}
+
+// An unrealized decision puts the provider's name at the reference because nothing exists to inline,
+// which is a different fact from a declared preservation even though both name the provider.
+test fn w_unrealized_decision_names_the_provider_without_claiming_a_policy() -> Bool {
+  rendering_tag(
+    rendering: reference_position_rendering(
+      decision: Unrealized,
+      standing: ReferenceRealizationUndeclared { provider_key: "v2.std.node.Symbol" }
+    )
+  ) == "preserve-no-realization"
+}
+
+// A caller that could not say which declaration it meant is refused with the decision's own cause,
+// never folded into the undeclared arm: the remedy is at the caller, not in this roster.
+test fn w_unknown_provider_identity_refuses_with_the_decisions_own_cause() -> Bool {
+  rendering_tag(
+    rendering: reference_position_rendering(
+      decision: Refused { cause: "declaration identity unknown: empty decl_file" },
+      standing: ReferenceRealizationUndeclared { provider_key: "" }
+    )
+  ) == "refused-identity:declaration identity unknown: empty decl_file"
+}
+
+fn ground_derives_preserve(ground: ReferenceRealizationGround) -> Bool {
+  match reference_realization_from_ground(ground: ground) {
+    ReferenceRealizationDerived { mode: m } =>
+      match m {
+        PreserveProviderDeclaration => true
+        InlineTargetRepresentation => false
+      }
+    ReferenceRealizationNotDerivable { ground: _ } => false
+  }
+}
+
+fn ground_derives_inline(ground: ReferenceRealizationGround) -> Bool {
+  match reference_realization_from_ground(ground: ground) {
+    ReferenceRealizationDerived { mode: m } =>
+      match m {
+        InlineTargetRepresentation => true
+        PreserveProviderDeclaration => false
+      }
+    ReferenceRealizationNotDerivable { ground: _ } => false
+  }
+}
+
+// The derivation is total over the ground and deliberately partial onto the mode. Both deciding
+// grounds for preservation are exercised, and the primitive ground is checked to take the other arm,
+// so a derivation that answered one mode for everything cannot pass.
+test fn w_mode_is_derived_from_the_ground_and_never_authored_beside_it() -> Bool {
+  ground_derives_preserve(ground: ProviderIsOpaque { note: "fixture opaque provider" as NonEmptyStr })
+    && ground_derives_preserve(ground: ProviderRefinesItsRepresentation { refinement: "fixture refinement" as NonEmptyStr })
+    && ground_derives_inline(ground: ProviderIsTheTargetPrimitive { grounding: "fixture host primitive" as NonEmptyStr })
+    && !ground_derives_preserve(ground: ProviderIsTheTargetPrimitive { grounding: "fixture host primitive" as NonEmptyStr })
+    && !ground_derives_inline(ground: ProviderIsOpaque { note: "fixture opaque provider" as NonEmptyStr })
+}

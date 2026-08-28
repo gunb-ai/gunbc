@@ -3,21 +3,48 @@ module gunbc.seed_growth_admission
 import gunbc.anonymous_record_resolution_seed_growth { anonymous_record_resolution_seed_growth_justification }
 import gunbc.reference_closure_binder_seed_growth { reference_closure_binder_seed_growth_justification }
 import gunbc.bare_reference_scanner_admission { bare_reference_scanner_seed_growth_justification }
+import gunbc.census_memo_seed_growth { census_memo_seed_growth_justification }
 import gunbc.claim_unwind_seed_growth { claim_unwind_seed_growth_justification }
 import gunbc.declaration_index_seed_growth { declaration_index_seed_growth_justification }
 import gunbc.emitted_closure_compile_seed_growth { emitted_closure_compile_seed_growth_justification }
 import gunbc.namespace_wave_admission { namespace_wave_admission_seed_growth_justification }
 import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_growth_justification }
 import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_growth_justification }
+import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
+import gunbc.generated_artifact_boundary_seed_growth { generated_artifact_boundary_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
+import gunbc.rust_item_host_observation {
+  ItemDeclarationRefProjection,
+  LiveHandRustObservation,
+  LiveHandRustObserved,
+  LiveHandRustHostRefused,
+  RustItemChangeObservation,
+  RustItemChangeObserved,
+  RustItemChangeUnattributed,
+  RustItemChangeScanRefused,
+  RustItemChangeHostRefused,
+  item_declaration_ref,
+  projected_declaration_refs,
+  projected_refused_keys,
+  projected_uncitable_keys
+}
+import gunbc.capability_origin {
+  AdmissionEvidence,
+  AuthorizedTemporarySeedBridge,
+  CapabilityOrigin,
+  ModeledCapability,
+  NoNewCapability,
+  origin_refusals
+}
+import gunbc.rust_item_identity { RustItemIdentity, rust_item_identity_key }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_justification }
 import gunbc.floor_non_verdict_enrollment { floor_non_verdict_seed_growth_justification }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_seed_growth_justification }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority }
+import std.disposition { Disposition }
 import std.keyed_roster { path_occurrence_count }
 import std.roster_frontier {
   declaration_ref_display_key,
@@ -26,11 +53,26 @@ import std.roster_frontier {
 import std.types { Bool, Int, List, String }
 import v2.std.algebra { any, filter, fold_list, length, list_append }
 
-data seed_growth_admission_note: String = "ITEM-GRAIN admission authority for hand-authored Rust growth (Lane swift-lynx-164). TARGET: compare every newly authored or modified hand Rust item in a change against SeedGrowthJustification.hand_authored_declarations and refuse on the difference (gunbc.seed_growth.seed_growth_note completeness join). PATH-GRAIN census (sibling proud-owl-773 PR #7894) answers which files lack disposition; THIS MODULE answers which ITEMS within files lack justification. NOT IN SCOPE: deleting existing Rust. NOT IN SCOPE: netting deletions against additions. G0 HOST: GONE. scripts/rust_item_census.py was SCAFFOLD-MARKED (seed_growth_g0_census_host_scaffold) and was DELETED from the tree by gunbc#9132, which bankrupted the measurement corpus and left no .sh or .py anywhere outside .githooks. This row cited it in the present tense until 2026-08-24; a reader planning against that sentence would have looked for a producer that does not exist, which is the positional-citation decay DESIGN 3 names, arriving here as a path rather than a line. TWO FURTHER ROWS IN THIS SAME FILE asserted the script was the current host -- seed_growth_g0_census_host_scaffold_note and seed_growth_admission_g0_population_note -- and they ARE repaired in this change, because a module that answers two ways about one fact is the DESIGN §3 violation this correction exists to remove, and leaving them would have made this file its own counter-example (caught by review 55623; an earlier revision of this sentence listed only the sibling modules and omitted the local pair, which is how the contradiction survived the first pass). THREE SIBLING modules still carry the same dead citation as if it were live (gunbc.bare_reference_scanner_admission, gunbc.rust_item_identity, and dag/test/claim/rust_item_identity_witness_test); they are NOT repaired here, and that is the residue gunbc#9132 declared it was leaving rather than a gap this change opened. IT WAS FIVE UNTIL 2026-08-25, and the two that left are recorded here rather than silently subtracted, because a count that moves without saying why is the transcription this repository keeps paying for: gunbc.cli_run_hand_rust_area_ledger and its witness were repaired together, the ledger replacing the citation with a declared missing-measurement-route row and the witness dropping an assertion that the dead path STILL APPEARED in that prose -- which is why the pair had to move together, the witness having been the thing holding the ledger's dead citation green. Item extraction has no host at all until rust_item_host_observation lands, so the G0 interim path is not merely scaffolded now -- it is absent. ENROLLED TODAY: seed_growth_roster_well_formed_gate_holds — roster well-formedness only (non-empty closed roster, well-formed rows, no duplicate DeclarationRef keys). NOT ENROLLED: seed_growth_join_declarations as admission — diff candidates absent until rust_item_host_observation; seed_growth_admission_join_scaffold marks that boundary."
+data seed_growth_admission_note: String = "ITEM-GRAIN admission authority for hand-authored Rust growth (Lane swift-lynx-164). TARGET: compare every newly authored or modified hand Rust item in a change against SeedGrowthJustification.hand_authored_declarations and refuse on the difference (gunbc.seed_growth.seed_growth_note completeness join). PATH-GRAIN census answers which files lack disposition; THIS MODULE answers which ITEMS within files lack justification. NOT IN SCOPE: deleting existing Rust. NOT IN SCOPE: netting deletions against additions -- and that is now EXECUTED rather than merely stated: no arm of seed_growth_admit_change reads deleted_hand_items, and seed_growth_deletions_offset_nothing runs one unjustified addition through two observations whose deleted populations differ and requires one verdict. It is a WITNESSED property and not a structural one -- the observation record still carries the deleted population, so a future arm could read it -- and the honest rung is the witness, not the shape. THE G0 HOST EXISTS AGAIN. scripts/rust_item_census.py was deleted by gunbc#9132 and the capability went to zero with it, undeclared, because the census's consumers were lanes rather than modules and no dependent could refuse. gunbc.rust_item_host_observation replaces it: two populations from two functions, item extraction through gunbc.rust_item_scan whose item-keyword population is READ FROM the extdeps.languages.rust grammar authority rather than re-coined as the deleted script's regex ITEM_PATTERNS were. ENROLLED: seed_growth_roster_well_formed_gate_holds (roster well-formedness) and seed_growth_admit_change (the completeness join against a real changed-item population). WHAT IS NOT CLAIMED: no required CI phase invokes the join yet, so the rung is the ROUTE existing and its wall executing under witnesses -- not a gate armed on every push. Arming it is a claim_executor phase, which is itself hand-Rust growth this very join would have to admit, and it lands separately."
 
+// THE MODIFIED POPULATION IS REPORTED AND NOT YET REFUSED, AND SAYING WHICH IS THE POINT.
+//
+// A modification is the arm that decides whether this construction does anything: a worker can add
+// an entire capability to an existing two-thousand-line function without creating one new item, so
+// an admission that only refused ADDITIONS would leave the freeze open through the largest
+// functions in the seed. The rule that governs it is that a modification may not ORIGINATE semantic
+// capability in Rust, which is what ExistingSeedItemModified's capability_origin states.
+//
+// What is NOT here is a roster of those dispositions, and its absence is deliberate rather than
+// forgotten: the terminal roster closes with the final claim_executor cut, and hand-transcribing it
+// today would mean authoring roughly fifteen hundred moving declarations that can omit items while
+// staying internally well-formed -- rung inflation wearing a roster. So this field makes the
+// population VISIBLE and COUNTABLE, which is what a later roster needs to be derivable at all, and
+// the refusal lands with that roster. Reporting it is weaker than refusing it and is labelled so.
 type SeedGrowthAdmissionVerdict
   = SeedGrowthAdmissionComplete {
       justified_items: List<String>,
+      modified_items_requiring_disposition: List<String>,
       stale_justifications: List<String>,
       duplicate_justifications: List<String>,
       uncitable_items: List<String>
@@ -40,42 +82,65 @@ type SeedGrowthAdmissionVerdict
       detail: String
     }
 
+// A MODIFICATION CARRIES ITS CAPABILITY ORIGIN, AND THAT FIELD IS THE WHOLE POINT OF THE ARM.
+//
+// ExistingSeedItemModified without it reads as "the item already existed, therefore anything may be
+// added to it" -- and a worker can add an ENTIRE CAPABILITY to an existing two-thousand-line
+// function without creating one new Rust item. Under that reading the forward freeze is reopened
+// through the largest functions in the seed and the whole construction is decorative, refusing only
+// the additions nobody needed to hide. So the arm states where the capability came from:
+// NoNewCapability (the edit originates none) or ModeledCapability carrying where the model came
+// from. There is deliberately no value naming a capability originated in Rust, because that is the
+// state the freeze forbids; it is unrepresentable rather than checked, which is the construction
+// direction DESIGN section 5 asks for.
+//
+// THE VOCABULARY MOVED TO gunbc.capability_origin AND GREW A PAYLOAD, AND THE PAYLOAD IS THE
+// CORRECTION. CapabilityAlreadyModeled stood here and was payload-free, so it could be satisfied by
+// inspecting the final candidate -- which cannot distinguish a model that existed before its
+// realization from a model added beside the realization that inspired it, and that distinction is
+// the entire question the arm exists to ask. It now names its authority and, when the authority is
+// itself new in this change, the independent ground that makes it prior.
+//
+// THE SAME RELATION GOVERNS ADDITIONS, which is the half an admission wall loses first: a newly
+// added item can carry a perfectly good justification row and still have been retro-modeled in the
+// same change, so seed_growth_admit_change asks both questions of every addition rather than
+// treating roster membership as sufficient.
+
 type SeedGrowthChangeDisposition
   = SeedBridgeAuthorized
-  | ExistingSeedItemModified
+  | ExistingSeedItemModified {
+      item: DeclarationRef,
+      dag_authority: DeclarationRef,
+      capability_origin: CapabilityOrigin,
+      current_boundary: String
+    }
   | GeneratedInstead
   | HandRustDeleted
   | RetainedKernel
   | GrowthRefused
 
-data seed_growth_forward_freeze_policy_note: String = "MANUAL STOP-LINE, NOT MECHANICALLY ENFORCED. Every PR that adds hand-written src/v1 Rust MUST enumerate: exact item identity, .dag authority, why Rust is still needed, owning lane, deletion trigger, current boundary, hand-item delta, and hand-LOC delta. Unenumerated hand growth is a stop-line -- no netting deletions against additions. Generated Rust is exempt only with generation-authority proof (gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths or gunbc.generated_artifact). THIS ROW SAID (enforceable now) UNTIL 2026-08-24 AND THAT WAS RUNG INFLATION, contradicted by seed_growth_admission_note two rows down in this same file: what is ENROLLED is seed_growth_roster_well_formed_gate_holds, which checks the roster against ITSELF -- non-empty, well-formed rows, no duplicate DeclarationRef keys -- and never reads a diff. seed_growth_join_declarations, the join that would refuse an unenumerated addition, is NOT ENROLLED because no changed-item population exists to join against. So no mechanism can currently refuse hand growth, and the word (enforceable) invited exactly the reading DESIGN 4b names as worse than sitting low: a class that is never ranked for climbing because its carrier already claims the rung. RUNG: mitigatable, by review diligence alone. MEASURED, which is why this is a correction and not a scruple: of the four PRs that added hand src/v1 Rust in the 48 hours to 2026-08-24, ZERO were caught by an unassisted reviewer. All four were caught by a follow-up investigation after they had already reached approval. A policy is not worse than no policy when it is labelled as an unenforced specification; it is worse when its presence is read as coverage, and that is what this row was doing. NEXT-RUNG TRIGGER (DESIGN 4b(2)): rust_item_host_observation supplying a changed-item population, at which point seed_growth_join_declarations enrolls and the class reaches mechanically preventable. Two conditions on that enrolment, both learned the hard way and recorded so the next author does not rediscover them. FIRST, the join must be SPLIT: as written seed_growth_join_declarations uses one candidate set both to find unjustified additions and to declare roster rows stale, so a changed-item population makes every justification for an untouched item look stale, while a live population no longer isolates what this PR added -- two populations, two functions. SECOND, an extractor that cannot attribute a changed hand-Rust region must REFUSE rather than report an empty delta: a hand .rs file changed while the delta is empty is the empty-observation narrow DESIGN 5 forbids, and it is the one failure mode that would make the gate read green while admitting exactly what it exists to refuse. ALSO DERIVABLE, NOT AUTHORED: hand-item delta and hand-LOC delta are functions of the diff, so requiring an author to type them creates a second representation of a fact the diff already owns (DESIGN 2). They are still required above because nothing derives them yet, and the cost is already measured -- a seed-growth receipt on gunbc#9095 claimed +195/+65 against a measured +203/-0, +60/-5, +102/-0. When the producer lands, the gate should PRINT these and the author should stop authoring them."
+data seed_growth_forward_freeze_policy_note: String = "THE STOP-LINE HAS A MECHANISM AGAIN, AND THIS ROW STATES ITS RUNG RATHER THAN ITS AMBITION. Every PR that adds hand-written src/v1 Rust MUST enumerate: exact item identity, .dag authority, why Rust is still needed, owning lane, deletion trigger, current boundary. Unenumerated hand growth is a stop-line -- no netting deletions against additions, which seed_growth_deletions_offset_nothing now executes rather than merely instructing: no arm of seed_growth_admit_change reads the deleted population, and the witness runs one addition through two observations whose deletions differ and requires one verdict. Generated Rust is exempt only with generation-authority proof (gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths or gunbc.generated_artifact), and that classification is now DERIVED by gunbc.rust_item_host_observation rather than asserted by the author. THIS ROW SAID (enforceable now) UNTIL 2026-08-24 AND THAT WAS RUNG INFLATION; it then said no mechanism could refuse hand growth, which was true until this change. MEASURED, and it is why the mechanism was worth building rather than the policy worth restating: of the four PRs that added hand src/v1 Rust in the 48 hours to 2026-08-24, ZERO were caught by an unassisted reviewer -- all four were caught by a follow-up investigation after they had already reached approval. THE TWO CONDITIONS THIS ROW SET ON ENROLMENT ARE BOTH MET, and they are recorded as met rather than deleted, because a condition that vanishes when it is satisfied leaves the next author unable to tell whether it was answered or forgotten. FIRST, THE JOIN IS SPLIT: seed_growth_unjustified_additions reads the CHANGE population and seed_growth_stale_justifications reads the LIVE population, so a justification for an untouched item is no longer rendered stale by a change population, and a live population no longer hides what this change added. SECOND, THE EXTRACTOR REFUSES RATHER THAN REPORTING AN EMPTY DELTA: every arm of RustItemChangeObservation that could not attribute a changed hand-Rust region is a typed, located refusal, and seed_growth_admit_change maps each of them to SeedGrowthAdmissionRefused rather than to a complete verdict with an empty list. RUNG: mechanically preventable AS TO THE ROUTE, and no higher -- the wall executes under witnesses and is callable, and NO REQUIRED CI PHASE INVOKES IT YET. A mechanism no lane runs guards nothing, and calling this armed would be the inflation DESIGN section 4b(1) names as worse than sitting low. NEXT-RUNG TRIGGER: a required-run phase that computes the change observation and stops the line on SeedGrowthAdmissionRefused. ALSO DERIVABLE, NOT AUTHORED: hand-item delta and hand-LOC delta are functions of the diff, so requiring an author to type them creates a second representation of a fact the diff already owns (DESIGN 2) -- and the cost was measured, a seed-growth receipt on gunbc#9095 claiming +195/+65 against a measured +203/-0, +60/-5, +102/-0. They are dropped from the enumeration above as of this change, because the observation now derives them and an authored copy would be exactly that second representation."
 
 data seed_growth_justification_roster_note: String = "CLOSED ROSTER of every SeedGrowthJustification row in the corpus. G1 joins new/modified hand items against this list. Rows are authored beside the obligation they declare. THE LIVE POPULATION IS seed_growth_justification_roster(), AND IT IS THE ONLY AUTHORITY -- this row no longer enumerates it. Each new justification adds one entry to that function AND one data row in its owning module; it adds nothing here. \n\nWHY THE ENUMERATION WAS DELETED (2026-08-25). This sentence used to name every row, which made the prose and the function two WRITABLE AUTHORITIES over one population, and they diverged in both directions. The correctness defect: gunbc#9089 added its import and its function entry without naming its row here, so the function carried four while the prose said three, and nothing could detect it -- a row missing from the prose but present in the function conflicts with nothing, so no merge ever asks anyone to reconcile them. The operational symptom: across six consecutive roster unions on 2026-08-24/25, seed_growth_justification_roster() AUTO-MERGED every single time and this sentence was the ONLY conflict in the file. Six for six. Two representations of one fact, one of which a merge tool can reconcile and one of which it cannot -- so only the unreconcilable one generated work, and it was the one with no authority. DESIGN section 2, measured rather than argued.\n\nWHAT IS NOT REPLACED, because deleting a prose row takes everything in it unless the contents are enumerated first. No renderer is built: nothing consumes a rendered list of row names, and building one to preserve prose that should not exist would re-create the second representation in executable form. No parallel List<DeclarationRef> is added either, for the same reason one function and one sentence failed -- two executable rosters drift exactly as prose and function did. IF a consumer ever needs each row's own declaration identity (the mechanical seed-growth join will, since it needs exact identities for diagnostics), the fix is to pair identity and value in ONE entry at construction -- a SeedGrowthJustificationEntry carrying { row: DeclarationRef, justification: SeedGrowthJustification } -- never a second list beside the first. Until such a consumer exists, deleting the duplication is the whole change.\n\nBOTH SIDES OF A ROSTER MERGE ARE STILL KEPT: this is a closed roster, so taking either side of a conflict whole silently deletes the other branch's authority obligation rather than conflicting. That rule now applies to the function list alone, which is where it was always load-bearing and where git has in practice resolved it correctly every time."
 
 // UNCITABLE ITEMS (prose-only until std.decl_ref gains ImplMethod). stage0_rust_observation_seed_growth_justification documents one: impl std::fmt::Display for Stage0CargoBinManifestParseRefusal in v1_compiler.cli_run — seven hand items, six citable DeclarationRef rows. G1 reports uncitable_items separately; they do NOT satisfy the forward-freeze enumeration via DeclarationRef alone.
-data seed_growth_admission_join_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.seed_growth_admission",
-    decl_name: "seed_growth_join_declarations",
-    field: WholeDeclaration
-  }
-}
-
-data seed_growth_admission_join_scaffold_note: String = "SCAFFOLD — seed_growth_join_declarations is NOT an enrolled admission gate until rust_item_host_observation supplies diff DeclarationRef candidates. Joining the roster against itself is a tautology and must not green as completeness admission (review 49332). Dissolve-on: diff population carrier lands and enrolls join against merge-base candidates."
-
-data seed_growth_g0_census_host_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.rust_item_identity",
-    decl_name: "rust_item_host_observation_scaffold_note",
-    field: WholeDeclaration
-  }
-}
-
-data seed_growth_g0_census_host_scaffold_note: String = "SCAFFOLD, AND ITS SUBJECT IS ALREADY GONE. scripts/rust_item_census.py WAS the first hand-authored Python realization in scripts/; item extraction used regex (its ITEM_PATTERNS) parallel to but outside the dag/extdeps/languages/ rust grammar authority, while generated-vs-hand classification alone was authority-derived. THE FILE WAS DELETED BY gunbc#9132 (measurement-corpus bankruptcy, no .sh or .py left outside .githooks), so every sentence here is past tense as of 2026-08-24. Dissolve-on, stated as the two clauses it always was: (a) script deleted -- SATISFIED, by #9132 rather than by this lane; (b) gunbc.rust_item_identity rust_item_host_observation_scaffold_note producer enrolls -- OUTSTANDING. The disposition row is RETAINED rather than retired because (b) is unmet and because it has consumers (gunbc.bare_reference_scanner_admission, gunbc.rust_item_identity, seed_growth_admission_witness_test); retiring it on the strength of (a) alone would delete a live obligation because half its trigger fired. Same trigger retires seed_growth_admission_join_scaffold admission wiring."
-
-data seed_growth_admission_g0_population_note: String = "G0 CENSUS HOST: NONE. scripts/rust_item_census.py (SCAFFOLD, see seed_growth_g0_census_host_scaffold) was DELETED by gunbc#9132, so there is no producer to run and the item-grain population is not measurable today by any route in this repository. WHAT FOLLOWS DESCRIBES THE MECHANISM THAT WOULD MEASURE IT, retained because the laws survive the producer: population was measured at execution from git-tracked .rs files; generated-vs-hand is derived from gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths and gunbc.generated_artifact artifact_path — unclassified stage0/src paths refuse. This note does NOT pin numeric literals (DESIGN §3 stale-citation class) -- and the instruction that used to stand here, \"run the script at HEAD for the live receipt\", named a file that no longer exists; there is no live receipt until the producer lands. Supersedes cli_run_hollowing_plan §0 prose dated 2026-07-23. G1 compares merge-base diff against SeedGrowthJustification rows once rust_item_host_observation supplies DeclarationRef candidates."
+// SCAFFOLD ROWS RETIRED, AND THE RETIREMENT IS RECORDED RATHER THAN SILENT.
+//
+// Two Scaffold dispositions stood here. seed_growth_admission_join_scaffold marked
+// seed_growth_join_declarations as not-an-admission-gate "until rust_item_host_observation supplies
+// diff DeclarationRef candidates"; that function is gone, replaced by the split pair below, and the
+// candidates now exist. seed_growth_g0_census_host_scaffold marked scripts/rust_item_census.py, and
+// stated its trigger as the two clauses it always was: (a) the script deleted -- satisfied by
+// gunbc#9132 rather than by this lane, and (b) a producer enrolling -- outstanding until now. Both
+// clauses are met, so the row retires by its own terms rather than by an author's judgement.
+//
+// THE HALF-FIRED TRIGGER IS THE LESSON AND IT IS KEPT. Clause (a) was satisfied by an unrelated cut
+// that restored nothing, which is precisely the shape DESIGN section 4b(3) forbids when it requires
+// a restoration trigger to name the CAPABILITY rather than an artifact that would contribute to
+// one: for three days the disposition read half-discharged while the thing it existed to protect
+// was entirely absent. gunbc.rust_item_identity rust_item_host_observation_producer_note carries
+// that receipt at the site where the trigger was written.
+data seed_growth_admission_g0_population_note: String = "G0 CENSUS HOST: gunbc.rust_item_host_observation. Population is measured at execution from revision-addressed .rs blobs; generated-versus-hand is DERIVED from gunbc.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths and gunbc.generated_artifact artifact_path, and a path no namespace row claims REFUSES rather than acquiring a plausible module path. This note pins no numeric literals (DESIGN section 3 stale-citation class) and names no transcribed measurement: the instrument is the function, and a figure is read by running it. G1 -- the comparison of the merge-base-to-HEAD change against SeedGrowthJustification rows -- is seed_growth_admit_change below."
 
 fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
   [
@@ -89,11 +154,14 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     witness_runtime_cause_seed_growth_justification,
     parse_refusal_location_seed_growth_justification,
     claim_unwind_seed_growth_justification,
+    shared_fill_attribution_seed_growth_justification,
+    census_memo_seed_growth_justification,
     declaration_index_seed_growth_justification,
     emitted_closure_compile_seed_growth_justification,
     namespace_wave_admission_seed_growth_justification,
     qualified_pipe_callee_seed_growth_justification,
-    target_invocation_seed_growth_justification
+    target_invocation_seed_growth_justification,
+    generated_artifact_boundary_seed_growth_justification
   ]
 }
 
@@ -125,6 +193,11 @@ fn seed_growth_roster_declaration_keys() -> List<String> {
     |> map(r => declaration_ref_display_key(ref: r))
 }
 
+fn seed_growth_roster_duplicate_keys() -> List<String> {
+  let keys = seed_growth_roster_declaration_keys()
+  filter(xs: keys, predicate: fn(key) { path_occurrence_count(paths: keys, target: key) > 1 })
+}
+
 fn seed_growth_roster_has_duplicate_keys() -> Bool {
   let keys = seed_growth_roster_declaration_keys()
   any(
@@ -139,36 +212,123 @@ fn seed_growth_uncitable_item_keys() -> List<String> {
   ]
 }
 
-fn seed_growth_find_stale(
-  roster: List<DeclarationRef>,
-  candidates: List<DeclarationRef>
-) -> List<String> {
+// TWO POPULATIONS, TWO FUNCTIONS, AND NEITHER MAY SERVE FOR THE OTHER.
+//
+// The single-candidate-set form that stood here answered both questions from one list, so a
+// changed-item population rendered every justification for an untouched item stale, and a live
+// population no longer isolated what a change added. The denominators genuinely differ: staleness
+// is a question about the CURRENT surface, unjustified addition is a question about the CHANGE.
+// gunbc.rust_item_host_observation produces them separately for exactly this reason.
+fn seed_growth_stale_justifications(live_items: List<DeclarationRef>) -> List<String> {
   filter(
-    xs: roster,
-    predicate: fn(r) { !declaration_ref_in_list(target: r, refs: candidates) }
+    xs: seed_growth_roster_all_declarations(),
+    predicate: fn(r) { !declaration_ref_in_list(target: r, refs: live_items) }
   )
     |> map(r => declaration_ref_display_key(ref: r))
 }
 
-fn seed_growth_join_declarations(
-  candidates: List<DeclarationRef>
-) -> SeedGrowthAdmissionVerdict {
+fn seed_growth_unjustified_additions(added: List<DeclarationRef>) -> List<String> {
   let roster = seed_growth_roster_all_declarations()
-  let unjustified = filter(
-    xs: candidates,
+  filter(
+    xs: added,
     predicate: fn(r) { !declaration_ref_in_list(target: r, refs: roster) }
   )
-  if length(xs: unjustified) > 0 {
-    SeedGrowthAdmissionRefused {
-      unjustified_additions: unjustified |> map(r => declaration_ref_display_key(ref: r)),
-      detail: "hand Rust item(s) lack SeedGrowthJustification row"
-    }
-  } else {
-    SeedGrowthAdmissionComplete {
-      justified_items: candidates |> map(r => declaration_ref_display_key(ref: r)),
-      stale_justifications: seed_growth_find_stale(roster: roster, candidates: candidates),
-      duplicate_justifications: [],
-      uncitable_items: seed_growth_uncitable_item_keys()
+    |> map(r => declaration_ref_display_key(ref: r))
+}
+
+// AN ITEM WHOSE MODULE PATH COULD NOT BE DERIVED IS A REFUSAL, NOT AN OMISSION. A hand Rust item
+// under a tree rust_source_namespace_rows does not claim has no DeclarationRef, so it can neither be
+// found in the roster nor reported as unjustified by key -- and dropping it would let a whole
+// subtree of the seed grow invisibly. It refuses, naming the item key and the missing mapping.
+fn seed_growth_added_projections(added_items: List<RustItemIdentity>) -> List<ItemDeclarationRefProjection> {
+  added_items |> map(item => item_declaration_ref(item: item))
+}
+
+// THE DELETED POPULATION IS NOT A PARAMETER OF THIS FUNCTION, AND THAT IS THE WHOLE MECHANISM.
+// "Rust deleted elsewhere licenses Rust added here" is the offset this policy rejects, and the
+// robust way to reject it is to give the verdict no access to the deletions rather than to remember
+// not to consult them. seed_growth_deletions_offset_nothing is the executing evidence: it runs the
+// same addition through observations whose deleted populations differ and requires one verdict.
+fn seed_growth_admit_change(
+  change: RustItemChangeObservation,
+  live: LiveHandRustObservation,
+  bridges: List<AuthorizedTemporarySeedBridge>,
+  evidence: AdmissionEvidence
+) -> SeedGrowthAdmissionVerdict {
+  match change {
+    RustItemChangeUnattributed { repo_path: path, line: line, detail: detail } =>
+      SeedGrowthAdmissionRefused {
+        unjustified_additions: [],
+        detail: concat(
+          "changed hand Rust could not be attributed to an item in ",
+          concat(path, concat(": ", detail))
+        )
+      }
+    RustItemChangeScanRefused { repo_path: path, line: _, line_text: _, detail: detail } =>
+      SeedGrowthAdmissionRefused {
+        unjustified_additions: [],
+        detail: concat("hand Rust source could not be read at item grain in ", concat(path, concat(": ", detail)))
+      }
+    RustItemChangeHostRefused { detail: detail } =>
+      SeedGrowthAdmissionRefused {
+        unjustified_additions: [],
+        detail: concat("the change population was not observed: ", detail)
+      }
+    RustItemChangeObserved {
+      added_hand_items: added_items,
+      modified_hand_items: modified_items,
+      deleted_hand_items: _,
+      generated_changes: _
+    } => {
+      let projections = seed_growth_added_projections(added_items: added_items)
+      let unmappable = projected_refused_keys(projections: projections)
+      let unjustified = seed_growth_unjustified_additions(
+        added: projected_declaration_refs(projections: projections)
+      )
+      let origin_refused = origin_refusals(
+        bridges: bridges,
+        evidence: evidence,
+        added: projected_declaration_refs(projections: projections)
+      )
+      if length(xs: unmappable) > 0 {
+        SeedGrowthAdmissionRefused {
+          unjustified_additions: unmappable,
+          detail: "added hand Rust item(s) live under a tree rust_source_namespace_rows does not claim, so no DeclarationRef can address them"
+        }
+      } else if length(xs: unjustified) > 0 {
+        SeedGrowthAdmissionRefused {
+          unjustified_additions: unjustified,
+          detail: "hand Rust item(s) lack SeedGrowthJustification row"
+        }
+      } else if length(xs: origin_refused) > 0 {
+        SeedGrowthAdmissionRefused {
+          unjustified_additions: origin_refused,
+          detail: "added hand Rust item(s) did not establish that the capability they realize was modeled independently of them"
+        }
+      } else {
+        match live {
+          LiveHandRustHostRefused { detail: detail } =>
+            SeedGrowthAdmissionRefused {
+              unjustified_additions: [],
+              detail: concat("the live hand-Rust population was not observed, so staleness cannot be reported: ", detail)
+            }
+          LiveHandRustObserved { items: live_items, unscannable: _ } =>
+            SeedGrowthAdmissionComplete {
+              justified_items: added_items |> map(item => rust_item_identity_key(item: item)),
+              modified_items_requiring_disposition: modified_items |> map(item => rust_item_identity_key(item: item)),
+              stale_justifications: seed_growth_stale_justifications(
+                live_items: projected_declaration_refs(
+                  projections: live_items |> map(item => item_declaration_ref(item: item))
+                )
+              ),
+              duplicate_justifications: seed_growth_roster_duplicate_keys(),
+              uncitable_items: list_append(
+                left: seed_growth_uncitable_item_keys(),
+                right: projected_uncitable_keys(projections: projections)
+              )
+            }
+        }
+      }
     }
   }
 }

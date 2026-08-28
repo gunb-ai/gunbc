@@ -1,0 +1,1417 @@
+module extdeps.bmc.pid_control_decode
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decimal { ExactDecimal, canonical_exact_decimal }
+import extdeps.languages.json.emit { JsonArray, JsonBool, JsonKeyValue, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
+import extdeps.languages.json.number {
+  JsonNumberMagnitudeOutsideCarrierRange,
+  JsonNumberExact,
+  JsonNumberOutsideExactFragment,
+  JsonNumberUsesExponent,
+  JsonNumberValueRead,
+  JsonNumberReading,
+  JsonValueIsNotANumber,
+  read_json_number_value,
+}
+import extdeps.languages.json.member_conservation {
+  ArrayElementPartition,
+  ConservationVerdict,
+  ElementConsumed,
+  ElementDisposition,
+  JsonArrayElementOccurrence,
+  array_element_occurrences,
+  element_conservation_verdict,
+  JsonMemberOccurrence,
+  MembersConserved,
+  MemberConsumed,
+  MemberDisposition,
+  MemberUnmodeled,
+  ObjectMemberPartition,
+  conservation_verdict,
+  occurrences_of_object,
+}
+import extdeps.bmc.pid_control_program {
+  BmcFanControlProgram,
+  DbusBoundsDisposition,
+  DbusBoundsIgnored,
+  DbusBoundsUnstated,
+  DbusBoundsUsed,
+  DemandCurvePoint,
+  FanTachometerSensor,
+  ProgramSensor,
+  ProgramSensorRole,
+  SensorBoundsDeclared,
+  SensorBoundsUnstated,
+  SensorDrivesOutput,
+  SensorReadOnly,
+  SensorReadingBounds,
+  SensorTimeoutDeclared,
+  SensorTimeoutUnstated,
+  ActuatorController,
+  FeedForward,
+  IntegralBounds,
+  OutputBounds,
+  PidGains,
+  SlewLimits,
+  TemperatureSensor,
+  ProgramZone,
+  ThermalDemandController,
+  decimal_celsius,
+  decimal_celsius_delta,
+  zone_demand_value,
+  decimal_milliseconds,
+  decimal_seconds,
+}
+
+// DECODING A CAPTURED CONFIGURATION ONTO THE NEUTRAL MODEL. Every refusal here is typed and names
+// the path it was found at, because the consumer of a refusal is a person about to change a
+// deployed program and "the document is malformed" tells them nothing about which line to open.
+
+// WHERE, IN THE DOCUMENT'S OWN COORDINATES. A path is authored by the walk rather than by the
+// reader, so a refusal cannot name a location the walk did not visit.
+type DocumentPath {
+  text: NonEmptyStr
+}
+
+fn document_path(text: NonEmptyStr) -> DocumentPath {
+  DocumentPath { text: text }
+}
+
+fn path_field(parent: DocumentPath, field: NonEmptyStr) -> DocumentPath {
+  DocumentPath { text: join([parent.text, ".", field], "") }
+}
+
+fn path_index(parent: DocumentPath, index: Int) -> DocumentPath {
+  DocumentPath { text: join([parent.text, "[", to_string(index), "]"], "") }
+}
+
+fn path_key(parent: DocumentPath, key: String) -> DocumentPath {
+  DocumentPath { text: join([parent.text, "{", key, "}"], "") }
+}
+
+// THE REFUSAL VOCABULARY IS CLOSED AND EACH ARM HAS ITS OWN REPAIR. A missing field means the
+// document is incomplete; a duplicated one means it is ambiguous and the daemon's choice between
+// them is not something this decoder is entitled to make; a wrong-kinded value means the document
+// is wrong; an exponent-form number means the document is outside the fragment this tree reads
+// exactly. Collapsing any pair of those sends a reader to the wrong repair.
+type FieldRefusal
+  = FieldAbsent { path: DocumentPath, field: NonEmptyStr }
+  | FieldDuplicated { path: DocumentPath, field: NonEmptyStr, occurrences: Int }
+  | FieldNotAnObject { path: DocumentPath, field: NonEmptyStr }
+  | FieldNotANumber { path: DocumentPath, field: NonEmptyStr }
+  | FieldNotAString { path: DocumentPath, field: NonEmptyStr }
+  | FieldNotABool { path: DocumentPath, field: NonEmptyStr }
+  | FieldNotAnArray { path: DocumentPath, field: NonEmptyStr }
+  | FieldNumberOutsideExactFragment { path: DocumentPath, field: NonEmptyStr }
+  | FieldValueUnknown { path: DocumentPath, field: NonEmptyStr, value: String }
+  | FieldNotAnInteger { path: DocumentPath, field: NonEmptyStr }
+
+type DecimalField
+  = DecimalFieldRead { value: ExactDecimal }
+  | DecimalFieldRefused { refusal: FieldRefusal }
+
+fn members_named(value: JsonValue, key: String) -> List<JsonValue> {
+  match value {
+    JsonObject { members: ms } => map(filter(ms, m => m.key == key), m => m.value)
+    JsonNull => []
+    JsonBool { value: _ } => []
+    JsonNumber { lexeme: _ } => []
+    JsonString { value: _ } => []
+    JsonArray { elements: _ } => []
+  }
+}
+
+fn value_is_object(value: JsonValue) -> Bool {
+  match value {
+    JsonObject { members: _ } => true
+    JsonNull => false
+    JsonBool { value: _ } => false
+    JsonNumber { lexeme: _ } => false
+    JsonString { value: _ } => false
+    JsonArray { elements: _ } => false
+  }
+}
+
+// ONE SELECTOR, USED BY EVERY FIELD READ, SO THAT ABSENT AND DUPLICATED CANNOT DIVERGE BETWEEN
+// FIELDS. RFC 8259 permits duplicate names and does not say which wins, so a duplicated field is
+// refused rather than resolved -- last-wins here would let a document carrying two outLim_min
+// values read as whichever the writer put second.
+type SelectedMember
+  = MemberSelected { value: JsonValue }
+  | MemberSelectionRefused { refusal: FieldRefusal }
+
+fn select_member(container: JsonValue, path: DocumentPath, field: NonEmptyStr) -> SelectedMember {
+  if !value_is_object(value: container) {
+    MemberSelectionRefused { refusal: FieldNotAnObject { path: path, field: field } }
+  } else {
+    let hits = members_named(value: container, key: field as String)
+    if hits.length() == 0 {
+      MemberSelectionRefused { refusal: FieldAbsent { path: path, field: field } }
+    } else if hits.length() > 1 {
+      MemberSelectionRefused {
+        refusal: FieldDuplicated { path: path, field: field, occurrences: hits.length() },
+      }
+    } else {
+      MemberSelected { value: hits.first() }
+    }
+  }
+}
+
+fn decimal_of_value(value: JsonValue, path: DocumentPath, field: NonEmptyStr) -> DecimalField {
+  match read_json_number_value(v: value) {
+    JsonValueIsNotANumber => DecimalFieldRefused { refusal: FieldNotANumber { path: path, field: field } }
+    JsonNumberValueRead { reading } =>
+      match reading {
+        JsonNumberExact { value: exact } => DecimalFieldRead { value: exact }
+        JsonNumberOutsideExactFragment { lexeme: _, refusal: _ } =>
+          DecimalFieldRefused {
+            refusal: FieldNumberOutsideExactFragment { path: path, field: field },
+          }
+      }
+  }
+}
+
+fn decimal_field(container: JsonValue, path: DocumentPath, field: NonEmptyStr) -> DecimalField {
+  match select_member(container: container, path: path, field: field) {
+    MemberSelectionRefused { refusal } => DecimalFieldRefused { refusal: refusal }
+    MemberSelected { value } => decimal_of_value(value: value, path: path, field: field)
+  }
+}
+
+// THE CURVE IS THE HARDEST OBJECT IN THE DOCUMENT AND THE ONE MOST WORTH REFUSING PRECISELY. It is
+// stored as TWO objects, `reading` and `output`, each keyed by a decimal index string, and the
+// pairing between them is by key identity and nothing else -- position would be wrong, because
+// object member order is authored and the two objects could disagree on it.
+type CurveSide = ReadingSide | OutputSide
+
+fn curve_side_field(side: CurveSide) -> NonEmptyStr {
+  match side {
+    ReadingSide => "reading"
+    OutputSide => "output"
+  }
+}
+
+// WHY A KEY THAT IS NOT A PLAIN INDEX REFUSES INSTEAD OF BEING SKIPPED. A skipped key is a curve
+// point silently missing from the decoded program, so the model would describe a fan curve the
+// host is not running -- and the missing point would be invisible precisely because the decoder
+// decided it was uninteresting.
+//
+// AND WHY TWO KEYS THAT NORMALISE TO ONE INDEX REFUSE RATHER THAN ONE WINNING. "1" and "01" are
+// different member names in JSON and the same integer here. Picking either is picking a curve the
+// document does not unambiguously state, and the daemon's own choice between them is not knowable
+// from the document.
+type CurveRefusal
+  = CurveSideMissing { path: DocumentPath, side: CurveSide }
+  | CurveSideNotAnObject { path: DocumentPath, side: CurveSide }
+  | CurveSideDuplicated { path: DocumentPath, side: CurveSide, occurrences: Int }
+  | CurveKeyNotAnIndex { path: DocumentPath, side: CurveSide, key: String }
+  | CurveKeyDuplicated { path: DocumentPath, side: CurveSide, key: String, occurrences: Int }
+  | CurveKeyNotCanonical { path: DocumentPath, side: CurveSide, key: String, canonical: String }
+  | CurveKeySetsDisagree { path: DocumentPath, side: CurveSide, key: String }
+  | CurveValueNotANumber { path: DocumentPath, side: CurveSide, key: String }
+  | CurveValueOutsideExactFragment { path: DocumentPath, side: CurveSide, key: String }
+  | CurveReadingWithoutOutput { path: DocumentPath, index: Int }
+  | CurveOutputWithoutReading { path: DocumentPath, index: Int }
+
+type IndexedDecimal {
+  index: Int
+  key: String
+  magnitude: ExactDecimal
+}
+
+type CurveSideDecode
+  = CurveSideDecoded { entries: List<IndexedDecimal> }
+  | CurveSideRefused { refusal: CurveRefusal }
+
+fn curve_key_index(key: String) -> Int? {
+  parse_int(s: key)
+}
+
+fn indexed_decimal_entries_with(entries: List<IndexedDecimal>, index: Int) -> List<IndexedDecimal> {
+  filter(entries, entry => entry.index == index)
+}
+
+// EACH SIDE ADMITS ONLY EXACT, CANONICALLY SPELLED KEYS, AND THAT IS AN UPSTREAM FACT RATHER THAN
+// A TIDINESS RULE. phosphor-pid-control asks each of these objects for the exact key it computes
+// from an integer position; it does not normalise, so "01" is simply a key it never asks for. A
+// decoder that read "01" as index 1 would report a curve point the daemon does not load.
+//
+// THE FIRST VERSION NORMALISED AND JOINED ON THE INTEGER, and the hole that opened is the one this
+// pair of refusals closes: `"reading": {"1": 55}` against `"output": {"01": 30}` has one member on
+// each side, so no within-side collision exists, both normalise to 1, and the two paired -- across
+// key sets that do not agree. Measured before the change, that document decoded to a curve point.
+fn curve_side_fold(
+  path: DocumentPath,
+  side: CurveSide,
+  members: List<JsonKeyValue>,
+  acc: CurveSideDecode,
+) -> CurveSideDecode {
+  fold(members, init: acc, f: (state, member) => {
+    match state {
+      CurveSideRefused { refusal } => CurveSideRefused { refusal: refusal }
+      CurveSideDecoded { entries } =>
+        match curve_key_index(key: member.key) {
+          Absent =>
+            CurveSideRefused {
+              refusal: CurveKeyNotAnIndex { path: path, side: side, key: member.key },
+            }
+          Present { value: index } => {
+            let same_key = filter(entries, entry => entry.key == member.key)
+            if same_key.length() > 0 {
+              CurveSideRefused {
+                refusal: CurveKeyDuplicated {
+                  path: path,
+                  side: side,
+                  key: member.key,
+                  occurrences: same_key.length() + 1,
+                },
+              }
+            } else if to_string(index) != member.key {
+              CurveSideRefused {
+                refusal: CurveKeyNotCanonical {
+                  path: path,
+                  side: side,
+                  key: member.key,
+                  canonical: to_string(index),
+                },
+              }
+            } else {
+              match decimal_of_value(value: member.value, path: path, field: curve_side_field(side: side)) {
+                DecimalFieldRefused { refusal } =>
+                  match refusal {
+                    FieldNumberOutsideExactFragment { path: p, field: _ } =>
+                      CurveSideRefused {
+                        refusal: CurveValueOutsideExactFragment { path: p, side: side, key: member.key },
+                      }
+                    other =>
+                      CurveSideRefused {
+                        refusal: CurveValueNotANumber { path: path, side: side, key: member.key },
+                      }
+                  }
+                DecimalFieldRead { value } =>
+                  CurveSideDecoded {
+                    entries: entries.append(IndexedDecimal { index: index, key: member.key, magnitude: value }),
+                  }
+              }
+            }
+          }
+        }
+    }
+  })
+}
+
+fn decode_curve_side(container: JsonValue, path: DocumentPath, side: CurveSide) -> CurveSideDecode {
+  let field = curve_side_field(side: side)
+  let hits = members_named(value: container, key: field as String)
+  if hits.length() == 0 {
+    CurveSideRefused { refusal: CurveSideMissing { path: path, side: side } }
+  } else if hits.length() > 1 {
+    CurveSideRefused {
+      refusal: CurveSideDuplicated { path: path, side: side, occurrences: hits.length() },
+    }
+  } else {
+    match hits.first() {
+      JsonObject { members } =>
+        curve_side_fold(
+          path: path_field(parent: path, field: field),
+          side: side,
+          members: members,
+          acc: CurveSideDecoded { entries: [] },
+        )
+      other => CurveSideRefused { refusal: CurveSideNotAnObject { path: path, side: side } }
+    }
+  }
+}
+
+// THE MAGNITUDE FIELD IS NOT NAMED `value`, AND THAT IS FORCED BY AN OPEN SUBSTRATE DEFECT RATHER
+// THAN CHOSEN. Written as `IndexedDecimal { .., value: ExactDecimal }`, every decoded curve output
+// silently carried the ENTRY RECORD instead of its magnitude, and nothing refused -- the failure
+// surfaced only later, as a field lookup for `fraction_digits` on an IndexedDecimal.
+//
+// THE CAUSE, REDUCED TO A MINIMAL EXECUTABLE REPRODUCTION AND MEASURED BOTH WAYS RATHER THAN
+// INFERRED. `list.first()` yields an optional. Field access through it auto-unwraps: for a record
+// `Boxed { tag: Int, value: Int }`, `boxes.first().tag` reads the field and returns 1. But
+// `boxes.first().value` does NOT read the field -- it reads the OPTIONAL's own payload and returns
+// the Boxed record. The two accesses on one expression resolve against two different carriers,
+// decided by the field's name, with no diagnostic at either the type check or the evaluation.
+//
+// This is a floor-level miss, not a subtlety: the comparison `boxes.first().value == 99` places a
+// record against an Int and typechecks clean. It is reported rather than only dodged, per the
+// standing rule that noticing a workaround is the line-stop signal.
+//
+// THE DEFECT NOW HAS A HOME, AND THIS FILE IS NOT IT. The seam is named and the class is filed as
+// item 0 of the audit queue in docs/plans/compiler-guarantee-recovery-gap-analysis.md, which is
+// the authority for compiler guarantee classes, their rungs and their triggers -- including the
+// split between the language-semantics question and the type-conformance half that is below floor
+// regardless of how the first is answered. What is claimed HERE is only the local fact: the rename
+// to `magnitude` is a workaround, and no compiler guarantee is claimed by this module.
+fn indexed_decimal_value_at(entries: List<IndexedDecimal>, index: Int) -> ExactDecimal {
+  let matched = indexed_decimal_entries_with(entries: entries, index: index)
+  let entry = matched.first()
+  entry.magnitude
+}
+
+type CurveDecode
+  = CurveDecoded { points: List<DemandCurvePoint> }
+  | CurveRefused { refusal: CurveRefusal }
+
+// THE JOIN IS BY INDEX AND THE KEY WALL ABOVE IS WHAT MAKES THAT EXACT. Written as an exact-key
+// join instead, it was measured to be indistinguishable: once every admitted key is canonical, the
+// keys and the indices are in bijection, so reducing the join to the index left every witness
+// green. Two mechanisms deciding one correspondence is the redundancy DESIGN removes, and the
+// canonical wall is the one that does work the other cannot -- it refuses `{"01": ...}` on BOTH
+// sides, where the key sets agree and an exact-key join would happily pair them into a point the
+// daemon never loads.
+//
+// THE JOIN RUNS IN BOTH DIRECTIONS, for the same reason the member conservation join does: a
+// reading with no output and an output with no reading are different defects, and checking only
+// one direction lets the other through whenever the two objects have equal key counts.
+fn curve_join(path: DocumentPath, readings: List<IndexedDecimal>, outputs: List<IndexedDecimal>) -> CurveDecode {
+  let unpaired_reading = filter(readings, r => indexed_decimal_entries_with(entries: outputs, index: r.index).length() == 0)
+  let unpaired_output = filter(outputs, o => indexed_decimal_entries_with(entries: readings, index: o.index).length() == 0)
+  if unpaired_reading.length() > 0 {
+    CurveRefused { refusal: CurveReadingWithoutOutput { path: path, index: unpaired_reading.first().index } }
+  } else if unpaired_output.length() > 0 {
+    CurveRefused { refusal: CurveOutputWithoutReading { path: path, index: unpaired_output.first().index } }
+  } else {
+    CurveDecoded {
+      points: sort_by(
+        map(readings, r =>
+          DemandCurvePoint {
+            index: r.index,
+            reading: decimal_celsius(value: r.magnitude),
+            output: zone_demand_value(value: indexed_decimal_value_at(entries: outputs, index: r.index)),
+          }
+        ),
+        point => point.index,
+      ),
+    }
+  }
+}
+
+// THE DECODED CURVE IS ORDERED BY INDEX, NOT BY AUTHORED MEMBER ORDER, and that is semantic
+// canonicalisation rather than a validation. The daemon loads by integer position, so a document
+// whose reading object lists its members in a different order describes the SAME curve -- and a
+// semantic program that changed because someone reordered two members would make every downstream
+// digest and comparison sensitive to a difference the running system does not have. The authored
+// order remains in the captured artifact, which is where it belongs.
+//
+// ONE UPSTREAM BOUND IS DELIBERATELY NOT ENFORCED HERE, AND IS NAMED RATHER THAN GUESSED. Review
+// reported that phosphor-pid-control loads a bounded number of stepwise positions, so a key beyond
+// that bound would be a document the daemon does not fully load even though this decoder accepts
+// it. That is plausible and it is not verified against the upstream source by anyone who wrote
+// this file, so no numeric bound is asserted: writing a limit read from a summary would put a
+// fabricated constant in the one place this module exists to keep exact. NEXT-RUNG TRIGGER: read
+// the loader in the cited upstream, then add CurveIndexOutsideLoadedRange with the bound and its
+// citation. Until then the exact-key and canonical-spelling walls above stand, and they already
+// close the substitution class; what remains open is over-acceptance of a high index, which
+// produces a program that says MORE than the daemon runs rather than something different.
+//
+// MONOTONICITY IS STILL NOT CHECKED HERE. A curve whose readings descend is a defective program, but refusing it at
+// the decode would make a badly-configured host unobservable -- the observer's job is to say what
+// is running, including when what is running is wrong. That check belongs on the model, where it
+// can be reported about a program that was successfully read.
+fn decode_curve(container: JsonValue, path: DocumentPath) -> CurveDecode {
+  match decode_curve_side(container: container, path: path, side: ReadingSide) {
+    CurveSideRefused { refusal } => CurveRefused { refusal: refusal }
+    CurveSideDecoded { entries: readings } =>
+      match decode_curve_side(container: container, path: path, side: OutputSide) {
+        CurveSideRefused { refusal } => CurveRefused { refusal: refusal }
+        CurveSideDecoded { entries: outputs } =>
+          curve_join(path: path, readings: readings, outputs: outputs)
+      }
+  }
+}
+
+// FROM HERE DOWN, EVERY OBJECT DECODE RETURNS ITS MEMBER DISPOSITIONS ALONGSIDE ITS VALUE. That is
+// what wires the conservation wall into the decode rather than leaving it as a check somebody
+// might run: a decoder that reads five of a sensor's six members produces five dispositions, the
+// join against the source occurrences fails, and the program does not become representable. The
+// dispositions are built at the same place the fields are read, so a new field cannot be consumed
+// without appearing in them.
+type ObjectDecodeResidue {
+  path: DocumentPath
+  source: List<JsonMemberOccurrence>
+  dispositions: List<MemberDisposition>
+}
+
+fn occurrence_at(source: List<JsonMemberOccurrence>, ordinal: Int) -> List<JsonMemberOccurrence> {
+  filter(source, occurrence => occurrence.identity.ordinal == ordinal)
+}
+
+fn occurrences_named(source: List<JsonMemberOccurrence>, key: String) -> List<JsonMemberOccurrence> {
+  filter(source, occurrence => occurrence.member.key == key)
+}
+
+// A CONSUMED MEMBER IS RECORDED BY ITS OCCURRENCE, NOT BY ITS KEY, so that a document carrying a
+// field twice produces two occurrences and the decoder's single read accounts for exactly one of
+// them -- leaving the other unaccounted, which is what the duplicate refusal above already
+// reported and what the conservation join independently confirms.
+fn consumed_disposition(source: List<JsonMemberOccurrence>, key: String, role: NonEmptyStr) -> List<MemberDisposition> {
+  map(occurrences_named(source: source, key: key), occurrence =>
+    MemberConsumed { occurrence: occurrence, role: role })
+}
+
+// EVERY OCCURRENCE THE FIELD READS DID NOT CLAIM IS UNMODELLED, AND THAT IS DERIVED RATHER THAN
+// LISTED. A hand-written residue list is a second place to forget a field; deriving it from the
+// keys actually consumed means a member the decoder does not read cannot be silently absent from
+// the residue either.
+fn unmodeled_dispositions(source: List<JsonMemberOccurrence>, consumed_keys: List<String>) -> List<MemberDisposition> {
+  map(
+    filter(source, occurrence => !any(consumed_keys, key => key == occurrence.member.key)),
+    occurrence => MemberUnmodeled { occurrence: occurrence },
+  )
+}
+
+fn object_partition(
+  path: DocumentPath,
+  container: JsonValue,
+  consumed: List<NonEmptyStr>,
+) -> ObjectMemberPartition {
+  let source = occurrences_of_object(object_path: path.text, value: container)
+  let consumed_keys = map(consumed, key => key as String)
+  ObjectMemberPartition {
+    object_path: path.text,
+    source: source,
+    dispositions: flat_map(
+      [
+        flat_map(consumed, key => consumed_disposition(source: source, key: key as String, role: key)),
+        unmodeled_dispositions(source: source, consumed_keys: consumed_keys),
+      ],
+      group => group,
+    ),
+  }
+}
+
+type StringField
+  = StringFieldRead { value: String }
+  | StringFieldRefused { refusal: FieldRefusal }
+
+fn string_field(container: JsonValue, path: DocumentPath, field: NonEmptyStr) -> StringField {
+  match select_member(container: container, path: path, field: field) {
+    MemberSelectionRefused { refusal } => StringFieldRefused { refusal: refusal }
+    MemberSelected { value: v } =>
+      match v {
+        JsonString { value: s } => StringFieldRead { value: s }
+        other => StringFieldRefused { refusal: FieldNotAString { path: path, field: field } }
+      }
+  }
+}
+
+// AN OPTIONAL FIELD IS A THREE-WAY ANSWER, NOT A TWO-WAY ONE. Present-and-readable, absent, and
+// present-but-wrong are different facts: the middle one is the document declining to state a
+// policy and the last is the document stating it wrongly. A reader that folded the third into the
+// second would report a malformed timeout as an unstated one.
+type OptionalDecimalField
+  = OptionalDecimalRead { value: ExactDecimal }
+  | OptionalDecimalUnstated
+  | OptionalDecimalRefused { refusal: FieldRefusal }
+
+fn optional_decimal_field(container: JsonValue, path: DocumentPath, field: NonEmptyStr) -> OptionalDecimalField {
+  let hits = members_named(value: container, key: field as String)
+  if hits.length() == 0 {
+    OptionalDecimalUnstated
+  } else {
+    match decimal_field(container: container, path: path, field: field) {
+      DecimalFieldRefused { refusal } => OptionalDecimalRefused { refusal: refusal }
+      DecimalFieldRead { value } => OptionalDecimalRead { value: value }
+    }
+  }
+}
+
+type OptionalBoolField
+  = OptionalBoolRead { value: Bool }
+  | OptionalBoolUnstated
+  | OptionalBoolRefused { refusal: FieldRefusal }
+
+fn optional_bool_field(container: JsonValue, path: DocumentPath, field: NonEmptyStr) -> OptionalBoolField {
+  let hits = members_named(value: container, key: field as String)
+  if hits.length() == 0 {
+    OptionalBoolUnstated
+  } else {
+    match select_member(container: container, path: path, field: field) {
+      MemberSelectionRefused { refusal } => OptionalBoolRefused { refusal: refusal }
+      MemberSelected { value: v } =>
+        match v {
+          JsonBool { value: b } => OptionalBoolRead { value: b }
+          other => OptionalBoolRefused { refusal: FieldNotABool { path: path, field: field } }
+        }
+    }
+  }
+}
+
+type SensorDecode
+  = SensorDecoded { sensor: ProgramSensor, partition: ObjectMemberPartition }
+  | SensorRefused { refusal: FieldRefusal }
+
+// THE ROLE STRING IS A CLOSED VOCABULARY AND AN UNKNOWN ONE REFUSES. phosphor-pid-control's own
+// schema admits exactly these two sensor types; a third would mean this decoder is behind its
+// upstream, which is a fact worth stopping on rather than reading as "some other kind of sensor".
+type SensorRoleRead
+  = SensorRoleKnown { role: ProgramSensorRole }
+  | SensorRoleUnknown
+
+fn sensor_role(value: String) -> SensorRoleRead {
+  if value == "fan" {
+    SensorRoleKnown { role: FanTachometerSensor }
+  } else if value == "temp" {
+    SensorRoleKnown { role: TemperatureSensor }
+  } else {
+    SensorRoleUnknown
+  }
+}
+
+fn sensor_bounds(minimum: OptionalDecimalField, maximum: OptionalDecimalField) -> SensorReadingBounds {
+  match minimum {
+    OptionalDecimalRead { value: lo } =>
+      match maximum {
+        OptionalDecimalRead { value: hi } => SensorBoundsDeclared { minimum: lo, maximum: hi }
+        other => SensorBoundsUnstated
+      }
+    other => SensorBoundsUnstated
+  }
+}
+
+fn dbus_bounds_disposition(field: OptionalBoolField) -> DbusBoundsDisposition {
+  match field {
+    OptionalBoolRead { value: ignore } => if ignore { DbusBoundsIgnored } else { DbusBoundsUsed }
+    OptionalBoolUnstated => DbusBoundsUnstated
+    OptionalBoolRefused { refusal: _ } => DbusBoundsUnstated
+  }
+}
+
+data sensor_consumed_keys: List<NonEmptyStr> = [
+  "name",
+  "type",
+  "readPath",
+  "writePath",
+  "min",
+  "max",
+  "timeout",
+  "ignoreDbusMinMax",
+]
+
+fn decode_sensor(container: JsonValue, path: DocumentPath) -> SensorDecode {
+  match string_field(container: container, path: path, field: "name") {
+    StringFieldRefused { refusal } => SensorRefused { refusal: refusal }
+    StringFieldRead { value: name } =>
+      match string_field(container: container, path: path, field: "type") {
+        StringFieldRefused { refusal } => SensorRefused { refusal: refusal }
+        StringFieldRead { value: type_text } =>
+          match sensor_role(value: type_text) {
+            SensorRoleUnknown =>
+              SensorRefused {
+                refusal: FieldValueUnknown { path: path, field: "type", value: type_text },
+              }
+            SensorRoleKnown { role } =>
+              match string_field(container: container, path: path, field: "readPath") {
+                StringFieldRefused { refusal } => SensorRefused { refusal: refusal }
+                StringFieldRead { value: read_path } => {
+                  let actuation = match string_field(container: container, path: path, field: "writePath") {
+                    StringFieldRead { value: write_path } => SensorDrivesOutput { write_path: write_path }
+                    other => SensorReadOnly
+                  }
+                  let timeout = match optional_decimal_field(container: container, path: path, field: "timeout") {
+                    OptionalDecimalRead { value: seconds } =>
+                      SensorTimeoutDeclared { seconds: decimal_seconds(value: seconds) }
+                    other => SensorTimeoutUnstated
+                  }
+                  SensorDecoded {
+                    sensor: ProgramSensor {
+                      name: name,
+                      role: role,
+                      read_path: read_path,
+                      actuation: actuation,
+                      bounds: sensor_bounds(
+                        minimum: optional_decimal_field(container: container, path: path, field: "min"),
+                        maximum: optional_decimal_field(container: container, path: path, field: "max"),
+                      ),
+                      dbus_bounds: dbus_bounds_disposition(
+                        field: optional_bool_field(container: container, path: path, field: "ignoreDbusMinMax"),
+                      ),
+                      timeout: timeout,
+                    },
+                    partition: object_partition(
+                      path: path,
+                      container: container,
+                      consumed: sensor_consumed_keys,
+                    ),
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+// THE CONTROLLER ENTRIES SHARE ONE ARRAY AND ARE TOLD APART BY A `type` STRING, which is the one
+// place the document forces a dispatch on a name. It happens exactly once, here, and everything
+// downstream reads a list whose element type already answers the question.
+type ControllerKind = ThermalDemandKind | ActuatorKind
+
+type ControllerKindRead
+  = ControllerKindKnown { kind: ControllerKind }
+  | ControllerKindUnknown
+
+fn controller_kind(value: String) -> ControllerKindRead {
+  if value == "stepwise" {
+    ControllerKindKnown { kind: ThermalDemandKind }
+  } else if value == "fan" {
+    ControllerKindKnown { kind: ActuatorKind }
+  } else {
+    ControllerKindUnknown
+  }
+}
+
+type StringListField
+  = StringListRead { values: List<NonEmptyStr> }
+  | StringListRefused { refusal: FieldRefusal }
+
+fn string_list_field(container: JsonValue, path: DocumentPath, field: NonEmptyStr) -> StringListField {
+  match select_member(container: container, path: path, field: field) {
+    MemberSelectionRefused { refusal } => StringListRefused { refusal: refusal }
+    MemberSelected { value: v } =>
+      match v {
+        JsonArray { elements } => {
+          let strings = flat_map(elements, element =>
+            match element {
+              JsonString { value: s } => [s]
+              other => []
+            })
+          if strings.length() == elements.length() {
+            StringListRead { values: strings }
+          } else {
+            StringListRefused { refusal: FieldNotAString { path: path, field: field } }
+          }
+        }
+        other => StringListRefused { refusal: FieldNotAnArray { path: path, field: field } }
+      }
+  }
+}
+
+type ControllerRefusal
+  = ControllerFieldRefused { refusal: FieldRefusal }
+  | ControllerCurveRefused { refusal: CurveRefusal }
+  | ControllerKindNotRecognised { path: DocumentPath, value: String }
+
+data thermal_controller_consumed_keys: List<NonEmptyStr> = [
+  "name",
+  "type",
+  "inputs",
+  "setpoint",
+  "failsafePercent",
+  "pid",
+]
+
+data thermal_pid_consumed_keys: List<NonEmptyStr> = [
+  "samplePeriod",
+  "positiveHysteresis",
+  "negativeHysteresis",
+  "isCeiling",
+  "reading",
+  "output",
+]
+
+type ThermalControllerDecode
+  = ThermalControllerDecoded {
+      controller: ThermalDemandController,
+      entry_partition: ObjectMemberPartition,
+      pid_partition: ObjectMemberPartition,
+    }
+  | ThermalControllerRefused { refusal: ControllerRefusal }
+
+// isCeiling IS REQUIRED RATHER THAN DEFAULTED TO FALSE, and that is the same judgement the sensor
+// bounds field got in the other direction. A ceiling controller and a floor controller are
+// opposite behaviours, and a decoder that supplies false for a document that did not say would be
+// asserting the safer-sounding half of a distinction it cannot see. Every captured document states
+// it; if one stops, that is a document to complete rather than a default to invent.
+fn decode_thermal_controller(
+  container: JsonValue,
+  path: DocumentPath,
+  name: NonEmptyStr,
+  inputs: List<NonEmptyStr>,
+) -> ThermalControllerDecode {
+  let pid_path = path_field(parent: path, field: "pid")
+  match select_member(container: container, path: path, field: "pid") {
+    MemberSelectionRefused { refusal } =>
+      ThermalControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+    MemberSelected { value: pid } =>
+      match decimal_field(container: container, path: path, field: "setpoint") {
+        DecimalFieldRefused { refusal } =>
+          ThermalControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+        DecimalFieldRead { value: setpoint } =>
+          match decimal_field(container: container, path: path, field: "failsafePercent") {
+            DecimalFieldRefused { refusal } =>
+              ThermalControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+            DecimalFieldRead { value: failsafe } =>
+              match decimal_field(container: pid, path: pid_path, field: "samplePeriod") {
+                DecimalFieldRefused { refusal } =>
+                  ThermalControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+                DecimalFieldRead { value: sample_period } =>
+                  match decimal_field(container: pid, path: pid_path, field: "positiveHysteresis") {
+                    DecimalFieldRefused { refusal } =>
+                      ThermalControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+                    DecimalFieldRead { value: positive } =>
+                      match decimal_field(container: pid, path: pid_path, field: "negativeHysteresis") {
+                        DecimalFieldRefused { refusal } =>
+                          ThermalControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+                        DecimalFieldRead { value: negative } =>
+                          match optional_bool_field(container: pid, path: pid_path, field: "isCeiling") {
+                            OptionalBoolRefused { refusal } =>
+                              ThermalControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+                            OptionalBoolUnstated =>
+                              ThermalControllerRefused {
+                                refusal: ControllerFieldRefused {
+                                  refusal: FieldAbsent { path: pid_path, field: "isCeiling" },
+                                },
+                              }
+                            OptionalBoolRead { value: is_ceiling } =>
+                              match decode_curve(container: pid, path: pid_path) {
+                                CurveRefused { refusal } =>
+                                  ThermalControllerRefused { refusal: ControllerCurveRefused { refusal: refusal } }
+                                CurveDecoded { points } =>
+                                  ThermalControllerDecoded {
+                                    controller: ThermalDemandController {
+                                      name: name,
+                                      inputs: inputs,
+                                      setpoint: decimal_celsius(value: setpoint),
+                                      failsafe_output: zone_demand_value(value: failsafe),
+                                      sample_period: decimal_seconds(value: sample_period),
+                                      positive_hysteresis: decimal_celsius_delta(value: positive),
+                                      negative_hysteresis: decimal_celsius_delta(value: negative),
+                                      is_ceiling: is_ceiling,
+                                      curve: points,
+                                    },
+                                    entry_partition: object_partition(
+                                      path: path,
+                                      container: container,
+                                      consumed: thermal_controller_consumed_keys,
+                                    ),
+                                    pid_partition: object_partition(
+                                      path: pid_path,
+                                      container: pid,
+                                      consumed: thermal_pid_consumed_keys,
+                                    ),
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+data actuator_controller_consumed_keys: List<NonEmptyStr> = [
+  "name",
+  "type",
+  "inputs",
+  "setpoint",
+  "pid",
+]
+
+data actuator_pid_consumed_keys: List<NonEmptyStr> = [
+  "samplePeriod",
+  "proportionalCoeff",
+  "integralCoeff",
+  "derivativeCoeff",
+  "feedFwdGainCoeff",
+  "feedFwdOffsetCoeff",
+  "integralLimit_min",
+  "integralLimit_max",
+  "outLim_min",
+  "outLim_max",
+  "slewNeg",
+  "slewPos",
+]
+
+type ActuatorControllerDecode
+  = ActuatorControllerDecoded {
+      controller: ActuatorController,
+      entry_partition: ObjectMemberPartition,
+      pid_partition: ObjectMemberPartition,
+    }
+  | ActuatorControllerRefused { refusal: ControllerRefusal }
+
+// TWELVE COEFFICIENTS READ IN GROUPS, WHICH IS WHY THE MODEL GROUPS THEM. Read as one flat
+// sequence this would be a twelve-deep nesting; read as five small records it is five shallow
+// ones, and each group is the concept its fields belong to rather than an arbitrary chunking --
+// the gains, the feed-forward pair, the two limit pairs, the slew pair.
+type DecimalTriple
+  = DecimalTripleRead { first: ExactDecimal, second: ExactDecimal, third: ExactDecimal }
+  | DecimalTripleRefused { refusal: FieldRefusal }
+
+fn decimal_triple(
+  container: JsonValue,
+  path: DocumentPath,
+  first: NonEmptyStr,
+  second: NonEmptyStr,
+  third: NonEmptyStr,
+) -> DecimalTriple {
+  match decimal_field(container: container, path: path, field: first) {
+    DecimalFieldRefused { refusal } => DecimalTripleRefused { refusal: refusal }
+    DecimalFieldRead { value: a } =>
+      match decimal_field(container: container, path: path, field: second) {
+        DecimalFieldRefused { refusal } => DecimalTripleRefused { refusal: refusal }
+        DecimalFieldRead { value: b } =>
+          match decimal_field(container: container, path: path, field: third) {
+            DecimalFieldRefused { refusal } => DecimalTripleRefused { refusal: refusal }
+            DecimalFieldRead { value: c } =>
+              DecimalTripleRead { first: a, second: b, third: c }
+          }
+      }
+  }
+}
+
+type DecimalPair
+  = DecimalPairRead { first: ExactDecimal, second: ExactDecimal }
+  | DecimalPairRefused { refusal: FieldRefusal }
+
+fn decimal_pair(
+  container: JsonValue,
+  path: DocumentPath,
+  first: NonEmptyStr,
+  second: NonEmptyStr,
+) -> DecimalPair {
+  match decimal_field(container: container, path: path, field: first) {
+    DecimalFieldRefused { refusal } => DecimalPairRefused { refusal: refusal }
+    DecimalFieldRead { value: a } =>
+      match decimal_field(container: container, path: path, field: second) {
+        DecimalFieldRefused { refusal } => DecimalPairRefused { refusal: refusal }
+        DecimalFieldRead { value: b } => DecimalPairRead { first: a, second: b }
+      }
+  }
+}
+
+fn decode_actuator_controller(
+  container: JsonValue,
+  path: DocumentPath,
+  name: NonEmptyStr,
+  inputs: List<NonEmptyStr>,
+) -> ActuatorControllerDecode {
+  let pid_path = path_field(parent: path, field: "pid")
+  match select_member(container: container, path: path, field: "pid") {
+    MemberSelectionRefused { refusal } =>
+      ActuatorControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+    MemberSelected { value: pid } =>
+      match decimal_field(container: container, path: path, field: "setpoint") {
+        DecimalFieldRefused { refusal } =>
+          ActuatorControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+        DecimalFieldRead { value: setpoint } =>
+          match decimal_field(container: pid, path: pid_path, field: "samplePeriod") {
+            DecimalFieldRefused { refusal } =>
+              ActuatorControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+            DecimalFieldRead { value: sample_period } =>
+              match decimal_triple(
+                container: pid,
+                path: pid_path,
+                first: "proportionalCoeff",
+                second: "integralCoeff",
+                third: "derivativeCoeff",
+              ) {
+                DecimalTripleRefused { refusal } =>
+                  ActuatorControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+                DecimalTripleRead { first: p, second: i, third: d } =>
+                  match decimal_pair(container: pid, path: pid_path, first: "feedFwdGainCoeff", second: "feedFwdOffsetCoeff") {
+                    DecimalPairRefused { refusal } =>
+                      ActuatorControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+                    DecimalPairRead { first: ff_gain, second: ff_offset } =>
+                      match decimal_pair(container: pid, path: pid_path, first: "integralLimit_min", second: "integralLimit_max") {
+                        DecimalPairRefused { refusal } =>
+                          ActuatorControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+                        DecimalPairRead { first: i_min, second: i_max } =>
+                          match decimal_pair(container: pid, path: pid_path, first: "outLim_min", second: "outLim_max") {
+                            DecimalPairRefused { refusal } =>
+                              ActuatorControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+                            DecimalPairRead { first: out_min, second: out_max } =>
+                              match decimal_pair(container: pid, path: pid_path, first: "slewNeg", second: "slewPos") {
+                                DecimalPairRefused { refusal } =>
+                                  ActuatorControllerRefused { refusal: ControllerFieldRefused { refusal: refusal } }
+                                DecimalPairRead { first: slew_neg, second: slew_pos } =>
+                                  ActuatorControllerDecoded {
+                                    controller: ActuatorController {
+                                      name: name,
+                                      inputs: inputs,
+                                      configured_setpoint_unused_by_runtime: setpoint,
+                                      sample_period: decimal_seconds(value: sample_period),
+                                      gains: PidGains {
+                                        proportional: p,
+                                        integral: i,
+                                        derivative: d,
+                                      },
+                                      feed_forward: FeedForward {
+                                        gain: ff_gain,
+                                        offset: zone_demand_value(value: ff_offset),
+                                      },
+                                      integral_limits: IntegralBounds {
+                                        minimum: i_min,
+                                        maximum: i_max,
+                                      },
+                                      output_limits: OutputBounds {
+                                        minimum: zone_demand_value(value: out_min),
+                                        maximum: zone_demand_value(value: out_max),
+                                      },
+                                      slew: SlewLimits {
+                                        negative_coefficient: slew_neg,
+                                        positive_coefficient: slew_pos,
+                                      },
+                                    },
+                                    entry_partition: object_partition(
+                                      path: path,
+                                      container: container,
+                                      consumed: actuator_controller_consumed_keys,
+                                    ),
+                                    pid_partition: object_partition(
+                                      path: pid_path,
+                                      container: pid,
+                                      consumed: actuator_pid_consumed_keys,
+                                    ),
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// A ZONE ID IS A CARDINAL, NOT A MAGNITUDE, so a document writing it as 0.5 is refused rather than
+// truncated. The canonical form makes the test exact: after reduction an integral value has no
+// fraction digits left, so `0`, `0.0` and `0.000` all pass and nothing that is not a whole number
+// does.
+type IntegerFromDecimal
+  = IntegerRead { value: Int }
+  | IntegerNotIntegral
+
+fn integer_from_decimal(d: ExactDecimal) -> IntegerFromDecimal {
+  let c = canonical_exact_decimal(d: d)
+  if c.fraction_digits == 0 {
+    IntegerRead { value: c.units }
+  } else {
+    IntegerNotIntegral
+  }
+}
+
+type ProgramRefusal
+  = ProgramFieldRefused { refusal: FieldRefusal }
+  | ProgramControllerRefused { refusal: ControllerRefusal }
+  | ProgramSensorRefused { refusal: FieldRefusal }
+
+// THE ACCUMULATOR CARRIES THE PARTITIONS ALONGSIDE THE VALUES, so that a decode which succeeds on
+// every field but silently skipped an object still has an incomplete partition list -- the
+// conservation join is over what the decode ACTUALLY visited, not over what it was supposed to.
+type ZoneAccumulation
+  = ZoneAccumulated {
+      thermal: List<ThermalDemandController>,
+      actuators: List<ActuatorController>,
+      partitions: List<ObjectMemberPartition>,
+      element_partitions: List<ArrayElementPartition>,
+      elements: List<ElementDisposition>,
+    }
+  | ZoneAccumulationRefused { refusal: ProgramRefusal }
+
+data zone_consumed_keys: List<NonEmptyStr> = [
+  "id",
+  "minThermalOutput",
+  "failsafePercent",
+  "cycleIntervalTimeMS",
+  "updateThermalsTimeMS",
+  "pids",
+]
+
+fn accumulate_controller(
+  state: ZoneAccumulation,
+  occurrence: JsonArrayElementOccurrence,
+  path: DocumentPath,
+) -> ZoneAccumulation {
+  let entry = occurrence.element
+  match state {
+    ZoneAccumulationRefused { refusal } => ZoneAccumulationRefused { refusal: refusal }
+    ZoneAccumulated { thermal, actuators, partitions, element_partitions, elements } =>
+      match string_field(container: entry, path: path, field: "name") {
+        StringFieldRefused { refusal } =>
+          ZoneAccumulationRefused { refusal: ProgramFieldRefused { refusal: refusal } }
+        StringFieldRead { value: name } =>
+          match string_list_field(container: entry, path: path, field: "inputs") {
+            StringListRefused { refusal } =>
+              ZoneAccumulationRefused { refusal: ProgramFieldRefused { refusal: refusal } }
+            StringListRead { values: inputs } =>
+              match string_field(container: entry, path: path, field: "type") {
+                StringFieldRefused { refusal } =>
+                  ZoneAccumulationRefused { refusal: ProgramFieldRefused { refusal: refusal } }
+                StringFieldRead { value: kind_text } =>
+                  match controller_kind(value: kind_text) {
+                    ControllerKindUnknown =>
+                      ZoneAccumulationRefused {
+                        refusal: ProgramControllerRefused {
+                          refusal: ControllerKindNotRecognised { path: path, value: kind_text },
+                        },
+                      }
+                    ControllerKindKnown { kind } =>
+                      match kind {
+                        ThermalDemandKind =>
+                          match decode_thermal_controller(container: entry, path: path, name: name, inputs: inputs) {
+                            ThermalControllerRefused { refusal } =>
+                              ZoneAccumulationRefused { refusal: ProgramControllerRefused { refusal: refusal } }
+                            ThermalControllerDecoded { controller, entry_partition, pid_partition } =>
+                              ZoneAccumulated {
+                                thermal: thermal.append(controller),
+                                actuators: actuators,
+                                partitions: partitions.append(entry_partition).append(pid_partition),
+                                element_partitions: element_partitions.append(
+                                  inputs_element_partition(entry: entry, path: path),
+                                ),
+                                elements: elements.append(
+                                  ElementConsumed { occurrence: occurrence, role: "thermal_demand_controller" },
+                                ),
+                              }
+                          }
+                        ActuatorKind =>
+                          match decode_actuator_controller(container: entry, path: path, name: name, inputs: inputs) {
+                            ActuatorControllerRefused { refusal } =>
+                              ZoneAccumulationRefused { refusal: ProgramControllerRefused { refusal: refusal } }
+                            ActuatorControllerDecoded { controller, entry_partition, pid_partition } =>
+                              ZoneAccumulated {
+                                thermal: thermal,
+                                actuators: actuators.append(controller),
+                                partitions: partitions.append(entry_partition).append(pid_partition),
+                                element_partitions: element_partitions.append(
+                                  inputs_element_partition(entry: entry, path: path),
+                                ),
+                                elements: elements.append(
+                                  ElementConsumed { occurrence: occurrence, role: "actuator_controller" },
+                                ),
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+type ZoneDecode
+  = ZoneDecoded {
+      zone: ProgramZone,
+      partitions: List<ObjectMemberPartition>,
+      element_partitions: List<ArrayElementPartition>,
+    }
+  | ZoneRefused { refusal: ProgramRefusal }
+
+// A CONTROLLER'S `inputs` ARRAY IS A POPULATION TOO, and every element of it is consumed by the
+// controller that names it. Without this partition a decoder could read two of a three-endpoint
+// actuator's inputs and conserve every object member perfectly -- the CHASSIS controller drives
+// three fans, and dropping one is precisely the wiring error this whole lane started from.
+fn inputs_element_partition(entry: JsonValue, path: DocumentPath) -> ArrayElementPartition {
+  let inputs_path = path_field(parent: path, field: "inputs")
+  let elements = match select_member(container: entry, path: path, field: "inputs") {
+    MemberSelected { value: v } =>
+      match v {
+        JsonArray { elements: xs } => xs
+        other => []
+      }
+    MemberSelectionRefused { refusal } => []
+  }
+  let occurrences = array_element_occurrences(array_path: inputs_path.text, elements: elements)
+  ArrayElementPartition {
+    array_path: inputs_path.text,
+    source: occurrences,
+    dispositions: map(occurrences, occurrence =>
+      ElementConsumed { occurrence: occurrence, role: "controller_input" }),
+  }
+}
+
+fn decode_zone_controllers(entries: List<JsonValue>, path: DocumentPath) -> ZoneAccumulation {
+  fold(
+    array_element_occurrences(array_path: path.text, elements: entries),
+    init: ZoneAccumulated {
+      thermal: [],
+      actuators: [],
+      partitions: [],
+      element_partitions: [],
+      elements: [],
+    },
+    f: (state, occurrence) =>
+      accumulate_controller(
+        state: state,
+        occurrence: occurrence,
+        path: path_index(parent: path, index: occurrence.identity.index),
+      ),
+  )
+}
+
+fn decode_zone(container: JsonValue, path: DocumentPath) -> ZoneDecode {
+  match decimal_field(container: container, path: path, field: "id") {
+    DecimalFieldRefused { refusal } => ZoneRefused { refusal: ProgramFieldRefused { refusal: refusal } }
+    DecimalFieldRead { value: id_decimal } =>
+      match integer_from_decimal(d: id_decimal) {
+        IntegerNotIntegral =>
+          ZoneRefused {
+            refusal: ProgramFieldRefused { refusal: FieldNotAnInteger { path: path, field: "id" } },
+          }
+        IntegerRead { value: id } =>
+      match decimal_field(container: container, path: path, field: "minThermalOutput") {
+        DecimalFieldRefused { refusal } => ZoneRefused { refusal: ProgramFieldRefused { refusal: refusal } }
+        DecimalFieldRead { value: minimum } =>
+          match decimal_field(container: container, path: path, field: "failsafePercent") {
+            DecimalFieldRefused { refusal } => ZoneRefused { refusal: ProgramFieldRefused { refusal: refusal } }
+            DecimalFieldRead { value: failsafe } =>
+              match decimal_pair(container: container, path: path, first: "cycleIntervalTimeMS", second: "updateThermalsTimeMS") {
+                DecimalPairRefused { refusal } => ZoneRefused { refusal: ProgramFieldRefused { refusal: refusal } }
+                DecimalPairRead { first: cycle_ms, second: update_ms } =>
+                  match select_member(container: container, path: path, field: "pids") {
+                    MemberSelectionRefused { refusal } =>
+                      ZoneRefused { refusal: ProgramFieldRefused { refusal: refusal } }
+                    MemberSelected { value: pids } =>
+                      match pids {
+                        JsonArray { elements: elements_of_pids } =>
+                          match decode_zone_controllers(
+                            entries: elements_of_pids,
+                            path: path_field(parent: path, field: "pids"),
+                          ) {
+                            ZoneAccumulationRefused { refusal } => ZoneRefused { refusal: refusal }
+                            ZoneAccumulated { thermal, actuators, partitions, element_partitions, elements } =>
+                              ZoneDecoded {
+                                zone: ProgramZone {
+                                  id: id,
+                                  minimum_thermal_output: zone_demand_value(value: minimum),
+                                  failsafe_output: zone_demand_value(value: failsafe),
+                                  cycle_interval: decimal_milliseconds(value: cycle_ms),
+                                  update_thermals_interval: decimal_milliseconds(value: update_ms),
+                                  thermal_demand_controllers: thermal,
+                                  actuator_controllers: actuators,
+                                },
+                                partitions: partitions.append(
+                                  object_partition(path: path, container: container, consumed: zone_consumed_keys),
+                                ),
+                                element_partitions: element_partitions.append(
+                                  ArrayElementPartition {
+                                    array_path: path_field(parent: path, field: "pids").text,
+                                    source: array_element_occurrences(
+                                      array_path: path_field(parent: path, field: "pids").text,
+                                      elements: elements_of_pids,
+                                    ),
+                                    dispositions: elements,
+                                  },
+                                ),
+                              }
+                          }
+                        other =>
+                          ZoneRefused {
+                            refusal: ProgramFieldRefused {
+                              refusal: FieldNotAnArray { path: path, field: "pids" },
+                            },
+                          }
+                      }
+                  }
+              }
+          }
+      }
+      }
+  }
+}
+
+data document_consumed_keys: List<NonEmptyStr> = ["sensors", "zones"]
+
+type ProgramDecode
+  = ProgramDecoded {
+      program: BmcFanControlProgram,
+      partitions: List<ObjectMemberPartition>,
+      element_partitions: List<ArrayElementPartition>,
+    }
+  | ProgramDecodeRefused { refusal: ProgramRefusal }
+  | ProgramMembersNotConserved { verdict: ConservationVerdict }
+
+type SensorAccumulation
+  = SensorsAccumulated {
+      sensors: List<ProgramSensor>,
+      partitions: List<ObjectMemberPartition>,
+      elements: List<ElementDisposition>,
+    }
+  | SensorsAccumulationRefused { refusal: FieldRefusal }
+
+fn accumulate_sensor(
+  state: SensorAccumulation,
+  occurrence: JsonArrayElementOccurrence,
+  path: DocumentPath,
+) -> SensorAccumulation {
+  match state {
+    SensorsAccumulationRefused { refusal } => SensorsAccumulationRefused { refusal: refusal }
+    SensorsAccumulated { sensors, partitions, elements } =>
+      match decode_sensor(container: occurrence.element, path: path) {
+        SensorRefused { refusal } => SensorsAccumulationRefused { refusal: refusal }
+        SensorDecoded { sensor, partition } =>
+          SensorsAccumulated {
+            sensors: sensors.append(sensor),
+            partitions: partitions.append(partition),
+            elements: elements.append(ElementConsumed { occurrence: occurrence, role: "sensor" }),
+          }
+      }
+  }
+}
+
+fn decode_sensors(entries: List<JsonValue>, path: DocumentPath) -> SensorAccumulation {
+  fold(
+    array_element_occurrences(array_path: path.text, elements: entries),
+    init: SensorsAccumulated { sensors: [], partitions: [], elements: [] },
+    f: (state, occurrence) =>
+      accumulate_sensor(
+        state: state,
+        occurrence: occurrence,
+        path: path_index(parent: path, index: occurrence.identity.index),
+      ),
+  )
+}
+
+type ZonesAccumulation
+  = ZonesAccumulated {
+      zones: List<ProgramZone>,
+      partitions: List<ObjectMemberPartition>,
+      element_partitions: List<ArrayElementPartition>,
+      elements: List<ElementDisposition>,
+    }
+  | ZonesAccumulationRefused { refusal: ProgramRefusal }
+
+fn accumulate_zone(
+  state: ZonesAccumulation,
+  occurrence: JsonArrayElementOccurrence,
+  path: DocumentPath,
+) -> ZonesAccumulation {
+  match state {
+    ZonesAccumulationRefused { refusal } => ZonesAccumulationRefused { refusal: refusal }
+    ZonesAccumulated { zones, partitions, element_partitions, elements } =>
+      match decode_zone(container: occurrence.element, path: path) {
+        ZoneRefused { refusal } => ZonesAccumulationRefused { refusal: refusal }
+        ZoneDecoded { zone, partitions: zone_partitions, element_partitions: zone_elements } =>
+          ZonesAccumulated {
+            zones: zones.append(zone),
+            partitions: flat_map([partitions, zone_partitions], group => group),
+            element_partitions: flat_map([element_partitions, zone_elements], group => group),
+            elements: elements.append(ElementConsumed { occurrence: occurrence, role: "zone" }),
+          }
+      }
+  }
+}
+
+fn decode_zones(entries: List<JsonValue>, path: DocumentPath) -> ZonesAccumulation {
+  fold(
+    array_element_occurrences(array_path: path.text, elements: entries),
+    init: ZonesAccumulated { zones: [], partitions: [], element_partitions: [], elements: [] },
+    f: (state, occurrence) =>
+      accumulate_zone(
+        state: state,
+        occurrence: occurrence,
+        path: path_index(parent: path, index: occurrence.identity.index),
+      ),
+  )
+}
+
+// THE FIRST PARTITION THAT DOES NOT CONSERVE STOPS THE DECODE, AND THE VERDICT IS CARRIED OUT
+// WHOLE. It is a separate outcome from a field refusal because it means something different: a
+// field refusal says the document is wrong, and a conservation failure says THIS DECODER is wrong
+// -- it read a member twice, or left one unaccounted, or dispositioned one that was not there.
+// Reporting the second as the first would send a reader to edit a configuration that is fine.
+fn unconserved(verdicts: List<ConservationVerdict>) -> List<ConservationVerdict> {
+  filter(
+    verdicts,
+    verdict =>
+      match verdict {
+        MembersConserved { member_count: _ } => false
+        other => true
+      },
+  )
+}
+
+fn first_unconserved(partitions: List<ObjectMemberPartition>) -> List<ConservationVerdict> {
+  unconserved(verdicts: map(partitions, partition => conservation_verdict(partition: partition)))
+}
+
+fn first_unconserved_array(partitions: List<ArrayElementPartition>) -> List<ConservationVerdict> {
+  unconserved(verdicts: map(partitions, partition => element_conservation_verdict(partition: partition)))
+}
+
+fn decode_program(document: JsonValue) -> ProgramDecode {
+  let root = document_path(text: "$")
+  match select_member(container: document, path: root, field: "sensors") {
+    MemberSelectionRefused { refusal } => ProgramDecodeRefused { refusal: ProgramFieldRefused { refusal: refusal } }
+    MemberSelected { value: sensors_value } =>
+      match sensors_value {
+        JsonArray { elements: sensor_entries } =>
+          match select_member(container: document, path: root, field: "zones") {
+            MemberSelectionRefused { refusal } =>
+              ProgramDecodeRefused { refusal: ProgramFieldRefused { refusal: refusal } }
+            MemberSelected { value: zones_value } =>
+              match zones_value {
+                JsonArray { elements: zone_entries } =>
+                  match decode_sensors(entries: sensor_entries, path: path_field(parent: root, field: "sensors")) {
+                    SensorsAccumulationRefused { refusal } =>
+                      ProgramDecodeRefused { refusal: ProgramSensorRefused { refusal: refusal } }
+                    SensorsAccumulated { sensors, partitions: sensor_partitions, elements: sensor_elements } =>
+                      match decode_zones(entries: zone_entries, path: path_field(parent: root, field: "zones")) {
+                        ZonesAccumulationRefused { refusal } => ProgramDecodeRefused { refusal: refusal }
+                        ZonesAccumulated { zones, partitions: zone_partitions, element_partitions: zone_element_partitions, elements: zone_elements } => {
+                          let partitions = flat_map(
+                            [
+                              sensor_partitions,
+                              zone_partitions,
+                              [object_partition(path: root, container: document, consumed: document_consumed_keys)],
+                            ],
+                            group => group,
+                          )
+                          let element_partitions = flat_map(
+                            [
+                              zone_element_partitions,
+                              [
+                                ArrayElementPartition {
+                                  array_path: path_field(parent: root, field: "sensors").text,
+                                  source: array_element_occurrences(
+                                    array_path: path_field(parent: root, field: "sensors").text,
+                                    elements: sensor_entries,
+                                  ),
+                                  dispositions: sensor_elements,
+                                },
+                                ArrayElementPartition {
+                                  array_path: path_field(parent: root, field: "zones").text,
+                                  source: array_element_occurrences(
+                                    array_path: path_field(parent: root, field: "zones").text,
+                                    elements: zone_entries,
+                                  ),
+                                  dispositions: zone_elements,
+                                },
+                              ],
+                            ],
+                            group => group,
+                          )
+                          let broken = first_unconserved(partitions: partitions)
+                          let broken_arrays = first_unconserved_array(partitions: element_partitions)
+                          if broken.length() > 0 {
+                            ProgramMembersNotConserved { verdict: broken.first() }
+                          } else if broken_arrays.length() > 0 {
+                            ProgramMembersNotConserved { verdict: broken_arrays.first() }
+                          } else {
+                            ProgramDecoded {
+                              program: BmcFanControlProgram { sensors: sensors, zones: zones },
+                              partitions: partitions,
+                              element_partitions: element_partitions,
+                            }
+                          }
+                        }
+                      }
+                  }
+                other =>
+                  ProgramDecodeRefused {
+                    refusal: ProgramFieldRefused { refusal: FieldNotAnArray { path: root, field: "zones" } },
+                  }
+              }
+          }
+        other =>
+          ProgramDecodeRefused {
+            refusal: ProgramFieldRefused { refusal: FieldNotAnArray { path: root, field: "sensors" } },
+          }
+      }
+  }
+}

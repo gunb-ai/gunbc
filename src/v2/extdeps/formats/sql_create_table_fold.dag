@@ -1,5 +1,6 @@
 module v2.extdeps.formats.sql_create_table_fold
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.formats.sql {
   SqlColumnConstraints,
   SqlColumnDefault,
@@ -73,8 +74,7 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.witness { Holds, Violates, Witness }
 
@@ -82,7 +82,7 @@ fn sql_fold_stmt_tag(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: binding } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -96,7 +96,7 @@ fn sql_fold_stmt_kind_tag_terminal(binding: Symbol) -> FormalGrammarSymbol {
 data sql_fold_diagnostic_anchor: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn sql_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
@@ -142,11 +142,11 @@ fn sql_fold_column_def_emitted_witness(col: SqlColumnDefinition) -> Witness<Node
                     target: Node {
                       kind: TypeNode { connective: Atom { identity: name } },
                       children: [],
-                      occurrence_id: SyntheticOccurrence
+                      occurrence_id: OccurrenceSynthetic
                     }
                   }
                 ],
-                occurrence_id: SyntheticOccurrence
+                occurrence_id: OccurrenceSynthetic
               }
             }
           } else {
@@ -191,7 +191,7 @@ fn sql_fold_conj_list_root(item: Node) -> Node {
     children: [
       Edge { label: Positional, target: item }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -202,7 +202,7 @@ fn sql_fold_conj_list_append(left: Node, right: Node) -> Node {
       Edge { label: Positional, target: left },
       Edge { label: Positional, target: right }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -264,11 +264,11 @@ fn sql_fold_primary_key_emitted_witness(pk: Optional<List<SqlIdentifier>>) -> Wi
                       target: Node {
                         kind: TypeNode { connective: Atom { identity: name } },
                         children: [],
-                        occurrence_id: SyntheticOccurrence
+                        occurrence_id: OccurrenceSynthetic
                       }
                     }
                   ],
-                  occurrence_id: SyntheticOccurrence
+                  occurrence_id: OccurrenceSynthetic
                 }
               }
             Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -297,12 +297,12 @@ fn sql_fold_create_table_body_emitted(
             target: Node {
               kind: TypeNode { connective: Atom { identity: table_name } },
               children: [],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: OccurrenceSynthetic
             }
           },
           Edge { label: Positional, target: column_list }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     Present { value: pk_node } =>
       Node {
@@ -317,13 +317,13 @@ fn sql_fold_create_table_body_emitted(
             target: Node {
               kind: TypeNode { connective: Atom { identity: table_name } },
               children: [],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: OccurrenceSynthetic
             }
           },
           Edge { label: Positional, target: column_list },
           Edge { label: Positional, target: pk_node }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
   }
 }
@@ -562,7 +562,7 @@ fn sql_fold_translation_rules_node_for_emitted(
               target: row
             )
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -627,7 +627,7 @@ fn sql_fold_serialize_source_witness(
                   target: tokens_root
                 )
               ],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: OccurrenceSynthetic
             }
           }
         Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
