@@ -20,7 +20,7 @@ import product.fabric.supply {
 import product.supplier.owned_host {
   OwnedCapacityInputs, OwnedOfferBinding, bind_owned_offer,
   OfferableCapacity, CapacityMeasured, CapacityUnmeasured,
-  OwnedReadiness, ReadyAt, NotReady,
+  OwnedReadiness, OwnedReadyAt, OwnedNotReady,
   OwnedCapabilityAdmission, CapabilitiesAdmitted, CapabilitiesNotAdmitted,
   DrawObservation,
 }
@@ -194,7 +194,7 @@ fn spark_capability_admission(
 // ── The serving join: readiness that cannot be asserted ──────────────────────────────────────────
 //
 // product.supplier.owned_host states plainly that its OwnedReadiness cannot enforce provenance --
-// ReadyAt takes a Timestamp and a prose basis, and nothing generic can tell a derived timestamp from
+// OwnedReadyAt takes a Timestamp and a prose basis, and nothing generic can tell a derived timestamp from
 // an invented one. This is where that obligation is discharged for a Spark, and it is discharged by
 // CONSTRUCTION rather than by a check.
 //
@@ -232,7 +232,7 @@ fn spark_owned_readiness(
 ) -> OwnedReadiness {
   match spark_serving_readiness(health: health, observed_at: observed_at) {
     Present { value: readiness } =>
-      ReadyAt {
+      OwnedReadyAt {
         at: readiness.observed_at,
         basis: join(
           [
@@ -245,7 +245,7 @@ fn spark_owned_readiness(
         ) as NonEmptyStr,
       }
     Absent =>
-      NotReady { cause: spark_serving_health_wire(health: health) as NonEmptyStr }
+      OwnedNotReady { cause: spark_serving_health_wire(health: health) as NonEmptyStr }
   }
 }
 

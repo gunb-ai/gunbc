@@ -23,7 +23,7 @@ import product.supplier.owned_host {
   OwnedOfferBinding, OwnedOfferBound, OwnedOfferCapabilitiesNotAdmitted,
   OwnedOfferNotReady, OwnedOfferCapacityUnmeasured,
   OfferableCapacity, CapacityMeasured, CapacityUnmeasured,
-  OwnedReadiness, ReadyAt, NotReady,
+  OwnedReadiness, OwnedReadyAt, OwnedNotReady,
   DrawObservation, MeteredDraw, DrawFromThermalDesignPower,
   OperatingCostObservation,
   owned_capacity_operating_cost, owned_capacity_billing_quantum, owned_capacity_quote,
@@ -360,10 +360,10 @@ test fn w_readiness_basis_names_the_version_and_model_that_answered() -> Bool {
     health: converged_health(),
     observed_at: "2026-08-27T23:00:00Z" as Timestamp,
   ) {
-    ReadyAt { at: _, basis: b } =>
+    OwnedReadyAt { at: _, basis: b } =>
       string_contains(s: b as String, pattern: "gpt-oss:20b")
         && string_contains(s: b as String, pattern: "0.12.3")
-    NotReady { cause: _ } => false
+    OwnedNotReady { cause: _ } => false
   }
 }
 

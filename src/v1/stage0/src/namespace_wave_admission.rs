@@ -820,6 +820,48 @@ pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
         },
         disposition: NamespaceDeltaDisposition::NewPoolCoincidenceResolution,
     },
+    // ── gunbc#9534: the UnexpressedSupplyFact / SupplierOfferProjection hoist ──
+    //
+    // Three spellings inside `product.supplier.ubicloud` now admit a declaration in
+    // `product.fabric.supply` instead of one in ubicloud itself. That is exactly what
+    // `TargetChanged` names and it is the intended effect of the cut, not a side effect: the two
+    // types were authored inside one supplier's binding, are facts about the shared model rather
+    // than about Ubicloud, and a second binding needed them. Moving the declaration is the §3
+    // single-authority move; the alternative was a second `IsolationNotObserved` under a private
+    // spelling in every binding that meets the same limit.
+    //
+    // MEASURED BLAST RADIUS IS ZERO MODULES, reported by the wall itself on each of the three
+    // deltas. Nothing outside ubicloud referenced these spellings, which is why the hoist is
+    // invisible to every other closure -- and it is the reason these rows admit a target change
+    // rather than excusing one: the wall asked which declarations the spelling now admits, and the
+    // answer is the hoisted authority, deliberately and for all three.
+    TransitionAdmission {
+        label: "supply-fact-hoist-01",
+        subject: AdmissionSubject::Binding {
+            module: "product.supplier.ubicloud",
+            in_declaration: "bind_ubicloud_offer",
+            spelling: "SupplierOfferProjection",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "supply-fact-hoist-02",
+        subject: AdmissionSubject::Binding {
+            module: "product.supplier.ubicloud",
+            in_declaration: "ubicloud_unexpressed",
+            spelling: "DiskNotExpressibleInShape",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "supply-fact-hoist-03",
+        subject: AdmissionSubject::Binding {
+            module: "product.supplier.ubicloud",
+            in_declaration: "ubicloud_unexpressed",
+            spelling: "IsolationNotObserved",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
 ];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is

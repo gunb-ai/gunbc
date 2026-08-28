@@ -130,19 +130,26 @@ type OfferableCapacity
 // guessed readiness does not merely add an unmeasured field -- it corrupts the comparison the policy
 // exists to make, silently, in the direction that flatters whoever guessed optimistically.
 //
-// THIS TYPE CANNOT STOP THAT AND MUST NOT BE READ AS DOING SO. ReadyAt carries a Timestamp and a
+// THIS TYPE CANNOT STOP THAT AND MUST NOT BE READ AS DOING SO. OwnedReadyAt carries a Timestamp and a
 // basis, and nothing here can tell a timestamp derived from a proof from one a caller invented; the
 // basis records what established it and is prose, so it is a statement to a reader and never
 // evidence a machine checked. The wall therefore lives in each specialization, at the point where
 // the readiness signal is turned into this value, and each one owes its own: gunbc.spark.fabric_supply
-// derives ReadyAt only from a sole_constructor served proof whose single producer is the converged
+// derives OwnedReadyAt only from a sole_constructor served proof whose single producer is the converged
 // arm of a terminal-health verdict, so an unconverged host has no readiness to extract at all.
 // Saying this out loud is the point of the paragraph -- a carrier that looks like it enforces
 // provenance and does not is worse than one that plainly does not, because the shape reads as
 // coverage.
+// THE VARIANTS CARRY THE `Owned` PREFIX BECAUSE `.dag` HAS NO MODULE-PRIVATE NAMES. A bare
+// `NotReady` was authored here first and collided with the one `gunbc.pr_digests` already
+// declares -- two declarations of one spelling, which resolves per-entry and REFUSES over the
+// whole corpus, reported at the innocent third module that was using the original. An
+// entry-scoped witness run cannot see it; the required floor is where it surfaces. Both arms are
+// prefixed rather than only the colliding one, so the pair reads as one type's vocabulary and the
+// next generic readiness word does not have to lose the same race.
 type OwnedReadiness
-  = ReadyAt { at: Timestamp, basis: NonEmptyStr }
-  | NotReady { cause: NonEmptyStr }
+  = OwnedReadyAt { at: Timestamp, basis: NonEmptyStr }
+  | OwnedNotReady { cause: NonEmptyStr }
 
 // ── Capability admission, decided upstream and reported here ─────────────────────────────────────
 //
@@ -226,8 +233,8 @@ fn bind_owned_offer<P>(inputs: OwnedCapacityInputs<P>) -> OwnedOfferBinding<P> {
       OwnedOfferCapabilitiesNotAdmitted { first: f, more: m }
     CapabilitiesAdmitted =>
       match inputs.readiness {
-        NotReady { cause: c } => OwnedOfferNotReady { cause: c }
-        ReadyAt { at: ready_at, basis: _ } =>
+        OwnedNotReady { cause: c } => OwnedOfferNotReady { cause: c }
+        OwnedReadyAt { at: ready_at, basis: _ } =>
           match inputs.offerable {
             CapacityUnmeasured { obligation: o } => OwnedOfferCapacityUnmeasured { obligation: o }
             CapacityMeasured { free_bytes: free, receipt: capacity_receipt } =>
