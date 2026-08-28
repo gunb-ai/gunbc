@@ -433,21 +433,33 @@ fn publication_answer_standing(
 // ARE the adjudication, never unit.
 data publication_helper_credential_env_var: NonEmptyStr = "GITHUB_TOKEN" as NonEmptyStr
 
-data publication_helper_credential_source: CredentialSource = std.credentials.EnvVar { name: "GITHUB_TOKEN" }
+// THE VARIABLE NAME IS SPELLED ONCE AND PROJECTED EVERYWHERE ELSE, including into the refusal
+// prose. The first cut carried the literal four times -- the row above, this source, and both
+// refusal reasons -- which is the second-representation defect this module was written to argue
+// against, reproduced inside its own credential resolver. The failure it invites is quiet: renaming
+// the variable in the row would leave a source reading a different name and two diagnostics naming
+// a third, and every one of them would still compile.
+data publication_helper_credential_source: CredentialSource = std.credentials.EnvVar { name: publication_helper_credential_env_var as String }
 
 fn publication_helper_credential() -> PublicationCredentialSource {
   match shell.Env.Get(name: publication_helper_credential_env_var, expect: OutcomeIsData).value {
     Present { value } =>
       if trim(value) == "" {
         CredentialSourceAbsent {
-          reason: "GITHUB_TOKEN is set to an empty value in the publication helper's environment",
+          reason: join([
+            publication_helper_credential_env_var as String,
+            " is set to an empty value in the publication helper's environment",
+          ], ""),
         }
       } else {
         CredentialSourceConfigured { source: publication_helper_credential_source }
       }
     Absent =>
       CredentialSourceAbsent {
-        reason: "GITHUB_TOKEN is not set in the publication helper's environment",
+        reason: join([
+          publication_helper_credential_env_var as String,
+          " is not set in the publication helper's environment",
+        ], ""),
       }
   }
 }
