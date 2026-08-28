@@ -7,8 +7,6 @@ pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_service::UniqueAccum;
 pub use crate::v1_compiler_infer_types::{emit_map_has, resolved_type};
-pub use crate::v1_compiler_languages::NamingCase;
-use crate::v1_compiler_languages::NamingCase::*;
 use crate::v1_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCaseTestNames};
 pub use crate::v1_compiler_languages::{language_spec_for_target, test_conventions_for_target};
 pub use crate::v1_compiler_languages::{LanguageSpec, TestNameStyle};
@@ -95,7 +93,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
                 diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<ModuleFilenameOwners>, tm: Rc<TypedModule>| {
-                let module_name = authored_name_at(
+                let module_name = crate::v1_std_core::authored_name_at(
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),
                 );
@@ -109,7 +107,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
                                 owners: acc.owners.clone(),
                                 diagnostics: v1_rt::rc_list_push(
                                     acc.diagnostics.clone(),
-                                    make_error_node(
+                                    crate::v1_std_core::make_error_node(
                                         Rc::new(CompilerDiagnostic::ModuleFilenameCollision {
                                             filename: filename.clone(),
                                             modules: Rc::new(vec![

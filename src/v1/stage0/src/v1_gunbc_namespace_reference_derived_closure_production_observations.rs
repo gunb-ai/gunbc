@@ -2,7 +2,6 @@
 // Source module: v1.gunbc.namespace_reference_derived_closure_production_observations
 
 use self::NrdfcParsed::*;
-pub use crate::std_occurrence_binding::{BindingCandidate, OccurrenceBinding};
 use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 pub use crate::std_occurrence_binding_candidates::{
     DeclarationExposureGrounding, OccurrenceBindingCandidateInputs,

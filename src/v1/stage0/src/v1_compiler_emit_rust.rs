@@ -39,9 +39,7 @@ pub use crate::std_coercion::TypeCheckpoint;
 pub use crate::std_content_hash::Fnv1a64Structural;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-pub use crate::std_magnitude::Magnitude;
 pub use crate::std_measure::millisecond_count;
-pub use crate::std_measure::Millisecond;
 pub use crate::std_nat::Nat;
 use crate::std_serialization::VariantEncoding::*;
 use crate::std_serialization::VariantNaming::*;
@@ -50,7 +48,6 @@ use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
-pub use crate::std_types::Port;
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
@@ -137,8 +134,6 @@ pub use crate::v1_compiler_infer_types::{
     is_unit_like, node_is_collection, node_is_element_collection, node_is_keyed_collection,
     node_is_set_collection, normalize_access_type_node, resolved_type,
 };
-pub use crate::v1_compiler_languages::NamingCase;
-use crate::v1_compiler_languages::NamingCase::*;
 use crate::v1_compiler_languages::VisibilitySpec::KeywordVisibility;
 pub use crate::v1_compiler_languages::{
     is_string_like, scaffold_for_target, serialization_for_target, sharing_for_target,
@@ -147,8 +142,6 @@ pub use crate::v1_compiler_languages::{
     visibility_for_target, wrap_shared_type,
 };
 pub use crate::v1_compiler_languages::{ItemKeywords, TestConventions, VisibilitySpec};
-pub use crate::v1_compiler_ownership::EdgeKind;
-use crate::v1_compiler_ownership::EdgeKind::*;
 pub use crate::v1_compiler_ownership::OwnershipProof;
 pub use crate::v1_compiler_ownership::{
     analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params,
@@ -5542,7 +5535,10 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 diagnostics: anonymous_record_diags.clone(),
             });
         }
-        let filename_collisions = module_filename_collision_diagnostics(typed.clone());
+        let filename_collisions =
+            crate::v1_compiler_emit_core_support::module_filename_collision_diagnostics(
+                typed.clone(),
+            );
         if ((filename_collisions.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
@@ -7815,7 +7811,9 @@ pub fn local_coproduct_variant_names(
         for item in Rc::new({
             let mut __result = Vec::new();
             for item in items.iter().cloned() {
-                if (is_type_def_item(item.clone()) && is_coproduct_type(item.clone())) {
+                if (crate::v1_compiler_emit_core_support::is_type_def_item(item.clone())
+                    && crate::v1_compiler_infer_types::is_coproduct_type(item.clone()))
+                {
                     __result.push(item);
                 }
             }
@@ -7830,7 +7828,10 @@ pub fn local_coproduct_variant_names(
                     for child in item.children.clone().iter().cloned() {
                         __result.extend(
                             (*{
-                                let vn = authored_name_at(source_indices.clone(), child.clone());
+                                let vn = crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    child.clone(),
+                                );
                                 if (vn.clone() == "".to_string()) {
                                     Rc::new(vec![])
                                 } else {
@@ -8137,46 +8138,57 @@ pub fn reference_derived_use_line_plan(
             let mut __result = Vec::new();
             for name in Rc::new({
                 let mut __result = Vec::new();
-                for name in crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(
-                    v1_rt::concat(
+                for name in Rc::new({
+                    let mut __result = Vec::new();
+                    for name in crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
-                                type_surface_names.clone(),
+                                v1_rt::concat(
+                                    v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
+                                    type_surface_names.clone(),
+                                ),
+                                field_surface_names.clone(),
                             ),
-                            field_surface_names.clone(),
+                            variant_payload_structs.clone(),
                         ),
-                        variant_payload_structs.clone(),
-                    ),
-                    realized_surface_names.clone(),
-                ))
+                        realized_surface_names.clone(),
+                    ))
+                    .iter()
+                    .cloned()
+                    {
+                        if ((reference_derived_candidate_authored(
+                            module_source.clone(),
+                            name.clone(),
+                            emit_info.type_summaries.clone(),
+                            emit_info.variant_to_enum.clone(),
+                        ) || {
+                            let mut __found = false;
+                            for h in emitter_attested_anon_heads.iter().cloned() {
+                                if (h.clone() == name.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        }) || {
+                            let mut __found = false;
+                            for t in emitted_source_tokens.iter().cloned() {
+                                if (t.clone() == name.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        }) {
+                            __result.push(name);
+                        }
+                    }
+                    __result
+                })
                 .iter()
                 .cloned()
                 {
-                    if ((reference_derived_candidate_authored(
-                        module_source.clone(),
-                        name.clone(),
-                        emit_info.type_summaries.clone(),
-                        emit_info.variant_to_enum.clone(),
-                    ) || {
-                        let mut __found = false;
-                        for h in emitter_attested_anon_heads.iter().cloned() {
-                            if (h.clone() == name.clone()) {
-                                __found = true;
-                                break;
-                            }
-                        }
-                        __found
-                    }) || {
-                        let mut __found = false;
-                        for t in emitted_source_tokens.iter().cloned() {
-                            if (t.clone() == name.clone()) {
-                                __found = true;
-                                break;
-                            }
-                        }
-                        __found
-                    }) {
+                    if !reference_is_host_realized_builtin(name.clone()) {
                         __result.push(name);
                     }
                 }
@@ -8185,7 +8197,16 @@ pub fn reference_derived_use_line_plan(
             .iter()
             .cloned()
             {
-                if !reference_is_host_realized_builtin(name.clone()) {
+                if {
+                    let mut __found = false;
+                    for token in emitted_source_tokens.iter().cloned() {
+                        if (token.clone() == name.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
                     __result.push(name);
                 }
             }

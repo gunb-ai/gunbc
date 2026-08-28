@@ -5,8 +5,6 @@ use self::TypeRepr::*;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{dissolution_description, unbound_dissolution};
-pub use crate::std_syntax::BinOp;
-use crate::std_syntax::BinOp::*;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{decl_identity_file, lookup_checkpoint};

@@ -4,9 +4,7 @@
 use self::ReferenceBindingObservation::*;
 use self::ReferenceBindingProductionGap::*;
 use self::StructuralBindingResolution::*;
-pub use crate::std_occurrence_binding::{BindingCandidate, OccurrenceBinding};
 use crate::std_occurrence_binding_candidates::AuthoredOrderIndexRefusal::*;
-use crate::std_occurrence_binding_candidates::DeclarationExposure::*;
 use crate::std_occurrence_binding_candidates::DeclarationExposureIndexRefusal::*;
 use crate::std_occurrence_binding_candidates::OccurrenceCandidateIndexBuild::{
     OccurrenceCandidateIndexAuthoredOrderRefused, OccurrenceCandidateIndexDeclarationBucketRefused,
@@ -21,7 +19,6 @@ pub use crate::std_occurrence_binding_candidates::{
     AuthoredOrderIndexRefusal, DeclarationExposureIndexRefusal, OccurrenceBindingCandidateInputs,
     OccurrenceCandidateIndexBuild, OccurrenceModulePathIndexRefusal,
 };
-pub use crate::std_occurrence_binding_candidates::{DeclarationExposure, OccurrenceCandidateIndex};
 pub use crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding;
 pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome;
 use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome::*;
