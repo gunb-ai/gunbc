@@ -7,7 +7,7 @@ import gunbc.model_artifact { ModelArtifact }
 import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire, ollama_default_port }
 import v2.std.algebra { fold_list }
 import std.nat { Nat }
-import std.measure { ByteSize }
+import std.measure { TokenCount }
 import gunbc.spark.serving_realization {
   SystemPrincipal, ServingDeploymentTarget, UserUnitRealization,
   EscalationShortfall, NoNewPrivilegeRequired, NewPrivilegeRequired, ShortfallUndecidable,
@@ -35,21 +35,9 @@ import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
 // a time.
 type RuntimeArtifactIdentity { closure_digest: NonEmptyStr }
 
-type ServingConfigurationIdentity { configuration_digest: NonEmptyStr }
-
-type OllamaRuntime {}
-
-type SparkServingRuntimeKind = OllamaRuntime
-
 type SparkServingBindListen {
   host: NonEmptyStr
   port: Port
-}
-
-fn spark_serving_runtime_kind_wire(runtime: SparkServingRuntimeKind) -> String {
-  match runtime {
-    OllamaRuntime => "ollama"
-  }
 }
 
 fn spark_serving_endpoint_intent_wire(intent: ServingEndpointIntent) -> String {
@@ -63,57 +51,39 @@ fn spark_serving_bind_listen_wire(bind: SparkServingBindListen) -> String {
   join([bind.host as String, ":", to_string(bind.port)], "")
 }
 
-fn spark_serving_configuration_seed(
-  runtime: SparkServingRuntimeKind,
-  model_ref: OllamaModelRef,
-  bind: SparkServingBindListen,
-  endpoint: ServingEndpointIntent,
-) -> NonEmptyStr {
-  join([
-    "spark-serving|runtime=", spark_serving_runtime_kind_wire(runtime: runtime),
-    "|model=", ollama_model_ref_wire(ref: model_ref),
-    "|bind=", spark_serving_bind_listen_wire(bind: bind),
-    "|endpoint=", spark_serving_endpoint_intent_wire(intent: endpoint),
-  ], "") as NonEmptyStr
-}
-
-fn spark_serving_configuration_identity(
-  runtime: SparkServingRuntimeKind,
-  model_ref: OllamaModelRef,
-  bind: SparkServingBindListen,
-  endpoint: ServingEndpointIntent,
-) -> ServingConfigurationIdentity {
-  ServingConfigurationIdentity {
-    configuration_digest: content_hash_atom(
-      value: spark_serving_configuration_seed(
-        runtime: runtime,
-        model_ref: model_ref,
-        bind: bind,
-        endpoint: endpoint,
-      ),
-    ).digest as NonEmptyStr,
-  }
-}
-
-// Unified memory is SHARED between CPU and GPU on GB10, which is why the accelerator reports no
-// separate device total. Admission is against the shared pool; budgeting as though a private
-// device pool existed is how a model that cannot fit gets admitted.
-// Both magnitudes were Int, so a NEGATIVE context length and a NEGATIVE memory budget were
-// representable -- states with no meaning that a validator would have to reject after the fact.
-// max_model_len is a cardinal token count (Nat) and the budget is a ByteSize on the std.measure
-// authority, so neither can be written. Memory is not a bare number: it carries its quantity, and
-// reusing the measure carrier is what lets this budget be compared against the host RAM figures
-// the fleet already models rather than against a same-shaped Int that happens to mean bytes.
-type InferenceCapacityPolicy { max_model_len: Nat  shared_memory_budget_bytes: ByteSize }
-
 type SparkServingRelease {
   runtime: RuntimeArtifactIdentity
   model: ModelArtifact
 }
 
-type SparkServingServingPolicy {
-  serving_configuration: ServingConfigurationIdentity
-  capacity: InferenceCapacityPolicy
+// THE VALUES THE OLLAMA PROCESS WILL ACTUALLY CONSUME.
+//
+// This replaces `InferenceCapacityPolicy` + `SparkServingServingPolicy`, which bundled two facts of
+// different kinds: a runtime LAUNCH PARAMETER the server reads at startup, and a
+// `shared_memory_budget_bytes` ADMISSION CONSTRAINT that no reconciliation path ever consumed. The
+// bundle is why "capacity is declared" read as true when only one half could ever be causal -- the
+// dead field sat behind the live one. The admission constraint is deleted rather than carried
+// forward unread, on the same ruling that removed this module's endpoint credential: a required
+// field with no consumer is not a placeholder for a future check, it is a fact the model asserts
+// and never verifies.
+//
+// The old context field was named `max_model_len`, which is vLLM's flag. The only runtime modeled
+// here is Ollama, whose grounded name is OLLAMA_CONTEXT_LENGTH -- so the field was named for a
+// runtime this deployment does not serve, and would have read as authority the moment a second
+// runtime landed.
+//
+// `TokenCount` rather than a bare `Nat`: std.measure already owns the token-count family beside
+// HardwareThreadCount and CharacterCount, so a bare Nat here would be a fourth spelling of a
+// quantity the measure authority names.
+//
+// The profile is a VALUE, not a second serialized identity. Its canonical identity is the content
+// identity of the rendered unit bytes (gunbc.spark.serving_unit_render
+// spark_serving_user_unit_content_identity), which the desired and observed sides already share --
+// enumerating these fields into another hand-maintained hash tree would put one fact in two
+// identity domains.
+type OllamaServingLaunchProfile {
+  bind: SparkServingBindListen
+  configured_context: TokenCount
 }
 
 // The identity is DERIVED from the release, never authored. It previously carried a NonEmptyStr
@@ -162,13 +132,13 @@ fn spark_serving_release_identity(spec: SparkServingRelease) -> SparkServingRele
 // credential resolution path, and a consumer that presents it -- and it should land as that change
 // rather than being pre-declared by an unread field.
 //
-// Serving policy (configuration digest and capacity) lives on the OCCURRENCE beside release identity.
-// It is desired state compared separately from the loaded runtime+model fingerprint — configuration
-// and capacity are not imported into observations.
+// The launch profile lives on the OCCURRENCE beside release identity. It is desired state compared
+// separately from the loaded runtime+model fingerprint — launch values are not imported into
+// observations.
 type SparkServingOccurrence {
   host: HostIdentity
   release_identity: SparkServingReleaseIdentity
-  serving_policy: SparkServingServingPolicy
+  launch_profile: OllamaServingLaunchProfile
 }
 
 // Prerequisites are ADMITTED DEPENDENCIES, not booleans and not release fields. Each names what
