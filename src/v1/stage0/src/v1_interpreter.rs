@@ -8029,8 +8029,71 @@ fn hermetic_checkout_input_disposition_under(
     } else {
         root.join(requested_path)
     };
-    let canon = std::fs::canonicalize(&joined)
-        .map_err(|e| format!("path does not canonicalize under the checkout ({e})"))?;
+    // AN ABSENT PATH UNDER THE ROOT IS AS COMMIT-DETERMINISTIC AS A PRESENT ONE, and resolving
+    // the REQUESTED leaf could not express that. `canonicalize` requires the whole path to
+    // exist, so it failed identically for three dispositions with three different remedies:
+    // a file the commit says is NOT THERE, a path that RESOLVES OUTSIDE the root, and one
+    // UNRESOLVABLE for any other reason. One error string for three states is the conflation
+    // `HermeticEffectGround` was split to prevent, sitting twenty lines above the enum that
+    // records the lesson.
+    //
+    // The commit determines absence exactly as it determines contents: "this repository has no
+    // such file" is an answer read OFF THE INPUT, not host state, so it belongs on the same
+    // wet arm as a successful read rather than in the mock layer. Rendering it there would
+    // require a canned response, and one canned response necessarily serves every unconfirmed
+    // path -- fabricating "not found" for out-of-root and `.git` reads too.
+    //
+    // So resolve the deepest ancestor that DOES exist and carry the not-yet-existing tail
+    // separately. The existing prefix is what symlinks can move, so it is what must be proven
+    // under the root; the absent tail cannot be a symlink to anywhere, because it is not there.
+    // A `..` in the tail yields no `file_name`, so it exits through the unresolvable arm rather
+    // than being reasoned about -- refusing what cannot be confirmed rather than guessing.
+    let mut probe = joined.as_path();
+    let mut absent_tail: Vec<std::ffi::OsString> = Vec::new();
+    let canon = loop {
+        match std::fs::canonicalize(probe) {
+            Ok(resolved) => break resolved,
+            Err(e) => {
+                // ONLY A GENUINE ABSENCE MAY PEEL A COMPONENT. `canonicalize` fails for
+                // several reasons and they are not interchangeable: a permission-denied or
+                // symlink-loop error says the path CANNOT BE CONFIRMED, which is the
+                // unresolvable arm, not a statement that the component is missing. Treating
+                // every error as absence would climb past a component that is really there.
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    return Err(format!(
+                        "path does not canonicalize under the checkout ({e})"
+                    ));
+                }
+                // A DANGLING SYMLINK IS PRESENT, NOT ABSENT, AND `canonicalize` CANNOT SAY SO.
+                // It resolves symlinks, so a link whose target is missing returns the SAME
+                // NotFound as a name with nothing behind it. `symlink_metadata` does not
+                // follow, so it answers the question actually being asked: is there an entry
+                // here? If there is, its resolution depends on a target the commit does not
+                // contain -- host state, whose appearance later would silently change this
+                // read's result -- so it refuses rather than being peeled as absent.
+                if std::fs::symlink_metadata(probe).is_ok() {
+                    return Err(format!(
+                        "path does not canonicalize under the checkout (`{}` exists but does \
+                         not resolve -- a dangling symlink's target is host state, not a \
+                         commit input)",
+                        probe.display()
+                    ));
+                }
+                let (parent, name) = match (probe.parent(), probe.file_name()) {
+                    (Some(parent), Some(name)) if parent != probe => (parent, name.to_os_string()),
+                    _ => {
+                        return Err(format!(
+                            "path does not canonicalize under the checkout ({e})"
+                        ))
+                    }
+                };
+                absent_tail.push(name);
+                probe = parent;
+            }
+        }
+    };
+    absent_tail.reverse();
+
     if !canon.starts_with(&root) {
         return Err(format!(
             "path resolves outside the checkout root {}",
@@ -8040,14 +8103,20 @@ fn hermetic_checkout_input_disposition_under(
     let rel = canon
         .strip_prefix(&root)
         .expect("starts_with checked above");
-    for comp in rel.components() {
-        if let std::path::Component::Normal(name) = comp {
-            if name == ".git" || name == "target" {
-                return Err(format!(
-                    "`{}` components are not commit-deterministic inputs",
-                    name.to_string_lossy()
-                ));
-            }
+    let existing_names = rel.components().filter_map(|comp| match comp {
+        std::path::Component::Normal(name) => Some(name.to_os_string()),
+        _ => None,
+    });
+    // The tail is checked on the SAME rule as the existing prefix: a read of
+    // `target/does-not-exist` is no more commit-deterministic than one of `target/receipt.txt`,
+    // and admitting it because the file happens to be missing would make the wall depend on
+    // the state of the very directory it exists to exclude.
+    for name in existing_names.chain(absent_tail.into_iter()) {
+        if name == std::ffi::OsStr::new(".git") || name == std::ffi::OsStr::new("target") {
+            return Err(format!(
+                "`{}` components are not commit-deterministic inputs",
+                name.to_string_lossy()
+            ));
         }
     }
     Ok(())
@@ -8968,6 +9037,179 @@ fn operation_ref_value(path: &str, service: &str, operation: &str, ctx: &InterpC
 /// The two arms stay distinct all the way to the substrate — `CensusNotRunnable` must never
 /// arrive as `CensusObserved` with an empty row list, because that is byte-identical to a clean
 /// compile and would let could-not-measure read as the subject passing (DESIGN §5).
+/// Encode one `ReferenceDerivedClosureAdmission` as an interpreter value.
+///
+/// Pure encoding. The judgement it carries was made by
+/// `gunbc.namespace_reference_derived_closure_admission assess_reference_binding_observation`,
+/// which the `.dag` producer calls; nothing here decides, reclassifies, or defaults. The three
+/// payload vocabularies are nullary coproducts, so each is carried by name.
+fn reference_derived_closure_admission_value(
+    admission: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission as A;
+    let nullary = |type_name: &str, variant_name: String| Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(&variant_name),
+        fields: Rc::new(Vec::new()),
+    };
+    // The variant NAME is spelled by a total match, never derived from `Debug` (review 57100).
+    // Debug happens to print exactly the variant name for these nullary enums today, and it stops
+    // doing so the moment any variant gains a payload -- it would print `Foo { .. }` and this seam
+    // would mint a variant name no `.dag` match accepts. That fails loudly rather than silently,
+    // but it fails at RUNTIME on a name; a total match makes the same mistake a COMPILE error here,
+    // which is the construction-over-validation direction DESIGN 5 asks for. It also stops the
+    // Rust identifier from being a second representation of the variant's identity (DESIGN 3).
+    let capability = |c: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability| {
+        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureCapability as C;
+        let name = match c {
+            C::SameFileEarlierNeighbourVisible => "SameFileEarlierNeighbourVisible",
+            C::SiblingDecisionBranchExcluded => "SiblingDecisionBranchExcluded",
+            C::LaterDeclarationExcluded => "LaterDeclarationExcluded",
+            C::DistinctSameSpelledDeclarationsPreserved => "DistinctSameSpelledDeclarationsPreserved",
+            C::RepeatedMentionsCollapseDependency => "RepeatedMentionsCollapseDependency",
+            C::UnrelatedLoadedFileExcluded => "UnrelatedLoadedFileExcluded",
+        };
+        nullary("ReferenceDerivedClosureCapability", name.to_string())
+    };
+    let trigger_value = |t: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger| {
+        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureTrigger as T;
+        let name = match t {
+            T::P2aStructuralCandidateProducer7515 => "P2aStructuralCandidateProducer7515",
+            T::P2aReferenceDependencyProjection7515 => "P2aReferenceDependencyProjection7515",
+            T::P2aPoolIndependentDependencyProjection7515 => "P2aPoolIndependentDependencyProjection7515",
+        };
+        nullary("ReferenceDerivedClosureTrigger", name.to_string())
+    };
+    let scenario_failure = |f: &crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure| {
+        use crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureScenarioFailure as F;
+        let name = match f {
+            F::SameFileNeighbourMissing => "SameFileNeighbourMissing",
+            F::SiblingBranchLeaked => "SiblingBranchLeaked",
+            F::LaterDeclarationLeaked => "LaterDeclarationLeaked",
+            F::DistinctDeclarationCollapsed => "DistinctDeclarationCollapsed",
+            F::RepeatedMentionDuplicatedDependency => "RepeatedMentionDuplicatedDependency",
+            F::UnrelatedLoadedFileDependencyLeaked => "UnrelatedLoadedFileDependencyLeaked",
+        };
+        nullary("ReferenceDerivedClosureScenarioFailure", name.to_string())
+    };
+    match admission {
+        A::ReferenceDerivedClosureEstablished { receipt } => Value::Variant {
+            type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
+            variant_name: ctx.sym("ReferenceDerivedClosureEstablished"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("receipt"),
+                Value::Record {
+                    type_name: ctx.sym("ReferenceDerivedClosureAcceptanceReceipt"),
+                    fields: Rc::new(sorted_fields(vec![(
+                        ctx.sym("capability"),
+                        capability(&receipt.capability()),
+                    )])),
+                },
+            )])),
+        },
+        A::ReferenceDerivedClosureRefused {
+            capability: c,
+            failure,
+        } => Value::Variant {
+            type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
+            variant_name: ctx.sym("ReferenceDerivedClosureRefused"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("capability"), capability(c)),
+                (ctx.sym("failure"), scenario_failure(failure)),
+            ])),
+        },
+        A::ReferenceDerivedClosureUnavailable {
+            capability: c,
+            trigger,
+        } => Value::Variant {
+            type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
+            variant_name: ctx.sym("ReferenceDerivedClosureUnavailable"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("capability"), capability(c)),
+                (ctx.sym("trigger"), trigger_value(trigger)),
+            ])),
+        },
+    }
+}
+
+/// Encode the rows for one in-memory source: each admission the `.dag` producer computed,
+/// paired with the module path that producer read out of the same parse.
+///
+/// The two producer exports are pure functions of `(file, source)` and the caller passes one
+/// pair of strings to both, so this join cannot pair a module path with admissions from a
+/// different subject. It is mechanical, never a decision; the split exists because a `.dag`
+/// record embedding a `sole_constructor`-bearing coproduct does not emit compilably today
+/// (see the producer's own note).
+/// Encode the subject's own identity as the observation it is: the module the parse declared, or
+/// a typed refusal naming the gap. There is deliberately no spelling in which "the parse refused"
+/// and "the module path is empty" are the same value.
+fn subject_module_value(
+    subject: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_reference_binding_observation::ReferenceBindingProductionGap as G;
+    use crate::std_reference_binding_observation::StructuralObservationSubjectModule as S;
+    match subject {
+        S::SubjectModuleProduced { module_path } => Value::Variant {
+            type_name: ctx.sym("StructuralObservationSubjectModule"),
+            variant_name: ctx.sym("SubjectModuleProduced"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("module_path"),
+                str_value(module_path.clone()),
+            )])),
+        },
+        S::SubjectModuleProductionRefused { gap } => {
+            let gap_name = match gap {
+                G::ReferenceBindingParserTransportRefused => {
+                    "ReferenceBindingParserTransportRefused"
+                }
+                G::ReferenceBindingNamedReferenceAbsent => "ReferenceBindingNamedReferenceAbsent",
+                G::ReferenceBindingNamedDeclarationAbsent => {
+                    "ReferenceBindingNamedDeclarationAbsent"
+                }
+            };
+            Value::Variant {
+                type_name: ctx.sym("StructuralObservationSubjectModule"),
+                variant_name: ctx.sym("SubjectModuleProductionRefused"),
+                fields: Rc::new(sorted_fields(vec![(
+                    ctx.sym("gap"),
+                    Value::Variant {
+                        type_name: ctx.sym("ReferenceBindingProductionGap"),
+                        variant_name: ctx.sym(gap_name),
+                        fields: Rc::new(Vec::new()),
+                    },
+                )])),
+            }
+        }
+    }
+}
+
+fn namespace_structural_observation_admissions_value(
+    compiled_module: &crate::std_reference_binding_observation::StructuralObservationSubjectModule,
+    admissions: &[Rc<crate::gunbc_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission>],
+    ctx: &InterpContext,
+) -> Value {
+    list_value(
+        admissions
+            .iter()
+            .map(|admission| Value::Record {
+                type_name: ctx.sym("OrdinaryCompileStructuralAdmission"),
+                fields: Rc::new(sorted_fields(vec![
+                    (
+                        ctx.sym("compiled_module"),
+                        subject_module_value(compiled_module, ctx),
+                    ),
+                    (
+                        ctx.sym("admission"),
+                        reference_derived_closure_admission_value(admission, ctx),
+                    ),
+                ])),
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
 fn compile_diagnostic_census_value(
     census: crate::cli_run::CompileDiagnosticCensus,
     ctx: &InterpContext,
@@ -14289,6 +14531,33 @@ macro_rules! v1_builtin_arms {
             ))),
             arm "free_call.doc_graph_doc_count" { "doc_graph_doc_count" } => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
 
+            arm "free_call.namespace_structural_observation_admissions" { "namespace_structural_observation_admissions" } => {
+                let file = expect_str($positional.first().copied(), $name)?;
+                let source = expect_str($positional.get(1).copied(), $name)?;
+                let neighbour_name = expect_str($positional.get(2).copied(), $name)?;
+                let branch_binder_name = expect_str($positional.get(3).copied(), $name)?;
+                let later_name = expect_str($positional.get(4).copied(), $name)?;
+                let homonym_name = expect_str($positional.get(5).copied(), $name)?;
+                let producer = crate::v1_gunbc_namespace_reference_derived_closure_production_observations::namespace_structural_observation_admissions(
+                    file.clone(),
+                    source.clone(),
+                    neighbour_name,
+                    branch_binder_name,
+                    later_name,
+                    homonym_name,
+                );
+                let compiled_module = crate::v1_gunbc_namespace_reference_derived_closure_production_observations::namespace_structural_observation_compiled_module(
+                    file,
+                    source,
+                );
+                let admissions: Vec<_> = producer.iter().cloned().collect();
+                Ok(Some(namespace_structural_observation_admissions_value(
+                    &compiled_module,
+                    &admissions,
+                    $ctx,
+                )))
+            },
+
             arm "free_call.compile_dag_rust_emit_check" { "compile_dag_rust_emit_check" } => {
                 let source = expect_str($positional.first().copied(), $name)?;
                 let file_path = expect_str($positional.get(1).copied(), $name)?;
@@ -16182,6 +16451,144 @@ mod shell_completion_trace_tests {
             hermetic_checkout_input_disposition_under(&dir, "dag/std"),
             Ok(())
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn hermetic_checkout_input_admits_an_absent_path_under_root() {
+        // THE COMMIT DETERMINES ABSENCE. A repository that does not contain a file is as
+        // deterministic an input as one that does, so an absent path under the root confirms
+        // and the read runs wet -- returning `success: false` on its own rather than off a
+        // canned response.
+        let dir =
+            std::env::temp_dir().join(format!("hermetic-carveout-absent-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("dag/test/fixture")).unwrap();
+        assert_eq!(
+            hermetic_checkout_input_disposition_under(&dir, "dag/test/fixture/never_written.json"),
+            Ok(()),
+            "an absent file under the root is a commit-deterministic input"
+        );
+        // Absent INTERMEDIATE directories too: nothing in the tail exists, and nothing in the
+        // tail can be a symlink to anywhere, precisely because it is not there.
+        assert_eq!(
+            hermetic_checkout_input_disposition_under(&dir, "dag/absent_dir/absent_file.json"),
+            Ok(()),
+            "an absent path whose parent is also absent is still under the root"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // GATED ON UNIX BECAUSE AUTHORING THE RED REQUIRES A SYMLINK. `std::os::unix::fs::symlink`
+    // is the only API here that can construct the present-but-unresolvable state this test
+    // discriminates, and an unguarded reference breaks test COMPILATION on non-unix targets
+    // (review 57247). The guard is on the test, not on the wall: the peel loop's symlink
+    // refusal in `hermetic_checkout_input_disposition_under` is unconditional, so no platform
+    // loses the refusal -- only this platform loses the ability to author its witness.
+    #[cfg(unix)]
+    #[test]
+    fn hermetic_checkout_refuses_a_dangling_symlink_rather_than_peeling_it_as_absent() {
+        // A DANGLING SYMLINK IS PRESENT AND UNRESOLVABLE, WHICH IS NOT ABSENCE.
+        // `canonicalize` follows links, so a link with a missing target returns the SAME
+        // NotFound as a name with nothing behind it. Peeling it would climb past an entry
+        // that really exists, admit the path, and dispatch a real host read whose result
+        // CHANGES IF THE TARGET LATER APPEARS -- host state entering a hermetic run.
+        // Reported as BLOCKING in review 57219 against the first cut of this repair.
+        let dir =
+            std::env::temp_dir().join(format!("hermetic-carveout-dangling-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let outside_target = std::env::temp_dir().join(format!(
+            "hermetic-carveout-absent-target-{}",
+            std::process::id()
+        ));
+        std::os::unix::fs::symlink(&outside_target, dir.join("dangling_out")).unwrap();
+        std::os::unix::fs::symlink("./never_created_inside", dir.join("dangling_in")).unwrap();
+
+        // Control first: the discriminator must not be "any ENOENT refuses", or the
+        // absent-path admission this whole change exists for would be gone.
+        assert_eq!(
+            hermetic_checkout_input_disposition_under(&dir, "genuinely_absent.json"),
+            Ok(()),
+            "a name with nothing behind it is still a commit-deterministic absence"
+        );
+
+        let out = hermetic_checkout_input_disposition_under(&dir, "dangling_out");
+        assert!(
+            out.as_ref()
+                .err()
+                .is_some_and(|e| e.contains("exists but does not resolve")),
+            "a dangling symlink to an ABSENT OUTSIDE path must refuse, not be peeled as \
+             absent, got {out:?}"
+        );
+
+        let inside = hermetic_checkout_input_disposition_under(&dir, "dangling_in");
+        assert!(
+            inside
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("exists but does not resolve")),
+            "a dangling symlink inside the checkout must refuse, got {inside:?}"
+        );
+
+        // And it must not be defeated by sitting mid-path rather than at the leaf.
+        let through = hermetic_checkout_input_disposition_under(&dir, "dangling_out/under.json");
+        assert!(
+            through.as_ref().err().is_some(),
+            "a path THROUGH a dangling symlink must refuse, got {through:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn hermetic_checkout_absent_paths_keep_the_three_dispositions_distinct() {
+        // THE DISCRIMINATING RED FOR THE ABSENT-PATH REPAIR. Admitting absent-under-root is
+        // only correct if the other two refusals survive it AT THEIR OWN MESSAGES. If an
+        // absent out-of-root path or an absent `.git` path started confirming, the repair
+        // would have moved the conflation rather than removed it -- and every assertion here
+        // is on a path that DOES NOT EXIST, which is exactly the case the old
+        // canonicalize-the-leaf form could not tell apart.
+        let dir =
+            std::env::temp_dir().join(format!("hermetic-carveout-absent3-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        std::fs::create_dir_all(dir.join("target")).unwrap();
+
+        let outside = hermetic_checkout_input_disposition_under(&dir, "../absent_outside.txt");
+        assert!(
+            outside
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("outside the checkout root")),
+            "an ABSENT path that resolves outside the root must still refuse as out-of-root, \
+             got {outside:?}"
+        );
+
+        let absolute = hermetic_checkout_input_disposition_under(&dir, "/etc/absent_hostname");
+        assert!(
+            absolute
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("outside the checkout root")),
+            "an ABSENT absolute path outside the root must still refuse, got {absolute:?}"
+        );
+
+        let git = hermetic_checkout_input_disposition_under(&dir, ".git/absent_HEAD");
+        assert!(
+            git.as_ref()
+                .err()
+                .is_some_and(|e| e.contains("not commit-deterministic")),
+            "an ABSENT `.git` path must still refuse as non-commit-deterministic, got {git:?}"
+        );
+
+        let target = hermetic_checkout_input_disposition_under(&dir, "target/absent_receipt.txt");
+        assert!(
+            target
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("not commit-deterministic")),
+            "an ABSENT `target` path must still refuse as non-commit-deterministic, got {target:?}"
+        );
+
         std::fs::remove_dir_all(&dir).ok();
     }
 

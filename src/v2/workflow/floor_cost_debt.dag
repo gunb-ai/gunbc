@@ -1,0 +1,613 @@
+module v2.workflow.floor_cost_debt
+
+import v2.std.algebra { Cons, Empty, list_flat_map, any }
+import v2.std.collection { List }
+import v2.std.text { String }
+
+// THE OVER-COST WITHHOLDING MECHANISM, CARRYING 276 IDENTITIES.
+//
+// The count is stated once, here, and derived nowhere else in this file's prose. An earlier
+// revision of this header read "CURRENTLY CARRYING NO IDENTITIES" -- true of the empty carrier
+// that landed first, false from the moment the roster was enrolled, and it then stood in direct
+// contradiction with the population block below on the same authority. Caught by review 57235.
+//
+// WHY IT IS NOT THE EXPECTED-RED ROSTER, stated first because the two are easy to fuse.
+//
+// Any identity enrolled here is withheld FOR COST, and in neither evidence class is it a known
+// red. The PROVEN class passes and its measured marginal CPU exceeds
+// `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms`; the CENSORED class was
+// preempted before a verdict, so it asserts only that the row did not finish inside the ceiling
+// on the charged clock. NEITHER is a failure, which is the distinction that matters here.
+//
+// THIS SENTENCE ASSERTED THE PROVEN CASE OVER THE WHOLE ROSTER UNTIL REVIEW 57258. It read "any
+// identity enrolled here is a witness that PASSES and whose MARGINAL cost exceeds" the ceiling --
+// written when the carrier held only the proven class, and left standing when the censored class
+// was enrolled. The file then contradicted itself at its most-read point: this line claimed every
+// member passes, while the population block below states the censored rows reach no verdict and
+// that most of them have no established own-work cost. Same class as the "CARRYING NO IDENTITIES"
+// header this file already corrected once -- a universal that was true of an earlier population
+// and was never re-read when the population grew.
+//
+// Either way it is a different fact from a known red, and may not ride the same carrier:
+// `v2.workflow.floor_expected_red`'s own header states the bar it enforces -- "ENROLLING AN
+// IDENTITY ASSERTS THAT IT REACHES ITS SUBJECT AND ANSWERS" -- and a withheld row answers
+// nothing. Enrolling a green over-cost row there would assert a red that does not exist.
+//
+// THE MEASUREMENT BASIS IS MARGINAL COST, AND THAT SENTENCE IS THE WHOLE OF WHY THIS ROSTER WAS
+// REBUILT ONCE BEFORE IT LANDED. The first cut of this population was discovered from main run
+// 33109071348 at aea5e0dfd (15:34). `v1_compiler.cli_run` `run_claim_measured` began SUBTRACTING
+// shared-artifact fill from a claim's charged CPU at gunbc#9477, which landed at 18:49 -- three
+// hours after that measurement. So the first roster was built from CHARGED figures, in which a
+// claim that happened to touch a shared artifact first was billed the entire fill.
+//
+// THE ERROR WAS NOT SMALL AND IT WAS NOT UNIFORM: of the 320 identities that population held,
+// 119 -- 37% -- measure at or under the ceiling once fill is attributed to the artifact instead.
+// The extremes are the tell. `test.claim.alias_identity_across_unwrap_witness`
+// `a_second_alias_still_emits_its_own_name_and_not_the_first` was the SECOND most expensive row
+// in the corpus at 4250ms charged; its marginal cost is 0ms. It never cost anything. Freezing it
+// would have deleted a working witness's coverage, at identity grain, under a shrink-only
+// contract that makes a wrong entry expensive to walk back -- and it would have looked exactly
+// like a correct entry from the inside, because the number was real.
+//
+// So the universe was rediscovered from main run 33131296988 (b6003a45e), the first completed
+// floor measurement after gunbc#9477. A future rebuild must use a post-#9477 measurement for the
+// same reason; a charged-basis figure is not this roster's subject and never was.
+//
+// AND THEN FOURTEEN MORE WERE ADDED, from the first run that executed this mechanism at all
+// (33136345225). That is the initial census completing rather than the roster growing, and the
+// distinction is worth stating because this contract is shrink-only and an unexplained addition
+// would look like a violation of it. Those fourteen are rows the 500ms ceiling caught that main's
+// own 5000ms run could not have reported: seven were INTERRUPTED at 501-508ms CPU, having never
+// reached a verdict, and seven completed over. A row cannot be discovered as over-ceiling by a
+// measurement taken under a ceiling ten times looser, so the population was only fully knowable
+// once the ceiling it is defined against was the one actually running. From here the direction is
+// shrink-only in earnest.
+//
+// SIXTEEN FURTHER ROWS FAILED THAT RUN AND ARE DELIBERATELY NOT HERE. They exceeded on WALL while
+// their CPU sat inside the ceiling, because fill is netted out of CPU and not out of wall, so a
+// first-touch payer reads ~0ms CPU and a full shared-build wall. Rostering them would have frozen
+// working witnesses for a defect in the wall clock's derivation -- the same error as the
+// charged-basis roster, one clock over. They were fixed by re-deriving
+// `required_floor_claim_wall_safety_limit_ms` against the population it actually has to clear;
+// that constant carries the receipt.
+//
+// THE OPERATOR RULING THIS SERVES (2026-08-27). The per-claim ceiling is 500ms. It was set to
+// 500 at gunbc#8283 (2026-08-17) and was raised twice without a ruling on the value: to 1552 at
+// gunbc#8514, justified only by "measured-max plus one scheduler-quantum" over the then-current
+// tree -- the tree-copied oracle DESIGN section 5 forbids -- and to 5000 at gunbc#8533, which
+// cited an operator ruling that was about SPLITTING the CPU and wall clocks, not about the
+// magnitude. The operator's quoted words in that diff, "DO NOT set CPU and wall to the same
+// 5000ms", presuppose 5000 was already on the table; the value rode in as a passenger on a
+// ruling about something else. That is the AUTHORITY SUBSTITUTION failure mode DESIGN names.
+// The ruling of 2026-08-17 was never repealed. This roster restores it.
+//
+// WHAT MEMBERSHIP MEANS, STATED SO IT IS NEVER READ AS COVERAGE. A rostered identity is
+// WITHHELD FROM EXECUTION. It does not run on the floor, it does not run in a long home, it
+// does not run on a cadence. Its coverage is GONE while it sits here. That is a declared
+// DESIGN section 4b(3) rung drop -- below -- and not a deferral: the operator's ruling is that
+// these rows are broken, and a broken row does not get an exemption that lets it keep spending
+// the budget it broke.
+//
+// WHY IN PLACE RATHER THAN MOVED TO test/claim/long/. Relocation is the move the 2026-08-04
+// admission ruling forbids and that `gunbc.witness_deferral_freeze` exists to close: it deletes
+// coverage while retaining the source, with nothing counting what was lost (the gunbc#7762
+// specimen). The distinction is not the coverage outcome -- both stop executing -- it is that
+// this roster is DECLARED, COUNTED EVERY RUN, IDENTITY-GRAIN, AND SHRINK-ONLY, and a relocation
+// is none of those. The files do not move.
+//
+// THE MONOTONE DEBT CONTRACT (DESIGN section 5's fourth sanctioned oracle form), and each
+// condition is load-bearing:
+//   - the subject universe is INDEPENDENTLY DISCOVERED -- the floor measures every claim's
+//     marginal cost itself; this roster is checked against that discovery, never authored beside
+//     it;
+//   - membership is at IDENTITY GRAIN, never a count. No witness asserts this roster's size
+//     against a literal, because a number copied from the current tree is a snapshot;
+//   - the direction is justified: a row leaves by being made cheap, and the forward hole is
+//     already shut -- a NEW or REGRESSED row over 500ms simply refuses, because 500 is the
+//     ceiling and nothing here admits an identity the floor did not already discover;
+//   - a rostered identity the tree no longer carries REFUSES as a stale row, so the roster
+//     cannot rot into a permission slip for witnesses that no longer exist.
+//
+// A KNOWN, BOUNDED IMPURITY IN THIS UNIVERSE, DECLARED RATHER THAN DISCOVERED LATER.
+//
+// The marginal basis above corrects attribution for ONE shared artifact and not for shared
+// builds in general. `v1_compiler.cli_run` `record_shared_artifact_fill_cpu` has exactly one
+// call site -- inside `compile_dag_rust_emit_check` -- so a claim whose cost is dominated by a
+// DIFFERENT unbracketed shared build is still charged for work it does not own, and the
+// subtraction reports zero for it. The known instance: gunbc#9428 memoized the sibling
+// `compile_dag_diagnostic_census` without a bracket, so a census miss accumulates nothing.
+// (Found by snappy-dove-250 and sleek-cat-45; the single call site and the census's missing
+// bracket are verified here by code read, and the discriminating evidence is theirs -- main run
+// 33131296988 carries 259 per-claim `[floor-shared-fill]` lines and none names a
+// callable_candidate_ambiguity row, beside a 5812ms charge that is almost entirely fill.)
+//
+// SIXTEEN OF THE ROWS BELOW SIT IN A CENSUS-CALLING MODULE, and they are named so that this is
+// a retryable list rather than an invisible one:
+//   test.claim.arity_zero_import_refusal_witness.the_same_import_carrying_one_member_is_accepted
+//   test.claim.callable_candidate_ambiguity_witness.a_bare_call_whose_only_declarer_is_reached_transitively_refuses
+//   test.claim.callable_candidate_ambiguity_witness.a_listed_import_does_not_exclude_a_transitively_reached_homonym
+//   test.claim.callable_candidate_ambiguity_witness.neither_green_source_refuses_and_neither_mis_resolves
+//   test.claim.declared_type_inhabitance_direct_call_witness.w_kernel_numeric_at_the_natively_realized_nat_is_admitted
+//   test.claim.declared_type_inhabitance_direct_call_witness.w_kernel_numeric_at_the_peano_nat_is_refused
+//   test.claim.declared_type_inhabitance_list_element_witness.w_declared_coproduct_member_is_accepted
+//   test.claim.declared_type_inhabitance_list_element_witness.w_optional_carrier_is_undecidable_not_refused
+//   test.claim.declared_type_inhabitance_list_element_witness.w_reachability_control_discriminates_on_the_name
+//   test.claim.generic_lambda_parameter_binding_witness.a_lambda_argument_binds_a_type_variable_a_later_argument_determines
+//   test.claim.generic_lambda_parameter_binding_witness.a_lambda_field_of_a_generic_record_binds_the_type_its_sibling_field_determines
+//   test.claim.generic_lambda_parameter_binding_witness.a_lambda_parameter_bound_to_a_type_variable_can_reach_its_fields
+//   test.claim.import_admission_closure_membership_witness_test.listed_name_resolves
+//   test.claim.import_admission_closure_membership_witness_test.pool_coincidence_name_still_resolves_today
+//   test.claim.import_admission_closure_membership_witness_test.selective_unlisted_name_still_resolves_today
+//   test.claim.operation_admit_callers_inert_witness.operation_form_admission_refuses_unadmitted_caller
+//
+// HOW TO READ SIXTEEN. It is an UPPER bound on census-caused miswarding and not a count of
+// wrong rows: only the claim arriving FIRST at a given source absorbs the fill, so some of
+// these are legitimately over the ceiling on their own marginal cost. It is also NOT a bound on
+// the general class -- any row dominated by another unbracketed shared build is miswarded and
+// invisible here.
+//
+// `both_closure_edge_index` IS NOT SUCH A BUILD, and this clause previously called it the
+// obvious next candidate and left it unverified. Settled, and confirmed here by code read rather
+// than relayed: `v1_compiler.cli_run` `run_required_floor` calls `warm_bare_reference_edge_index`
+// TWICE during strict-preparation -- once over the source roots and once over
+// `witness_layer_roots()` -- and reports the cost as `[floor-phase] phase=shared-index-warm`. So
+// both index identities the fold can reach are built and billed BEFORE any claim window opens,
+// which is why that artifact needs no bracket and why the ~28s it costs reaches no row on this
+// roster. (Runtime confirmation on run 33135617689 is sleek-cat-45's; the warm sites are this
+// carrier's own reading.) Naming it as a suspect here would have sent the next reader to measure
+// a thing that is already correct.
+//
+// THE WELL-POSED SUCCESSOR IS NOT A ROSTER QUESTION, it is a construction one, and it is
+// sleek-cat-45's framing: an artifact is either PREPARATION-FORCEABLE, in which case it is
+// warmed and billed to preparation as the edge index is, or CLAIM-FORCED-ONLY, in which case its
+// fill is netted out and the split reported as `compile_dag_rust_emit_check` does. The census
+// memo was in NEITHER arm. That "neither" is a WRITABLE STATE is the actual defect -- gunbc#9560
+// closes one instance of it and the next memoization reintroduces it.
+//
+// WHY THIS MATTERS MORE FOR THIS ROSTER THAN FOR AN ORDINARY MEASUREMENT: a row frozen for cost
+// that belongs to a shared build cannot take the exit below, because the exit is "make it
+// cheap" and the cost is not its own to reduce. It would sit here looking exactly like debt.
+// TRIGGER: when gunbc#9560 lands the missing census bracket, RE-MEASURE THESE SIXTEEN and delete
+// the lines that fall under the ceiling. That is a specific, dated, bounded action against a
+// named list, which is the difference between a declared impurity and a silent one.
+
+// HOW A ROW LEAVES, AND WHY THAT MAKES THE ROSTER SELF-CORRECTING. Delete its line. The floor
+// then runs it under the 500ms ceiling and it either passes or fails on its own marginal cost.
+// Nothing here needs to be re-measured to release a row, and nothing may be added to release
+// one.
+
+// THE ROSTER CARRIES 276 IDENTITIES, IN TWO POPULATIONS THAT ARE ENROLLED FOR DIFFERENT REASONS
+// AND MUST NOT BE READ AS ONE.
+//
+// POPULATION A -- 225 EXPENSIVE PASSES. Claims that REACHED A VERDICT, PASSED, and whose measured
+// CPU exceeded `required_floor_claim_cpu_safety_limit_ms`. Read from main run 33141550579's
+// per-claim cost receipt (`required_floor_claim_cost.tsv`, 12936 rows, `cost_basis=cpu`), so every
+// figure is that run's own and none is transcribed by hand. Measured range 511..3757ms. For these
+// rows the carrier's ordinary premise holds exactly: the witness works and costs too much.
+//
+// POPULATION B -- 51 ROWS TOO EXPENSIVE TO REACH A VERDICT AT ALL. 44 `budget_interrupted` on the
+// CPU clock against 5000ms and 2 `completed_over_budget` on the wall clock against 10000ms
+// (18882ms and 19024ms), measured on main run 33145062452 and supplied at identity grain by
+// warm-tern-34. THESE ARE NOT CLAIMED TO PASS. An interrupted claim went UNDECIDED -- it may pass,
+// it may fail -- and its reported figure is a LOWER BOUND describing when the deadline fired, not
+// what the row costs. They are enrolled on cost alone, under the operator's standing instruction
+// that work above the budget must not run: a claim that burns the entire ceiling and then answers
+// nothing is the most expensive thing the fold can do, not an edge case to leave executing.
+// Verified against the same cost receipt before enrolment: all 46 are `budget_interrupted` or
+// `completed_over_budget` and NONE has outcome `fail`.
+//
+// THE ONE THING NEITHER POPULATION MAY CONTAIN IS A KNOWN FAILURE, and the reason is a live
+// receipt rather than a principle. A first attempt at this roster was measured on THIS branch,
+// with the 500ms ceiling already in place, and enrolled 276 interrupted rows. The tightened
+// ceiling had converted six identities that FAIL on main into interruptions -- they did not stop
+// failing, they stopped reaching a verdict -- so enrolling them would have laundered six live
+// defects as cost debt AND removed them from the failure count that makes them visible. The
+// instrument was masking the population it was being used to measure. Found by snappy-dove-250 by
+// differencing the two failing sets, verified here at identity grain, and the roster was rebuilt
+// from main's receipt instead. The ten known failures that also exceed 500ms stay OUT and stay
+// visible; they run cheap, fail fast, and cost nothing worth reclaiming.
+//
+// WHY THE MEASUREMENT COMES FROM MAIN AND NEVER FROM THIS BRANCH: a cost roster cannot be measured
+// on a tree that already carries the tightened ceiling, because the ceiling PERTURBS THE QUANTITY
+// BEING MEASURED. Every one of those 276 interrupted members reported 501..505ms -- clustered at
+// the ceiling, because the ceiling produced the number. Keying on that would have made the
+// contract a fact about the limit's own value.
+//
+// THE BASIS IS MARGINAL CPU. The floor nets shared-artifact fill out of a claim's charged cost
+// (gunbc#9477, gunbc#9560), so these figures are each row's own work and not the compile it
+// happened to reach first. An earlier cut built on CHARGED figures was 37% wrong, and withholding
+// a charged-basis payer does not even remove the cost: fill is paid inside execution on a memo
+// that starts empty, so it moves to the next claim naming those sources, which then goes over and
+// joins the roster in turn. A marginal figure is a property of the ROW, so declining a
+// marginal-over row does not move THAT ROW'S OWN COST onto anybody else.
+//
+// THAT IS NARROWER THAN AN EARLIER REVISION OF THIS FILE CLAIMED, AND THE DIFFERENCE IS MEASURED.
+// It read "moves nothing to anyone and the population cannot regenerate itself". The second half
+// is FALSE and the run that installed this roster proved it: withholding the 266 rows THE ROSTER
+// HELD AT THAT RUN left 16 others tripping the same conjuncts, and 9 of them measured UNDER the
+// ceiling on main -- one at 98ms, one at 1ms, one at 0ms. A witness that cost 1ms did not become
+// expensive. It INHERITED A BILL. (266 is the roster size AT THAT MEASUREMENT and does not track
+// the current size, which the header states. A historical measurement keeps the denominator it
+// was taken against; updating it to today's figure would silently restate what was measured.)
+//
+// THE MECHANISM, AND IT IS NOT THE BRACKETED FILL -- a first hypothesis said it was, and the same
+// run refutes that. Shared work is paid INSIDE execution by whichever claim reaches it first, so
+// withholding the first-toucher moves the bill to the next claim naming that work. But only TWO
+// call sites are bracketed by `record_shared_artifact_fill_cpu` (the diagnostic census and the
+// rust emit check). Every OTHER memoised shared construction is relocated the same way and
+// recorded NOWHERE.
+//
+// THE DISCRIMINATING OBSERVATION IS ON THE SIX ROWS THAT COMPLETED, whose marginal costs moved
+// 89ms -> 59817ms, 98ms -> 25216ms, 1ms -> 1157ms, 0ms -> 645ms. Nothing got slower by 672x.
+//
+// THIS CLAUSE CARRIED A FALSE PREMISE ALONGSIDE THAT, AND ITS CORRECTION CUTS THE OTHER WAY. It
+// said an interrupted row emits no per-claim fill line whatever it paid, so absence proves nothing
+// there. The ordering behind that is right -- `record_shared_artifact_fill_cpu` is called after the
+// uncached computation returns -- but the conclusion needs the deadline to be able to fire inside
+// that window, and it cannot. The eval deadline is COOPERATIVE, polled by the interpreter, and both
+// bracketed sites are straight-line Rust with no poll within:
+//
+//   let fill_started = thread_cpu_nanos();
+//   let census = compile_dag_diagnostic_census_uncached(source);   // no deadline poll inside
+//   record_shared_artifact_fill_cpu(thread_cpu_nanos() - fill_started);
+//
+// `compile_dag_rust_emit_check` is the same shape. A host builtin is ATOMIC with respect to a
+// cooperative deadline, so a claim that enters a fill always finishes it and always records it.
+// "Interrupted mid-fill with the counter unadvanced" is not a reachable state.
+//
+// SO ABSENCE OF A FILL LINE ON AN INTERRUPTED ROW IS A REAL ZERO, and warm-tern-34 finding none
+// across all 44 is evidence those rows paid no shared fill rather than an artifact of the
+// instrument. Population B's interrupt points are therefore NOT fill-inflated -- they are the rows'
+// own charged cost up to the deadline -- so the enrolment rests on better evidence than this file
+// was claiming for itself.
+//
+// THE CEILING LANDS INSIDE A DENSE BAND, AND THAT BOUNDS WHAT THIS ROSTER CAN ACHIEVE ALONE.
+//
+// Run 33191118450 confirmed the exhaustion argument: with all twelve `rest_path_reaches_no_cli`
+// members withheld, `reference_edges` carries NO claim-paid key at all -- only `<outside-fold>`
+// warms -- so the 25995ms fill STOPPED HAPPENING rather than relocating, and its payer left the
+// interrupted set. Relocation is dissolved, not deferred.
+//
+// THE COUNTERS STILL ROSE, 11 -> 12 interrupted and 3 -> 5 over-cost, AND THE CAUSE IS UNRELATED.
+// The newly tripping rows pay NO fill; the cost is their own. Four siblings in
+// `v2.test.manual.bootstrap_footprint_anchor` measure 492 / 502 / 502 / 506ms against a 500ms
+// ceiling. An earlier run recorded two of them at 512 / 502 and different members trip now. Which
+// side of the line a row falls on is decided by a few milliseconds of run-to-run variance.
+//
+// MEASURED DISTRIBUTION, exact because the `[over-cost]` print is rank-ordered and these thresholds
+// each admit fewer rows than its 25-row cap: 21 rows at or above 400ms, 15 at 450ms, 8 at 500ms,
+// 5 at 550ms, 4 at 600ms, 3 at 1000ms. (The `>=100ms` figure is NOT readable from that print -- it
+// saturates the cap. The population above the diagnostic cost line is the run's own
+// `over_cost_line_diagnostic` counter, 701 on this run, and quoting 25 for it would be reading a
+// print limit as a population.)
+//
+// SO PER-ROW ENROLMENT CANNOT CONVERGE HERE, for a reason that has nothing to do with the
+// relocation this file spent most of its length on. Enrol the 8 that trip today and some of the 15
+// at 450ms trip tomorrow; the roster would grow every run while no witness got slower and no cost
+// changed. That is a treadmill produced by a THRESHOLD SITTING IN A CLUSTER, not by a mechanism.
+//
+// THIS FILE DOES NOT RESOLVE IT, AND SAYING SO IS THE POINT. The 500ms ceiling is an operator
+// ruling and the band is new information about what that ruling costs, not grounds for this carrier
+// to move the line by itself. Three responses exist -- enrol the whole band as a unit so membership
+// stops being decided by variance; move the line clear of the cluster; or accept per-run
+// re-enrolment. Only the first is convergent at this ceiling, and choosing among them is an
+// operator decision this roster records rather than pre-empts.
+//
+// WHAT A COST ROSTER MUST NOT ABSORB, AND HOW CLOSE THIS ONE CAME. The floor's first completed run
+// left 11 interrupted and 3 over-cost rows outside the roster, and the obvious move was to enrol the
+// ones that looked expensive and stable. Eight were characterised that way, across three baseline
+// runs, correctly. SEVEN OF THEM REACH A VERDICT AND FAIL.
+//
+// A 500ms ceiling does not create those failures; it changes how they PRESENT. A row interrupted
+// before its verdict never reports the failure it would have reported, so a defect arrives dressed
+// as a cost. Enrolling one puts a broken witness into a roster whose proven class asserts the
+// witness WORKS and merely costs too much -- the debt contract then carries a correctness regression
+// and reports it as budget. Joined at identity grain against main run 33145062452, SIX of the 11
+// are in main's 47 unexpected failures: inherited defects belonging to the verdict-axis lane, not
+// to this one.
+//
+// THE DECIDING FIELD IS `outcome`, NOT COST, AND BOTH READERS HAD IT IN FRONT OF THEM. deep-ant-102
+// reported the outcome column in the same message that framed the set by expense, and this file's
+// author was ready to act on the framing. Cost is what makes a row a candidate; outcome is what
+// makes it eligible.
+//
+// THE FOUR ENROLLED FROM THAT RESIDUAL ARE VERIFIED AT A CEILING THAT LETS THEM FINISH -- run
+// 33190645319, same tree, ceiling raised, nothing else changed:
+//   operation_argv_corpus_every_row_is_materialized_or_counted  cpu=520   PASS
+//   corpus_per_language_row_ratchet_holds                       cpu=646   PASS
+//   inert_carrier_universe_is_nonempty                          cpu=1146  PASS
+//   scan_denominator_is_a_real_corpus                           cpu=23794 COMPLETED_OVER_BUDGET
+// All four reach a verdict. The first three pass and are caught only by the 500ms line; the fourth
+// is a genuine 24-second row that is over budget at any ceiling anyone has proposed.
+//
+// THREE MORE WERE REFUSED ENROLMENT AFTER THE SAME CHECK, and their main-side disposition is why a
+// row absent from main's 47 is not thereby new: `green_control_sanctioned_reader_body_not_flagged`
+// and `nominal_distinct_control_compiles_ok` are KNOWN-RED on main, and
+// `emit_on_demand_classical_not_native_one_build_holds` is NO-ROUTE. The 47 are UNEXPECTED failures,
+// so an enrolled red and a hermetically-refused row are outside that population by construction.
+// This branch introduces none of the three.
+//
+// PROVENANCE, because two readers were wrong in sequence and in opposite directions: crisp-newt-899
+// first argued the emission site is unreachable for an interrupted row, then retracted that at
+// source (the interrupt is a returned `ClaimOutcome::BudgetInterrupted` VALUE, not a process death,
+// so the site IS reached). This file recorded the retraction correctly and kept a second, subtler
+// form of the same error -- site reached, counter never advanced -- which the UNWINDING question
+// cannot settle and the POLLING question can.
+//
+// AND THERE ARE TWO `[floor-shared-fill]` FORMATS, WHICH IS WHERE A FIRST READING OF THIS WENT
+// WRONG. The per-claim form (`claim=... marginal_cpu_ms=... fill_cpu_ms=...`) is the one netted
+// out of `cpu_nanos`. A SECOND, per-cache form (`cache=... fill_ms=... paid_by=...`) records who
+// paid to fill a named cache and IS NOT SUBTRACTED FROM ANYTHING. An earlier revision of this
+// block said all six emitted nothing and concluded the work was unrecorded; that was a regex
+// reading only the first form, and swift-badger-524 caught it by counting both.
+//
+// MEASURED, the six split three ways:
+//   `widened_scans_actually_read_the_tree`   cpu 59817ms, recorded fill 54267ms (reference_edges,
+//                                            two payments) -- ~91% relocated, recorded, NOT netted
+//   `inert_carrier_universe_is_nonempty`     cpu  1157ms, recorded fill  1160ms (inert_carrier_data)
+//                                            -- essentially all of it, recorded, NOT netted
+//   `scan_denominator_is_a_real_corpus`      cpu 25216ms, no fill recorded in either form
+//   `corpus_per_language_row_ratchet_holds`  cpu   645ms, none
+//   `bootstrap_footprint_*` (two rows)       cpu   512ms / 502ms, none
+//
+// THE MECHANISM IS OBSERVED END TO END ON ONE ARTIFACT, NOT INFERRED FROM MAGNITUDE. The floor's
+// per-cache attribution names a payer, so the same artifact can be followed across two runs:
+//
+//   main run 33141550579   cache=inert_carrier_data fill_ms=1224
+//                          paid_by=...inert_carrier_test.inert_carrier_no_unrostered_or_stale
+//   this branch, 33152885910
+//                          cache=inert_carrier_data fill_ms=1160
+//                          paid_by=...inert_carrier_test.inert_carrier_universe_is_nonempty
+//
+// `inert_carrier_no_unrostered_or_stale` IS ENROLLED IN THIS ROSTER. It was withheld, and the
+// identical bill -- same cache, same magnitude -- landed on its sibling in the same module, whose
+// marginal cost went from 1ms on main to 1157ms here. Same artifact, same work, different payer,
+// and the new payer is one of the six rows that then breached the ceiling.
+//
+// That is a withheld first-toucher's bill relocating, watched from both ends, and it is the
+// evidence this file's non-termination argument rests on. Found by calm-ram-380 in main's own log
+// while withdrawing a competing explanation; verified here at identity grain.
+//
+// THE SAME LOG SHOWS THE REMEDY ALREADY WORKING ON THE LARGEST ARTIFACTS, which is why the fix is
+// a construction that exists rather than one to invent: `cache=module_path_index fill_ms=73088
+// consumer_claims=454 paid_by=<outside-fold>` and `cache=module_graph_facts inclusive_ms=47737
+// paid_by=<outside-fold>`. Seventy-three seconds across 454 consumers, charged to NOBODY, because
+// the artifact is built before any claim runs. A warmed artifact has no first-toucher, so there is
+// no bill to relocate and the population is stable under ANY ceiling. The open question is only
+// which artifacts are outside that treatment, never whether the treatment works.
+//
+// SO THE UNIFYING FACT IS NARROWER AND SHARPER THAN "UNRECORDED": RELOCATED SHARED COST LANDS IN A
+// ROW'S MARGINAL FIGURE WHETHER OR NOT IT IS RECORDED, because only ONE of the two recording
+// mechanisms feeds the subtraction. For `widened_scans` the evidence is sitting in the log naming
+// it as payer for 54 seconds it does not own, and its marginal figure still carries all 54. That
+// is worse than the unrecorded case rather than better: the information exists and the ceiling
+// does not consult it.
+//
+// WHAT THAT DOES TO THIS ROSTER'S DEFENCE: marginal keying prevents a row being enrolled for cost
+// it never owned ONLY where that cost was netted as per-claim fill. Against per-cache fills and
+// against genuinely unrecorded shared work it is inert, and a relocated bill is indistinguishable
+// from own work at the instrument the ceiling actually reads.
+//
+// ENROLMENT TERMINATES PER KEY, AND AN EARLIER REVISION OF THIS BLOCK SAID IT COULD NOT. That
+// revision read: "the fill must be paid by someone; there is always a first-toucher; so each
+// round of enrolment produces a fresh population, and the process terminates only if the
+// inherited fill falls under the ceiling -- which it cannot while the fills are multi-second."
+// The first two clauses are true and the conclusion does not follow from them, because it treats
+// the inheritor set as open.
+//
+// THE FIELD THAT DECIDES IT WAS IN THE LINE ALREADY BEING QUOTED. Every per-cache fill line
+// carries `consumer_modules` beside `consumer_claims`, and the relocation receipt above quotes
+// that line without reading it. Measured across both runs, EVERY claim-paid key has
+// `consumer_modules` of 1 or 2 -- the consumers of a claim-paid artifact are one module, or two.
+// So a relocated bill cannot leave that module, and enrolment terminates BY EXHAUSTION of the
+// module's own membership rather than by the fill shrinking.
+//
+// WORKED ON THE KEY THAT PRODUCED THE CASCADE. `reference_edges`' four claim-paid keys report
+// `consumer_modules=1`, all in `rest_path_reaches_no_cli`.
+//
+// AN EARLIER REVISION SAID THAT MODULE HAS EIGHT MEMBERS AND WAS WRONG -- IT HAS TWELVE. The error
+// was in the METHOD, not the arithmetic: the count came from the identities two floor LOGS happened
+// to mention, and a log names the claims that RAN AND REPORTED, never a module's membership. The
+// authority is the module's own source; `grep -c 'test fn'` on `rest_path_reaches_no_cli_test.dag`
+// returns 12. Enrolling to eight was then claimed as CLOSURE, which was a coincidence of what two
+// runs printed.
+//
+// THE NEXT RUN FALSIFIED IT EXACTLY AS THE MECHANISM PREDICTS: with eight withheld, the bill
+// relocated to a NINTH member -- `dropping_the_definition_edge_roster_surfaces_more` -- interrupted
+// before a verdict, in a module this file had declared closed. So the termination argument is SOUND
+// and its INPUT was wrong. Exhaustion terminates, but only against real membership, and a
+// population read off a log is not membership. That cost one 51-minute floor run to learn.
+//
+// THE MODULE IS NOW CLOSED AT 12/12, ENROLLED FROM SOURCE. The ninth member's own numbers are the
+// argument: recorded `cost at least 28769ms`, of which `cache=reference_edges fill_ms=25995` is a
+// bill four withheld siblings used to pay -- roughly 90%. It was not expensive; it inherited.
+// `consumer_modules=1` on that key, so with every member withheld no claim reaches the artifact and
+// the fill STOPS HAPPENING rather than moving to a thirteenth. That is what exhaustion buys, and it
+// is only available because the membership came from `grep -c 'test fn'` on the module source.
+//
+// WHY THE FILL WAS INVISIBLE TO THREE TESTS THAT LOOKED FOR IT, recorded because the blind spot is
+// reusable: that row's fill is `disposition=EXCLUSIVE`, and `disposition` is computed as
+// `consumer_modules > 1`. The run's `shared_fill_ms=727` therefore bounds CROSS-MODULE relocation
+// only -- a real figure, correctly summed, measuring a population this fill is not in. 25995ms is
+// 36x that entire budget and contributes nothing to it. A paid_by-difference test over warmed keys
+// cannot see it either (`<outside-fold>` in every run, so it cannot differ by construction), nor
+// can a census of which REFUSED rows are shared (an inheritor is the SOLE payer, hence exclusive,
+// and it completes or is interrupted rather than being refused). Three tests agreed and shared one
+// blind spot; agreement among tests with a common blind spot is not independence. An
+// earlier cut of this roster withheld six; the two it left were `widened_scans_actually_read_the_tree`
+// and `withdrawing_the_consumer_admissions_surfaces_exactly_three`, and the branch run shows the
+// ~26s bill landing on exactly those two and breaching in both -- 59817ms completed-over-budget
+// and an interrupt at 27939ms. Found by calm-ram-380, who joined main's fill attribution against
+// this roster and predicted both inheritors by name before the branch run was consulted. CLOSING
+// the module takes all TWELVE members, which is what the source says and what a log cannot.
+//
+// THE BREADTH SPLIT IS THE WHOLE OF WHY THE WARM IS NOT ALSO REQUIRED HERE. The keys with broad
+// consumption are ALREADY charged to nobody: `module_path_index` fills for 70826ms across
+// `consumer_claims=454 consumer_modules=109` and reports `paid_by=<outside-fold>`. Preparation
+// warming is done precisely where breadth made a first-toucher unaffordable, and the keys still
+// paid by a claim are the narrow ones, where exhaustion is cheap. Narrow means enrolment closes
+// it; broad means the warm already did.
+//
+// WHAT IS NOT CLAIMED: that every cache in the corpus is narrow. This is measured over the keys
+// appearing in these two runs. A key with BROAD claim-paid consumption would behave the way the
+// deleted argument described -- each round finding a fresh payer in a different module -- and for
+// such a key the warm would be the only fix. None appears here, and if one appears later this
+// paragraph is the thing that must be re-measured rather than reused.
+//
+// HOW THE FALSE UNIVERSAL SURVIVED, RECORDED BECAUSE THE SHAPE IS GENERAL AND CHEAP TO REPEAT. It
+// had TWO supports that looked independent and were not. One was a peer's general claim that the
+// population re-forms every run and enumeration never converges. The other was this file's own
+// relocation receipt, which appeared to confirm it. Neither reader had checked `consumer_modules`,
+// and the receipt CANNOT confirm a universal: it shows one bill moving once, which is equally
+// consistent with bounded relocation inside a closed module. So the second support was not
+// evidence for the general claim at all -- it was evidence for the mechanism, promoted to
+// evidence for the generalisation because it arrived beside one.
+//
+// THE RULE: agreement between a general assertion and a single receipt is not corroboration when
+// the receipt cannot discriminate the general case from the bounded one. Ask what the receipt
+// would look like if the universal were FALSE -- here, identical -- and if the answer is "the
+// same", it supports nothing about scope. Both readers also quoted the very line carrying the
+// field that refutes them, which is the tell: a datum adjacent to the one being cited, in the
+// same line, unread twice in one night by two people.
+//
+// THE MOVE THAT ACTUALLY STABILISES IT is to stop charging the fill to a claim at all: build the
+// artifact at PREPARATION and charge it to nobody, exactly as `module-path-index-warm`,
+// `shared-index-warm` and `bare-reference-edge-index-warm` already are (each reports
+// `provenance=built-by-preparation` and appears in no claim's cost). A warmed artifact has no
+// first-toucher, so there is no bill to relocate and the population is stable under ANY ceiling.
+// The artifacts behind this cascade never got such a warm. That is the repair; this roster is
+// containment while it is absent.
+
+fn floor_cost_debt_proven_chunk_00() -> List<String> {
+  Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_assembled_cross_module_subject_reaches_typed_standing", tail: Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_assembled_identity_absent_refuses_RED", tail: Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_planted_garbage_refuses_frontend_RED", tail: Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_planted_minimal_module_emits", tail: Cons { head: "test.claim.altra_contact_map_witness.w_ingested_contact_map_admits_at_declared_population", tail: Cons { head: "test.claim.belt_tick_receipt_home_witness.the_belt_member_bootstraps_its_own_receipts_directory", tail: Cons { head: "test.claim.belt_tick_receipt_home_witness.the_bootstrapped_directory_is_where_the_receipt_goes", tail: Cons { head: "test.claim.fleet_converge_plan_witness.lease_guard_sudoes_only_granted_binaries", tail: Cons { head: "test.claim.fleet_converge_plan_witness.locked_apply_guard_compares_the_modelled_prior_generation", tail: Cons { head: "test.claim.fleet_converge_plan_witness.locked_apply_guard_does_not_coerce_an_unreadable_store_to_zero", tail: Cons { head: "test.claim.fleet_converge_plan_witness.locked_apply_inner_program_is_quoted_not_spliced", tail: Cons { head: "test.claim.fleet_converge_plan_witness.locked_apply_script_serializes_generation_under_flock", tail: Cons { head: "test.claim.fleet_converge_plan_witness.locked_apply_stale_diagnostic_keeps_observed_value_in_one_word", tail: Cons { head: "test.claim.floor_attempt_standing_witness_test.w_RED_no_emitted_gate_arm_reaches_superseded", tail: Cons { head: "test.claim.floor_attempt_standing_witness_test.w_RED_the_attempt_receipt_labels_are_one_authority", tail: Cons { head: "test.claim.floor_attempt_standing_witness_test.w_RED_the_emitted_gate_renders_both_interruption_axes", tail: Cons { head: "test.claim.floor_attempt_standing_witness_test.w_RED_the_head_axis_branches_on_event_type_not_an_empty_subject", tail: Cons { head: "test.claim.host_axis_caps.witness_cap_author_before_shadow_revert_enforced_in_axis_caps", tail: Cons { head: "test.claim.host_axis_caps.witness_cap_upsert_script_carries_no_hand_spelled_printf_quoting", tail: Cons { head: "test.claim.host_axis_caps.witness_deploy_memory_cap_author_script_derives_allocation_bytes", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_01() -> List<String> {
+  Cons { head: "test.claim.host_axis_caps.witness_padded_wrong_order_script_fails_author_before_shadow_revert_gate", tail: Cons { head: "test.claim.host_axis_caps.witness_reversed_deploy_script_fails_author_before_shadow_revert_gate", tail: Cons { head: "test.claim.live_deploy.apply.witness_digest_readback_script_is_bounded_and_post_mutation", tail: Cons { head: "test.claim.live_deploy.emit.apply_script_and_tree_sync_unit_stay_within_ci_runner_grants", tail: Cons { head: "test.claim.live_deploy.emit.emit_RED_unit_files_are_not_written_through_here_documents", tail: Cons { head: "test.claim.live_deploy.emit.emit_staged_unit_body_is_quoted_by_the_posix_authority", tail: Cons { head: "test.claim.live_deploy.emit.emitted_twin_apply_touches_none_of_productions_effects", tail: Cons { head: "test.claim.live_deploy.emit.emitted_twin_retract_removes_nothing_of_productions", tail: Cons { head: "test.claim.live_deploy.emit.fleet_converge_timer_not_installed_by_deploy_apply", tail: Cons { head: "test.claim.live_deploy.emit.production_apply_carries_its_own_handler_and_tree_sync_env", tail: Cons { head: "test.claim.live_deploy.emit.production_apply_creates_productions_binary_parent_directory", tail: Cons { head: "test.claim.live_deploy.emit.production_apply_serves_its_own_endpoint_and_scopes_no_path", tail: Cons { head: "test.claim.live_deploy.emit.production_belt_unit_carries_productions_spawn_root", tail: Cons { head: "test.claim.live_deploy.emit.production_retract_offs_its_own_endpoint", tail: Cons { head: "test.claim.live_deploy.emit.retract_is_not_emitted_without_an_observed_scoped_removal", tail: Cons { head: "test.claim.live_deploy.emit.retract_script_stays_within_ci_runner_grants", tail: Cons { head: "test.claim.live_deploy.emit.twin_apply_creates_its_own_binary_parent_directory_and_not_productions", tail: Cons { head: "test.claim.live_deploy.emit.twin_apply_serves_its_own_endpoint_and_not_productions", tail: Cons { head: "test.claim.live_deploy.emit.twin_belt_unit_carries_the_twins_spawn_root_and_not_productions", tail: Cons { head: "test.claim.live_deploy.emit.twin_retract_offs_its_own_endpoint_and_not_productions", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_02() -> List<String> {
+  Cons { head: "test.claim.live_deploy.emit.witness_apply_emits_no_embedded_preflight_and_only_sudoers", tail: Cons { head: "test.claim.live_deploy.emit.witness_apply_provisions_attempt_state_root_owned", tail: Cons { head: "test.claim.live_deploy.emit.witness_apply_script_access_ready_not_deploy_access_poison", tail: Cons { head: "test.claim.live_deploy.emit.witness_apply_script_contains_systemd_and_tailscale", tail: Cons { head: "test.claim.live_deploy.emit.witness_apply_script_excludes_readback_curls", tail: Cons { head: "test.claim.live_deploy.emit.witness_apply_script_has_no_frozen_page", tail: Cons { head: "test.claim.live_deploy.emit.witness_apply_script_has_no_node_server", tail: Cons { head: "test.claim.live_deploy.emit.witness_apply_script_wires_memory_cap_deploy_consumer", tail: Cons { head: "test.claim.live_deploy.emit.witness_retract_attempt_state_root_refuses_when_nonempty", tail: Cons { head: "test.claim.live_deploy.emit.witness_retract_owned_process_removes_serve_service", tail: Cons { head: "test.claim.live_deploy.emit.witness_retract_preamble_acknowledges_shared_sudoers_install", tail: Cons { head: "test.claim.live_deploy.emit.witness_retract_script_owned_only", tail: Cons { head: "test.claim.live_deploy.emit.witness_tree_sync_restart_diagnoses_on_failure", tail: Cons { head: "test.claim.live_deploy.readiness.witness_accept_no_response_probe_fails_fast_not_hangs", tail: Cons { head: "test.claim.live_deploy.readiness.witness_bounded_poll_early_exit_on_grounded_read", tail: Cons { head: "test.claim.live_deploy.readiness.witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep", tail: Cons { head: "test.claim.live_deploy.readiness.witness_ssh_mock_stdout_is_discriminating_red", tail: Cons { head: "test.claim.live_deploy.readiness.witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout", tail: Cons { head: "test.claim.live_deploy.running_release_identity_witness_test.witness_absent_identity_is_typed_absent_not_unparseable", tail: Cons { head: "test.claim.live_deploy.running_release_identity_witness_test.witness_body_without_release_identity_refuses", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_03() -> List<String> {
+  Cons { head: "test.claim.live_deploy.running_release_identity_witness_test.witness_correct_artifacts_with_wrong_bundle_identity_refuses", tail: Cons { head: "test.claim.live_deploy.running_release_identity_witness_test.witness_correct_identity_with_one_stale_artifact_refuses", tail: Cons { head: "test.claim.live_deploy.running_release_identity_witness_test.witness_identity_round_trips_from_served_body", tail: Cons { head: "test.claim.live_deploy.running_release_identity_witness_test.witness_matching_release_and_surface_grounds", tail: Cons { head: "test.claim.live_deploy.running_release_identity_witness_test.witness_readiness_refuses_when_reported_revision_is_not_the_admitted_one", tail: Cons { head: "test.claim.live_deploy.running_release_identity_witness_test.witness_surface_projection_ignores_identity_members", tail: Cons { head: "test.claim.live_deploy.running_release_identity_witness_test.witness_third_candidate_still_sees_launched_revision", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_is_non_vacuous", tail: Cons { head: "test.claim.roadmap_authority.witness_altered_copy_of_declared_node_is_counted", tail: Cons { head: "test.claim.roadmap_authority.witness_ghost_node_outside_authority_is_counted", tail: Cons { head: "test.claim.roadmap_authority.witness_projection_is_active_only", tail: Cons { head: "test.claim.roadmap_authority.witness_rendered_nodes_are_declared_or_derived", tail: Cons { head: "test.claim.roadmap_belt_actuate_witness.dashboard_instance_dispatch_contract_keystone_holds", tail: Cons { head: "test.claim.roadmap_forecast_witness.witness_live_graph_gap_count_matches_refusal_rows", tail: Cons { head: "test.claim.roadmap_forecast_witness.witness_live_graph_refuses_with_located_counted_calibration_gaps", tail: Cons { head: "test.claim.roadmap_frontier_witness.witness_authority_daily_workspace_serializes", tail: Cons { head: "test.claim.roadmap_frontier_witness.witness_page_places_ready_node_in_ready_bucket", tail: Cons { head: "test.claim.roadmap_frontier_witness.witness_page_places_superseded_node_in_superseded_bucket", tail: Cons { head: "test.claim.roadmap_frontier_witness.witness_page_renders_four_buckets", tail: Cons { head: "test.claim.roadmap_gate.witness_clean_not_drift", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_04() -> List<String> {
+  Cons { head: "test.claim.roadmap_receipt_continuity_acceptance.roadmap_receipt_continuity_acceptance_contract_holds", tail: Cons { head: "test.claim.roadmap_receipt_continuity_acceptance.witness_dispatch_never_presents_empty_frontier_on_authority_refusal", tail: Cons { head: "test.claim.roadmap_row_witness.roadmap_row_page_carries_the_cells", tail: Cons { head: "test.claim.roadmap_sandbox_witness.witness_family_fixture_frame_occurrences_exact", tail: Cons { head: "test.claim.roadmap_sandbox_witness.witness_sandbox_carries_auditioner_control", tail: Cons { head: "test.claim.roadmap_site_surface_readiness.witness_roadmap_site_surface_readiness_materialized_batch_holds", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_artifact_digests_are_content_hashes", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_dispatch_artifact_matches_file_content", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_healthz_route_json_ok", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_readback_script_checks_health_and_digests", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_readback_script_curls_are_wall_clock_bounded", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_roadmap_route_is_plain_text", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_site_artifact_model_populated", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_static_site_route_authority_paths_locked", tail: Cons { head: "test.claim.roadmap_static_site_witness.witness_text_routes_include_health_and_artifacts", tail: Cons { head: "test.claim.roadmap_tactile_witness.witness_sound_toggle_label_is_painted_by_the_program_not_the_markup", tail: Cons { head: "test.claim.seed_growth_admission_witness.a_live_roster_declaration_is_not_reported_stale", tail: Cons { head: "test.claim.sessions_panel_witness.sessions_panel_keystone_holds", tail: Cons { head: "test.claim.shell_exec_run_argv_embed_witness.witness_apply_script_requires_bash_receiver", tail: Cons { head: "test.claim.shell_exec_run_argv_embed_witness.witness_apply_script_stays_under_argv_embed_budget", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_05() -> List<String> {
+  Cons { head: "test.claim.ssh_transport_witness.witness_apply_script_stays_under_argv_embed_budget", tail: Cons { head: "test.claim.toolchain_home_standing_witness.every_fleet_converge_yml_job_carries_a_toolchain_home_standing", tail: Cons { head: "test.claim.toolchain_home_standing_witness.every_witnesses_yml_job_carries_a_toolchain_home_standing", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_lane_contexts_collide_with_no_other_emitted_workflow", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_neither_lane_waits_on_the_other", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_RED_the_retired_step_names_do_not_return", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_ci_invokes_one_composed_mode_not_a_step_ladder", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_no_phase_precondition_reads_another_phases_outcome", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_the_required_workflow_carries_both_lanes", tail: Cons { head: "test.claim.witness_floor_workflow_consolidation_witness_test.w_the_required_workflow_does_not_build_the_parse_binary", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_workflow_has_build_job_needs_release_bins", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.fleet_converge_workflow_has_no_heal_revalidation_paste_through", tail: Cons { head: "test.claim.workflow_dispatch_input_witness.workflow_dispatch_choice_input_projects_options_list", tail: Cons { head: "v2.lens.registry.completeness_test.lens_registry_completeness_holds_live", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.coproduct_declaration_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.fn_type_alias_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.record_literal_field_init_is_not_retained_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_06() -> List<String> {
+  Cons { head: "v2.test.claim.body_lowering.statement_let_bind.let_in_form_unchanged_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.single_statement_body_unchanged_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.statement_let_chain_lowers_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.statement_let_then_reference_lowers_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.typed_statement_let_lowers_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.unbound_statement_prefix_refuses_holds", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.a_readable_clean_subject_is_established_clean", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.an_unreadable_subject_is_not_established_rather_than_clean", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.red_control_planted_copy_still_alarms", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_standing.malformed_source_reports_tokenization_rejection", tail: Cons { head: "v2.test.claim.concept_index_enumeration.witness_absent_concept_is_false", tail: Cons { head: "v2.test.claim.concept_index_enumeration.witness_coproduct_arms_live", tail: Cons { head: "v2.test.claim.concept_index_enumeration.witness_enumeration_nonempty", tail: Cons { head: "v2.test.claim.concept_index_enumeration.witness_fieldref_self_projection", tail: Cons { head: "v2.test.claim.concept_index_enumeration.witness_local_record_enumerated", tail: Cons { head: "v2.test.claim.concept_index_enumeration.witness_qualified_concept_self_projection", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_blocks_infer_behind_a_failed_resolve", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_infer_row_for_a_resolvable_candidate_is_determinate", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_locates_a_resolve_death_at_resolve", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_resolve_contract_accepts_a_resolvable_candidate", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_07() -> List<String> {
+  Cons { head: "v2.test.claim.dag_acceptance.acceptance_translate_row_is_determinate", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_reject_is_typed_not_silent", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_smoke_recomputed_by_execution_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_reject_is_typed_not_silent", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_smoke_recomputed_by_execution_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_smoke_totality_holds", tail: Cons { head: "v2.test.claim.fold_lowering.algebra_carrying_fold_is_step_form_unresolved", tail: Cons { head: "v2.test.claim.fold_lowering.bodyless_fold_call_refuses_no_loop_fabricated", tail: Cons { head: "v2.test.claim.fold_lowering.bodyless_fold_is_step_form_unresolved", tail: Cons { head: "v2.test.claim.fold_lowering.duplicate_carrier_edge_is_malformed", tail: Cons { head: "v2.test.claim.fold_lowering.fold_call_lowers_to_terminating_loop", tail: Cons { head: "v2.test.claim.fold_lowering.fold_callee_name_survives_parse", tail: Cons { head: "v2.test.claim.fold_lowering.fold_collection_name_survives_parse", tail: Cons { head: "v2.test.claim.fold_lowering.fold_probe_ingest_is_accepted", tail: Cons { head: "v2.test.claim.fold_lowering.lowered_loop_binds_carrier_binder", tail: Cons { head: "v2.test.claim.fold_lowering.named_step_fold_is_step_form_unresolved", tail: Cons { head: "v2.test.claim.fold_lowering.non_fold_call_is_not_a_fold_disposition", tail: Cons { head: "v2.test.claim.fold_lowering.non_fold_call_refuses", tail: Cons { head: "v2.test.claim.fold_lowering.paramless_step_fold_is_step_shape_invalid", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_08() -> List<String> {
+  Cons { head: "v2.test.claim.fold_lowering.paramless_step_fold_refuses_no_loop_fabricated", tail: Cons { head: "v2.test.claim.fold_lowering.well_formed_fold_still_lowers_through_the_split", tail: Cons { head: "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_covers_every_coproduct", tail: Cons { head: "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_roster_covers_testclaim", tail: Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.planted_source_analysis_is_established", tail: Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.red_control_planted_identity_escape_finding_count_is_one", tail: Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.red_control_planted_identity_escape_still_alarms", tail: Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.sanctioned_source_analysis_is_established", tail: Cons { head: "v2.test.claim.identity_captured_navigation_roster_gate.unrelated_caret_literal_call_not_flagged", tail: Cons { head: "v2.test.claim.rust_crate_partition_witness.witness_partition_r4_valid_on_interim_holds", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_accepts_a_well_formed_module", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_bound_stops_before_the_stages_it_was_not_asked_for", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_bounded_run_refuses_the_whole_front_end_question", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_parse_and_resolve_deaths_land_on_different_stages", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_projection_agrees_with_the_staged_steps", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_resolve_death_still_passes_parse", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_unbound_value_name_refuses_with_its_own_reason", tail: Cons { head: "v2.test.execution.emit_on_demand_classical_not_ingested_family_witness.emit_on_demand_classical_not_closure_keys_differ_for_distinct_trees_holds", tail: Cons { head: "v2.test.execution.emit_on_demand_classical_not_ingested_family_witness.emit_on_demand_classical_not_grain_keys_differ_holds", tail: Cons { head: "v2.test.execution.emit_on_demand_classical_not_ingested_family_witness.emit_on_demand_classical_not_materialize_recompute_on_miss_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_09() -> List<String> {
+  Cons { head: "v2.test.execution.emit_on_demand_classical_not_ingested_family_witness.emit_on_demand_classical_not_materialize_share_on_hit_holds", tail: Cons { head: "v2.test.execution.emit_on_demand_classical_not_ingested_family_witness.emit_on_demand_classical_not_schedule_refuses_unreadable_budget_holds", tail: Cons { head: "v2.test.execution.emit_on_demand_family_crate_witness.emit_on_demand_family_crate_pr_native_agreement_holds", tail: Cons { head: "v2.test.languages_consumer_census.corpus.data_decl_ratchet.corpus_data_decl_ratchet_holds", tail: Cons { head: "v2.test.lens_inert_carrier.inert_carrier_test.inert_carrier_no_unrostered_or_stale", tail: Cons { head: "v2.test.manual.body_lowering_match.body_lowering_match_arms_found", tail: Cons { head: "v2.test.manual.body_lowering_match.body_lowering_match_first_arm_wires", tail: Cons { head: "v2.test.manual.body_lowering_match.body_lowering_match_lowers_to_match", tail: Cons { head: "v2.test.manual.body_lowering_match.body_lowering_match_swapped_arms_normalize_accepts", tail: Cons { head: "v2.test.manual.body_lowering_match.body_lowering_normalize_accepts_match_module", tail: Cons { head: "v2.test.manual.body_lowering_match.body_lowering_normalized_module_has_match", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_arrow_direct_well_formed", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_arrow_token_holds", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_binary_infix_holds", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_body_holds", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_domain_holds", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_domain_operand1_match", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_domain_operand2_match", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_expr_infix_holds", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_fn_body_infix_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_10() -> List<String> {
+  Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_fn_body_subtree_holds", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_fn_decl_found", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_has_plus_token", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_module_well_formed", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalize_accepts", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalize_yields_arrow", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_arrow_root_resolves", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_domain_has_two_params", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_left_operand_is_atom", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_operand1_lexeme_is_x", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_operand2_lexeme_is_y", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_operator_is_plus", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_resolves", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_transform_has_three_children", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_return_holds", tail: Cons { head: "v2.test.manual.body_lowering_projection_call.body_lowering_field_access_postfix_rejects", tail: Cons { head: "v2.test.manual.body_lowering_projection_call.body_lowering_normalize_accepts_projection_module", tail: Cons { head: "v2.test.manual.body_lowering_projection_call.body_lowering_projection_lowers_to_transform", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.dropping_the_transport_realization_roster_surfaces_more", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_admission_surfaces_the_edge_under_the_wide_root", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_proven_chunk_11() -> List<String> {
+  Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.widened_scans_actually_read_the_tree", tail: Cons { head: "test.claim.operation_argv_corpus_witness.operation_argv_corpus_every_row_is_materialized_or_counted", tail: Cons { head: "v2.test.lens_inert_carrier.inert_carrier_test.inert_carrier_universe_is_nonempty", tail: Cons { head: "v2.test.languages_consumer_census.corpus.per_language_row_ratchet.corpus_per_language_row_ratchet_holds", tail: Cons { head: "dag.test.claim.lifecycle_survivor_corpus_census.scan_denominator_is_a_real_corpus", tail: Empty {} } } } } }
+}
+
+fn floor_cost_debt_censored_chunk_00() -> List<String> {
+  Cons { head: "dag.test.claim.lifecycle_survivor_corpus_census.no_raw_lifecycle_string_survivors_remain", tail: Cons { head: "gunbc.test.claim.realization_attempt_keystone_test.witness_real_corpus_entry_produces_typed_standing", tail: Cons { head: "gunbc.test.claim.witness_execution_class_live_census_test.witness_live_roster_census_holds", tail: Cons { head: "test.claim.transport_script_wall_compile_red.wall_red_deleted_free_minter_refuses", tail: Cons { head: "test.claim.transport_script_wall_compile_red.wall_red_string_join_into_retained_record_refuses", tail: Cons { head: "v2.lens.no_dual_representation_test.no_dual_representation_test_clean_holds", tail: Cons { head: "v2.lens.no_dual_representation_test.no_dual_representation_test_coverage_honesty_holds", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash.roster_bash_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash.roster_lean_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_compile_stage_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_glob_discovery_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_lens_cost_model_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_lens_traversal_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_machine_code_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_std_algebra_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_std.roster_std_change_dag_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_swift.roster_swift_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_corpus_roster_nonempty", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_decl_facts_roster_smoke_totality_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_censored_chunk_01() -> List<String> {
+  Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_corpus_roster_dedupes_decl_facts", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_dag_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_dag_tree_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_decl_facts_roster_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_parse_fraction_is_derived", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_fixed_roster_saturates_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_live_dag_subset10_work_units_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_live_dag_subset5_work_units_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v1_core_file_reject_locus_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v1_rejected_rows_identity_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v1_tokenize_file_reject_locus_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v1_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v2_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement_inventory_witness.enforcement_inventory_global_receipt_holds", tail: Cons { head: "v2.test.claim.enforcement_live_witness.bound_contracts_derive_live_receipts", tail: Cons { head: "v2.test.claim.enforcement_live_witness.complexity_repo_wide_verdict_matches_roadmap", tail: Cons { head: "v2.test.claim.enforcement_live_witness.enforcement_consistency_gate_holds", tail: Cons { head: "v2.test.claim.enforcement_live_witness.live_corpus_is_currently_all_body_unavailable", tail: Cons { head: "v2.test.claim.enforcement_live_witness.per_root_sentinels_hold_in_one_walk", tail: Empty {} } } } } } } } } } } } } } } } } } } } }
+}
+
+fn floor_cost_debt_censored_chunk_02() -> List<String> {
+  Cons { head: "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts", tail: Cons { head: "v2.test.lens_wiring_liveness.wiring_liveness_corpus_test.wiring_liveness_corpus_witnesses", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.compiler_substrate_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.extdeps_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.gunbc_consumers_reach_transport_vocabulary_only_by_named_admission", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.test_corpus_reaches_cli_vocabulary_only_as_declared_exercise", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_consumer_admissions_surfaces_exactly_three", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.dropping_the_definition_edge_roster_surfaces_more", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_cli_construction_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.rest_path_reaches_no_target_ast_vocabulary", tail: Cons { head: "v2.test.realization_vocabulary_containment.cli_vocabulary.rest_path_reaches_no_cli.withdrawing_the_admission_surfaces_the_known_cli_edge", tail: Empty {} } } } } } } } } } } }
+}
+
+// THE TWO EVIDENCE CLASSES ARE SEPARATE FUNCTIONS, NOT ONE LIST WITH A NOTE BESIDE IT.
+//
+// Both are withheld and both take `DeclinedCostDebt`, because the DISPOSITION answers why a site
+// is not planned and the answer is the same for both: it costs too much to run. What differs is
+// the EVIDENCE, and review 57258 was right that a single flat roster let a universal claim about
+// proven marginal cost stand over rows where no such cost was ever measured.
+//
+// PROVEN: reached a verdict, PASSED, and the measured marginal CPU exceeded the ceiling. For these
+// the carrier's ordinary premise holds exactly -- the witness works and costs too much.
+//
+// CENSORED: the figure the floor enforced on is a CHARGED-CLOCK figure, so the row's own-work cost
+// is UNMEASURED. Enrolling one asserts that it did not finish inside the ceiling on that clock --
+// which is what the floor observed -- and asserts NOTHING about whether it would pass on its own
+// work. TWO ROUTES REACH THIS CLASS and an earlier revision named only the first:
+//
+//   PREEMPTED -- the deadline cut in before a verdict, so the reported figure is an interrupt point
+//   and the true cost can only be larger.
+//
+//   COMPLETED OVER THE WALL LIMIT -- the row finished, but shared-artifact fill is netted out of the
+//   CPU clock ONLY. `wall_nanos` is left unadjusted and the wall completion check enforces on that
+//   unadjusted figure, so a wall breach can be almost entirely borrowed fill. Two members are
+//   exactly this: measured by warm-tern-34 on run 33160240865, their MARGINAL cpu is 0ms and 1ms
+//   against fills of 18089ms and 17759ms, both `provenance=filled-shared-artifact triggered_by=ITSELF`.
+//   Their own work is nil; the wall figure is the fill.
+//
+// THAT SECOND ROUTE IS AN ACCOUNTING GAP, NOT A PROPERTY OF THOSE WITNESSES, and this file says so
+// rather than letting `DeclinedCostDebt` imply they are expensive. One netting rule with two homes,
+// applied in one of them. cool-koi-235 is repairing it at the root by netting fill out of the wall
+// clock as it already is for CPU; when that lands these two become cheap rather than invisible and
+// their rows should be DELETED, which is the ordinary shrink this contract is built for.
+//
+// THEY ARE NOT DROPPED PRE-EMPTIVELY, because today the floor enforces on the unadjusted wall and
+// would refuse on them. Dropping a row whose cost is an artifact is right only once the artifact is
+// gone; dropping it while the gate still reads the artifact just moves the red. What is corrected
+// here is the CLAIM, not the membership -- an earlier revision described the whole roster as rows
+// whose own marginal cost exceeds the ceiling, and for these two that is measurably false.
+//
+// CORPUS CONTEXT, from the same measurement and worth recording because it bounds the proven class:
+// across all 12949 rows the MAXIMUM marginal_cpu_ms is 72, and only three rows carry fill above
+// 5000ms. That figure is not extended to this roster's proven members here -- it was taken on a
+// different tree and this file does not restate someone else's measurement as its own -- but it is
+// the reason the second route above is worth naming rather than filing as an oddity.
+//
+// NO SECOND DECLINE ARM IS MINTED FOR THIS. A disposition names an admission outcome; evidence
+// strength is a different axis, and giving the host a second arm to branch on would make it
+// re-decide a question the roster already answers. The split is carried where the fact lives.
+fn floor_cost_debt_proven_chunks() -> List<List<String>> {
+  Cons { head: floor_cost_debt_proven_chunk_00(), tail: Cons { head: floor_cost_debt_proven_chunk_01(), tail: Cons { head: floor_cost_debt_proven_chunk_02(), tail: Cons { head: floor_cost_debt_proven_chunk_03(), tail: Cons { head: floor_cost_debt_proven_chunk_04(), tail: Cons { head: floor_cost_debt_proven_chunk_05(), tail: Cons { head: floor_cost_debt_proven_chunk_06(), tail: Cons { head: floor_cost_debt_proven_chunk_07(), tail: Cons { head: floor_cost_debt_proven_chunk_08(), tail: Cons { head: floor_cost_debt_proven_chunk_09(), tail: Cons { head: floor_cost_debt_proven_chunk_10(), tail: Cons { head: floor_cost_debt_proven_chunk_11(), tail: Empty {} }}}}}}}}}}}}
+}
+
+fn floor_cost_debt_censored_chunks() -> List<List<String>> {
+  Cons { head: floor_cost_debt_censored_chunk_00(), tail: Cons { head: floor_cost_debt_censored_chunk_01(), tail: Cons { head: floor_cost_debt_censored_chunk_02(), tail: Empty {} }}}
+}
+
+fn floor_cost_debt_proven_roster() -> List<String> {
+  list_flat_map(xs: floor_cost_debt_proven_chunks(), f: fn(c) { c })
+}
+
+fn floor_cost_debt_censored_roster() -> List<String> {
+  list_flat_map(xs: floor_cost_debt_censored_chunks(), f: fn(c) { c })
+}
+
+fn floor_cost_debt_roster() -> List<String> {
+  list_flat_map(
+    xs: Cons { head: floor_cost_debt_proven_roster(), tail: Cons { head: floor_cost_debt_censored_roster(), tail: Empty {} } },
+    f: fn(c) { c }
+  )
+}
+
+fn floor_cost_debt_holds(name: String) -> Bool {
+  any(xs: floor_cost_debt_roster(), predicate: fn(row) { row == name })
+}
+

@@ -1,6 +1,7 @@
 module v2.lens.reference_deps
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.measure { ClockBasis, WallClock, Millisecond, millisecond }
 
 import v2.extdeps.languages.dag { qualified_name_from_module_node }
 import v2.lens.module_graph { no_paths, module_graph_exclude_substrings }
@@ -32,7 +33,38 @@ data reference_deps_parsed_tree_disposition: Disposition = Scaffold {
   }
 }
 
-data reference_deps_dissolution_note: String = "B2 reference edges from parsed-tree qualified-name use sites (imports + body/type refs via ingest → fold). Segment-prefix match against declared module paths (QualifiedName segments, not string scan). On the import-only corpus reference_closure_live delegates to import_closure_live_excluding (same edge producer, no O(n²) fact re-materialization). reference_parsed_tree_facts_match_import_facts_at_path is green-by-execution on the conformance entry (witnessed in reference_closure_b2_safety_wall_holds). reference_parsed_tree_matches_import_facts_on_closure and reference_closure_parsed_live are scaffold-only until interpreter parse-per-member cost is bounded. reference_resolution_facts_from_parsed_corpus is the full-corpus scaffold census (no witness yet). Dissolves when symbol_index_fill projects reference edges from the filled containment tree and non-import qualified-name sites require the parsed census path."
+data reference_deps_dissolution_note: String = "B2 reference edges from parsed-tree qualified-name use sites (imports + body/type refs via ingest → fold). Segment-prefix match against declared module paths (QualifiedName segments, not string scan). On the import-only corpus reference_closure_live delegates to import_closure_live_excluding (same edge producer, no O(n²) fact re-materialization). reference_parsed_tree_facts_match_import_facts_at_path is green-by-execution on the conformance entry (witnessed in reference_closure_b2_safety_wall_holds). reference_parsed_tree_matches_import_facts_on_closure and reference_closure_parsed_live are scaffold-only until interpreter parse-per-member cost is bounded; parsed_reference_closure_two_entry_no_result_observation carries the exact emitted-surface census subject that produced no result within its deadline, with deciding-stage reach explicitly unproven. reference_resolution_facts_from_parsed_corpus is the full-corpus scaffold census (no witness yet). Dissolves when symbol_index_fill projects reference edges from the filled containment tree and non-import qualified-name sites require the parsed census path."
+
+// NO EXECUTION RECEIPT, NO COST RESULT.
+//
+// Claim preparation completed and claim_batch began invoking the witness, but no receipt was
+// minted inside reference_closure_parsed_live itself. The deadline therefore cannot distinguish a
+// slow parsed-closure query from time spent before that deciding stage began. It is NOT a lower
+// bound on query cost. The exact subject is retained because a future reached-stage receipt can
+// rerun it without reconstructing what was asked.
+type ParsedReferenceClosureDecidingStageReachUnproven {}
+
+type ParsedReferenceClosureNoResultObservation {
+  entries: List<String>
+  expected_path_counts: List<Nat>
+  required_path: String
+  basis: ClockBasis
+  deadline: Millisecond
+  build_included: Bool
+  preparation_completed: Bool
+  deciding_stage_reach: ParsedReferenceClosureDecidingStageReachUnproven
+}
+
+data parsed_reference_closure_two_entry_no_result_observation: ParsedReferenceClosureNoResultObservation = ParsedReferenceClosureNoResultObservation {
+  entries: ["dag/gunbc/native_scm_interaction_contract.dag", "src/v2/std/node.dag"],
+  expected_path_counts: [37, 8],
+  required_path: "dag/std/occurrence_identity.dag",
+  basis: WallClock,
+  deadline: millisecond(count: 900000),
+  build_included: false,
+  preparation_completed: true,
+  deciding_stage_reach: ParsedReferenceClosureDecidingStageReachUnproven {}
+}
 
 data reference_deps_file_anchor: Symbol = ^reference_deps_file_anchor
 

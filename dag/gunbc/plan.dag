@@ -85,8 +85,14 @@ fn plans_all_titled(plans: List<Plan>) -> Bool {
   all(plans, p => plan_title_is_present(p: p))
 }
 
+data plan_doc_directory: String = "docs/plans"
+
+fn plan_doc_name(slug: String) -> String {
+  concat(slug, ".md")
+}
+
 fn plan_doc_path(slug: String) -> String {
-  concat("docs/plans/", concat(slug, ".md"))
+  concat(concat(plan_doc_directory, "/"), plan_doc_name(slug: slug))
 }
 
 fn plan_path(p: Plan) -> String {

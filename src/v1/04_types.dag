@@ -763,6 +763,27 @@ fn normalize_access_type_node(n: Node) -> Node {
   }
 }
 
+// AN APPLICATION RENDERS ITS ARGUMENTS in node_type_shape below, because without them the two
+// sides of a type-ARGUMENT refusal print identically. Wrapper<KindB> at a Wrapper<KindA>
+// position is a real refusal whose diagnostic read "declared 'Node(Wrapper)', produced
+// 'Node(Wrapper)'" -- typed and located but carrying nothing a reader could act on, which is
+// the located-but-uninformative half of DESIGN 5's typed-diagnostic duty. The container arm
+// already renders its element for the same reason; this is that rule applied to the general
+// application rather than a second idea.
+fn node_type_shape_argument_list(args: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+  match args |> first {
+    Present { value: a } =>
+      let head = node_type_shape(n: child_type_node(ch: a), source_indices: source_indices)
+      let rest = args |> skip(1)
+      if (rest |> count) == 0 {
+        head
+      } else {
+        concat(head, concat(",", node_type_shape_argument_list(args: rest, source_indices: source_indices)))
+      }
+    Absent => ""
+  }
+}
+
 fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let __is_leaf = n.connective == NoConnective && n.children |> count == 0 && n.properties |> count == 0
   let n_name = authored_name_at(source_indices: source_indices, node: n)
@@ -801,6 +822,8 @@ fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String
         concat("Optional(", inner_shape, ")")
       } else if is_map {
         "Map(...)"
+      } else if (n.children |> count) > 0 {
+        concat("Node(", n_name, "<", node_type_shape_argument_list(args: n.children, source_indices: source_indices), ">)")
       } else {
         concat("Node(", n_name, ")")
       }

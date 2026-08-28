@@ -1,0 +1,205 @@
+module test.claim.network_mac_witness_test
+
+import std.types { Int, String, Bool, List, NonEmptyStr, list_length }
+import extdeps.network.mac {
+  Eui48Address, mac_address, render_mac_address, parse_mac_address,
+  MacParseResult, MacParsed, MacParseFailed,
+  MacParseError, MacWrongOctetCount, MacOctetNotHex, MacOctetWrongWidth,
+  MacAddressScope, UniversallyAdministered, LocallyAdministered,
+  MacAddressTransmission, IndividualAddress, GroupAddress,
+  mac_address_scope, mac_address_transmission, mac_is_permanent_interface_identity,
+  mac_oui,
+}
+
+// THE ROUND TRIP AND THE TWO FLAG BITS. The round trip is the standard grounding witness for a
+// parsed carrier and it is asserted in both directions. The flag bits get more rows than their
+// size suggests because they are the reason this module exists rather than a validated brand: a
+// consumer keying a host interface needs to know whether the address it holds is BURNED IN or was
+// chosen by software, and the U/L bit is the only thing that says so.
+//
+// THE INVERTED SENSE IS THE TRAP. U/L SET means LOCALLY administered -- the bit reads opposite to
+// how the name sounds -- so a control fixes each direction against a concrete address rather than
+// trusting the predicate to be self-evidently right. srv3's real burned-in address is used as the
+// universally-administered specimen so the rows are anchored to a fact from the fleet rather than
+// to an invented one.
+//
+// WHAT IS DELIBERATELY REFUSED: hyphen and dotted spellings. They are common in vendor output and
+// accepting them would make the round trip untrue and erase which spelling a source produced, so
+// each is asserted to refuse with a NAMED cause rather than merely to fail.
+
+fn srv3_burned_in() -> Eui48Address {
+  mac_address(octet1: 72, octet2: 33, octet3: 11, octet4: 129, octet5: 199, octet6: 29)
+}
+
+fn parsed_or_fail(text: String) -> Bool {
+  match parse_mac_address(text: text) {
+    MacParsed { address: _ } => true
+    MacParseFailed { error: _ } => false
+  }
+}
+
+fn error_of(text: String) -> MacParseError {
+  match parse_mac_address(text: text) {
+    MacParseFailed { error: e } => e
+    MacParsed { address: _ } => MacWrongOctetCount { observed_count: 0 - 1 }
+  }
+}
+
+fn is_wrong_count(e: MacParseError) -> Bool {
+  match e {
+    MacWrongOctetCount { observed_count: _ } => true
+    MacOctetNotHex { position: _, raw: _ } => false
+    MacOctetWrongWidth { position: _, raw: _, observed_width: _ } => false
+  }
+}
+
+fn is_not_hex(e: MacParseError) -> Bool {
+  match e {
+    MacOctetNotHex { position: _, raw: _ } => true
+    MacWrongOctetCount { observed_count: _ } => false
+    MacOctetWrongWidth { position: _, raw: _, observed_width: _ } => false
+  }
+}
+
+fn is_wrong_width(e: MacParseError) -> Bool {
+  match e {
+    MacOctetWrongWidth { position: _, raw: _, observed_width: _ } => true
+    MacWrongOctetCount { observed_count: _ } => false
+    MacOctetNotHex { position: _, raw: _ } => false
+  }
+}
+
+fn scope_is_universal(a: Eui48Address) -> Bool {
+  match mac_address_scope(addr: a) {
+    UniversallyAdministered => true
+    LocallyAdministered => false
+  }
+}
+
+fn transmission_is_individual(a: Eui48Address) -> Bool {
+  match mac_address_transmission(addr: a) {
+    IndividualAddress => true
+    GroupAddress => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1. Round trip, both directions.
+// ---------------------------------------------------------------------------
+
+test fn render_of_an_authored_address_is_canonical_lowercase_colon_form() -> Bool {
+  (render_mac_address(addr: srv3_burned_in()) as String) == "48:21:0b:81:c7:1d"
+}
+
+// render . parse == id on the VALUE, which is the direction a golden string cannot establish: a
+// literal comparison only shows the text came back, not that the octets were recovered.
+test fn parse_then_render_recovers_the_authored_octets() -> Bool {
+  match parse_mac_address(text: "48:21:0b:81:c7:1d") {
+    MacParsed { address: a } =>
+      a.octet1 == 72 && a.octet2 == 33 && a.octet3 == 11
+        && a.octet4 == 129 && a.octet5 == 199 && a.octet6 == 29
+        && (render_mac_address(addr: a) as String) == "48:21:0b:81:c7:1d"
+    MacParseFailed { error: _ } => false
+  }
+}
+
+test fn the_leading_zero_octet_survives_the_round_trip() -> Bool {
+  match parse_mac_address(text: "00:00:0b:00:c7:00") {
+    MacParsed { address: a } =>
+      a.octet1 == 0 && a.octet3 == 11 && a.octet6 == 0
+        && (render_mac_address(addr: a) as String) == "00:00:0b:00:c7:00"
+    MacParseFailed { error: _ } => false
+  }
+}
+
+test fn the_all_ones_octet_survives_the_round_trip() -> Bool {
+  match parse_mac_address(text: "ff:ff:ff:ff:ff:ff") {
+    MacParsed { address: a } =>
+      a.octet1 == 255 && a.octet6 == 255
+        && (render_mac_address(addr: a) as String) == "ff:ff:ff:ff:ff:ff"
+    MacParseFailed { error: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2. THE TWO FLAG BITS, each pinned in BOTH directions against a concrete address. The U/L sense is
+//    inverted relative to how the name reads, so a one-directional test would pass on a predicate
+//    that had the sense backwards.
+// ---------------------------------------------------------------------------
+
+// 0x48 = 0100 1000. Bit 1 (U/L) is 0 and bit 0 (I/G) is 0, so srv3's burned-in address is a
+// universally administered individual address -- which is what a permanent interface identity is.
+test fn a_burned_in_fleet_address_is_universal_and_individual() -> Bool {
+  let a = srv3_burned_in()
+  scope_is_universal(a: a) && transmission_is_individual(a: a) && mac_is_permanent_interface_identity(addr: a)
+}
+
+// 0x4a = 0100 1010. Bit 1 SET means LOCALLY administered -- software chose it, so it is not a
+// permanent identity even though it is still unicast.
+test fn setting_the_u_l_bit_makes_the_address_locally_administered() -> Bool {
+  let a = mac_address(octet1: 74, octet2: 33, octet3: 11, octet4: 129, octet5: 199, octet6: 29)
+  !scope_is_universal(a: a) && transmission_is_individual(a: a) && !mac_is_permanent_interface_identity(addr: a)
+}
+
+// 0x49 = 0100 1001. Bit 0 SET means GROUP (multicast): it names no single interface, so it is not a
+// permanent identity even though it is universally administered.
+test fn setting_the_i_g_bit_makes_the_address_a_group_address() -> Bool {
+  let a = mac_address(octet1: 73, octet2: 33, octet3: 11, octet4: 129, octet5: 199, octet6: 29)
+  scope_is_universal(a: a) && !transmission_is_individual(a: a) && !mac_is_permanent_interface_identity(addr: a)
+}
+
+// THE TWO BITS ARE INDEPENDENT, and this is the row that says so. A predicate reading one bit and
+// reporting both would pass every single-flag test above; only a specimen with both bits set
+// separates them from a single shared flag.
+test fn the_two_flag_bits_are_read_independently() -> Bool {
+  let both = mac_address(octet1: 75, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: 1)
+  !scope_is_universal(a: both) && !transmission_is_individual(a: both)
+    && !mac_is_permanent_interface_identity(addr: both)
+}
+
+test fn the_oui_is_the_first_three_octets() -> Bool {
+  let o = mac_oui(addr: srv3_burned_in())
+  list_length(items: o) == 3
+    && fold(o, init: 0, f: fn(acc, x) { acc * 1000 + x }) == 72 * 1000000 + 33 * 1000 + 11
+}
+
+// ---------------------------------------------------------------------------
+// 3. Refusals, each by NAMED cause. A parser is only fail-closed if the refusals are distinguishable
+//    -- one shared "malformed" would leave a consumer unable to say what was wrong.
+// ---------------------------------------------------------------------------
+
+// HYPHEN AND DOTTED SPELLINGS REFUSE RATHER THAN NORMALISING. Both are common in vendor output, and
+// accepting either would make the round trip untrue and erase which spelling the source produced.
+test fn the_hyphen_spelling_refuses_by_octet_count() -> Bool {
+  !parsed_or_fail(text: "48-21-0b-81-c7-1d") && is_wrong_count(e: error_of(text: "48-21-0b-81-c7-1d"))
+}
+
+test fn the_dotted_quad_spelling_refuses_by_octet_count() -> Bool {
+  !parsed_or_fail(text: "4821.0b81.c71d") && is_wrong_count(e: error_of(text: "4821.0b81.c71d"))
+}
+
+test fn a_short_address_refuses_by_octet_count() -> Bool {
+  is_wrong_count(e: error_of(text: "48:21:0b:81:c7"))
+}
+
+// UPPERCASE REFUSES AS NOT-HEX rather than being folded. Folding case would make two spellings
+// render identically and hide which one a source emitted -- the same reason the digest carriers
+// refuse rather than lowercasing.
+test fn the_uppercase_spelling_refuses_as_not_hex() -> Bool {
+  !parsed_or_fail(text: "48:21:0B:81:c7:1d") && is_not_hex(e: error_of(text: "48:21:0B:81:c7:1d"))
+}
+
+test fn a_non_hex_digit_refuses_as_not_hex() -> Bool {
+  is_not_hex(e: error_of(text: "48:21:0g:81:c7:1d"))
+}
+
+// WIDTH AND HEXNESS ARE SEPARATE CAUSES. A single-digit group is well-formed hex at the wrong width,
+// so collapsing the two would report "not hex" for text that is entirely hex.
+test fn a_single_digit_group_refuses_by_width_not_by_hexness() -> Bool {
+  is_wrong_width(e: error_of(text: "48:21:b:81:c7:1d"))
+    && !is_not_hex(e: error_of(text: "48:21:b:81:c7:1d"))
+}
+
+test fn an_over_wide_group_refuses_by_width() -> Bool {
+  is_wrong_width(e: error_of(text: "48:21:0bb:81:c7:1d"))
+}
