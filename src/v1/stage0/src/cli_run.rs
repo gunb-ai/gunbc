@@ -394,7 +394,7 @@ fn project_roadmap_acceptance_event_history_from_authority_text_inner(
             };
         }
     }
-    let overlay_path = temp_dir.join("dag/gunbc/roadmap_authority.dag");
+    let overlay_path = temp_dir.join("dag/gunbc/roadmap/roadmap_authority.dag");
     if let Err(error) = std::fs::create_dir_all(overlay_path.parent().unwrap())
         .and_then(|_| std::fs::write(&overlay_path, authority_text))
     {
@@ -818,7 +818,7 @@ mod roadmap_acceptance_history_projection_tests {
     #[test]
     fn merge_base_authority_projection_matches_jsonl_carrier() {
         let authority = std::process::Command::new("git")
-            .args(["show", "9ce6526c528:dag/gunbc/roadmap_authority.dag"])
+            .args(["show", "9ce6526c528:dag/gunbc/roadmap/roadmap_authority.dag"])
             .output()
             .expect("git show merge-base authority");
         assert!(
@@ -828,7 +828,7 @@ mod roadmap_acceptance_history_projection_tests {
         );
         let authority = String::from_utf8(authority.stdout).expect("utf8 authority");
         let jsonl = std::fs::read_to_string(
-            super::workspace_root().join("dag/gunbc/roadmap_acceptance_event_history.jsonl"),
+            super::workspace_root().join("dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl"),
         )
         .expect("jsonl carrier");
         let projected = project_roadmap_acceptance_event_history_from_authority_text(&authority);
@@ -1279,12 +1279,12 @@ mod process_workspace_root_tests {
     #[test]
     fn repo_relative_path_normalizes_under_process_root() {
         let root = process_workspace_root();
-        let abs = root.join("dag/gunbc/ci_layer_roots.dag");
+        let abs = root.join("dag/gunbc/ci/ci_layer_roots.dag");
         let rel = repo_relative_path(&abs).expect("under process root");
-        assert_eq!(rel, "dag/gunbc/ci_layer_roots.dag");
+        assert_eq!(rel, "dag/gunbc/ci/ci_layer_roots.dag");
         assert_eq!(
             workspace_relative_repo_path(&abs.to_string_lossy()),
-            "dag/gunbc/ci_layer_roots.dag"
+            "dag/gunbc/ci/ci_layer_roots.dag"
         );
     }
 
@@ -1292,7 +1292,7 @@ mod process_workspace_root_tests {
     fn anchor_source_root_resolves_relative_dag() {
         let anchored = anchor_source_root("dag");
         assert!(Path::new(&anchored)
-            .join("gunbc/ci_layer_roots.dag")
+            .join("gunbc/ci/ci_layer_roots.dag")
             .is_file());
     }
 
@@ -1300,7 +1300,7 @@ mod process_workspace_root_tests {
     fn try_anchor_source_root_resolves_declared_present_root() {
         let anchored = try_anchor_source_root("dag").expect("dag exists in every checkout");
         assert!(Path::new(&anchored)
-            .join("gunbc/ci_layer_roots.dag")
+            .join("gunbc/ci/ci_layer_roots.dag")
             .is_file());
     }
 
@@ -1474,12 +1474,12 @@ mod process_workspace_root_tests {
     fn repo_relative_path_normalized_reanchors_baked_absolute_file() {
         let ws = process_workspace_root();
         let baked = workspace_root();
-        let abs = baked.join("dag/gunbc/ci_layer_roots.dag");
+        let abs = baked.join("dag/gunbc/ci/ci_layer_roots.dag");
         if !abs.is_file() {
             return;
         }
         let rel = repo_relative_path_normalized(&abs);
-        assert_eq!(rel, "dag/gunbc/ci_layer_roots.dag");
+        assert_eq!(rel, "dag/gunbc/ci/ci_layer_roots.dag");
         assert_eq!(workspace_relative_repo_path(&abs.to_string_lossy()), rel);
         assert!(ws.join(&rel).is_file());
     }
@@ -1490,13 +1490,13 @@ mod process_workspace_root_tests {
     /// through once verified against the process root, never strip-prefix-panic.
     #[test]
     fn repo_relative_path_normalized_accepts_relative_spelling_under_root() {
-        let rel_in = Path::new("dag/gunbc/ci_layer_roots.dag");
+        let rel_in = Path::new("dag/gunbc/ci/ci_layer_roots.dag");
         if !process_workspace_root().join(rel_in).is_file() {
             return;
         }
         assert_eq!(
             repo_relative_path_normalized(rel_in),
-            "dag/gunbc/ci_layer_roots.dag"
+            "dag/gunbc/ci/ci_layer_roots.dag"
         );
     }
 
@@ -2718,13 +2718,13 @@ fn compile_dag_rust_emit_check_uncached(
     }
 }
 
-const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
+const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci/ci_layer_roots.dag";
 /// The function-grain exact witness admission authority (`gunbc.explicit_witness_admission`).
 /// Separate from the path-policy carrier above on purpose: an admission names one witness and
 /// its executing cadence, a path policy names a place, and fusing them into one substring
 /// representation is what made the old reconciliation weaker than its name.
 const EXPLICIT_WITNESS_ADMISSION_AUTHORITY_REL: &str = "dag/gunbc/explicit_witness_admission.dag";
-const WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL: &str = "dag/gunbc/witness_deferral_freeze.dag";
+const WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL: &str = "dag/gunbc/witness/witness_deferral_freeze.dag";
 const COMMIT_WORKFLOW_AUTHORITY_REL: &str = "dag/gunbc/commit_workflow.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
@@ -12503,12 +12503,12 @@ mod live_read_selection_manifest_producer_tests {
             &ctx,
             "PathPattern",
             "LiteralPath",
-            vec![("path", str_value("dag/gunbc/ci_spec.dag".to_string()))],
+            vec![("path", str_value("dag/gunbc/ci/ci_spec.dag".to_string()))],
         );
         assert_eq!(
             decoded_carriers(&ctx, vec![fs_carrier(&ctx, pattern)]),
             vec![LiveReadCarrier::FilesystemReadPath(
-                LiveReadPathPattern::LiteralPath("dag/gunbc/ci_spec.dag".to_string())
+                LiveReadPathPattern::LiteralPath("dag/gunbc/ci/ci_spec.dag".to_string())
             )]
         );
     }
@@ -12612,10 +12612,10 @@ mod live_read_selection_manifest_producer_tests {
     fn a_literal_path_carrier_intersects_only_its_own_path() {
         let row = LiveReadSelectionRow::Classified(LiveReadClassification::RuntimeRead {
             carriers: vec![LiveReadCarrier::FilesystemReadPath(
-                LiveReadPathPattern::LiteralPath("dag/gunbc/ci_spec.dag".to_string()),
+                LiveReadPathPattern::LiteralPath("dag/gunbc/ci/ci_spec.dag".to_string()),
             )],
         });
-        assert!(row.touched_by(&touched(&["dag/gunbc/ci_spec.dag"])));
+        assert!(row.touched_by(&touched(&["dag/gunbc/ci/ci_spec.dag"])));
         // The whole point of preserving the literal: an unrelated diff does NOT select it. A
         // `runtime_read: bool` row could not express this and had to say true here.
         assert!(!row.touched_by(&touched(&["dag/gunbc/unrelated.dag"])));
@@ -12648,7 +12648,7 @@ mod live_read_selection_manifest_producer_tests {
     #[test]
     fn a_local_read_is_never_touched_and_a_refusal_always_is() {
         let local = LiveReadSelectionRow::Classified(LiveReadClassification::LocalRead);
-        assert!(!local.touched_by(&touched(&["dag/gunbc/ci_spec.dag"])));
+        assert!(!local.touched_by(&touched(&["dag/gunbc/ci/ci_spec.dag"])));
         let refused = LiveReadSelectionRow::Refused {
             cause: "partial subject".to_string(),
         };
@@ -14829,7 +14829,7 @@ fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     // the enum instead of re-parsing its display label (§3, avoid a second representation).
     let degraded = !(source_label.contains("memory.max") || source_label.contains("memory.high"));
     // REFUSE rather than widen when no budget is readable (operator ruling 2026-08-05;
-    // authority `dag/gunbc/host_budget_source.dag` `HostBudgetUnreadable`).
+    // authority `dag/gunbc/host/host_budget_source.dag` `HostBudgetUnreadable`).
     //
     // This was `.unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)`: a budget that could not
     // be computed became the MOST PERMISSIVE cap available — top-as-answer conflated with
@@ -14852,7 +14852,7 @@ fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
              unknown budget cannot be defaulted — the previous default was the ceiling, which \
              OOM-killed this process rather than refusing. Declare one with \
              GUNBC_MEMORY_BUDGET_BYTES, or model this platform's memory source \
-             (dag/gunbc/host_budget_source.dag)."
+             (dag/gunbc/host/host_budget_source.dag)."
         );
     };
     let cap = ((budget_bytes / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize).clamp(
@@ -17989,7 +17989,7 @@ fn tree_bare_census_for_root(
 
 /// Whole-pool census: every pool module regardless of tree. The loader's
 /// cross-tree fallback (see the `pool_bare_census` field note) — a v2 module's
-/// bare `gunbc_ci_spec` (declared in dag/gunbc/ci_spec.dag) resolves here after
+/// bare `gunbc_ci_spec` (declared in dag/gunbc/ci/ci_spec.dag) resolves here after
 /// missing the v2 tree census, so the provider is pulled and becomes
 /// closure-visible at typecheck.
 fn pool_bare_census(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> {
@@ -20183,7 +20183,7 @@ pub fn run_witness_verdict_diagnostic(
 /// `append_failure_receipt_companion_loudness` / `gunbc.test_module_hygiene.failure_receipt_companion`
 /// stack — no parallel naming authority. Lane: **v1 exit** (zero hand-maintained Rust).
 /// ROADMAP row: "Get hand-written Rust in this repository down to zero"
-/// (authority `dag/gunbc/v1_deletion_plan.dag`). Dissolution trigger: deleted with
+/// (authority `dag/gunbc/v1/v1_deletion_plan.dag`). Dissolution trigger: deleted with
 /// `claim_executor` when witness execution leaves the seed runner; witnesses then call the
 /// loudness projection directly without this bridge.
 pub fn seed_runner_bool_false_failure_detail(
@@ -23185,7 +23185,7 @@ pub fn compute_percentiles(mut values: Vec<u128>) -> TimingPercentiles {
 
 // SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): the v1 evaluator measures its own
 // per-witness resolve+eval percentiles here — seed-side justified (the evaluator cannot measure
-// itself without circularity). The *rendering* of these timings now lives in `dag/gunbc/ci_render.dag`
+// itself without circularity). The *rendering* of these timings now lives in `dag/gunbc/ci/ci_render.dag`
 // (boxed Frames over `std.render`, width-parameterized by the medium's `Viewport.width`); this Rust
 // only produces the measured data. Full dissolution: ROADMAP lane "CI observability" emits the
 // `TimingPercentiles` rows as a substrate value so a .dag witness measures + histograms natively,
@@ -23397,10 +23397,10 @@ pub fn project_witness_cost_receipt(
 
     let entry = source_roots
         .iter()
-        .map(|root| Path::new(root).join("gunbc/witness_row_cost.dag"))
+        .map(|root| Path::new(root).join("gunbc/witness/witness_row_cost.dag"))
         .find(|path| path.is_file())
         .ok_or_else(|| {
-            "[witness-row-cost] REFUSED: gunbc/witness_row_cost.dag is absent from source roots"
+            "[witness-row-cost] REFUSED: gunbc/witness/witness_row_cost.dag is absent from source roots"
                 .to_string()
         })?
         .to_string_lossy()
@@ -24016,7 +24016,7 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
 // ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
 // (gunbc.roadmap_authority / ROADMAP.md; module-identity-storage-binding-design (plan doc deleted 2026-08-28)).
 // The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms in
-// dag/gunbc/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and the
+// dag/gunbc/ci/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and the
 // cycle-free leaf src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag.
 // The third target is NOT new HAND-RUST surface (review 44441): wet_receipt aliases the leaf as
 // `falsifier_self_host_wet_known_red_entries = seed_emitter_behavioral_wet_known_red_entries`
@@ -24184,7 +24184,7 @@ pub fn witness_admission_explicit_consumer_keys() -> Vec<String> {
     static KEYS: OnceLock<Vec<String>> = OnceLock::new();
     KEYS.get_or_init(|| {
         let mut keys = witness_admission_entry_function_keys_from_source(
-            "dag/gunbc/ci_layer_roots.dag",
+            "dag/gunbc/ci/ci_layer_roots.dag",
             ci_layer_roots_authority_content(),
         );
         let wet =
@@ -24488,7 +24488,7 @@ fn format_expected_red_freeze_intersection_refusal(
         "REQUIRED-FLOOR REFUSAL cause=ExpectedRedFreezeIntersection count={} head={head} — {} \
          identity(ies) are simultaneously enrolled in \
          v2.workflow.floor_expected_red.floor_expected_red_roster (known-red, removable only by \
-         an observed pass) AND path-deferred in dag/gunbc/witness_deferral_freeze.dag \
+         an observed pass) AND path-deferred in dag/gunbc/witness/witness_deferral_freeze.dag \
          frozen_path_deferrals (LegacyFrozenPathDeferral, admitted as never-executed). Both \
          claims cannot hold of one identity: this roster's own did-not-execute check below \
          proves every enrolled row here DOES execute, so the freeze row is stale evidence, not a \
@@ -24516,7 +24516,7 @@ fn format_route_gap_freeze_intersection_refusal(
          identity(ies) are simultaneously enrolled in \
          v2.workflow.floor_route_gap.floor_route_gap_roster (a typed witness that this required \
          floor attempts to execute but cannot route to its subject) AND path-deferred in \
-         dag/gunbc/witness_deferral_freeze.dag frozen_path_deferrals \
+         dag/gunbc/witness/witness_deferral_freeze.dag frozen_path_deferrals \
          (LegacyFrozenPathDeferral, admitted as having no executing consumer). Both claims cannot \
          hold of one identity: the typed route-gap receipt exists only because this required \
          floor consumed the row, so the freeze classification is stale evidence, not a live \
@@ -28977,7 +28977,7 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
 // `run_discovery_rows`); these helpers only choose how the already-decided run is printed. They
 // live in Rust because the v1 evaluator narrates its own floor walk (the same seed-side reason as
 // `phase_profile.rs` and `GUNBC_FLOOR_GANTT`). The *rendering* they emit is the same class of
-// output already migrating into `dag/gunbc/ci_render.dag` (the timing histogram + slowest-witness
+// output already migrating into `dag/gunbc/ci/ci_render.dag` (the timing histogram + slowest-witness
 // rollup render there today). Full dissolution: when v2 emit-host owns floor observability — a
 // `.dag` floor-event carrier a witness consumes by execution, the retirement event shared with
 // `phase_profile.rs` (`docs/plans/realization-measurement-loop.md` Phase 0) and the fractal Gantt
@@ -30733,7 +30733,7 @@ mod module_grain_affected_equivalence_tests {
             "dag/test/claim/v1_dag_parse_witness_test.dag",
             "dag/tools/host_prelude.dag",
             "dag/tools/build_step.dag",
-            "dag/gunbc/ci_layer_roots.dag",
+            "dag/gunbc/ci/ci_layer_roots.dag",
             "src/v2/test/claim/bash_command_fold_test.dag",
             "src/v2/workflow/orchestration_emit_test.dag",
             "dag/test/claim/long/import_closure_live_test.dag",
@@ -41231,7 +41231,7 @@ mod module_path_index_tests {
         let sample = index
             .get("gunbc.ci_layer_roots")
             .expect("gunbc.ci_layer_roots must be indexed from relative roots");
-        assert_eq!(sample, "dag/gunbc/ci_layer_roots.dag");
+        assert_eq!(sample, "dag/gunbc/ci/ci_layer_roots.dag");
         assert!(
             ws.join(sample).is_file(),
             "indexed rel path must resolve under workspace_root()"
