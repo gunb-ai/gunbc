@@ -164,3 +164,15 @@ stops contaminating sessions with dead premises.
   in-tree mention verified to be prose (comments, note strings, srv1 snapshot rows,
   a roadmap handback sentence) — no executing consumer reads any of these paths.
   Those prose pointers now reference history, same status as any receipt citation.
+- 2026-08-28: P4 fourth cut — deleted the 112 deferred stale plan docs; flipped
+  48 plan carriers to PlanIsAuthorityOnly (registry row is what made each deleted
+  .md expected on disk — the a295e17415 precedent); stripped 45 comment-channel
+  pointers to deleted docs (13 files). DEFERRED to P5: string-field citations in
+  roadmap_authority.dag (~46 lines) and stale plan-carrier bodies — editing those
+  requires regenerating ROADMAP.md alongside. FOUND & FIXED IN PASSING: main @
+  e910a39 (#9612) does not build — duplicate shared-artifact wall-fill definitions
+  re-added over #9609 (E0428 x3, cli_run.rs); deduped on this branch; main needs
+  the same fix (its CI runs were still queued when found). Parse sweep advisory
+  count unchanged vs main (164). NEXT CANDIDATE ROUND: delete the 48 stale
+  authority-only plan carriers themselves (imports/rosters/doc_graph edits), and
+  the docs/plans doc-to-doc islands.
