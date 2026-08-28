@@ -545,16 +545,47 @@ fn required_floor_claim_cpu_safety_limit_ms() -> Int {
 // 2000ms wall clock condemns it, for the same work, in the same run. Sixteen rows were in that
 // state.
 //
-// THE DERIVATION, on the corrected population: over the rows at or under the 500ms CPU ceiling,
-// the maximum wall observed is 3859ms (run 33131296988) and 3782ms (run 33136345225). 8000ms
-// clears the worst observed legitimate payer by roughly 2x. It still catches a claim that is
-// genuinely blocked or stuck -- the specimen this clock exists for burned 504 SECONDS of wall
-// while its CPU never approached its limit -- so the wall retains its job.
+// 8000ms IS A DECLARED INTERIM, NOT A DERIVED CEILING, and the distinction is the whole content
+// of this block (ruling: snappy-dove-250, 2026-08-20, adjudicating between this branch and the
+// wall-accumulator change).
 //
-// NEXT-RUNG TRIGGER, because 8000ms is loose and the reason it must be loose is a defect rather
-// than a fact about witnesses: when fill is netted out of WALL as it already is out of CPU, a
-// fill payer's wall stops carrying work it does not own, this population disappears, and this
-// figure is re-derived downward against a population that no longer contains it.
+// WHY IT IS NOT DERIVED. The method was: take the worst wall observed among rows inside the CPU
+// budget, times a headroom factor. That method is blind here, and blind in the one direction it
+// needs to see. A fill payer's WALL carries the whole shared build while its CPU is netted to
+// ~0, so the rows that dominate the wall population are precisely the rows whose wall figure is
+// not about them. The maxima the sample reports -- 3859ms on run 33131296988, 3782ms on run
+// 33136345225 -- are real measurements of the wrong quantity, and doubling one of them produces
+// a figure that LOOKS grounded because the sample is real. The general form, which is worth more
+// than this constant: A DERIVATION WHOSE INPUT IS FILTERED BY THE QUANTITY BEING DERIVED CANNOT
+// SEE ITS OWN WORST CASE. Recording 8000 as derived would assert a soundness the derivation does
+// not have.
+//
+// WHY IT MAY STAND ANYWAY. The cause is now known and the fix is in no tree. Reverting to a
+// tighter figure before the fix exists would red this fold on sixteen rows whose CPU is
+// comfortably inside the ceiling, to satisfy a principle -- the purity trap (DESIGN §6). So the
+// figure stands as an interim envelope with a finite runway, which is what §4b(3) admits, and
+// not as a re-founded ceiling, which it is not.
+//
+// WHAT THE ACTUAL REPAIR IS, stated precisely because an earlier reading of it was wrong and
+// the wrong reading is the cheaper one to reach. It is NOT "subtract the existing fill
+// accumulator from wall as it is already subtracted from CPU". That accumulator records
+// `v1_interpreter::thread_cpu_nanos`, so subtracting it from a wall figure is a UNITS ERROR: it
+// under-subtracts, because wall fill >= CPU fill always and strictly more under contention
+// (visible in this file's own specimen -- cpu fill 3728 against wall 3782), and it destroys the
+// invariant that makes the split a measurement rather than a discount, since `marginal + fill =
+// measured` holds on CPU by construction and would be false on wall. Two defects being
+// structurally identical does not make their repairs identical.
+//
+// DISSOLUTION TRIGGER, naming the construction rather than the outcome, because §4b(3) rules
+// that a trigger naming less than the capability it restores will be satisfied while the
+// capability stays dead: this figure is re-derived when A PARALLEL WALL ACCUMULATOR EXISTS
+// ALONGSIDE THE EXISTING CPU FILL ACCUMULATOR -- one monotonic wall clock recorded at the same
+// two `record_shared_artifact_fill_cpu` bracket sites, netted against `wall_nanos` in
+// `v1_compiler.cli_run` `run_claim_measured`, so that each clock nets against its own fill and
+// `marginal + fill = measured` holds on both. Not when wall attribution is "fixed", which is
+// satisfiable by argument; when that accumulator lands and this fold measures against it. The
+// re-derivation is then read from a population that no longer carries other rows' fill, and is
+// expected to come back down substantially.
 fn required_floor_claim_wall_safety_limit_ms() -> Int {
   8000
 }
