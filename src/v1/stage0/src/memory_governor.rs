@@ -265,8 +265,9 @@ pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<Strin
 /// trigger: a dated uncensored whole-corpus peak on the `gunbc compile` route, taken with a
 /// binary built from the subject sha, that EXCEEDS this figure.
 ///
-/// The 7 GiB predecessor was a PROXY taken on the floor route at an older tree and was 64%
-/// under the measured peak, so this arm admitted hosts it would then be killed on. Its own
+/// The 7 GiB predecessor was a PROXY taken on the floor route at an older tree and sat 43.6%
+/// BELOW the measured peak — 7 GiB against 12.41 GiB, or 56.4% of it — so this arm admitted
+/// hosts it would then be killed on. Its own
 /// re-measure trigger fired on 2026-08-28: whole-corpus `--target dag` peaked at 13008052 kB
 /// and `--target rust` at 13005964 kB, both EXIT=1 (completed and refused, not killed) on an
 /// unthrottled host, with the binary built from the tree being compiled. 12.41 GiB rounded UP
