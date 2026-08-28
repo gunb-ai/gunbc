@@ -163,12 +163,6 @@ fn transition_phase_of_wire(text: String) -> TransitionPhase? {
   }
 }
 
-fn transition_phase_is_partial(phase: TransitionPhase) -> Bool {
-  match phase {
-    TransitionInForce => false
-    TransitionPartialLeft => true
-  }
-}
 
 // THE GUARD IS THE PROOF, AND IT HAS EXACTLY ONE MINT. `sole_constructor` means no other module can
 // write this record, so an operation that takes a `TransitionGuard` parameter cannot be called
@@ -756,20 +750,21 @@ fn residue_disposition(evidence: ResidueEvidence) -> ResidueDisposition {
       ], ""),
     }
   } else {
-    if transition_phase_is_partial(phase: evidence.record.phase) {
-      ResiduePartialDeclared {
-        candidate: evidence.record.candidate,
-        observed_head: evidence.observed_head,
-      }
-    } else {
-      if evidence.observed_head == evidence.record.candidate {
-        ResidueResolvable { candidate: evidence.record.candidate }
-      } else {
-        ResidueTransitionIncomplete {
+    match evidence.record.phase {
+      TransitionPartialLeft =>
+        ResiduePartialDeclared {
           candidate: evidence.record.candidate,
           observed_head: evidence.observed_head,
         }
-      }
+      TransitionInForce =>
+        if evidence.observed_head == evidence.record.candidate {
+          ResidueResolvable { candidate: evidence.record.candidate }
+        } else {
+          ResidueTransitionIncomplete {
+            candidate: evidence.record.candidate,
+            observed_head: evidence.observed_head,
+          }
+        }
     }
   }
 }

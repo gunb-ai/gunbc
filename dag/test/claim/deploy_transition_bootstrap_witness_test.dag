@@ -41,7 +41,6 @@ import gunbc.deploy_transition_bootstrap {
   bootstrap_quiesce_commands,
   bootstrap_restore_commands,
   transition_step_advance,
-  transition_step_admitted,
   transition_step_label,
 }
 
@@ -144,8 +143,18 @@ test fn a_refused_switch_states_that_quiescence_remains() -> Bool {
   )
 }
 
+// THE WITNESS HELPER MATCHES THE ADMISSION COPRODUCT DIRECTLY rather than routing through a Bool
+// exported from the production module. A `StepAdmission -> Bool` on the module surface collapsed two
+// different refusals -- sequenced wrong, versus continuing past the end -- into one `false`, and it
+// had no production consumer: only this file called it. Deleting it removes an unconsumed surface,
+// and matching here means a new admission arm fails to compile in the witness instead of silently
+// joining the false side.
 fn advance_ok(from: TransitionStep, to: TransitionStep) -> Bool {
-  transition_step_admitted(admission: transition_step_advance(from: from, to: to))
+  match transition_step_advance(from: from, to: to) {
+    StepAdmitted { step: _ } => true
+    StepOutOfOrder { expected: _, attempted: _ } => false
+    StepAfterCompletion { attempted: _ } => false
+  }
 }
 
 // THE WHOLE DECLARED ORDER IS ADMITTED, END TO END. This is the positive control for the refusals

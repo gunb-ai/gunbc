@@ -188,6 +188,21 @@ fn transition_step_label(step: TransitionStep) -> String {
   }
 }
 
+// WHERE A CRASH LEAVES THE HOST, per step, and the property that holds at every one of them: no
+// state below leaves an unguarded actuator over a tree that may be half-converged.
+//
+// After principal-admitted: nothing has been written at all -- no lease, no marker -- so a crash here
+// leaves the host exactly as it was. That is the whole reason this step is first.
+// After lease-held: nothing mutated; the lease file is residue, resolved by the clearance path in
+// gunbc.deploy_transition on evidence. After externally-quiesced: the units are disabled and stay
+// disabled across a reboot, so the dashboard is down -- an outage, and the SAFE side of this
+// mechanism, restored by re-running the deployment or by an operator abandonment plus a deliberate
+// enable, both of which leave a record. Through inhibition-persisted and release-installed both
+// mechanisms are in force at once, which is the only overlap in the sequence and is deliberate: the
+// marker takes over from external quiescence rather than replacing it in one uncovered instant.
+// After steady-state-adopted the units run again and refuse in-process, because the switch was
+// admitted only over a release that consults the marker. After inhibition-cleared only the lease is
+// outstanding, which is the cheapest residue in the sequence.
 fn transition_step_successor(step: TransitionStep) -> TransitionStep? {
   match step {
     StepPrincipalAdmitted => Present { value: StepLeaseHeld }
@@ -221,25 +236,3 @@ fn transition_step_advance(from: TransitionStep, to: TransitionStep) -> StepAdmi
   }
 }
 
-// WHERE A CRASH LEAVES THE HOST, per step, and the property that holds at every one of them: no
-// state below leaves an unguarded actuator over a tree that may be half-converged.
-//
-// After principal-admitted: nothing has been written at all -- no lease, no marker -- so a crash here
-// leaves the host exactly as it was. That is the whole reason this step is first.
-// After lease-held: nothing mutated; the lease file is residue, resolved by the clearance path in
-// gunbc.deploy_transition on evidence. After externally-quiesced: the units are disabled and stay
-// disabled across a reboot, so the dashboard is down -- an outage, and the SAFE side of this
-// mechanism, restored by re-running the deployment or by an operator abandonment plus a deliberate
-// enable, both of which leave a record. Through inhibition-persisted and release-installed both
-// mechanisms are in force at once, which is the only overlap in the sequence and is deliberate: the
-// marker takes over from external quiescence rather than replacing it in one uncovered instant.
-// After steady-state-adopted the units run again and refuse in-process, because the switch was
-// admitted only over a release that consults the marker. After inhibition-cleared only the lease is
-// outstanding, which is the cheapest residue in the sequence.
-fn transition_step_admitted(admission: StepAdmission) -> Bool {
-  match admission {
-    StepAdmitted { step: _ } => true
-    StepOutOfOrder { expected: _, attempted: _ } => false
-    StepAfterCompletion { attempted: _ } => false
-  }
-}
