@@ -113,10 +113,25 @@ import gunbc.guarantee_rung_drop {
 // wrong rows: only the claim arriving FIRST at a given source absorbs the fill, so some of
 // these are legitimately over the ceiling on their own marginal cost. It is also NOT a bound on
 // the general class -- any row dominated by another unbracketed shared build is miswarded and
-// invisible here. `both_closure_edge_index` is the obvious next candidate (the ~28s artifact
-// `v2.workflow.required_floor`'s own header describes, and the source of the 57193ms
-// qualified_spelling specimen); its treatment is UNVERIFIED and is asserted in neither
-// direction.
+// invisible here.
+//
+// `both_closure_edge_index` IS NOT SUCH A BUILD, and this clause previously called it the
+// obvious next candidate and left it unverified. Settled, and confirmed here by code read rather
+// than relayed: `v1_compiler.cli_run` `run_required_floor` calls `warm_bare_reference_edge_index`
+// TWICE during strict-preparation -- once over the source roots and once over
+// `witness_layer_roots()` -- and reports the cost as `[floor-phase] phase=shared-index-warm`. So
+// both index identities the fold can reach are built and billed BEFORE any claim window opens,
+// which is why that artifact needs no bracket and why the ~28s it costs reaches no row on this
+// roster. (Runtime confirmation on run 33135617689 is sleek-cat-45's; the warm sites are this
+// carrier's own reading.) Naming it as a suspect here would have sent the next reader to measure
+// a thing that is already correct.
+//
+// THE WELL-POSED SUCCESSOR IS NOT A ROSTER QUESTION, it is a construction one, and it is
+// sleek-cat-45's framing: an artifact is either PREPARATION-FORCEABLE, in which case it is
+// warmed and billed to preparation as the edge index is, or CLAIM-FORCED-ONLY, in which case its
+// fill is netted out and the split reported as `compile_dag_rust_emit_check` does. The census
+// memo was in NEITHER arm. That "neither" is a WRITABLE STATE is the actual defect -- gunbc#9560
+// closes one instance of it and the next memoization reintroduces it.
 //
 // WHY THIS MATTERS MORE FOR THIS ROSTER THAN FOR AN ORDINARY MEASUREMENT: a row frozen for cost
 // that belongs to a shared build cannot take the exit below, because the exit is "make it
