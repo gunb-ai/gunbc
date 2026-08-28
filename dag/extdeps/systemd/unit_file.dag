@@ -126,6 +126,7 @@ type SystemdServiceDirective
   | Restart { policy: NonEmptyStr }
   | Environment { assignment: NonEmptyStr }
   | EnvironmentFile { path: NonEmptyStr }
+  | EnvironmentFileIfPresent { path: NonEmptyStr }
   | WorkingDirectory { path: NonEmptyStr }
   | ServiceUser { name: NonEmptyStr }
   | ServiceGroup { name: NonEmptyStr }
@@ -255,6 +256,28 @@ fn systemd_io_scheduling_class_wire(scheduling_class: SystemdIoSchedulingClass) 
 // `Environment=`, not a spelling of it -- one names a file systemd reads, the other carries an
 // assignment inline -- so they are two variants and a consumer cannot reach one meaning the other.
 
+// `EnvironmentFileIfPresent` is systemd's `-` prefix, and it is a SECOND VARIANT rather than a
+// `required: Bool` on the first for the reason this file already applies to `OnBootSec` versus
+// `OnCalendar`: the two forms have different semantics, and fusing them would put the distinction
+// back into a flag. Required means a missing file FAILS THE UNIT; optional means systemd starts it
+// anyway with the assignments unset.
+//
+// THE OPTIONAL FORM IS NOT THE POLICY ESCAPE HATCH DESIGN SECTION 5 FORBIDS, and the distinction is
+// what the file CARRIES rather than which directive spells it. `gunbc.host_disk_reclaim_units`
+// (reclaim_omitted_environment_file_note) drops `EnvironmentFile=-` precisely because that file
+// would carry THRESHOLDS -- host-local values overriding gates this repository owns, one edit from
+// silently relaxing them. A file carrying a CREDENTIAL overrides no gate: its absence does not let
+// anything proceed as though a refusal had not fired, because the consumer probes for the credential
+// and refuses on its own terms.
+//
+// Which form to choose is therefore decided by WHERE THE REFUSAL LIVES, not by which is stricter
+// sounding. Where the consumer adjudicates absence itself, the required form is strictly worse: it
+// converts a typed, located, recorded refusal into a unit that never starts and writes no receipt at
+// all, so a missing credential and a broken binary render identically to every reader downstream.
+// That is the execution-provenance loss this repository names -- an unreached stage rendering as a
+// stage that ran -- bought in exchange for a strictness the consumer was already providing. Where no
+// such consumer exists, the required form is correct and this variant is the wrong one to reach for.
+
 // A TIMER'S DIRECTIVES, which is the section that made the unit-type coproduct below necessary.
 //
 // `TimerUnit` renders as `Unit=` -- the service this timer activates. It is named for what it is
@@ -314,6 +337,7 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     Restart { policy: v } => join(["Restart=", v as String], "")
     Environment { assignment: v } => join(["Environment=", v as String], "")
     EnvironmentFile { path: v } => join(["EnvironmentFile=", v as String], "")
+    EnvironmentFileIfPresent { path: v } => join(["EnvironmentFile=-", v as String], "")
     WorkingDirectory { path: v } => join(["WorkingDirectory=", v as String], "")
     ServiceUser { name: v } => join(["User=", v as String], "")
     ServiceGroup { name: v } => join(["Group=", v as String], "")

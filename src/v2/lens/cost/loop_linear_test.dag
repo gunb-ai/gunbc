@@ -1,5 +1,6 @@
 module v2.test.lens_cost.loop_linear
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { LinearCost, cost_lens }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -12,20 +13,19 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.witness { Holds }
 
 data loop_linear_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_linear_body_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data loop_linear_measure_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_linear_measure_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data loop_linear_body: Node = Node {
@@ -33,7 +33,7 @@ data loop_linear_body: Node = Node {
   children: [
     Edge { label: Positional, target: loop_linear_body_leaf }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data loop_linear_input: Node = Node {
@@ -42,7 +42,7 @@ data loop_linear_input: Node = Node {
     Edge { label: Positional, target: loop_linear_body },
     Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_measure_leaf }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 test fn loop_linear_claim_holds() -> Bool {

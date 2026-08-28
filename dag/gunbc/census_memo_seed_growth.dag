@@ -1,0 +1,55 @@
+module gunbc.census_memo_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the hand Rust added by memoizing compile_dag_diagnostic_census.
+// Authored because gunbc.seed_growth_admission seed_growth_forward_freeze_policy_note makes
+// unenumerated hand growth in src/v1 a stop-line, and this change adds two hand items to
+// v1_compiler.cli_run. Requested by review 56854 on gunbc#9428.
+//
+// WHAT THE CHANGE IS, AND WHAT IT IS NOT. It is a CACHE on an existing host builtin, not new
+// compiler infrastructure: CompileDiagnosticCensus, CompileDiagnosticCensusRow and
+// compile_dag_diagnostic_census all pre-exist on main, and this branch adds no arm, no
+// diagnostic class and no decision to any of them. Measured against the merge base, the whole
+// cli_run delta is 37 non-comment added lines, of which 36 are the memo.
+//
+// WHY IT WAS ADDED. compile_dag_rust_emit_check was already memoized and this sibling was not,
+// so a witness asking two QUESTIONS about one source paid two full compiles of it --
+// test.claim.callable_candidate_ambiguity_witness
+// .neither_green_source_refuses_and_neither_mis_resolves makes four census calls over two
+// distinct sources. That is the DESIGN section 6 bare-minimum-cost class, and its n stopped
+// being small: the row reached 5437ms CPU against the 5000ms
+// required_floor_claim_cpu_safety_limit_ms, which is a FAIL-STOP protecting the executor. The
+// admissible repair is to stop recomputing, never to raise the line.
+//
+// WHY IT IS RUST AND NOT .dag, which is the question this receipt exists to answer honestly.
+// The cached SUBJECT is a host builtin: compile_dag_diagnostic_census runs
+// v1_compiler_compile compile_sources synchronously in the seed, and the substrate has no
+// representation of it to attach a cache to. A .dag-side cache would have to key on a compile
+// the substrate cannot name, which is a layer inversion rather than a migration -- the same
+// boundary gunbc.claim_unwind_seed_growth records one seam over. The memo is therefore
+// co-located with the builtin it caches, and it mirrors the sibling memo's discipline exactly
+// rather than minting a second caching authority beside it (DESIGN section 3).
+//
+// WHAT IS NOT NETTED. compile_dag_diagnostic_census itself is ExistingSeedItemModified per
+// gunbc.seed_growth_admission SeedGrowthChangeDisposition -- it keeps its name and signature and
+// its former body moved to the _uncached item below -- so it is not counted as an addition. The
+// same disposition covers the one added counter line in src/v1/stage0/src/bin/claim_executor.rs,
+// which adds no declaration.
+//
+// HAND-ITEM DELTA: +2 citable declarations, both in v1_compiler.cli_run. Three module-level
+// statics (the thread-local memo and its two counters) are added and are NOT citable
+// declarations; they are named here rather than omitted, because a receipt that counts only what
+// the roster can cite would under-report its own growth.
+data census_memo_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "compile_dag_diagnostic_census_memo_counts", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "compile_dag_diagnostic_census_uncached", field: WholeDeclaration }
+  ],
+  reason: "Caching a host builtin is a property of the host that runs it. compile_dag_diagnostic_census_uncached is the unmemoized body, split out so the memoized entry point and the compile it caches stay one authority; compile_dag_diagnostic_census_memo_counts reports hits and misses so the memo's effect is measured rather than asserted -- both halves, because a hit count with no denominator is not a measurement. Neither decides anything: the census vocabulary they carry is unchanged and pre-existing, and the severity policy stays in compile_clean_diagnostic_is_hard.\n\nENUMERATED RATHER THAN COUNTED. Both are free functions, so the citable count and the real count are both two; nothing lands in seed_growth_uncitable_item_keys. The three added statics are not declarations and are disclosed in this file's header instead.\n\nPURITY IS THE REASON THE SECOND ITEM EXISTS AT ALL. The memo is armed only under the floor's prepared-inventory snapshot and keyed on the source TOGETHER WITH that inventory's content digest, because build_module_path_index_from_witness_roots reads those bytes and the census is a function of the corpus as well as of the source. Outside the guard there is no snapshot and the call falls through to the uncached item, so a hit can never assert something about disk that nothing established.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete both when compile_dag_diagnostic_census and its sibling compile_dag_rust_emit_check are MODELED operations rather than host builtins -- at which point their cache is the substrate's own Realization memoization on a content hash (DESIGN section 2, one kernel spanning resolve-cost to sccache) and a hand-rolled per-builtin map is exactly the duplicated caching authority that carrier dissolves. The two memos migrate together or not at all: leaving one hand-rolled beside a modeled sibling would be the fork this receipt's own single-authority argument refuses.",
+  current_boundary: "Confined to one call site and one process. The memo is thread-local, is consulted only inside compile_dag_diagnostic_census, and is unreachable outside the floor's prepared-inventory guard -- so no caller outside the required floor observes it at all. It changes no verdict: a hit returns the value the uncached body returned for the identical source under the identical inventory. A MISS's fill interval is recorded through v1_compiler.cli_run record_shared_artifact_fill_cpu, the same accumulator the sibling emit-check memo writes, so the claim that pays a census compile is charged its marginal half and the fill is reported beside it. That bracket was NOT here when this receipt was first authored -- the attribution landed on the emit-check memo alone -- and the omission is what made test.claim.callable_candidate_ambiguity_witness .neither_green_source_refuses_and_neither_mis_resolves refuse the floor at 5812ms against the 5000ms fail-stop on main run 33131296988, having paid for two shared compiles that two later claims then read free. One accounting rule with two homes, applied in one of them, is the fork this receipt's own single-authority argument refuses."
+}

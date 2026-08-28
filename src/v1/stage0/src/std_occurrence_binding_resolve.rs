@@ -382,7 +382,7 @@ pub fn resolve_reference_occurrence_binding_validated(
     refusal: refusal.clone(),
 }),
     None => Rc::new(OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided {
-    result: occurrence_binding_from_candidates(binding_occurrence_from_reference(reference.clone()), build.candidates.clone()),
+    result: crate::std_occurrence_binding::occurrence_binding_from_candidates(binding_occurrence_from_reference(reference.clone()), build.candidates.clone()),
 }),
 }
             }
@@ -395,7 +395,9 @@ pub fn resolve_reference_occurrence_binding(
     occurrence: OccurrenceId,
     supplied_candidates: Rc<Vec<OccurrenceId>>,
 ) -> Rc<OccurrenceReferenceBindingOutcome> {
-    match (*occurrence_transport_validate(transport.clone())).clone() {
+    match (*crate::std_occurrence_identity::occurrence_transport_validate(transport.clone()))
+        .clone()
+    {
         OccurrenceTransportValidation::OccurrenceTransportRefused {
             refusal: refusal, ..
         } => Rc::new(

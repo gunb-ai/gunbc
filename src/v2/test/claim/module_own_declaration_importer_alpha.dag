@@ -1,0 +1,21 @@
+module v2.test.claim.module_own_declaration_importer_alpha
+
+import v2.test.claim.module_own_declaration_peer_alpha { shared_anchor }
+import v2.std.integer { Int }
+
+// THE ALPHA-NAMING IMPORTER, AND IT EXISTS SO THE IMPORT ROW CAN BE ORDER-INDEPENDENT.
+//
+// One importer cannot be a discriminating probe for the import tier: whichever peer happens to
+// hold the shared bare slot answers correctly for the importer that named THAT peer, so a single
+// row is green for the wrong reason on any path where the slot went its way. Measured, not
+// reasoned -- an earlier revision of this fixture imported only from beta and returned 22 with
+// NO tier present at all, because `gunbc run` builds its indexes with no module order and the
+// bare slot is therefore last-write-wins, which beta won by being imported second. Under the
+// floor's first-write-wins order the same row would have discriminated. A probe whose verdict
+// depends on which resolution path is running is not a probe.
+//
+// So this module names ALPHA and the witness names BETA. Exactly one bare slot exists, so under
+// the defect at least one of the two must read the other peer's value, whichever won it.
+fn via_alpha() -> Int {
+  shared_anchor
+}

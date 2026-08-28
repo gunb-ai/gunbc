@@ -1,5 +1,6 @@
 module v2.test.claim.locality_affinity_witness
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.machine_shape {
   DomainId,
   ExecutionDomain,
@@ -14,7 +15,7 @@ import v2.std.collection { List }
 import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode, content_hash }
+import v2.std.node { Atom, Node, TypeNode, content_hash }
 import v2.workflow.locality_affinity {
   AffinityClaim,
   AffinityFlowRefused,
@@ -39,19 +40,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data locality_shared_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^locality_shared } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data locality_consumer_a_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^locality_consumer_a } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data locality_consumer_b_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^locality_consumer_b } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data locality_shared_hash: ContentHash = Fnv1a64(content_hash(n: locality_shared_node))
@@ -106,7 +107,7 @@ data locality_flows_with_unresolved: List<OperandFlowRow> = [locality_flow_a, lo
 data locality_other_shared_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^locality_other_shared } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data locality_other_shared_hash: ContentHash = Fnv1a64(content_hash(n: locality_other_shared_node))

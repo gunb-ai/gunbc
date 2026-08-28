@@ -1,7 +1,7 @@
 module gunbc.plans.disposition_carrier
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell }
 
@@ -125,6 +125,7 @@ fn disposition_carrier_body() -> List<MarkdownBlock> {
 }
 
 data disposition_carrier_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "disposition-carrier",
   title: "Plan — the `Disposition` carrier (confront the skipped modeling decisions)",
   body: disposition_carrier_body(),

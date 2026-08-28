@@ -1,7 +1,7 @@
 module gunbc.plans.compile_clean_forcecheck
 
 import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
+import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanProjectsCommittedMarkdown }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, AlignRight }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
 
@@ -93,6 +93,7 @@ fn compile_clean_forcecheck_body() -> List<MarkdownBlock> {
 }
 
 data compile_clean_forcecheck_plan: Plan = Plan {
+  projection: PlanProjectsCommittedMarkdown,
   slug: "compile-clean-forcecheck",
   title: "Plan — compile-clean gate force-check (ROADMAP §1 floor-coverage / §0 inference fail-open)",
   body: compile_clean_forcecheck_body(),

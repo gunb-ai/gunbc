@@ -1,0 +1,64 @@
+module gunbc.fabric_cell_subject
+
+import std.types { String, Bool }
+import std.disposition { Disposition, SingleAuthority }
+import product.placement_supply { HostIdentity }
+import gunbc.ownership { Ownership, Owned, Ensured }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+
+data fabric_cell_subject_authority_disposition: Disposition = SingleAuthority
+
+// THIS MODULE EXISTS AT THIS GRAIN SO THAT ONE TOTAL MATCH CAN SERVE BOTH FAMILIES WITHOUT A CYCLE.
+// The slot-scoped family (gunbc.fabric_cell_converge) and the host-scoped one
+// (gunbc.fabric_cell_host_root) must answer ownership from the SAME function, or adding a subject
+// kind fails to compile in one of them and silently inherits a default in the other. Putting the
+// subject in either family would make the other import it and the first import it back, which
+// DESIGN section 3's acyclicity law forbids -- so the shared fact lives upstream of both and
+// neither depends on its sibling.
+//
+// IT IS NOT A SPELLING OF FabricCellNamespace, AND THE DIFFERENCE IS DECIDABLE RATHER THAN
+// STYLISTIC. That coproduct answers WHAT DO I ENUMERATE TO PROVE THIS ADDRESS ABSENT -- a
+// container. This one answers WHO MAY TEAR THIS DOWN -- a subject. They coincide for two of the
+// three slot addresses and diverge for the third: fabric_cell_address_namespace maps
+// FabricCellRootAddress, which is per-slot and created by this family, onto the SHARED
+// FabricCellsRootNamespace, because listing the shared parent is how one slot's cell root is proven
+// absent. Deriving ownership from the namespace would therefore make every slot's cell root
+// Ensured and permanently un-tearable. Two of three agreeing is exactly the sample size that makes
+// a coincidence read as an identity.
+type FabricCellResourceSubject
+  = FabricCellHostScope { host: HostIdentity }
+  | FabricCellSlotScope { slot: RunnerSlotIdentity }
+
+// OWNERSHIP IS PROJECTED FROM THE SUBJECT AND THE MATCH IS THE WHOLE POINT, not the answer it
+// currently gives. gunbc.ownership is the single Owned|Ensured authority and records that Owned is
+// teardown-eligible while Ensured constrains teardown only; gunbc.membership_reconcile turns that
+// into a real wall, answering RemovalRefused { cause: MemberNotOwned } for an Ensured member.
+//
+// WHAT THIS REPLACES, AND WHY A CORRECT ANSWER WAS NOT ENOUGH. The prior authority was
+//
+//   fn fabric_cell_member_ownership(member) -> Optional<Ownership> { Present { value: Owned } }
+//
+// a CONSTANT function that never reads its parameter. It was not merely an over-broad claim: there
+// was no arm to add, so a host-scoped subject could arrive and inherit Owned without anything going
+// non-exhaustive and without anything failing to compile. Total over its input by not reading it,
+// which is the blind-one-level-down class in its purest form. Here a fourth subject kind fails to
+// compile at this function, so the classification cannot be inherited by default.
+//
+// THE HAZARD THAT MAKES IT WORTH A WALL. /opt/fabric-cells is one directory shared by every cell on
+// the machine. A host that stopped serving fabric execution would produce an empty desired set; an
+// owned host root would then reconcile as an observed extra and select removal of the directory
+// containing every cell on the host. No step in that chain is a mistake, which is why a policy
+// field saying do-not-remove would have been the wrong repair.
+fn fabric_cell_subject_ownership(subject: FabricCellResourceSubject) -> Ownership {
+  match subject {
+    FabricCellHostScope { host: _ } => Ensured
+    FabricCellSlotScope { slot: _ } => Owned
+  }
+}
+
+fn fabric_cell_subject_is_teardown_eligible(subject: FabricCellResourceSubject) -> Bool {
+  match fabric_cell_subject_ownership(subject: subject) {
+    Owned => true
+    Ensured => false
+  }
+}

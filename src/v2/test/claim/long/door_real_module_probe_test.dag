@@ -19,7 +19,7 @@ fn quad_qn_node(seg: Symbol) -> Node {
       Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   )
@@ -42,11 +42,11 @@ fn quad_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Nod
         target: Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -67,11 +67,11 @@ fn quad_subject_with_import_use() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^dag_c3_surface_sugar_service } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

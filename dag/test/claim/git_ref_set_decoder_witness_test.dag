@@ -1,0 +1,182 @@
+module test.claim.git_ref_set_decoder_witness
+
+import std.types { String, List, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.git.enumeration {
+  GitRefIdentity,
+  GitRefSetObservation,
+  GitRefSetObserved,
+  GitRefSetReadRefused,
+  GitRefSetUndecodable,
+  git_ref_set_observation_of,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data git_ref_set_decoder_construction_justification: String = "Pure decoder controls over authored wire text. These run in the ordinary floor because the subject is the DECODE, which is a total function of bytes the test supplies -- no repository, no subprocess, no host. What they deliberately do NOT establish is that git.Core.ForEachRefIn EMITS these bytes for any given repository state; that is a transport claim, it cannot execute inside the hermetic fold (a shell operation is refused at shell.Test.IsExecutable before the subprocess is reached, and mocking the result would fabricate the very observation the claim is about), and it is owned by a separate wet record/replay matrix. Reporting these controls as coverage for the transport would be exactly the rung inflation DESIGN section 4b forbids."
+
+data a_oid: String = "1111111111111111111111111111111111111111"
+data b_oid: String = "2222222222222222222222222222222222222222"
+
+fn observed_refs(observation: GitRefSetObservation) -> List<GitRefIdentity> {
+  match observation {
+    GitRefSetObserved { refs: refs } => refs
+    GitRefSetReadRefused { exit_code: _, stderr: _ } => []
+    GitRefSetUndecodable { record_index: _, raw_record: _, reason: _ } => []
+  }
+}
+
+fn is_undecodable(observation: GitRefSetObservation) -> Bool {
+  match observation {
+    GitRefSetUndecodable { record_index: _, raw_record: _, reason: _ } => true
+    GitRefSetObserved { refs: _ } => false
+    GitRefSetReadRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+fn ref_record(name: String, oid: String, symref: String) -> String {
+  concat(concat(name, concat("\0", oid)), concat("\0", symref))
+}
+
+// An empty ref namespace exits ZERO with empty stdout. This must observe the empty set rather than
+// refuse -- the positive control that "no refs" is an answer and not a failure.
+test fn empty_ref_namespace_observes_the_empty_set() -> Bool {
+  let observation = git_ref_set_observation_of(raw: "", exit_code: 0, stderr: "")
+  !is_undecodable(observation: observation) && count(observed_refs(observation: observation)) == 0
+}
+
+// The ordinary case, and the one that pins the trailing-symref field as DATA: git expands %(symref)
+// to nothing for a non-symbolic ref, so the record ends with a NUL and an empty third field.
+test fn ordinary_ref_decodes_with_an_empty_symref() -> Bool {
+  let raw = concat(ref_record(name: "refs/heads/main", oid: a_oid, symref: ""), "\n")
+  match observed_refs(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: "")).first() {
+    Present { value: identity } => identity.refname == "refs/heads/main" && identity.symref == ""
+    Absent => false
+  }
+}
+
+test fn symbolic_ref_retains_its_target() -> Bool {
+  let raw = concat(ref_record(name: "HEAD", oid: a_oid, symref: "refs/heads/main"), "\n")
+  match observed_refs(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: "")).first() {
+    Present { value: identity } => identity.symref == "refs/heads/main"
+    Absent => false
+  }
+}
+
+// THE DISCRIMINATING CONTROL FOR --sort=refname. Two well-formed records in DESCENDING order decode
+// individually and must still refuse as a set. If this decoder sorted instead of validating, this
+// would go green and the transport's --sort=refname pin would be untested decoration -- deleting the
+// flag would break nothing observable. This test is the reason the pin is falsifiable at all.
+test fn descending_ref_names_refuse_rather_than_being_sorted() -> Bool {
+  let raw = concat(
+    concat(ref_record(name: "refs/heads/zebra", oid: a_oid, symref: ""), "\n"),
+    concat(ref_record(name: "refs/heads/alpha", oid: b_oid, symref: ""), "\n"),
+  )
+  is_undecodable(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
+// The positive control ON the plant: the same two records in ASCENDING order must be accepted, so
+// the refusal above is caused by the ORDER and not by the two-record shape.
+test fn ascending_ref_names_are_accepted() -> Bool {
+  let raw = concat(
+    concat(ref_record(name: "refs/heads/alpha", oid: a_oid, symref: ""), "\n"),
+    concat(ref_record(name: "refs/heads/zebra", oid: b_oid, symref: ""), "\n"),
+  )
+  count(observed_refs(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: ""))) == 2
+}
+
+fn refname_at(refs: List<GitRefIdentity>, index: Int) -> String {
+  match refs.skip(n: index).first() {
+    Present { value: identity } => identity.refname
+    Absent => ""
+  }
+}
+
+// The decoder accumulates by cons and turns the list exactly once at the end, so the accepted refs
+// must come back in git's EMITTED order rather than reversed. Nothing else in this lane can see
+// that: every other accepting witness asserts a COUNT, which is invariant under reversal. Without
+// this control the final reverse would be unwitnessed machinery -- specification without execution.
+test fn accepted_refs_preserve_the_emitted_order() -> Bool {
+  let raw = concat(
+    concat(ref_record(name: "refs/heads/alpha", oid: a_oid, symref: ""), "\n"),
+    concat(ref_record(name: "refs/heads/zebra", oid: b_oid, symref: ""), "\n"),
+  )
+  let refs = observed_refs(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+  refname_at(refs: refs, index: 0) == "refs/heads/alpha"
+    && refname_at(refs: refs, index: 1) == "refs/heads/zebra"
+}
+
+// Strict rather than non-decreasing: a repeated ref name is a duplicate, not a tie.
+test fn duplicate_ref_name_refuses() -> Bool {
+  let raw = concat(
+    concat(ref_record(name: "refs/heads/main", oid: a_oid, symref: ""), "\n"),
+    concat(ref_record(name: "refs/heads/main", oid: b_oid, symref: ""), "\n"),
+  )
+  is_undecodable(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
+test fn malformed_object_id_refuses() -> Bool {
+  let raw = concat(ref_record(name: "refs/heads/main", oid: "not-a-hex-object-id", symref: ""), "\n")
+  is_undecodable(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
+test fn wrong_field_count_refuses() -> Bool {
+  let raw = concat(concat("refs/heads/main", concat("\0", a_oid)), "\n")
+  is_undecodable(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
+// A single malformed record refuses the WHOLE observation. A decoder that skipped it would report a
+// smaller ref set, which a set-identity consumer reads as a deleted ref.
+test fn one_malformed_record_among_valid_refuses_the_whole_observation() -> Bool {
+  let raw = concat(
+    concat(ref_record(name: "refs/heads/alpha", oid: a_oid, symref: ""), "\n"),
+    concat(concat("refs/heads/beta", concat("\0", "bad-oid")), concat("\0", "\n")),
+  )
+  is_undecodable(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+
+// A nonzero exit is git DECLINING, not an empty ref set, and the code and stderr must survive so the
+// caller's remedy is about the repository rather than about the decode.
+test fn nonzero_exit_refuses_the_read_and_preserves_its_cause() -> Bool {
+  match git_ref_set_observation_of(raw: "", exit_code: 128, stderr: "not a git repository") {
+    GitRefSetReadRefused { exit_code: code, stderr: detail } =>
+      code == 128 && detail == "not a git repository"
+    GitRefSetObserved { refs: _ } => false
+    GitRefSetUndecodable { record_index: _, raw_record: _, reason: _ } => false
+  }
+}
+
+// THE COMPARATOR'S RELATION TO GIT'S, MECHANISED RATHER THAN ONLY ASSERTED. The ordering witnesses
+// above establish that the check refuses a decreasing pair; they say nothing about WHICH ORDER it is
+// enforcing, and that is the fact the enumeration annotation actually claims. git orders refnames
+// BYTEWISE; string_is_lexicographically_before compares CODE POINTS; the two agree over well-formed
+// UTF-8 because that encoding is order-preserving.
+//
+// THE DISCRIMINATING PAIR IS ASCII-vs-MULTIBYTE, chosen because it separates our comparator from the
+// one plausible wrong replacement. "refs/heads/z" and "refs/heads/e-acute" (U+00E9, bytes C3 A9):
+//
+//   bytes       0x7A < 0xC3   -> z first
+//   code points 0x7A < 0xE9   -> z first
+//   locale collation           -> e-acute sorts near "e", BEFORE z
+//
+// So a locale-aware comparator disagrees with git on this exact pair, and it is the substitution the
+// annotation warns about because it looks like an improvement. These two rows fail if anyone makes
+// it: the ascending row would refuse and the descending row would be accepted. A pair of ASCII names
+// could not have caught it -- every comparator agrees there, which is why the existing rows above,
+// correct as they are, do not cover this claim.
+test fn a_multibyte_refname_orders_after_ascii_as_git_orders_it() -> Bool {
+  let raw = concat(
+    concat(ref_record(name: "refs/heads/z", oid: a_oid, symref: ""), "\n"),
+    concat(ref_record(name: "refs/heads/é", oid: b_oid, symref: ""), "\n"),
+  )
+  count(observed_refs(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: ""))) == 2
+}
+
+test fn a_multibyte_refname_before_ascii_refuses_as_out_of_order() -> Bool {
+  let raw = concat(
+    concat(ref_record(name: "refs/heads/é", oid: a_oid, symref: ""), "\n"),
+    concat(ref_record(name: "refs/heads/z", oid: b_oid, symref: ""), "\n"),
+  )
+  is_undecodable(observation: git_ref_set_observation_of(raw: raw, exit_code: 0, stderr: ""))
+}
+

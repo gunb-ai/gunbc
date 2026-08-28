@@ -18,13 +18,13 @@ type ComplexityDominanceClaim {
 data algebra_receipts_x: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^algebra_receipts_x_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data algebra_receipts_y: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^algebra_receipts_y_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data polynomial_degree_two_receipt: PolynomialDegree = PolynomialDegree {

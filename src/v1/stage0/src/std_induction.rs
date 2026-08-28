@@ -149,13 +149,15 @@ pub fn shrink_factor_eq(a: Rc<ShrinkFactor>, b: Rc<ShrinkFactor>) -> bool {
         },
         ShrinkFactor::ConstantShrink { steps: sa, .. } => match (*b.clone()).clone() {
             ShrinkFactor::ConstantShrink { steps: sb, .. } => {
-                (positive_descent_count(sa.clone()) == positive_descent_count(sb.clone()))
+                (crate::std_termination::positive_descent_count(sa.clone())
+                    == crate::std_termination::positive_descent_count(sb.clone()))
             }
             _ => false,
         },
         ShrinkFactor::ProportionalShrink { divisor: da, .. } => match (*b.clone()).clone() {
             ShrinkFactor::ProportionalShrink { divisor: db, .. } => {
-                (proportional_divisor_to_int(da.clone()) == proportional_divisor_to_int(db.clone()))
+                (crate::std_termination::proportional_divisor_to_int(da.clone())
+                    == crate::std_termination::proportional_divisor_to_int(db.clone()))
             }
             _ => false,
         },
@@ -472,7 +474,7 @@ pub fn sub_value_to_lowering_target(relation: Rc<SubValueRelation>) -> Option<Rc
             ..
         } => Some(Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Descend,
-            bound: tree_size_bound(f.field_name.clone()),
+            bound: crate::std_computation::tree_size_bound(f.field_name.clone()),
             evidence: DescentEvidence::Strict,
             factor: Some(fac.clone()),
         })),
@@ -621,7 +623,8 @@ pub fn cost_poly(param: String, degree: i64) -> Rc<CostBound> {
                 }),
             })
         } else {
-            match positive_descent_amount_from_positive_int(degree.clone()) {
+            match crate::std_termination::positive_descent_amount_from_positive_int(degree.clone())
+            {
                 Some(deg) => Rc::new(CostBound::AtomicBound {
                     cost: Rc::new(AtomicCost::PolyCost {
                         param: param.clone(),
@@ -640,7 +643,7 @@ pub fn cost_root(param: String, k: i64) -> Rc<CostBound> {
     if (k.clone() <= 0) {
         Rc::new(CostBound::ErrorBound)
     } else {
-        match positive_descent_amount_from_positive_int(k.clone()) {
+        match crate::std_termination::positive_descent_amount_from_positive_int(k.clone()) {
             Some(rw) => Rc::new(CostBound::AtomicBound {
                 cost: Rc::new(AtomicCost::PolyCost {
                     param: param.clone(),
@@ -712,7 +715,7 @@ pub fn bounded_int_pow_exponent(k: i64) -> Option<i64> {
     if (k.clone() < 0) {
         None
     } else {
-        if (k.clone() > peano_literal_materialization_cap()) {
+        if (k.clone() > crate::std_termination::peano_literal_materialization_cap()) {
             None
         } else {
             Some(k.clone())
@@ -747,13 +750,17 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
                                 }
                             } else {
                                 match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
-                                    Some(prev) => match checked_int_optional(checked_int_multiply(
-                                        base.clone(),
-                                        prev.clone(),
-                                    )) {
-                                        Some(prod) => Some(prod.clone()),
-                                        None => None,
-                                    },
+                                    Some(prev) => {
+                                        match crate::std_checked_arithmetic::checked_int_optional(
+                                            crate::std_checked_arithmetic::checked_int_multiply(
+                                                base.clone(),
+                                                prev.clone(),
+                                            ),
+                                        ) {
+                                            Some(prod) => Some(prod.clone()),
+                                            None => None,
+                                        }
+                                    }
                                     None => None,
                                 }
                             }
@@ -778,22 +785,28 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
         if (power.clone() >= argument.clone()) {
             break Some(k.clone());
         } else {
-            match checked_int_optional(checked_int_multiply(power.clone(), base.clone())) {
+            match crate::std_checked_arithmetic::checked_int_optional(
+                crate::std_checked_arithmetic::checked_int_multiply(power.clone(), base.clone()),
+            ) {
                 None => {
                     break None;
                 }
-                Some(next_power) => match checked_int_optional(checked_int_add(k.clone(), 1)) {
-                    None => {
-                        break None;
+                Some(next_power) => {
+                    match crate::std_checked_arithmetic::checked_int_optional(
+                        crate::std_checked_arithmetic::checked_int_add(k.clone(), 1),
+                    ) {
+                        None => {
+                            break None;
+                        }
+                        Some(k1) => {
+                            let __tco_0 = k1.clone();
+                            let __tco_1 = next_power.clone();
+                            k = __tco_0;
+                            power = __tco_1;
+                            continue;
+                        }
                     }
-                    Some(k1) => {
-                        let __tco_0 = k1.clone();
-                        let __tco_1 = next_power.clone();
-                        k = __tco_0;
-                        power = __tco_1;
-                        continue;
-                    }
-                },
+                }
             }
         }
     }
@@ -821,46 +834,37 @@ pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
                         } else {
                             if (a.clone() == b_to_d.clone()) {
                                 match d_ok.clone() {
-                                    0 => cost_log(n.clone()),
-                                    _ => match positive_descent_amount_from_positive_int(
-                                        d_ok.clone(),
-                                    ) {
-                                        Some(deg) => Rc::new(CostBound::ProductBound {
-                                            factors: Rc::new(vec![
-                                                Rc::new(AtomicCost::PolyCost {
-                                                    param: n.clone(),
-                                                    exponent: Rc::new(
-                                                        PolynomialExponent::IntegerExpPos {
-                                                            degree: deg.clone(),
-                                                        },
-                                                    ),
-                                                }),
-                                                Rc::new(AtomicCost::LogCost { param: n.clone() }),
-                                            ]),
-                                        }),
-                                        None => Rc::new(CostBound::ErrorBound),
-                                    },
-                                }
+    0 => cost_log(n.clone()),
+    _ => match crate::std_termination::positive_descent_amount_from_positive_int(d_ok.clone()) {
+    Some(deg) => Rc::new(CostBound::ProductBound {
+    factors: Rc::new(vec![Rc::new(AtomicCost::PolyCost {
+    param: n.clone(),
+    exponent: Rc::new(PolynomialExponent::IntegerExpPos {
+    degree: deg.clone(),
+}),
+}), Rc::new(AtomicCost::LogCost {
+    param: n.clone(),
+})]),
+}),
+    None => Rc::new(CostBound::ErrorBound),
+},
+}
                             } else {
-                                match proportional_divisor_from_int_at_least_two(b.clone()) {
-                                    Some(base_w) => {
-                                        match positive_descent_amount_from_positive_int(a.clone()) {
-                                            Some(arg_w) => Rc::new(CostBound::AtomicBound {
-                                                cost: Rc::new(AtomicCost::PolyCost {
-                                                    param: n.clone(),
-                                                    exponent: Rc::new(
-                                                        PolynomialExponent::LogBasedExp {
-                                                            base: base_w.clone(),
-                                                            argument: arg_w.clone(),
-                                                        },
-                                                    ),
-                                                }),
-                                            }),
-                                            None => Rc::new(CostBound::ErrorBound),
-                                        }
-                                    }
-                                    None => Rc::new(CostBound::ErrorBound),
-                                }
+                                match crate::std_termination::proportional_divisor_from_int_at_least_two(b.clone()) {
+    Some(base_w) => match crate::std_termination::positive_descent_amount_from_positive_int(a.clone()) {
+    Some(arg_w) => Rc::new(CostBound::AtomicBound {
+    cost: Rc::new(AtomicCost::PolyCost {
+    param: n.clone(),
+    exponent: Rc::new(PolynomialExponent::LogBasedExp {
+    base: base_w.clone(),
+    argument: arg_w.clone(),
+}),
+}),
+}),
+    None => Rc::new(CostBound::ErrorBound),
+},
+    None => Rc::new(CostBound::ErrorBound),
+}
                             }
                         }
                     }
@@ -912,7 +916,7 @@ pub fn derive_bound(
                     master_theorem(Rc::new(RecurrenceForm {
                         param: param.clone(),
                         branches: branches.clone(),
-                        divisor: proportional_divisor_to_int(d.clone()),
+                        divisor: crate::std_termination::proportional_divisor_to_int(d.clone()),
                         work_exponent: work_exponent.clone(),
                     }))
                 }

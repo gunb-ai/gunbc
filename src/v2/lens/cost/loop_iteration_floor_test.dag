@@ -5,13 +5,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data loop_iteration_floor_body: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_iteration_floor_body_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data loop_iteration_floor_measure: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_iteration_floor_measure_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data loop_iteration_floor_input: Node = Node {
@@ -20,7 +20,7 @@ data loop_iteration_floor_input: Node = Node {
     Edge { label: Positional, target: loop_iteration_floor_body },
     Edge { label: Named { name: ^loop_bound_edge }, target: loop_iteration_floor_measure }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 test fn loop_iteration_floor_projects_linear() -> Bool {
