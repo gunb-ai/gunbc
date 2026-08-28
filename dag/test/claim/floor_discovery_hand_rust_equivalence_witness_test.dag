@@ -125,7 +125,7 @@ fn fixture_live_tree_trailing_comment_content() -> String {
 
 fn fixture_bool_witness_record() -> OwnedDataDeclRecord {
   OwnedDataDeclRecord {
-    entry: "dag/gunbc/floor_discovery_scaffold.dag",
+    entry: "dag/gunbc/floor/floor_discovery_scaffold.dag",
     module: "gunbc.floor_discovery_scaffold",
     decl_name: "unified_claim_floor_discovery_fixture",
     initializer: OwnedBoolWitnessClaimInit {
@@ -137,7 +137,7 @@ fn fixture_bool_witness_record() -> OwnedDataDeclRecord {
 
 fn fixture_bool_witness_record_empty_transport() -> OwnedDataDeclRecord {
   OwnedDataDeclRecord {
-    entry: "dag/gunbc/floor_discovery_scaffold.dag",
+    entry: "dag/gunbc/floor/floor_discovery_scaffold.dag",
     module: "gunbc.floor_discovery_scaffold",
     decl_name: "unified_claim_floor_discovery_fixture_empty",
     initializer: OwnedBoolWitnessClaimInit {

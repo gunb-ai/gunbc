@@ -389,7 +389,7 @@ pub fn whole_corpus_compile_refusal_diagnostic(
              than admitting against the widest cap available — an unbounded resolve on an \
              unbounded host is the OOM-kill this arm exists to prevent. Declare one with \
              GUNBC_MEMORY_BUDGET_BYTES, or model this platform's memory source \
-             (dag/gunbc/host_budget_source.dag)."
+             (dag/gunbc/host/host_budget_source.dag)."
         )),
     }
 }
@@ -443,7 +443,7 @@ pub fn read_host_budget_bytes() -> (Option<u64>, String) {
         return (Some(budget), source);
     }
     // Terminal arms. Authority for the source vocabulary and its rendering is
-    // `dag/gunbc/host_budget_source.dag` (`HostBudgetSource`); `dag/extdeps/linux/procfs.dag`
+    // `dag/gunbc/host/host_budget_source.dag` (`HostBudgetSource`); `dag/extdeps/linux/procfs.dag`
     // carries why a Darwin host never reaches the meminfo arm.
     //
     // The meminfo arm used to be unconditional: `(mem_total_bytes(), "/proc/meminfo

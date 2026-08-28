@@ -4844,7 +4844,7 @@ fn native_map_absent_diagnostic_value(ctx: &InterpContext) -> Value {
 //
 // Citation note: the two sibling deferrals in this file and in
 // `emit_on_demand_host_seed_deferral_note` name a
-// `dag/gunbc/v1_deletion_plan.dag ^witness_realization_kernel` deletion row. That row
+// `dag/gunbc/v1/v1_deletion_plan.dag ^witness_realization_kernel` deletion row. That row
 // no longer exists — the brick ledger it belonged to was retired 2026-07-28 by that
 // file's own `v1_exit_model_doc`, which moved per-node acceptance onto the roadmap
 // tickets. This deferral therefore names the live roadmap node instead of copying a
@@ -9597,7 +9597,7 @@ fn argv_materialization_value(
 /// `extdeps.render.ansi` authority (`ansi_mappings` in `dag/extdeps/render/ansi.dag`).
 /// Seed realization until the interpreter consumes that table directly; the
 /// dissolution is the single checkable receipt ROADMAP §1 "interpreter
-/// terminal-output de-fork" (`dag/gunbc/roadmap_authority.dag`).
+/// terminal-output de-fork" (`dag/gunbc/roadmap/roadmap_authority.dag`).
 pub mod sgr {
     pub const SUCCESS: &str = "38;5;34";
     pub const ERROR: &str = "38;5;196";
@@ -12583,7 +12583,7 @@ fn eval_emit_host_run_transport_builtin(
 /// file, not a census-shrink receipt and not a new Rust authority. Its lane is
 /// ROADMAP "Make native materialization the shared execution kernel",
 /// witness-realization-plan (plan doc deleted 2026-08-28) P3/P6, with the concrete deletion row
-/// dag/gunbc/v1_deletion_plan.dag ^witness_realization_kernel. Delete these
+/// dag/gunbc/v1/v1_deletion_plan.dag ^witness_realization_kernel. Delete these
 /// observation/apply helpers when the self-emitted transport consumes the modeled
 /// ResolvedBuildContext and the dispatcher-change, environment-change, and
 /// cold/warm agreement witnesses remain green without them.

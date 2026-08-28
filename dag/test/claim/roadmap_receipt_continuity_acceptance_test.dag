@@ -251,10 +251,10 @@ test fn witness_exact_revocation_admits_vanished_receipt() -> Bool {
 
 test fn witness_git_show_exists_on_disk_but_not_in_ref_counts_as_path_absent() -> Bool {
   git_show_path_absent_at_ref(
-    stderr: "fatal: path 'dag/gunbc/roadmap_acceptance_event_history.jsonl' exists on disk, but not in '9ce6526c528'",
+    stderr: "fatal: path 'dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl' exists on disk, but not in '9ce6526c528'",
   )
     && git_show_path_absent_at_ref(
-      stderr: "fatal: path 'dag/gunbc/roadmap_acceptance_event_history.jsonl' does not exist in '9ce6526c528'",
+      stderr: "fatal: path 'dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl' does not exist in '9ce6526c528'",
     )
 }
 

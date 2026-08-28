@@ -128,9 +128,9 @@ test fn item_against_prs_drifts() -> Bool {
 }
 
 test fn witness_superseded_is_done_and_names_successor() -> Bool {
-  let item = SupersededLine { by: "dag/gunbc/v1_deletion_plan.dag", content: "old lane row" }
+  let item = SupersededLine { by: "dag/gunbc/v1/v1_deletion_plan.dag", content: "old lane row" }
   item_is_done(item: item, merged: [])
-    && item_superseded_by(item: item) == "dag/gunbc/v1_deletion_plan.dag"
+    && item_superseded_by(item: item) == "dag/gunbc/v1/v1_deletion_plan.dag"
 }
 
 test fn witness_superseded_underivable_no_drift() -> Bool {

@@ -209,7 +209,7 @@ test fn the_validation_projects_the_target_into_its_argv() -> Bool {
   ) {
     Present { value: command } =>
       join(command.args, " ")
-        == "run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap_closing_contract_authoring.dag --function closing_contract_authored --arg target=example-node --claim-run"
+        == "run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_closing_contract_authoring.dag --function closing_contract_authored --arg target=example-node --claim-run"
     Absent => false
   }
 }

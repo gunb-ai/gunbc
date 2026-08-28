@@ -216,7 +216,7 @@ test fn dashboard_service_is_named_and_scoped_off_production() -> Bool {
       "--source-root",
       "src/v2",
       "--entry",
-      "dag/gunbc/roadmap_serve.dag",
+      "dag/gunbc/roadmap/roadmap_serve.dag",
       "--function",
       "roadmap_serve_handle_srv1_lab",
       "--host",
@@ -406,7 +406,7 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
     },
     status_read: DashboardExecResult {
       success: true,
-      stdout: " M dag/gunbc/roadmap_dashboard_instance.dag",
+      stdout: " M dag/gunbc/roadmap/roadmap_dashboard_instance.dag",
       stderr: "",
     },
     shallow_read: DashboardExecResult {
