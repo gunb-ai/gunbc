@@ -805,7 +805,19 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // THE ROWS ARE REMOVED AND THE WITNESSES ARE NOT (DESIGN 4b(4)). Every one of those claims stays
 // enrolled and now passes, which is what keeps the repair's reach measured rather than asserted:
 // if the gate regresses, thirteen independent modules go red before the shadow fixture does.
-// chunk_24 CARRIES ONE ROW AND IT ENTERS THIS ROSTER BY THE ROUTE chunk_23 DESCRIBES -- a
+// THIS CHUNK IS NAMED FOR ITS SUBJECT AND NOT FOR ITS POSITION, which is a departure from the
+// numeric siblings above and is deliberate. A numeric suffix is a shared mutable counter that
+// every concurrent lane computes independently from the same base, so two lanes appending at
+// different offsets produce one file with two definitions of one name -- and a duplicate
+// definition is SILENTLY ACCEPTED here, the later binding winning, which is the standing red
+// `test.claim.duplicate_definition_binding_probe.duplicate_definition_in_one_module_is_refused`
+// documents. The merge is clean, one lane's rows vanish, and the floor then reds on identities
+// everyone believes are enrolled. The chunk index is a position-derived name for something the
+// declaration already names (DESIGN 3), so a meaning-carrying name makes that collision
+// unrepresentable rather than something the second merger must remember to diff for by hand.
+// Found by warm-tern-34, who measured three open branches minting `chunk_24` at once.
+//
+// THIS CHUNK CARRIES ONE ROW AND IT ENTERS THIS ROSTER BY THE ROUTE chunk_23 DESCRIBES -- a
 // witness whose repair is not a repair to the witness -- but for a different and larger reason,
 // so the four facts are carried here rather than cited.
 //
@@ -876,12 +888,12 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // `gunbc.declined_live_tree_defect_classification` and their own stall rows. Enrolling them from
 // here would be one author asserting a red standing on behalf of four lanes that did not measure
 // it, so they are named as a finding rather than swept in.
-fn floor_expected_red_chunk_24() -> List<String> {
+fn floor_expected_red_chunk_self_host_add_slice_frontier() -> List<String> {
   Cons { head: "v2.test.execution.self_host_candidate_generation.candidate_generation_translate_self_emit_dag_add_slice_holds", tail: Empty {} }
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}
+  Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_01(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_11(), tail: Cons { head: floor_expected_red_chunk_12(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_22(), tail: Cons { head: floor_expected_red_chunk_23(), tail: Cons { head: floor_expected_red_chunk_self_host_add_slice_frontier(), tail: Empty {}}}}}}}}}}}}}}}}}}}}}}}}}}
 }
 
 // Mock-totality's 21 expected-red rows were stale-quarantined by the explicit-import
