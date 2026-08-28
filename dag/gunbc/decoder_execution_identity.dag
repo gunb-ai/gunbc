@@ -201,7 +201,20 @@ type DecoderIdentityBinding
   | IdentityMeasuredButUnbound { identity: FanProgramDecoderIdentity, gap: NonEmptyStr }
   | IdentityNotMeasured { cause: NonEmptyStr }
 
-data decoder_identity_binding_gap: NonEmptyStr = "the identity was measured over a closure this instrument enumerated and compiled; the decode that produces a semantic program digest runs through the interpreter's own resolution of the same entry, and nothing here proves the two subjects are the same set. NEXT-RUNG TRIGGER: one execution that both hashes its source vector and runs the decoder against that exact vector, returning the identity and the semantic result together."
+// THE TRIGGER NAMES A MISSING HOST CAPABILITY, NOT AN AFTERNOON'S WORK, and that was established
+// by looking rather than assumed. Two routes could close the binding and neither is reachable
+// today. EXECUTE-THE-VECTOR: the seed registers exactly one fixture builtin,
+// compile_dag_multi_module_fixture, which COMPILES a supplied (path, content) vector; no builtin
+// evaluates one, so "run the decoder against that exact vector" needs a new host surface, and that
+// is v1 seed growth the freeze admits only in service of the v2 self-host program -- which this is
+// not. PROVE-THE-SUBJECTS-EQUAL: nothing exposes the RUNNING program's resolved module set;
+// module_declaration_facts reads the source tree, which is the same authority the closure walk
+// already consumed, so comparing them would compare a reading against itself rather than against
+// what the interpreter received.
+//
+// Recorded at this grain because a trigger that reads as small invites someone to "just finish
+// it", discover the capability is absent, and close the gap with an argument instead.
+data decoder_identity_binding_gap: NonEmptyStr = "the identity was measured over a closure this instrument enumerated and compiled; the decode that produces a semantic program digest runs through the interpreter's own resolution of the same entry, and nothing here proves the two subjects are the same set. NEXT-RUNG TRIGGER: a host capability that EVALUATES a supplied source vector (the seed today registers only compile_dag_multi_module_fixture, which compiles one), so that one execution hashes its vector and runs the decoder against that same vector, returning identity and semantic result together. The alternative route -- comparing the interpreter's resolved module set against the enumerated closure -- is closed for a different reason: no builtin exposes the running program's resolved set, and module_declaration_facts reads the source tree the closure walk already consumed."
 
 fn decoder_identity_binding(measurement: DecoderIdentityMeasurement) -> DecoderIdentityBinding {
   match measurement {
