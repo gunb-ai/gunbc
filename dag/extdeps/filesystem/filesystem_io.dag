@@ -147,12 +147,37 @@ fn filesystem_entry_presence(
 // THE WHOLE OBSERVATION IS ONE FOLD SO THAT NO CALLER HAS TO SEQUENCE IT CORRECTLY. Presence is
 // decided by the listing; the read is consulted only for an entry the listing named, so a read that
 // then fails is unambiguously a fault -- the entry was just observed to exist -- and it lands
-// indeterminate rather than absent. The three arms are the three actions: proceed as if nothing is
-// there, consume the bytes, or stop.
+// indeterminate rather than absent.
+//
+// AND THE FOURTH ARM IS THE ONE A THREE-STATE FOLD GOT WRONG. The listing and the read are two
+// observations at two instants, so they can DISAGREE: the directory did not name the entry, and the
+// read of that same entry then succeeded. The first cut returned the established absence and never
+// looked at the read, which discards a positive observation -- bytes were held while the answer said
+// nothing is there -- and that is fail-open at the seam this module exists to close. Found in review
+// 57099 on gunbc#9564, and MEASURED rather than argued: with the absent arm restored to its
+// three-state form -- return the established absence, never consult the read -- the witness
+// a_successful_read_of_an_unlisted_entry_is_not_an_absence goes RED and the other seven stay green,
+// so the arm below is load-bearing for exactly one case and the evidence discriminates it.
+//
+// WHAT WAS NOT DONE, and the reason is the whole point of the module: the review's remedy was to
+// PRIORITIZE THE SUCCESSFUL READ. That would let the read decide the listing's question, which is
+// this file's own conflation turned around -- a read answers "these bytes existed at instant T2" and
+// never "this directory holds this entry", and Read's success channel is exactly the one that cannot
+// separate absent from unreadable. Picking either winner fabricates one consistent world out of two
+// observations that describe different instants, which is the plausible output section 5 forbids.
+// A disagreement is a THIRD FACT with its own remedy -- re-observe the pair atomically, or hold the
+// directory still -- so it gets its own arm rather than being resolved by precedence. It is not
+// folded into the indeterminate arm either: "I could not look" and "I looked twice and got two
+// answers" have different remedies, and collapsing them is the state-space conflation this
+// repository keeps finding.
+//
+// THE ARMS ARE THE ACTIONS: proceed as if nothing is there, consume the bytes, stop because the
+// observation could not be made, or stop because the subject moved while it was being made.
 type FilesystemFileObservation
   = FilesystemFileAbsent(FilesystemEstablishedAbsence)
   | FilesystemFileRead { path: String, content: String }
   | FilesystemFileIndeterminate { cause: String }
+  | FilesystemFileObservationsDisagree { path: String, cause: String }
 
 fn filesystem_file_observation(
   listing: FilesystemListingObservation,
@@ -163,7 +188,20 @@ fn filesystem_file_observation(
   match filesystem_entry_presence(listing: listing, name: name) {
     FilesystemEntryPresenceIndeterminate { cause: c } =>
       FilesystemFileIndeterminate { cause: join([c, " (at ", path, ")"], "") }
-    FilesystemEntryAbsent(established) => FilesystemFileAbsent(established)
+    FilesystemEntryAbsent(established) =>
+      match read {
+        FilesystemReadRefused { error: _ } => FilesystemFileAbsent(established)
+        FilesystemReadSucceeded { content: _ } =>
+          FilesystemFileObservationsDisagree {
+            path: path,
+            cause: join([
+              filesystem_established_absence_detail(absence: established),
+              ", and a read of ", path,
+              " then succeeded -- the two observations describe different instants and neither is",
+              " discarded, so the subject moved while it was being observed",
+            ], ""),
+          }
+      }
     FilesystemEntryListed { directory: _, name: _ } =>
       match read {
         FilesystemReadRefused { error: e } =>
@@ -185,7 +223,7 @@ fn filesystem_established_absence_detail(absence: FilesystemEstablishedAbsence) 
   join(["no ", absence.name, " is listed in ", absence.directory], "")
 }
 
-data filesystem_absence_establishment_adoption_standing: String = "RUNG: structurally guaranteed for the consumers that route through filesystem_file_observation, on the source-to-.dag acceptance path only, and MITIGATABLE NOWHERE ELSE -- the raw Filesystem.Read and Filesystem.List operations stay callable, so a module that has not adopted the carrier can still write the conflation. This row states the unconverted population at identity grain rather than as a count, because a count is not a plan and a one-sided ratchet over a number measured on the current tree is the oracle section 5 rejects. SUBJECT: a site that concludes ABSENCE, NOT-PRESENT or a dropped element from a FAILED read or a FAILED boolean path test, rather than from a listing that succeeded. It is not every Filesystem.Read consumer -- most read a file they already know exists, and those are the separate filesystem_read_outcome adoption population above. ENUMERATED SITES, each one read rather than pattern-matched, on origin/main at the head this row lands against, with the two converted by the change that lands this row already removed (gunbc.roadmap_verification_receipt current_verification_selection_observe and exact_verification_receipt_source_read, and gunbc.devboot.build read_text_file): gunbc.host_effect_nbd_proxy_serve host_effect_nbd_proxy_serve_read_session_token (read refusal answers Absent, and an empty content does too); gunbc.fleet_converge_plan_cli observe_cap_members_wet (a cap member whose dropin could not be read is DROPPED from the observed list, so the converge plan is computed over a silently narrowed population); v2.workflow.product_receipt_stage run_product_receipt_stage (an unreadable manifest answers ArtifactIdentityAbsent { ProducerReportedNoArtifact }, attributing to the producer a report it never made); tools.merge_admission_walk read_tested_subject and read_floor_receipt (a read refusal answers the Optional's absent arm); gunbc.codex_supervised_turn codex_supervised_turn_generation_observation (GenerationAbsent is concluded from shell.Test.IsFile answering false, and a boolean test reports its own failure to observe as a negative answer -- the construction gunbc.fabric_cell_acquire retired for exactly this reason); tools.opaque_realization_census declaration_body_standing (a file that could not be read leaves the fold state unchanged, so it is indistinguishable from a file that did not hold the declaration). WHAT IS DELIBERATELY NOT ON THE LIST: gunbc.roadmap_belt_actuate belt_read_or_empty, whose collapse is scoped and argued in belt_read_or_empty_scope_note -- both branches take the same action at every remaining caller -- and gunbc.fabric_cell_acquire, which already establishes absence from the parent enumeration through its own four-state observation and would gain nothing but a second spelling. MONOTONE DIRECTION: the roster above may only shrink. A row leaves it when the site routes through filesystem_file_observation or filesystem_entry_presence, or when the site is deleted; a NEW site of this shape is a defect to repair rather than a row to add. NEXT-RUNG TRIGGER, and it names the capability rather than an artifact: the raw List and Read result projections cease to be reachable outside this module's folds, so a consumer cannot spell the conflation at all -- at which point the enumeration above has no subject and this row is deleted. That is the same trigger filesystem_read_outcome_adoption_standing carries, one question further in: it asks that every read projection be folded, this asks that every ABSENCE be established."
+data filesystem_absence_establishment_adoption_standing: String = "RUNG: structurally guaranteed for the consumers that route through filesystem_file_observation, on the source-to-.dag acceptance path only, and MITIGATABLE NOWHERE ELSE -- the raw Filesystem.Read and Filesystem.List operations stay callable, so a module that has not adopted the carrier can still write the conflation. This row states the unconverted population at identity grain rather than as a count, because a count is not a plan and a one-sided ratchet over a number measured on the current tree is the oracle section 5 rejects. SUBJECT: a site that concludes ABSENCE, NOT-PRESENT or a dropped element from a FAILED read or a FAILED boolean path test, rather than from a listing that succeeded. It is not every Filesystem.Read consumer -- most read a file they already know exists, and those are the separate filesystem_read_outcome adoption population above. ENUMERATED SITES, each one read rather than pattern-matched, on origin/main at the head this row lands against, with the two converted by the change that lands this row already removed (gunbc.roadmap_verification_receipt current_verification_selection_observe and exact_verification_receipt_source_read, and gunbc.devboot.build read_text_file): gunbc.host_effect_nbd_proxy_serve host_effect_nbd_proxy_serve_read_session_token (read refusal answers Absent, and an empty content does too); gunbc.fleet_converge_plan_cli observe_cap_members_wet (a cap member whose dropin could not be read is DROPPED from the observed list, so the converge plan is computed over a silently narrowed population); v2.workflow.product_receipt_stage run_product_receipt_stage (an unreadable manifest answers ArtifactIdentityAbsent { ProducerReportedNoArtifact }, attributing to the producer a report it never made); tools.merge_admission_walk read_tested_subject and read_floor_receipt (a read refusal answers the Optional's absent arm); gunbc.codex_supervised_turn codex_supervised_turn_generation_observation (GenerationAbsent is concluded from shell.Test.IsFile answering false. THIS ROW IS CLASSIFIED FROM THE PRODUCER RATHER THAN FROM THE CALL SITE, on a caution from the lane that shipped this defect today: a predicate whose job is to answer the presence question would not belong here. extdeps.shell Test.IsFile is `test -f` with its own declared exit table reading `1 => Path is missing or not a regular file`, so ONE exit code carries missing, wrong-kind, and -- since `test -f` is false when the parent directory cannot be searched -- could-not-look. It answers false on an unreadable-but-present path, so it is the same defect with a different producer, and it is the construction gunbc.fabric_cell_acquire retired for exactly this reason); tools.opaque_realization_census declaration_body_standing (a file that could not be read leaves the fold state unchanged, so it is indistinguishable from a file that did not hold the declaration). WHAT IS DELIBERATELY NOT ON THE LIST: gunbc.roadmap_belt_actuate belt_read_or_empty, whose collapse is scoped and argued in belt_read_or_empty_scope_note -- both branches take the same action at every remaining caller -- and gunbc.fabric_cell_acquire, which already establishes absence from the parent enumeration through its own four-state observation and would gain nothing but a second spelling. MONOTONE DIRECTION: the roster above may only shrink. A row leaves it when the site routes through filesystem_file_observation or filesystem_entry_presence, or when the site is deleted; a NEW site of this shape is a defect to repair rather than a row to add. NEXT-RUNG TRIGGER, and it names the capability rather than an artifact: the raw List and Read result projections cease to be reachable outside this module's folds, so a consumer cannot spell the conflation at all -- at which point the enumeration above has no subject and this row is deleted. That is the same trigger filesystem_read_outcome_adoption_standing carries, one question further in: it asks that every read projection be folded, this asks that every ABSENCE be established."
 
 service Filesystem {
 

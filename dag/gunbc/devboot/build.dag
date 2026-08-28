@@ -14,6 +14,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileAbsent,
   FilesystemFileRead,
   FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
 }
 import extdeps.git
 import extdeps.git.plumbing
@@ -199,6 +200,7 @@ fn read_text_file(dir: String, name: String) -> TextFileReadOutcome {
     FilesystemFileAbsent(_) => TextFileAbsent
     FilesystemFileRead { path: _, content: text } => TextFilePresent { text: trim(s: text) }
     FilesystemFileIndeterminate { cause: c } => TextFileReadFailed { error: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => TextFileReadFailed { error: c }
   }
 }
 

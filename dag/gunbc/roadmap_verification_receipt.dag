@@ -94,6 +94,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileAbsent,
   FilesystemFileRead,
   FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
   filesystem_file_observation,
 }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
@@ -467,6 +468,8 @@ fn current_verification_selection_observe(
         ),
       ) {
         FilesystemFileIndeterminate { cause: c } => SelectionUnreadable { cause: c }
+        FilesystemFileObservationsDisagree { path: _, cause: c } =>
+          SelectionUnreadable { cause: c }
         FilesystemFileAbsent(_) => SelectionAbsent
         FilesystemFileRead { path: _, content: text } =>
           current_verification_selection_decode_document(
@@ -522,6 +525,8 @@ fn exact_verification_receipt_source_read(
         ),
       ) {
         FilesystemFileIndeterminate { cause: c } =>
+          ExactVerificationReceiptUnreadable { detail: c }
+        FilesystemFileObservationsDisagree { path: _, cause: c } =>
           ExactVerificationReceiptUnreadable { detail: c }
         FilesystemFileAbsent(_) => ExactVerificationReceiptAbsent
         FilesystemFileRead { path: _, content: text } =>

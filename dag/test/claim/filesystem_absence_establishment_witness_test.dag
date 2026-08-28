@@ -19,6 +19,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileAbsent,
   FilesystemFileRead,
   FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
   filesystem_file_observation,
   filesystem_established_absence_detail,
   filesystem_listing_names_entry,
@@ -59,6 +60,7 @@ fn observation_arm(o: FilesystemFileObservation) -> String {
     FilesystemFileAbsent(_) => "absent"
     FilesystemFileRead { path: _, content: _ } => "read"
     FilesystemFileIndeterminate { cause: _ } => "indeterminate"
+    FilesystemFileObservationsDisagree { path: _, cause: _ } => "disagree"
   }
 }
 
@@ -160,4 +162,51 @@ test fn an_established_absence_names_its_directory_and_its_entry() -> Bool {
     FilesystemEntryListed { directory: _, name: _ } => false
     FilesystemEntryPresenceIndeterminate { cause: _ } => false
   }
+}
+
+// A SUCCESSFUL READ OF AN ENTRY THE LISTING DID NOT NAME IS NOT AN ABSENCE, and it is not a presence
+// either. Review 57099 on gunbc#9564 found the first cut returning the established absence here and
+// never consulting the read, which discards a positive observation -- bytes in hand while the answer
+// says nothing is there. The two observations describe different instants, so neither is discarded
+// and neither wins: the disagreement is its own arm, with its own remedy.
+//
+// THE THREE CLAUSES ARE THE DISCRIMINATION. Same listing, same missing entry, and only the READ
+// differs -- refused gives the ordinary established absence, succeeded gives the disagreement -- so
+// the arm is decided by the pair and not by either observation alone. The third clause is the
+// control that keeps the absent arm reachable, because an implementation that answered "disagree"
+// whenever the entry was unlisted would pass the first two.
+test fn a_successful_read_of_an_unlisted_entry_is_not_an_absence() -> Bool {
+  observation_arm(o: observe(
+    listing: listed(entries: "receipts\nbin"),
+    name: "marker.json",
+    read: FilesystemReadSucceeded { content: "{}" },
+  )) == "disagree"
+    && observation_arm(o: observe(
+      listing: listed(entries: "receipts\nbin"),
+      name: "marker.json",
+      read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+    )) == "absent"
+    && observation_arm(o: observe(
+      listing: listed(entries: ""),
+      name: "marker.json",
+      read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+    )) == "absent"
+}
+
+// AND THE DISAGREEMENT IS NOT THE INDETERMINATE ARM. "I could not look" and "I looked twice and got
+// two answers" have different remedies -- fix the permission versus re-observe the pair atomically --
+// so they are different arms, and a fold that collapsed them would pass every other test in this
+// file. A refused listing stays indeterminate even when the read succeeds, because no absence was
+// ever established for the read to disagree with.
+test fn a_disagreement_is_distinct_from_an_unmakeable_observation() -> Bool {
+  observation_arm(o: observe(
+    listing: unlistable(),
+    name: "marker.json",
+    read: FilesystemReadSucceeded { content: "{}" },
+  )) == "indeterminate"
+    && observation_arm(o: observe(
+      listing: listed(entries: "marker.json"),
+      name: "marker.json",
+      read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+    )) == "indeterminate"
 }
