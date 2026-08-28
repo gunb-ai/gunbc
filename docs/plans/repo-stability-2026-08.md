@@ -221,3 +221,22 @@ NOT ESTABLISHED: the floor's 22-min `compile.reconcile`
 attributed here. REPRO: in-workspace subset roots (untracked dirs), success
 judged by the NoSuchFunction cause line, never by wall time with output
 discarded; gdb -p <pid> -batch -ex "thread apply all bt" during the slow window.
+
+## cli_run.rs decomposition (started 2026-08-28, branch claude/repo-stability-priorities-frtsy4)
+
+50,536 → 46,443 lines; 13 clusters moved to src/v1/stage0/src/cli_run/ submodules
+(pure code motion, build-verified, smoke-tested): test_migration, compile_clean,
+non_fold_residue, class_b_census, languages_census, external_authority,
+inert_carrier, witness_gates, emit_host, complexity_gates, doc_graph,
+declared_refs, census_heads. Mechanics: submodule carries `use super::*` + the
+parent's use-header; parent re-exports `pub(crate) use <mod>::*` (paths stable);
+bin-consumed fns get explicit `pub use`; private moved items widen to pub(crate);
+eight report/plan types widened for the private-interface lint (CI: -D warnings).
+lib.rs is generated and untouched — submodule declarations live in cli_run.rs,
+matching the existing pattern (declaration_index, phase_profile, ...).
+
+DELIBERATELY NOT MOVED YET, to avoid conflicting with in-flight operator work:
+the resolver/index core (resolve_entry_*, build_module_*, import_closure_*,
+whole_tree_*, the shared-index thread_locals — the pool-tax subject) and the
+floor runner (floor_*, run_required_*, budget/accounting). Move each in a quiet
+window; the extraction recipe is in the split commits' messages.
