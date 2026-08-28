@@ -61,9 +61,13 @@ fn live_tree_site(module_path: String, function: String) -> DiscoveredSite {
   }
 }
 
-// A MIXED POPULATION spanning all three disposition arms. Two members read the live tree; one is
-// fixture-declined and the ordinary witness is planned, proving live-tree access no longer forms
-// a fourth admission arm.
+// A MIXED POPULATION spanning all FOUR disposition arms. Two members read the live tree; one is
+// fixture-declined and the ordinary witnesses are planned, proving live-tree access forms no
+// admission arm of its own.
+// THE LAST SITE IS A REAL MEMBER OF `floor_cost_debt_roster`, spelled as the module/function pair
+// whose qualified identity the roster holds. Without it every partition assertion over the fourth
+// arm would pass at 0 == 0 -- an empty arm makes its own guard vacuous, and the sum below would
+// balance whether or not the census could classify a withheld row at all.
 fn mixed_sites() -> List<DiscoveredSite> {
   [
     hermetic_site(module_path: "test.claim.alpha_witness", function: "w_alpha"),
@@ -71,10 +75,6 @@ fn mixed_sites() -> List<DiscoveredSite> {
     hermetic_site(module_path: "test.claim.long.slow_witness", function: "w_slow"),
     live_tree_site(module_path: "v2.test.fixture.walk_plan_stage.common", function: "w_member"),
     live_tree_site(module_path: "test.claim.reads_tree_witness", function: "w_reads"),
-    // A REAL MEMBER OF `floor_cost_debt_roster`, spelled as the module/function pair whose
-    // qualified identity the roster holds. Without it every partition assertion over the fourth
-    // arm would pass at 0 == 0 -- an empty arm makes its own guard vacuous, and the sum below
-    // would balance whether or not the census could classify a withheld row at all.
     hermetic_site(
       module_path: "dag.test.claim.lifecycle_survivor_corpus_census",
       function: "no_raw_lifecycle_string_survivors_remain"
