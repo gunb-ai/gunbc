@@ -19,6 +19,7 @@ import extdeps.systemd.unit_file {
   Restart,
   Environment,
   EnvironmentFile,
+  EnvironmentFileIfPresent,
   WorkingDirectory,
   ServiceUser,
   ServiceGroup,
@@ -276,6 +277,20 @@ test fn the_added_service_directives_render_their_own_systemd_names() -> Bool {
 test fn environment_and_environment_file_are_distinct_directives() -> Bool {
   systemd_service_directive_line(directive: EnvironmentFile { path: "/etc/x.env" as NonEmptyStr })
     != systemd_service_directive_line(directive: Environment { assignment: "/etc/x.env" as NonEmptyStr })
+}
+
+// THE OPTIONAL FORM RENDERS THE `-` PREFIX AND THE REQUIRED FORM DOES NOT. Asserted as a pair over
+// ONE path, because the failure worth catching is not a wrong string but the two arms COLLAPSING --
+// a renderer that emitted the same line for both would silently make every required file optional,
+// and systemd would then start a unit whose configuration never loaded. Equal renderings are the
+// discriminator, so the inequality is the load-bearing half rather than either literal.
+test fn the_optional_environment_file_renders_systemds_dash_prefix() -> Bool {
+  let path = "/etc/x.env" as NonEmptyStr
+  let required = systemd_service_directive_line(directive: EnvironmentFile { path: path })
+  let optional = systemd_service_directive_line(directive: EnvironmentFileIfPresent { path: path })
+  required == "EnvironmentFile=/etc/x.env"
+    && optional == "EnvironmentFile=-/etc/x.env"
+    && required != optional
 }
 
 
