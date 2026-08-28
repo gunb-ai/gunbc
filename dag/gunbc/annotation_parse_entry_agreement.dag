@@ -1,0 +1,245 @@
+module gunbc.annotation_parse_entry_agreement
+
+import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
+import std.measure { second }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.disposition { Disposition, Terminal, SingleAuthority }
+import extdeps.posix.rusage { RusageMaxrssObservation, RusageChildren }
+import extdeps.linux.rusage { linux_rusage_maxrss_unit }
+import gunbc.emit_stage_blocking_population_census {
+  CensusRun,
+  CompileExited,
+  PristineAtRevision,
+  LocallyPerturbed
+}
+
+// THE RECEIPT OF A REFUTATION, and it is filed rather than dropped because the claim it refutes
+// travelled by relay and is still travelling. The report was that `gunbc compile` refuses the one
+// source-annotation form DESIGN section 4c admits -- a standalone leading `//` block attached to a
+// module-scope declaration -- with 1283 `expected item declaration` diagnostics inside a
+// 31139-diagnostic whole-root run, and that the two consequences of that saturation were an
+// undiscriminating red control and an instrument whose killed runs read as clean.
+//
+// The mechanism half is what mattered: if `gunbc compile` could not parse what the required parse
+// phase admits, then two parse entry points would disagree about the grammar, which is the
+// single-authority violation this repository exists to remove. That is the question this carrier
+// answers, and the answer is that there are not two: both entry points reach ONE admission seam.
+//
+// WHY A CARRIER RATHER THAN A REPLY. The relayed figures were measured at a base that has since
+// moved, and a retraction sent as a message decays exactly as the finding did -- the next lane to
+// hear "gunbc compile cannot parse annotations" has nothing to check it against. A typed row at a
+// named revision, whose invocation is derived from its own fields, is checkable by re-running it.
+data annotation_parse_entry_agreement_disposition: Disposition = Terminal {
+  reason: "A RECEIPT, NOT A GATE. Nothing here executes on any push, nothing refuses, and this carrier does not close the class of grammar disagreement between entry points -- it records that no such disagreement exists on the measured revision, by measurement and by citation of the shared seam. The standing enforcement is elsewhere and is named in parse_sweep_is_the_standing_wall_note: the required CI parse phase folds every authored .dag through the same census-fill parse, so an annotation the grammar refuses stops the line there. This module adds no wall beside it.",
+  authority: SingleAuthority
+}
+
+// ── WHICH PARSE EACH ENTRY POINT TAKES ────────────────────────────────────────────────────────
+//
+// NOT EVERY ROUTE SITS IN A DECLARATION THE INDEX CAN NAME. The required parse phase is reached
+// through a hand-Rust host in the stage0 seed, which no DeclarationRef addresses; citing a nearby
+// `.dag` symbol for it would be the fabricated citation DESIGN section 3 already records this
+// repository writing twice. The host arm is a real state rather than a gap, and it carries the
+// host symbol as text precisely because that is all the namespace can honestly offer.
+type ParseRouteHome
+  = RouteInDeclaration { declaration: DeclarationRef }
+  | RouteInSeedHost { host_symbol: NonEmptyStr }
+
+// ONE ENTRY POINT, AND THE SEAM IT REACHES. `reaches_admission` is the question the finding
+// actually posed: not which function is called first, but whether the call chain arrives at the
+// one place that decides whether a captured `//` block attaches.
+type ParseEntryPoint {
+  invoked_as: NonEmptyStr
+  first_route: ParseRouteHome
+  reaches_admission: DeclarationRef
+}
+
+// THE STANDING OF THE GRAMMAR ACROSS ENTRY POINTS. A fork is representable, so the agreement is a
+// claim this carrier makes rather than a shape it assumes; and the shared arm names the seam, so
+// "they agree" cannot be written without saying what they agree through.
+type GrammarAuthorityStanding
+  = OneSharedAdmission { admission: DeclarationRef }
+  | ForkedAdmission { left: ParseEntryPoint, right: ParseEntryPoint }
+
+data annotation_admission_seam: DeclarationRef = decl_ref(module_path: "v1.compiler.annotation_bind", decl_name: "admit_source_annotations")
+
+// THE REQUIRED PARSE PHASE. `claim_executor --required-ci --required-lane witnesses` sweeps
+// src/v1, dag and src/v2 and puts every file through the frontend's own per-source census-fill
+// parse -- tokenize into the annotation channel, parse in an occurrence scope, then admit. The
+// walk itself is host Rust; the parse it calls is not.
+data required_parse_phase_entry: ParseEntryPoint = ParseEntryPoint {
+  invoked_as: "claim_executor --required-ci --required-lane witnesses (parse phase)" as NonEmptyStr,
+  first_route: RouteInSeedHost { host_symbol: "cli_run.rs run_dag_parse_sweep" as NonEmptyStr },
+  reaches_admission: annotation_admission_seam
+}
+
+// THE COMPILER CLI. `gunbc compile` routes its whole-root subject through cli_run compile_emission
+// into the modeled pipeline, whose frontend and whose census fill are the two callers that
+// annotation_bind names as the pair that must not drift.
+data gunbc_compile_entry: ParseEntryPoint = ParseEntryPoint {
+  invoked_as: "gunbc compile --source-root dag --source-root src/v2" as NonEmptyStr,
+  first_route: RouteInDeclaration {
+    declaration: decl_ref(module_path: "v1.compiler.compile", decl_name: "compile_to_resolved_with_options")
+  },
+  reaches_admission: annotation_admission_seam
+}
+
+// THE FINDING'S OWN QUESTION, ANSWERED. Both entry points arrive at one seam, so there is no
+// second grammar to reconcile. This is established by reading the call chains, and it is declared
+// as a code read rather than an execution -- the executions below establish the BEHAVIOUR, which
+// is the half a code read cannot settle.
+data parse_entry_standing: GrammarAuthorityStanding = OneSharedAdmission { admission: annotation_admission_seam }
+
+fn entry_points_share_one_grammar(s: GrammarAuthorityStanding) -> Bool {
+  match s {
+    OneSharedAdmission { admission: _ } => true
+    ForkedAdmission { left: _, right: _ } => false
+  }
+}
+
+// ── WHAT WAS EXECUTED ─────────────────────────────────────────────────────────────────────────
+//
+// THE CLAIM CANNOT BE DISPOSED OF WITHOUT THE RUN THAT DISPOSED OF IT. Every arm below carries a
+// CensusRun, which carries the termination and the peak residency, so there is no spelling of
+// "the claim is refuted" that omits how the process ended. That matters more here than in an
+// ordinary receipt: the second consequence reported with this finding was that a killed run and a
+// clean run render identically through a pipe, and a refutation asserted from a killed run would
+// have reproduced the very defect it was answering.
+type AnnotationClaimDisposition
+  = ClaimRefutedByRun {
+      run: CensusRun
+      admitted_form_refusals: Int
+      hard_total: Int
+      advisory_total: Int
+    }
+  | ClaimReproducedByRun {
+      run: CensusRun
+      admitted_form_refusals: Int
+    }
+  | ClaimUnmeasured { reason: NonEmptyStr }
+
+data measured_revision: CommitSha = "b6003a45e58a5775022f911cc4aabb2ad475da8b"
+
+data whole_root_run: CensusRun = CensusRun {
+  source_revision: measured_revision,
+  subject_tree: PristineAtRevision,
+  primary_root: "dag" as NonEmptyStr,
+  dependency_pool_root: "src/v2" as NonEmptyStr,
+  render_target: "rust" as NonEmptyStr,
+  termination: CompileExited { code: 1 },
+  peak_resident: RusageMaxrssObservation {
+    who: RusageChildren,
+    raw_value: 13032948,
+    unit: linux_rusage_maxrss_unit
+  },
+  wall: second(1575),
+  resolved_sources: 3114
+}
+
+// TAKEN TWICE, and the second run is what the row reports. The first run of this command on this
+// revision returned the same exit status, the same three hard causes, the same 17664 advisories
+// and the same zero of the reported class; the fields below come from the repeat, which was the
+// one instrumented for termination and peak residency. Two runs is not a stability claim about
+// the compiler -- it is the minimum that distinguishes a measurement from a transcription.
+//
+// THE HEADLINE MEASUREMENT. Zero diagnostics of the reported class, against a relayed 1283, on the
+// same command with the same roots. The hard population is three, and they are the parameter-default
+// sites gunbc.emit_stage_blocking_population_census already records at its own revision -- so this
+// run also re-observes that census's pristine layer rather than contradicting it.
+data annotation_claim: AnnotationClaimDisposition = ClaimRefutedByRun {
+  run: whole_root_run,
+  admitted_form_refusals: 0,
+  hard_total: 3,
+  advisory_total: 17664
+}
+
+fn annotation_claim_is_open(d: AnnotationClaimDisposition) -> Bool {
+  match d {
+    ClaimRefutedByRun { run: _, admitted_form_refusals: _, hard_total: _, advisory_total: _ } => false
+    ClaimReproducedByRun { run: _, admitted_form_refusals: _ } => true
+    ClaimUnmeasured { reason: _ } => true
+  }
+}
+
+// ── THE RED CONTROL, AND THE TRAP INSIDE IT ───────────────────────────────────────────────────
+//
+// The second consequence reported with this finding was that a deliberate fault added ZERO
+// diagnostics to this binary -- a saturated wall that cannot report a fault while looking like
+// evidence. It was re-run on the measured revision by deleting one arm from the exhaustive match
+// in extdeps.access.posix posix_shell_permits_command_execution, which is the same shape of fault.
+//
+// THE FAULT IS NAMED BY THE COMPILER, SO THE WALL DISCRIMINATES. But the COUNT MOVED DOWN, from
+// three hard diagnostics to one, and a control comparing counts alone would have read the planted
+// fault as an improvement. The cause is the gate ordering the sibling census already records: the
+// planted fault refuses upstream of emit, so emit's parameter-default gate never runs and its
+// three sites vanish from the report. A red control against this compiler must therefore
+// discriminate on DIAGNOSTIC IDENTITY, never on population size -- which is the reusable half of
+// this receipt and the part a re-measurement of the original finding would not have produced.
+type RedControlOutcome
+  = FaultNamedByCompiler {
+      run: CensusRun
+      naming_diagnostic: NonEmptyStr
+      hard_before: Int
+      hard_after: Int
+    }
+  | FaultInvisible {
+      run: CensusRun
+      hard_before: Int
+      hard_after: Int
+    }
+
+data red_control_run: CensusRun = CensusRun {
+  source_revision: measured_revision,
+  subject_tree: LocallyPerturbed {
+    perturbation: "TWO perturbations, both named because a receipt that hid the second would be reporting a tree nobody has: one arm (LoginShellUnobserved) deleted from the exhaustive match in extdeps.access.posix posix_shell_permits_command_execution and restored after the run, AND this module itself present under dag/, which is why the resolved-source count is one higher than the pristine run's" as NonEmptyStr
+  },
+  primary_root: "dag" as NonEmptyStr,
+  dependency_pool_root: "src/v2" as NonEmptyStr,
+  render_target: "rust" as NonEmptyStr,
+  termination: CompileExited { code: 1 },
+  peak_resident: RusageMaxrssObservation {
+    who: RusageChildren,
+    raw_value: 13013760,
+    unit: linux_rusage_maxrss_unit
+  },
+  wall: second(1491),
+  resolved_sources: 3115
+}
+
+data red_control: RedControlOutcome = FaultNamedByCompiler {
+  run: red_control_run,
+  naming_diagnostic: "non-exhaustive match: missing variant(s) LoginShellUnobserved" as NonEmptyStr,
+  hard_before: 3,
+  hard_after: 1
+}
+
+fn red_control_discriminates(o: RedControlOutcome) -> Bool {
+  match o {
+    FaultNamedByCompiler { run: _, naming_diagnostic: _, hard_before: _, hard_after: _ } => true
+    FaultInvisible { run: _, hard_before: _, hard_after: _ } => false
+  }
+}
+
+fn red_control_count_moved_down(o: RedControlOutcome) -> Bool {
+  match o {
+    FaultNamedByCompiler { run: _, naming_diagnostic: _, hard_before: b, hard_after: a } => a < b
+    FaultInvisible { run: _, hard_before: b, hard_after: a } => a < b
+  }
+}
+
+// ── WHAT THIS RECEIPT DOES NOT CLAIM ──────────────────────────────────────────────────────────
+//
+// IT DOES NOT RETRACT THE ORIGINAL MEASUREMENT AT ITS OWN BASE. The reported run was taken at
+// 472cadfcfeecfb1fa39c531f529ecf81e38dfae7 and has not been re-taken there; nothing here
+// establishes that it was wrong when it was made, only that the command does not behave that way
+// on the revision named above. A finding that moved is not a finding that was false, and the
+// receipt for one is not the receipt for the other.
+//
+// IT IS NOT A WALL. The standing enforcement of annotation grain is the required parse phase,
+// which folds every authored .dag through the same seam on every push and stops the line on a
+// refusal. This carrier executes nowhere.
+//
+// THE ADVISORY POPULATION IS CARRIED AS A MEASUREMENT, NEVER AS AN ORACLE. A number measured off
+// the current tree cannot adjudicate a later tree (DESIGN section 5), so nothing here compares
+// against it and nothing may ratchet on it.
+data parse_sweep_is_the_standing_wall_note: String = "The required CI parse phase is the executing evidence that the corpus carries no annotation the grammar refuses: it sweeps src/v1, dag and src/v2, puts each file through the frontend's own census-fill parse, and stops the line on any diagnostic. A file carrying an in-body or trailing annotation refuses there. That wall predates this receipt and is not strengthened by it."
