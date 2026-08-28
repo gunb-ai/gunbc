@@ -44390,27 +44390,21 @@ pub fn assemble_prepared_subject(
         // path that reaches it — `invoke_floor_discovery_producer` is reachable only through
         // `discover_floor_witness_roster`, which `run_required_floor` never calls.
         //
-        // AND THE RECORDED SET USES THE RULE'S OWN VOCABULARY, NOT THIS SCANNER'S. `test data `
-        // is a test decl to `floor_discovery_scan_test_decl_names`, which is what
-        // `floor_entry_is_barren_test_sidecar` composes, so a file declaring only `test data`
-        // rows is NOT barren under the rule this wall enforces — measured at 3bbd53c05a, 13 such
-        // files exist and refusing them here would have been this wall over-reaching into a
-        // different defect. That different defect is real and is declared, not fixed here:
-        // `witness_file_from_source` recognises `test fn ` and not `test data `, so those rows
-        // are dropped from the floor's roster whether or not their file carries a `test fn`.
-        let site = witness_file_from_source(module_path, &sf.path, &sf.content);
-        let declares_no_test_decl = site.is_none()
-            && !sf
-                .content
-                .lines()
-                .any(|line| line.starts_with("test data "));
-        match site {
+        // WHAT IS RECORDED HERE IS A CANDIDATE SET, NOT A VERDICT, and the distinction is the
+        // whole reason no second copy of the rule appears in Rust. This records every source
+        // `witness_file_from_source` declined — i.e. carrying no `test fn` — and asks nothing
+        // about suffixes and nothing about `test data`. Both of those questions belong to
+        // `v2.workflow.floor_naming_hygiene` and are put TO it, per candidate, by
+        // `floor_barren_test_sidecars`.
+        //
+        // THE SET IS DELIBERATELY OVER-INCLUSIVE and that is what makes it sound. A file with
+        // only `test data` rows lands in here, and the `.dag` predicate then answers NOT barren,
+        // because its own scan counts `test data ` as a test decl. Rust can only widen the
+        // question, never decide it, so a Rust/`.dag` disagreement cannot produce a wrong
+        // refusal — only a candidate the authority discards.
+        match witness_file_from_source(module_path, &sf.path, &sf.content) {
             Some(site) => witness_files.push(site),
-            None => {
-                if declares_no_test_decl {
-                    test_decl_free_paths.push(p.clone());
-                }
-            }
+            None => test_decl_free_paths.push(p.clone()),
         }
         inventory.push(PreparedSourceView {
             module_path: module_path.clone(),
@@ -45827,49 +45821,99 @@ fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result
     }
 }
 
-/// Read one `String` constant from a `.dag` authority, by qualified name.
+/// The barren witnesses among preparation's candidate set, decided by the `.dag` authority
+/// rather than by a second Rust spelling of it.
 ///
-/// The barren-sidecar rule's suffix lives in `v2.workflow.floor_naming_hygiene`
-/// (`floor_test_sidecar_suffix`), and it stays there: re-spelling `"_test.dag"` in Rust would
-/// fork the rule across two representations, which is the defect this whole repair is about.
-fn floor_required_string(
-    ctx: &v1_interpreter::InterpContext,
-    qualified: &str,
-) -> Result<String, String> {
-    match v1_interpreter::run_in_context(ctx, qualified, false) {
-        Ok(v1_interpreter::Value::Str(s)) if !s.is_empty() => Ok(s.to_string()),
-        Ok(other) => Err(format!(
-            "{qualified}: expected a non-empty String, got {}",
-            floor_value_shape(Some(&other))
-        )),
-        Err(e) => Err(format!("{qualified}: {e}")),
-    }
-}
-
-/// The barren witnesses in the prepared subject, judged by the `.dag` rule rather than by a
-/// second Rust spelling of it.
+/// TWO CALLS, AND THE SPLIT IS A COST DECISION, NEVER A POLICY ONE. Both questions
+/// — does this path claim the sidecar place, and does this file declare a test decl —
+/// are answered by `v2.workflow.floor_naming_hygiene`; Rust supplies facts and decides
+/// nothing.
 ///
-/// Preparation records every admitted source with no `test fn` decl; this asks
-/// `floor_naming_hygiene`'s own suffix which of them are `*_test.dag` entries — the same
-/// predicate `floor_entry_is_barren_test_sidecar` composes, consumed here because THIS is the
-/// path the required floor takes.
+///   1. `floor_entries_requiring_test_sidecar` is asked ONCE for the whole candidate roster.
+///      It is a pure string question, so the whole list crosses in one call, and it narrows
+///      thousands of admitted sources to the handful that claim the `*_test.dag` place.
+///   2. `floor_entry_is_barren_test_sidecar` is then asked per survivor, with that file's
+///      content. That is the call that needs bytes, and after step 1 there are typically zero
+///      or a few of them — so consuming the real predicate costs a handful of invocations
+///      rather than one per corpus file, which is what a caller reimplementing the filter
+///      would have been buying.
+///
+/// An earlier revision of this function read the suffix constant out of the `.dag` and then
+/// applied `strip_prefix("./")` and `ends_with` in Rust. Reading the constant does not make
+/// the computation derived from the authority — the two can still drift — and that is the
+/// §2/§3 fork this repository exists to prevent (`review 56971`).
 fn floor_barren_test_sidecars(
     hermetic: &v1_interpreter::InterpContext,
-    test_decl_free_paths: &[String],
+    candidate_paths: &[String],
+    content_for_path: &HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
 ) -> Result<Vec<String>, String> {
-    let suffix = floor_required_string(
-        hermetic,
-        "v2.workflow.floor_naming_hygiene.floor_test_sidecar_suffix",
-    )?;
-    Ok(test_decl_free_paths
+    if candidate_paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    let path_values: Vec<v1_interpreter::Value> = candidate_paths
         .iter()
-        .filter(|path| {
-            path.strip_prefix("./")
-                .unwrap_or(path.as_str())
-                .ends_with(suffix.as_str())
-        })
-        .cloned()
-        .collect())
+        .map(|s| str_value(s.clone()))
+        .collect();
+    let requiring = v1_interpreter::run_in_context_with_args(
+        hermetic,
+        "v2.workflow.floor_naming_hygiene.floor_entries_requiring_test_sidecar",
+        &[(
+            Some("entry_paths".to_string()),
+            list_value_from_vec(path_values),
+        )],
+        false,
+    )
+    .map_err(|e| format!("floor_entries_requiring_test_sidecar: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&requiring))
+        .map_err(|why| format!("floor_entries_requiring_test_sidecar decode: {why}"))?;
+
+    let mut barren = Vec::new();
+    for item in items {
+        let path = match item {
+            v1_interpreter::Value::Str(s) => s.to_string(),
+            other => {
+                return Err(format!(
+                    "floor_entries_requiring_test_sidecar: expected String rows, got {}",
+                    floor_value_shape(Some(other))
+                ))
+            }
+        };
+        // A candidate with no source in hand is not silently skipped: preparation built both
+        // the candidate list and the inventory from the same walk, so a miss here means those
+        // two disagree, and a wall that quietly drops the entries it cannot look up is the
+        // absorbing failure arm DESIGN §5 forbids.
+        let Some(source) = content_for_path.get(&path) else {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=BarrenCandidateSourceMissing — `{path}` was \
+                 recorded as a sidecar candidate but has no prepared source"
+            ));
+        };
+        let verdict = v1_interpreter::run_in_context_with_args(
+            hermetic,
+            "v2.workflow.floor_naming_hygiene.floor_entry_is_barren_test_sidecar",
+            &[
+                (Some("entry_path".to_string()), str_value(path.clone())),
+                (
+                    Some("content".to_string()),
+                    str_value(source.content.to_string()),
+                ),
+            ],
+            false,
+        )
+        .map_err(|e| format!("floor_entry_is_barren_test_sidecar({path}): {e}"))?;
+        match verdict {
+            v1_interpreter::Value::Bool(true) => barren.push(path),
+            v1_interpreter::Value::Bool(false) => {}
+            other => {
+                return Err(format!(
+                    "floor_entry_is_barren_test_sidecar({path}): expected Bool, got {}",
+                    floor_value_shape(Some(&other))
+                ))
+            }
+        }
+    }
+    barren.sort();
+    Ok(barren)
 }
 
 fn floor_decode_list<'a>(
@@ -46193,6 +46237,26 @@ pub fn run_required_floor(
     let prepare_started = std::time::Instant::now();
     let (prepared, prepared_sources) =
         prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
+    // The bytes behind the sidecar candidates, captured here because `prepared_sources` is
+    // moved into the guard on the next line and the barren check needs content, not paths.
+    // Restricted to the candidate set rather than the whole inventory: the `.dag` predicate is
+    // asked only about files preparation already declined, so nothing else is retained.
+    let barren_candidate_sources: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = {
+        let wanted: HashSet<&str> = prepared
+            .test_decl_free_paths
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        prepared_sources
+            .iter()
+            .filter_map(|view| {
+                let path = view.source.path.replace('\\', "/");
+                wanted
+                    .contains(path.as_str())
+                    .then(|| (path, view.source.clone()))
+            })
+            .collect()
+    };
     let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
     // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
     //
@@ -46595,8 +46659,11 @@ pub fn run_required_floor(
     // `offered == routed + declined_long + declined_live` stays exact while saying nothing about
     // it. A file that claims the `*_test.dag` place and enrolls nothing is a witness nobody asked
     // and everybody reads as covered.
-    let barren_test_sidecars =
-        floor_barren_test_sidecars(&hermetic, &prepared.test_decl_free_paths)?;
+    let barren_test_sidecars = floor_barren_test_sidecars(
+        &hermetic,
+        &prepared.test_decl_free_paths,
+        &barren_candidate_sources,
+    )?;
     if !barren_test_sidecars.is_empty() {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=BarrenTestSidecar count={} — a `*_test.dag` entry must \
