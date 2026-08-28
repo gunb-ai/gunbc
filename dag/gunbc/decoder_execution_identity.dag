@@ -179,14 +179,48 @@ fn measure_decoder_identity() -> DecoderIdentityMeasurement {
   )
 }
 
-// THE STANDING IS DERIVED FROM THE MEASUREMENT AND HAS NO OTHER PRODUCER, so the absent arm
-// gunbc.bmc_fan_program_interpretation declares cannot be reached by an instrument that ran: it is
-// returned only where the instrument itself refused.
-fn decoder_identity_standing(measurement: DecoderIdentityMeasurement) -> DecoderIdentityStanding {
+// WHAT THIS INSTRUMENT DOES NOT ESTABLISH, AND IT IS THE THING A READER WILL ASSUME IT DOES.
+// It enumerates a closure, hashes that exact vector, and compiles it. It does NOT execute the
+// decoder against that vector -- a semantic program digest is produced by some other run, through
+// the interpreter's own resolution of the same entry. So pairing this identity with that digest
+// would be two individually correct observations with an invented arrow between them: exactly the
+// fake join removed from the capture observer on gunbc#9299, one level up.
+//
+// The two subjects are very probably identical -- the walk follows the same import edges the
+// interpreter resolves -- and "very probably" is what the objection is about. Nothing here proves
+// the interpreter received this vector and no wider one, so the honest reading is that this
+// measures THE DECODER'S SOURCE IDENTITY and not THE IDENTITY OF A PARTICULAR DECODE.
+//
+// SO THE STANDING IS NOT HANDED OUT FROM HERE. gunbc.bmc_fan_program_interpretation's
+// DecoderIdentityEstablished is what lets a consumer treat two readings as same-reader, and
+// granting it from a run that did not perform the reading would restore the unbound claim under a
+// name that reads as bound. This module reports a measurement; binding it is a separate
+// construction and its trigger is named below.
+type DecoderIdentityBinding
+  = IdentityBoundToDecode { identity: FanProgramDecoderIdentity }
+  | IdentityMeasuredButUnbound { identity: FanProgramDecoderIdentity, gap: NonEmptyStr }
+  | IdentityNotMeasured { cause: NonEmptyStr }
+
+data decoder_identity_binding_gap: NonEmptyStr = "the identity was measured over a closure this instrument enumerated and compiled; the decode that produces a semantic program digest runs through the interpreter's own resolution of the same entry, and nothing here proves the two subjects are the same set. NEXT-RUNG TRIGGER: one execution that both hashes its source vector and runs the decoder against that exact vector, returning the identity and the semantic result together."
+
+fn decoder_identity_binding(measurement: DecoderIdentityMeasurement) -> DecoderIdentityBinding {
   match measurement {
     DecoderIdentityMeasured { identity, module_count } =>
-      DecoderIdentityEstablished { identity: identity }
-    DecoderIdentityInstrumentRefused { cause } =>
+      IdentityMeasuredButUnbound { identity: identity, gap: decoder_identity_binding_gap }
+    DecoderIdentityInstrumentRefused { cause } => IdentityNotMeasured { cause: cause }
+  }
+}
+
+// THE STANDING THIS INSTRUMENT CAN HONESTLY PRODUCE IS STILL THE ABSENT ONE, and that is not the
+// instrument failing -- it is the instrument reporting what it has. The obligation text is
+// narrowed rather than discharged: what was missing was any producer at all, and what is missing
+// now is the binding.
+fn decoder_identity_standing(binding: DecoderIdentityBinding) -> DecoderIdentityStanding {
+  match binding {
+    IdentityBoundToDecode { identity } => DecoderIdentityEstablished { identity: identity }
+    IdentityMeasuredButUnbound { identity, gap } =>
+      DecoderIdentityNotInstrumented { obligation: gap }
+    IdentityNotMeasured { cause } =>
       DecoderIdentityNotInstrumented { obligation: decoder_identity_instrument_obligation }
   }
 }
