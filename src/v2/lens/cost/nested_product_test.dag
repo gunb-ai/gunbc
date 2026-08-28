@@ -1,5 +1,6 @@
 module v2.test.lens_cost.nested_product
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { LinearCost, ProductCost, SizeVariable, cost_lens }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -10,14 +11,13 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.witness { Holds }
 
 data nested_product_body: Node = Node {
   kind: ComputationNode { behavior: Transform },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data nested_product_inner: Node = Node {
@@ -25,7 +25,7 @@ data nested_product_inner: Node = Node {
   children: [
     Edge { label: Positional, target: nested_product_body }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data nested_product_input: Node = Node {
@@ -33,7 +33,7 @@ data nested_product_input: Node = Node {
   children: [
     Edge { label: Positional, target: nested_product_inner }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 test fn nested_product_claim_holds() -> Bool {

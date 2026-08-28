@@ -1,5 +1,6 @@
 module v2.test.graph_invariant.reach_repair_witness_test
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.dag {
   dag_fixture_emitted_loop_fn,
@@ -38,8 +39,7 @@ import v2.std.node {
   Node,
   Path,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -58,7 +58,7 @@ fn rr_atom(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

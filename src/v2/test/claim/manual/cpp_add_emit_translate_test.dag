@@ -1,5 +1,6 @@
 module v2.test.manual.cpp_add_emit_translate
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.compiler.emit { emit }
 import v2.compiler.compile {
@@ -80,7 +81,6 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -91,7 +91,7 @@ data cpp_add_forbidden_authority_source_text: String = "authority_source_text_fa
 data cpp_add_target_profile: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^cpp_add_target_profile_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data cpp_add_int_primitive_facts: CppIntegerPrimitiveFacts = cpp_signed_integer_facts(
@@ -127,7 +127,7 @@ data cpp_add_poisoned_authority_target_model: TargetModel = TargetModel {
 data cpp_add_empty_translation_rules_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data cpp_add_missing_translation_rules_target: TargetModel = TargetModel {

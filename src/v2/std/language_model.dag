@@ -1,5 +1,6 @@
 module v2.std.language_model
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.collection { PointwisePower }
 import v2.std.grammar {
   ParseGrammar,
@@ -14,7 +15,7 @@ import v2.std.model_core {
   model_core_first_primitive_substrate,
   bool_model_core
 }
-import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode }
 
 type LanguageModel {
   lex: LexRules
@@ -78,6 +79,6 @@ fn language_model_to_node(lm: LanguageModel) -> Node {
         target: model_core_first_primitive_substrate(core: lm.core)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }

@@ -1,14 +1,15 @@
 module v2.test.lens_application.application_subterm_at_empty_path
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.application { subterm_at }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.node { Atom, Node, Path, Symbol, TypeNode }
 
 data application_subterm_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^application_subterm_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 test fn application_subterm_at_empty_path_claim_holds() -> Bool {

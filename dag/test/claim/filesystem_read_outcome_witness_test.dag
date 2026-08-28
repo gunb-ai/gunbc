@@ -12,21 +12,21 @@ import gunbc.ci_yaml_validate {
   ci_yaml_parse_outcome_from_read,
 }
 
-fn filesystem_read_success_carries_content() -> Bool {
+test fn filesystem_read_success_carries_content() -> Bool {
   match filesystem_read_outcome(content: "", success: true, error: "stale error") {
     FilesystemReadSucceeded { content } => content == ""
     FilesystemReadRefused { error: _ } => false
   }
 }
 
-fn filesystem_read_refusal_carries_error() -> Bool {
+test fn filesystem_read_refusal_carries_error() -> Bool {
   match filesystem_read_outcome(content: "stale content", success: false, error: "denied") {
     FilesystemReadSucceeded { content: _ } => false
     FilesystemReadRefused { error } => error == "denied"
   }
 }
 
-fn ci_yaml_read_refusal_is_not_parse_refusal() -> Bool {
+test fn ci_yaml_read_refusal_is_not_parse_refusal() -> Bool {
   match ci_yaml_parse_outcome_from_read(read: FilesystemReadRefused { error: "missing" }) {
     CiYamlReadRefused { error } => error == "missing"
     CiYamlParsed => false

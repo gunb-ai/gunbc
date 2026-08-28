@@ -1,5 +1,6 @@
 module v2.test.claim.trait_derive_completeness_predicate
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.trait_derive_completeness {
   TraitDeriveCompletenessIncomplete,
   TraitDeriveCompletenessSatisfied,
@@ -67,8 +68,7 @@ import v2.std.node {
   Edge,
   Node,
   Positional,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 
 data trait_derive_completeness_predicate_note: String = "Derisk witnesses for Gate-1 sub-wall #2: trait_derive_completeness.dag is the agnostic predicate authority; rust.dag owns surface-binding rows. RED: Int kernel must satisfy Add but not vice versa for String; unknown atom refuses Ord; nullary enum selects copy derive binding."
@@ -82,7 +82,7 @@ fn tdc_nullary_enum_node() -> Node {
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       },
       Edge {
@@ -90,11 +90,11 @@ fn tdc_nullary_enum_node() -> Node {
         target: Node {
           kind: TypeNode { connective: Conj },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -112,15 +112,15 @@ fn tdc_payload_enum_node() -> Node {
               target: Node {
                 kind: TypeNode { connective: Atom { identity: ^tdc_payload_field } },
                 children: [],
-                occurrence_id: SyntheticOccurrence
+                occurrence_id: OccurrenceSynthetic
               }
             }
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -128,7 +128,7 @@ fn tdc_unknown_atom_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^tdc_unknown_carrier } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

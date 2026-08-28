@@ -3,8 +3,6 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
-#[cfg(test)]
-use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::PhaseProfile;
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -1553,9 +1551,17 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // dropped, which is how a roster that narrowed read exactly like one that did
     // not. The three are printed together so the subtraction is visible rather
     // than inferable.
+    // AND THE SENTENCE IS NOW BOUNDED ABOVE, WHICH IT WAS NOT.
+    // "every discovered site is exactly one of these" is a totality claim over SITES, and it was
+    // exact and silent at the same time: a `*_test.dag` entry declaring no `test fn` contributes
+    // no site at all, so it could never appear in any of the four numbers, and the line read as a
+    // coverage guarantee over a denominator that had already dropped it. It cannot now — a barren
+    // entry stops the line in `run_required_floor` before this point — so the guarantee is stated
+    // rather than left for a reader to discover it was never claimed.
     eprintln!(
         "required-floor: offered={} routed={} declined_long={} \
-         declined_live={} — every discovered site is exactly one of these",
+         declined_live={} — every discovered site is exactly one of these, and no `*_test.dag` \
+         entry offered zero sites (BarrenTestSidecar refuses upstream of this line)",
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
@@ -1630,6 +1636,15 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     eprintln!(
         "required-floor: compile_dag_rust_emit_check_memo hits={memo_hits} \
          misses={memo_misses}"
+    );
+    // The sibling census memo, reported on its own line for the reason the emit-check line
+    // carries both halves: a hit count without its denominator is not a measurement. These are
+    // two different memos over two different builtins and must never be summed into one ratio.
+    let (census_hits, census_misses) =
+        v1_compiler::cli_run::compile_dag_diagnostic_census_memo_counts();
+    eprintln!(
+        "required-floor: compile_dag_diagnostic_census_memo hits={census_hits} \
+         misses={census_misses}"
     );
     for failure in &outcome.failures {
         eprintln!("required-floor: FAIL {failure}");
