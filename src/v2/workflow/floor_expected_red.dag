@@ -847,7 +847,12 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // its own dated ceiling -- and names relocation as forbidden. A third carrier for exactly this
 // axis is already built and open as gunbc#9517 (`v2.workflow.floor_cost_debt`, joined by a
 // `DeclinedCostDebt` arm in `required_floor`), and its roster returns `Empty` -- the machinery
-// landed without its population. These 46 identities ARE that population. Authoring them into a
+// landed without its population. VERIFIED BY READING THAT BRANCH rather than relayed:
+// `floor_cost_debt_chunks()` on `origin/session/witty-wren-148` is `Empty {}` and the file
+// authors no qualified-name literal, so `floor_cost_debt_holds` is false for every name and
+// nothing is ever `DeclinedCostDebt`. #9517 merging therefore closes NONE of these 46, which is
+// why the trigger below is stated on the roster's population and not on the merge. These 46
+// identities ARE that population. Authoring them into a
 // module that is not on main would fork the authority this chunk exists to respect, so they are
 // handed to that lane at identity grain rather than duplicated here.
 //
