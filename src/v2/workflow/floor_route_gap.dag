@@ -241,6 +241,12 @@ fn floor_route_gap_chunk_01() -> List<String> {
       tail: Cons {
       head: "test.claim.run_verdict_exit_status_witness_test.run_success_verdict_reaches_zero_exit",
       tail: Cons {
+      head: "test.claim.scm_read_command_witness.scm_rc_an_absent_repository_is_unavailable_not_an_empty_answer",
+      tail: Cons {
+      head: "test.claim.scm_read_command_witness.scm_rc_status_refuses_in_the_same_arm_on_the_same_path_as_log",
+      tail: Cons {
+      head: "test.claim.scm_read_command_witness.scm_read_command_keystone_holds",
+      tail: Cons {
       head: "test.claim.scm_repository_load_witness.scm_rl_an_absent_file_is_unreadable_not_empty",
       tail: Cons {
       head: "test.claim.scm_repository_load_witness.scm_repository_load_keystone_holds",
@@ -253,6 +259,9 @@ fn floor_route_gap_chunk_01() -> List<String> {
       tail: Cons {
       head: "test.claim.self_host_03_ingest_behavioral_witness.self_host_03_ingest_behavioral_receipt_holds",
       tail: Empty {}
+    }
+    }
+    }
     }
     }
     }
