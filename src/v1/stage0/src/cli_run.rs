@@ -42427,6 +42427,7 @@ fn external_authority_alias_symbol_name(
 fn external_authority_anchor_from_data_body(
     body: &Rc<crate::v1_std_core::Node>,
     module: &Rc<crate::v1_std_core::Node>,
+    module_path: &str,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
@@ -42470,7 +42471,19 @@ fn external_authority_anchor_from_data_body(
         }
         return project_external_authority_named_data(&home, symbol.as_str(), visited);
     }
-    ExternalAuthorityAnchorProjection::Absent
+    // The alias names no IMPORTED symbol, so the only home left for it is this module itself. A
+    // `.dag` declaration may reference a sibling declaration in its own file without importing it,
+    // and reading that as Absent conflates "this module declares no anchor" with "this module
+    // declares one I did not follow" -- two states with opposite remedies, one an authoring defect
+    // and one a defect in this reader. Resolving the local home removes the second state rather
+    // than reporting it (DESIGN section 5).
+    let local_key = format!("{module_path}::{symbol}");
+    if !visited.insert(local_key) {
+        return ExternalAuthorityAnchorProjection::Refused {
+            cause: format!("alias cycle revisiting {module_path} for local symbol {symbol}"),
+        };
+    }
+    project_external_authority_named_data(module_path, symbol.as_str(), visited)
 }
 
 fn project_external_authority_named_data(
@@ -42493,7 +42506,13 @@ fn project_external_authority_named_data(
         let Some(body) = item.body.as_ref() else {
             return ExternalAuthorityAnchorProjection::Absent;
         };
-        return external_authority_anchor_from_data_body(body, &module, &source_indices, visited);
+        return external_authority_anchor_from_data_body(
+            body,
+            &module,
+            module_path,
+            &source_indices,
+            visited,
+        );
     }
     ExternalAuthorityAnchorProjection::Absent
 }
@@ -42501,6 +42520,7 @@ fn project_external_authority_named_data(
 fn read_external_authority_anchor_from_items(
     items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
     module: &Rc<crate::v1_std_core::Node>,
+    module_path: &str,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     visited: &mut std::collections::HashSet<String>,
 ) -> ExternalAuthorityAnchorProjection {
@@ -42512,7 +42532,13 @@ fn read_external_authority_anchor_from_items(
         let Some(body) = item.body.as_ref() else {
             return ExternalAuthorityAnchorProjection::Absent;
         };
-        return external_authority_anchor_from_data_body(body, module, source_indices, visited);
+        return external_authority_anchor_from_data_body(
+            body,
+            module,
+            module_path,
+            source_indices,
+            visited,
+        );
     }
     ExternalAuthorityAnchorProjection::Absent
 }
@@ -42522,7 +42548,13 @@ fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnch
     let (module, items, source_indices) = parse_extdeps_module_items(&path);
     let mut visited = std::collections::HashSet::new();
     visited.insert(module_path.to_string());
-    read_external_authority_anchor_from_items(&items, &module, &source_indices, &mut visited)
+    read_external_authority_anchor_from_items(
+        &items,
+        &module,
+        module_path,
+        &source_indices,
+        &mut visited,
+    )
 }
 
 fn external_authority_machinery_exempt_module_paths() -> &'static [&'static str] {
@@ -42648,6 +42680,28 @@ mod extdeps_external_authority_anchor_projection_tests {
             facts.locator,
             "docs.claude.com/en/docs/claude-code/cli-reference"
         );
+    }
+
+    #[test]
+    fn same_file_aliased_extdeps_external_authority_anchor_projects_local_literal() {
+        // The discriminating case: extdeps.cpu_attachment.lotes_azifa072 declares the mandatory
+        // anchor as a reference to azifa072_drawing_authority, which is declared in the SAME file
+        // and imported from nowhere. Before local resolution this projected Absent and the module
+        // was reported as `missing:` by the live clean-tree wall.
+        let facts =
+            extdeps_external_authority_module_facts("extdeps.cpu_attachment.lotes_azifa072");
+        assert_eq!(facts.anchor_kind, "present");
+        assert_eq!(facts.scheme_identity, "Https");
+        assert_eq!(facts.locator, "www.lotes.cc/en/contact.php");
+    }
+
+    #[test]
+    fn absent_anchor_still_projects_absent_after_local_alias_resolution() {
+        // The control the clause above must not have broken: a module declaring no anchor at all
+        // reads Absent, so local resolution widened what resolves without fabricating presence.
+        let facts =
+            extdeps_external_authority_module_facts("extdeps.fixture.external_authority_missing");
+        assert_eq!(facts.anchor_kind, "absent");
     }
 
     #[test]
