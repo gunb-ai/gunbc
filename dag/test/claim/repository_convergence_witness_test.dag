@@ -311,7 +311,8 @@ test fn a_dispatch_ref_that_vanished_refuses() -> Bool {
     untracked: clean_tree(),
   )
   match verdict_for(after: after) {
-    ConvergenceRefDisappeared { refname: r, objectname: _ } => r == dispatch_ref_name
+    ConvergenceRefDisappeared { refname: r, objectname: o } =>
+      r == dispatch_ref_name && o == dispatch_sha
     _ => false
   }
 }
