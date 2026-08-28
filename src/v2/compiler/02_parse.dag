@@ -48,21 +48,17 @@ import v2.std.node {
   Conj,
   Edge,
   Hash,
-  MintedOccurrence,
   Named,
   Node,
-  NodeOccurrenceId,
   Symbol,
   TypeNode,
   byte_limb_hash_peano_digest,
   combine_hash,
   content_hash,
-  node_occurrence_minted,
   node_synthetic,
   node_with_occurrence_id,
   symbol_identity_digest,
-  SyntheticOccurrence,
-  well_formed
+  well_formed,
 }
 import v2.std.occurrence_id {
   alloc_occurrence_id,
@@ -70,7 +66,7 @@ import v2.std.occurrence_id {
   occurrence_id_allocator_advance_to,
   occurrence_id_allocator_initial
 }
-import std.occurrence_identity { OccurrenceId, OccurrenceIdAllocator }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceIdAllocator, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, node_occurrence_identity_minted }
 import std.source_annotation {
   AnnotationAttachmentResult,
   AnnotationsAdmitted,
@@ -733,10 +729,18 @@ fn parse_mint_from_source(
   }
 }
 
+// A PROJECTED OCCURRENCE IS NOT A PARSE MINT, and this function's denominator is parse's own
+// mints -- the ids parse_mint_from_source allocated and recorded in this run's SpanIndex. A
+// projector-created occurrence carries a real id, but it was allocated by a projector against a
+// scoped reference and parse recorded no span for it; returning it here would put an id into a
+// list whose consumers read as "parse stamped this", which is the fabricated answer. Empty is the
+// answer to a different question than OccurrenceSynthetic's -- nothing was minted at all there --
+// and both are correctly empty for this one.
 fn parse_minted_id_from_node(n: Node) -> List<OccurrenceId> {
   match n.occurrence_id {
-    MintedOccurrence { id: id } => Cons { head: id, tail: std.algebra.Empty }
-    SyntheticOccurrence => std.algebra.Empty
+    OccurrenceMinted { id: id } => Cons { head: id, tail: std.algebra.Empty }
+    OccurrenceSynthetic => std.algebra.Empty
+    OccurrenceProjected { id: _, caused_by: _ } => std.algebra.Empty
   }
 }
 
@@ -770,19 +774,19 @@ fn parse_stamp_terminal(
     node: node_with_occurrence_id(
       kind: TypeNode { connective: Atom { identity: identity } },
       children: [],
-      occurrence_id: node_occurrence_minted(id: minted.id)
+      occurrence_id: node_occurrence_identity_minted(id: minted.id)
     ),
     prov: minted.prov
   }
 }
 
-fn parse_repeat_captured_node(acc_nodes: List<Node>, occurrence_id: NodeOccurrenceId) -> Node {
+fn parse_repeat_captured_node(acc_nodes: List<Node>, occurrence_id: NodeOccurrenceIdentity) -> Node {
   let spine = fold_list_right(
     xs: acc_nodes,
     empty: Node {
       kind: TypeNode { connective: Conj },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     },
     snoc: fn(tail_node, item) {
       Node {
@@ -791,7 +795,7 @@ fn parse_repeat_captured_node(acc_nodes: List<Node>, occurrence_id: NodeOccurren
           grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: item),
           grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: tail_node)
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     }
   )
@@ -818,7 +822,7 @@ fn parse_stamp_derived_conj(
         grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: cap1),
         grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: cap2)
       ],
-      occurrence_id: node_occurrence_minted(id: minted.id)
+      occurrence_id: node_occurrence_identity_minted(id: minted.id)
     ),
     prov: ParseProvenanceState { alloc: minted.alloc, index: index }
   }
@@ -835,7 +839,7 @@ fn parse_stamp_derived_repeat(
   ParseStampResult {
     node: parse_repeat_captured_node(
       acc_nodes: acc_nodes,
-      occurrence_id: node_occurrence_minted(id: minted.id)
+      occurrence_id: node_occurrence_identity_minted(id: minted.id)
     ),
     prov: ParseProvenanceState { alloc: minted.alloc, index: index }
   }
@@ -857,7 +861,7 @@ fn parse_wrap_production_captured(
         grammar_named_edge(name: ^grammar_production_identity_node_projection, target: production.emitted),
         grammar_named_edge(name: ^grammar_production_captured_node_projection, target: captured)
       ],
-      occurrence_id: node_occurrence_minted(id: minted.id)
+      occurrence_id: node_occurrence_identity_minted(id: minted.id)
     ),
     prov: ParseProvenanceState { alloc: minted.alloc, index: index }
   }
@@ -2054,8 +2058,8 @@ fn parse_token_at_optional(tokens: List<Token>, index: Int) -> Optional<Token> {
 
 
 // THE INT-LITERAL WRAP IN THIS FUNCTION IS LOAD-BEARING. minted.id is a raw OccurrenceId;
-// Node.occurrence_id is the NodeOccurrenceId coproduct, so the mint has to be lifted into
-// MintedOccurrence before it can inhabit a Node. #8833 removed that lift, reading it as a spurious
+// Node.occurrence_id is the NodeOccurrenceIdentity coproduct, so the mint has to be lifted into
+// OccurrenceMinted before it can inhabit a Node. #8833 removed that lift, reading it as a spurious
 // wrap against a callee that declared the raw type -- but the callee's declaration was the defect,
 // and dropping the lift put a value outside the coproduct into every int-literal node the parser
 // built, which the required floor reported as a non-exhaustive match at run time.
@@ -2086,7 +2090,7 @@ fn parse_expr_terminal(
                 )
                 match dag_int_literal_node_from_lexeme(
                   lexeme: tok.lexeme,
-                  occurrence_id: node_occurrence_minted(id: minted.id)
+                  occurrence_id: node_occurrence_identity_minted(id: minted.id)
                 ) {
                   Accepted { value: captured, diagnostics: _ } =>
                     ParseExprAccepted {

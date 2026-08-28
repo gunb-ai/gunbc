@@ -247,6 +247,66 @@ pub struct NamespaceDelta {
     pub admitted_by: Option<String>,
 }
 
+/// The authored pattern naming one exact runtime delta subject.
+///
+/// Its borrowed fields keep the admission roster const: no initializer can compute permission
+/// from the observed delta set, a file, or process state. Runtime observations remain owned
+/// `DeltaSubject` values; an authored pattern and an observation are deliberately distinct types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdmissionSubject {
+    Membership {
+        module: &'static str,
+        target: &'static str,
+    },
+    Binding {
+        module: &'static str,
+        in_declaration: &'static str,
+        spelling: &'static str,
+    },
+}
+
+pub fn admission_subject_matches(pattern: &AdmissionSubject, subject: &DeltaSubject) -> bool {
+    match (pattern, subject) {
+        (
+            AdmissionSubject::Membership { module, target },
+            DeltaSubject::Membership {
+                module: observed_module,
+                target: observed_target,
+            },
+        ) => *module == observed_module && *target == observed_target,
+        (
+            AdmissionSubject::Binding {
+                module,
+                in_declaration,
+                spelling,
+            },
+            DeltaSubject::Binding {
+                module: observed_module,
+                in_declaration: observed_declaration,
+                spelling: observed_spelling,
+            },
+        ) => {
+            *module == observed_module
+                && *in_declaration == observed_declaration
+                && *spelling == observed_spelling
+        }
+        _ => false,
+    }
+}
+
+pub fn admission_subject_render(subject: &AdmissionSubject) -> String {
+    match subject {
+        AdmissionSubject::Membership { module, target } => {
+            format!("membership {module} -> {target}")
+        }
+        AdmissionSubject::Binding {
+            module,
+            in_declaration,
+            spelling,
+        } => format!("binding {module}::{in_declaration} `{spelling}`"),
+    }
+}
+
 /// An operator-authored admission for one exact subject under one exact disposition.
 ///
 /// THE GRAIN IS EXACT ON PURPOSE, AND THE COARSE FORM IS NOT BUILT HERE. The first semantic
@@ -263,13 +323,38 @@ pub struct NamespaceDelta {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransitionAdmission {
     pub label: &'static str,
-    pub subject: DeltaSubject,
+    pub subject: AdmissionSubject,
     pub disposition: NamespaceDeltaDisposition,
 }
 
-/// EMPTY, and empty is the correct landing state: no wave has run, so no transition has been
-/// authorised. A row here that no longer matches a delta is itself a finding
-/// (`stale_admissions`), so the roster can only shrink toward its subject.
+/// CONST-NESS IS SAFETY, NOT STORAGE STYLE. A const roster cannot be computed from observed
+/// deltas, a file, environment state, or any other runtime input: its permission set is exactly
+/// what an author wrote and a reviewer read. `AdmissionSubject` therefore carries `&'static str`
+/// patterns distinct from runtime-owned `DeltaSubject` observations. The prior `String` subject
+/// admitted only the all-empty shape in a const; it refused loudly as stale, but no const row
+/// could name a real module.
+///
+/// EMPTY IS THE RESTING STATE, and it is where this roster belongs between transitions.
+///
+/// It carried 53 exact admissions for the owner-qualified call-target cut, each measured by the
+/// required floor against the merge base after the namespace wall landed. That subject has
+/// landed (#9436, #9504); #9400 itself closed unmerged and no successor is open. Every one of
+/// the 53 therefore matched no delta, which is exactly the finding this roster's own rule
+/// predicts -- "a row that no longer matches is itself a finding (`stale_admissions`), so this
+/// temporary transition roster must shrink with its subject."
+///
+/// WHY LEAVING THEM WAS NOT A QUIET COST. `stale_admissions` is computed per RUN: a row is
+/// stale unless some delta IN THAT RUN matches it. A pull_request build adjudicates the MERGE
+/// commit, so once the rows were on main every open PR inherited all 53 -- and a PR that
+/// touches no namespace at all is exactly the case that can never match them. The phase
+/// therefore refused every unrelated change in the repository, which is why this shrink is the
+/// fix rather than housekeeping.
+///
+/// EMPTY DOES NOT MEAN PERMISSIVE, which is the reason shrinking is safe. With no rows, a run
+/// carrying no delta reports nothing and passes; a run carrying a real delta reports it as
+/// UNADJUDICATED and refuses. The failure mode of having shrunk too early is therefore a loud
+/// refusal naming the delta, which its author closes by authoring a row -- never a silent
+/// admission. The next transition adds its rows here and removes them when its subject lands.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
@@ -682,7 +767,9 @@ pub fn adjudicate(
     let mut used: BTreeSet<usize> = BTreeSet::new();
     for delta in deltas.iter_mut() {
         for (i, admission) in admissions.iter().enumerate() {
-            if admission.subject == delta.subject && admission.disposition == delta.disposition {
+            if admission_subject_matches(&admission.subject, &delta.subject)
+                && admission.disposition == delta.disposition
+            {
                 delta.admitted_by = Some(admission.label.to_string());
                 used.insert(i);
                 break;
@@ -698,7 +785,7 @@ pub fn adjudicate(
                 "{} ({} {}) matches no delta in this run",
                 a.label,
                 disposition_label(a.disposition),
-                delta_subject_render(&a.subject)
+                admission_subject_render(&a.subject)
             )
         })
         .collect();
@@ -844,12 +931,24 @@ fn membership_bound_through(
     record: &ModuleDeclarationRecord,
     target: &str,
 ) -> bool {
-    record.referenced.iter().any(|(_, spelling)| {
-        declaring_candidates(index, record, spelling).contains(target)
-            || module_prefix_of(index, spelling)
-                .map(|(m, _)| m == target)
-                .unwrap_or(false)
-    })
+    // THE UNION OF BOTH AUTHORED-REFERENCE CHANNELS, and the two are peers rather than one
+    // widened set for the reason `authored_type_references` states: they have different
+    // authorities. `referenced` is the index's own walk over the final tree; the other is the
+    // parser's stamped answer, which reaches a declared type parked in `inferred` that no walk
+    // over the tree can see. A consumer asking "is anything here bound through that import"
+    // wants every authored reference regardless of which channel could observe it, so it takes
+    // both -- and asking only the walk is what let this predicate report a live import as
+    // unused.
+    record
+        .referenced
+        .iter()
+        .chain(record.authored_type_references.iter())
+        .any(|(_, spelling)| {
+            declaring_candidates(index, record, spelling).contains(target)
+                || module_prefix_of(index, spelling)
+                    .map(|(m, _)| m == target)
+                    .unwrap_or(false)
+        })
 }
 
 /// How many modules' closures moved in a way this target participates in.
@@ -1035,7 +1134,7 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
     Ok(fill
         .modules
         .iter()
-        .map(|module| record_from_module(module, &source_indices, rel))
+        .map(|module| record_from_module(module, &source_indices, rel, &fill.occurrence_transport))
         .collect())
 }
 

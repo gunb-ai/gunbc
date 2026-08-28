@@ -1,4 +1,5 @@
 module v2.extdeps.languages.python
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.language_model { LanguageModel }
 
 import std.algebra { Empty, BooleanAlgebra }
@@ -96,7 +97,6 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.logic { Bool, bool_boolean_algebra }
 import v2.std.algebra {
@@ -245,7 +245,7 @@ fn python_inhabitant_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -275,7 +275,7 @@ fn python_primitive_facts_node(
         target: python_inhabitant_atom(id: std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -302,7 +302,7 @@ fn python_primitive_algebra_witness_node(
         target: python_inhabitant_atom(id: std_projection)
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -832,7 +832,7 @@ fn python_inhabitant_node(id: Symbol, facts: Node) -> Node {
       python_named_edge(name: ^python_inhabitant_field_atom, target: python_inhabitant_atom(id: id)),
       python_named_edge(name: ^python_inhabitant_field_facts, target: facts)
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -857,7 +857,7 @@ fn python_declared_inhabitants_root() -> Node {
       python_named_edge(name: ^python_inhabitant_field_int, target: python_int_inhabitant_node()),
       python_named_edge(name: ^python_inhabitant_field_float, target: python_float_inhabitant_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -901,7 +901,7 @@ fn python_add_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: python_coercion_candidate_edges(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -917,7 +917,7 @@ fn python_emitted_add_fn_node() -> Node {
       Edge { label: Positional, target: python_int_inhabitant_node() },
       Edge { label: Positional, target: python_int_inhabitant_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -948,7 +948,7 @@ fn python_serialize_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: python_serialize_source_children(),
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1116,7 +1116,7 @@ fn python_grammar_relation_row_node(row: PythonGrammarRelationRow) -> Node {
         )
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1129,7 +1129,7 @@ fn python_translation_rules_node() -> Node {
         target: python_grammar_relation_row_node(row: python_grammar_relation_row())
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -1137,7 +1137,7 @@ fn python_emit_host_runtime_primitive_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^python_emit_host_runtime_primitive_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -1177,7 +1177,7 @@ fn python_target_model_node() -> Node {
       python_named_edge(name: ^target_model_edge_translation_rules, target: python_translation_rules_node()),
       python_named_edge(name: ^target_model_edge_serialize_source, target: python_serialize_source_node())
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

@@ -1,5 +1,6 @@
 module v2.test.lens_cost.loop_illegal_named
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.cost { cost_lens }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -11,26 +12,25 @@ import v2.std.node {
   Node,
   Positional,
   TypeNode,
-  SyntheticOccurrence
 }
 import v2.std.witness { Violates }
 
 data loop_illegal_named_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_illegal_named_body_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data loop_illegal_named_measure_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_illegal_named_measure_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data loop_illegal_named_extra_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_illegal_named_extra_atom } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data loop_illegal_named_input: Node = Node {
@@ -40,7 +40,7 @@ data loop_illegal_named_input: Node = Node {
     Edge { label: Named { name: ^loop_bound_edge }, target: loop_illegal_named_measure_leaf },
     Edge { label: Named { name: ^loop_illegal_named_extra_atom }, target: loop_illegal_named_extra_leaf }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 test fn loop_illegal_named_claim_holds() -> Bool {

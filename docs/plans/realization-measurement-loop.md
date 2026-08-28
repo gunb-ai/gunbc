@@ -139,7 +139,7 @@ This is *why* the keystone's measurement is modeled as an **effect-shape + `Perf
 
 ## Phase 3 — Infra / deployment onto `.dag` (srv1 / srv2)  ·  the second ask
 
-**Goal:** model the actual infra/deployment — runner config, access, host config — as **data**, dissolving bespoke `ci.yml` shell + manual runner setup. **"Get CI onto `.dag`" = instantiate the fabric for srv1/srv2:** `gunbc.ci_fleet` `ComputeOffer` models self-hosted offers; `gunbc.fleet_intent` `ContainerRuntime` enumerates cloud realizations. This meets note 1 at the placement carrier — the offer the runner *declares* is the budget Phase 1's scheduler *consumes*.
+**Goal:** model the actual infra/deployment — runner config, access, host config — as **data**, dissolving bespoke `ci.yml` shell + manual runner setup. **"Get CI onto `.dag`" = instantiate the fabric for srv1/srv2:** `gunbc.ci_fleet` `ComputeOffer` models self-hosted offers; `extdeps.container.engine` models the container engine a surface deploys, and cloud suppliers are their own authorities (`extdeps.cloud.ubicloud`, `product.supplier`). This meets note 1 at the placement carrier — the offer the runner *declares* is the budget Phase 1's scheduler *consumes*.
 
 **§3 boundary — THREE tiers, not two (refined after the #5177 review).** The operator's rule: keep the *generic* "CI runner" cleanly apart from *our* CI runner; CI does not need to know our fleet. So:
 

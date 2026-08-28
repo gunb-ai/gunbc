@@ -1,12 +1,13 @@
 module v2.lens.enforcement.receipts
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { any, contains }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.node { Atom, ComputationNode, Edge, Loop, Named, Node, Positional, SyntheticOccurrence, TypeNode }
+import v2.std.node { Atom, ComputationNode, Edge, Loop, Named, Node, Positional, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.decl_index { DeclFact, decl_facts_is_fn_like }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
@@ -176,19 +177,19 @@ fn consumer_entry_identity_for(binding: ConsumerWitnessBinding, enrolled: Consum
 data enforcement_red_probe_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^enforcement_red_probe_body } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data enforcement_red_probe_measure_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^enforcement_red_probe_measure } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data enforcement_red_probe_extra_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^enforcement_red_probe_extra } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data cost_red_control_probe: Node = Node {
@@ -198,13 +199,13 @@ data cost_red_control_probe: Node = Node {
     Edge { label: Named { name: ^loop_bound_edge }, target: enforcement_red_probe_measure_leaf },
     Edge { label: Named { name: ^enforcement_red_probe_extra }, target: enforcement_red_probe_extra_leaf }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data cost_well_formed_probe: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^enforcement_well_formed_probe } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn red_control_status_for(probe: Node) -> RedControlStatus {

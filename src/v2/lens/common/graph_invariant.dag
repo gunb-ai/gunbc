@@ -1,5 +1,6 @@
 module v2.lens.common.graph_invariant
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.application { apply_edit }
 import v2.std.lens_verdict { Holds, LensVerdict, Violation }
 import v2.std.algebra { contains, length, list_snoc_item }
@@ -26,8 +27,7 @@ import v2.std.node {
   Path,
   Positional,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 
 data graph_invariant_repair_contract: String = "Reachability handler repair contract (mark-on-carrier, §3): an unreachable node is fixed by exactly one of — (1) AddReachEdge: add a structural Positional dependency so the target enters the reach fixpoint; (2) EnrollInExceptionRoster: declare deliberately unwired staged-ahead modeling; (3) Delete: remove the unreachable subject. Handlers emit the chosen arm ONLY via Correction.Suggested { node: Node } on v2.std.diagnostic — no separate Repair type, no code-string generator (§3 dual representation). Apply at the diagnostic locus with v2.lens.application apply_edit / substitute_at; re-run graph_invariant_reaches to verify Satisfied. Repair grain today: root-replacement first-inhabitant via graph_reach_root_replacement_edit (see graph_reach_root_replacement_repair_frontier)."
@@ -138,7 +138,7 @@ fn graph_reach_add_edge_repair(root: Node, edge_target: Node) -> Node {
       Edge { label: Positional, target: root },
       Edge { label: Positional, target: edge_target }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 

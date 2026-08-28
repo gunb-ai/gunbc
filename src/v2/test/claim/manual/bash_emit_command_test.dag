@@ -1,5 +1,6 @@
 module v2.test.manual.bash_emit_command
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -78,7 +79,7 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
+import v2.std.node { Arrow, Atom, Conj, Edge, Node, Positional, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -97,7 +98,7 @@ fn bash_arrow_emitted_red_fixture() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_git } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       },
       Edge {
@@ -105,7 +106,7 @@ fn bash_arrow_emitted_red_fixture() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_rev_parse } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       },
       Edge {
@@ -113,11 +114,11 @@ fn bash_arrow_emitted_red_fixture() -> Node {
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^bash_word_show_toplevel } },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -160,7 +161,7 @@ test fn bash_emit_command_accepts_holds() -> Bool {
 data bash_empty_bundle: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data bash_missing_rules_target: TargetModel = TargetModel {

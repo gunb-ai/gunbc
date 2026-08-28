@@ -1,5 +1,6 @@
 module v2.test.lens_fact_density.conj_positional_only_no_fact
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.fact_density { NoFact, carrier_spec_fact }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -9,13 +10,12 @@ import v2.std.node {
   Node,
   Positional,
   TypeNode,
-  SyntheticOccurrence
 }
 
 data conj_positional_only_child: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^conj_positional_only_child_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data conj_positional_only_input: Node = Node {
@@ -23,7 +23,7 @@ data conj_positional_only_input: Node = Node {
   children: [
     Edge { label: Positional, target: conj_positional_only_child }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 test fn conj_positional_only_no_fact_claim_holds() -> Bool {

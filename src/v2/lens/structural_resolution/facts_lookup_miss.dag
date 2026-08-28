@@ -9,7 +9,7 @@ fn sr_lookup_claim_atom(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -20,7 +20,7 @@ data sr_lookup_decl: Node = Node {
   children: [
     Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_lookup_use }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data sr_lookup_dependency: DependencyView = DependencyView {

@@ -1,5 +1,6 @@
 module v2.test.manual.eval_runtime
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.eval {
   EvalContext,
   Inputs,
@@ -90,7 +91,6 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
-  SyntheticOccurrence
 }
 import v2.std.verification {
   EqualsClaim,
@@ -115,7 +115,7 @@ fn eval_i64_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^eval_i64_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -123,14 +123,14 @@ fn eval_algebra_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^eval_algebra_symbol } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 
 data eval_two_literal: Node = Node {
   kind: ComputationNode { behavior: Value },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data eval_add_subgraph_node: Node = Node {
@@ -139,7 +139,7 @@ data eval_add_subgraph_node: Node = Node {
     Edge { label: Positional, target: eval_two_literal },
     Edge { label: Positional, target: eval_two_literal }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn eval_add_subgraph() -> Node {

@@ -52,7 +52,7 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.logic { Bool }
-import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
+import v2.std.node { Conj, Node, TypeNode }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

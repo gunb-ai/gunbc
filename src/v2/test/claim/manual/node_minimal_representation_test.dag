@@ -1,6 +1,7 @@
 module v2.test.manual.node_minimal_representation_test
 
-import v2.std.node { Node, SyntheticOccurrence, TypeNode, Atom }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.node { Node, TypeNode, Atom }
 import v2.std.node_minimal {
   MnkSubstrateGraph,
   MnkSurfaceExprLeaf,
@@ -37,7 +38,7 @@ fn substrate_v2_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^node_minimal_probe } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
   }
 }
 
@@ -66,7 +67,7 @@ fn witness_substrate_kind_round_trips_v2_node() -> Bool {
     MrnSubstrateGraph {
       kind: TypeNode { connective: Atom { identity: sym } },
       children: c,
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: OccurrenceSynthetic
     } => (sym == ^node_minimal_probe) && (c |> count == 0)
     MrnSurfaceExprLeaf { expr: _, provenance: _, inference: _ } => false
     MrnSurfaceExprParent { expr: _, provenance: _, children: _, inference: _ } => false

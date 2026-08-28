@@ -1,5 +1,6 @@
 module v2.test.algebra_laws.nat_semiring
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -11,7 +12,7 @@ import v2.std.diagnostic {
   diagnostics_singleton
 }
 
-import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
+import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
 import v2.std.text { String }
 import v2.std.verification {ManualAnchorAbsent,
   ManualNatAddAssociativity,
@@ -33,7 +34,7 @@ import v2.std.verification {ManualAnchorAbsent,
 }
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: OccurrenceSynthetic
 }
 }
 
@@ -45,7 +46,7 @@ fn algebra_law_subject(algebra: Symbol, inhabitant: Symbol, law: Symbol) -> Node
       Edge { label: Named { name: ^algebra_law_subject_inhabitant_field }, target: atom_node(s: inhabitant) },
       Edge { label: Named { name: ^algebra_law_subject_law_field }, target: atom_node(s: law) },
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: OccurrenceSynthetic
 }
 }
 

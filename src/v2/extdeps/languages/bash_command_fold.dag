@@ -1,5 +1,6 @@
 module v2.extdeps.languages.bash_command_fold
 
+import std.occurrence_identity { OccurrenceSynthetic }
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
   bash_build_command,
@@ -103,15 +104,14 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
-  SyntheticOccurrence,
-  TypeNode
+  TypeNode,
 }
 import v2.std.witness { Holds, Violates, Witness }
 
 data bash_fold_diagnostic_anchor: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn bash_fold_stmt_kind_tag_terminal(binding: Symbol) -> FormalGrammarSymbol {
@@ -711,7 +711,7 @@ fn bash_fold_translation_rules_node_for_emitted(
               target: row
             )
           ],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: OccurrenceSynthetic
         }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
@@ -761,7 +761,7 @@ fn bash_fold_serialize_source_witness(
                   target: tokens_root
                 )
               ],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: OccurrenceSynthetic
             }
           }
         Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
@@ -1024,7 +1024,7 @@ data bash_fold_assign_foo_bar_emitted: Node = Node {
       target: Node {
         kind: TypeNode { connective: Atom { identity: "FOO" } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     },
     Edge {
@@ -1032,7 +1032,7 @@ data bash_fold_assign_foo_bar_emitted: Node = Node {
       target: bash_build_word_lit(text: "bar")
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data bash_fold_assign_x_home_emitted: Node = Node {
@@ -1047,7 +1047,7 @@ data bash_fold_assign_x_home_emitted: Node = Node {
       target: Node {
         kind: TypeNode { connective: Atom { identity: "X" } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     },
     Edge {
@@ -1055,7 +1055,7 @@ data bash_fold_assign_x_home_emitted: Node = Node {
       target: bash_build_word_var(name: "HOME")
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 data bash_fold_assign_wrong_emitted: Node = Node {
@@ -1070,7 +1070,7 @@ data bash_fold_assign_wrong_emitted: Node = Node {
       target: Node {
         kind: TypeNode { connective: Atom { identity: "FOO" } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: OccurrenceSynthetic
       }
     },
     Edge {
@@ -1078,7 +1078,7 @@ data bash_fold_assign_wrong_emitted: Node = Node {
       target: bash_build_word_lit(text: "baz")
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: OccurrenceSynthetic
 }
 
 fn bash_fold_cmd_true_wrong_target_model_witness() -> Witness<TargetModel> {
