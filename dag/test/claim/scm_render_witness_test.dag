@@ -18,14 +18,22 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.render { Document, RenderCapability }
 import std.symbols { Ascii }
 import extdeps.render.surface { serialize_document, PlainTerminal, GithubActions }
-import gunbc.scm.object_store { empty_store }
+import gunbc.scm.object_store { empty_store, store_node, Stored, LocatorCollision, ObjectId, ObjectStore }
+import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
+import extdeps.render.ansi { ansi_escape }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   RepositoryDecodeRefusal,
   RepositoryFormatUnrecognized,
 }
 import gunbc.scm.authoring { empty_proposal }
-import gunbc.scm.status { repository_status, render_repository_status, RepositoryStatus }
+import gunbc.scm.status {
+  repository_status,
+  render_repository_status,
+  RepositoryStatus,
+  StatusCheckout,
+  CheckedOutCommit,
+}
 import gunbc.scm.log { repository_log, CommitLog }
 import extdeps.languages.json.parse { JsonDocumentGap, JsonDocumentMalformedAt }
 import gunbc.scm.read_command { ScmReadResult, ScmReadAnswered, ScmReadRepositoryUnavailable }
@@ -41,7 +49,7 @@ import gunbc.scm.render {
   scm_log_cli_response,
   scm_status_cli_response,
 }
-import gunbc.cli_wire { CliWireResponse }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.render.terminal { TerminalWriteProjection, TerminalWriteProjected, TerminalWriteRefused }
 
@@ -49,6 +57,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data plain_cap: RenderCapability = RenderCapability {
   color: false, tier: Ascii, cursor_addressable: false
+}
+
+fn render_witness_atom(name: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
+}
+
+fn render_witness_object_id() -> ObjectId {
+  match store_node(store: empty_store(), n: render_witness_atom(name: ^r1)) {
+    Stored { store: _, identity: identity } => identity
+    LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
+  }
 }
 
 fn render_witness_empty_repository() -> RepositoryEnvelope {
@@ -165,16 +184,15 @@ test fn an_unavailable_repository_prints_a_diagnostic_and_still_exits_failure() 
     target: PlainTerminal,
     capability: plain_cap,
   )
-  let printed = match r.write {
-    TerminalWriteProjected { bytes: b, next: _ } =>
+  match r {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: b, exit: e } =>
       b == "cannot read repository at repo.json\n  No such file or directory\n"
-    TerminalWriteRefused { cause: _ } => false
+        && match e {
+             ExitSuccess => false
+             ExitFailure { code: _, reason: _ } => true
+           }
   }
-  let failed = match r.exit {
-    ExitSuccess => false
-    ExitFailure { code: _, reason: _ } => true
-  }
-  printed && failed
 }
 
 // AN EMPTY REPOSITORY IS AN ANSWER, SO IT EXITS SUCCESS. Same distinction as the rendering claims,
@@ -188,9 +206,13 @@ test fn an_empty_log_exits_success_because_it_answered() -> Bool {
     target: PlainTerminal,
     capability: plain_cap,
   )
-  match r.exit {
-    ExitSuccess => true
-    ExitFailure { code: _, reason: _ } => false
+  match r {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: _, exit: e } =>
+      match e {
+        ExitSuccess => true
+        ExitFailure { code: _, reason: _ } => false
+      }
   }
 }
 
@@ -208,20 +230,72 @@ test fn bytes_and_exit_status_are_independent_facts() -> Bool {
     target: PlainTerminal,
     capability: plain_cap,
   )
-  let both_print = match answered.write {
-    TerminalWriteProjected { bytes: _, next: _ } =>
-      match refused.write {
-        TerminalWriteProjected { bytes: _, next: _ } => true
-        TerminalWriteRefused { cause: _ } => false
+  match answered {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: _, exit: ae } =>
+      match refused {
+        CliWireUnprintable { cause: _ } => false
+        CliWirePrintable { bytes: _, exit: re } =>
+          match ae {
+            ExitSuccess =>
+              match re {
+                ExitSuccess => false
+                ExitFailure { code: _, reason: _ } => true
+              }
+            ExitFailure { code: _, reason: _ } => false
+          }
       }
-    TerminalWriteRefused { cause: _ } => false
   }
-  let exits_differ = match answered.exit {
-    ExitSuccess => match refused.exit {
-      ExitSuccess => false
-      ExitFailure { code: _, reason: _ } => true
-    }
-    ExitFailure { code: _, reason: _ } => false
+}
+
+// THE REVIEWER'S SCENARIO, EXECUTED (review 57275).
+//
+// The silent-success state needed an ANSWERED read whose rendered bytes are refused: a refused read
+// already exits nonzero, so it could never have demonstrated refusal-paired-with-success. The review
+// named the commit message; `StatusCheckout.CheckedOutCommit` carries the same unrestricted `String`
+// on the status path and reaches the renderer the same way, through `render_status_checkout`, so it
+// is the same defect on a fixture that constructs in one literal.
+//
+// Under the predecessor RECORD carrier this printed NOTHING and reported SUCCESS. It is now
+// structurally unable to: `CliWireUnprintable` has no exit field to set to success.
+//
+// THE COMPLEMENTARY STRUCTURAL FACT IS DELIBERATELY NOT ASSERTED. "No response pairs refusal with
+// success" is now UNWRITABLE rather than false, so a fixture asserting it could not be authored and
+// the check would be permanently green BY CONSTRUCTION -- the decoration section 4b names as worse
+// than absent. What is asserted is the reachable behaviour a caller can still get wrong.
+fn render_witness_checked_out(message: String) -> RepositoryStatus {
+  RepositoryStatus {
+    checkout: CheckedOutCommit { root: render_witness_object_id(), message: message },
+    commit_count: 1,
+    staged: [],
   }
-  both_print && exits_differ
+}
+
+fn control_byte_response(message: String) -> CliWireResponse {
+  scm_status_cli_response(
+    result: ScmReadAnswered { path: "repo.json", answer: render_witness_checked_out(message: message) },
+    target: PlainTerminal,
+    capability: plain_cap,
+  )
+}
+
+test fn a_control_byte_in_an_answered_read_is_unprintable_not_a_silent_success() -> Bool {
+  match control_byte_response(message: concat("release", ansi_escape)) {
+    CliWireUnprintable { cause: _ } => true
+    CliWirePrintable { bytes: _, exit: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: the identical fixture without the control byte prints AND exits success, so the
+// claim above discriminates the control byte rather than the fixture's shape.
+test fn the_same_answered_read_without_a_control_byte_prints_and_succeeds() -> Bool {
+  match control_byte_response(message: "release") {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: b, exit: e } =>
+      b == "on commit: release\n1 commit\n  nothing staged\n"
+        && match e {
+             ExitSuccess => true
+             ExitFailure { code: _, reason: _ } => false
+           }
+  }
 }

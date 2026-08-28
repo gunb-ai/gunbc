@@ -36,18 +36,40 @@ module gunbc.cli_wire
 // `gunbc.observation_seed_render` calls it at two sites.
 
 import std.process { ProcessExit }
+import std.types { NonEmptyStr, String }
 import std.render { Append, Document, RenderCapability }
 import extdeps.render.surface { RenderTarget, serialize_document }
 import extdeps.render.terminal {
-  TerminalWriteProjection,
+  TerminalWriteProjected,
+  TerminalWriteRefused,
   DynamicLineClosed,
   project_terminal_write,
 }
 
-type CliWireResponse {
-  write: TerminalWriteProjection
-  exit: ProcessExit
-}
+// THE REFUSAL ARM CARRIES NO EXIT STATUS, AND THAT ABSENCE IS THE WHOLE REPAIR.
+//
+// An earlier revision of this type was a RECORD -- `{ write: TerminalWriteProjection, exit:
+// ProcessExit }` -- with the two fields computed independently. That admitted a state nothing in the
+// pipeline refused: a projection that REFUSED paired with an exit of `ExitSuccess`, so a verb printed
+// NOTHING and reported SUCCESS. It was reachable, not theoretical: a commit message is an
+// unrestricted `String` on `CommitLogRow`, rendered directly into a log row, so a message carrying an
+// ESC byte makes `project_terminal_write` refuse while the read itself answered fine. Silent success
+// at the output boundary is the fail-open DESIGN section 5 forbids outright. (review 57275)
+//
+// WHAT THE OLD SHAPE GOT RIGHT AND WHERE IT OVERREACHED. Bytes and exit status ARE two facts, and a
+// refused repository must still print its diagnostic AND exit nonzero -- that is why `CliWirePrintable`
+// still carries its own `ProcessExit`. What does not follow, and what the record asserted by its shape,
+// is that the exit is independent of whether there are bytes AT ALL. "The exit status is not derivable
+// from what the bytes SAY" and "the exit status is unconstrained by WHETHER there are bytes" are
+// different claims; the first is true and the second is false.
+//
+// SO THE ILLEGAL PAIRING IS NOT VALIDATED, IT IS UNWRITABLE. `CliWireUnprintable` has no exit field to
+// set to success, so no caller -- and no future caller -- can construct the state. That is construction
+// over validation (section 5) and the structural-impossibility rung of section 4b rather than the
+// mechanically-preventable one: there is no check to run, because there is nothing to check.
+type CliWireResponse
+  = CliWirePrintable { bytes: String, exit: ProcessExit }
+  | CliWireUnprintable { cause: NonEmptyStr }
 
 // A ONE-SHOT ANSWER STARTS FROM A CLOSED LINE AND APPENDS.
 //
@@ -63,13 +85,13 @@ fn cli_wire_response(
   capability: RenderCapability,
   exit: ProcessExit
 ) -> CliWireResponse {
-  CliWireResponse {
-    write: project_terminal_write(
-      prior: DynamicLineClosed,
-      requested: Append,
-      capability: capability,
-      rendered: serialize_document(doc: doc, target: target, cap: capability)
-    ),
-    exit: exit,
+  match project_terminal_write(
+    prior: DynamicLineClosed,
+    requested: Append,
+    capability: capability,
+    rendered: serialize_document(doc: doc, target: target, cap: capability)
+  ) {
+    TerminalWriteProjected { bytes: b, next: _ } => CliWirePrintable { bytes: b, exit: exit }
+    TerminalWriteRefused { cause: c } => CliWireUnprintable { cause: c }
   }
 }
