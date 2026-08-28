@@ -49,6 +49,20 @@ use serde::Serialize;
 
 #[path = "declaration_index.rs"]
 pub mod declaration_index;
+mod inert_carrier;
+pub(crate) use inert_carrier::*;
+mod external_authority;
+pub(crate) use external_authority::*;
+mod languages_census;
+pub(crate) use languages_census::*;
+mod class_b_census;
+pub(crate) use class_b_census::*;
+mod non_fold_residue;
+pub(crate) use non_fold_residue::*;
+mod compile_clean;
+pub(crate) use compile_clean::*;
+mod test_migration;
+pub(crate) use test_migration::*;
 // THE WAVE-ADMISSION WALL RIDES THE SAME SWEEP the index above is built by, which is why it is
 // registered here rather than beside it: `run_dag_parse_sweep` is the one parse both consume,
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
@@ -2368,19 +2382,6 @@ const CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS: &[(&str, &str)] = &[
     ("src/v2/std/grounding.dag", "v2.std.verdict.VerdictTally"),
 ];
 
-/// True when this diagnostic is an exact named row above — same file AND same unresolved
-/// type. Any other diagnostic, including a different unresolved type in the same file,
-/// is not exempt.
-fn class_b_diagnostic_is_named_exception(d: &Rc<ErrorNode>) -> bool {
-    use crate::v1_std_core::CompilerDiagnostic;
-    let CompilerDiagnostic::UnresolvedType { name, span } = d.diagnostic.as_ref() else {
-        return false;
-    };
-    CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS
-        .iter()
-        .any(|(file, ty)| span.file == *file && name == ty)
-}
-
 fn declared_import_closure_hard_diagnostic_count(
     resolved: &v1_compiler_compile::ResolvedPipelineResult,
 ) -> i64 {
@@ -3081,23 +3082,6 @@ pub fn whole_tree_probe_exclusion_substrings() -> Vec<String> {
     census_exclude_derive::whole_tree_probe_exclusion_substrings()
 }
 
-/// Live compile-clean pipeline module paths for census exclusion silent-loss checks.
-/// Shard entry paths plus their import closures — modules the compile-clean gate may touch.
-pub fn compile_clean_live_pipeline_module_paths() -> Vec<String> {
-    let pool_roots = default_source_roots();
-    let facts = build_module_graph_facts_live(&pool_roots);
-    let mut paths = BTreeSet::new();
-    let roster = compile_clean_shard_entry_paths_fast().unwrap_or_else(|reason| {
-        panic!("compile_clean_live_pipeline_module_paths: {reason}");
-    });
-    for entry in roster {
-        for path in import_closure_live_paths_with_facts(&entry, &facts) {
-            paths.insert(path);
-        }
-    }
-    paths.into_iter().collect()
-}
-
 /// Host census for `fn_arrow_decl_substrate_is_whole_tree` — eligible module count vs
 /// `loaded` modules in the current resolve context (same exclude set as `whole_tree_resolved_ctx`).
 pub fn fn_arrow_decl_substrate_is_whole_tree_for_census(loaded: usize) -> bool {
@@ -3781,12 +3765,6 @@ fn referenced_module_paths_in_text(content: &str, index: &ModuleSourceIndex) -> 
     out.into_iter().collect()
 }
 
-fn compile_clean_resolve_has_hard_errors(
-    result: &v1_compiler_compile::ResolvedPipelineResult,
-) -> bool {
-    compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
-}
-
 const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_diagnostic_policy.dag";
 
 /// Whether `UnlistedImportUse` blocks compile-clean per the single policy row
@@ -3889,118 +3867,6 @@ fn policy_entry_closure_sources(
     Ok(sources)
 }
 
-pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, String> {
-    let roots = default_source_roots();
-    let entry = resolve_entry_file_under_roots(&roots, COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY)
-        .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
-    let sources =
-        policy_entry_closure_sources(&roots, &entry, "gunbc.compile_clean_diagnostic_policy")?;
-    let (graph, indices) = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
-        .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
-    match v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "compile_clean_unlisted_import_use_blocks",
-        &[],
-        false,
-    ) {
-        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
-        Ok(other) => Err(format!(
-            "compile_clean_unlisted_import_use_blocks returned `{}`, expected Bool",
-            ctx.format_value(&other)
-        )),
-        Err(e) => Err(format!("compile_clean_unlisted_import_use_blocks: {e}")),
-    }
-}
-
-fn compile_clean_unlisted_import_use_blocks_cached() -> Result<bool, String> {
-    thread_local! {
-        static CACHED: RefCell<Option<Result<bool, String>>> = const { RefCell::new(None) };
-        static LOGGED_REFUSAL: Cell<bool> = const { Cell::new(false) };
-    }
-    CACHED.with(|c| {
-        if let Some(v) = c.borrow().clone() {
-            return v;
-        }
-        let v = compile_clean_unlisted_import_use_blocks_from_policy();
-        if let Err(ref e) = v {
-            LOGGED_REFUSAL.with(|logged| {
-                if !logged.get() {
-                    eprintln!(
-                        "compile-clean policy: refused to read disposition row ({e}); failing gate"
-                    );
-                    logged.set(true);
-                }
-            });
-        }
-        *c.borrow_mut() = Some(v.clone());
-        v
-    })
-}
-
-fn compile_clean_policy_read_refuses_gate() -> bool {
-    compile_clean_unlisted_import_use_blocks_cached().is_err()
-}
-
-/// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks compile-clean.
-/// `UnlistedImportUse` is governed by `gunbc.compile_clean_diagnostic_policy` (issue 11);
-/// all other classes delegate to `00_core.dag` `is_interpreter_blocking_diagnostic`.
-pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
-    use crate::v1_std_core::CompilerDiagnostic;
-    match d.diagnostic.as_ref() {
-        CompilerDiagnostic::UnlistedImportUse { .. } => {
-            match compile_clean_unlisted_import_use_blocks_cached() {
-                Ok(blocks) => blocks,
-                Err(_) => true,
-            }
-        }
-        _ => crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()),
-    }
-}
-
-/// Advisory (non-blocking per current policy) diagnostics for compile-clean — the
-/// complement of `compile_clean_diagnostic_is_hard` used by the CLI transport so it
-/// does not print advisories as hard errors when the policy row says FloorNotYet.
-pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
-    !compile_clean_diagnostic_is_hard(d)
-        && matches!(
-            d.diagnostic.as_ref(),
-            crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
-                | crate::v1_std_core::CompilerDiagnostic::UnlistedVariantValueUse { .. }
-                | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
-                | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
-                // A non-blocking variant that is absent from this list is counted by
-                // NEITHER predicate: `..._is_hard` rejects it and this allowlist does
-                // not admit it, so it renders to the terminal while every count the
-                // gate reports reads zero for it. That is a frontier claiming to be
-                // counted while nothing counts it. The three variants below are the
-                // method/conformance walls' non-blocking residue and belong here for
-                // the same reason WhereRefinementUnenforced does.
-                | crate::v1_std_core::CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. }
-                | crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished { .. }
-                // The service-config reference-judgment deferral is non-blocking, so it must
-                // be admitted HERE or it would be counted by neither predicate — rendered to
-                // the terminal while every count the gate reports reads zero for it, which is
-                // the frontier-claiming-to-be-counted failure the comment above names.
-                | crate::v1_std_core::CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. }
-        )
-}
-
-pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
-    if compile_clean_policy_read_refuses_gate() {
-        return true;
-    }
-    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
-}
-
-/// `ResolvedPipelineResult` / `im::Vector` adapter for compile-clean checks.
-pub fn compile_clean_im_vector_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
-    if compile_clean_policy_read_refuses_gate() {
-        return true;
-    }
-    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
-}
-
 fn format_compile_clean_hard_diagnostic_line(d: &Rc<ErrorNode>) -> String {
     let span = diagnostic_to_span(d.diagnostic.clone());
     let msg = diagnostic_to_message(d.diagnostic.clone());
@@ -4058,98 +3924,6 @@ fn call_compile_clean_bool_list_fn(
     }
 }
 
-fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> Result<bool, String> {
-    call_compile_clean_bool_list_fn(
-        "compile_clean_all_touched_paths_docs_universe",
-        "touched_paths",
-        touched_paths,
-    )
-}
-
-fn compile_clean_all_touched_paths_selectable(touched_paths: &[String]) -> Result<bool, String> {
-    call_compile_clean_bool_list_fn(
-        "compile_clean_all_touched_paths_selectable",
-        "touched_paths",
-        touched_paths,
-    )
-}
-
-fn compile_clean_departed_paths_outside_docs(
-    departed_paths: &HashSet<String>,
-) -> Result<bool, String> {
-    let paths: Vec<String> = departed_paths.iter().cloned().collect();
-    call_compile_clean_bool_list_fn(
-        "compile_clean_departed_paths_outside_docs",
-        "departed_paths",
-        &paths,
-    )
-}
-
-/// Module paths in the compile-clean closure (format-independent identity — see
-/// `gunbc compile` census_only_sources wiring in main.rs).
-fn compile_clean_closure_module_paths(
-    compiled: &[Rc<v1_compiler_compile::SourceFile>],
-) -> HashSet<String> {
-    compiled
-        .iter()
-        .filter_map(|s| extract_module_path(&s.content))
-        .collect()
-}
-
-/// Indexed pool modules outside the compile closure enter the name census only
-/// (fill = whole tree; policy gates lookup, never fill).
-fn compile_clean_census_only_sources_for_compiled(
-    index: &MultiEntryIndex,
-    compiled: &[Rc<v1_compiler_compile::SourceFile>],
-) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
-    let closure_modules = compile_clean_closure_module_paths(compiled);
-    let mut pool_rest: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = index
-        .source_files
-        .iter()
-        .filter(|(module_path, _)| !closure_modules.contains(*module_path))
-        .map(|(module_path, source)| (module_path.clone(), source.clone()))
-        .collect();
-    pool_rest.sort_by(|a, b| a.0.cmp(&b.0));
-    pool_rest.into_iter().map(|(_, source)| source).collect()
-}
-
-/// Parse-grade census fill (annotation binding + parse errors). Used for
-/// out-of-closure modules (#8204) and must run independently of semantic
-/// resolve — a resolve refusal must not hide the annotation population.
-fn compile_clean_census_fill_hard_diagnostics(
-    census_only: &[Rc<v1_compiler_compile::SourceFile>],
-) -> im::Vector<Rc<ErrorNode>> {
-    if census_only.is_empty() {
-        return im::Vector::new();
-    }
-    let fill = v1_compiler_compile::parse_census_fill_sources(Rc::new(census_only.to_vec().into()));
-    fill.diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .cloned()
-        .collect()
-}
-
-fn compile_clean_pipeline_options_for_sources(
-    index: Option<&MultiEntryIndex>,
-    compiled: &[Rc<v1_compiler_compile::SourceFile>],
-) -> Rc<v1_compiler_compile::CompilePipelineOptions> {
-    let census_only = index
-        .map(|idx| compile_clean_census_only_sources_for_compiled(idx, compiled))
-        .unwrap_or_default();
-    if census_only.is_empty() {
-        return v1_compiler_compile::default_compile_pipeline_options();
-    }
-    eprintln!(
-        "[census] {} indexed modules outside the compile-clean closure enter the name census only (not compiled)",
-        census_only.len()
-    );
-    Rc::new(v1_compiler_compile::CompilePipelineOptions {
-        analyze_complexity: false,
-        census_only_sources: Rc::new(census_only.into()),
-    })
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CompileCleanScopePlan {
     /// Local dev only — neither `GITHUB_ACTIONS` nor `GUNBC_CI_DIFF_BASE` active.
@@ -4166,107 +3940,6 @@ enum CompileCleanScopePlan {
     },
 }
 
-fn compile_clean_scope_plan_from_touched_paths(
-    touched_paths: &[String],
-    departed_paths: &HashSet<String>,
-) -> Result<CompileCleanScopePlan, String> {
-    let roots = default_source_roots();
-    let (graph, indices) = resolve_entry_graph_shared(&roots, COMPILE_CLEAN_SCOPE_ENTRY)
-        .map_err(|e| format!("dag_compile_clean_scope resolve: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let paths: Vec<v1_interpreter::Value> =
-        touched_paths.iter().map(|s| str_value(s.clone())).collect();
-    let mut departed_sorted: Vec<&String> = departed_paths.iter().collect();
-    departed_sorted.sort();
-    let departed: Vec<v1_interpreter::Value> = departed_sorted
-        .into_iter()
-        .map(|s| str_value(s.clone()))
-        .collect();
-    let args = [
-        (
-            Some("touched_paths".to_string()),
-            list_value_from_vec(paths),
-        ),
-        (
-            Some("departed_paths".to_string()),
-            list_value_from_vec(departed),
-        ),
-    ];
-    let result = v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "compile_clean_scope_disposition_from_diff",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("compile_clean_scope_disposition_from_diff: {e}"))?;
-    match &result {
-        v1_interpreter::Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*variant_name, "ScopedRun") => {
-            let entry_paths = match ctx.field(fields, "entry_paths") {
-                Some(v) => string_list_from_value(v, "entry_paths")?,
-                None => return Err("ScopedRun missing `entry_paths`".to_string()),
-            };
-            Ok(CompileCleanScopePlan::Scoped { entry_paths })
-        }
-        v1_interpreter::Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*variant_name, "SkipNoAffectedEntries") => {
-            let reason = match ctx.field(fields, "reason") {
-                Some(Value::Str(r)) => r.to_string(),
-                _ => "no compile-clean entry affected".to_string(),
-            };
-            Ok(CompileCleanScopePlan::SkipNoAffected { reason })
-        }
-        v1_interpreter::Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*variant_name, "RequireWholeTree") => {
-            let reason = match ctx.field(fields, "reason") {
-                Some(Value::Str(r)) => r.to_string(),
-                _ => "whole-tree baseline required".to_string(),
-            };
-            eprintln!("compile-clean scope: {reason}");
-            Ok(CompileCleanScopePlan::WholeTree)
-        }
-        v1_interpreter::Value::Variant {
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*variant_name, "RefuseShardRosterDuplicate") => {
-            let reason = match ctx.field(fields, "reason") {
-                Some(Value::Str(r)) => r.to_string(),
-                _ => {
-                    return Err(
-                        "RefuseShardRosterDuplicate missing `reason` string field".to_string(),
-                    )
-                }
-            };
-            eprintln!("compile-clean scope: refused ({reason})");
-            Ok(CompileCleanScopePlan::Refused { reason })
-        }
-        other => Err(format!(
-            "compile_clean_scope_disposition_from_diff returned `{}`, expected ScopedRun | SkipNoAffectedEntries | RequireWholeTree | RefuseShardRosterDuplicate",
-            ctx.format_value(other)
-        )),
-    }
-}
-
-/// `gunbc.ci_layer_roots.compile_clean_source_roots` — witness pool + `src/v1` for cross-tree
-/// import resolution in compile-clean scope disposition (not the gate receipt pool).
-fn compile_clean_source_roots() -> Vec<String> {
-    let mut roots = witness_layer_roots();
-    if !roots.iter().any(|r| r == "src/v1") {
-        roots.push("src/v1".to_string());
-    }
-    roots
-}
-
 // DELETE WHEN dissolved: `compile_clean_shard_entry_paths_from_decl_facts`,
 // `compile_clean_shard_entry_paths_fast` keyed-roster host mirror, and
 // `compile_clean_shard_entry_paths_fast_refuses_duplicate_path_keys` test (~50 LOC).
@@ -4281,195 +3954,6 @@ fn compile_clean_source_roots() -> Vec<String> {
 // dissolve-on: tools.dag_compile_clean_shard_roster compile_clean_shard_entry_paths_fast_hand_rust_dissolve_trigger.
 pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_shard_entry_paths_fast";
-
-/// Host realization of `tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths`
-/// without resolving `dag_compile_clean_scope.dag` (the interpreter path cold-scans ~minutes).
-///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER` / §7):
-/// routes shard roster construction through `std.keyed_roster.keyed_roster_build` on the floor
-/// CI hot path — same authority as the modeled `compile_clean_shard_entry_paths_from`, not a
-/// parallel duplicate-key policy. Duplicate path keys refuse (terminal `Refused` disposition),
-/// never sort/dedup absorption.
-/// Entry roots are ALL of `witness_layer_roots` — the same tree the whole-tree gate
-/// compiles — mirroring `tools.dag_compile_clean_partition.compile_clean_partition_boundary`
-/// (see its note: a roster that is a strict subset of the compiled tree both widened
-/// src/v2-only diffs to whole-tree and left affected src/v2 importers unselected on
-/// scoped runs).
-fn compile_clean_shard_entry_paths_from_decl_facts(
-    decl_facts: &[ModuleDeclarationFactRaw],
-) -> Result<Vec<String>, String> {
-    let incomings: Rc<im::Vector<Rc<KeyedRow<String, ModuleDeclarationFactRaw>>>> = Rc::new(
-        decl_facts
-            .iter()
-            .map(|decl| {
-                let path = workspace_relative_repo_path(&decl.path);
-                Rc::new(KeyedRow {
-                    row_key: path,
-                    value: decl.clone(),
-                    _phantom: std::marker::PhantomData,
-                })
-            })
-            .collect(),
-    );
-    match keyed_roster_build(incomings, |a: String, b: String| a == b).as_ref() {
-        KeyedRosterBuild::KeyedRosterBuilt { rows } => {
-            Ok(rows.iter().map(|row| row.row_key.clone()).collect())
-        }
-        KeyedRosterBuild::KeyedRosterBuildDuplicateKey { key, .. } => Err(format!(
-            "shard roster construction refused duplicate path key at admission: {key}"
-        )),
-    }
-}
-
-fn compile_clean_shard_entry_paths_fast() -> Result<Vec<String>, String> {
-    let entry_roots: Vec<String> = witness_layer_roots()
-        .iter()
-        .map(|root| anchor_source_root(root))
-        .collect();
-    compile_clean_shard_entry_paths_from_decl_facts(&module_declaration_facts(&entry_roots))
-}
-
-/// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_diff`
-/// (`tools.dag_compile_clean_scope`, module-graph import-closure grain — channel 2 of
-/// operator fork (c) 2026-07-10) without the Wet interpreter fold over
-/// `compile_clean_shard_entry_paths()`. Selection reuses the SAME certified realization
-/// as the discovery-corpus channel (`entry_file_touched_via_import_closure`); every arm
-/// that cannot answer falls back to the gate's whole-tree baseline, loudly.
-///
-/// Roster construction matches `compile_clean_scope_disposition_from_diff`: build and
-/// validate the keyed shard roster before any disposition arm, so duplicate path keys
-/// refuse even when the diff would otherwise skip or widen to whole-tree.
-fn compile_clean_scope_plan_from_touched_paths_floor_fast(
-    touched_paths: &[String],
-    departed_paths: &HashSet<String>,
-) -> CompileCleanScopePlan {
-    compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
-        touched_paths,
-        departed_paths,
-        compile_clean_shard_entry_paths_fast(),
-    )
-}
-
-fn compile_clean_scope_plan_from_touched_paths_floor_fast_impl(
-    touched_paths: &[String],
-    departed_paths: &HashSet<String>,
-    roster: Result<Vec<String>, String>,
-) -> CompileCleanScopePlan {
-    let roster = match roster {
-        Ok(paths) => paths,
-        Err(reason) => {
-            eprintln!("compile-clean scope: refused ({reason})");
-            return CompileCleanScopePlan::Refused { reason };
-        }
-    };
-
-    if touched_paths.is_empty() {
-        // Mirrors `compile_clean_scope_disposition_probe`'s empty arm (#7412): an
-        // observation that saw nothing is indistinguishable from one that could not
-        // observe, so the whole tree is the only sound baseline. A main-push squash
-        // merge lands here, which is what makes main-push a real cold control.
-        eprintln!(
-            "compile-clean scope: empty touched-path set — whole-tree baseline (diff observed nothing, or could not observe)"
-        );
-        return CompileCleanScopePlan::WholeTree;
-    }
-
-    match compile_clean_all_touched_paths_docs_universe(touched_paths) {
-        Ok(true) => {
-            let reason =
-                "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
-                    .to_string();
-            eprintln!("compile-clean scope: skipped ({reason})");
-            return CompileCleanScopePlan::SkipNoAffected { reason };
-        }
-        Ok(false) => {}
-        Err(msg) => {
-            return CompileCleanScopePlan::Refused { reason: msg };
-        }
-    }
-
-    match compile_clean_all_touched_paths_selectable(touched_paths) {
-        Ok(true) => {}
-        Ok(false) => {
-            eprintln!(
-                "compile-clean scope: touched path outside the selectable universe — compiler/infra change, whole-tree baseline"
-            );
-            return CompileCleanScopePlan::WholeTree;
-        }
-        Err(msg) => {
-            return CompileCleanScopePlan::Refused { reason: msg };
-        }
-    }
-
-    match compile_clean_departed_paths_outside_docs(departed_paths) {
-        Ok(true) => {
-            eprintln!(
-                "compile-clean scope: departed non-docs path in diff (deletion/rename) — whole-tree baseline"
-            );
-            return CompileCleanScopePlan::WholeTree;
-        }
-        Ok(false) => {}
-        Err(msg) => {
-            return CompileCleanScopePlan::Refused { reason: msg };
-        }
-    }
-
-    let pool_roots = compile_clean_source_roots();
-    let facts = build_module_graph_facts_live(&pool_roots);
-    let declared_paths = facts.declared_repo_paths();
-    let mut affected = Vec::new();
-    for entry_path in roster {
-        match entry_file_touched_via_import_closure(
-            &entry_path,
-            &facts,
-            &declared_paths,
-            touched_paths,
-        ) {
-            Ok(true) => affected.push(entry_path),
-            Ok(false) => {}
-            Err(msg) => {
-                eprintln!("compile-clean scope: {msg} — whole-tree baseline");
-                return CompileCleanScopePlan::WholeTree;
-            }
-        }
-    }
-    if !affected.is_empty() {
-        eprintln!(
-            "compile-clean scope: {} affected entr{} (floor fast path)",
-            affected.len(),
-            if affected.len() == 1 { "y" } else { "ies" }
-        );
-        return CompileCleanScopePlan::Scoped {
-            entry_paths: affected,
-        };
-    }
-    eprintln!(
-        "compile-clean scope: non-empty diff with no shard intersection — whole-tree baseline"
-    );
-    CompileCleanScopePlan::WholeTree
-}
-
-fn compile_clean_scoping_active() -> bool {
-    FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst)
-        || std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
-        || std::env::var("GITHUB_ACTIONS")
-            .map(|v| v == "true")
-            .unwrap_or(false)
-        || std::env::var("CI").map(|v| v == "true").unwrap_or(false)
-}
-
-// ---------------------------------------------------------------------------
-// Class B import-closure gate affected-set skip (#7835).
-//
-// `run_class_b_import_closure_gate` costs ~2.3 min wall per cold run; skip when the
-// merge-base diff is provably disjoint from the gate's input closure (declared-import
-// pool ∪ witness layer ∪ perturbation fixtures ∪ gate transport modules). Same shape as
-// regen_floor_skip_label_for_ci: skip only on a
-// non-empty diff proven disjoint; run on empty diff, departed non-docs paths, and any
-// observation/closure failure (fail-closed — regen shape: still RUN the gate, but the two
-// failure arms carry grep-countable labels distinct from structural run_class_b_gate).
-// Gated to pull_request events — push-to-main runs the full gate as the cold control.
-// ---------------------------------------------------------------------------
 
 pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
 pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
@@ -4501,45 +3985,6 @@ pub const RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL: &str =
     "run_class_b_gate:diff_observation_failed";
 pub const RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL: &str =
     "run_class_b_gate:input_closure_failed";
-
-fn class_b_overlay_authority_content() -> &'static str {
-    static CONTENT: OnceLock<String> = OnceLock::new();
-    CONTENT
-        .get_or_init(|| {
-            let path = process_workspace_root().join(CLASS_B_OVERLAY_REL);
-            std::fs::read_to_string(&path).unwrap_or_else(|e| {
-                panic!(
-                    "class_b overlay authority: failed to read {}: {e}",
-                    path.display()
-                )
-            })
-        })
-        .as_str()
-}
-
-/// Project `class_b_declared_import_pool_roots` out of the overlay authority source text.
-pub(crate) fn class_b_declared_import_pool_roots_from_source(content: &str) -> Vec<String> {
-    string_list_data_from_module_source(
-        CLASS_B_OVERLAY_REL,
-        content,
-        CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME,
-        false,
-    )
-}
-
-/// The Class B rows 1–2 declared-import pool roots, read live from the single `.dag` authority.
-pub(crate) fn class_b_declared_import_pool_roots() -> Vec<String> {
-    static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
-    ROOTS
-        .get_or_init(|| {
-            class_b_declared_import_pool_roots_from_source(class_b_overlay_authority_content())
-        })
-        .clone()
-}
-
-fn class_b_pool_source_roots(workspace: &Path, pool_roots: &[String]) -> Vec<PathBuf> {
-    pool_roots.iter().map(|rel| workspace.join(rel)).collect()
-}
 
 /// Module-path -> source-file index over a set of `.dag` source roots.
 ///
@@ -4631,177 +4076,6 @@ fn collect_repo_files_under_prefix(
         Ok(())
     }
     walk(&root, workspace, seen)
-}
-
-/// Every workspace-relative path whose content can change `run_class_b_import_closure_gate`'s
-/// verdict: witness-layer import closure of the gate transport modules (rows 3–4 wide pool),
-/// declared-import-pool closure of the subject entry (rows 1–2 minimal pool), perturbation
-/// fixtures, sorted.
-///
-/// 🟡 dissolve-on (two triggers, near then terminal):
-///
-/// NEAR — the import walk here duplicates the shape the deleted selection-control suite used, and
-/// `regen_input_sources` (whole-root seed under `src/v1` vs. declared entry list). They differ in
-/// entry selection and duplicate policy (refuse vs. superset). DISSOLVES WHEN lifted to one
-/// parameterized helper (duplicate policy + entry source as arguments).
-///
-/// TERMINAL — owning lane: `affected-set-precompute-pruning (plan doc deleted 2026-08-28)`, whose **Step 5
-/// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side selection
-/// Rust in favour of the `.dag` authority. This fn and
-/// `class_b_import_closure_gate_skip_label_for_ci` are new members of exactly that Rust-parallel
-/// set — a path/import-closure skip decision living in the seed rather than in `.dag` — so they
-/// inherit Step 5's terminal condition. They are ENUMERATED on that roster as an explicit
-/// deferral (the "Step 5 roster — CI skip-decision surfaces" row, extended by PR #7835), which
-/// is what makes this a declared, countable seed-retained surface rather than a silent escape
-/// hatch (DESIGN §7). Why deferred rather than modeled now: the decision must run BEFORE the
-/// floor resolves anything — that is its entire purpose — so a `.dag` consumer would pay the
-/// ~100s cold whole-pool resolve the skip exists to avoid; it therefore dissolves with the
-/// persistent content-keyed node store, not on its own schedule. Declared pool roots are NOT
-/// forked here: they are projected live from
-/// `gunbc.class_b_import_closure_overlay.class_b_declared_import_pool_roots` (same authority the
-/// transport and witnesses read).
-///
-/// Receipt bar, per DESIGN §5: this is a scaffold because the decision is *checkable* by
-/// execution — skip/run label arms (structural + 2 refusal), discriminating in both directions,
-/// plus bin unit tests and a live authority identity join for the declared pool roots.
-pub fn class_b_import_closure_input_sources(workspace: &Path) -> Result<Vec<String>, String> {
-    let witness_roots = class_b_pool_source_roots(workspace, &witness_layer_roots());
-    let pool_roots = class_b_pool_source_roots(workspace, &class_b_declared_import_pool_roots());
-    let mut seen = import_closure_dag_files(workspace, &witness_roots, CLASS_B_GATE_INPUT_ENTRIES)?;
-    seen.extend(import_closure_dag_files(
-        workspace,
-        &pool_roots,
-        &[CLASS_B_ENTRY_REL],
-    )?);
-    collect_repo_files_under_prefix(workspace, CLASS_B_FIXTURES_PREFIX, &mut seen)?;
-    let mut result: Vec<String> = seen.into_iter().collect();
-    result.sort();
-    Ok(result)
-}
-
-fn class_b_path_affects_gate(changed: &str, dag_closure: &HashSet<String>) -> bool {
-    let p = normalize_repo_path(changed);
-    if p.starts_with("src/v1/") {
-        return true;
-    }
-    if p.starts_with("fixtures/class_b_import_closure/") || p == "fixtures/class_b_import_closure" {
-        return true;
-    }
-    if p == "Cargo.lock"
-        || p == "Cargo.toml"
-        || p.ends_with("/Cargo.toml")
-        || p == "rust-toolchain.toml"
-        || p == "rust-toolchain"
-        || p == ".cargo/config.toml"
-        || p == ".cargo/config"
-    {
-        return true;
-    }
-    dag_closure.contains(&p)
-}
-
-/// CI skip label for the Class B gate inside `source_root_ingest_gate_passes`.
-pub fn class_b_import_closure_gate_skip_label_for_ci() -> String {
-    if std::env::var("GITHUB_EVENT_NAME").ok().as_deref() != Some("pull_request") {
-        eprintln!("class B gate skip: not pull_request — run gate (cold control)");
-        return RUN_CLASS_B_GATE_LABEL.to_string();
-    }
-    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
-        Ok(v) => v,
-        Err(msg) => {
-            eprintln!(
-                "[{RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL}] class B gate skip: diff observation failed ({msg}) — run gate"
-            );
-            return RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL.to_string();
-        }
-    };
-    if changed_paths.is_empty() {
-        eprintln!("class B gate skip: empty diff — run gate (fail-closed cold control)");
-        return RUN_CLASS_B_GATE_LABEL.to_string();
-    }
-    if let Some(gone) = departed_paths.iter().find(|p| {
-        let n = normalize_repo_path(p);
-        !n.starts_with("docs/")
-    }) {
-        eprintln!(
-            "class B gate skip: departed non-docs path in diff ({}) — run gate (current-tree closure cannot see deletions)",
-            normalize_repo_path(gone)
-        );
-        return RUN_CLASS_B_GATE_LABEL.to_string();
-    }
-    let workspace = workspace_root();
-    let dag_closure: HashSet<String> = match class_b_import_closure_input_sources(&workspace) {
-        Ok(sources) => sources.into_iter().collect(),
-        Err(msg) => {
-            eprintln!(
-                "[{RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL}] class B gate skip: input-closure computation failed ({msg}) — run gate"
-            );
-            return RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL.to_string();
-        }
-    };
-    match changed_paths
-        .iter()
-        .find(|p| class_b_path_affects_gate(p, &dag_closure))
-    {
-        Some(example) => {
-            eprintln!(
-                "class B gate skip: diff intersects Class B gate inputs (e.g. {}) — run gate",
-                normalize_repo_path(example)
-            );
-            RUN_CLASS_B_GATE_LABEL.to_string()
-        }
-        None => {
-            eprintln!(
-                "class B gate skip: {} changed path(s), none intersect the Class B gate input closure (declared-import pool ∪ witness layer ∪ fixtures ∪ src/v1/** ∪ Cargo/toolchain) — gate verdict provably unchanged (push-to-main runs gate unconditionally as cold control)",
-                changed_paths.len()
-            );
-            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL.to_string()
-        }
-    }
-}
-
-/// Builtin backing `class_b_import_closure_gate_not_affected_skip` in the transport gate.
-pub fn class_b_import_closure_gate_not_affected_skip_for_ci() -> bool {
-    class_b_import_closure_gate_skip_label_for_ci() == CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL
-}
-
-fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
-    // Falsifier cold-control arm: force the whole-tree compile before any diff observation.
-    // Widen-to-more-checking only — this env can never skip or narrow the gate, so it is a
-    // control, not an escape hatch (the deterministic whole-tree counterpart to the scoped
-    // per-PR admission, on the falsifier cadence).
-    if std::env::var("GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL")
-        .map(|v| v == "1")
-        .unwrap_or(false)
-    {
-        eprintln!(
-            "compile-clean scope: whole-tree cold control forced (GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL=1)"
-        );
-        return CompileCleanScopePlan::WholeTree;
-    }
-    if !compile_clean_scoping_active() {
-        eprintln!("compile-clean scope: whole-tree (ci diff scoping inactive)");
-        return CompileCleanScopePlan::WholeTree;
-    }
-    match floor_git_diff_name_status_range() {
-        Ok((changed_paths, departed_paths)) => {
-            if FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst) {
-                return compile_clean_scope_plan_from_touched_paths_floor_fast(
-                    &changed_paths,
-                    &departed_paths,
-                );
-            }
-            match compile_clean_scope_plan_from_touched_paths(&changed_paths, &departed_paths) {
-                Ok(plan) => plan,
-                Err(msg) => CompileCleanScopePlan::Refused {
-                    reason: format!("compile-clean scope disposition failed: {msg}"),
-                },
-            }
-        }
-        Err(msg) => CompileCleanScopePlan::Refused {
-            reason: format!("diff observation failed: {msg}"),
-        },
-    }
 }
 
 fn witness_layer_roots_compile_clean_sources_for_plan(
@@ -5356,29 +4630,6 @@ fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt
 pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_diagnostic_histogram";
 
-/// Whole-tree `--target dag` compile-clean (witness_layer_roots closure).
-/// Instrument path for diagnostic histogram — not for cargo tests.
-///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
-/// dissolves when ROADMAP §1 namespace-only lane closes (import strip + global_bare wiring fixed)
-/// or a floor-enrolled diagnostic-histogram lens subsumes this host transport.
-/// Uses the same resolve kernel as `witness_layer_roots_compile_clean_check`
-/// (`compile_to_resolved` on the whole-tree source closure).
-pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<ErrorNode>>, String> {
-    let plan = CompileCleanScopePlan::WholeTree;
-    let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
-        None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
-        Some(s) => s,
-    };
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
-    Ok(result
-        .diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .cloned()
-        .collect())
-}
-
 // DELETE WHEN dissolved: `compile_clean_unlisted_import_census` bin,
 // `UnlistedImportBindingSource`, `classify_unlisted_import_binding_source`,
 // `compile_clean_unlisted_import_census`, and related census helpers (~150 LOC).
@@ -5416,18 +4667,6 @@ pub struct UnlistedImportCensusRow {
     pub referencing_module: String,
     pub definer_module: Option<String>,
     pub binding_source: UnlistedImportBindingSource,
-}
-
-fn compile_clean_whole_tree_resolved(
-) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
-    let plan = CompileCleanScopePlan::WholeTree;
-    let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
-        None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
-        Some(s) => s,
-    };
-    Ok(v1_compiler_compile::compile_to_resolved(Rc::new(
-        sources.into(),
-    )))
 }
 
 fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String> {
@@ -5493,66 +4732,6 @@ fn normalize_repo_relative_path_for_census(path: &str) -> String {
     p
 }
 
-/// Whole-tree UnlistedImportUse census with binding-source attribution (issue 11).
-pub fn compile_clean_unlisted_import_census() -> Result<Vec<UnlistedImportCensusRow>, String> {
-    use crate::v1_std_core::CompilerDiagnostic;
-    let result = compile_clean_whole_tree_resolved()?;
-    let graph = result
-        .graph
-        .clone()
-        .ok_or_else(|| "compile-clean census: compilation produced no graph".to_string())?;
-    let mut rows = Vec::new();
-    for d in result.diagnostics.iter() {
-        let CompilerDiagnostic::UnlistedImportUse { name, .. } = d.diagnostic.as_ref() else {
-            continue;
-        };
-        let (binding_source, definer_module) =
-            classify_unlisted_import_binding_source(&graph, &d.module_name, name);
-        rows.push(UnlistedImportCensusRow {
-            file: diagnostic_decl_file_for_census(d),
-            referenced_name: name.clone(),
-            referencing_module: d.module_name.clone(),
-            definer_module,
-            binding_source,
-        });
-    }
-    rows.sort_by(|a, b| {
-        a.file
-            .cmp(&b.file)
-            .then_with(|| a.referenced_name.cmp(&b.referenced_name))
-            .then_with(|| a.referencing_module.cmp(&b.referencing_module))
-    });
-    Ok(rows)
-}
-
-/// Floor compile-clean verdict over the whole-tree closure (shared-index receipt semantics).
-pub fn compile_clean_floor_verdict_whole_tree() -> Result<bool, String> {
-    let roots = default_source_roots();
-    let sources = match witness_layer_roots_compile_clean_sources_for_plan(
-        &CompileCleanScopePlan::WholeTree,
-    )? {
-        None => return Ok(true),
-        Some(s) => s,
-    };
-    Ok(floor_compile_clean_emit_ok_via_index(sources, &roots).0)
-}
-
-/// CLI compile-clean verdict: same source closure and diagnostic policy as the floor,
-/// without the shared-index receipt shortcut (the standalone `gunbc compile` transport).
-pub fn compile_clean_cli_verdict_whole_tree() -> Result<bool, String> {
-    let result = compile_clean_whole_tree_resolved()?;
-    let graph_ok = result.graph.is_some();
-    let hard = compile_clean_im_vector_has_hard_errors(result.diagnostics.as_ref());
-    Ok(graph_ok && !hard)
-}
-
-/// Both realizations must agree modulo the single policy row.
-pub fn compile_clean_cli_floor_verdicts_agree() -> Result<bool, String> {
-    let floor = compile_clean_floor_verdict_whole_tree()?;
-    let cli = compile_clean_cli_verdict_whole_tree()?;
-    Ok(floor == cli)
-}
-
 /// Host-callable witness entry (errors → false, located stderr).
 pub fn witness_compile_clean_cli_floor_verdicts_agree() -> bool {
     match compile_clean_cli_floor_verdicts_agree() {
@@ -5562,185 +4741,6 @@ pub fn witness_compile_clean_cli_floor_verdicts_agree() -> bool {
             false
         }
     }
-}
-
-/// `(class, name)` key for histogram aggregation over hard diagnostics.
-///
-/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
-/// total match over `CompilerDiagnostic` variants — no silent widening.
-pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, String) {
-    use crate::v1_std_core::CompilerDiagnostic;
-    let class = match d.diagnostic.as_ref() {
-        CompilerDiagnostic::UnresolvedImport { .. } => "UnresolvedImport",
-        CompilerDiagnostic::MissingExport { .. } => "MissingExport",
-        CompilerDiagnostic::ImportShadowedByLocalDefinition { .. } => {
-            "ImportShadowedByLocalDefinition"
-        }
-        CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
-        CompilerDiagnostic::TypeMismatch { .. } => "TypeMismatch",
-        CompilerDiagnostic::ArityMismatch { .. } => "ArityMismatch",
-        CompilerDiagnostic::VariantNotFound { .. } => "VariantNotFound",
-        CompilerDiagnostic::FieldNotFound { .. } => "FieldNotFound",
-        CompilerDiagnostic::MethodNotFound { .. } => "MethodNotFound",
-        CompilerDiagnostic::MethodExistenceUndecided { .. } => "MethodExistenceUndecided",
-        CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "ReceiverTypeUnestablished",
-        CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => {
-            "FrontierOccurrenceBudgetExceeded"
-        }
-        CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => {
-            "MethodExistenceFrontierAdmitted"
-        }
-        CompilerDiagnostic::MissingField { .. } => "MissingField",
-        CompilerDiagnostic::NonExhaustiveMatch { .. } => "NonExhaustiveMatch",
-        CompilerDiagnostic::CircularDependency { .. } => "CircularDependency",
-        CompilerDiagnostic::DuplicateModule { .. } => "DuplicateModule",
-        CompilerDiagnostic::DuplicateDeclaration { .. } => "DuplicateDeclaration",
-        CompilerDiagnostic::MissingAnnotation { .. } => "MissingAnnotation",
-        CompilerDiagnostic::ParseError { .. } => "ParseError",
-        CompilerDiagnostic::InternalError { .. } => "InternalError",
-        CompilerDiagnostic::ComplexityUnknown { .. } => "ComplexityUnknown",
-        CompilerDiagnostic::WhereRefinementUnenforced { .. } => "WhereRefinementUnenforced",
-        CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
-        CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
-        CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
-        CompilerDiagnostic::OptionalCastNotEliminated { .. } => "OptionalCastNotEliminated",
-        CompilerDiagnostic::BareNoneNotAdmittedByFieldType { .. } => {
-            "BareNoneNotAdmittedByFieldType"
-        }
-        CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => {
-            "ConstructorCallAdmissionRefused"
-        }
-        CompilerDiagnostic::AdmitCallersEntryNotDeclRef { .. } => "AdmitCallersEntryNotDeclRef",
-        CompilerDiagnostic::DeclaredTypeNotInhabited { .. } => "DeclaredTypeNotInhabited",
-        CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { .. } => {
-            "DeclaredTypeInhabitanceUndecided"
-        }
-        CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
-        CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
-        CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { .. } => {
-            "DataReferenceVisibilityBudgetExceeded"
-        }
-        CompilerDiagnostic::ParameterDefaultFormNotAdmitted { .. } => {
-            "ParameterDefaultFormNotAdmitted"
-        }
-        CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { .. } => {
-            "AmbiguousAnonymousRecordLiteral"
-        }
-        CompilerDiagnostic::ModuleFilenameCollision { .. } => "ModuleFilenameCollision",
-        CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
-        CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
-        CompilerDiagnostic::CallPositionalDeficit { .. } => "CallPositionalDeficit",
-        CompilerDiagnostic::CallArgumentDuplicate { .. } => "CallArgumentDuplicate",
-        CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => "CallNamedArgOnFunctionValue",
-        CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
-        CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
-        CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
-        CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
-        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
-            "ServiceConfigReferenceJudgmentDeferred"
-        }
-        CompilerDiagnostic::UnlistedVariantValueUse { .. } => "UnlistedVariantValueUse",
-        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { .. } => {
-            "ReferenceDerivedImportProviderUnknown"
-        }
-        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { .. } => {
-            "ReferenceDerivedImportExportUnproven"
-        }
-    };
-    let name = match d.diagnostic.as_ref() {
-        CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
-        CompilerDiagnostic::MissingExport { name, .. } => name.clone(),
-        CompilerDiagnostic::ImportShadowedByLocalDefinition { name, .. } => name.clone(),
-        CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
-        CompilerDiagnostic::TypeMismatch { got, .. } => got.clone(),
-        CompilerDiagnostic::ArityMismatch { name, .. } => name.clone(),
-        CompilerDiagnostic::VariantNotFound { variant, .. } => variant.clone(),
-        CompilerDiagnostic::FieldNotFound { field, .. } => field.clone(),
-        CompilerDiagnostic::MethodNotFound { method, .. } => method.clone(),
-        CompilerDiagnostic::MethodExistenceUndecided { method, .. } => method.clone(),
-        CompilerDiagnostic::MethodExistenceFrontierAdmitted { method, .. } => method.clone(),
-        CompilerDiagnostic::ReceiverTypeUnestablished { method, .. } => method.clone(),
-        CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method, .. } => method.clone(),
-        CompilerDiagnostic::MissingField { field, .. } => field.clone(),
-        CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
-        CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),
-        CompilerDiagnostic::DuplicateModule { name, .. } => name.clone(),
-        CompilerDiagnostic::DuplicateDeclaration { name, .. } => name.clone(),
-        CompilerDiagnostic::MissingAnnotation { fn_name, .. } => fn_name.clone(),
-        CompilerDiagnostic::ParseError { message, .. } => truncate_histogram_label(message, 80),
-        CompilerDiagnostic::InternalError { message, .. } => {
-            compile_clean_internal_error_histogram_name(message)
-        }
-        CompilerDiagnostic::ComplexityUnknown { func_name, .. } => func_name.clone(),
-        CompilerDiagnostic::WhereRefinementUnenforced { predicate, .. } => predicate.clone(),
-        CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
-        CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
-        CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
-        CompilerDiagnostic::OptionalCastNotEliminated { source_type, .. } => source_type.clone(),
-        CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field, .. } => field.clone(),
-        CompilerDiagnostic::ConstructorCallAdmissionRefused {
-            constructor_decl_name,
-            ..
-        } => constructor_decl_name.clone(),
-        CompilerDiagnostic::AdmitCallersEntryNotDeclRef {
-            constructor_decl_name,
-            ..
-        } => constructor_decl_name.clone(),
-        CompilerDiagnostic::DeclaredTypeNotInhabited { position, .. } => position.clone(),
-        CompilerDiagnostic::DeclaredTypeInhabitanceUndecided { position, .. } => position.clone(),
-        CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
-        CompilerDiagnostic::UnlistedVariantValueUse { name, .. } => name.clone(),
-        CompilerDiagnostic::ReferenceDerivedImportProviderUnknown { name, .. } => name.clone(),
-        CompilerDiagnostic::ReferenceDerivedImportExportUnproven { name, .. } => name.clone(),
-        CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
-        CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name, .. } => name.clone(),
-        CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter, .. } => parameter.clone(),
-        CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates, .. } => {
-            candidates.iter().cloned().collect::<Vec<_>>().join("|")
-        }
-        CompilerDiagnostic::ModuleFilenameCollision { filename, .. } => filename.clone(),
-        CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
-        CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
-        CompilerDiagnostic::CallPositionalDeficit { parameter, .. } => parameter.clone(),
-        CompilerDiagnostic::CallArgumentDuplicate { argument, .. } => argument.clone(),
-        CompilerDiagnostic::CallNamedArgOnFunctionValue { argument, .. } => argument.clone(),
-        CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
-            "(occurrence-transport-refusal)".to_string()
-        }
-        // The three refusal kinds are separate failure classes — a reader fixing
-        // "prose in the wrong place" needs to know WHICH wrong place, so they stay
-        // distinct in the histogram rather than collapsing to one annotation bucket.
-        CompilerDiagnostic::SourceAnnotationRefused { refusal, .. } => {
-            use crate::std_source_annotation::AnnotationAttachmentRefusal;
-            match refusal.as_ref() {
-                AnnotationAttachmentRefusal::UnattachedAtScopeEnd { .. } => {
-                    "(annotation-unattached)".to_string()
-                }
-                AnnotationAttachmentRefusal::TrailingNotModeled { .. } => {
-                    "(annotation-trailing)".to_string()
-                }
-                AnnotationAttachmentRefusal::BodyGrainNotModeled { .. } => {
-                    "(annotation-body-grain)".to_string()
-                }
-            }
-        }
-        // The NAME is the full spelling, not its container leaf: the burn-down this
-        // histogram feeds is a list of spellings to declare a row for, and every
-        // refusal of one leaf would otherwise aggregate into a single row.
-        CompilerDiagnostic::ContainerSpellingUnrecognized { name, .. } => name.clone(),
-        // The NAME is the qualified operation, not the transport kind: the burn-down this
-        // histogram feeds is the list of operations awaiting a realization handler, and keying
-        // on "file" would aggregate every one of them into a single row.
-        CompilerDiagnostic::TransportEmissionNotModeled {
-            service, operation, ..
-        } => format!("{service}.{operation}"),
-        // The NAME is the config FIELD, not the referenced spelling: the burn-down this
-        // histogram feeds is the list of service-config fields still awaiting the reference
-        // judgment, and keying on the referenced name would spread one unjudged field across
-        // a row per service that happens to use a different word in it.
-        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field, .. } => field.clone(),
-    };
-    (class.to_string(), name)
 }
 
 fn truncate_histogram_label(s: &str, max: usize) -> String {
@@ -5757,20 +4757,6 @@ fn truncate_histogram_label(s: &str, max: usize) -> String {
             .unwrap_or(0);
         format!("{s_prefix}{ellipsis}", s_prefix = &s[..end])
     }
-}
-
-fn compile_clean_internal_error_histogram_name(message: &str) -> String {
-    if let Some(rest) = message.strip_prefix("function '") {
-        if let Some(name) = rest.split_once('\'').map(|(n, _)| n) {
-            return format!("function:{name}");
-        }
-    }
-    if let Some(rest) = message.strip_prefix("undefined variable '") {
-        if let Some(name) = rest.split_once('\'').map(|(n, _)| n) {
-            return format!("variable:{name}");
-        }
-    }
-    truncate_histogram_label(message, 80)
 }
 
 /// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
@@ -16555,24 +15541,6 @@ fn resolve_entry_with_parse_cache_inner(
 enum ResolvedGraphMemoShare {
     Memoize,
     Ephemeral,
-}
-
-fn compile_clean_diags_from_resolved_stages(
-    resolve_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
-    norm_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
-    typed: &Rc<v1_compiler_compile::ResolvedGraph>,
-    ownership_diags: &Rc<im::Vector<Rc<ErrorNode>>>,
-) -> Rc<im::Vector<Rc<ErrorNode>>> {
-    let mut acc = im::Vector::new();
-    for d in resolve_diags.iter() {
-        acc.push_back(d.clone());
-    }
-    acc.extend(norm_diags.iter().cloned());
-    for d in typed.diagnostics.iter() {
-        acc.push_back(d.clone());
-    }
-    acc.extend(ownership_diags.iter().cloned());
-    Rc::new(acc)
 }
 
 fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> Option<String> {
@@ -27425,41 +26393,6 @@ const COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY: &str =
 const COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY: &str =
     "dag/test/claim/dag_compile_clean_scope_witness_test.dag";
 
-fn compile_clean_touched_path_norm(path: &str) -> &str {
-    path.strip_prefix("./").unwrap_or(path)
-}
-
-fn compile_clean_touched_path_is_docs_only(path: &str) -> bool {
-    compile_clean_touched_path_norm(path).starts_with("docs/")
-}
-
-fn compile_clean_touched_path_is_dag_source(path: &str) -> bool {
-    compile_clean_touched_path_norm(path).ends_with(".dag")
-}
-
-fn compile_clean_verdict_affecting_touch(touched_paths: &[String]) -> bool {
-    !touched_paths.is_empty()
-        && !touched_paths
-            .iter()
-            .all(|p| compile_clean_touched_path_is_docs_only(p))
-        && touched_paths
-            .iter()
-            .any(|p| compile_clean_touched_path_is_dag_source(p))
-}
-
-fn compile_clean_broad_stop_line_blocks_skip(entry_path: &str, touched_paths: &[String]) -> bool {
-    if !compile_clean_verdict_affecting_touch(touched_paths) {
-        return false;
-    }
-    let entry_rel = workspace_relative_repo_path(entry_path);
-    [
-        COMPILE_CLEAN_SHARD_A_VALIDATING_ENTRY,
-        COMPILE_CLEAN_SCOPE_VALIDATING_ENTRY,
-    ]
-    .iter()
-    .any(|check| workspace_relative_repo_path(check) == entry_rel)
-}
-
 fn entry_has_declared_source_refs(entry_path: &str, facts: &ModuleGraphFactsLive) -> bool {
     !declared_source_ref_paths_for_entry(entry_path, facts).is_empty()
 }
@@ -36774,39 +35707,6 @@ pub fn commit_witness_claim_roster_unresolvable_count() -> i64 {
     defects.len() as i64
 }
 
-pub fn non_fold_residue_wildcard_red_fixture_holds() -> bool {
-    let fixture = vec![(
-        "m.dag".to_string(),
-        "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n"
-            .to_string(),
-    )];
-    nfr_residue_sites(&fixture).contains(&"m.dag::f".to_string())
-}
-
-pub fn non_fold_residue_total_fold_green_fixture_holds() -> bool {
-    let fixture = vec![(
-        "m.dag".to_string(),
-        "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n    C => false\n  }\n}\n"
-            .to_string(),
-    )];
-    !nfr_residue_sites(&fixture).contains(&"m.dag::f".to_string())
-}
-
-pub fn non_fold_residue_roster_red_fixture_holds() -> bool {
-    !non_fold_residue_site_is_rostered("synthetic/unrostered_site.dag::would_fail")
-}
-
-pub fn non_fold_residue_synthetic_unrostered_red_holds() -> bool {
-    let fixture = vec![(
-        "synthetic_red_fixture.dag".to_string(),
-        "module synthetic_red_fixture\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n"
-            .to_string(),
-    )];
-    let sites = nfr_residue_sites(&fixture);
-    let site = "synthetic_red_fixture.dag::f";
-    sites.contains(&site.to_string()) && !non_fold_residue_site_is_rostered(site)
-}
-
 #[cfg(test)]
 mod nfr_observation_roster_test {
     use super::non_fold_residue_site_is_rostered;
@@ -36837,176 +35737,6 @@ mod nfr_observation_roster_test {
 
 const NON_FOLD_RESIDUE_AUTHORITY_REL: &str = "dag/gunbc/non_fold_residue.dag";
 const NON_FOLD_RESIDUE_FRONTIER_DATA_NAME: &str = "non_fold_residue_frontier";
-
-/// Project the path site keys out of the typed `non_fold_residue_frontier` rows of the
-/// `gunbc.non_fold_residue` authority SOURCE TEXT via the real front-end — the roster's
-/// re-home off this file's former `NON_FOLD_RESIDUE_ROSTER` const (group-of-units ruling,
-/// enrolled in `gunbc.roster_registry`). Per-row reasons and dissolution triggers are
-/// `.dag`-side facts the host does not consume. Fail-closed: a parse error, a missing data
-/// def, a non-record element, a missing/non-literal `subject.path` field, a duplicate path,
-/// or an empty roster is a loud panic, never a silent fallback.
-// 🟡 dissolve-on: hand-Rust reader over the `.dag` authority — dissolves with
-// `witness_exclusion_rows_from_module_source` when the host consumes an emitted manifest of
-// the rows (module-binding supply-carrier pattern), and with the scan below into a pure
-// `.dag` Node-tree lens at gunbc#5364.
-pub(crate) fn non_fold_residue_units_from_module_source(
-    module_rel_path: &str,
-    content: &str,
-) -> Vec<String> {
-    use crate::v1_std_core::{ExprData, LiteralValue};
-
-    let filename = module_rel_path.to_string();
-    let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
-    let source_index =
-        crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
-    let mut source_indices = HashMap::new();
-    source_indices.insert(filename.clone(), source_index);
-    let source_indices = std::rc::Rc::new(source_indices);
-    let result = crate::v1_compiler_parse::parse(tokens, source_indices.clone());
-    if let Some(err) = result.error.as_ref() {
-        panic!(
-            "nfr frontier reader: parse error in {module_rel_path}: {}",
-            crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
-        );
-    }
-    let module = result
-        .module
-        .as_ref()
-        .unwrap_or_else(|| panic!("nfr frontier reader: {module_rel_path} parsed to no module"));
-    let data_name = NON_FOLD_RESIDUE_FRONTIER_DATA_NAME;
-    for item in module.children.iter() {
-        if item.name != data_name
-            || !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone())
-        {
-            continue;
-        }
-        let body = item.body.as_ref().unwrap_or_else(|| {
-            panic!("nfr frontier reader: `data {data_name}` in {module_rel_path} has no value body")
-        });
-        if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
-            panic!(
-                "nfr frontier reader: `data {data_name}` in {module_rel_path} is not a list \
-                 literal"
-            );
-        }
-        let mut units = Vec::new();
-        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-        for el in body.children.iter() {
-            if !matches!(el.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
-                panic!(
-                    "nfr frontier reader: an element of `{data_name}` in {module_rel_path} is \
-                     not a record literal (refusing — rows must stay directly host-readable)"
-                );
-            }
-            let mut path: Option<String> = None;
-            for field in el.children.iter() {
-                let fname = crate::v1_std_core::field_init_node_name_at(
-                    field.clone(),
-                    source_indices.clone(),
-                );
-                if fname != "subject" {
-                    continue;
-                }
-                let value = crate::v1_std_core::field_init_node_value(field.clone());
-                match value.expr_data.as_ref() {
-                    ExprData::ExprRecordLit { .. } => {
-                        let variant_name = crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            value.clone(),
-                        );
-                        if variant_name != "PathSubject" {
-                            panic!(
-                                "nfr frontier reader: `subject` in a `{data_name}` row of \
-                                 {module_rel_path} is not PathSubject {{ ... }}"
-                            );
-                        }
-                        let mut row_path: Option<String> = None;
-                        for subfield in value.children.iter() {
-                            let subname = crate::v1_std_core::field_init_node_name_at(
-                                subfield.clone(),
-                                source_indices.clone(),
-                            );
-                            if subname != "path" {
-                                continue;
-                            }
-                            let path_value =
-                                crate::v1_std_core::field_init_node_value(subfield.clone());
-                            match path_value.expr_data.as_ref() {
-                                ExprData::ExprLiteral { value: lit } => match lit.as_ref() {
-                                    LiteralValue::LitStr { value: s } => row_path = Some(s.clone()),
-                                    _ => panic!(
-                                        "nfr frontier reader: `path` in a `{data_name}` row \
-                                         of {module_rel_path} is not a string literal"
-                                    ),
-                                },
-                                _ => panic!(
-                                    "nfr frontier reader: `path` in a `{data_name}` row of \
-                                     {module_rel_path} is not a literal"
-                                ),
-                            }
-                        }
-                        path = Some(row_path.unwrap_or_else(|| {
-                            panic!(
-                                "nfr frontier reader: `subject` in a `{data_name}` row of \
-                                 {module_rel_path} is `PathSubject` but carries no `path` field"
-                            )
-                        }));
-                    }
-                    _ => panic!(
-                        "nfr frontier reader: `subject` in a `{data_name}` row of \
-                         {module_rel_path} is not a record literal"
-                    ),
-                }
-            }
-            let path = path.unwrap_or_else(|| {
-                panic!(
-                    "nfr frontier reader: a `{data_name}` row in {module_rel_path} has no \
-                     `subject` field"
-                )
-            });
-            if !seen.insert(path.clone()) {
-                panic!(
-                    "nfr frontier reader: duplicate path {path:?} in `{data_name}` of \
-                     {module_rel_path} (the const this replaced tolerated duplicates; the \
-                     typed roster refuses them)"
-                );
-            }
-            units.push(path);
-        }
-        if units.is_empty() {
-            panic!(
-                "nfr frontier reader: `{data_name}` in {module_rel_path} is empty (fail-closed)"
-            );
-        }
-        return units;
-    }
-    panic!("nfr frontier reader: no `data {data_name}` def in {module_rel_path}")
-}
-
-fn non_fold_residue_roster_entries() -> &'static [String] {
-    static ENTRIES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
-    ENTRIES.get_or_init(|| {
-        let path = process_workspace_root().join(NON_FOLD_RESIDUE_AUTHORITY_REL);
-        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-            panic!(
-                "nfr frontier reader: failed to read {}: {e}",
-                path.display()
-            )
-        });
-        non_fold_residue_units_from_module_source(NON_FOLD_RESIDUE_AUTHORITY_REL, &content)
-    })
-}
-
-fn non_fold_residue_roster_set() -> &'static std::collections::BTreeSet<&'static str> {
-    static SET: std::sync::OnceLock<std::collections::BTreeSet<&'static str>> =
-        std::sync::OnceLock::new();
-    SET.get_or_init(|| {
-        non_fold_residue_roster_entries()
-            .iter()
-            .map(|s| s.as_str())
-            .collect()
-    })
-}
 
 fn nfr_strip_comments(content: &str) -> String {
     content
@@ -37291,44 +36021,6 @@ fn nfr_build_report() -> &'static NonFoldReport {
     })
 }
 
-pub fn non_fold_residue_closed_coproduct_type_names() -> &'static std::collections::BTreeSet<String>
-{
-    &nfr_build_report().closed_coproduct_names
-}
-
-pub fn non_fold_residue_count() -> i64 {
-    nfr_build_report().sites.len() as i64
-}
-
-pub fn non_fold_residue_unrostered_count() -> i64 {
-    let roster = non_fold_residue_roster_set();
-    nfr_build_report()
-        .sites
-        .iter()
-        .filter(|s| !roster.contains(s.as_str()))
-        .count() as i64
-}
-
-pub fn non_fold_residue_site_is_rostered(site: &str) -> bool {
-    non_fold_residue_roster_set().contains(site)
-}
-
-pub fn non_fold_residue_stale_roster_count() -> i64 {
-    let live: std::collections::BTreeSet<&str> = nfr_build_report()
-        .sites
-        .iter()
-        .map(|s| s.as_str())
-        .collect();
-    non_fold_residue_roster_entries()
-        .iter()
-        .filter(|s| !live.contains(s.as_str()))
-        .count() as i64
-}
-
-pub fn non_fold_residue_coproduct_universe_count() -> i64 {
-    nfr_build_report().coproduct_universe as i64
-}
-
 #[cfg(test)]
 mod nfr_tests {
     use super::*;
@@ -37555,435 +36247,10 @@ mod nfr_tests {
 
 const LANGUAGES_AUTHORITY_REL: &str = "dag/std/languages.dag";
 
-fn languages_census_collect_source_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            languages_census_collect_source_files(&path, out);
-        } else {
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if ext == "dag" || ext == "rs" {
-                out.push(path);
-            }
-        }
-    }
-}
-
-fn languages_census_strip_content(source: &str) -> String {
-    let mut out = String::with_capacity(source.len());
-    let mut chars = source.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '/' && chars.peek() == Some(&'/') {
-            while chars.next().is_some_and(|ch| ch != '\n') {}
-            out.push('\n');
-            continue;
-        }
-        if c == '"' {
-            while let Some(ch) = chars.next() {
-                if ch == '\\' {
-                    chars.next();
-                    continue;
-                }
-                if ch == '"' {
-                    break;
-                }
-            }
-            out.push(' ');
-            continue;
-        }
-        if c == '`' {
-            while chars.next().is_some_and(|ch| ch != '`') {}
-            out.push(' ');
-            continue;
-        }
-        out.push(c);
-    }
-    out
-}
-
-fn languages_census_extract_data_decl_names(content: &str) -> Vec<String> {
-    content
-        .lines()
-        .filter_map(|line| {
-            let rest = line.strip_prefix("data ")?;
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect();
-            if name.is_empty() {
-                None
-            } else {
-                Some(name)
-            }
-        })
-        .collect()
-}
-
-fn languages_census_is_infrastructure_path(rel: &str) -> bool {
-    rel.starts_with("src/v2/test/claim/languages_consumer_census/")
-        || rel == "src/v2/lens/languages_consumer_census.dag"
-}
-
-fn languages_census_tokenize(content: &str) -> HashSet<String> {
-    let stripped = languages_census_strip_content(content);
-    stripped
-        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-        .filter(|token| !token.is_empty())
-        .map(str::to_string)
-        .collect()
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LanguagesDeclConsumerRecord {
     pub decl_name: String,
     pub external_consumer_paths: Vec<String>,
-}
-
-fn languages_census_record_tokens(
-    rel: &str,
-    content: &str,
-    decl_name_set: &HashSet<String>,
-    by_decl: &mut HashMap<String, HashSet<String>>,
-) {
-    if rel == LANGUAGES_AUTHORITY_REL || languages_census_is_infrastructure_path(rel) {
-        return;
-    }
-    let tokens = languages_census_tokenize(content);
-    for decl_name in tokens.intersection(decl_name_set) {
-        by_decl
-            .get_mut(decl_name)
-            .expect("decl map key")
-            .insert(rel.to_string());
-    }
-}
-
-fn languages_decl_records_from_inventory(
-    inventory: &[PreparedSourceView],
-) -> Vec<LanguagesDeclConsumerRecord> {
-    let authority_content = inventory
-        .iter()
-        .find(|e| e.source.path.replace('\\', "/") == LANGUAGES_AUTHORITY_REL)
-        .map(|e| e.source.content.as_str())
-        .unwrap_or_else(|| {
-            panic!(
-                "languages_consumer_census: prepared inventory missing {LANGUAGES_AUTHORITY_REL}"
-            )
-        });
-    let decl_names = languages_census_extract_data_decl_names(authority_content);
-    let decl_name_set: HashSet<String> = decl_names.iter().cloned().collect();
-
-    let mut by_decl: HashMap<String, HashSet<String>> = decl_names
-        .iter()
-        .map(|name| (name.clone(), HashSet::new()))
-        .collect();
-
-    let mut seen: HashSet<String> = HashSet::new();
-    for entry in inventory {
-        let rel = entry.source.path.replace('\\', "/");
-        if !rel.starts_with("dag/") && !rel.starts_with("src/") {
-            continue;
-        }
-        seen.insert(rel.clone());
-        languages_census_record_tokens(&rel, &entry.source.content, &decl_name_set, &mut by_decl);
-    }
-
-    // Prepared inventory is dag + src/v2 `.dag` only. The disk census also tokenizes
-    // `src/v1` and every `.rs` file; those are the external consumers of `rust_spec`.
-    let ws = workspace_root();
-    let mut extra = Vec::new();
-    let src_root = ws.join("src");
-    if src_root.is_dir() {
-        languages_census_collect_source_files(&src_root, &mut extra);
-    }
-    for path in extra {
-        let rel = path
-            .strip_prefix(&ws)
-            .map(|p| p.to_string_lossy().replace('\\', "/"))
-            .unwrap_or_default();
-        if seen.contains(&rel) {
-            continue;
-        }
-        let content = match std::fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        languages_census_record_tokens(&rel, &content, &decl_name_set, &mut by_decl);
-    }
-
-    let mut records = Vec::new();
-    for decl_name in decl_names {
-        let mut paths: Vec<String> = by_decl
-            .remove(&decl_name)
-            .expect("decl map key")
-            .into_iter()
-            .collect();
-        paths.sort();
-        records.push(LanguagesDeclConsumerRecord {
-            decl_name,
-            external_consumer_paths: paths,
-        });
-    }
-    records
-}
-
-fn languages_decl_records_inner() -> Vec<LanguagesDeclConsumerRecord> {
-    if floor_prepared_authority_active() {
-        return FLOOR_LANGUAGES_RECORDS.with(|cell| {
-            if cell.borrow().is_none() {
-                let inventory = floor_prepared_inventory_snapshot()
-                    .expect("floor languages census: authority active but inventory missing");
-                *cell.borrow_mut() = Some(languages_decl_records_from_inventory(&inventory));
-            }
-            cell.borrow().clone().expect("floor languages records")
-        });
-    }
-    let ws = workspace_root();
-    let authority = ws.join(LANGUAGES_AUTHORITY_REL);
-    let authority_content = std::fs::read_to_string(&authority).unwrap_or_else(|e| {
-        panic!(
-            "languages_consumer_census: failed to read {}: {e}",
-            authority.display()
-        )
-    });
-    let decl_names = languages_census_extract_data_decl_names(&authority_content);
-    let decl_name_set: HashSet<String> = decl_names.iter().cloned().collect();
-
-    let mut files = Vec::new();
-    for tree in &["dag", "src"] {
-        let root = ws.join(tree);
-        if root.is_dir() {
-            languages_census_collect_source_files(&root, &mut files);
-        }
-    }
-
-    let mut by_decl: HashMap<String, HashSet<String>> = decl_names
-        .iter()
-        .map(|name| (name.clone(), HashSet::new()))
-        .collect();
-
-    for path in files {
-        let rel = path
-            .strip_prefix(&ws)
-            .map(|p| p.to_string_lossy().replace('\\', "/"))
-            .unwrap_or_default();
-        if rel == LANGUAGES_AUTHORITY_REL || languages_census_is_infrastructure_path(&rel) {
-            continue;
-        }
-        let content = match std::fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        languages_census_record_tokens(&rel, &content, &decl_name_set, &mut by_decl);
-    }
-
-    let mut records = Vec::new();
-    for decl_name in decl_names {
-        let mut paths: Vec<String> = by_decl
-            .remove(&decl_name)
-            .expect("decl map key")
-            .into_iter()
-            .collect();
-        paths.sort();
-        records.push(LanguagesDeclConsumerRecord {
-            decl_name,
-            external_consumer_paths: paths,
-        });
-    }
-    records
-}
-
-fn languages_decl_records_cached() -> &'static [LanguagesDeclConsumerRecord] {
-    static RECORDS: OnceLock<Vec<LanguagesDeclConsumerRecord>> = OnceLock::new();
-    RECORDS.get_or_init(languages_decl_records_inner)
-}
-
-fn languages_decl_record_for(decl_name: &str) -> Option<&'static LanguagesDeclConsumerRecord> {
-    languages_decl_records_cached()
-        .iter()
-        .find(|r| r.decl_name == decl_name)
-}
-
-pub fn languages_consumer_census_data_decl_count() -> i64 {
-    languages_decl_records_cached().len() as i64
-}
-
-pub fn languages_consumer_census_per_language_row_count() -> i64 {
-    languages_decl_records_cached()
-        .iter()
-        .filter(|r| !r.decl_name.ends_with("_format"))
-        .count() as i64
-}
-
-pub fn languages_consumer_census_format_row_count() -> i64 {
-    languages_decl_records_cached()
-        .iter()
-        .filter(|r| r.decl_name.ends_with("_format"))
-        .count() as i64
-}
-
-pub fn languages_consumer_census_external_consumer_count(decl_name: String) -> i64 {
-    languages_decl_record_for(&decl_name)
-        .map(|r| r.external_consumer_paths.len() as i64)
-        .unwrap_or(-1)
-}
-
-pub fn languages_consumer_census_is_composition_only(decl_name: String) -> bool {
-    languages_decl_record_for(&decl_name)
-        .map(|r| r.external_consumer_paths.is_empty())
-        .unwrap_or(false)
-}
-
-pub fn languages_consumer_census_has_external_consumer(decl_name: String) -> bool {
-    languages_decl_record_for(&decl_name)
-        .map(|r| !r.external_consumer_paths.is_empty())
-        .unwrap_or(false)
-}
-
-// --- Inert carrier census (folded from inert_carrier_project.rs) ---
-//
-// A type carrier is "inert" iff (a) declared in a non-test file, (b) its name appears in at least
-// one *_test.dag file (self-tested), and (c) its name appears in NO non-test .dag file outside its
-// own declaration block (zero real consumer). This is DESIGN §5 coverage-by-illusion.
-// DISSOLUTION TRIGGER: when .dag gains compile-graph / reference-edge access (gunbc#5364), the
-// token scan folds into a pure .dag reader over BindsTo edges and this Rust census deletes.
-
-fn inert_carrier_identifier_tokens(line: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut cur = String::new();
-    for ch in line.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' {
-            cur.push(ch);
-        } else if !cur.is_empty() {
-            out.push(std::mem::take(&mut cur));
-        }
-    }
-    if !cur.is_empty() {
-        out.push(cur);
-    }
-    out
-}
-
-fn inert_carrier_count_token(text: &str, name: &str) -> i64 {
-    let mut n = 0i64;
-    for raw in text.lines() {
-        for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
-            if tok == name {
-                n += 1;
-            }
-        }
-    }
-    n
-}
-
-fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
-    let lines: Vec<&str> = content.lines().collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < lines.len() {
-        let trimmed = lines[i].trim_start();
-        let Some(rest) = trimmed.strip_prefix("type ") else {
-            i += 1;
-            continue;
-        };
-        let name: String = rest
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-            .collect();
-        if name.is_empty() {
-            i += 1;
-            continue;
-        }
-        let mut block = String::new();
-        block.push_str(lines[i]);
-        block.push('\n');
-        let mut depth = brace_delta(lines[i]);
-        i += 1;
-        while i < lines.len() {
-            let nt = lines[i].trim_start();
-            if depth <= 0 {
-                if !(nt.starts_with('|') || nt.starts_with('=')) {
-                    break;
-                }
-            }
-            block.push_str(lines[i]);
-            block.push('\n');
-            depth += brace_delta(lines[i]);
-            i += 1;
-        }
-        out.push((name, block));
-    }
-    out
-}
-
-// A coproduct is consumed through its variant names (constructors, match arms) at least as
-// often as through the type name itself, which may appear only at the declaration. Credit
-// variant occurrences to the parent type or a live state machine reads as inert. Variant
-// names shared across coproducts merge their tallies — an approximation that errs toward
-// not flagging; the roster stays the per-name override.
-//
-// Nominal records (`type Foo = Foo { field: T }`) must NOT be read as a one-variant
-// coproduct: the repeated type name after `=` is the record constructor spelling, not a
-// variant. Treating it as one double-counts `self_block_refs` and can drive consumption
-// to ≤0 for a carrier that is actively constructed in the same file (HostToolchainReach
-// falsifier red 2026-07-25 — live consumer in gunbc.host_toolchain_ensure, falsely inert).
-fn inert_carrier_variant_names(type_name: &str, block: &str) -> Vec<String> {
-    if inert_carrier_block_is_nominal_record(type_name, block) {
-        return Vec::new();
-    }
-    let mut out = Vec::new();
-    for (idx, raw) in block.lines().enumerate() {
-        let t = raw.trim_start();
-        let payload = if idx == 0 {
-            match t.find('=') {
-                Some(p) => &t[p + 1..],
-                None => continue,
-            }
-        } else if let Some(rest) = t.strip_prefix('=') {
-            rest
-        } else if let Some(rest) = t.strip_prefix('|') {
-            rest
-        } else {
-            continue;
-        };
-        for seg in payload.split('|') {
-            let name: String = seg
-                .trim_start()
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect();
-            if !name.is_empty() && name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
-                out.push(name);
-            }
-        }
-    }
-    out.sort();
-    out.dedup();
-    out
-}
-
-fn inert_carrier_block_is_nominal_record(type_name: &str, block: &str) -> bool {
-    let Some(first) = block.lines().next() else {
-        return false;
-    };
-    let trimmed = first.trim_start();
-    let Some(eq) = trimmed.find('=') else {
-        // `type Foo { ... }` brace-record form — no coproduct variants.
-        return trimmed.contains('{');
-    };
-    if trimmed[eq + 1..].contains('|') {
-        return false;
-    }
-    let after = trimmed[eq + 1..].trim_start();
-    after.starts_with(type_name)
-        && after
-            .as_bytes()
-            .get(type_name.len())
-            .is_some_and(|b| *b == b'{' || b.is_ascii_whitespace())
-        && after.contains('{')
 }
 
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
@@ -38150,14 +36417,6 @@ fn build_inert_carrier_data() -> &'static InertCarrierData {
     shared_fill::once(&CACHE, "inert_carrier_data", "corpus", || {
         compute_inert_carrier_data(&corpus_dag_files())
     })
-}
-
-pub fn inert_carrier_names_live() -> Vec<String> {
-    build_inert_carrier_data().inert_names.clone()
-}
-
-pub fn inert_carrier_declared_count_live() -> i64 {
-    build_inert_carrier_data().declared_count as i64
 }
 
 #[cfg(test)]
@@ -39142,62 +37401,6 @@ struct TestMigrationBehaviorDiscoveryReport {
     errors: Vec<String>,
 }
 
-fn test_migration_debt_v1_test_dir() -> PathBuf {
-    workspace_root().join("src/v1/tests/src")
-}
-
-fn test_migration_named_fn_after_attribute<'a, I>(lines: &mut I) -> Option<String>
-where
-    I: Iterator<Item = &'a str>,
-{
-    for line in lines {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("#[") {
-            continue;
-        }
-        let after_visibility = trimmed.strip_prefix("pub ").unwrap_or(trimmed);
-        let after_async = after_visibility
-            .strip_prefix("async ")
-            .unwrap_or(after_visibility);
-        return after_async
-            .strip_prefix("fn ")
-            .and_then(|rest| rest.split('(').next())
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-            .map(str::to_string);
-    }
-    None
-}
-
-fn test_migration_rust_test_fn_names(content: &str) -> Result<Vec<String>, String> {
-    let mut lines = content.lines();
-    let mut names = Vec::new();
-    while let Some(line) = lines.next() {
-        if line.trim() != "#[test]" {
-            continue;
-        }
-        match test_migration_named_fn_after_attribute(&mut lines) {
-            Some(name) => names.push(name),
-            None => return Err("#[test] is not followed by a named Rust function".to_string()),
-        }
-    }
-    Ok(names)
-}
-
-fn test_migration_dag_test_fn_names(content: &str) -> Vec<String> {
-    content
-        .lines()
-        .filter_map(|line| {
-            line.trim()
-                .strip_prefix("test fn ")
-                .and_then(|rest| rest.split('(').next())
-                .map(str::trim)
-                .filter(|name| !name.is_empty())
-                .map(str::to_string)
-        })
-        .collect()
-}
-
 fn build_test_migration_behavior_discovery_report() -> TestMigrationBehaviorDiscoveryReport {
     let dir = test_migration_debt_v1_test_dir();
     let mut legacy_behavior_ids = Vec::new();
@@ -39255,83 +37458,6 @@ fn build_test_migration_behavior_discovery_report() -> TestMigrationBehaviorDisc
     }
 }
 
-fn test_migration_behavior_discovery_report() -> &'static TestMigrationBehaviorDiscoveryReport {
-    static REPORT: OnceLock<TestMigrationBehaviorDiscoveryReport> = OnceLock::new();
-    shared_fill::once(
-        &REPORT,
-        "test_migration_behavior_discovery",
-        "corpus",
-        build_test_migration_behavior_discovery_report,
-    )
-}
-
-pub fn test_migration_legacy_behavior_ids() -> Vec<String> {
-    test_migration_behavior_discovery_report()
-        .legacy_behavior_ids
-        .clone()
-}
-
-pub fn test_migration_witness_behavior_ids() -> Vec<String> {
-    test_migration_behavior_discovery_report()
-        .witness_behavior_ids
-        .clone()
-}
-
-pub fn test_migration_behavior_discovery_holds() -> bool {
-    test_migration_behavior_discovery_report().errors.is_empty()
-}
-
-fn test_migration_debt_stem(name: &str) -> String {
-    let stem = name
-        .strip_suffix(".rs")
-        .or_else(|| name.strip_suffix(".dag"))
-        .unwrap_or(name);
-    stem.strip_suffix("_test").unwrap_or(stem).to_string()
-}
-
-fn test_migration_debt_floor_stems() -> Vec<String> {
-    let mut stems: Vec<String> = corpus_dag_files()
-        .into_iter()
-        .map(|(path, _)| path)
-        .filter(|p| is_test_dag(p))
-        .map(|p| {
-            let file_name = std::path::Path::new(&p)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(&p)
-                .to_string();
-            test_migration_debt_stem(&file_name)
-        })
-        .collect();
-    stems.sort();
-    stems.dedup();
-    stems
-}
-
-// Exact-stem equality only. A substring match (either direction) was tried and reviewed
-// unsound: e.g. v1 stem "pipeline" (the single largest debt module, 418 `#[test]` fns) is a
-// substring of the floor stem "typescript_import_pipeline", so a fuzzy match falsely marked
-// the whole module covered — hiding debt rather than counting it. Exact equality is decidable
-// and cannot understate debt; it may list a module the operator judges topically covered by a
-// differently-named floor witness, which is a correct false-debt (never a false-coverage) bias.
-fn test_migration_debt_stem_covered(v1_stem: &str, floor_stems: &[String]) -> bool {
-    floor_stems.iter().any(|floor_stem| floor_stem == v1_stem)
-}
-
-// The DEBT-EXCLUDE set (consumed by `build_test_migration_debt_report`): floor-witness stems
-// (migrate path) ∪ retired stems (delete path) ∪ retained-non-migratable stems (retain path). A
-// module in any of the three is accounted for and drops out of the debt roster.
-// Retired/retained stem sources removed 2026-08-12 (V1-CONSUMER-DRAIN-1): the
-// `_retired.dag` / `_retained.dag` carriers they scanned for were deleted with the
-// test-suite cutover (gunbc#8146), so both returned empty in-corpus. Behaviour is
-// unchanged by construction — extending with two empty vectors was a no-op.
-fn test_migration_debt_exclude_stems() -> Vec<String> {
-    let mut stems = test_migration_debt_floor_stems();
-    stems.sort();
-    stems.dedup();
-    stems
-}
-
 fn build_test_migration_debt_report() -> TestMigrationDebtReport {
     let dir = test_migration_debt_v1_test_dir();
     let floor_stems = test_migration_debt_exclude_stems();
@@ -39376,24 +37502,6 @@ fn build_test_migration_debt_report() -> TestMigrationDebtReport {
         });
     }
     TestMigrationDebtReport { entries }
-}
-
-fn test_migration_debt_report() -> &'static TestMigrationDebtReport {
-    static REPORT: OnceLock<TestMigrationDebtReport> = OnceLock::new();
-    shared_fill::once(
-        &REPORT,
-        "test_migration_debt",
-        "corpus",
-        build_test_migration_debt_report,
-    )
-}
-
-pub fn test_migration_debt_module_names() -> Vec<String> {
-    test_migration_debt_report()
-        .entries
-        .iter()
-        .map(|e| e.module.clone())
-        .collect()
 }
 
 #[cfg(test)]
@@ -42345,27 +40453,6 @@ enum ExternalAuthorityAnchorProjection {
     },
 }
 
-fn external_authority_uri_record_from_anchor_body(
-    body: &Rc<crate::v1_std_core::Node>,
-    variant: &str,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) -> Option<Rc<crate::v1_std_core::Node>> {
-    match variant {
-        "ExternalAuthority" | "StableAuthority" | "ExternalUri" => {
-            extdeps_record_field_value(body, "uri", source_indices)
-        }
-        _ => None,
-    }
-}
-
-fn external_authority_scheme_identity_from_value_node(
-    node: &Rc<crate::v1_std_core::Node>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) -> String {
-    use crate::v1_std_core::authored_name_at;
-    authored_name_at(source_indices.clone(), node.clone())
-}
-
 fn extdeps_import_home_for_symbol(
     module: &Rc<crate::v1_std_core::Node>,
     symbol: &str,
@@ -42395,95 +40482,6 @@ fn extdeps_import_home_for_symbol(
         }
     }
     None
-}
-
-fn external_authority_alias_symbol_name(
-    body: &Rc<crate::v1_std_core::Node>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-) -> Option<String> {
-    use crate::v1_std_core::{authored_name_at, expr_var_name_at, ExprData};
-    match body.expr_data.as_ref() {
-        ExprData::ExprVar { .. } => {
-            let name = expr_var_name_at(body.clone(), source_indices.clone());
-            if !name.is_empty() {
-                Some(name)
-            } else if !body.name.is_empty() {
-                Some(body.name.clone())
-            } else {
-                None
-            }
-        }
-        _ => {
-            let variant = authored_name_at(source_indices.clone(), body.clone());
-            if variant.is_empty() {
-                None
-            } else {
-                Some(variant)
-            }
-        }
-    }
-}
-
-fn external_authority_anchor_from_data_body(
-    body: &Rc<crate::v1_std_core::Node>,
-    module: &Rc<crate::v1_std_core::Node>,
-    module_path: &str,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
-    visited: &mut std::collections::HashSet<String>,
-) -> ExternalAuthorityAnchorProjection {
-    use crate::v1_std_core::authored_name_at;
-    let variant = authored_name_at(source_indices.clone(), body.clone());
-    if let Some(uri_node) =
-        external_authority_uri_record_from_anchor_body(body, variant.as_str(), source_indices)
-    {
-        let Some(scheme) = extdeps_record_field_value(&uri_node, "scheme", source_indices)
-            .map(|n| external_authority_scheme_identity_from_value_node(&n, source_indices))
-        else {
-            return ExternalAuthorityAnchorProjection::Refused {
-                cause: format!("anchor uri record has no `scheme` field in {variant}"),
-            };
-        };
-        let Some(locator) = extdeps_record_field_value(&uri_node, "locator", source_indices)
-            .and_then(|n| extdeps_literal_string_value(&n))
-        else {
-            return ExternalAuthorityAnchorProjection::Refused {
-                cause: format!("anchor uri record has no `locator` field in {variant}"),
-            };
-        };
-        if scheme.is_empty() {
-            return ExternalAuthorityAnchorProjection::Refused {
-                cause: format!("anchor uri record has an empty `scheme` in {variant}"),
-            };
-        }
-        return ExternalAuthorityAnchorProjection::Present {
-            scheme_identity: scheme,
-            locator,
-        };
-    }
-    let Some(symbol) = external_authority_alias_symbol_name(body, source_indices) else {
-        return ExternalAuthorityAnchorProjection::Absent;
-    };
-    if let Some(home) = extdeps_import_home_for_symbol(module, symbol.as_str(), source_indices) {
-        if !visited.insert(home.clone()) {
-            return ExternalAuthorityAnchorProjection::Refused {
-                cause: format!("alias cycle revisiting {home} for symbol {symbol}"),
-            };
-        }
-        return project_external_authority_named_data(&home, symbol.as_str(), visited);
-    }
-    // The alias names no IMPORTED symbol, so the only home left for it is this module itself. A
-    // `.dag` declaration may reference a sibling declaration in its own file without importing it,
-    // and reading that as Absent conflates "this module declares no anchor" with "this module
-    // declares one I did not follow" -- two states with opposite remedies, one an authoring defect
-    // and one a defect in this reader. Resolving the local home removes the second state rather
-    // than reporting it (DESIGN section 5).
-    let local_key = format!("{module_path}::{symbol}");
-    if !visited.insert(local_key) {
-        return ExternalAuthorityAnchorProjection::Refused {
-            cause: format!("alias cycle revisiting {module_path} for local symbol {symbol}"),
-        };
-    }
-    project_external_authority_named_data(module_path, symbol.as_str(), visited)
 }
 
 fn project_external_authority_named_data(
@@ -42557,14 +40555,6 @@ fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnch
     )
 }
 
-fn external_authority_machinery_exempt_module_paths() -> &'static [&'static str] {
-    &[
-        "extdeps.uri",
-        "extdeps.external_authority",
-        "extdeps.publication",
-    ]
-}
-
 pub fn extdeps_derived_extdeps_module_paths() -> Vec<String> {
     let index = build_module_path_index_from_witness_roots();
     let mut paths: Vec<String> = index
@@ -42574,14 +40564,6 @@ pub fn extdeps_derived_extdeps_module_paths() -> Vec<String> {
         .collect();
     paths.sort();
     paths
-}
-
-fn external_authority_is_machinery_exempt_for_module_path(module_path: &str) -> bool {
-    external_authority_machinery_exempt_module_paths().contains(&module_path)
-}
-
-fn external_authority_is_clean_tree_roster_excluded_for_module_path(module_path: &str) -> bool {
-    module_path.starts_with("extdeps.fixture.") || module_path.ends_with(".mock_corpus")
 }
 
 pub fn extdeps_external_authority_module_facts(
@@ -42605,31 +40587,6 @@ pub fn extdeps_external_authority_module_facts(
         scheme_identity,
         locator,
     }
-}
-
-fn external_authority_live_violation_module_paths() -> Vec<String> {
-    let mut violations = Vec::new();
-    for path in extdeps_derived_extdeps_module_paths() {
-        if external_authority_is_clean_tree_roster_excluded_for_module_path(&path) {
-            continue;
-        }
-        if external_authority_is_machinery_exempt_for_module_path(&path) {
-            continue;
-        }
-        match project_external_authority_anchor(&path) {
-            ExternalAuthorityAnchorProjection::Absent => violations.push(format!("missing:{path}")),
-            ExternalAuthorityAnchorProjection::Refused { cause } => {
-                violations.push(format!("refused:{path}:{cause}"))
-            }
-            ExternalAuthorityAnchorProjection::Present {
-                scheme_identity, ..
-            } if scheme_identity != "Http" && scheme_identity != "Https" => {
-                violations.push(format!("non_external:{path}:{scheme_identity}"))
-            }
-            _ => {}
-        }
-    }
-    violations
 }
 
 pub fn extdeps_external_authority_live_clean_tree_holds() -> bool {
@@ -44915,20 +42872,6 @@ pub fn run_floor_prepared_toll_receipt() {
         "[floor-toll-receipt] summary item1_reclaimed_ms={} item4_reclaimed_ms={} item3_compile_reclaimed_ms={}",
         item1_reclaimed, item4_reclaimed, item3_reclaimed
     );
-}
-
-/// Wall time for the languages census over prepared inventory (floor path).
-pub fn languages_decl_records_inventory_wall_ms(inventory: &[PreparedSourceView]) -> u128 {
-    let started = std::time::Instant::now();
-    languages_decl_records_from_inventory(inventory);
-    started.elapsed().as_millis()
-}
-
-/// Wall time for the languages census filesystem scan (legacy path).
-pub fn languages_decl_records_disk_scan_wall_ms() -> u128 {
-    let started = std::time::Instant::now();
-    languages_decl_records_inner();
-    started.elapsed().as_millis()
 }
 
 pub fn floor_prepared_authority_active() -> bool {
