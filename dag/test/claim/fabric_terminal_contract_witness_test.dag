@@ -8,7 +8,7 @@ import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey,
 import product.fabric.work { Shape, HardRequirements, Work, WorkContract, ExecutionRequirements, WorkStep, derive_work_key, work_for, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects }
 import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work, demand_reservation_price, demand_maximum_buy_order }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, offer_quote_amount, offer_quote_currency, ObservedSupply, QuotedSupply }
-import product.fabric.execution { Attempt, InitialAttempt, InfrastructureRetry, LeaseIdentity, Receipt, ExecutionReceipt, ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, ReceiptAdmissible, ReceiptFromDifferentLease, ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable, ReceiptGenerationStale, admit_receipt_for_grant }
+import product.fabric.execution { Attempt, InitialAttempt, InfrastructureRetry, CapabilityEscalation, LeaseIdentity, Receipt, ExecutionReceipt, ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, ReceiptAdmissible, ReceiptFromDifferentLease, ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable, ReceiptGenerationStale, admit_receipt_for_grant }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -307,8 +307,62 @@ test fn retry_is_a_new_attempt_naming_its_cause() -> Bool {
       InfrastructureRetry { prior_attempt: prior, cause_receipt: _ } =>
         (prior.key as String) == (first_attempt.id.key as String)
       InitialAttempt { initiating_demand: _ } => false
+      CapabilityEscalation { prior_attempt: _, cause_receipt: _ } => false
       RequestedReexecution { initiating_demand: _ } => false
     }
+}
+
+// AN ESCALATION IS A NEW ATTEMPT AT THE SAME WORK, AND IT IS NOT A RETRY.
+// The two arms are deliberately the same SHAPE -- prior attempt plus the
+// receipt that established the prior result -- so the only thing separating
+// them is the arm itself. That is exactly why the discriminating control below
+// matches on the arm rather than on its payload: a witness that only checked
+// the prior-attempt key would pass identically against a lineage that had
+// collapsed escalation into InfrastructureRetry, which is the collapse the
+// authority's note argues against and therefore the one its evidence must be
+// able to see.
+
+data escalated_attempt: Attempt<NonEmptyStr> = Attempt {
+  id: FabricIdentity { principal: "operator", key: "attempt-3" },
+  work: FabricIdentity { principal: "operator", key: fixture_work_key },
+  lineage: CapabilityEscalation {
+    prior_attempt: FabricIdentity { principal: "operator", key: "attempt-1" },
+    cause_receipt: "obs-local-model-terminal-1",
+  },
+  created_at: "2026-08-18T00:20:00Z",
+}
+
+test fn escalation_is_a_new_attempt_at_the_same_work() -> Bool {
+  (escalated_attempt.id.key as String) != (first_attempt.id.key as String)
+    && (escalated_attempt.work.key as String) == (first_attempt.work.key as String)
+}
+
+test fn escalation_names_the_attempt_it_escalated_from() -> Bool {
+  match escalated_attempt.lineage {
+    CapabilityEscalation { prior_attempt: prior, cause_receipt: _ } =>
+      (prior.key as String) == (first_attempt.id.key as String)
+    InitialAttempt { initiating_demand: _ } => false
+    InfrastructureRetry { prior_attempt: _, cause_receipt: _ } => false
+    RequestedReexecution { initiating_demand: _ } => false
+  }
+}
+
+// THE DISCRIMINATING CONTROL. An escalation must not read as an infrastructure
+// loss and an infrastructure loss must not read as an escalation, because the
+// two license opposite conclusions about the work: a lost worker says nothing
+// about whether the model could carry the task, while an escalation says
+// precisely that it could not. If these ever collapse into one arm, the two
+// assertions below cannot both hold.
+test fn escalation_and_infrastructure_retry_do_not_read_as_each_other() -> Bool {
+  let escalation_is_not_a_retry = match escalated_attempt.lineage {
+    InfrastructureRetry { prior_attempt: _, cause_receipt: _ } => false
+    _ => true
+  }
+  let retry_is_not_an_escalation = match retry_attempt.lineage {
+    CapabilityEscalation { prior_attempt: _, cause_receipt: _ } => false
+    _ => true
+  }
+  escalation_is_not_a_retry && retry_is_not_an_escalation
 }
 
 // A receipt carries the generation it was produced under, so a stale producer is
