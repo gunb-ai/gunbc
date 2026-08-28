@@ -6454,6 +6454,149 @@ mod compile_clean_via_index_verdict_equivalence {
         );
     }
 
+    /// THE PURITY ORACLE FOR THE SHARED PRIMARY-PRECEDENCE INDEX: cached == cold, BYTE-IDENTICAL.
+    ///
+    /// The change this guards routes `compile_emission`'s primary-precedence arm through the
+    /// process-shared `MultiEntryIndex` instead of a fresh per-call one, so N entries compiled in
+    /// one process now SHARE a parse cache, a typed-module cache, a pool census and an intern
+    /// table. The whole benefit is that the overlapping closure prefix -- most of `dag/std` sits
+    /// in nearly every entry's closure -- reconciles once instead of N times; the whole risk is
+    /// that a shared cache serves one entry's result for another's. DESIGN names the oracle for
+    /// exactly this: byte-identical cached-vs-cold.
+    ///
+    /// THE DISCRIMINATION IS IN THE SECOND ENTRY, not the first. Entry `beta` is compiled twice:
+    /// once COLD (a cleared index, so it re-derives from disk) and once WARM BEHIND `alpha`,
+    /// whose closure shares the `common` module with it -- so the warm arm reads `common` from a
+    /// cache another entry's compile filled. Comparing emitted bytes and diagnostic counts across
+    /// those two arms is what distinguishes a shared cache that is CORRECT from one that merely
+    /// runs. Both arms are asserted to have emitted something first, because two empty file lists
+    /// also compare equal and would green this test over a transaction that never emitted.
+    #[test]
+    fn shared_primary_precedence_index_is_byte_identical_to_cold() {
+        let corpus = Corpus::new(
+            "shared-index-purity",
+            &[
+                (
+                    "common.dag",
+                    "module pur.common\n
+fn shared_double(x: Int) -> Int {\n  x + x\n}\n",
+                ),
+                (
+                    "alpha.dag",
+                    "module pur.alpha\n
+import pur.common { shared_double }\n\nfn alpha_use(x: Int) -> Int {\n  shared_double(x)\n}\n",
+                ),
+                (
+                    "beta.dag",
+                    "module pur.beta\n
+import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_double(x) + 1\n}\n",
+                ),
+            ],
+        );
+        let beta_path = corpus.sources[2].path.clone();
+        let alpha_path = corpus.sources[1].path.clone();
+
+        let emission_of = |run: &super::CompileRun| -> Vec<(String, String)> {
+            run.emissions
+                .iter()
+                .flat_map(|e| e.result.files.iter())
+                .map(|f| (f.path.clone(), f.content.clone()))
+                .collect()
+        };
+
+        // COLD: nothing in this process has compiled anything against these roots.
+        super::reset_process_shared_index_for_test();
+        let cold = super::compile_entry_emission(
+            &corpus.roots,
+            &beta_path,
+            true,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let cold_files = emission_of(&cold);
+        assert!(
+            !cold_files.is_empty(),
+            "the cold arm must actually emit -- two empty file lists compare equal and would \
+             green this oracle over a transaction that never ran; disposition={:?}",
+            cold.disposition
+        );
+
+        // WARM: `alpha` fills the shared caches with `common`'s parse and typecheck first, then
+        // `beta` compiles against an index another entry populated.
+        //
+        // THE SHARING IS ASSERTED, NOT ASSUMED. Purity alone is not evidence for this change:
+        // under the OLD per-call index both arms are cold, the bytes match trivially, and this
+        // test greens over a transaction that shares nothing -- the change-detector shape. So the
+        // index identity is read on both sides of `alpha` and `beta`: `generation` is a
+        // per-process monotone counter minted by `new_multi_entry_index_shell`, so two compiles
+        // reporting the SAME generation is the executed proof that one index served both, and
+        // under the old code it is exactly the assertion that fails.
+        super::reset_process_shared_index_for_test();
+        let _alpha = super::compile_entry_emission(
+            &corpus.roots,
+            &alpha_path,
+            true,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let generation_after_alpha = super::try_process_shared_index_for_pool(&corpus.roots, true)
+            .expect("the shared primary-precedence index exists after alpha compiled")
+            .generation;
+        // WHAT THIS SHARING DOES AND DOES NOT REACH, asserted rather than described, because the
+        // difference is the whole honest scope of this change.
+        //
+        // It reaches the INDEX: source discovery, the module index, the parse cache and the pool
+        // census are now built once per (roots, pool) instead of once per entry.
+        //
+        // It does NOT reach RECONCILE. `compile_emission` calls
+        // `v1_compiler_compile::compile_to_resolved_with_options` directly, whose reconcile is
+        // `reconcile_with_census_extra` over the whole closure -- it never touches this index's
+        // `typed_module_cache`, which is filled only by `reconcile_with_typed_cache` on the
+        // `resolved_graph_from_sources_with_index` route. So the typed cache is EMPTY after a
+        // compile, and this assertion pins that fact so a later reader cannot mistake index
+        // sharing for reconcile sharing. When the reconcile route is unified, this assertion is
+        // the one that fails, which is the correct way for it to be superseded: loudly, at the
+        // line that documents the boundary, rather than by a comment quietly going stale.
+        assert_eq!(
+            super::typed_module_cache_len_for_test(
+                &super::try_process_shared_index_for_pool(&corpus.roots, true).unwrap()
+            ),
+            0,
+            "compile_emission does not reconcile through the shared typed cache -- if this is no \
+             longer 0 the reconcile route was unified and this test's scope note is stale"
+        );
+
+        let warm = super::compile_entry_emission(
+            &corpus.roots,
+            &beta_path,
+            true,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let warm_files = emission_of(&warm);
+        let generation_after_beta = super::try_process_shared_index_for_pool(&corpus.roots, true)
+            .expect("the shared index survives beta's compile")
+            .generation;
+        assert_eq!(
+            generation_after_alpha, generation_after_beta,
+            "both entries must have compiled against ONE index -- a differing generation means \
+             each compile built its own, which is the per-entry cost shape this change removes"
+        );
+
+        assert_eq!(
+            cold_files, warm_files,
+            "emitted bytes must be byte-identical whether `beta`'s closure was reconciled cold or \
+             read from caches `alpha`'s compile filled"
+        );
+        assert_eq!(
+            (cold.blocking_diagnostics, cold.advisory_diagnostics),
+            (warm.blocking_diagnostics, warm.advisory_diagnostics),
+            "diagnostic populations must not depend on which sibling entry warmed the index"
+        );
+        assert_eq!(
+            cold.closure_modules, warm.closure_modules,
+            "the closure the transaction resolved must not depend on cache residency"
+        );
+        super::reset_process_shared_index_for_test();
+    }
+
     #[test]
     fn out_of_closure_annotation_refusal_blocks_scoped_compile_clean() {
         let corpus = Corpus::new(
@@ -8763,9 +8906,16 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // THE PANICKING WRAPPERS SURVIVE for callers whose inputs are already
     // invariant-established; this is the one route that takes a path straight from a CLI
     // argument, so it is the one that must refuse instead.
+    //
+    // BOTH ARMS NOW ROUTE THROUGH THE PROCESS-SHARED INDEX, one slot per pool semantics.
+    // The primary arm previously built a fresh index per call and discarded it, so every cache
+    // it owns -- parse, typed-module, pool census, intern table -- was per-call, and a run
+    // compiling N entries reconciled the shared prefix N times over closures that overlap almost
+    // entirely. See `try_process_shared_index_for_pool` for why that is a §2 cost-shape defect
+    // rather than a budget fact, and for what is NOT changed by the routing.
     let index: Rc<MultiEntryIndex> = if primary_precedence {
-        match try_build_multi_entry_index_primary_precedence(source_roots) {
-            Ok(idx) => Rc::new(idx),
+        match try_process_shared_index_for_pool(source_roots, true) {
+            Ok(idx) => idx,
             Err(cause) => {
                 return compile_not_executed(&request.subject, started, "source-discovery", cause)
             }
@@ -11385,9 +11535,18 @@ thread_local! {
     // source_roots — a run's roots are fixed, so this is a get-or-build, rebuilt only on
     // the rare roots change. Thread-local by the same Rc-not-Send reason as the store:
     // each shard keeps its own index rather than smuggling Rc across threads.
+    //
+    // TWO SLOTS, ONE PER POOL SEMANTICS, and the pair is what makes the memo safe rather than
+    // merely faster. `primary-precedence` (root[0] wins, later roots fill only absent modules)
+    // and strict are DIFFERENT POOLS over the same roots: serving one where the other was asked
+    // for is a silently divergent resolution, which is the §5 fail-open this cache would
+    // otherwise introduce. So precedence is part of the identity of the slot, not a build flag
+    // applied to a shared one -- a roots-keyed single slot cannot express the distinction and
+    // would answer whichever mode ran first. Each slot keeps the original single-entry,
+    // rebuild-on-roots-change shape, so an index is never held for a pool nobody is asking about.
     #[allow(clippy::type_complexity)]
-    static PROCESS_RESOLVE_INDEX: RefCell<Option<(String, Rc<MultiEntryIndex>)>> =
-        const { RefCell::new(None) };
+    static PROCESS_RESOLVE_INDEX: RefCell<[Option<(String, Rc<MultiEntryIndex>)>; 2]> =
+        const { RefCell::new([None, None]) };
 
     // While loading the materialization-provider authority, cross-process disk hits
     // must not re-enter provider routing (review 44268: bootstrap recursion).
@@ -11468,10 +11627,42 @@ pub fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
 /// discovery must not install a partial index that every later caller in the process would
 /// then read as complete.
 pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntryIndex>, String> {
+    try_process_shared_index_for_pool(source_roots, false)
+}
+
+/// The shared index for `source_roots` under a NAMED POOL SEMANTICS.
+///
+/// WHY THIS EXISTS, and it is a §2 cost-shape repair rather than a new capability. The compile
+/// transaction's two subjects took opposite routes over the same caches: the strict arm resolved
+/// through the process-shared index above -- so a second `--entry` compile in one process is a
+/// cache hit -- while the primary-precedence arm built a FRESH `MultiEntryIndex` per call and
+/// threw it away. Every cache that index owns is per-call under that arm: the parse cache, the
+/// typed-module cache, the pool census, the interned names. So a run that compiles N entries
+/// typechecks the shared prefix N times, and the prefix is nearly the whole closure -- most of
+/// `dag/std` sits in almost every entry's closure. The dominant cost of the emit-compile phase
+/// (`compile.reconcile`) is therefore paid INDEPENDENTLY PER ENTRY over closures that overlap
+/// almost entirely, which is why a per-entry cover cannot reach the corpus at any budget: the
+/// unit of computation was the closure and the unit of fact was the entry.
+///
+/// WHAT CHANGES AND WHAT DOES NOT. Only WHICH index the primary arm reaches; the index's own
+/// semantics are untouched -- it is still built by `try_build_module_index_primary_precedence`
+/// over the same canonicalized roots, so the pool it presents is the same pool. The typed cache
+/// is keyed by authored name and content (`typed_module_content_key`), and the collision-honesty
+/// guard in `reconcile_with_typed_cache` already refuses loudly when one name resolves from two
+/// declaring files across co-resident entries -- which is exactly the co-residence this memo
+/// creates more of, so the wall is upstream of the change rather than owed by it.
+///
+/// PRECEDENCE IS PART OF THE SLOT IDENTITY, never a parameter applied to a shared slot: see the
+/// two-slot note on `PROCESS_RESOLVE_INDEX`.
+pub fn try_process_shared_index_for_pool(
+    source_roots: &[String],
+    primary_precedence: bool,
+) -> Result<Rc<MultiEntryIndex>, String> {
+    let slot = usize::from(primary_precedence);
     let roots = canonical_shared_index_roots(source_roots);
     let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
-        s.borrow().as_ref().and_then(|(k, idx)| {
+        s.borrow()[slot].as_ref().and_then(|(k, idx)| {
             if *k == roots_key {
                 Some(idx.clone())
             } else {
@@ -11483,19 +11674,35 @@ pub fn try_process_shared_index(source_roots: &[String]) -> Result<Rc<MultiEntry
         return Ok(idx);
     }
     let build_started = std::time::Instant::now();
-    let idx = Rc::new(new_multi_entry_index_shell(
-        try_build_module_index(&roots)?,
-        &roots,
-        None,
-    ));
+    let module_index = if primary_precedence {
+        try_build_module_index_primary_precedence(&roots)?
+    } else {
+        try_build_module_index(&roots)?
+    };
+    let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots, None));
     discovery_phase_totals::add(
         &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
         build_started.elapsed(),
     );
     PROCESS_RESOLVE_INDEX.with(|s| {
-        *s.borrow_mut() = Some((roots_key, idx.clone()));
+        s.borrow_mut()[slot] = Some((roots_key, idx.clone()));
     });
     Ok(idx)
+}
+
+/// Test-only: drop the process-shared index slots so the NEXT compile in this process is COLD.
+///
+/// This exists so `cached == cold` can be asserted by EXECUTION rather than by reading the cache
+/// keys. Without it the two arms of the oracle cannot be distinguished from inside one process:
+/// the second compile is a hit by construction, so a test that ran both arms warm would compare a
+/// value with itself and be green whatever the cache served -- the change-detector shape §5
+/// rejects. Clearing the slot makes the cold arm genuinely re-derive from disk.
+#[cfg(test)]
+pub(crate) fn reset_process_shared_index_for_test() {
+    PROCESS_RESOLVE_INDEX.with(|s| {
+        *s.borrow_mut() = [None, None];
+    });
+    PROCESS_RESOLVE_STORE.with(|s| s.borrow_mut().clear());
 }
 
 pub fn resolve_entry_graph_shared(
@@ -12572,17 +12779,6 @@ fn build_multi_entry_index_primary_precedence(source_roots: &[String]) -> MultiE
         source_roots,
         None,
     )
-}
-
-/// Fallible twin of the above, for the compile transaction. See `try_build_module_index`.
-fn try_build_multi_entry_index_primary_precedence(
-    source_roots: &[String],
-) -> Result<MultiEntryIndex, String> {
-    Ok(new_multi_entry_index_shell(
-        try_build_module_index_primary_precedence(source_roots)?,
-        source_roots,
-        None,
-    ))
 }
 
 pub fn build_multi_entry_index_with_shared_caches(
