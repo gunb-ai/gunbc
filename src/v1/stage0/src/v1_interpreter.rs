@@ -8029,8 +8029,71 @@ fn hermetic_checkout_input_disposition_under(
     } else {
         root.join(requested_path)
     };
-    let canon = std::fs::canonicalize(&joined)
-        .map_err(|e| format!("path does not canonicalize under the checkout ({e})"))?;
+    // AN ABSENT PATH UNDER THE ROOT IS AS COMMIT-DETERMINISTIC AS A PRESENT ONE, and resolving
+    // the REQUESTED leaf could not express that. `canonicalize` requires the whole path to
+    // exist, so it failed identically for three dispositions with three different remedies:
+    // a file the commit says is NOT THERE, a path that RESOLVES OUTSIDE the root, and one
+    // UNRESOLVABLE for any other reason. One error string for three states is the conflation
+    // `HermeticEffectGround` was split to prevent, sitting twenty lines above the enum that
+    // records the lesson.
+    //
+    // The commit determines absence exactly as it determines contents: "this repository has no
+    // such file" is an answer read OFF THE INPUT, not host state, so it belongs on the same
+    // wet arm as a successful read rather than in the mock layer. Rendering it there would
+    // require a canned response, and one canned response necessarily serves every unconfirmed
+    // path -- fabricating "not found" for out-of-root and `.git` reads too.
+    //
+    // So resolve the deepest ancestor that DOES exist and carry the not-yet-existing tail
+    // separately. The existing prefix is what symlinks can move, so it is what must be proven
+    // under the root; the absent tail cannot be a symlink to anywhere, because it is not there.
+    // A `..` in the tail yields no `file_name`, so it exits through the unresolvable arm rather
+    // than being reasoned about -- refusing what cannot be confirmed rather than guessing.
+    let mut probe = joined.as_path();
+    let mut absent_tail: Vec<std::ffi::OsString> = Vec::new();
+    let canon = loop {
+        match std::fs::canonicalize(probe) {
+            Ok(resolved) => break resolved,
+            Err(e) => {
+                // ONLY A GENUINE ABSENCE MAY PEEL A COMPONENT. `canonicalize` fails for
+                // several reasons and they are not interchangeable: a permission-denied or
+                // symlink-loop error says the path CANNOT BE CONFIRMED, which is the
+                // unresolvable arm, not a statement that the component is missing. Treating
+                // every error as absence would climb past a component that is really there.
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    return Err(format!(
+                        "path does not canonicalize under the checkout ({e})"
+                    ));
+                }
+                // A DANGLING SYMLINK IS PRESENT, NOT ABSENT, AND `canonicalize` CANNOT SAY SO.
+                // It resolves symlinks, so a link whose target is missing returns the SAME
+                // NotFound as a name with nothing behind it. `symlink_metadata` does not
+                // follow, so it answers the question actually being asked: is there an entry
+                // here? If there is, its resolution depends on a target the commit does not
+                // contain -- host state, whose appearance later would silently change this
+                // read's result -- so it refuses rather than being peeled as absent.
+                if std::fs::symlink_metadata(probe).is_ok() {
+                    return Err(format!(
+                        "path does not canonicalize under the checkout (`{}` exists but does \
+                         not resolve -- a dangling symlink's target is host state, not a \
+                         commit input)",
+                        probe.display()
+                    ));
+                }
+                let (parent, name) = match (probe.parent(), probe.file_name()) {
+                    (Some(parent), Some(name)) if parent != probe => (parent, name.to_os_string()),
+                    _ => {
+                        return Err(format!(
+                            "path does not canonicalize under the checkout ({e})"
+                        ))
+                    }
+                };
+                absent_tail.push(name);
+                probe = parent;
+            }
+        }
+    };
+    absent_tail.reverse();
+
     if !canon.starts_with(&root) {
         return Err(format!(
             "path resolves outside the checkout root {}",
@@ -8040,14 +8103,20 @@ fn hermetic_checkout_input_disposition_under(
     let rel = canon
         .strip_prefix(&root)
         .expect("starts_with checked above");
-    for comp in rel.components() {
-        if let std::path::Component::Normal(name) = comp {
-            if name == ".git" || name == "target" {
-                return Err(format!(
-                    "`{}` components are not commit-deterministic inputs",
-                    name.to_string_lossy()
-                ));
-            }
+    let existing_names = rel.components().filter_map(|comp| match comp {
+        std::path::Component::Normal(name) => Some(name.to_os_string()),
+        _ => None,
+    });
+    // The tail is checked on the SAME rule as the existing prefix: a read of
+    // `target/does-not-exist` is no more commit-deterministic than one of `target/receipt.txt`,
+    // and admitting it because the file happens to be missing would make the wall depend on
+    // the state of the very directory it exists to exclude.
+    for name in existing_names.chain(absent_tail.into_iter()) {
+        if name == std::ffi::OsStr::new(".git") || name == std::ffi::OsStr::new("target") {
+            return Err(format!(
+                "`{}` components are not commit-deterministic inputs",
+                name.to_string_lossy()
+            ));
         }
     }
     Ok(())
@@ -16382,6 +16451,144 @@ mod shell_completion_trace_tests {
             hermetic_checkout_input_disposition_under(&dir, "dag/std"),
             Ok(())
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn hermetic_checkout_input_admits_an_absent_path_under_root() {
+        // THE COMMIT DETERMINES ABSENCE. A repository that does not contain a file is as
+        // deterministic an input as one that does, so an absent path under the root confirms
+        // and the read runs wet -- returning `success: false` on its own rather than off a
+        // canned response.
+        let dir =
+            std::env::temp_dir().join(format!("hermetic-carveout-absent-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("dag/test/fixture")).unwrap();
+        assert_eq!(
+            hermetic_checkout_input_disposition_under(&dir, "dag/test/fixture/never_written.json"),
+            Ok(()),
+            "an absent file under the root is a commit-deterministic input"
+        );
+        // Absent INTERMEDIATE directories too: nothing in the tail exists, and nothing in the
+        // tail can be a symlink to anywhere, precisely because it is not there.
+        assert_eq!(
+            hermetic_checkout_input_disposition_under(&dir, "dag/absent_dir/absent_file.json"),
+            Ok(()),
+            "an absent path whose parent is also absent is still under the root"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // GATED ON UNIX BECAUSE AUTHORING THE RED REQUIRES A SYMLINK. `std::os::unix::fs::symlink`
+    // is the only API here that can construct the present-but-unresolvable state this test
+    // discriminates, and an unguarded reference breaks test COMPILATION on non-unix targets
+    // (review 57247). The guard is on the test, not on the wall: the peel loop's symlink
+    // refusal in `hermetic_checkout_input_disposition_under` is unconditional, so no platform
+    // loses the refusal -- only this platform loses the ability to author its witness.
+    #[cfg(unix)]
+    #[test]
+    fn hermetic_checkout_refuses_a_dangling_symlink_rather_than_peeling_it_as_absent() {
+        // A DANGLING SYMLINK IS PRESENT AND UNRESOLVABLE, WHICH IS NOT ABSENCE.
+        // `canonicalize` follows links, so a link with a missing target returns the SAME
+        // NotFound as a name with nothing behind it. Peeling it would climb past an entry
+        // that really exists, admit the path, and dispatch a real host read whose result
+        // CHANGES IF THE TARGET LATER APPEARS -- host state entering a hermetic run.
+        // Reported as BLOCKING in review 57219 against the first cut of this repair.
+        let dir =
+            std::env::temp_dir().join(format!("hermetic-carveout-dangling-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let outside_target = std::env::temp_dir().join(format!(
+            "hermetic-carveout-absent-target-{}",
+            std::process::id()
+        ));
+        std::os::unix::fs::symlink(&outside_target, dir.join("dangling_out")).unwrap();
+        std::os::unix::fs::symlink("./never_created_inside", dir.join("dangling_in")).unwrap();
+
+        // Control first: the discriminator must not be "any ENOENT refuses", or the
+        // absent-path admission this whole change exists for would be gone.
+        assert_eq!(
+            hermetic_checkout_input_disposition_under(&dir, "genuinely_absent.json"),
+            Ok(()),
+            "a name with nothing behind it is still a commit-deterministic absence"
+        );
+
+        let out = hermetic_checkout_input_disposition_under(&dir, "dangling_out");
+        assert!(
+            out.as_ref()
+                .err()
+                .is_some_and(|e| e.contains("exists but does not resolve")),
+            "a dangling symlink to an ABSENT OUTSIDE path must refuse, not be peeled as \
+             absent, got {out:?}"
+        );
+
+        let inside = hermetic_checkout_input_disposition_under(&dir, "dangling_in");
+        assert!(
+            inside
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("exists but does not resolve")),
+            "a dangling symlink inside the checkout must refuse, got {inside:?}"
+        );
+
+        // And it must not be defeated by sitting mid-path rather than at the leaf.
+        let through = hermetic_checkout_input_disposition_under(&dir, "dangling_out/under.json");
+        assert!(
+            through.as_ref().err().is_some(),
+            "a path THROUGH a dangling symlink must refuse, got {through:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn hermetic_checkout_absent_paths_keep_the_three_dispositions_distinct() {
+        // THE DISCRIMINATING RED FOR THE ABSENT-PATH REPAIR. Admitting absent-under-root is
+        // only correct if the other two refusals survive it AT THEIR OWN MESSAGES. If an
+        // absent out-of-root path or an absent `.git` path started confirming, the repair
+        // would have moved the conflation rather than removed it -- and every assertion here
+        // is on a path that DOES NOT EXIST, which is exactly the case the old
+        // canonicalize-the-leaf form could not tell apart.
+        let dir =
+            std::env::temp_dir().join(format!("hermetic-carveout-absent3-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        std::fs::create_dir_all(dir.join("target")).unwrap();
+
+        let outside = hermetic_checkout_input_disposition_under(&dir, "../absent_outside.txt");
+        assert!(
+            outside
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("outside the checkout root")),
+            "an ABSENT path that resolves outside the root must still refuse as out-of-root, \
+             got {outside:?}"
+        );
+
+        let absolute = hermetic_checkout_input_disposition_under(&dir, "/etc/absent_hostname");
+        assert!(
+            absolute
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("outside the checkout root")),
+            "an ABSENT absolute path outside the root must still refuse, got {absolute:?}"
+        );
+
+        let git = hermetic_checkout_input_disposition_under(&dir, ".git/absent_HEAD");
+        assert!(
+            git.as_ref()
+                .err()
+                .is_some_and(|e| e.contains("not commit-deterministic")),
+            "an ABSENT `.git` path must still refuse as non-commit-deterministic, got {git:?}"
+        );
+
+        let target = hermetic_checkout_input_disposition_under(&dir, "target/absent_receipt.txt");
+        assert!(
+            target
+                .as_ref()
+                .err()
+                .is_some_and(|e| e.contains("not commit-deterministic")),
+            "an ABSENT `target` path must still refuse as non-commit-deterministic, got {target:?}"
+        );
+
         std::fs::remove_dir_all(&dir).ok();
     }
 
