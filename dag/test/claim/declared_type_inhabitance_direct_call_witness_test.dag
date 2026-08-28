@@ -137,3 +137,68 @@ data record_directly_at_coproduct_arg_source: String = "module probe_inhabit_dc_
 test fn w_the_same_wrong_pair_directly_at_the_argument_is_refused() -> Bool {
   violation_count(source: record_directly_at_coproduct_arg_source, wanted: "DeclaredTypeNotInhabited") > 0
 }
+
+// THE NOMINAL-PRODUCT ARM, AND THE THREE SHAPES IT WAS BUILT FROM. Each source below was
+// measured on a compiler built from this tree BEFORE the arm landed, as its own entry compile,
+// and each reported ZERO blocking diagnostics -- so these are discriminating REDs against the
+// prior compiler, not restatements of behaviour that already held. They are kept enrolled after
+// the climb, per DESIGN 4b(4): the evidence that a wall stays real is not the production
+// handling it replaced.
+//
+// WHY THE ACTUAL IS A CALL AND NOT A RECORD LITERAL, in every red arm here. A record literal at
+// a non-generic formal was ALREADY refused, by structured_application_site_type_mismatch, which
+// judges only an actual whose EXPRESSION is a record literal. Writing these probes with literals
+// would therefore have measured that older producer and enrolled its answer as evidence about
+// this one -- the mis-design the list-element pair above records having made once. A call is the
+// spelling no producer judged.
+
+// RED BEFORE, GREEN NOW -- DISTINCT APPLIED CONSTRUCTORS. Alpha<String> reaching a Beta<String>
+// parameter. Both sides are applications, both constructors resolve to declared products, and
+// the two constructors are unrelated by alias, brand or cast.
+data applied_distinct_constructor_source: String = "module probe_inhabit_applied_ctor\nimport std.types { String }\ntype Alpha<P> { a: P }\ntype Beta<P> { b: P }\nfn mk_alpha() -> Alpha<String> { Alpha { a: \"z\" } }\nfn takes_beta(x: Beta<String>) -> String { x.b }\nfn probe() -> String { takes_beta(x: mk_alpha()) }\n"
+
+test fn w_distinct_applied_constructors_at_a_direct_call_argument_are_refused() -> Bool {
+  violation_count(source: applied_distinct_constructor_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// RED BEFORE, GREEN NOW -- ONE CONSTRUCTOR, DISTINCT TYPE ARGUMENTS. Wrapper<KindB> reaching a
+// Wrapper<KindA> parameter. THIS IS THE ARM THAT ISOLATES THE CAUSE: no brand and no refinement
+// is involved anywhere in the source, so admitting it could not have been a brand-specific
+// deficit. K is phantom -- Wrapper's only field is a String -- which is exactly the shape whose
+// separation nothing downstream can recover: a runtime equality over the stored fields cannot
+// see the lost K and would CONFIRM a match the types deny.
+data applied_distinct_type_argument_source: String = "module probe_inhabit_applied_arg\nimport std.types { String }\ntype KindA { ka: String }\ntype KindB { kb: String }\ntype Wrapper<K> { v: String }\nfn mk_b() -> Wrapper<KindB> { Wrapper { v: \"z\" } }\nfn takes_a(x: Wrapper<KindA>) -> String { x.v }\nfn probe() -> String { takes_a(x: mk_b()) }\n"
+
+test fn w_distinct_applied_type_arguments_at_a_direct_call_argument_are_refused() -> Bool {
+  violation_count(source: applied_distinct_type_argument_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// RED BEFORE, GREEN NOW -- AND IT IS WHY THIS ARM IS NOT NAMED FOR GENERICS. The same distinct
+// constructors with no type parameters anywhere, the actual a call. The class was never about
+// application: it was about which PRODUCER sees the pair, and the record-literal producer is the
+// only one that ever did.
+data unapplied_distinct_constructor_source: String = "module probe_inhabit_unapplied_ctor\nimport std.types { String }\ntype Alpha { a: String }\ntype Beta { b: String }\nfn mk_alpha() -> Alpha { Alpha { a: \"z\" } }\nfn takes_beta(x: Beta) -> String { x.b }\nfn probe() -> String { takes_beta(x: mk_alpha()) }\n"
+
+test fn w_distinct_unapplied_product_constructors_through_a_call_are_refused() -> Bool {
+  violation_count(source: unapplied_distinct_constructor_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE ANTI-REFUSE-EVERYTHING CONTROL, and it is not a formality: an arm that refused every
+// applied product would make all three reds above pass while destroying the corpus. Identical
+// constructor, identical type argument, same call spelling as the reds.
+data applied_matching_source: String = "module probe_inhabit_applied_match\nimport std.types { String }\ntype KindA { ka: String }\ntype Wrapper<K> { v: String }\nfn mk_a() -> Wrapper<KindA> { Wrapper { v: \"z\" } }\nfn takes_a(x: Wrapper<KindA>) -> String { x.v }\nfn probe() -> String { takes_a(x: mk_a()) }\n"
+
+test fn w_matching_applied_product_at_a_direct_call_argument_is_admitted() -> Bool {
+  violation_count(source: applied_matching_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// THE SECOND CONTROL, over the guard that keeps this arm from reaching a class it cannot decide.
+// A type argument that is still a TYPE VARIABLE resolves to no declared type and is not a kernel
+// type, so the argument scan leaves the position unjudged rather than reading P and String as a
+// disagreement. If that guard is ever dropped, this admits nothing and goes red -- which is the
+// only way a false-positive class of that shape becomes visible here rather than in the corpus.
+data applied_type_variable_argument_source: String = "module probe_inhabit_applied_tyvar\nimport std.types { String }\ntype Wrapper<K> { v: String }\nfn takes_w<T>(x: Wrapper<T>) -> String { x.v }\nfn mk_s() -> Wrapper<String> { Wrapper { v: \"z\" } }\nfn probe() -> String { takes_w(x: mk_s()) }\n"
+
+test fn w_a_type_variable_type_argument_is_not_read_as_a_disagreement() -> Bool {
+  violation_count(source: applied_type_variable_argument_source, wanted: "DeclaredTypeNotInhabited") == 0
+}

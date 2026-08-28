@@ -2608,6 +2608,8 @@ type InhabitanceUndecidableReason
 type InhabitanceRefusalReason
   = RefusedPayloadAtParent
   | RefusedKernelAtStructured
+  | RefusedDistinctProductConstructor
+  | RefusedDistinctAppliedTypeArgument
 
 type InhabitanceVerdict
   = Inhabits
@@ -2661,7 +2663,10 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   } else if coproduct_payload_where_parent_required(formal: declared, actual: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedPayloadAtParent }
   } else {
-    Inhabits
+    match nominal_product_inhabitance_refusal(declared: declared, produced: produced, scope: scope) {
+      Present { value: r } => InhabitanceRefused { reason: r }
+      Absent => Inhabits
+    }
   }
 }
 
@@ -2714,6 +2719,232 @@ fn declared_realizes_as_kernel_numeric(
     false
   } else {
     decl_file_realizes_natively(decl_file: type_reference_decl_file(n: declared))
+  }
+}
+
+// THE NOMINAL-PRODUCT ARM (DESIGN 4b floor: "values inhabit declared types").
+//
+// The state this refuses: a value whose type is one nominal PRODUCT reaches a position declared
+// as a different nominal product. Two shapes, measured 2026-08-28 on a compiler built from the
+// tree, each its own entry compile, each admitted with ZERO blocking diagnostics before this arm:
+//   Alpha<String> at a Beta<String> parameter  -- distinct constructors, both applied
+//   Wrapper<KindB> at a Wrapper<KindA> parameter -- one constructor, distinct type arguments
+//   Alpha at a Beta parameter, the actual a CALL rather than a record literal -- distinct
+//     constructors, neither applied, and silent for the same reason
+// The third is the one that shows the class is not about generics at all: the ONLY spelling
+// that refused was a record LITERAL at a non-generic formal, which is a different producer.
+//
+// WHY NOTHING ELSE CAUGHT IT, read off the producers rather than inferred from the silence:
+// kernel_value_declared_type_mismatch returns false at its first gate for any actual carrying
+// children AND requires the actual to be a kernel type, so a product value is never judged
+// there; coproduct_payload_where_parent_required requires the formal's declaration to be a
+// concrete COPRODUCT, so a product formal leaves its body immediately; and
+// structured_application_site_type_mismatch judges only an actual whose EXPRESSION is a record
+// literal, which the overwhelmingly common spelling -- a call -- is not. Three total judgments,
+// none of them reaching this pair.
+//
+// IT CONSUMES THE EXPOSURE AUTHORITY, IT DOES NOT RE-DERIVE ONE. v1.compiler.type_head_exposure
+// already answers "what head does this type expose, and if it is an application, which
+// constructor and which arguments", and exposure_view_for_node is that view's single producer.
+// Deriving application-ness here from connective and children would be the second representation
+// DESIGN 3 forbids. The constructor comparison likewise DELEGATES to
+// application_type_names_compatible, the predicate the neighbouring seams already use for this
+// exact question (aliases, brands, declared casts), so alias identity keeps one home.
+//
+// EVERY GUARD FAILS OPEN. A head this relation cannot establish, a container carrier, a callable,
+// an anonymous record, an unresolvable name -- each answers "not judgeable" and the pair is
+// admitted, never refused. The arm can therefore only convert silence into a refusal for a pair
+// whose two identities are both established.
+fn nominal_product_inhabitance_refusal(
+  declared: Node,
+  produced: Node,
+  scope: InferScope
+) -> InhabitanceRefusalReason? {
+  let declared_head = nominal_product_head_name(n: declared, scope: scope)
+  let produced_head = nominal_product_head_name(n: produced, scope: scope)
+  if declared_head == "" || produced_head == "" {
+    none
+  } else if nominal_product_head_names_agree(
+      declared_name: declared_head, produced_name: produced_head, scope: scope) == false {
+    Present { value: RefusedDistinctProductConstructor }
+  } else if applied_type_arguments_conflict(
+      declared: declared, produced: produced, scope: scope) {
+    Present { value: RefusedDistinctAppliedTypeArgument }
+  } else {
+    none
+  }
+}
+
+// expected_type_head_exposure is consulted rather than exposure_view_for_node directly: a leaf
+// TYPE REFERENCE carries no connective and no children of its own, so the direct view answers
+// OpaqueTypeHead for `Alpha` and the head would be invisible on exactly the spelling the third
+// red arm uses. The entry point falls back to the symbol index's recorded exposure for that
+// identity, which is where a declaration's head actually lives. Its name says `expected`
+// because its first consumer asks about a formal; the function takes any node and is the single
+// exposure entry point, so consuming it for the produced side is reuse, not a second producer.
+// The head name of a NOMINAL product -- a declared record, applied or not -- and "" for
+// everything else. The container carriers are excluded because List<T> and Map<K,V> expose an
+// ApplicationHead too and their element compatibility is a different judgment with its own
+// established producer (container_element_nominal_brand_mismatch).
+fn nominal_product_head_name(n: Node, scope: InferScope) -> String {
+  let source_indices = scope.type_env.source_indices
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if name == "" || n.return_cardinality == CardOptional || type_node_is_callable(n: n)
+    || is_kernel_type(name: name)
+    || qualified_last_segment(name: name) == "Optional"
+    || node_is_element_collection(n: n, source_indices: source_indices)
+    || node_is_keyed_collection(n: n, source_indices: source_indices) {
+    ""
+  } else {
+    match expected_type_head_exposure(formal: n, scope: scope) {
+      ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } =>
+        nominal_product_head_name_if_declared_product(name: name, scope: scope)
+      ExposedTypeHead { view: ProductHead { type_identity: _ } } =>
+        nominal_product_head_name_if_declared_product(name: name, scope: scope)
+      _ => ""
+    }
+  }
+}
+
+fn nominal_product_head_name_if_declared_product(name: String, scope: InferScope) -> String {
+  match lookup_type_by_name(env: scope.type_env, name: name) {
+    Present { value: decl } =>
+      if decl.connective == Conj && (decl.children |> count) > 0 { name } else { "" }
+    Absent => ""
+  }
+}
+
+fn nominal_product_head_names_agree(
+  declared_name: String,
+  produced_name: String,
+  scope: InferScope
+) -> Bool {
+  application_type_names_compatible(
+    formal_name: declared_name,
+    lit_name: produced_name,
+    type_env: scope.type_env,
+    module_name: scope.module_name,
+    source_indices: scope.type_env.source_indices)
+    || transparent_alias_identity_agrees(
+      index: scope.type_env.symbol_index, left: declared_name, right: produced_name)
+}
+
+// ARITY DIFFERENCE IS NOT THIS CLASS, and neither is an unapplied side. Two applications of one
+// constructor at different arities mean the constructor identity was not what it looked like, or
+// a substitution is incomplete; either way this relation has nothing to say and says nothing
+// rather than inventing a verdict.
+fn applied_type_arguments_conflict(
+  declared: Node,
+  produced: Node,
+  scope: InferScope
+) -> Bool {
+  let declared_args = declared.children
+  let produced_args = produced.children
+  if (declared_args |> count) == 0 || (declared_args |> count) != (produced_args |> count) {
+    false
+  } else {
+    applied_type_arguments_conflict_scan(
+      declared_args: declared_args, produced_args: produced_args, scope: scope)
+  }
+}
+
+fn applied_type_arguments_conflict_scan(
+  declared_args: List<Node>,
+  produced_args: List<Node>,
+  scope: InferScope
+) -> Bool {
+  match declared_args |> first {
+    Present { value: d } =>
+      match produced_args |> first {
+        Present { value: p } =>
+          if applied_type_argument_conflicts(declared_arg: d, produced_arg: p, scope: scope) {
+            true
+          } else {
+            applied_type_arguments_conflict_scan(
+              declared_args: declared_args |> skip(1),
+              produced_args: produced_args |> skip(1),
+              scope: scope)
+          }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// A TYPE VARIABLE IS NOT A DISAGREEMENT, AND FINDING A TEST FOR ONE TOOK THREE MEASUREMENTS.
+//
+// WHAT DOES NOT WORK, both refuted by execution rather than by reading. Asking whether the
+// argument's NAME resolves in the type environment does not work: type parameters ARE bound
+// there, so `S` and `R` answer "declared type" exactly as `KindA` does. Measured on the v2
+// pipeline entry, that test produced fifteen refusals and every single one had a type variable
+// on one side -- Measure<Q,S,M> receiving Measure<Time,S,Nat>, NodeFoldTopDown<Ctx,R> receiving
+// NodeFoldTopDown<Ctx,Result> -- with zero true positives among them. Comparing the exposure's
+// constructor_identity does not work either, and it is worth recording why since it looks like
+// the obvious authority: the identity is keyed on the REFERENCING file, so one Measure read from
+// two modules yields dag/std/measure.dag::Measure and dag/std/realization_measurement.dag::Measure
+// for the same declaration. It can therefore never establish agreement across modules, which is
+// the only case where establishing it would matter.
+//
+// WHAT DOES WORK, and it is a property of the substrate rather than a trick: a type VARIABLE
+// resolves to nothing, so child_type_node leaves it with no authored name, while a real argument
+// resolves to its declaration and carries that declaration's name. The empty resolved name is
+// therefore the decidable test, and it fails open -- an argument this relation cannot resolve is
+// never read as a disagreement. This is also why node_type_shape renders these as `Primitive()`:
+// the renderer already followed the same resolution and found the same nothing.
+//
+// THE NESTEDNESS TEST STILL READS THE AUTHORED NODE while the name reads the RESOLVED one, and
+// the split is not an inconsistency: whether an argument is itself an application is a question
+// about how it was WRITTEN, and what it denotes is a question about what it RESOLVES TO. Reading
+// nestedness off the resolved node was the second cut of this arm and it silenced the whole
+// class, because a resolved record declaration carries its fields as children and every argument
+// then looked nested.
+fn applied_type_argument_conflicts(
+  declared_arg: Node,
+  produced_arg: Node,
+  scope: InferScope
+) -> Bool {
+  let source_indices = scope.type_env.source_indices
+  if declared_arg.return_cardinality == CardOptional || produced_arg.return_cardinality == CardOptional
+    || applied_type_argument_is_nested_application(n: declared_arg, scope: scope)
+    || applied_type_argument_is_nested_application(n: produced_arg, scope: scope)
+    || type_node_is_callable(n: declared_arg) || type_node_is_callable(n: produced_arg) {
+    false
+  } else {
+    let d = child_type_node(ch: declared_arg)
+    let p = child_type_node(ch: produced_arg)
+    let d_name = authored_name_at(source_indices: source_indices, node: d)
+    let p_name = authored_name_at(source_indices: source_indices, node: p)
+    if applied_type_argument_identity_known(name: d_name, scope: scope) == false
+      || applied_type_argument_identity_known(name: p_name, scope: scope) == false {
+      false
+    } else {
+      nominal_product_head_names_agree(
+        declared_name: d_name, produced_name: p_name, scope: scope) == false
+    }
+  }
+}
+
+// The DIRECT view, deliberately not expected_type_head_exposure: the index fallback answers for
+// a leaf reference by looking up what it names, and a leaf naming a parameterised record would
+// come back as a head with arguments -- which is the opposite of what this asks. Here the
+// question is about the argument's own written form.
+fn applied_type_argument_is_nested_application(n: Node, scope: InferScope) -> Bool {
+  match exposure_view_for_node(n: n, source_indices: scope.type_env.source_indices) {
+    ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } => true
+    _ => false
+  }
+}
+
+fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool {
+  if name == "" {
+    false
+  } else if is_kernel_type(name: name) {
+    true
+  } else {
+    match lookup_type_by_name(env: scope.type_env, name: name) {
+      Present { value: _ } => true
+      Absent => false
+    }
   }
 }
 
