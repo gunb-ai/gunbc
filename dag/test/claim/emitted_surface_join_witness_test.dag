@@ -63,8 +63,40 @@ fn entry_unreadable() -> v2.compiler.self_host.emitted_surface_join.EntryObserva
   }
 }
 
-fn build(observations: List<v2.compiler.self_host.emitted_surface_join.EntryObservation>) -> v2.compiler.self_host.emitted_surface_join.CensusBuild {
-  v2.compiler.self_host.emitted_surface_join.census_from_entry_observations(observations: observations, vintage: "fixture-vintage")
+fn expectation(entry: String, source_modules: List<String>) -> v2.compiler.self_host.emitted_surface_join.EntryExpectedMembership {
+  v2.compiler.self_host.emitted_surface_join.EntryExpectedMembership {
+    entry: entry,
+    source_modules: source_modules
+  }
+}
+
+fn shared_node_expectations() -> List<v2.compiler.self_host.emitted_surface_join.EntryExpectedMembership> {
+  [
+    expectation(entry: "dag/gunbc/native_scm_interaction_contract.dag", source_modules: ["v2.std.node"]),
+    expectation(entry: "src/v2/std/node.dag", source_modules: ["v2.std.node"])
+  ]
+}
+
+fn named_entry_shared_node_expectations(a: String, b: String) -> List<v2.compiler.self_host.emitted_surface_join.EntryExpectedMembership> {
+  [expectation(entry: a, source_modules: ["v2.std.node"]), expectation(entry: b, source_modules: ["v2.std.node"])]
+}
+
+fn asymmetric_expectations() -> List<v2.compiler.self_host.emitted_surface_join.EntryExpectedMembership> {
+  [
+    expectation(entry: "a.dag", source_modules: ["v2.std.node", "v2.std.only_here"]),
+    expectation(entry: "b.dag", source_modules: ["v2.std.node"])
+  ]
+}
+
+fn build(
+  observations: List<v2.compiler.self_host.emitted_surface_join.EntryObservation>,
+  expectations: List<v2.compiler.self_host.emitted_surface_join.EntryExpectedMembership>
+) -> v2.compiler.self_host.emitted_surface_join.CensusBuild {
+  v2.compiler.self_host.emitted_surface_join.census_from_entry_observations(
+    observations: observations,
+    expectations: expectations,
+    vintage: "fixture-vintage"
+  )
 }
 
 // THE DISCRIMINATING RED FOR THE BUILD ITSELF. An entry whose manifest could not be read must refuse
@@ -114,30 +146,35 @@ fn entry_sharing_one_module() -> v2.compiler.self_host.emitted_surface_join.Entr
 }
 
 test fn witness_unreadable_entry_refuses_the_build() -> Bool {
-  match build(observations: [entry_with_cardinality(), entry_unreadable()]) {
+  match build(observations: [entry_with_cardinality(), entry_unreadable()], expectations: shared_node_expectations()) {
     v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => true
     v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: _ } => false
+    v2.compiler.self_host.emitted_surface_join.CensusExpectationMissing { entry: _ } => false
+    v2.compiler.self_host.emitted_surface_join.CensusExpectedModuleUnobserved { entry: _, source_module: _ } => false
   }
 }
 
 // The positive control beside it: the same two-entry shape with BOTH manifests readable builds.
 test fn witness_readable_entries_build() -> Bool {
-  match build(observations: [entry_with_cardinality(), entry_without_cardinality()]) {
+  match build(observations: [entry_with_cardinality(), entry_without_cardinality()], expectations: shared_node_expectations()) {
     v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: _ } => true
     v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
+    v2.compiler.self_host.emitted_surface_join.CensusExpectationMissing { entry: _ } => false
+    v2.compiler.self_host.emitted_surface_join.CensusExpectedModuleUnobserved { entry: _, source_module: _ } => false
   }
 }
 
 // THE LIVE SPECIMEN, REPRODUCED END TO END: build a census from two manifests that differ by exactly
 // one reexported member, and the census must REFUSE it.
 test fn witness_divergent_surfaces_are_refused_after_join() -> Bool {
-  match build(observations: [entry_with_cardinality(), entry_without_cardinality()]) {
+  match build(observations: [entry_with_cardinality(), entry_without_cardinality()], expectations: shared_node_expectations()) {
     v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
     v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: census } =>
       match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(census: census) {
         v2.std.diagnostic.Rejected { diagnostics: _ } => true
         v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
       }
+    _ => false
   }
 }
 
@@ -145,13 +182,14 @@ test fn witness_divergent_surfaces_are_refused_after_join() -> Bool {
 // entry's reexport row agrees, and the same pipeline ADMITS. Without this the refusal above could
 // be produced by any defect in the join rather than by the surface difference.
 test fn witness_agreed_surfaces_are_admitted_after_join() -> Bool {
-  match build(observations: [entry_with_cardinality(), entry_agreeing()]) {
+  match build(observations: [entry_with_cardinality(), entry_agreeing()], expectations: shared_node_expectations()) {
     v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
     v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: census } =>
       match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(census: census) {
         v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
+    _ => false
   }
 }
 
@@ -167,10 +205,14 @@ test fn witness_agreed_surfaces_are_admitted_after_join() -> Bool {
 //
 // RED BEFORE THE FIX: discovery folded reexport rows only, so this census had ZERO rows.
 test fn witness_declaration_only_module_enters_the_census() -> Bool {
-  match build(observations: [entry_declarations_only(entry: "a.dag"), entry_declarations_only(entry: "b.dag")]) {
+  match build(
+    observations: [entry_declarations_only(entry: "a.dag"), entry_declarations_only(entry: "b.dag")],
+    expectations: named_entry_shared_node_expectations(a: "a.dag", b: "b.dag")
+  ) {
     v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
     v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: census } =>
       v2.std.algebra.length(xs: census.rows) == 1
+    _ => false
   }
 }
 
@@ -178,13 +220,17 @@ test fn witness_declaration_only_module_enters_the_census() -> Bool {
 // with an empty surface under every entry is ADMITTED. Together with the row count above, this says
 // the module is now judged and found clean, rather than never judged.
 test fn witness_declaration_only_module_is_admitted() -> Bool {
-  match build(observations: [entry_declarations_only(entry: "a.dag"), entry_declarations_only(entry: "b.dag")]) {
+  match build(
+    observations: [entry_declarations_only(entry: "a.dag"), entry_declarations_only(entry: "b.dag")],
+    expectations: named_entry_shared_node_expectations(a: "a.dag", b: "b.dag")
+  ) {
     v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
     v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: census } =>
       match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(census: census) {
         v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
+    _ => false
   }
 }
 
@@ -194,13 +240,17 @@ test fn witness_declaration_only_module_is_admitted() -> Bool {
 // the variance check over a genuinely empty surface, and a witness that only covered the old route
 // would go quiet the moment the new one took over.
 test fn witness_empty_surface_against_nonempty_is_refused() -> Bool {
-  match build(observations: [entry_with_cardinality(), entry_declarations_only(entry: "src/v2/std/node.dag")]) {
+  match build(
+    observations: [entry_with_cardinality(), entry_declarations_only(entry: "src/v2/std/node.dag")],
+    expectations: shared_node_expectations()
+  ) {
     v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
     v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: census } =>
       match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(census: census) {
         v2.std.diagnostic.Rejected { diagnostics: _ } => true
         v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
       }
+    _ => false
   }
 }
 
@@ -214,21 +264,57 @@ test fn witness_empty_surface_against_nonempty_is_refused() -> Bool {
 // The row count is asserted alongside the verdict because they fail independently: filtering the
 // population without fixing the verdict, or vice versa, would leave one of them red.
 test fn witness_entry_specific_module_is_excluded_from_the_comparison() -> Bool {
-  match build(observations: [entry_with_entry_specific_module(), entry_sharing_one_module()]) {
+  match build(observations: [entry_with_entry_specific_module(), entry_sharing_one_module()], expectations: asymmetric_expectations()) {
     v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
     v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: census } =>
       v2.std.algebra.length(xs: census.rows) == 1
+    _ => false
   }
 }
 
 test fn witness_entry_specific_module_does_not_cause_a_refusal() -> Bool {
-  match build(observations: [entry_with_entry_specific_module(), entry_sharing_one_module()]) {
+  match build(observations: [entry_with_entry_specific_module(), entry_sharing_one_module()], expectations: asymmetric_expectations()) {
     v2.compiler.self_host.emitted_surface_join.CensusNotBuilt { detail: _ } => false
     v2.compiler.self_host.emitted_surface_join.CensusBuilt { census: census } =>
       match v2.compiler.self_host.emitted_surface_census.canonical_seed_admission(census: census) {
         v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
         v2.std.diagnostic.Rejected { diagnostics: _ } => false
       }
+    _ => false
+  }
+}
+
+// EXPECTED UNDER BOTH, OBSERVED UNDER ONE: this is a membership regression, not an
+// entry-specific module. The old observed-intersection denominator silently dropped it.
+test fn witness_expected_shared_module_lost_by_one_entry_refuses() -> Bool {
+  match build(
+    observations: [
+      entry_with_cardinality(),
+      v2.compiler.self_host.emitted_surface_join.EntryObservation {
+        entry: "src/v2/std/node.dag",
+        observation: gunbc.stage0_emitted_export_surface_observation.ExportSurfaceObserved { modules: [] }
+      }
+    ],
+    expectations: shared_node_expectations()
+  ) {
+    v2.compiler.self_host.emitted_surface_join.CensusExpectedModuleUnobserved {
+      entry: "src/v2/std/node.dag",
+      source_module: "v2.std.node"
+    } => true
+    _ => false
+  }
+}
+
+// No expectation is not a clean empty expected roster. It is its own typed refusal.
+test fn witness_missing_expectation_refuses_distinctly() -> Bool {
+  match build(
+    observations: [entry_with_cardinality(), entry_without_cardinality()],
+    expectations: [
+      expectation(entry: "dag/gunbc/native_scm_interaction_contract.dag", source_modules: ["v2.std.node"])
+    ]
+  ) {
+    v2.compiler.self_host.emitted_surface_join.CensusExpectationMissing { entry: "src/v2/std/node.dag" } => true
+    _ => false
   }
 }
 
@@ -242,4 +328,6 @@ test fn emitted_surface_join_witnesses() -> Bool {
     && witness_empty_surface_against_nonempty_is_refused()
     && witness_entry_specific_module_is_excluded_from_the_comparison()
     && witness_entry_specific_module_does_not_cause_a_refusal()
+    && witness_expected_shared_module_lost_by_one_entry_refuses()
+    && witness_missing_expectation_refuses_distinctly()
 }

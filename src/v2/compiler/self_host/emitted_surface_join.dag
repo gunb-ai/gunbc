@@ -59,6 +59,15 @@ type EntryObservation {
   observation: ExportSurfaceObservation
 }
 
+// Expected membership is a separate fact from observation. The manifest reader reports what was
+// emitted; it has neither the authority nor the information to assert what should have been
+// emitted. Keeping the carriers separate also makes a missing expectation nameable rather than
+// letting absence default to an empty roster.
+type EntryExpectedMembership {
+  entry: String
+  source_modules: List<String>
+}
+
 // AN UNOBSERVED ARM REFUSES THE WHOLE BUILD; IT DOES NOT CONTRIBUTE ZERO ROWS.
 //
 // This is the empty-observation narrow at the exact seam where it would do the most damage. An
@@ -70,6 +79,8 @@ type EntryObservation {
 type CensusBuild
   = CensusBuilt { census: SurfaceCensus }
   | CensusNotBuilt { detail: String }
+  | CensusExpectationMissing { entry: String }
+  | CensusExpectedModuleUnobserved { entry: String, source_module: String }
 
 data surface_member_separator: String = " "
 
@@ -132,23 +143,21 @@ fn no_members() -> List<String> {
   []
 }
 
-fn distinct_source_modules(observations: List<EntryObservation>) -> List<String> {
-  fold_list(
+fn expectations_for_entry(expectations: List<EntryExpectedMembership>, entry: String) -> List<EntryExpectedMembership> {
+  filter(xs: expectations, predicate: expectation => expectation.entry == entry)
+}
+
+fn expected_modules_under_entry(expectations: List<EntryExpectedMembership>, entry: String) -> List<String> {
+  match list_head(xs: expectations_for_entry(expectations: expectations, entry: entry)) {
+    HeadFound { value: expectation } => expectation.source_modules
+    HeadAbsent => no_source_modules()
+  }
+}
+
+fn entries_missing_expectation(observations: List<EntryObservation>, expectations: List<EntryExpectedMembership>) -> List<EntryObservation> {
+  filter(
     xs: observations,
-    empty: no_source_modules(),
-    cons: fn(acc, eo) {
-      fold_list(
-        xs: observed_modules(entry_observation: eo),
-        empty: acc,
-        cons: fn(inner, surface) {
-          if contains(xs: inner, item: surface.source_module, eq: fn(a, b) { a == b }) {
-            inner
-          } else {
-            list_snoc_item(xs: inner, item: surface.source_module)
-          }
-        }
-      )
-    }
+    predicate: eo => is_empty(xs: expectations_for_entry(expectations: expectations, entry: eo.entry))
   )
 }
 
@@ -245,7 +254,7 @@ fn target_filename_for(observations: List<EntryObservation>, source_module: Stri
   )
 }
 
-// THE COMPARATIVE POPULATION IS THE SHARED MODULES, AND THAT IS A DIFFERENT QUESTION FROM COVERAGE.
+// THE COMPARATIVE POPULATION COMES ONLY FROM EXPECTATION, NEVER FROM OBSERVATION.
 //
 // A module emitted under one entry and not another is not a defect. Entries have different closures,
 // so most modules are genuinely absent from most entries -- measured on the declared frame, 37
@@ -259,8 +268,11 @@ fn target_filename_for(observations: List<EntryObservation>, source_module: Stri
 // the wrong one, which is worse than refusing for no reason, because the refusal looks like the
 // finding.
 //
-// So membership is settled HERE, at build time, and comparability is a precondition of a row rather
-// than a verdict about one. What remains for the census to judge is exactly what it claims to judge.
+// An independently supplied roster settles which modules are comparable. A module expected under
+// every entry remains in the denominator even when one observation loses it; that mismatch refuses
+// before the census is built. A module expected under only one entry remains legitimately outside
+// the comparison. Observed membership therefore cannot make this census greener by shrinking its
+// own denominator.
 //
 // THE COVERAGE REFUSAL DOWNSTREAM IS KEPT AND IS NOT NOW A DECORATION. It no longer fires on
 // ordinary closure asymmetry, but its RED is still authorable where regression probes live: a
@@ -271,34 +283,113 @@ fn target_filename_for(observations: List<EntryObservation>, source_module: Stri
 // refuses the whole build above, before any module is considered. Absent-from-a-closure and
 // could-not-be-observed stay separate states with separate arms, which is the distinction this
 // module exists to preserve.
-fn module_present_under_every_entry(observations: List<EntryObservation>, source_module: String) -> Bool {
-  length(xs: filter(xs: observations, predicate: eo => module_present_under_entry(eo: eo, source_module: source_module)))
-    == length(xs: observations)
-}
-
-fn shared_source_modules(observations: List<EntryObservation>) -> List<String> {
-  filter(
-    xs: distinct_source_modules(observations: observations),
-    predicate: source_module => module_present_under_every_entry(observations: observations, source_module: source_module)
+fn distinct_expected_source_modules(expectations: List<EntryExpectedMembership>) -> List<String> {
+  fold_list(
+    xs: expectations,
+    empty: no_source_modules(),
+    cons: fn(acc, expectation) {
+      fold_list(
+        xs: expectation.source_modules,
+        empty: acc,
+        cons: fn(inner, source_module) {
+          if contains(xs: inner, item: source_module, eq: fn(a, b) { a == b }) {
+            inner
+          } else {
+            list_snoc_item(xs: inner, item: source_module)
+          }
+        }
+      )
+    }
   )
 }
 
-// THE BUILD. An unreadable entry refuses before any row exists.
-fn census_from_entry_observations(observations: List<EntryObservation>, vintage: String) -> CensusBuild {
+fn module_expected_under_every_entry(observations: List<EntryObservation>, expectations: List<EntryExpectedMembership>, source_module: String) -> Bool {
+  length(
+    xs: filter(
+      xs: observations,
+      predicate: eo => contains(
+        xs: expected_modules_under_entry(expectations: expectations, entry: eo.entry),
+        item: source_module,
+        eq: fn(a, b) { a == b }
+      )
+    )
+  ) == length(xs: observations)
+}
+
+fn shared_source_modules(observations: List<EntryObservation>, expectations: List<EntryExpectedMembership>) -> List<String> {
+  filter(
+    xs: distinct_expected_source_modules(expectations: expectations),
+    predicate: source_module => module_expected_under_every_entry(
+      observations: observations,
+      expectations: expectations,
+      source_module: source_module
+    )
+  )
+}
+
+type MissingExpectedObservation {
+  entry: String
+  source_module: String
+}
+
+fn no_missing_expected_observations() -> List<MissingExpectedObservation> {
+  []
+}
+
+fn expected_but_unobserved(observations: List<EntryObservation>, expectations: List<EntryExpectedMembership>) -> List<MissingExpectedObservation> {
+  fold_list(
+    xs: observations,
+    empty: no_missing_expected_observations(),
+    cons: fn(acc, eo) {
+      fold_list(
+        xs: expected_modules_under_entry(expectations: expectations, entry: eo.entry),
+        empty: acc,
+        cons: fn(inner, source_module) {
+          if module_present_under_entry(eo: eo, source_module: source_module) {
+            inner
+          } else {
+            list_snoc_item(
+              xs: inner,
+              item: MissingExpectedObservation { entry: eo.entry, source_module: source_module }
+            )
+          }
+        }
+      )
+    }
+  )
+}
+
+// THE BUILD. An unreadable entry, a missing expectation, or expected-but-unobserved membership
+// refuses before any row exists. No observed membership fact can narrow the expected denominator.
+//
+// INSTRUMENT ONLY; THIS MUST NOT BE CITED AS PRODUCTION COVERAGE. Fixtures may author expectation
+// facts and therefore exercise every arm, but no live independent supplier is bound here. The class
+// climbs only when every sampled entry has an independently produced expected emitted-membership
+// roster whose deciding stage is execution-proven and whose interpreter parse-per-member cost is
+// bounded for the census frame.
+fn census_from_entry_observations(observations: List<EntryObservation>, expectations: List<EntryExpectedMembership>, vintage: String) -> CensusBuild {
   match unreadable_entries(observations: observations) {
     Cons { head: bad, tail: _ } =>
       CensusNotBuilt {
         detail: concat("an entry's export-surface manifest could not be read, so its modules would be observed under fewer entries and the missing read would render as agreement: ", bad.entry)
       }
-    Empty =>
-      CensusBuilt {
-        census: SurfaceCensus {
-          sample_entries: list_map(xs: observations, f: fn(eo) { eo.entry }),
-          rows: list_map(
-            xs: shared_source_modules(observations: observations),
-            f: fn(source_module) { census_row_for_module(observations: observations, source_module: source_module, vintage: vintage) }
-          )
+    Empty => match entries_missing_expectation(observations: observations, expectations: expectations) {
+      Cons { head: missing, tail: _ } => CensusExpectationMissing { entry: missing.entry }
+      Empty => match expected_but_unobserved(observations: observations, expectations: expectations) {
+        Cons { head: missing, tail: _ } => CensusExpectedModuleUnobserved {
+          entry: missing.entry,
+          source_module: missing.source_module
+        }
+        Empty => CensusBuilt {
+          census: SurfaceCensus {
+            sample_entries: list_map(xs: observations, f: fn(eo) { eo.entry }),
+            rows: list_map(
+              xs: shared_source_modules(observations: observations, expectations: expectations),
+              f: fn(source_module) { census_row_for_module(observations: observations, source_module: source_module, vintage: vintage) }
+            )
+          }
         }
       }
+    }
   }
 }
