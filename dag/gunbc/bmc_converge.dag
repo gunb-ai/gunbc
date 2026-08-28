@@ -198,6 +198,8 @@ fn bmc_fan_policy_suitability_refusal_reason(
           "bmc fan apply refused: nobody has adopted this host's observed fan control program, so agreement with the intent is unestablished rather than confirmed"
         BmcFanProjectionObservedProgramNotRepresentable =>
           "bmc fan apply refused: the host runs a fan control program the intent cannot represent, so applying would partially revert it"
+        BmcFanProjectionObservedProgramRepresentableNotAdopted =>
+          "bmc fan apply refused: the intent can represent this host's observed fan control program, but nobody has adopted that interpretation as intent, so agreement is unestablished rather than confirmed"
         BmcFanProjectionBoardMismatch =>
           "bmc fan projection capability board does not match the observed board"
         BmcFanProjectionFirmwareMismatch =>

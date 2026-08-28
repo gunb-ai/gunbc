@@ -53,6 +53,7 @@ type BmcFanProjectionApplyRefusalCause
   | BmcFanProjectionAlignmentStandingDuplicate
   | BmcFanProjectionObservedProgramNotAdopted
   | BmcFanProjectionObservedProgramNotRepresentable
+  | BmcFanProjectionObservedProgramRepresentableNotAdopted
   | BmcFanProjectionBoardMismatch
   | BmcFanProjectionFirmwareMismatch
   | BmcFanProjectionCurveMismatch
@@ -310,6 +311,10 @@ fn bmc_fan_policy_projection_apply_suitability(
         RefusedObservedProgramNotRepresentableByIntent { missing } =>
           BmcFanProjectionApplyRefused {
             cause: BmcFanProjectionObservedProgramNotRepresentable,
+          }
+        RefusedObservedProgramRepresentableNotAdopted { representability_authority } =>
+          BmcFanProjectionApplyRefused {
+            cause: BmcFanProjectionObservedProgramRepresentableNotAdopted,
           }
       }
     AlignmentAdmitsApplyEvaluation =>
