@@ -43,7 +43,7 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_plan_listen_port }
 // stood beside an actuator that walked around it". The actuator here is
 // gunbc.live_deploy.apply live_deploy_admitted_wet_with_access, which observed a candidate and
 // applied it unconditionally, so an older deploy arriving second rsynced its older tree, converged,
-// and greened -- exactly the silent regression srv1-deploy-serialization-and-false-greens.md
+// and greened -- exactly the silent regression srv1-deploy-serialization-and-false-greens (deleted)
 // section 6 predicted serialization alone would produce.
 //
 // THIS MODULE IS THE CONSUMER, NOT A SECOND POLICY. The four-case relation and its verdict come
