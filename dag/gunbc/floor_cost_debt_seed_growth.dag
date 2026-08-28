@@ -1,0 +1,27 @@
+module gunbc.floor_cost_debt_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the over-cost withholding the required floor applies at claim build.
+// The modeled authority is v2.workflow.floor_cost_debt floor_cost_debt_roster together with
+// v2.workflow.required_floor required_floor_site_disposition; the declarations below are that
+// authority's seed-side realization at the claim-build boundary, not a second policy.
+//
+// THE ITEM DELTA IS ONE, AND THE LINE DELTA IS NOT, WHICH IS WHY BOTH ARE STATED. A review of
+// this change (review 57235) read the +252 lines as substantial new hand Rust and asked for a
+// receipt. At ITEM grain the change adds exactly one declaration; everything else is a new arm,
+// two new fields, and edits inside declarations that already existed, which
+// gunbc.seed_growth_admission classifies ExistingSeedItemModified. Both figures are recorded here
+// because quoting only the item count would understate the surface a reader has to review, and
+// quoting only the line count would misreport what the admission join actually measures.
+data floor_cost_debt_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "OVER_COST_PRINT_LIMIT", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: the required floor executes in the seed, and v1_compiler.cli_run is the loop that turns a discovered site into an executable claim. A withheld row must be declined AT BUILD rather than skipped at execution -- claims_planned == claims_executed + not_attempted and the terminal ledger's identity join both require every planned identity to reach a verdict, so a skip inside the fold would refuse on both. v2.workflow.floor_cost_debt owns the population and v2.workflow.required_floor required_floor_site_disposition owns the precedence; the Rust consumes both and adds neither. A modeled roster with no consumer at this boundary cannot keep an over-budget claim off the floor, which is the whole capability.\n\nWHAT THE ONE NEW ITEM IS: OVER_COST_PRINT_LIMIT caps the [over-cost] DIAGNOSTIC print at 25 rows. It does NOT cap the blocking completed_over_cost_requirement list, which is an uncapped loop -- the two are deliberately different, because a capped blocking list would silently under-report the population that stops the line. This distinction is load-bearing and was itself the source of a misreading during this change: 25 was read as a measured population when it was the print cap, the tell being identical counts at two different thresholds.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits work serving the v2 self-host program. The required floor is the instrument guarding that program, and this change restores the operator's 500ms per-claim CPU ceiling (ruling 2026-08-27) which had been raised tenfold without an operator ruling. It adds no language behavior, compatibility route, escape hatch, seed feature, or emitted public surface, and it opens no flag that suppresses the withhold -- a toggle whose only effect is to run the withheld population would be the escape hatch DESIGN section 5 forbids.\n\nHAND-ITEM DELTA: +1, the print cap enumerated above. The DeclinedCostDebt arm is a variant on the pre-existing RequiredFloorDisposition enum, withheld_cost_debt and stale_cost_debt are fields on the pre-existing RequiredFloorOutcome, and the roster decode, the build-loop decline and the cross-roster staleness join are all inside declarations that already existed.\n\nHAND-LOC DELTA AT THIS RECEIPT: src/v1/stage0/src/cli_run.rs +252/-12 and src/v1/stage0/src/bin/claim_executor.rs +21/-9 against origin/main. The latter adds no declaration. The item observation producer named by gunbc.seed_growth_admission is not invoked by any required phase, so these diff-derived figures are review evidence rather than a mechanically joined admission, and this receipt says so rather than presenting them as measured by the join.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the seed declaration when the self-emitted claim executor builds the required floor's claim roster and consumes v2.workflow.required_floor required_floor_site_disposition directly, so the modeled disposition decides every decline including the cost arm and the hand-written build-loop branch disappears with the v1 floor bridge. NOT retired by the cost-debt roster reaching zero: an empty roster still needs a consumer that reads it, and a trigger satisfied by the population emptying would delete the mechanism while leaving the capability unowned.",
+  current_boundary: "v2.workflow.floor_cost_debt floor_cost_debt_roster -> v2.workflow.required_floor required_floor_site_disposition -> v1_compiler.cli_run run_required_floor -> v1_compiler.cli_run RequiredFloorDispositionRow"
+}

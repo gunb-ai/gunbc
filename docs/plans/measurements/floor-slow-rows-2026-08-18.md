@@ -62,7 +62,19 @@ A budget refusal is emitted two ways, and they are different data:
 - `cost is exactly Xms` — `BudgetCompletion::CompletedOverBudget`. A real
   measurement: the row ran past the ceiling and finished.
 
-See `BudgetCompletion::elapsed_reading` in `cli_run.rs`. This matters because a
+**BOTH SPELLINGS ABOVE ARE THE PRE-#9599 RENDERING AND NO RUN EMITS THEM ANY
+MORE.** They are kept because this document's census parsed the runs named in it,
+and a key that does not match the logs it was read from is worse than a stale
+one. What replaced them, and why, is the point: an interrupted row printed a
+right-censored bound in the field a reader scans for a cost, one word away from
+its completed sibling, and three readers built wrong models on it in one night.
+The current renderer is `ClaimOutcome::budget_figure_phrase` in `cli_run.rs` —
+`cost=UNMEASURED` for an interrupt, with the ceiling figure reported after it as
+`interrupt_point=`, and `cost={n}ms EXACT` for a completion. A parser written
+against this document must key on those, not on the phrasing above.
+`BudgetCompletion::elapsed_reading`, which an earlier revision of this section
+cited, was deleted in the same change: it handed a caller the qualifier and let
+the caller write the cost template. This matters because a
 parser matching only `at least` systematically drops the runaways: a row cheap
 enough to be interrupted at the poll never gets to be expensive.
 
