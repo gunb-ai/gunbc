@@ -1062,7 +1062,7 @@ test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool
     observed_fabric_cells: fabric_cells_observed_empty(),
   )
   list_length(items: refused_lines) == 1
-    && list_length(items: empty_lines) == 3
+    && list_length(items: empty_lines) == 2
     && fleet_converge_fabric_cell_refusal_count(
         host: "srv3" as NonEmptyStr,
         observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
@@ -1297,14 +1297,14 @@ test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool
     host: "srv3" as NonEmptyStr,
     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_probe_boundary_drifted()),
   )
-  list_length(items: lines) == 1
+  list_length(items: lines) == 2
     && fabric_cell_line_occurrences(
         lines: lines,
-        target: concat("REFUSED-REALIZATION CHANGE fabric-cell ", fabric_boundary_desired_key()),
+        target: "REFUSED-REALIZATION fabric-cell resource-boundary change realization undeclared: no staged intermediates (gunbc.change_realization)",
       ) == 1
     && fabric_cell_line_occurrences(
         lines: lines,
-        target: concat("REFUSED-REALIZATION ADD fabric-cell ", fabric_boundary_desired_key()),
+        target: "REFUSED-REALIZATION fabric-cell resource-boundary boundary directives unmodeled in extdeps.systemd.unit_file: MemorySwapMax (byte magnitude; inside gunbc.systemd_directive_value_grain scope); TasksMax (count or infinity; unscoped); CPUWeight (bounded weight; unscoped)",
       ) == 0
 }
 
@@ -1313,14 +1313,14 @@ test fn witness_fabric_cell_absent_address_plans_add_and_never_change() -> Bool 
     host: "srv3" as NonEmptyStr,
     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_probe_boundary_absent()),
   )
-  list_length(items: lines) == 1
+  list_length(items: lines) == 2
     && fabric_cell_line_occurrences(
         lines: lines,
-        target: concat("REFUSED-REALIZATION ADD fabric-cell ", fabric_boundary_desired_key()),
+        target: "REFUSED-REALIZATION fabric-cell resource-boundary boundary directives unmodeled in extdeps.systemd.unit_file: MemorySwapMax (byte magnitude; inside gunbc.systemd_directive_value_grain scope); TasksMax (count or infinity; unscoped); CPUWeight (bounded weight; unscoped)",
       ) == 1
     && fabric_cell_line_occurrences(
         lines: lines,
-        target: concat("REFUSED-REALIZATION CHANGE fabric-cell ", fabric_boundary_desired_key()),
+        target: "REFUSED-REALIZATION fabric-cell resource-boundary change realization undeclared: no staged intermediates (gunbc.change_realization)",
       ) == 0
 }
 

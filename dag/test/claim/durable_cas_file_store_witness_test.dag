@@ -1,0 +1,137 @@
+module test.claim.durable_cas_file_store_witness
+
+import std.types { NonEmptyStr, String, Int, Bool }
+import std.content_hash { ContentHash, content_hash_of_value, sha256_hex_digest, as_content_hash_cryptographic }
+import std.durable_compare_and_set { CasAttempt, CasExpectation, ExpectSlotAbsent, cas_attempt }
+import gunbc.durable_cas_file_store { CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, cas_file_slot_path }
+
+// Evidence for the pure half of the file-backed CAS store. What is DELIBERATELY
+// absent is a hermetic row over file_compare_and_set itself.
+//
+// That fold performs a host effect, so under the required floor's hermetic
+// envelope it is refused before it runs -- it would be discovered, counted
+// executed, and assert nothing. DESIGN records what that family looks like when
+// it is authored anyway: nine identities named for compile-clean, not one of
+// which compiles anything, read by a passing reader as coverage. A witness that
+// cannot reach its subject is worse than no witness, because it is cited.
+//
+// The effectful fold's evidence is therefore a live run against a real
+// directory, recorded on the cut that introduces its consumer, not a row here.
+// Its two arms -- a first write committing, and a second write to the same
+// slot losing to O_EXCL -- are only observable where writes actually happen.
+
+fn cas_probe_attempt(key: NonEmptyStr, payload: NonEmptyStr, claimed: ContentHash, expected: CasExpectation) -> CasAttempt<NonEmptyStr> {
+  cas_attempt(key: key, expected: expected, proposed: payload, proposed_content: claimed)
+}
+
+// The discriminating red: pairing a payload with a DIFFERENT value's digest is
+// exactly the forgery the interface says it cannot catch in a generic fold and
+// delegates to the realizing store. If the mint ever admits this, the wall is
+// gone and this row goes red.
+test fn a_payload_paired_with_another_values_digest_is_refused_at_the_mint() -> Bool {
+  let forged = cas_probe_attempt(
+    key: "srv3-06-head",
+    payload: "state-A",
+    claimed: content_hash_of_value(value: "state-B"),
+    expected: ExpectSlotAbsent,
+  )
+  match admit_cas_attempt(attempt: forged) {
+    CasAttemptDigestMismatch { claimed: _, actual: _ } => true
+    CasAttemptAdmitted { verified: _ } => false
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } => false
+    CasAttemptKeyNotSlotAddressable { key: _ } => false
+  }
+}
+
+// The positive control. Without it the row above is satisfied by a mint that
+// refuses everything, which would be a wall that admits no correct work.
+test fn a_digest_that_matches_its_payload_admits() -> Bool {
+  let honest = cas_probe_attempt(
+    key: "srv3-06-head",
+    payload: "state-A",
+    claimed: content_hash_of_value(value: "state-A"),
+    expected: ExpectSlotAbsent,
+  )
+  match admit_cas_attempt(attempt: honest) {
+    CasAttemptAdmitted { verified: _ } => true
+    CasAttemptDigestMismatch { claimed: _, actual: _ } => false
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } => false
+    CasAttemptKeyNotSlotAddressable { key: _ } => false
+  }
+}
+
+// Nothing was compared, so nothing may be reported as compared. A cross-family
+// pair must not collapse into the mismatch arm: mismatch is a verdict about the
+// caller's pairing, incomparable is the absence of a verdict, and they have
+// different repairs.
+test fn a_cross_family_digest_pair_is_incomparable_rather_than_reported_as_a_mismatch() -> Bool {
+  match sha256_hex_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000") {
+    none => false
+    Present { value: sha } => {
+      let cross = cas_probe_attempt(
+        key: "srv3-06-head",
+        payload: "state-A",
+        claimed: as_content_hash_cryptographic(digest: sha),
+        expected: ExpectSlotAbsent,
+      )
+      match admit_cas_attempt(attempt: cross) {
+        CasAttemptDigestIncomparable { claimed: _, actual: _ } => true
+        CasAttemptDigestMismatch { claimed: _, actual: _ } => false
+        CasAttemptAdmitted { verified: _ } => false
+        CasAttemptKeyNotSlotAddressable { key: _ } => false
+      }
+    }
+  }
+}
+
+// The mechanism itself: because the generation is IN the path, two generations
+// of one slot are two different files, which is what lets an exclusive create
+// serve as the conditional write. If the path ever stopped naming the
+// generation, every generation would target one path and O_EXCL would refuse
+// every update after the first -- this row goes red before that ships.
+test fn two_generations_of_one_slot_are_two_distinct_paths() -> Bool {
+  let first = cas_file_slot_path(root: "/var/lib/gunbc/cas", key: "srv3-06-head", generation: 1)
+  let second = cas_file_slot_path(root: "/var/lib/gunbc/cas", key: "srv3-06-head", generation: 2)
+  first != second
+    && first == "/var/lib/gunbc/cas/srv3-06-head.1"
+    && second == "/var/lib/gunbc/cas/srv3-06-head.2"
+}
+
+// The discriminating red for the traversal class. This key is a real escape:
+// interpolated into the path it leaves the store root entirely, so if the mint
+// ever admits it the store writes wherever the caller points. Note the digest
+// here is HONEST -- the key must be refused on its own account, not incidentally
+// because some other check happened to fire first.
+test fn a_key_that_would_escape_the_store_root_is_refused_at_the_mint() -> Bool {
+  let escaping = cas_probe_attempt(
+    key: "../../etc/passwd",
+    payload: "state-A",
+    claimed: content_hash_of_value(value: "state-A"),
+    expected: ExpectSlotAbsent,
+  )
+  match admit_cas_attempt(attempt: escaping) {
+    CasAttemptKeyNotSlotAddressable { key: _ } => true
+    CasAttemptAdmitted { verified: _ } => false
+    CasAttemptDigestMismatch { claimed: _, actual: _ } => false
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } => false
+  }
+}
+
+// A key with a slash that does NOT escape is still refused, because the defect
+// is not only traversal: the store does not create directories, so such a key
+// would refuse at the write with an operational error instead of being rejected
+// as the malformed identifier it is. Same remedy, named at the right layer.
+test fn a_key_carrying_a_path_separator_is_refused_even_when_it_escapes_nothing() -> Bool {
+  let nested = cas_probe_attempt(
+    key: "srv3-06/head",
+    payload: "state-A",
+    claimed: content_hash_of_value(value: "state-A"),
+    expected: ExpectSlotAbsent,
+  )
+  match admit_cas_attempt(attempt: nested) {
+    CasAttemptKeyNotSlotAddressable { key: _ } => true
+    CasAttemptAdmitted { verified: _ } => false
+    CasAttemptDigestMismatch { claimed: _, actual: _ } => false
+    CasAttemptDigestIncomparable { claimed: _, actual: _ } => false
+  }
+}

@@ -49,6 +49,7 @@ import gunbc.roadmap_execution_contract {
   GunbcClaimValidation,
   CargoTestValidation,
   CargoFmtValidation,
+  ClosingContractAuthoringValidation,
   WorkItemExecutionContract,
   dispatch_required_capabilities,
   execution_capability_label,
@@ -698,6 +699,7 @@ test fn witness_accepted_scm_sequence_activates_authored_p1_slice() -> Bool {
                 && function == "witness_p1_proof_kernel_acceptance_contract_holds"
             CargoTestValidation { filter: _ } => false
             CargoFmtValidation => false
+            ClosingContractAuthoringValidation { target: _ } => false
           })
     }
     && !id_exists(id: "2-scm-node-merge")
@@ -717,6 +719,7 @@ test fn witness_namespace_reference_derived_closure_has_discriminating_contract(
               && function == "witness_namespace_reference_derived_closure_closing_contract_holds"
           CargoTestValidation { filter: _ } => false
           CargoFmtValidation => false
+          ClosingContractAuthoringValidation { target: _ } => false
         })
   }
 }
@@ -733,6 +736,7 @@ test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Boo
               && function == "direct_rust_door_production_group_closing_expectation_holds"
           CargoTestValidation { filter: _ } => false
           CargoFmtValidation => false
+          ClosingContractAuthoringValidation { target: _ } => false
         })
   }
 }
@@ -807,6 +811,7 @@ test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool {
               && function == "retained_rust_kernel_wall_holds_against_live_tree"
           CargoTestValidation { filter: _ } => false
           CargoFmtValidation => false
+          ClosingContractAuthoringValidation { target: _ } => false
         })
   }
 }

@@ -257,16 +257,6 @@ fn floor_route_gap_chunk_01() -> List<String> {
       tail: Cons {
       head: "test.claim.run_verdict_exit_status_witness_test.run_success_verdict_reaches_zero_exit",
       tail: Cons {
-      head: "test.claim.scm_read_command_witness.scm_rc_an_absent_repository_is_unavailable_not_an_empty_answer",
-      tail: Cons {
-      head: "test.claim.scm_read_command_witness.scm_rc_status_refuses_in_the_same_arm_on_the_same_path_as_log",
-      tail: Cons {
-      head: "test.claim.scm_read_command_witness.scm_read_command_keystone_holds",
-      tail: Cons {
-      head: "test.claim.scm_repository_load_witness.scm_rl_an_absent_file_is_unreadable_not_empty",
-      tail: Cons {
-      head: "test.claim.scm_repository_load_witness.scm_repository_load_keystone_holds",
-      tail: Cons {
       head: "test.claim.self_host_00_compile_behavioral_witness.self_host_00_compile_behavioral_receipt_holds",
       tail: Cons {
       head: "test.claim.self_host_01_tokenize_behavioral_witness.self_host_01_tokenize_behavioral_receipt_holds",
@@ -275,11 +265,6 @@ fn floor_route_gap_chunk_01() -> List<String> {
       tail: Cons {
       head: "test.claim.self_host_03_ingest_behavioral_witness.self_host_03_ingest_behavioral_receipt_holds",
       tail: Empty {}
-    }
-    }
-    }
-    }
-    }
     }
     }
     }
@@ -535,8 +520,6 @@ fn floor_route_gap_expectation_chunk_01() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.expectation_frontier_witness.fully_declared_effects_emit_no_frontier_receipt_holds", operation: "Run", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.external_model_scope_live_cover_witness.red_cover_walker_refuses_missing_root", operation: "Filesystem.List", ground: UnpublishedMockCase {} },
-    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.external_model_scope_live_cover_witness.manifest_rows_all_predate_freeze_sha", operation: "DiffNameStatus", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fleet_revision_relation_wet_matrix.an_ancestor_current_is_a_forward_advance", operation: "MergeBase", ground: NoMockResponse {} },
@@ -553,7 +536,6 @@ fn floor_route_gap_expectation_chunk_01() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.fleet_revision_relation_wet_matrix.no_merge_base_and_could_not_look_stay_distinguishable", operation: "MergeBase", ground: NoMockResponse {} },
     tail: Empty {}
-  }
   }
   }
   }
@@ -594,8 +576,6 @@ fn floor_route_gap_expectation_chunk_02() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.no_fake_anomalies_witness.red_control_entry_with_real_anomaly_still_shows_glyph_holds", operation: "Run", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.push_event_witness_wet.witness_push_before_payload_read_refused_on_missing_path", operation: "Read", ground: NoMockResponse {} },
-    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap_receipt_continuity_live_witness.live_roadmap_acceptance_history_integrity_holds", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.self_host_artifact_materialization_real_execution_witness.a_real_cargo_build_materializes_through_the_real_digest", operation: "Dir", ground: NoMockResponse {} },
@@ -622,7 +602,6 @@ fn floor_route_gap_expectation_chunk_02() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.stage0_rust_host_observation_live_witness.scaffold_host_observation_reaches_path_derived_verdict", operation: "git.Inspect.HeadCommit", ground: UnpublishedMockCase {} },
     tail: Empty {}
-  }
   }
   }
   }
@@ -685,10 +664,7 @@ fn floor_route_gap_expectation_chunk_03() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "v2.test.manual.emit_source_store.emit_source_store_cold_then_warm_holds", operation: "Write", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "v2.test.manual.emit_source_store.emit_source_store_mutated_emitter_misses_holds", operation: "Write", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "v2.test.workflow.frontier_probe_closure_readthrough.frontier_probe_read_failure_detail_refused_holds", operation: "Read", ground: NoMockResponse {} },
     tail: Empty {}
-  }
   }
   }
   }
@@ -714,12 +690,6 @@ fn floor_route_gap_expectation_chunk_03() -> List<FloorRouteGapExpectation> {
 // interpreter-observed Run refusal in the first post-merge execution, run 32768782787. They
 // therefore join the typed route-gap population at the operation and remedy ground actually
 // observed; they are not expected-red because no semantic verdict was produced.
-// A SIXTH ROW STOOD HERE AND IS GONE WITH ITS WITNESS. Run 32794539384 added the Claude SDK
-// parser-drop wet control on the same reading -- Read / NoMockResponse, no semantic verdict --
-// and the ground was wrong. That witness read a receipt whose whole directory, instruments
-// included, was deleted by d3bebd0072f: no mock case and no supplied route could have made it
-// reach its subject, because the subject did not exist. It is retired rather than routed, and
-// this roster's own reverse join is what would have caught the row outliving it.
 fn floor_route_gap_expectation_chunk_04() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_two_declared_operations_execute", operation: "Run", ground: NoMockResponse {} },
@@ -805,8 +775,31 @@ fn floor_route_gap_chunk_04() -> List<String> {
       tail: Empty {} } } } } } } } } } } } } } } } }
 }
 
+// REPOSITORY CONVERGENCE WET EVIDENCE EXECUTES ON ITS OWN REAL-SHELL LANE, not through the
+// hermetic floor. Required-floor run 33139889388 executed all seven identities and observed the
+// same typed Run route gap for each: shell.Test.IsExecutable has no mock_response and therefore
+// refuses before a subprocess can reach the deterministic scratch repositories. Enrollment records
+// that measured boundary; it does not treat the separate WET execution receipt as a hermetic route.
+fn floor_route_gap_chunk_05() -> List<String> {
+  Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.already_at_candidate_repairs_a_stale_index",
+      tail: Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.cas_race_is_observed_after_fetch",
+      tail: Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree",
+      tail: Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.reset_refusal_after_successful_cas_is_nonzero",
+      tail: Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.undecodable_worktree_roster_refuses_before_mutation",
+      tail: Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.unreadable_head_refuses_before_fetch_or_mutation",
+      tail: Cons {
+      head: "test.claim.repository_convergence_wet_witness_test.wrong_primary_standing_refuses_from_gits_roster",
+      tail: Empty {} } } } } } } }
+}
+
 fn floor_route_gap_chunks() -> List<List<String>> {
-  Cons { head: floor_route_gap_chunk_00(), tail: Cons { head: floor_route_gap_chunk_01(), tail: Cons { head: floor_route_gap_chunk_02(), tail: Cons { head: floor_route_gap_chunk_03(), tail: Cons { head: floor_route_gap_chunk_04(), tail: Empty {} } } } } }
+  Cons { head: floor_route_gap_chunk_00(), tail: Cons { head: floor_route_gap_chunk_01(), tail: Cons { head: floor_route_gap_chunk_02(), tail: Cons { head: floor_route_gap_chunk_03(), tail: Cons { head: floor_route_gap_chunk_04(), tail: Cons { head: floor_route_gap_chunk_05(), tail: Empty {} } } } } } }
 }
 
 fn floor_route_gap_roster() -> List<String> {

@@ -42,7 +42,7 @@ module gunbc.scm.repository_load
 // function's job. Manufacturing a standing for "file missing" would invent the entailment DESIGN
 // names as authority substitution.
 
-import std.types { String }
+import std.types { List, String }
 import extdeps.filesystem.filesystem_io {
   FilesystemReadOutcome,
   FilesystemReadSucceeded,
@@ -130,5 +130,40 @@ fn load_repository(path: String) -> RepositoryLoad {
               RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
           }
       }
+  }
+}
+
+// RENDERING THE REFUSAL, HOMED HERE BECAUSE THE CAUSE IS HOMED HERE.
+//
+// `gunbc.scm.load_standing` states the rule this obeys: a consumer that needs a cause rendered "asks
+// the format for a rendering, it does not pattern-match one". A renderer living in the presentation
+// module would have to match these three arms, which puts this type's vocabulary in a module that
+// should not know it -- and every new refusal arm would then silently inherit whichever line the
+// wildcard happened to name.
+//
+// THE THREE ARMS ARE KEPT SEPARATE BECAUSE THEY SEND THE READER TO THREE DIFFERENT PLACES, which is
+// the same distinction DESIGN records being collapsed once already in this module family:
+//
+//   RepositoryFileUnreadable      the path did not yield bytes        -> check the path
+//   RepositoryDocumentUnparseable the bytes are not JSON              -> the file is damaged
+//   RepositoryDocumentRefused     valid JSON, not a repository        -> schema mismatch
+//
+// Folding them into one "could not load" line would be exactly the not-applicable-rendered-as-
+// malformed conflation: one symbol over causes with opposite repairs.
+//
+// WHAT IS DELIBERATELY NOT RENDERED. The inner `gap` and `cause` payloads carry the detail a reader
+// would most want, and neither `extdeps.languages.json` nor `gunbc.scm.repository_envelope` offers a
+// rendering of its own refusal today. Inventing one HERE would place a second format's presentation
+// in this module -- the same violation this function exists to avoid, one level in -- and inventing
+// a plausible summary of a value we did not decode is the fabricated-plausible-output failure at a
+// user-facing boundary. So the arm is named and the detail is withheld until its owner renders it.
+fn repository_load_refusal_lines(cause: RepositoryLoadRefusal) -> List<String> {
+  match cause {
+    RepositoryFileUnreadable { path: path, error: error } =>
+      [concat("cannot read repository at ", path), concat("  ", error)]
+    RepositoryDocumentUnparseable { path: path, gap: _ } =>
+      [concat("repository document is not valid JSON: ", path)]
+    RepositoryDocumentRefused { path: path, cause: _ } =>
+      [concat("not a repository document: ", path)]
   }
 }

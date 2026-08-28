@@ -1,0 +1,155 @@
+module gunbc.namespace_structural_observations_contract
+
+import gunbc.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureAdmission,
+  ReferenceDerivedClosureCapability,
+  SameFileEarlierNeighbourVisible,
+  SiblingDecisionBranchExcluded,
+  LaterDeclarationExcluded,
+  DistinctSameSpelledDeclarationsPreserved,
+}
+import gunbc.namespace_reference_derived_closure_contract {
+  closure_missing_capabilities,
+}
+import std.reference_binding_observation {
+  ReferenceBindingProductionGap,
+  StructuralObservationSubjectModule,
+  SubjectModuleProduced,
+  SubjectModuleProductionRefused,
+}
+import std.types { Bool, Int, List, String }
+
+// THE CLOSING CONDITION for roadmap node namespace-structural-observations, and it is written
+// BEFORE the production that satisfies it, which is the node's own first slice.
+//
+// WHAT IT ASKS. Four in-file visibility rules, each established only by ASSESSING a typed
+// production observation through the one authority that already owns that judgement
+// (gunbc.namespace_reference_derived_closure_admission assess_reference_binding_observation):
+// an earlier neighbour in the same file is in view; a declaration in the other branch of a
+// decision is not; a declaration written further down is not; and two same-spelled declarations
+// at genuinely different positions both survive rather than merging. The set difference is
+// computed by the parent row's own fold, called with a four-capability requirement, so this row
+// cannot answer none/one/many a second way and cannot drift from the parent's dominance rule.
+//
+// WHY THE SUBJECT IS CARRIED BESIDE THE ADMISSION, and this is the half the retracted interim
+// lacked (gunbc.roadmap_authority namespace_structural_observations_execution_contract_note): an
+// admission alone says a rule held SOMEWHERE. The row asks for ONE ORDINARY COMPILED FILE, so
+// every admission must carry the module path THE COMPILE ITSELF DECLARED -- read out of the
+// parsed source by the producer, never echoed from the caller's request -- and all four must name
+// the same one. Four admissions from four hand-built sources satisfy the capabilities and fail
+// this check, which is exactly the difference the row is about.
+data namespace_structural_observations_contract_note: String = "Closing condition for roadmap node namespace-structural-observations. Four capabilities, established only through assess_reference_binding_observation over production observations, every one of them carrying the module path declared by the single compiled subject."
+
+type OrdinaryCompileStructuralAdmission {
+  compiled_module: StructuralObservationSubjectModule
+  admission: ReferenceDerivedClosureAdmission
+}
+
+// THE PROBE NAMES TRAVEL WITH THE SUBJECT, never inside the producer. Which spellings carry the
+// four cases is a fact about THIS text; a producer that knew them would be a second authority on
+// the subject, and swapping the subject for a red control would then change nothing.
+type StructuralObservationSubject {
+  file: String
+  source: String
+  neighbour_name: String
+  branch_binder_name: String
+  later_name: String
+  homonym_name: String
+}
+
+fn namespace_structural_observations_required_capabilities() -> List<ReferenceDerivedClosureCapability> {
+  [
+    SameFileEarlierNeighbourVisible,
+    SiblingDecisionBranchExcluded,
+    LaterDeclarationExcluded,
+    DistinctSameSpelledDeclarationsPreserved,
+  ]
+}
+
+// THE ONE SUBJECT. An ordinary module: every declaration it makes is one an author could write,
+// and the whole point of the row is that all four observations come out of THIS text rather than
+// out of four texts shaped one per rule.
+//
+//   nso_neighbour / nso_uses_neighbour   an earlier neighbour, called from a later sibling
+//   nso_branch                           the same let name in both arms of one decision
+//   nso_uses_later / nso_later           a callee declared further down
+//   nso_homonym                          a parameter and a let of one spelling, at two positions
+fn namespace_structural_observations_subject_module() -> String {
+  "gunbc.namespace_structural_observations_fixture"
+}
+
+fn namespace_structural_observations_subject_file() -> String {
+  "gunbc/namespace_structural_observations_fixture.dag"
+}
+
+fn namespace_structural_observations_subject_source() -> String {
+  "module gunbc.namespace_structural_observations_fixture\n\nfn nso_neighbour() -> Int {\n  1\n}\n\nfn nso_uses_neighbour() -> Int {\n  nso_neighbour()\n}\n\nfn nso_branch(b: Bool) -> Int {\n  if b {\n    let nso_x = 1\n    nso_x\n  } else {\n    let nso_x = 2\n    nso_x\n  }\n}\n\nfn nso_uses_later() -> Int {\n  nso_later()\n}\n\nfn nso_later() -> Int {\n  3\n}\n\nfn nso_homonym(nso_y: Int) -> Int {\n  let nso_y = 1\n  nso_y\n}\n"
+}
+
+fn namespace_structural_observations_subject() -> StructuralObservationSubject {
+  StructuralObservationSubject {
+    file: namespace_structural_observations_subject_file(),
+    source: namespace_structural_observations_subject_source(),
+    neighbour_name: "nso_neighbour",
+    branch_binder_name: "nso_x",
+    later_name: "nso_later",
+    homonym_name: "nso_y",
+  }
+}
+
+// A ROW IS OFF-SUBJECT WHEN IT DOES NOT NAME THIS SUBJECT, AND A ROW WHOSE SUBJECT COULD NOT BE
+// PRODUCED IS ONE OF THOSE -- but it is a DIFFERENT one, so it carries its own variant rather than
+// a sentinel string. Both refuse the row; they refuse for stated and distinguishable reasons, which
+// is the whole reason the subject identity is typed upstream. An earlier revision reported the
+// second case as the literal "<subject module not produced>" and the acceptance test asserted that
+// spelling, which put a nickname where the coproduct already had a name (review 57241).
+type StructuralAdmissionSubjectMismatch
+  = AdmissionNamesAnotherModule {
+      module_path: String,
+    }
+  | AdmissionSubjectNotProduced {
+      gap: ReferenceBindingProductionGap,
+    }
+
+fn structural_admission_subject_mismatch(
+  compiled_module: StructuralObservationSubjectModule,
+) -> List<StructuralAdmissionSubjectMismatch> {
+  match compiled_module {
+    SubjectModuleProductionRefused { gap: gap } => [AdmissionSubjectNotProduced { gap: gap }]
+    SubjectModuleProduced { module_path: module_path } =>
+      match module_path == namespace_structural_observations_subject_module() {
+        true => []
+        false => [AdmissionNamesAnotherModule { module_path: module_path }]
+      }
+  }
+}
+
+fn structural_admission_off_subject_modules(
+  rows: List<OrdinaryCompileStructuralAdmission>,
+) -> List<StructuralAdmissionSubjectMismatch> {
+  rows
+    |> flat_map(row => structural_admission_subject_mismatch(compiled_module: row.compiled_module))
+}
+
+fn namespace_structural_observations_missing_capabilities(
+  rows: List<OrdinaryCompileStructuralAdmission>,
+) -> List<ReferenceDerivedClosureCapability> {
+  closure_missing_capabilities(
+    required: namespace_structural_observations_required_capabilities(),
+    admissions: rows |> map(row => row.admission),
+  )
+}
+
+fn namespace_structural_observations_closing_frontier_count(
+  rows: List<OrdinaryCompileStructuralAdmission>,
+) -> Int {
+  count(namespace_structural_observations_missing_capabilities(rows: rows))
+    + count(structural_admission_off_subject_modules(rows: rows))
+}
+
+fn namespace_structural_observations_closing_contract_holds(
+  rows: List<OrdinaryCompileStructuralAdmission>,
+) -> Bool {
+  count(rows) > 0
+    && namespace_structural_observations_closing_frontier_count(rows: rows) == 0
+}

@@ -358,6 +358,20 @@ fn dashboard_execution_environment(
   }
 }
 
+data dashboard_instance_repo_root_lookup_note: String = "THE repo_root -> INSTANCE RESOLUTION LIVES WITH THE INSTANCES, NOT WITH ONE CONSUMER. It was authored inside gunbc.roadmap_belt_actuate as belt_dashboard_instance_lookup_for_spawn_workdir, which was correct while the belt tick was the only caller and stopped being correct the moment a second one existed: the mapping is a fact about which host instances this repository declares, and a consumer that re-derives it forks an authority rather than consuming one (DESIGN 3, consume never fork). Copying the shape and noting the copy in a comment does not repair that — the two spellings drift apart exactly when an instance is added, which is the one moment nobody is looking at either of them.\n\nThe name lost its belt vocabulary with the move. `spawn workdir` is the belt's framing of the argument it happens to pass; the fact being asked for is `which declared instance has this repo root`, and naming it that way is what lets the preflight ask the same question without reading as a borrowed belt call. The refusal arm carries the unmatched root rather than a bare Absent, because a caller that has just been told the root is unknown needs to name it in its own diagnostic.\n\nEnumerating only srv1-live is the CURRENT population, not a claim that other declared instances are unreachable: srv1_lab, srv2_preview and srv2_lab all declare repo roots and none has a consumer that resolves by root yet. Adding one is a row here, and after this move it is a row in ONE place."
+
+type DashboardInstanceLookup
+  = DashboardInstanceResolved { instance: HostDashboardInstance }
+  | DashboardInstanceRootUnknown { repo_root: String }
+
+fn dashboard_instance_for_repo_root(repo_root: String) -> DashboardInstanceLookup {
+  if repo_root == (srv1_live_dashboard_instance().repo_root as String) {
+    DashboardInstanceResolved { instance: srv1_live_dashboard_instance() }
+  } else {
+    DashboardInstanceRootUnknown { repo_root: repo_root }
+  }
+}
+
 fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   HostDashboardInstance {
     instance_id: srv1_dashboard_live_id,
