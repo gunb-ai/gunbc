@@ -1,6 +1,6 @@
 # RESTORE-stall finding: widening the required floor's source roots to admit `src/v1`
 
-Standalone finding, split out of triage prose per parent-session request (dashboard node `adhoc-9b80ec49-d63`, session `zesty-newt-828`, 2026-08-19). This document is the receipt for the RESTORE disposition ruled out repo-wide across `v1_dead_witness_tree_triage_receipt`, `v1_dead_witness_tree_triage_receipt_remainder`, and `v1_dead_witness_tree_triage_receipt_emitter_ambiguous_variant_owner` (`dag/gunbc/ci_layer_roots.dag`) — those receipts cite this finding rather than re-deriving it.
+Standalone finding, split out of triage prose per parent-session request (dashboard node `adhoc-9b80ec49-d63`, session `zesty-newt-828`, 2026-08-19). This document is the receipt for the RESTORE disposition ruled out repo-wide across `v1_dead_witness_tree_triage_receipt`, `v1_dead_witness_tree_triage_receipt_remainder`, and `v1_dead_witness_tree_triage_receipt_emitter_ambiguous_variant_owner` (`dag/gunbc/ci/ci_layer_roots.dag`) — those receipts cite this finding rather than re-deriving it.
 
 ## The question
 

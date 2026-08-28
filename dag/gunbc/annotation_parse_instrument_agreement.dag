@@ -1,0 +1,435 @@
+module gunbc.annotation_parse_instrument_agreement
+
+import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
+import std.measure { second, ByteSize, byte_size, byte_size_count }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.disposition { Disposition, Terminal, SingleAuthority }
+import extdeps.posix.rusage { RusageMaxrssObservation, RusageChildren }
+import extdeps.linux.rusage { linux_rusage_maxrss_unit }
+import gunbc.emit_stage_blocking_population_census {
+  CensusRun,
+  CompileExited,
+  PristineAtRevision,
+  LocallyPerturbed
+}
+
+// TWO LANES RAN ONE COMMAND ON ONE COMMIT AND GOT OPPOSITE VERDICTS, AND BOTH WERE RIGHT.
+//
+// The report was that `gunbc compile` refuses the one source-annotation form DESIGN section 4c
+// admits -- a standalone leading `//` block attached to a module-scope declaration. Re-measured
+// here it did not reproduce; re-measured on the reporting lane's host, with a four-line fixture,
+// it did. The variable was neither the tree nor the revision, both of which were shared. It was
+// the BINARY: `/usr/local/bin/gunbc` in a session container is a build of unestablished
+// provenance, and a compiler built from the revision under test is a different instrument that
+// answers differently about the same bytes.
+//
+// SO THIS CARRIER'S SUBJECT IS NOT THE GRAMMAR. The grammar has one authority and this module
+// says where it is. The subject is that a MEASUREMENT OF A COMPILER IS NOT IDENTIFIED BY ITS
+// TREE AND ITS REVISION ALONE, and a receipt that omits which build produced it is not a
+// measurement of anything a reader can return to.
+data annotation_parse_instrument_agreement_disposition: Disposition = Terminal {
+  reason: "A RECEIPT, NOT A GATE. Nothing here executes on any push and nothing refuses. It records three things that were established by execution: that the two PARSE ENTRY POINTS in this repository reach one admission seam, that the reported refusal reproduces on an installed compiler build and not on one built from the revision under test, and that a red control against this compiler must discriminate on diagnostic identity rather than on population size. The standing enforcement of annotation grain is the required CI parse phase, which folds every authored .dag through the same seam on every push; this module adds no wall beside it and does not weaken it.",
+  authority: SingleAuthority
+}
+
+// ── WHICH PARSE EACH ENTRY POINT TAKES ────────────────────────────────────────────────────────
+//
+// NOT EVERY ROUTE SITS IN A DECLARATION THE INDEX CAN NAME. The required parse phase is reached
+// through a hand-Rust host in the stage0 seed, which no DeclarationRef addresses; citing a nearby
+// `.dag` symbol for it would be the fabricated citation DESIGN section 3 already records this
+// repository writing twice. The host arm is a real state rather than a gap, and it carries the
+// host symbol as text because that is all the namespace can honestly offer.
+type ParseRouteHome
+  = RouteInDeclaration { declaration: DeclarationRef }
+  | RouteInSeedHost { host_symbol: NonEmptyStr }
+
+// ONE ENTRY POINT AND THE SEAM IT REACHES. `reaches_admission` is the question the finding posed:
+// not which function is called first, but whether the call chain arrives at the one place that
+// decides whether a captured `//` block attaches to a subject.
+type ParseEntryPoint {
+  invoked_as: NonEmptyStr
+  first_route: ParseRouteHome
+  reaches_admission: DeclarationRef
+}
+
+// THE STANDING OF THE GRAMMAR ACROSS ENTRY POINTS. A fork is representable, so the agreement is a
+// claim this carrier makes rather than a shape it assumes; and the shared arm names the seam, so
+// "they agree" cannot be written without saying what they agree through.
+type GrammarAuthorityStanding
+  = OneSharedAdmission { admission: DeclarationRef }
+  | ForkedAdmission { left: ParseEntryPoint, right: ParseEntryPoint }
+
+data annotation_admission_seam: DeclarationRef = decl_ref(module_path: "v1.compiler.annotation_bind", decl_name: "admit_source_annotations")
+
+// THE REQUIRED PARSE PHASE. `claim_executor --required-ci --required-lane witnesses` sweeps
+// src/v1, dag and src/v2 and puts every file through the frontend's own per-source census-fill
+// parse -- tokenize into the annotation channel, parse in an occurrence scope, then admit. The
+// walk is host Rust; the parse it calls is not.
+data required_parse_phase_entry: ParseEntryPoint = ParseEntryPoint {
+  invoked_as: "claim_executor --required-ci --required-lane witnesses (parse phase)" as NonEmptyStr,
+  first_route: RouteInSeedHost { host_symbol: "cli_run.rs run_dag_parse_sweep" as NonEmptyStr },
+  reaches_admission: annotation_admission_seam
+}
+
+// THE COMPILER CLI. `gunbc compile` routes its whole-root subject through cli_run compile_emission
+// into the modeled pipeline, whose frontend and whose census fill are the two callers that
+// v1.compiler.annotation_bind names in its own header as the pair that must not drift.
+data gunbc_compile_entry: ParseEntryPoint = ParseEntryPoint {
+  invoked_as: "gunbc compile --source-root dag --source-root src/v2" as NonEmptyStr,
+  first_route: RouteInDeclaration {
+    declaration: decl_ref(module_path: "v1.compiler.compile", decl_name: "compile_to_resolved_with_options")
+  },
+  reaches_admission: annotation_admission_seam
+}
+
+// THE FINDING'S ORIGINAL QUESTION, ANSWERED. Both entry points arrive at one seam, so there is no
+// second grammar in the source. Established by reading the call chains and declared as a code read;
+// the executions below establish the BEHAVIOUR, which is the half a code read cannot settle -- and
+// which turned out to depend on something a code read cannot see at all.
+data parse_entry_standing: GrammarAuthorityStanding = OneSharedAdmission { admission: annotation_admission_seam }
+
+fn entry_points_share_one_grammar(s: GrammarAuthorityStanding) -> Bool {
+  match s {
+    OneSharedAdmission { admission: _ } => true
+    ForkedAdmission { left: _, right: _ } => false
+  }
+}
+
+// ── WHICH COMPILER PRODUCED A READING ─────────────────────────────────────────────────────────
+//
+// A BUILD THAT CANNOT NAME ITS REVISION IS NOT A DATED BUILD, IT IS AN UNIDENTIFIED ONE, and the
+// distinction is the whole of this section. The reporting lane's guidance was not to re-measure by
+// rebuilding, because the installed binary was dated the same day as the commit -- a timestamp read
+// as a build identity. Measured: the installed binary REJECTS `--version`, so it cannot state which
+// revision it came from, and same-day says nothing.
+//
+// The provenance arm is therefore not a politeness. `BuiltFromRevision` is inhabitable only by a
+// build that answered with a revision; anything else carries the reason it could not, so a reading
+// can never silently claim a provenance nobody obtained.
+type BuildProvenance
+  = BuiltFromRevision { revision: CommitSha, working_tree_dirty: Bool }
+  | ProvenanceUnestablished { why: NonEmptyStr }
+
+type CompilerBuild {
+  observed_on: NonEmptyStr
+  path: NonEmptyStr
+  content_digest: NonEmptyStr
+  byte_length: ByteSize
+  provenance: BuildProvenance
+}
+
+fn build_names_its_revision(b: CompilerBuild) -> Bool {
+  match b.provenance {
+    BuiltFromRevision { revision: _, working_tree_dirty: _ } => true
+    ProvenanceUnestablished { why: _ } => false
+  }
+}
+
+// NAMING A REVISION AND NAMING THE SUBJECT'S REVISION ARE TWO QUESTIONS, and only the second makes
+// a build an instrument for a given measurement. A peer lane ran this receipt's `--version` check
+// on its OWN build rather than assuming, and it answered with a real revision that was eighty-seven
+// commits behind that lane's branch head and dirty -- sound provenance, wrong subject. So the
+// predicate below is not `build_names_its_revision` with extra steps: the first says a reading is
+// attributable at all, the second says it is attributable TO THE TREE BEING MEASURED. A build that
+// passes the first and fails the second produces greens that do not entail CI greens for anything
+// touching compiler behaviour, and nothing about the reading looks different.
+fn build_is_the_subject_revision(b: CompilerBuild, subject: CommitSha) -> Bool {
+  match b.provenance {
+    BuiltFromRevision { revision: r, working_tree_dirty: dirty } => r == subject && !dirty
+    ProvenanceUnestablished { why: _ } => false
+  }
+}
+
+data measured_revision: CommitSha = "b6003a45e58a5775022f911cc4aabb2ad475da8b"
+
+// THE COMPILER BUILT FROM THE REVISION UNDER TEST. `cargo build --release -p v1-compiler --bin
+// gunbc`, roughly three and a half minutes on a session container.
+data source_build: CompilerBuild = CompilerBuild {
+  observed_on: "session quick-lynx-237 (measured by this receipt's author)" as NonEmptyStr,
+  path: "target/release/gunbc" as NonEmptyStr,
+  content_digest: "md5:e5f35d562fe512cbb965e8b39adc7937" as NonEmptyStr,
+  byte_length: byte_size(count: 25936008),
+  provenance: BuiltFromRevision { revision: measured_revision, working_tree_dirty: false }
+}
+
+// THE COMPILER THAT IS ON PATH. It is what `gunbc` resolves to for any lane that does not build
+// one, and it is the instrument behind the original report.
+//
+// THE DIGEST IS RECORDED PER HOST AND NOT AS A PROPERTY OF THE IMAGE. The reporting lane's
+// container carries a DIFFERENT digest at the same path and the same byte length, so "the
+// installed build" is not established to be one artifact; this row describes the one build this
+// receipt measured and claims nothing about any other container.
+data installed_build: CompilerBuild = CompilerBuild {
+  observed_on: "session quick-lynx-237 (measured by this receipt's author)" as NonEmptyStr,
+  path: "/usr/local/bin/gunbc" as NonEmptyStr,
+  content_digest: "md5:b39fa74a51d9dee146ace796a7598f42" as NonEmptyStr,
+  byte_length: byte_size(count: 13240632),
+  provenance: ProvenanceUnestablished {
+    why: "rejects --version with `error: unexpected argument '--version' found`, so it cannot name the revision it was built from; its whole-root output also still prints the pre-compile_emission `indexed N modules / resolved N sources (transitive import closure)` wording, which places it before that transaction landed" as NonEmptyStr
+  }
+}
+
+// THE SECOND INSTALLED ARTIFACT, REPORTED BY THE LANE THAT FILED THE FINDING and recorded with
+// its observer named because this receipt's author did not measure it. It is carried rather than
+// summarised because of what the pair establishes and one detail cannot: SAME BYTE LENGTH,
+// DIFFERENT DIGEST, mtimes about two hours apart. Size is the field anyone spot-checking would
+// compare first, and it AGREES -- so a reader confirming that two containers hold the same
+// compiler by comparing byte counts confirms it and is wrong.
+data reporting_lane_installed_build: CompilerBuild = CompilerBuild {
+  observed_on: "session zesty-crane-477 (relayed; measured by that lane, not by this receipt's author)" as NonEmptyStr,
+  path: "/usr/local/bin/gunbc" as NonEmptyStr,
+  content_digest: "md5:3fd1fabf4d1b28412eabcc70f281e3d0" as NonEmptyStr,
+  byte_length: byte_size(count: 13240632),
+  provenance: ProvenanceUnestablished {
+    why: "rejects --version with the same message, so it too cannot name its revision" as NonEmptyStr
+  }
+}
+
+// THE THIRD INSTALLED ARTIFACT, a further day older again, reported by the lane that routed the
+// finding and recorded with its observer named for the same reason as the second.
+data routing_lane_installed_build: CompilerBuild = CompilerBuild {
+  observed_on: "session silent-bear-842 (relayed; measured by that lane, not by this receipt's author)" as NonEmptyStr,
+  path: "/usr/local/bin/gunbc" as NonEmptyStr,
+  content_digest: "md5:9daad899de93c5c978a94e5c5847e318" as NonEmptyStr,
+  byte_length: byte_size(count: 13240632),
+  provenance: ProvenanceUnestablished {
+    why: "rejects --version with the same message; observed a further day older than the other two" as NonEmptyStr
+  }
+}
+
+// WHAT THE THREE ESTABLISH, AND ITS EXACT SIZE. Three containers, three digests, one path: the
+// installed compiler is AT LEAST THREE artifacts, not one image-wide binary, spanning at least two
+// days. It does not establish how many there are, which containers hold which, or where any of them
+// came from -- three observations by three lanes who happened to compare notes is a lower bound and
+// nothing more.
+//
+// AND THE BYTE LENGTH IS CONSTANT ACROSS ALL THREE. That is a stronger statement than "size does
+// not discriminate": three for three means a size comparison does not merely fail, it
+// AFFIRMATIVELY CONFIRMS THE WRONG CONCLUSION every time anyone runs it. The check a diagnostician
+// reaches for first is the one that lies most reliably here, which is why the length is carried as
+// a field rather than left out as uninformative.
+fn installed_builds_are_distinct(a: CompilerBuild, b: CompilerBuild) -> Bool {
+  a.content_digest != b.content_digest
+}
+
+fn installed_builds_agree_on_byte_length(a: CompilerBuild, b: CompilerBuild) -> Bool {
+  byte_size_count(b: a.byte_length) == byte_size_count(b: b.byte_length)
+}
+
+// ── HOW `gunbc` ON PATH IS REACHED ────────────────────────────────────────────────────────────
+//
+// THE STALE BINARY IS NOT FIRST ON PATH; A WRAPPER IS. `which -a gunbc` answers
+// /usr/local/ctrl-build-shims/gunbc ahead of /usr/local/bin/gunbc, and the shim is a bash script
+// that delegates to `/usr/local/bin/gunbc` as its default real binary. Measured here: bare
+// `gunbc --version` through the shim reproduces the same `unexpected argument` refusal, so the
+// discriminator fires through the wrapper and needs no special invocation.
+//
+// IT MATTERS FOR THE REPAIR AND NOT FOR THE DIAGNOSIS. Anyone inspecting only `which gunbc`
+// finds a script and may conclude PATH is clean; anyone replacing only /usr/local/bin/gunbc leaves
+// the wrapper ahead of it. Both halves have to be looked at, and neither is a fact this repository
+// owns.
+type PathResolution
+  = ResolvesDirectly { to: NonEmptyStr }
+  | ResolvesThroughWrapper { wrapper_path: NonEmptyStr, wrapper_kind: NonEmptyStr, delegates_to: NonEmptyStr }
+
+data path_gunbc_resolution: PathResolution = ResolvesThroughWrapper {
+  wrapper_path: "/usr/local/ctrl-build-shims/gunbc" as NonEmptyStr,
+  wrapper_kind: "bash script (ctrl-build remote-execution shim)" as NonEmptyStr,
+  delegates_to: "/usr/local/bin/gunbc" as NonEmptyStr
+}
+
+// ── THE DISCRIMINATING PAIR ───────────────────────────────────────────────────────────────────
+//
+// A FOUR-LINE FIXTURE WITH NO IMPORTS, so nothing in the corpus can be the cause. The subject is a
+// module carrying one standalone leading `//` block attached to the declaration beneath it, which
+// is the exact form section 4c admits; the control is the same file with the two `//` lines
+// deleted and nothing else changed.
+//
+// THE CONTROL IS WHAT MAKES THE SUBJECT'S REFUSAL A FINDING RATHER THAN A BROKEN FIXTURE. Without
+// it, an installed build that refused everything would look identical to one that refuses
+// annotations.
+type FixtureVerdict
+  = FixtureAdmitted { build: CompilerBuild, files_emitted: Int }
+  | FixtureRefused { build: CompilerBuild, diagnostic: NonEmptyStr, located_at_annotation_line: Bool }
+
+fn verdict_admits(v: FixtureVerdict) -> Bool {
+  match v {
+    FixtureAdmitted { build: _, files_emitted: _ } => true
+    FixtureRefused { build: _, diagnostic: _, located_at_annotation_line: _ } => false
+  }
+}
+
+data admitted_form_on_source_build: FixtureVerdict = FixtureAdmitted {
+  build: source_build,
+  files_emitted: 6
+}
+
+data admitted_form_on_installed_build: FixtureVerdict = FixtureRefused {
+  build: installed_build,
+  diagnostic: "expected item declaration (type, fn, func, service, resource, data, extern, pattern, interface)" as NonEmptyStr,
+  located_at_annotation_line: true
+}
+
+data annotation_deleted_on_installed_build: FixtureVerdict = FixtureAdmitted {
+  build: installed_build,
+  files_emitted: 5
+}
+
+// THE THREE CELLS, READ TOGETHER. The installed build refuses the fixture and admits the same
+// fixture with its annotation deleted, so its refusal is caused by the annotation and not by the
+// fixture. The source build admits the fixture. One line of source and one choice of binary
+// separate every pair; the choice of binary is the one that decides the verdict.
+fn instruments_agree_about_the_admitted_form(a: FixtureVerdict, b: FixtureVerdict) -> Bool {
+  verdict_admits(v: a) == verdict_admits(v: b)
+}
+
+// ── THE WHOLE-ROOT RUNS ───────────────────────────────────────────────────────────────────────
+//
+// EVERY RUN BELOW WAS TAKEN WITH THE SOURCE BUILD, which is stated because it is the fact that
+// makes them consistent with the fixture pair above rather than in tension with it. A whole-root
+// run taken with the installed build is a different measurement and is not held here.
+//
+// THE CLAIM CANNOT BE DISPOSED OF WITHOUT THE RUN THAT DISPOSED OF IT. Every arm carries a
+// CensusRun, which carries the termination and the peak residency, so there is no spelling of a
+// population that omits how the process ended -- the reported second consequence was that a killed
+// run and a clean run render identically through a pipe, and a verdict asserted from a killed run
+// would have reproduced the very defect it was answering. All runs here were taken unpiped with
+// the exit status read directly and the peak taken from getrusage(RUSAGE_CHILDREN).
+type WholeRootReading
+  = ReadWithBuild {
+      build: CompilerBuild
+      run: CensusRun
+      admitted_form_refusals: Int
+      hard_total: Int
+      advisory_total: Int
+    }
+  | NotRead { build: CompilerBuild, why: NonEmptyStr }
+
+data whole_root_run: CensusRun = CensusRun {
+  source_revision: measured_revision,
+  subject_tree: PristineAtRevision,
+  primary_root: "dag" as NonEmptyStr,
+  dependency_pool_root: "src/v2" as NonEmptyStr,
+  render_target: "rust" as NonEmptyStr,
+  termination: CompileExited { code: 1 },
+  peak_resident: RusageMaxrssObservation {
+    who: RusageChildren,
+    raw_value: 13032948,
+    unit: linux_rusage_maxrss_unit
+  },
+  wall: second(1575),
+  resolved_sources: 3114
+}
+
+// TAKEN TWICE, and the second run is what this row reports. The first returned the same exit
+// status, the same three hard causes, the same advisory total and the same zero of the reported
+// class; the fields come from the repeat, which was the one instrumented for termination and peak.
+// Two runs is not a stability claim about the compiler -- it is the minimum that distinguishes a
+// measurement from a transcription.
+//
+// THE THREE HARD CAUSES ARE THE PARAMETER-DEFAULT SITES gunbc.emit_stage_blocking_population_census
+// already records at its own revision, so this run re-observes that census's pristine layer rather
+// than contradicting it.
+data whole_root_reading: WholeRootReading = ReadWithBuild {
+  build: source_build,
+  run: whole_root_run,
+  admitted_form_refusals: 0,
+  hard_total: 3,
+  advisory_total: 17664
+}
+
+// ── THE RED CONTROL, AND THE TRAP INSIDE IT ───────────────────────────────────────────────────
+//
+// The reported first consequence was that a deliberate fault added ZERO diagnostics to this
+// binary -- a saturated wall that cannot report a fault while looking like evidence. It was re-run
+// on the source build by deleting one arm from the exhaustive match in extdeps.access.posix
+// posix_shell_permits_command_execution, which is the same shape of fault.
+//
+// THE FAULT IS NAMED BY THE COMPILER, SO THE WALL DISCRIMINATES. But the count MOVED DOWN, from
+// three hard diagnostics to one, and a control comparing counts alone would have read the planted
+// fault as an improvement. The cause is the gate ordering the sibling census already records: the
+// planted fault refuses upstream of emit, so emit's parameter-default gate never runs and its three
+// sites vanish from the report. A red control against this compiler must therefore discriminate on
+// DIAGNOSTIC IDENTITY, never on population size -- which holds whether or not the instrument is
+// saturated, and is the one rule here that survives both of this thread's instruments.
+type RedControlOutcome
+  = FaultNamedByCompiler {
+      build: CompilerBuild
+      run: CensusRun
+      naming_diagnostic: NonEmptyStr
+      hard_before: Int
+      hard_after: Int
+    }
+  | FaultInvisible {
+      build: CompilerBuild
+      run: CensusRun
+      hard_before: Int
+      hard_after: Int
+    }
+
+data red_control_run: CensusRun = CensusRun {
+  source_revision: measured_revision,
+  subject_tree: LocallyPerturbed {
+    perturbation: "TWO perturbations, both named because a receipt that hid the second would be reporting a tree nobody has: one arm (LoginShellUnobserved) deleted from the exhaustive match in extdeps.access.posix posix_shell_permits_command_execution and restored after the run, AND this module itself present under dag/, which is why the resolved-source count is one higher than the pristine run's" as NonEmptyStr
+  },
+  primary_root: "dag" as NonEmptyStr,
+  dependency_pool_root: "src/v2" as NonEmptyStr,
+  render_target: "rust" as NonEmptyStr,
+  termination: CompileExited { code: 1 },
+  peak_resident: RusageMaxrssObservation {
+    who: RusageChildren,
+    raw_value: 13013760,
+    unit: linux_rusage_maxrss_unit
+  },
+  wall: second(1491),
+  resolved_sources: 3115
+}
+
+data red_control: RedControlOutcome = FaultNamedByCompiler {
+  build: source_build,
+  run: red_control_run,
+  naming_diagnostic: "non-exhaustive match: missing variant(s) LoginShellUnobserved" as NonEmptyStr,
+  hard_before: 3,
+  hard_after: 1
+}
+
+fn red_control_discriminates(o: RedControlOutcome) -> Bool {
+  match o {
+    FaultNamedByCompiler { build: _, run: _, naming_diagnostic: _, hard_before: _, hard_after: _ } => true
+    FaultInvisible { build: _, run: _, hard_before: _, hard_after: _ } => false
+  }
+}
+
+fn red_control_count_moved_down(o: RedControlOutcome) -> Bool {
+  match o {
+    FaultNamedByCompiler { build: _, run: _, naming_diagnostic: _, hard_before: b, hard_after: a } => a < b
+    FaultInvisible { build: _, run: _, hard_before: b, hard_after: a } => a < b
+  }
+}
+
+// ── WHAT THIS RECEIPT DOES NOT CLAIM ──────────────────────────────────────────────────────────
+//
+// IT DOES NOT LOCATE THE STALE BUILD'S ORIGIN. Nothing about `/usr/local/bin` is a fact this
+// repository owns, so where that artifact comes from and which containers carry which build are
+// outside it; the receipt records what was measured on one host and says so.
+//
+// IT DOES NOT RE-TAKE THE ORIGINAL MEASUREMENT AT ITS OWN BASE. The reported run was taken at
+// 472cadfcfeecfb1fa39c531f529ecf81e38dfae7 with an unidentified build, and neither half is
+// reconstructed here.
+//
+// IT IS NOT A WALL. The standing enforcement of annotation grain is the required parse phase,
+// which folds every authored .dag through the same seam on every push and stops the line on a
+// refusal -- and which, being CI, runs a compiler built from the revision under test rather than
+// whatever is installed on a session container. That is why the corpus stayed admissible while
+// individual lanes could not compile it.
+//
+// THE ADVISORY POPULATION IS CARRIED AS A MEASUREMENT, NEVER AS AN ORACLE. A number measured off
+// the current tree cannot adjudicate a later tree (DESIGN section 5), so nothing here compares
+// against it and nothing may ratchet on it.
+fn reading_is_from_the_subject_build(r: WholeRootReading) -> Bool {
+  match r {
+    ReadWithBuild { build: b, run: _, admitted_form_refusals: _, hard_total: _, advisory_total: _ } =>
+      build_is_the_subject_revision(b: b, subject: measured_revision)
+    NotRead { build: _, why: _ } => false
+  }
+}

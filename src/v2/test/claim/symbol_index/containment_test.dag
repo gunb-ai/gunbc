@@ -355,7 +355,7 @@ test fn symbol_index_global_unique_lookup_resolves_globally_unique_holds() -> Bo
     index: si_multi_root_index,
     name: ^OrphanPilotOnly
   ) {
-    GlobalBareHit { node: _ } => true
+    GlobalBareHit { node: _, path: _ } => true
     _ => false
   }
 }
@@ -415,7 +415,7 @@ test fn symbol_index_track_global_bare_idempotent_on_same_node_holds() -> Bool {
   let once = symbol_index_insert(index: empty_symbol_index(), qualified_path: path, resolved: bound)
   let twice = symbol_index_insert(index: once, qualified_path: path, resolved: bound)
   match symbol_index_global_unique_lookup(index: twice, name: ^OrphanPilotOnly) {
-    GlobalBareHit { node: hit } => hit == bound
+    GlobalBareHit { node: hit, path: _ } => hit == bound
     _ => false
   }
 }

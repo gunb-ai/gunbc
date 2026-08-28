@@ -109,6 +109,15 @@ data git_inspect_service_note: String = "Read-only repository-root, revision, an
 // merge bases. A consumer that needs the merge to be reproducible needs this one, and a consumer
 // that needs to compare content needs the other; collapsing them into one operation with a format
 // argument would let a caller ask for content and be answered with identity.
+// git grep's EXIT CODE IS THE ANSWER, NOT A VERDICT, and the exit table above is where that is
+// stated once rather than re-derived by each caller. git-grep documents 0 for a match and 1 for no
+// match, so a consumer reading `exit_success` alone cannot distinguish "this revision does not
+// contain the pattern" from "this revision could not be read" -- both arrive as false. The
+// operation therefore publishes `exit_code`, and a caller that collapses 1 and 128 has turned an
+// answer into an absence, which is the empty-observation narrow DESIGN names. Fixed-string
+// matching is pinned in the argv because the patterns callers pass are qualified identity names
+// full of `.`, which a regular expression would read as wildcards -- a silently WIDER match, and
+// therefore a silently WRONG present-at-this-revision answer.
 service git.Inspect {
   operation Toplevel {
     input {}
@@ -221,6 +230,22 @@ service git.Inspect {
     }
   }
 
+  operation GrepFixedAtRevision {
+    input { pattern: String, ref: GitRef }
+    output {
+      paths: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "grep", "--fixed-strings", "--files-with-matches", "-e", "{pattern}", "{ref}"] }
+    exit {
+      0 => Unit
+      1 => String "No file at that revision contains the pattern"
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
   operation ShowTree {
     input { ref: GitRef }
     output {
@@ -232,6 +257,38 @@ service git.Inspect {
     transport shell { argv: ["git", "show", "-s", "--format=%T", "{ref}"] }
     exit {
       0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation ConfigGet {
+    input { key: String }
+    output {
+      value: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "config", "--get", "{key}"] }
+    exit {
+      0 => Unit
+      1 => String "Key is not set"
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation MergeTreeWriteTree {
+    input { left: GitRef, right: GitRef }
+    output {
+      stdout: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "merge-tree", "--write-tree", "{left}", "{right}"] }
+    exit {
+      0 => Unit
+      1 => String "Merge produced conflicts"
       128 => String "Invalid ref or not a git repository"
     }
   }
@@ -292,6 +349,99 @@ fn merge_base_outcome(exit_code: Int, stdout: String, stderr: String) -> MergeBa
       NoCommonAncestor
     } else {
       MergeBaseRefused { exit_code: exit_code, stderr: stderr }
+    }
+  }
+}
+
+// MERGE-TREE EXIT SEMANTICS ARE ALSO A FACT OF GIT, and they are modeled here for the reason the
+// merge-base note above gives: the operation's exit table already states 0, 1 and 128 with distinct
+// meanings, so a consumer comparing bare integers beside it would hold a second representation of
+// this module's fact.
+//
+// WHAT THIS OPERATION ANSWERS, STATED BECAUSE IT IS NOT THE QUESTION CALLERS EXPECT.
+// `git merge-tree --write-tree A B` answers DOES MERGING B INTO A CHANGE A'S TREE. That is not the
+// same question as IS B'S CONTENT ALREADY IN A, and the two diverge exactly where position matters.
+// Measured receipt (gunbc#9522, 2026-08-28): a branch whose 92 added lines were all present on main
+// had authored one declaration at a DIFFERENT POSITION in its file, so the merge registered an
+// addition and this operation reported a tree differing from main's -- while every line of the
+// branch was already there. A consumer answering "is this already landed" from this operation alone
+// will therefore MISS that case. The divergence is not a defect in git and not one here; it is why
+// the containment consumer in tools.pr_containment_instrument runs a second, content-grain measure
+// beside this one and reports the disagreement as its own disposition rather than resolving it.
+//
+// THE CONFLICTED ARM IS AN ANSWER, NOT AN ERROR, exactly as NoCommonAncestor is above: exit 1 means
+// git merged and found conflicting hunks, which is a fact about the two trees. Exit 128 means
+// nothing about either tree was established. Collapsing them would read an unreadable repository as
+// proof that two revisions conflict.
+//
+// THE TREE OID IS THE FIRST LINE OF STDOUT IN BOTH ANSWERING ARMS -- git writes the tree it built,
+// then, when there were conflicts, the conflict report beneath it. So the conflicted arm carries a
+// real tree oid too, and a caller comparing trees must not assume a tree implies a clean merge.
+type MergeTreeOutcome
+  = MergeTreeClean { tree_hex: String }
+  | MergeTreeConflicted { tree_hex: String }
+  | MergeTreeRefused { exit_code: Int, stderr: String }
+
+data merge_tree_exit_clean: Int = 0
+
+data merge_tree_exit_conflicted: Int = 1
+
+// The tree oid is the first line; anything beneath it is the conflict report and is not this
+// module's to interpret. An answering exit that produced NO first line is a refusal rather than a
+// clean merge of nothing -- an empty stdout is not the identity tree.
+fn merge_tree_first_line(stdout: String) -> String {
+  fold(
+    split(s: trim(s: stdout), delimiter: "\n"),
+    init: "",
+    f: (acc, line) => if acc == "" { trim(s: line) } else { acc }
+  )
+}
+
+// Total over every integer, deliberately, per the merge-base fold above: an undeclared exit code is
+// a REFUSAL carrying the code that produced it, never a fourth silent arm.
+fn merge_tree_outcome(exit_code: Int, stdout: String, stderr: String) -> MergeTreeOutcome {
+  let tree = merge_tree_first_line(stdout: stdout)
+  if tree == "" {
+    MergeTreeRefused {
+      exit_code: exit_code,
+      stderr: concat("git merge-tree produced no tree oid on stdout; stderr: ", stderr)
+    }
+  } else {
+    if exit_code == merge_tree_exit_clean {
+      MergeTreeClean { tree_hex: tree }
+    } else {
+      if exit_code == merge_tree_exit_conflicted {
+        MergeTreeConflicted { tree_hex: tree }
+      } else {
+        MergeTreeRefused { exit_code: exit_code, stderr: stderr }
+      }
+    }
+  }
+}
+
+
+// A CONFIG KEY THAT IS UNSET IS AN ANSWER, NOT A FAILURE, which is why the exit table above declares
+// 1 as its own arm: `git config --get` exits 1 when the key has no value, and a caller comparing
+// only against 0 would render "this repository does not configure that" identically to "the read
+// broke". They have opposite meanings for anyone deciding whether an observed behaviour is a
+// property of the repository or of the reader's own clone.
+type ConfigReading
+  = ConfigSet { value: String }
+  | ConfigUnset
+  | ConfigUnreadable { exit_code: Int, stderr: String }
+
+data git_config_get_exit_set: Int = 0
+
+data git_config_get_exit_unset: Int = 1
+
+fn config_reading(exit_code: Int, stdout: String, stderr: String) -> ConfigReading {
+  if exit_code == git_config_get_exit_set {
+    ConfigSet { value: trim(s: stdout) }
+  } else {
+    if exit_code == git_config_get_exit_unset {
+      ConfigUnset
+    } else {
+      ConfigUnreadable { exit_code: exit_code, stderr: stderr }
     }
   }
 }

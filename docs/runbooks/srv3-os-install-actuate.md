@@ -39,7 +39,7 @@ websocat is **not** in Ubuntu Noble apt; the modeled ensure installs curl/nbdkit
 export PATH="/var/lib/gunbc/bin:$PATH"
 
 gunbc run --source-root dag \
-  --entry dag/gunbc/srv3_os_install_actuator_toolchain_ensure.dag \
+  --entry dag/gunbc/srv3/srv3_os_install_actuator_toolchain_ensure.dag \
   --function srv3_os_install_actuator_toolchain_ensure
 ```
 
@@ -54,7 +54,7 @@ GUNBC_ROOT="${GUNBC_ROOT:-$PWD}"
 cd "$GUNBC_ROOT"
 
 gunbc run --source-root dag \
-  --entry dag/gunbc/srv3_install_media_fetch.dag \
+  --entry dag/gunbc/srv3/srv3_install_media_fetch.dag \
   --function srv3_install_media_fetch
 ```
 
@@ -76,11 +76,11 @@ repack (srv1 was verified to lack xorriso/genisoimage/mkisofs — do not assume 
 
 ```bash
 gunbc run --source-root dag \
-  --entry dag/gunbc/srv3_seeded_install_media.dag \
+  --entry dag/gunbc/srv3/srv3_seeded_install_media.dag \
   --function srv3_seeded_install_media_toolchain_ensure
 
 gunbc run --source-root dag \
-  --entry dag/gunbc/srv3_seeded_install_media.dag \
+  --entry dag/gunbc/srv3/srv3_seeded_install_media.dag \
   --function srv3_seeded_install_media_remaster
 ```
 
@@ -110,7 +110,7 @@ Requires **gcloud auth** on the actuator host when BMC is in `RotatedCredentialA
 
 ```bash
 gunbc run --source-root dag \
-  --entry dag/gunbc/srv3_os_install_actuate.dag \
+  --entry dag/gunbc/srv3/srv3_os_install_actuate.dag \
   --function srv3_bmcweb_session_login
 ```
 
@@ -122,7 +122,7 @@ Run in **two terminals** on the actuator host.
 
 ```bash
 gunbc run --source-root dag \
-  --entry dag/gunbc/srv3_os_install_actuate.dag \
+  --entry dag/gunbc/srv3/srv3_os_install_actuate.dag \
   --function srv3_nbd_proxy_serve
 ```
 
@@ -138,7 +138,7 @@ After serve is stable (give nbd-proxy ~10s to attach):
 ```bash
 cd "$GUNBC_ROOT"
 gunbc run --source-root dag \
-  --entry dag/gunbc/srv3_boot_once_cd.dag \
+  --entry dag/gunbc/srv3/srv3_boot_once_cd.dag \
   --function srv3_boot_once_cd_operator_approved
 ```
 
@@ -227,10 +227,10 @@ srv3 os-install-actuated receipt
 
 ## Related model files
 
-- `dag/gunbc/srv3_os_install_actuate.dag` — runnable prep + serve/login funcs
-- `dag/gunbc/srv3_boot_once_cd.dag` — Redfish boot-once CD + force restart
-- `dag/gunbc/srv3_os_install_diagnostic.dag` — `Srv3InstallDebugObservation` + `diagnose_srv3_install`
+- `dag/gunbc/srv3/srv3_os_install_actuate.dag` — runnable prep + serve/login funcs
+- `dag/gunbc/srv3/srv3_boot_once_cd.dag` — Redfish boot-once CD + force restart
+- `dag/gunbc/srv3/srv3_os_install_diagnostic.dag` — `Srv3InstallDebugObservation` + `diagnose_srv3_install`
 - `dag/gunbc/srv3_install_diagnostic_checklist.dag` — executable observe + classify on srv1
 - `dag/gunbc/network_identity_subsumption.dag` — DHCP option-12 subsumption checks
-- `dag/gunbc/host_standup.dag` — `prefix:os-install-actuated` spine gap
+- `dag/gunbc/host/host_standup.dag` — `prefix:os-install-actuated` spine gap
 - `docs/plans/srv3-webui-kvm-virtual-media.md` — architecture B design
