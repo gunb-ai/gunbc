@@ -4,7 +4,16 @@ import std.types { List, String, Bool }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-// Census of the seven phases selected by claim_executor's RequiredCiPhase roster.  The subject is
+// Census of the phases selected by claim_executor's RequiredCiPhase roster -- one row each, so the
+// roster IS the count and no number is transcribed here.  It read "the seven phases" until
+// 2026-08-28, when the rows below numbered eight; the rows were right and the sentence was stale,
+// which is why the count is now derived from them rather than restated beside them.  DESIGN's own
+// rule for this is name the instrument, never transcribe its output: the live roster is announced
+// by the required mode itself, one `required-ci: phase <name>` line per phase it owns plus one
+// `ROUTED to lane <other>` line per phase it does not, before any phase runs.  A count written in
+// prose beside the rows that determine it is a second representation with no authority, and this
+// one drifted within days -- DESIGN records the same figure moving twice in five days and tells
+// its own reader not to trust it.  The subject is
 // deliberately the DECIDING boundary, not whether Rust appears anywhere in a phase: reading a
 // file, invoking cargo, or rendering a carrier is realization; interpreting a carrier and then
 // independently deciding whether CI stops is a second authority for the carrier's judgment.
