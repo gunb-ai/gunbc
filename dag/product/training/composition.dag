@@ -1,0 +1,191 @@
+module product.training.composition
+
+import product.training.readback {
+  TrainingRunSubject, TrainingRunReadback, TrainingReadbackAxis, subject_of_desired,
+  training_run_subject_eq,
+  ExecutionReadbackAxis, CheckpointReadbackAxis, TerminalReadbackAxis,
+  OutputReadbackAxis, EffectiveManifestReadbackAxis,
+  TrainingPopulationObservation,
+  TrainingPopulationObserved, TrainingPopulationNotAttempted, TrainingPopulationObservationRefused,
+}
+import product.training.observation_cut { TrainingRunReadbackCut }
+import product.training.attempt_graph { TrainingRunAttemptGraph }
+import product.training.resolution { TrainingRunDesired }
+import product.fabric.demand { ObservationReceiptRef }
+import std.types { NonEmptyStr, List, Bool }
+
+// A CUT THAT NAMES THE RIGHT SUBJECT STILL MAY NOT DESCRIBE THESE POPULATIONS. The cut establishes
+// that SOME sweep enumerated the axes in order; the readback carries populations each stamped with
+// the enumeration receipt that produced it. Nothing so far relates the two, so a well-formed cut
+// from a DIFFERENT sweep of the SAME run orders populations it never observed -- every half honest,
+// and the relation between them invented.
+//
+// That is the same independent-inputs defect this lane has now removed twice: a manifest accepted
+// beside evidence it could disagree with, and a contract accepted beside a manifest it could
+// disagree with. Here it would be three receipts and a cut that agree about an attempt identity and
+// are collectively about nothing. So the composition is admitted ONCE, per axis, by receipt
+// equality, and everything downstream consumes the composition rather than its parts.
+type TrainingRunEvidenceComposition<P> sole_constructor {
+  desired: TrainingRunDesired<P>
+  graph: TrainingRunAttemptGraph<P>
+  readback: TrainingRunReadback<P>
+  cut: TrainingRunReadbackCut<P>
+}
+
+// EVERY WAY THE COMPOSITION CAN FAIL IS ITS OWN REFUSAL. A subject mismatch means someone filed the
+// wrong run's evidence; a receipt mismatch means the cut ordered a different sweep; an
+// un-attempted axis under a cut claiming to have swept it means the cut is describing a stage that
+// did not run, which is a stronger defect than either -- it is a producer reporting work it did
+// not do.
+type TrainingRunCompositionRefusal<P>
+  = CompositionSubjectMismatch {
+      what: NonEmptyStr,
+      expected: TrainingRunSubject<P>,
+      observed: TrainingRunSubject<P>,
+    }
+  | CompositionReceiptMismatch {
+      axis: TrainingReadbackAxis,
+      cut_receipt: ObservationReceiptRef,
+      readback_receipt: ObservationReceiptRef,
+    }
+  | CompositionAxisNotAttempted { axis: TrainingReadbackAxis }
+
+type TrainingRunCompositionAdmission<P>
+  = TrainingRunEvidenceComposed { composition: TrainingRunEvidenceComposition<P> }
+  | TrainingRunCompositionRefused {
+      first: TrainingRunCompositionRefusal<P>,
+      more: List<TrainingRunCompositionRefusal<P>>,
+    }
+
+fn composition_seal<P>(
+  desired: TrainingRunDesired<P>,
+  graph: TrainingRunAttemptGraph<P>,
+  readback: TrainingRunReadback<P>,
+  cut: TrainingRunReadbackCut<P>,
+) -> TrainingRunEvidenceComposition<P>
+  admit_callers: [
+    decl_ref(module_path: "product.training.composition", decl_name: "admit_training_evidence"),
+  ]
+  = TrainingRunEvidenceComposition {
+      desired: desired,
+      graph: graph,
+      readback: readback,
+      cut: cut,
+    }
+
+// THE REFUSED ARM MAY BE NAMED BY THE CUT AND STAYS UNUSABLE FOR A POSITIVE CONCLUSION. An
+// observation that was attempted and could not produce a reading is a real event with a real
+// receipt, so the cut naming it is honest; what it must never do is license a conclusion, which is
+// why the axis is composed and the blocker survives downstream rather than being resolved here.
+//
+// A NOT-ATTEMPTED AXIS IS DIFFERENT IN KIND. The cut is a record of a sweep that ran; an axis
+// nobody enumerated cannot have been part of it, so a cut carrying that axis is describing work it
+// did not do, and no receipt comparison can repair that.
+fn axis_composition_refusals<P, T>(
+  axis: TrainingReadbackAxis,
+  cut_receipt: ObservationReceiptRef,
+  o: TrainingPopulationObservation<T>,
+) -> List<TrainingRunCompositionRefusal<P>> {
+  match o {
+    TrainingPopulationObserved { members: _, enumeration_receipt: r } =>
+      if r == cut_receipt {
+        []
+      } else {
+        [CompositionReceiptMismatch { axis: axis, cut_receipt: cut_receipt, readback_receipt: r }]
+      }
+    TrainingPopulationObservationRefused { attempt_receipt: r, cause: _ } =>
+      if r == cut_receipt {
+        []
+      } else {
+        [CompositionReceiptMismatch { axis: axis, cut_receipt: cut_receipt, readback_receipt: r }]
+      }
+    TrainingPopulationNotAttempted { obligation: _ } =>
+      [CompositionAxisNotAttempted { axis: axis }]
+  }
+}
+
+type CompositionSplit<P> {
+  head_taken: Bool
+  more: List<TrainingRunCompositionRefusal<P>>
+}
+
+fn refusals_after_head<P>(
+  rs: List<TrainingRunCompositionRefusal<P>>,
+) -> List<TrainingRunCompositionRefusal<P>> {
+  rs
+    .fold(
+      CompositionSplit { head_taken: false, more: [] },
+      (acc, r) =>
+        if acc.head_taken {
+          CompositionSplit { head_taken: true, more: [acc.more, [r]].flat_map(x => x) }
+        } else {
+          CompositionSplit { head_taken: true, more: acc.more }
+        },
+    )
+    .more
+}
+
+fn subject_refusal<P>(
+  what: NonEmptyStr,
+  expected: TrainingRunSubject<P>,
+  observed: TrainingRunSubject<P>,
+) -> List<TrainingRunCompositionRefusal<P>> {
+  if training_run_subject_eq(left: expected, right: observed) {
+    []
+  } else {
+    [CompositionSubjectMismatch { what: what, expected: expected, observed: observed }]
+  }
+}
+
+fn admit_training_evidence<P>(
+  desired: TrainingRunDesired<P>,
+  graph: TrainingRunAttemptGraph<P>,
+  readback: TrainingRunReadback<P>,
+  cut: TrainingRunReadbackCut<P>,
+) -> TrainingRunCompositionAdmission<P> {
+  let expected = subject_of_desired(desired: desired)
+  let refusals =
+    [
+      subject_refusal(what: "graph", expected: expected, observed: graph.subject),
+      subject_refusal(what: "readback", expected: expected, observed: readback.subject),
+      subject_refusal(what: "cut", expected: expected, observed: cut.subject),
+      axis_composition_refusals(
+        axis: TerminalReadbackAxis,
+        cut_receipt: cut.terminals,
+        o: readback.terminals,
+      ),
+      axis_composition_refusals(
+        axis: OutputReadbackAxis,
+        cut_receipt: cut.outputs,
+        o: readback.outputs,
+      ),
+      axis_composition_refusals(
+        axis: EffectiveManifestReadbackAxis,
+        cut_receipt: cut.manifests,
+        o: readback.effective_manifests,
+      ),
+      axis_composition_refusals(
+        axis: CheckpointReadbackAxis,
+        cut_receipt: cut.checkpoints,
+        o: readback.checkpoints,
+      ),
+      axis_composition_refusals(
+        axis: ExecutionReadbackAxis,
+        cut_receipt: cut.processes,
+        o: readback.execution,
+      ),
+    ].flat_map(x => x)
+  match refusals.first() {
+    Present { value: head } =>
+      TrainingRunCompositionRefused { first: head, more: refusals_after_head(rs: refusals) }
+    none =>
+      TrainingRunEvidenceComposed {
+        composition: composition_seal(
+          desired: desired,
+          graph: graph,
+          readback: readback,
+          cut: cut,
+        ),
+      }
+  }
+}

@@ -1,7 +1,7 @@
 module test.claim.fleet_runner_connectivity_witness
 
 import std.logic { Bool }
-import std.types { String, List }
+import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network {
@@ -24,7 +24,10 @@ import gunbc.fleet_runner_connectivity {
   runner_slot_incarnation,
   incident_2026_08_06_registrations,
   RosterObserved,
+  RosterObservedPartial,
   RosterReadUnavailable,
+  OrganizationRunnerRosterEvidence,
+  organization_runner_roster_from_page,
   AchievedWidthsObserved,
   AchievedWidthsUnobserved,
   SlotConnectivityHealthy,
@@ -166,5 +169,87 @@ fn count_matching(
     verdicts,
     init: 0,
     f: (n, v) => if matched(v) { n + 1 } else { n }
+  )
+}
+
+
+// ---------------------------------------------------------------------------
+// TRUNCATED ROSTER: the discriminating pair for the paginated-read repair.
+//
+// The org runners API is paginated. Measured 2026-08-27T21:29Z: total_count 522
+// against a 100-row page. A read that SUCCEEDS is therefore not a read that saw
+// everything, and the defect this pair pins is that a slot missing from a PREFIX
+// was never observed to be missing -- rendering it Orphaned is the empty-observation
+// narrow, and Orphaned is what maps to a restart at
+// gunbc.runner_capacity_plan connectivity_replace_action.
+//
+// THE PAIR IS THE POINT. The RED arm alone would also pass if Orphaned had simply
+// been disabled everywhere, so the complete-roster control is what makes it
+// discriminating rather than merely green.
+
+// BOTH FIXTURES DERIVE THEIR TOTAL FROM THE SPECIMEN, so neither can silently change meaning when
+// a registration row is added. A hand-written total would make "partial" and "complete" facts about
+// a literal someone remembered to update rather than facts about the pair.
+fn truncated_incident_roster() -> OrganizationRunnerRosterEvidence {
+  organization_runner_roster_from_page(
+    observed_on: "2026-08-27" as NonEmptyStr,
+    registrations: incident_2026_08_06_registrations,
+    authority_total: incident_2026_08_06_registrations.length() + 1,
+  )
+}
+
+fn complete_incident_roster() -> OrganizationRunnerRosterEvidence {
+  organization_runner_roster_from_page(
+    observed_on: "2026-08-27" as NonEmptyStr,
+    registrations: incident_2026_08_06_registrations,
+    authority_total: incident_2026_08_06_registrations.length(),
+  )
+}
+
+// NO TRANSCRIBED COUNT. Asserting the specimen list's current length would pin a literal measured
+// from the tree it is testing (DESIGN section 5 on oracles) and would rot the next time a
+// registration row is added. The property under test is the RELATION: a page smaller than the
+// authority's own total is partial, whatever either number happens to be.
+test fn prefix_below_authority_total_is_partial() -> Bool {
+  match truncated_incident_roster() {
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: seen, authority_total: total } =>
+      seen < total
+    _ => false
+  }
+}
+
+test fn page_equal_to_authority_total_is_complete() -> Bool {
+  match complete_incident_roster() {
+    RosterObserved { observed_on: _, registrations: _ } => true
+    _ => false
+  }
+}
+
+// THE RED. Before the repair every unseen slot rendered Orphaned here.
+test fn truncated_roster_never_orphans_an_unseen_slot() -> Bool {
+  all(
+    connectivity_verdicts_for_active_incarnations(roster: truncated_incident_roster()),
+    v => !connectivity_verdict_is_orphaned(v: v)
+  )
+}
+
+// THE POSITIVE CONTROL. The required refusal must SURVIVE the repair: over a roster
+// the authority itself calls complete, a slot with no registration is genuinely gone
+// and must still be Orphaned. If this arm ever goes green-by-absence the RED above
+// has stopped discriminating.
+test fn complete_roster_still_orphans_an_unseen_slot() -> Bool {
+  !all(
+    connectivity_verdicts_for_active_incarnations(roster: complete_incident_roster()),
+    v => !connectivity_verdict_is_orphaned(v: v)
+  )
+}
+
+// PER-QUESTION, NOT PER-ROSTER. A truncated read still answers exactly about every
+// slot INSIDE the prefix; refusing the whole roster would be a widen that stops
+// reconciliation on hosts the read covered perfectly well.
+test fn truncated_roster_still_answers_slots_inside_the_prefix() -> Bool {
+  !all(
+    connectivity_verdicts_for_active_incarnations(roster: truncated_incident_roster()),
+    v => connectivity_verdict_is_unknown(v: v)
   )
 }

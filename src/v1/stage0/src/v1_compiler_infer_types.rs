@@ -114,20 +114,6 @@ pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
     }
 }
 
-pub fn child_type_at(n: Rc<Node>, index: i64) -> Option<Rc<Node>> {
-    match n
-        .children
-        .clone()
-        .iter()
-        .cloned()
-        .skip(index.clone() as usize)
-        .next()
-    {
-        Some(ch) => Some(child_type_node(ch.clone())),
-        None => None,
-    }
-}
-
 pub fn node_is_collection(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -2013,6 +1999,38 @@ pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn node_type_shape_argument_list(
+    args: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match args.clone().first().cloned() {
+            Some(a) => {
+                let head = node_type_shape(child_type_node(a.clone()), source_indices.clone());
+                let rest = Rc::new(
+                    args.clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                );
+                if ((rest.clone().len() as i64) == 0) {
+                    head
+                } else {
+                    v1_rt::concat(
+                        head,
+                        v1_rt::concat(
+                            ",".to_string(),
+                            node_type_shape_argument_list(rest.clone(), source_indices.clone()),
+                        ),
+                    )
+                }
+            }
+            None => "".to_string(),
+        }
+    })
+}
+
 pub fn node_type_shape(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -2129,10 +2147,29 @@ pub fn node_type_shape(
                                     if is_map.clone() {
                                         "Map(...)".to_string()
                                     } else {
-                                        v1_rt::concat(
-                                            v1_rt::concat("Node(".to_string(), n_name.clone()),
-                                            ")".to_string(),
-                                        )
+                                        if ((n.children.clone().len() as i64) > 0) {
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            "Node(".to_string(),
+                                                            n_name.clone(),
+                                                        ),
+                                                        "<".to_string(),
+                                                    ),
+                                                    node_type_shape_argument_list(
+                                                        n.children.clone(),
+                                                        source_indices.clone(),
+                                                    ),
+                                                ),
+                                                ">)".to_string(),
+                                            )
+                                        } else {
+                                            v1_rt::concat(
+                                                v1_rt::concat("Node(".to_string(), n_name.clone()),
+                                                ")".to_string(),
+                                            )
+                                        }
                                     }
                                 }
                             }

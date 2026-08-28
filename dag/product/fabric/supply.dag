@@ -536,25 +536,54 @@ fn offer_quoted_total_for_grant(
   }
 }
 
+// THE REFUSAL CARRIES THE DURATION'S OWN OBLIGATION, and this function matches the duration
+// rather than its bound accessor in order to have one to carry. It previously routed through
+// grant_duration_bound_seconds, whose result type is Second? -- a carrier with exactly two
+// states and no room for the obligation the unobserved arm exists to hold -- and then wrote a
+// fixed sentence of its own into the refusal. Nothing was false about that sentence: a rate
+// quote genuinely cannot be totalled over an unobserved duration. It was the WRONG FACT. The
+// remedy for this refusal is a specific measurement -- go and time THIS work -- and that job is
+// exactly what UnobservedGrantDuration was given a field to name; substituting a restatement of
+// the quote's arithmetic discarded the only part a reader could act on, and did so silently,
+// because a plausible remedy reads like a remedy.
+//
+// So the accessor is not used here at all. Matching the coproduct keeps the obligation IN SCOPE
+// at the point the refusal is built, which is what makes the discard unwritable rather than
+// merely repaired: an arm that wants to invent a sentence now has the authored one sitting
+// beside it, and a future arm added to GrantDuration fails to compile here instead of
+// inheriting whichever branch of a two-state Option it happened to fall into.
 fn rate_total_for_grant(
   rate: MoneyAmountMicro,
   den: Nat,
   duration: GrantDuration,
   quantum: Second,
 ) -> QuotedTotal {
-  match grant_duration_bound_seconds(d: duration) {
-    Absent =>
-      QuotedTotalNeedsDuration {
-        obligation: "A rate quote cannot be totalled over an unobserved grant duration. Measure the work's running time, or bound it, before asking this quote for a per-grant total.",
-      }
-    Present { value: s } =>
-      QuotedTotalDerived {
-        amount: measure_scale_fraction_ceil(
-          m: rate,
-          num: billed_seconds(seconds: second_count(s: s), quantum_seconds: second_count(s: quantum)),
-          den: den,
-        ),
-      }
+  match duration {
+    UnobservedGrantDuration { obligation: why } =>
+      QuotedTotalNeedsDuration { obligation: why }
+    ExactGrantDuration { seconds: s } =>
+      rate_total_over_bound(rate: rate, den: den, bound: s, quantum: quantum)
+    EstimatedGrantDuration { seconds: s } =>
+      rate_total_over_bound(rate: rate, den: den, bound: s, quantum: quantum)
+  }
+}
+
+// The arithmetic is the same for an exact and an estimated bound -- what differs is what the
+// resulting total MEANS, which the affordability screen below reads off the
+// duration itself rather than off the number. Sharing the body keeps that distinction in the
+// one fold that acts on it instead of forking it here.
+fn rate_total_over_bound(
+  rate: MoneyAmountMicro,
+  den: Nat,
+  bound: Second,
+  quantum: Second,
+) -> QuotedTotal {
+  QuotedTotalDerived {
+    amount: measure_scale_fraction_ceil(
+      m: rate,
+      num: billed_seconds(seconds: second_count(s: bound), quantum_seconds: second_count(s: quantum)),
+      den: den,
+    ),
   }
 }
 

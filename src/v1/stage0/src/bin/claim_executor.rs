@@ -425,7 +425,10 @@ fn run() -> Result<ExitCode, ExitCode> {
                     // identically is the failure DESIGN §5 names, not a tidy report.
                     eprintln!(
                         "required-ci: declarations modules={} declared={} import_members={} \
-                         citations={} debt={} in_fixtures={} outside_index={} kernel_named={} lens_modules={}",
+                         citations={} debt={} in_fixtures={} outside_index={} kernel_named={} lens_modules={} \
+                         cited_authorities_without_import_edges={} retained={:?} \
+                         cited_and_called={} called_retained={:?} cited_not_called={} not_called_retained={:?} \
+                         primary_dag_entries={} primary_dag_retained={:?} src_v2_pool_only={} pool_only_retained={:?}",
                         population.modules,
                         population.declarations,
                         population.import_members,
@@ -435,6 +438,16 @@ fn run() -> Result<ExitCode, ExitCode> {
                         population.citations_outside_index,
                         population.import_members_kernel_named,
                         population.lens_modules,
+                        population.cited_authorities_without_import_edges.len(),
+                        population.cited_authorities_without_import_edges,
+                        population.cited_and_called_without_import_edges.len(),
+                        population.cited_and_called_without_import_edges,
+                        population.cited_not_called_without_import_edges.len(),
+                        population.cited_not_called_without_import_edges,
+                        population.cited_authorities_under_primary_dag_entry_root.len(),
+                        population.cited_authorities_under_primary_dag_entry_root,
+                        population.cited_authorities_in_src_v2_dependency_pool_only.len(),
+                        population.cited_authorities_in_src_v2_dependency_pool_only,
                     );
                     for finding in &findings {
                         eprintln!(
@@ -1547,9 +1560,9 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     );
     // THE SUBJECT THE ROSTER WAS PROJECTED FROM, STATED BEFORE THE ROSTER.
     // `planned` is the population that SURVIVED site projection; printing it
-    // without `offered` and `declined_long` made the receipt unable to say what it
+    // without `offered` and the declines made the receipt unable to say what it
     // dropped, which is how a roster that narrowed read exactly like one that did
-    // not. The three are printed together so the subtraction is visible rather
+    // not. The categories are printed together so the subtraction is visible rather
     // than inferable.
     // AND THE SENTENCE IS NOW BOUNDED ABOVE, WHICH IT WAS NOT.
     // "every discovered site is exactly one of these" is a totality claim over SITES, and it was
@@ -1559,13 +1572,13 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // entry stops the line in `run_required_floor` before this point — so the guarantee is stated
     // rather than left for a reader to discover it was never claimed.
     eprintln!(
-        "required-floor: offered={} routed={} declined_long={} \
-         declined_live={} — every discovered site is exactly one of these, and no `*_test.dag` \
+        "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
+         — every discovered site is exactly one of these, and no `*_test.dag` \
          entry offered zero sites (BarrenTestSidecar refuses upstream of this line)",
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
-        outcome.declined_live_tree
+        outcome.declined_fixture_member
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
     // The old field printed `outcome.route_gap.len()` under the bare name `route_gap` — the
@@ -1597,7 +1610,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
          stale_route_gap={} known_red_now_passing={} known_red_budget_refused={} \
          known_red_passed_over_budget={} known_red_host_tool_unresolved={} \
          known_red_host_effect_refused={} known_red_runtime_errored={} \
-         known_red_observation_unreadable={} over_cost_line_diagnostic={}",
+         known_red_observation_unreadable={} over_cost_line_diagnostic={} \
+         withheld_cost_debt={} stale_cost_debt={}",
         outcome.claims_planned,
         outcome.claims_executed,
         outcome.not_attempted_after_abort,
@@ -1619,7 +1633,9 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.known_red_host_effect_refused,
         outcome.known_red_runtime_errored.len(),
         outcome.known_red_observation_unreadable.len(),
-        outcome.over_cost_line_diagnostic
+        outcome.over_cost_line_diagnostic,
+        outcome.withheld_cost_debt.len(),
+        outcome.stale_cost_debt.len()
     );
     // ONE receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit
     // counterpart, so the ratio it is really about was never readable.
@@ -1679,6 +1695,22 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     }
     for unresolved in &outcome.host_tool_unresolved {
         eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
+    }
+    // STALE WITHHOLDS ARE NAMED INDIVIDUALLY; WITHHELD ROWS ARE NOT. The stale population
+    // blocks and every member is a line to delete, so each one is printed. The withheld
+    // population is large enough that printing it per-row would bury every other diagnostic in
+    // the run — it is counted in the summary above and enumerated in full in
+    // `v2.workflow.floor_cost_debt`, which is the authority a reader should be sent to anyway.
+    //
+    // NO SIZE IS STATED HERE, DELIBERATELY. This comment carried a numeral until review 57254,
+    // and it had gone stale against the roster it described — two hand-transcribed counts for one
+    // population, disagreeing at the two points a reader is most likely to trust. That is the
+    // failure DESIGN's "name the instrument, never transcribe its output" rule exists to prevent,
+    // and the fix is not to re-transcribe the current figure: the roster is a function, its size
+    // is a property of that function, and any numeral here is a second representation that goes
+    // stale the next time a row is enrolled or released. The authority is named instead.
+    for stale in &outcome.stale_cost_debt {
+        eprintln!("required-floor: STALE-COST-DEBT {stale}");
     }
     for errored in &outcome.known_red_runtime_errored {
         eprintln!("required-floor: KNOWN-RED-RUNTIME-ERRORED {errored}");
@@ -1768,6 +1800,12 @@ fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloor
         && outcome.host_tool_unresolved.is_empty()
         && outcome.route_gap.is_empty()
         && outcome.stale_route_gap.is_empty()
+        // WITHHELD ROWS DO NOT BLOCK; A STALE WITHHOLD DOES. `withheld_cost_debt` is the frozen
+        // population the 2026-08-27 ceiling restoration declared, and blocking on it would red
+        // main for precisely the debt the contract exists to carry down. `stale_cost_debt` is a
+        // roster that has stopped describing the tree, which voids the contract's monotone
+        // claim, so it blocks exactly as `stale_quarantine` and `stale_route_gap` do.
+        && outcome.stale_cost_debt.is_empty()
 }
 
 fn main() -> ExitCode {

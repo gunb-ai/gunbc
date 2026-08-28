@@ -152,16 +152,21 @@ fn classify_verdict(verdict: WitnessEvalVerdict) -> VerdictClassification {
       VerdictClassification {
         disposition: NotEvaluated { reason: "budget_refused" },
         detail: concat(
-          "exceeded ", kind, " budget (", to_string(elapsed_ms), "ms elapsed against ",
-          to_string(budget_ms), "ms; interrupted — no subject verdict)"
+          "exceeded ", kind, " budget ", to_string(budget_ms),
+          "ms; cost=UNMEASURED — interrupted before ",
+          "any verdict, so the cost is above the ",
+          "budget with no upper bound. interrupt_point=", to_string(elapsed_ms),
+          "ms is a property of the ceiling, not of this row"
         )
       },
     BudgetExceeded { elapsed_ms: elapsed_ms, budget_ms: budget_ms, kind: kind, completion: CompletedOverBudget } =>
       VerdictClassification {
         disposition: NowPasses,
         detail: concat(
-          "passed then exceeded ", kind, " budget (", to_string(elapsed_ms), "ms against ",
-          to_string(budget_ms), "ms; stale roster row — prune enrollment, cost debt is separate)"
+          "passed then exceeded ", kind, " budget ", to_string(budget_ms),
+          "ms; cost=", to_string(elapsed_ms),
+          "ms EXACT — ran to completion. Stale roster ",
+          "row: prune enrollment, cost debt is separate"
         )
       }
   }

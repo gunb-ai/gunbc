@@ -1282,7 +1282,7 @@ pub fn type_mismatch_error(
 pub fn seed_node_traversal_frontier() -> String {
     thread_local! {
         static CACHED: String = {
-            "🟡 dissolve-on: v1_seed_deleted_at_v2_self_host (opened 2026-07-31) — the v1 seed reads and recurses substrate Node storage directly instead of consuming a canonical traversal surface. Recorded as ONE frontier row for the CLASS, because that is the honest grain: the idiom is 16 self-recursive `children |> flat_map` sites on origin/main across 04_emit_info, 04_sigs, 04_infer, 05_emit, 05_emit_rust, compile and complexity (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings), plus 579 direct Node-storage field reads in 04_infer alone. collect_explicit_return_values is the 17th instance and v1.compiler.trait_derive_emit.v1_type_expr_contains_param_name the 18th (codex review 47248), not new classes, and a per-function row would assert separable work that does not exist while 16 identical siblings carried none (codex reviews 45570, 45580, 45666). SIBLING COUNT IS NOT THE JUSTIFICATION and the reviewer is right to reject that reading — precedent is debt, not permission. The justification is that no canonical surface is REACHABLE here: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap; and no shared v1 walker exists to route through, because every v1 collector recurses itself. DESIGN's fold_node line is scoped to the 7 v2 stages. COST OF CLOSING NOW, which is why this is retained rather than accepted: building a v1-local generic traversal for one call site adds another shape without removing any of the existing ones, and migrating all 18 is a seed-wide refactor of the stage that IS the traversal — against a seed whose declared endpoint is deletion. DISSOLVES WHEN the v1 seed is deleted at v2 self-host, at which point every row in this class goes with it; the same trigger compiler_diagnostic_seed_projection_note carries for the hand-Rust arms, because it is the same seed and the same endpoint.".to_string()
+            "🟡 dissolve-on: v1_seed_deleted_at_v2_self_host (opened 2026-07-31) — the v1 seed reads and recurses substrate Node storage directly instead of consuming a canonical traversal surface. Recorded as ONE frontier row for the CLASS, because that is the honest grain: the idiom is every self-recursive `children |> flat_map` site across the seed's stages (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings), plus the direct Node-storage field reads inside them. BOTH POPULATIONS ARE NAMED BY THEIR INSTRUMENT RATHER THAN TRANSCRIBED, and this row is the receipt for why: it previously carried a site count across a module list, and both halves were wrong. It also carried a direct-Node-storage-field-read count for 04_infer alone, a figure no recipe in this corpus reproduces; a plausible reconstruction disagrees with it by a wide margin, which establishes the number is stale WITHOUT establishing what the right one is. NO SUPERSEDED FIGURE IS RESTATED HERE, and the omission is the point: a wrong number quoted as history is still a number in a live authority, it decays the same way, and it gets cited as though this row had measured it. The before-and-after lives in the PR that made the correction. That asymmetry is exactly why the repair is DELETION rather than an update: replacing a stale number with one my own instrument produced would swap an uncheckable figure for a checkable-looking wrong one, which is worse, because it would then be cited as verified. Re-derive the site population by grepping the literal idiom under src/v1 -- the grep is LEXICAL while `self-recursive` is SEMANTIC, so it bounds the literal-occurrence population and the recursion property is read off the sites, never off the count; the field-read population has no agreed instrument and is therefore stated as a shape and not a count. THE STALENESS WAS FOUND IN THIS ROW ONLY AFTER THE SIBLING row explicit_return_conformance_note was repaired for the identical claim -- one sentence fixed while the same assertion stood untouched a few lines away, which is the document-wide-correction failure and the reason a figure must be grepped as a CLAIM rather than edited as a SENTENCE. collect_explicit_return_values and v1.compiler.trait_derive_emit.v1_type_expr_contains_param_name are further instances of that same idiom (codex review 47248), not new classes — stated without ordinals deliberately, because the ordinals they previously carried were positions in a count that has since been measured wrong, and an ordinal is a transcribed measurement wearing the costume of a structural fact, and a per-function row would assert separable work that does not exist while every identical sibling carried none (codex reviews 45570, 45580, 45666). SIBLING COUNT IS NOT THE JUSTIFICATION and the reviewer is right to reject that reading — precedent is debt, not permission. The justification is that no canonical surface is REACHABLE here: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap; and no shared v1 walker exists to route through, because every v1 collector recurses itself. DESIGN's fold_node line is scoped to the 7 v2 stages. COST OF CLOSING NOW, which is why this is retained rather than accepted: building a v1-local generic traversal for one call site adds another shape without removing any of the existing ones, and migrating the whole population is a seed-wide refactor of the stage that IS the traversal — against a seed whose declared endpoint is deletion. DISSOLVES WHEN the v1 seed is deleted at v2 self-host, at which point every row in this class goes with it; the same trigger compiler_diagnostic_seed_projection_note carries for the hand-Rust arms, because it is the same seed and the same endpoint.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1343,7 +1343,7 @@ pub fn explicit_return_conformance_diags(
 pub fn explicit_return_conformance_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom — 16 such sites on origin/main across 04_emit_info, 04_sigs, 04_infer, 05_emit, 05_emit_rust, compile and complexity (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings) — and there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is the 17th instance of a 16-instance idiom, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a 17th shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's.".to_string()
+            "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings). THE POPULATION IS NAMED BY ITS INSTRUMENT AND NOT TRANSCRIBED: grep the literal idiom under src/v1 to re-derive it, and note the grep is LEXICAL while `self-recursive` and `only traversal idiom` are SEMANTIC properties — so it bounds the literal-occurrence population, and the recursion claim is read off the sites rather than off the count. This clause previously carried a site count and a module list, and both were wrong. NO SUPERSEDED FIGURE IS RESTATED HERE, not even as history: a wrong number quoted inside the sentence announcing its removal is still a number in a live authority, it decays exactly as the original did, and it gets cited as though this row had measured it. The before-and-after belongs in the PR that made the correction. Nothing edited this note; the tree moved underneath it, which is the decay mode §3 gives for a positional citation and the reason the 2026-08-24 ruling forbids transcribing an instrument's output. The argument never needed the number: what makes this the seed's idiom rather than a new shape is that EVERY collector recurses itself, and that is true at whatever the instrument measures next — a clause whose force depends on a figure it cannot keep current was overstating its own evidence. And there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is one more instance of an idiom the seed uses everywhere rather than a new shape beside it, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -3705,6 +3705,8 @@ pub enum InhabitanceUndecidableReason {
 pub enum InhabitanceRefusalReason {
     RefusedPayloadAtParent,
     RefusedKernelAtStructured,
+    RefusedDistinctProductConstructor,
+    RefusedDistinctAppliedTypeArgument,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -3797,7 +3799,18 @@ pub fn declared_type_inhabitance(
                                         reason: InhabitanceRefusalReason::RefusedPayloadAtParent,
                                     })
                                 } else {
-                                    Rc::new(InhabitanceVerdict::Inhabits)
+                                    match nominal_product_inhabitance_refusal(
+                                        declared.clone(),
+                                        produced.clone(),
+                                        scope.clone(),
+                                    ) {
+                                        Some(r) => {
+                                            Rc::new(InhabitanceVerdict::InhabitanceRefused {
+                                                reason: r.clone(),
+                                            })
+                                        }
+                                        None => Rc::new(InhabitanceVerdict::Inhabits),
+                                    }
                                 }
                             }
                         }
@@ -3824,6 +3837,267 @@ pub fn declared_realizes_as_kernel_numeric(
             crate::v1_compiler_coercion::decl_file_realizes_natively(
                 crate::v1_compiler_coercion::type_reference_decl_file(declared.clone()),
             )
+        }
+    }
+}
+
+pub fn nominal_product_inhabitance_refusal(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> Option<InhabitanceRefusalReason> {
+    {
+        let declared_head = nominal_product_head_name(declared.clone(), scope.clone());
+        let produced_head = nominal_product_head_name(produced.clone(), scope.clone());
+        if ((declared_head.clone() == "".to_string()) || (produced_head.clone() == "".to_string()))
+        {
+            None
+        } else {
+            if (nominal_product_head_names_agree(
+                declared_head.clone(),
+                produced_head.clone(),
+                scope.clone(),
+            ) == false)
+            {
+                Some(InhabitanceRefusalReason::RefusedDistinctProductConstructor)
+            } else {
+                if applied_type_arguments_conflict(
+                    declared.clone(),
+                    produced.clone(),
+                    scope.clone(),
+                ) {
+                    Some(InhabitanceRefusalReason::RefusedDistinctAppliedTypeArgument)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
+pub fn nominal_product_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        if (((((((name.clone() == "".to_string())
+            || (n.return_cardinality.clone() == Cardinality::CardOptional))
+            || type_node_is_callable(n.clone()))
+            || crate::std_types::is_kernel_type(name.clone()))
+            || (crate::v1_std_core::qualified_last_segment(name.clone())
+                == "Optional".to_string()))
+            || crate::v1_compiler_infer_types::node_is_element_collection(
+                n.clone(),
+                source_indices.clone(),
+            ))
+            || crate::v1_compiler_infer_types::node_is_keyed_collection(
+                n.clone(),
+                source_indices.clone(),
+            ))
+        {
+            "".to_string()
+        } else {
+            match (*expected_type_head_exposure(n.clone(), scope.clone())).clone() {
+                TypeHeadExposure::ExposedTypeHead { ref view, .. }
+                    if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
+                {
+                    let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                        unreachable!()
+                    };
+                    nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
+                }
+                TypeHeadExposure::ExposedTypeHead { ref view, .. }
+                    if matches!(view.as_ref(), TypeHeadView::ProductHead { .. }) =>
+                {
+                    let TypeHeadView::ProductHead {
+                        type_identity: _, ..
+                    } = view.as_ref()
+                    else {
+                        unreachable!()
+                    };
+                    nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
+                }
+                _ => "".to_string(),
+            }
+        }
+    }
+}
+
+pub fn nominal_product_head_name_if_declared_product(
+    name: String,
+    scope: Rc<InferScope>,
+) -> String {
+    match crate::v1_compiler_infer_env::lookup_type_by_name(scope.type_env.clone(), name.clone()) {
+        Some(decl) => {
+            if ((decl.connective.clone() == Connective::Conj)
+                && ((decl.children.clone().len() as i64) > 0))
+            {
+                name.clone()
+            } else {
+                "".to_string()
+            }
+        }
+        None => "".to_string(),
+    }
+}
+
+pub fn nominal_product_head_names_agree(
+    declared_name: String,
+    produced_name: String,
+    scope: Rc<InferScope>,
+) -> bool {
+    (application_type_names_compatible(
+        declared_name.clone(),
+        produced_name.clone(),
+        scope.type_env.clone(),
+        scope.module_name.clone(),
+        scope.type_env.clone().source_indices.clone(),
+    ) || transparent_alias_identity_agrees(
+        scope.type_env.clone().symbol_index.clone(),
+        declared_name.clone(),
+        produced_name.clone(),
+    ))
+}
+
+pub fn applied_type_arguments_conflict(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let declared_args = declared.children.clone();
+        let produced_args = produced.children.clone();
+        if (((declared_args.clone().len() as i64) == 0)
+            || ((declared_args.clone().len() as i64) != (produced_args.clone().len() as i64)))
+        {
+            false
+        } else {
+            applied_type_arguments_conflict_scan(
+                declared_args.clone(),
+                produced_args.clone(),
+                scope.clone(),
+            )
+        }
+    }
+}
+
+pub fn applied_type_arguments_conflict_scan(
+    mut declared_args: Rc<Vec<Rc<Node>>>,
+    mut produced_args: Rc<Vec<Rc<Node>>>,
+    mut scope: Rc<InferScope>,
+) -> bool {
+    loop {
+        match declared_args.clone().first().cloned() {
+            Some(d) => match produced_args.clone().first().cloned() {
+                Some(p) => {
+                    if applied_type_argument_conflicts(d.clone(), p.clone(), scope.clone()) {
+                        break true;
+                    } else {
+                        {
+                            let __tco_0 = Rc::new(
+                                declared_args
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            );
+                            let __tco_1 = Rc::new(
+                                produced_args
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            );
+                            declared_args = __tco_0;
+                            produced_args = __tco_1;
+                            continue;
+                        }
+                    }
+                }
+                None => {
+                    break false;
+                }
+            },
+            None => {
+                break false;
+            }
+        }
+    }
+}
+
+pub fn applied_type_argument_conflicts(
+    declared_arg: Rc<Node>,
+    produced_arg: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let source_indices = scope.type_env.clone().source_indices.clone();
+        if ((((((declared_arg.return_cardinality.clone() == Cardinality::CardOptional)
+            || (produced_arg.return_cardinality.clone() == Cardinality::CardOptional))
+            || applied_type_argument_is_nested_application(declared_arg.clone(), scope.clone()))
+            || applied_type_argument_is_nested_application(produced_arg.clone(), scope.clone()))
+            || type_node_is_callable(declared_arg.clone()))
+            || type_node_is_callable(produced_arg.clone()))
+        {
+            false
+        } else {
+            {
+                let d = crate::v1_compiler_infer_types::child_type_node(declared_arg.clone());
+                let p = crate::v1_compiler_infer_types::child_type_node(produced_arg.clone());
+                let d_name =
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), d.clone());
+                let p_name =
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), p.clone());
+                if ((applied_type_argument_identity_known(d_name.clone(), scope.clone()) == false)
+                    || (applied_type_argument_identity_known(p_name.clone(), scope.clone())
+                        == false))
+                {
+                    false
+                } else {
+                    (nominal_product_head_names_agree(
+                        d_name.clone(),
+                        p_name.clone(),
+                        scope.clone(),
+                    ) == false)
+                }
+            }
+        }
+    }
+}
+
+pub fn applied_type_argument_is_nested_application(n: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    match (*exposure_view_for_node(n.clone(), scope.type_env.clone().source_indices.clone()))
+        .clone()
+    {
+        TypeHeadExposure::ExposedTypeHead { ref view, .. }
+            if matches!(view.as_ref(), TypeHeadView::ApplicationHead { .. }) =>
+        {
+            let TypeHeadView::ApplicationHead { .. } = view.as_ref() else {
+                unreachable!()
+            };
+            true
+        }
+        _ => false,
+    }
+}
+
+pub fn applied_type_argument_identity_known(name: String, scope: Rc<InferScope>) -> bool {
+    if (name.clone() == "".to_string()) {
+        false
+    } else {
+        if crate::std_types::is_kernel_type(name.clone()) {
+            true
+        } else {
+            match crate::v1_compiler_infer_env::lookup_type_by_name(
+                scope.type_env.clone(),
+                name.clone(),
+            ) {
+                Some(decl) => {
+                    (((decl.connective.clone() == Connective::Conj)
+                        || (decl.connective.clone() == Connective::Disj))
+                        && ((decl.children.clone().len() as i64) > 0))
+                }
+                None => false,
+            }
         }
     }
 }
@@ -23710,3 +23984,7 @@ pub struct UndecidableProducedIdentityErased;
 pub struct RefusedPayloadAtParent;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedKernelAtStructured;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedDistinctProductConstructor;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedDistinctAppliedTypeArgument;

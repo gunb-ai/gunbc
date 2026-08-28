@@ -25,6 +25,7 @@ type ValidationOperation
     }
   | CargoTestValidation { filter: NonEmptyStr }
   | CargoFmtValidation
+  | ClosingContractAuthoringValidation { target: NonEmptyStr }
 
 type WorkItemExecutionContract
   = ExecutionContractUnspecified
@@ -102,6 +103,8 @@ fn validation_required_capabilities(
       [CargoCapability, RustcCapability]
     CargoFmtValidation =>
       [CargoCapability, RustfmtCapability]
+    ClosingContractAuthoringValidation { target: _ } =>
+      [GunbcClaimRunnerCapability]
   }
 }
 
@@ -211,6 +214,21 @@ fn gunbc_claim_execution_contract(
   }
 }
 
+data closing_contract_authoring_note: String = "ONE PARAMETERIZED KIND, NOT ONE META-WITNESS PER TARGET. gunbc.roadmap_authority closing_contract_task_naming_correction_note recorded the gap this closes: a derived closing-contract task was itself built with ExecutionContractUnspecified, so dispatch refused the very row whose job is to supply a contract, and the belt could not run the frontier it computes. The validation is parameterized by the TARGET node id and its oracle is a single fixed entry point, so adding a target costs no new declaration anywhere -- which is what the note asked for instead of ten bespoke meta-witnesses.\n\nThe target travels as `--arg target=<id>` rather than being baked into a per-target function name, because a function name per target is exactly the hand-maintained roster the derivation exists to avoid: the frontier changes whenever a node is accepted or bound, and a roster of entry points would have to be edited in step with it.\n\nWHAT THE PREDICATE DECIDES AND WHAT IT DOES NOT is stated at gunbc.roadmap_closing_contract_authoring closing_contract_authoring_predicate_note. It is not the whole of the note's wish list, and the boundary is declared there rather than implied by a green."
+
+data closing_contract_authoring_entry: FilePath = "dag/gunbc/roadmap_closing_contract_authoring.dag" as FilePath
+
+data closing_contract_authoring_function: NonEmptyStr = "closing_contract_authored" as NonEmptyStr
+
+fn closing_contract_authoring_contract(
+  target: NonEmptyStr,
+) -> WorkItemExecutionContract {
+  ExecutionContract {
+    validations: [ClosingContractAuthoringValidation { target: target }],
+    extra_capabilities: [],
+  }
+}
+
 fn cargo_test_execution_contract(
   filter: NonEmptyStr,
 ) -> WorkItemExecutionContract {
@@ -284,6 +302,27 @@ fn validation_operation_command(
           } }
         Absent => none
       }
+    ClosingContractAuthoringValidation { target } =>
+      match dispatch_host_realization(
+        environment: environment,
+        capability: GunbcClaimRunnerCapability,
+      ) {
+        Present { value: realization } =>
+          Present { value: ModeledValidationCommand {
+            label: "closing-contract-authoring" as NonEmptyStr,
+            program: realization.executable,
+            args: [
+              "run",
+              "--source-root", "dag",
+              "--source-root", "src/v2",
+              "--entry", closing_contract_authoring_entry as String,
+              "--function", closing_contract_authoring_function as String,
+              "--arg", join(["target=", target as String], ""),
+              "--claim-run",
+            ],
+          } }
+        Absent => none
+      }
   }
 }
 
@@ -325,6 +364,7 @@ fn validation_consumes_affected_set_window(validation: ValidationOperation) -> B
     GunbcClaimValidation { entry: _, function: _ } => true
     CargoTestValidation { filter: _ } => false
     CargoFmtValidation => false
+    ClosingContractAuthoringValidation { target: _ } => false
   }
 }
 

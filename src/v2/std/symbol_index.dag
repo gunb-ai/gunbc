@@ -38,7 +38,7 @@ type GlobalBareBindingState
   | GlobalBareAmbiguous
 
 type GlobalBareLookup
-  = GlobalBareHit { node: Node }
+  = GlobalBareHit { node: Node, path: QualifiedName }
   | GlobalBareLookupAmbiguous
   | GlobalBareLookupUnbound
 
@@ -129,7 +129,7 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
   match v2.std.collection.map_get(index.global_bare, name) {
     Accepted { value: opt, diagnostics: _ } => match opt {
-      Present { value: GlobalBareUnique { node: n, path: _ } } => GlobalBareHit { node: n }
+      Present { value: GlobalBareUnique { node: n, path: p } } => GlobalBareHit { node: n, path: p }
       Present { value: GlobalBareAmbiguous } => GlobalBareLookupAmbiguous
       Absent => GlobalBareLookupUnbound
     }
