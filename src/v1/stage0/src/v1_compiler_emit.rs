@@ -588,7 +588,6 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
-            visible_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             unit_variant_index: v1_rt::rc_empty_map::<
                 String,
                 Rc<HashMap<String, Rc<UnitVariantContribution>>>,

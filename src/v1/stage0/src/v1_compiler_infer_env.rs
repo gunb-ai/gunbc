@@ -59,7 +59,6 @@ pub struct TypeEnv {
     pub authored_import_names: Rc<HashMap<String, bool>>,
     pub symbol_index: Rc<SymbolIndex>,
     pub module_path: String,
-    pub visible_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub unit_variant_index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
 }
 
@@ -217,81 +216,64 @@ pub fn unit_variant_index_add_binding(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct VisibleBindingsUpdate {
-    pub visible_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub unit_variant_index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
+pub fn effective_visible_binding(
+    str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    parents: Rc<Vec<Rc<TypeEnv>>>,
+    name: String,
+) -> Option<Rc<TypeBinding>> {
+    match v1_rt::map_get(&str_bindings, name.clone()) {
+        Some(b) => Some(b.clone()),
+        None => parents
+            .iter()
+            .cloned()
+            .fold(None, |acc: _, parent: Rc<TypeEnv>| {
+                if (acc.clone() != None) {
+                    acc.clone()
+                } else {
+                    v1_rt::map_get(&parent.str_bindings.clone(), name.clone())
+                }
+            }),
+    }
 }
 
-pub fn visible_bindings_insert(
-    visible_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+pub fn unit_variant_index_shadow_insert(
     unit_variant_index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
+    shadowed: Option<Rc<TypeBinding>>,
     binding: Rc<TypeBinding>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<VisibleBindingsUpdate> {
+) -> Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>> {
     {
-        let cleared = match v1_rt::map_get(&visible_str_bindings, binding.name.clone()) {
-            Some(shadowed) => unit_variant_index_remove_binding(
+        let cleared = match shadowed.clone() {
+            Some(old) => unit_variant_index_remove_binding(
                 unit_variant_index.clone(),
-                shadowed.clone(),
+                old.clone(),
                 source_indices.clone(),
             ),
             None => unit_variant_index.clone(),
         };
-        Rc::new(VisibleBindingsUpdate {
-            visible_str_bindings: v1_rt::rc_map_insert(
-                visible_str_bindings.clone(),
-                binding.name.clone(),
-                binding.clone(),
-            ),
-            unit_variant_index: unit_variant_index_add_binding(
-                cleared.clone(),
-                binding.clone(),
-                source_indices.clone(),
-            ),
-        })
+        unit_variant_index_add_binding(cleared.clone(), binding.clone(), source_indices.clone())
     }
 }
 
-pub fn build_visible_str_bindings(
+pub fn build_unit_variant_index(
     str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     parents: Rc<Vec<Rc<TypeEnv>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    parents.iter().cloned().fold(
-        str_bindings.clone(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
-            v1_rt::rc_map_merge(parent.str_bindings.clone(), acc)
-        },
-    )
-}
-
-pub fn build_unit_variant_index(
-    visible_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>> {
-    Rc::new(v1_rt::map_values(&visible_str_bindings))
-        .iter()
-        .cloned()
-        .fold(
+    {
+        let visible = parents.iter().cloned().fold(
+            str_bindings.clone(),
+            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
+                v1_rt::rc_map_merge(parent.str_bindings.clone(), acc)
+            },
+        );
+        Rc::new(v1_rt::map_values(&visible)).iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>(),
             |acc: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
              binding: Rc<TypeBinding>| {
                 unit_variant_index_add_binding(acc, binding.clone(), source_indices.clone())
             },
         )
-}
-
-pub fn build_visible_bindings_update(
-    str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    parents: Rc<Vec<Rc<TypeEnv>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<VisibleBindingsUpdate> {
-    {
-        let visible = build_visible_str_bindings(str_bindings.clone(), parents.clone());
-        Rc::new(VisibleBindingsUpdate {
-            visible_str_bindings: visible.clone(),
-            unit_variant_index: build_unit_variant_index(visible.clone(), source_indices.clone()),
-        })
     }
 }
 
@@ -389,7 +371,6 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
         source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
         authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
         symbol_index: empty_symbol_index(),
-        visible_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         unit_variant_index: v1_rt::rc_empty_map::<
             String,
             Rc<HashMap<String, Rc<UnitVariantContribution>>>,
@@ -2192,9 +2173,14 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             });
-            let visible_update = visible_bindings_insert(
-                e.visible_str_bindings.clone(),
+            let shadowed = effective_visible_binding(
+                e.str_bindings.clone(),
+                e.parents.clone(),
+                tp_name.clone(),
+            );
+            let updated_index = unit_variant_index_shadow_insert(
                 e.unit_variant_index.clone(),
+                shadowed.clone(),
                 tp_binding.clone(),
                 e.source_indices.clone(),
             );
@@ -2226,8 +2212,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 ),
                 authored_import_names: e.authored_import_names.clone(),
                 symbol_index: e.symbol_index.clone(),
-                visible_str_bindings: visible_update.visible_str_bindings.clone(),
-                unit_variant_index: visible_update.unit_variant_index.clone(),
+                unit_variant_index: updated_index.clone(),
             })
         })
 }

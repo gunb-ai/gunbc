@@ -75,8 +75,8 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 };
 pub use crate::v1_compiler_infer_env::{
     bare_name_miss_diagnostic, binding_declares_name, build_unit_variant_index,
-    build_visible_bindings_update, build_visible_str_bindings, empty_symbol_index,
-    empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
+    effective_visible_binding, empty_symbol_index, empty_type_env_cache,
+    env_with_type_variable_bindings, global_bare_is_ambiguous,
     global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
     is_recursive_type, is_recursive_type_by_name, listed_import_required_bare_call_blocked,
     lookup_binding_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
@@ -84,12 +84,12 @@ pub use crate::v1_compiler_infer_env::{
     node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
     qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
     str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
-    symbol_index_insert_service, symbol_index_lookup, visible_bindings_insert,
+    symbol_index_insert_service, symbol_index_lookup, unit_variant_index_shadow_insert,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
     SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
-    UnitVariantContribution, VisibleBindingsUpdate,
+    UnitVariantContribution,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
@@ -17987,7 +17987,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                             }
                         },
                     );
-            let visible_update = crate::v1_compiler_infer_env::build_visible_bindings_update(
+            let rebuilt_index = crate::v1_compiler_infer_env::build_unit_variant_index(
                 filtered_str.clone(),
                 parent_env.parents.clone(),
                 parent_env.source_indices.clone(),
@@ -18006,8 +18006,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                 source_visible_names: parent_env.source_visible_names.clone(),
                 authored_import_names: parent_env.authored_import_names.clone(),
                 symbol_index: parent_env.symbol_index.clone(),
-                visible_str_bindings: visible_update.visible_str_bindings.clone(),
-                unit_variant_index: visible_update.unit_variant_index.clone(),
+                unit_variant_index: rebuilt_index.clone(),
             })
         }
     } else {
@@ -18027,7 +18026,7 @@ pub fn interface_env_for_import_note() -> String {
 pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<TypeEnv> {
     {
         let filtered = type_env_for_import(module_path.clone(), parent_env.clone());
-        let visible_update = crate::v1_compiler_infer_env::build_visible_bindings_update(
+        let rebuilt_index = crate::v1_compiler_infer_env::build_unit_variant_index(
             filtered.str_bindings.clone(),
             Rc::new(vec![]),
             filtered.source_indices.clone(),
@@ -18046,8 +18045,7 @@ pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) ->
             source_visible_names: filtered.source_visible_names.clone(),
             authored_import_names: filtered.authored_import_names.clone(),
             symbol_index: filtered.symbol_index.clone(),
-            visible_str_bindings: visible_update.visible_str_bindings.clone(),
-            unit_variant_index: visible_update.unit_variant_index.clone(),
+            unit_variant_index: rebuilt_index.clone(),
         })
     }
 }
@@ -18072,7 +18070,7 @@ pub fn interface_signature_fingerprint_v0_note() -> String {
 
 pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
     {
-        let visible_update = crate::v1_compiler_infer_env::build_visible_bindings_update(
+        let rebuilt_index = crate::v1_compiler_infer_env::build_unit_variant_index(
             env.str_bindings.clone(),
             Rc::new(vec![]),
             env.source_indices.clone(),
@@ -18091,8 +18089,7 @@ pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
             source_visible_names: env.source_visible_names.clone(),
             authored_import_names: env.authored_import_names.clone(),
             symbol_index: env.symbol_index.clone(),
-            visible_str_bindings: visible_update.visible_str_bindings.clone(),
-            unit_variant_index: visible_update.unit_variant_index.clone(),
+            unit_variant_index: rebuilt_index.clone(),
         })
     }
 }
@@ -19174,7 +19171,6 @@ pub fn census_fn_sig_env(
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: census.clone(),
-            visible_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             unit_variant_index: v1_rt::rc_empty_map::<
                 String,
                 Rc<HashMap<String, Rc<UnitVariantContribution>>>,
@@ -20251,9 +20247,9 @@ pub fn build_type_env(
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
-            visible_str_bindings: kernel_str_bindings.clone(),
             unit_variant_index: crate::v1_compiler_infer_env::build_unit_variant_index(
                 kernel_str_bindings.clone(),
+                Rc::new(vec![]),
                 source_indices.clone(),
             ),
         });
@@ -20676,7 +20672,7 @@ pub fn build_type_env(
                 }
             },
         );
-        let module_visible = crate::v1_compiler_infer_env::build_visible_bindings_update(
+        let module_variant_index = crate::v1_compiler_infer_env::build_unit_variant_index(
             local_str_bindings.clone(),
             scope_parents.clone(),
             source_indices.clone(),
@@ -20695,8 +20691,7 @@ pub fn build_type_env(
             source_visible_names: source_visible_names.clone(),
             authored_import_names: authored_import_names.clone(),
             symbol_index: symbol_index.clone(),
-            visible_str_bindings: module_visible.visible_str_bindings.clone(),
-            unit_variant_index: module_visible.unit_variant_index.clone(),
+            unit_variant_index: module_variant_index.clone(),
         });
         let resolved = resolve_env_bindings(
             unresolved_env.clone(),
@@ -20720,7 +20715,6 @@ pub fn build_type_env(
             source_visible_names: source_visible_names.clone(),
             authored_import_names: authored_import_names.clone(),
             symbol_index: resolved_env_out.symbol_index.clone(),
-            visible_str_bindings: resolved_env_out.visible_str_bindings.clone(),
             unit_variant_index: resolved_env_out.unit_variant_index.clone(),
         });
         let cache_str_bindings = v1_rt::rc_map_merge(
@@ -20912,9 +20906,9 @@ pub fn build_type_env_unresolved(
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
-            visible_str_bindings: kernel_str_bindings.clone(),
             unit_variant_index: crate::v1_compiler_infer_env::build_unit_variant_index(
                 kernel_str_bindings.clone(),
+                Rc::new(vec![]),
                 source_indices.clone(),
             ),
         });
@@ -21218,7 +21212,7 @@ pub fn build_type_env_unresolved(
         let ancestry_str_bindings = ancestry_cache.str_bindings.clone();
         let visible_str_bindings =
             v1_rt::rc_map_merge(ancestry_str_bindings.clone(), local_str_bindings.clone());
-        let module_visible = crate::v1_compiler_infer_env::build_visible_bindings_update(
+        let module_variant_index = crate::v1_compiler_infer_env::build_unit_variant_index(
             local_str_bindings.clone(),
             scope_parents.clone(),
             source_indices.clone(),
@@ -21237,8 +21231,7 @@ pub fn build_type_env_unresolved(
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
-            visible_str_bindings: module_visible.visible_str_bindings.clone(),
-            unit_variant_index: module_visible.unit_variant_index.clone(),
+            unit_variant_index: module_variant_index.clone(),
         });
         let type_env_cache = Rc::new(TypeEnvCache {
             deps_map: all_deps_map.clone(),
@@ -22497,7 +22490,6 @@ pub struct BindingResult {
 pub struct BindingsAccum {
     pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
     pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub visible_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub unit_variant_index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
@@ -22506,15 +22498,15 @@ pub fn bindings_accum_insert(
     acc: Rc<BindingsAccum>,
     ident: i64,
     updated_binding: Rc<TypeBinding>,
+    parents: Rc<Vec<Rc<TypeEnv>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     result_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<BindingsAccum> {
     {
-        let visible_update = crate::v1_compiler_infer_env::visible_bindings_insert(
-            acc.visible_str_bindings.clone(),
-            acc.unit_variant_index.clone(),
-            updated_binding.clone(),
-            source_indices.clone(),
+        let shadowed = crate::v1_compiler_infer_env::effective_visible_binding(
+            acc.str_bindings.clone(),
+            parents.clone(),
+            updated_binding.name.clone(),
         );
         Rc::new(BindingsAccum {
             bindings: v1_rt::rc_map_insert(
@@ -22527,8 +22519,12 @@ pub fn bindings_accum_insert(
                 updated_binding.name.clone(),
                 updated_binding.clone(),
             ),
-            visible_str_bindings: visible_update.visible_str_bindings.clone(),
-            unit_variant_index: visible_update.unit_variant_index.clone(),
+            unit_variant_index: crate::v1_compiler_infer_env::unit_variant_index_shadow_insert(
+                acc.unit_variant_index.clone(),
+                shadowed.clone(),
+                updated_binding.clone(),
+                source_indices.clone(),
+            ),
             diagnostics: v1_rt::concat(acc.diagnostics.clone(), result_diagnostics.clone()),
         })
     }
@@ -22635,7 +22631,6 @@ pub fn topo_resolve_types(
                 let stuck_accum = remaining.iter().cloned().fold(Rc::new(BindingsAccum {
     bindings: env.bindings.clone(),
     str_bindings: env.str_bindings.clone(),
-    visible_str_bindings: env.visible_str_bindings.clone(),
     unit_variant_index: env.unit_variant_index.clone(),
     diagnostics: Rc::new(vec![]),
 }), |acc: Rc<BindingsAccum>, name: String| {
@@ -22650,7 +22645,7 @@ let updated_binding = Rc::new(TypeBinding {
     resolved: resolved.clone(),
     provenance: Rc::new(SubValueRelation::SubValueUnknown),
 });
-bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.source_indices.clone(), result.diagnostics.clone())
+bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.parents.clone(), env.source_indices.clone(), result.diagnostics.clone())
 },
     None => acc.clone(),
 }
@@ -22670,7 +22665,6 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.s
                         source_visible_names: env.source_visible_names.clone(),
                         authored_import_names: env.authored_import_names.clone(),
                         symbol_index: env.symbol_index.clone(),
-                        visible_str_bindings: stuck_accum.visible_str_bindings.clone(),
                         unit_variant_index: stuck_accum.unit_variant_index.clone(),
                     }),
                     diagnostics: v1_rt::concat(
@@ -22684,7 +22678,6 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.s
             Rc::new(BindingsAccum {
                 bindings: env.bindings.clone(),
                 str_bindings: env.str_bindings.clone(),
-                visible_str_bindings: env.visible_str_bindings.clone(),
                 unit_variant_index: env.unit_variant_index.clone(),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -22716,6 +22709,7 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.s
                             acc.clone(),
                             ident.clone(),
                             updated_binding.clone(),
+                            env.parents.clone(),
                             env.source_indices.clone(),
                             result.diagnostics.clone(),
                         )
@@ -22757,7 +22751,6 @@ bindings_accum_insert(acc.clone(), ident.clone(), updated_binding.clone(), env.s
                 source_visible_names: env.source_visible_names.clone(),
                 authored_import_names: env.authored_import_names.clone(),
                 symbol_index: env.symbol_index.clone(),
-                visible_str_bindings: ready_accum.visible_str_bindings.clone(),
                 unit_variant_index: ready_accum.unit_variant_index.clone(),
             });
             let __tco_2 = v1_rt::concat(diagnostics, ready_accum.diagnostics.clone());
@@ -23557,22 +23550,22 @@ pub fn rewire_type_env_import_str_binding_identity(
                             rewrites.clone(),
                         ),
                     });
-                    let rewired_visible = Rc::new(v1_rt::map_values(&str_binding_overlay))
+                    let rewired_index = Rc::new(v1_rt::map_values(&str_binding_overlay))
                         .iter()
                         .cloned()
                         .fold(
-                            Rc::new(VisibleBindingsUpdate {
-                                visible_str_bindings: m
-                                    .type_env
-                                    .clone()
-                                    .visible_str_bindings
-                                    .clone(),
-                                unit_variant_index: m.type_env.clone().unit_variant_index.clone(),
-                            }),
-                            |acc: Rc<VisibleBindingsUpdate>, binding: Rc<TypeBinding>| {
-                                crate::v1_compiler_infer_env::visible_bindings_insert(
-                                    acc.visible_str_bindings.clone(),
-                                    acc.unit_variant_index.clone(),
+                            m.type_env.clone().unit_variant_index.clone(),
+                            |acc: Rc<
+                                HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>,
+                            >,
+                             binding: Rc<TypeBinding>| {
+                                crate::v1_compiler_infer_env::unit_variant_index_shadow_insert(
+                                    acc,
+                                    crate::v1_compiler_infer_env::effective_visible_binding(
+                                        m.type_env.clone().str_bindings.clone(),
+                                        m.type_env.clone().parents.clone(),
+                                        binding.name.clone(),
+                                    ),
                                     binding.clone(),
                                     source_indices.clone(),
                                 )
@@ -23596,8 +23589,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                             source_visible_names: m.type_env.clone().source_visible_names.clone(),
                             authored_import_names: m.type_env.clone().authored_import_names.clone(),
                             symbol_index: m.type_env.clone().symbol_index.clone(),
-                            visible_str_bindings: rewired_visible.visible_str_bindings.clone(),
-                            unit_variant_index: rewired_visible.unit_variant_index.clone(),
+                            unit_variant_index: rewired_index.clone(),
                         }),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
@@ -23826,9 +23818,9 @@ pub fn compiler_kernel_type_env(
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
-            visible_str_bindings: kernel_str_bindings.clone(),
             unit_variant_index: crate::v1_compiler_infer_env::build_unit_variant_index(
                 kernel_str_bindings.clone(),
+                Rc::new(vec![]),
                 source_indices.clone(),
             ),
         })
@@ -23915,12 +23907,11 @@ pub fn rewire_type_env_parent_links(
                     });
                     let rewired_parents =
                         v1_rt::concat(import_parents.clone(), Rc::new(vec![shared_kernel.clone()]));
-                    let rewired_visible =
-                        crate::v1_compiler_infer_env::build_visible_bindings_update(
-                            m.type_env.clone().str_bindings.clone(),
-                            rewired_parents.clone(),
-                            m.type_env.clone().source_indices.clone(),
-                        );
+                    let rewired_index = crate::v1_compiler_infer_env::build_unit_variant_index(
+                        m.type_env.clone().str_bindings.clone(),
+                        rewired_parents.clone(),
+                        m.type_env.clone().source_indices.clone(),
+                    );
                     Rc::new(TypedModule {
                         progress: m.progress.clone(),
                         module: m.module.clone(),
@@ -23939,8 +23930,7 @@ pub fn rewire_type_env_parent_links(
                             source_visible_names: m.type_env.clone().source_visible_names.clone(),
                             authored_import_names: m.type_env.clone().authored_import_names.clone(),
                             symbol_index: m.type_env.clone().symbol_index.clone(),
-                            visible_str_bindings: rewired_visible.visible_str_bindings.clone(),
-                            unit_variant_index: rewired_visible.unit_variant_index.clone(),
+                            unit_variant_index: rewired_index.clone(),
                         }),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
