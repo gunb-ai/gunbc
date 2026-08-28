@@ -254,8 +254,16 @@ pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<Strin
 /// together here, which is the coupling that was always required.
 ///
 /// dissolve-on: the emit path that retires this seed's other budget mirrors; re-measure
-/// trigger: a dated uncensored whole-tree peak taken on the `gunbc compile` route itself.
-pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = 7516192768;
+/// trigger: a dated uncensored whole-corpus peak on the `gunbc compile` route, taken with a
+/// binary built from the subject sha, that EXCEEDS this figure.
+///
+/// The 7 GiB predecessor was a PROXY taken on the floor route at an older tree and was 64%
+/// under the measured peak, so this arm admitted hosts it would then be killed on. Its own
+/// re-measure trigger fired on 2026-08-28: whole-corpus `--target dag` peaked at 13008052 kB
+/// and `--target rust` at 13005964 kB, both EXIT=1 (completed and refused, not killed) on an
+/// unthrottled host, with the binary built from the tree being compiled. 12.41 GiB rounded UP
+/// to whole-gibibyte grain, because for a demand figure rounding up refuses the marginal case.
+pub const DECLARED_WHOLE_CORPUS_COMPILE_MEASURED_DEMAND_BYTES: u64 = 13958643712;
 
 /// Arm-time admission for a WHOLE-CORPUS compile — the seed mirror of
 /// `gunbc.whole_corpus_compile_admission` `whole_corpus_compile_admission`.

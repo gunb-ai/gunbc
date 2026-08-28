@@ -41,6 +41,18 @@ fn fleet_runner_slot_budget() -> HostBudgetResolution {
   }
 }
 
+// THE REQUIRED FIGURE IS DERIVED, NOT TRANSCRIBED. This arm asserted `r == 7516192768` -- a copy
+// of the authority's own constant, which made it a change detector: the only way to close it after
+// a re-measure was to hand-edit the expectation to whatever the authority now says, which is the
+// self-comparison DESIGN section 5's oracle rule names. It caught nothing and cost a red on the
+// 2026-08-28 re-measure. Derived from whole_corpus_compile_measured_peak_demand() it asserts the
+// RELATION the arm exists for -- the refusal reports the authority's figure and not some other --
+// and it survives every future re-measure without an edit.
+//
+// THE BUDGET LITERAL STAYS A LITERAL, and the asymmetry is deliberate: 5269094400 is a DATED
+// EXTERNAL RECEIPT, the MemAvailable lower bound of the runner that SIGKILLed this instrument
+// twice. It is not a number from this tree, so it is an oracle in exactly the sense the demand
+// figure was not.
 test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
   match whole_corpus_compile_admission(budget: observed_doomed_budget()) {
     WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
@@ -48,11 +60,32 @@ test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
       required: r,
       source: s,
     } => byte_size_count(b: b) == 5269094400
-      && byte_size_count(b: r) == 7516192768
+      && byte_size_count(b: r) == byte_size_count(b: whole_corpus_compile_measured_peak_demand())
       && (s as String) == "/proc/meminfo MemAvailable"
     WholeCorpusCompileAdmitted { budget: _, required: _ } => false
     WholeCorpusCompileRefusedBudgetUnreadable { reason: _ } => false
   }
+}
+
+// THE RECEIPT THAT THE FAIL-OPEN CLOSED. Until 2026-08-28 the demand figure was 7 GiB, a PROXY
+// taken on the floor route at an older tree; the whole-corpus peak measured on the compile route
+// itself is 12.41 GiB. So this arm admitted a 7 GiB host and that host would then have been
+// SIGKILLed -- a refusal that exists and cannot fire for the population needing it, which is not
+// conservatism but the shape DESIGN section 5 names, where the deficit's frequency is zero by
+// construction.
+//
+// 7516192768 is written here as a LITERAL on purpose and it is not a tree copy: it is the
+// superseded figure, a historical fact that does not move, and this arm's whole content is that
+// the value the old authority admitted is now refused. It is progress-safe because a demand
+// figure does not shrink with corpus growth -- the row says so and the re-measure trigger only
+// fires upward -- so no legitimate future measurement makes this arm red.
+test fn the_budget_the_superseded_figure_admitted_is_now_refused() -> Bool {
+  whole_corpus_compile_admits(
+    a: whole_corpus_compile_admission(
+      budget: HostBudgetResolved {
+        source: BudgetSourceMemAvailable,
+        bytes: byte_size(7516192768),
+      })) == false
 }
 
 test fn the_runner_ci_actually_uses_is_admitted() -> Bool {
