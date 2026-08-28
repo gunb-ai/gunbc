@@ -12,6 +12,7 @@ import gunbc.namespace_reference_derived_closure_contract {
   closure_missing_capabilities,
 }
 import std.reference_binding_observation {
+  ReferenceBindingProductionGap,
   StructuralObservationSubjectModule,
   SubjectModuleProduced,
   SubjectModuleProductionRefused,
@@ -97,26 +98,35 @@ fn namespace_structural_observations_subject() -> StructuralObservationSubject {
 }
 
 // A ROW IS OFF-SUBJECT WHEN IT DOES NOT NAME THIS SUBJECT, AND A ROW WHOSE SUBJECT COULD NOT BE
-// PRODUCED IS ONE OF THOSE -- but it is a DIFFERENT one, so it reports its own reason rather than
-// an empty path. Both refuse the row, and the fold below is what makes the distinction survive:
-// a caller reading these strings can tell "this admission came from another module" apart from
-// "the parse never yielded a module", which an empty string could not express.
+// PRODUCED IS ONE OF THOSE -- but it is a DIFFERENT one, so it carries its own variant rather than
+// a sentinel string. Both refuse the row; they refuse for stated and distinguishable reasons, which
+// is the whole reason the subject identity is typed upstream. An earlier revision reported the
+// second case as the literal "<subject module not produced>" and the acceptance test asserted that
+// spelling, which put a nickname where the coproduct already had a name (review 57241).
+type StructuralAdmissionSubjectMismatch
+  = AdmissionNamesAnotherModule {
+      module_path: String,
+    }
+  | AdmissionSubjectNotProduced {
+      gap: ReferenceBindingProductionGap,
+    }
+
 fn structural_admission_subject_mismatch(
   compiled_module: StructuralObservationSubjectModule,
-) -> List<String> {
+) -> List<StructuralAdmissionSubjectMismatch> {
   match compiled_module {
-    SubjectModuleProductionRefused { gap: _ } => ["<subject module not produced>"]
+    SubjectModuleProductionRefused { gap: gap } => [AdmissionSubjectNotProduced { gap: gap }]
     SubjectModuleProduced { module_path: module_path } =>
       match module_path == namespace_structural_observations_subject_module() {
         true => []
-        false => [module_path]
+        false => [AdmissionNamesAnotherModule { module_path: module_path }]
       }
   }
 }
 
 fn structural_admission_off_subject_modules(
   rows: List<OrdinaryCompileStructuralAdmission>,
-) -> List<String> {
+) -> List<StructuralAdmissionSubjectMismatch> {
   rows
     |> flat_map(row => structural_admission_subject_mismatch(compiled_module: row.compiled_module))
 }

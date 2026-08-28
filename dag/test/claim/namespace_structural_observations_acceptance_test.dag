@@ -12,6 +12,8 @@ import gunbc.namespace_structural_observations_contract {
   StructuralObservationSubject,
   namespace_structural_observations_subject,
   namespace_structural_observations_subject_source,
+  AdmissionNamesAnotherModule,
+  AdmissionSubjectNotProduced,
   namespace_structural_observations_closing_contract_holds,
   namespace_structural_observations_missing_capabilities,
   structural_admission_off_subject_modules,
@@ -201,9 +203,17 @@ test fn established_capabilities_with_an_unproduced_subject_still_refuse() -> Bo
   count(namespace_structural_observations_missing_capabilities(
     rows: nso_admissions_with_unproduced_subject(),
   )) == 0
-    && structural_admission_off_subject_modules(
+    && count(structural_admission_off_subject_modules(
          rows: nso_admissions_with_unproduced_subject(),
-       ) == ["<subject module not produced>", "<subject module not produced>", "<subject module not produced>", "<subject module not produced>"]
+       )) == 4
+    && count(
+         structural_admission_off_subject_modules(
+           rows: nso_admissions_with_unproduced_subject(),
+         ) |> filter(mismatch => match mismatch {
+           AdmissionSubjectNotProduced { gap: _ } => true
+           AdmissionNamesAnotherModule { module_path: _ } => false
+         })
+       ) == 4
     && !namespace_structural_observations_closing_contract_holds(
          rows: nso_admissions_with_unproduced_subject(),
        )
