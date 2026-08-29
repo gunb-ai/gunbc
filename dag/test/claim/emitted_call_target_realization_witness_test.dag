@@ -278,11 +278,14 @@ test fn w_witness_carrier_falls_back_to_the_fn_return_when_the_value_identity_is
 
 // FOLD ACCUMULATOR, THE DISCRIMINATING RED. A fold whose init is empty_map() took the Map
 // declaration's own formals as its accumulator and wrote them into the turbofish:
-// `v1_rt::rc_empty_map::<K, V>()`. The fn's declared Map<Symbol, Symbol> return is the resolved
-// accumulator and must be what the init renders from.
+// `v1_rt::rc_empty_map::<K, V>()`. THE PROBE IMPORTS NOTHING ON PURPOSE: it mirrors
+// v2.lens.unit_modeling, which resolves Map, Symbol, empty_map and map_insert by namespace alone --
+// under an explicit `import std.types { Map }` the accumulator resolves to the kernel container and
+// the defect never fires (measured: that probe emitted `rc_empty_map::<String, String>` on the
+// defective compiler). The init must decline the formals exactly as the lambda beside it does.
 test fn w_fold_empty_map_init_renders_the_resolved_accumulator_not_the_declaration_formals() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.fold_accumulator_probe\nimport std.types { Int, String, Map }\nimport v2.std.node { Symbol }\nimport v2.std.collection { empty_map, map_insert }\ntype Row { field: Symbol, carrier: Symbol }\nfn rows() -> List<Row> { [Row { field: ^a, carrier: ^b }] }\nfn probe() -> Map<Symbol, Symbol> { fold(rows(), init: empty_map(), f: fn(acc, row) { map_insert(m: acc, key: row.field, value: row.carrier) }) }\n",
+    "module test.claim.fold_accumulator_probe\n\ntype Row {\n  field: Symbol\n  carrier: Symbol\n}\n\ndata rows: List<Row> = [\n  Row { field: ^a, carrier: ^b }\n]\n\nfn probe() -> Map<Symbol, Symbol> {\n  fold(rows, init: empty_map(), f: fn(acc, row) {\n    map_insert(m: acc, key: row.field, value: row.carrier)\n  })\n}\n",
     "src/test_claim_fold_accumulator_probe.rs",
     ["rc_empty_map::<"],
     ["rc_empty_map::<K, V>"]
@@ -335,7 +338,7 @@ test fn w_qualified_type_reference_earns_the_leaf_use_line() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.qualified_type_ref_probe\nimport std.types { String }\ntype Fact { signature: String, classification: std.determinism.Determinism }\nfn probe(f: Fact) -> std.determinism.Determinism { f.classification }\n",
     "src/test_claim_qualified_type_ref_probe.rs",
-    ["use crate::std_determinism::Determinism"],
+    ["use crate::std_determinism::Determinism;"],
     ["std.determinism.Determinism"]
   )
 }

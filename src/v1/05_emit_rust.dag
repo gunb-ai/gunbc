@@ -4182,7 +4182,6 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)))
     let item_emit_surface_names = items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info))
     let type_surface_names = unique_strings(items: item_emit_surface_names)
-    let qualified_surface_leaves = qualified_type_surface_leaf_candidates(names: type_surface_names, registry: registry)
     let field_surface_names = collect_items_field_import_surface_names(surface_names: item_emit_surface_names, emit_info: emit_info)
     let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
     let emitter_attested_anon_heads = unique_strings(items: items |> flat_map(item => collect_anonymous_record_lit_heads(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries)))
@@ -4190,7 +4189,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     let emitted_source_tokens = rust_identifier_tokens(s: emitted_source)
     let emitted_source_token_set = emitted_source_tokens
       |> fold(init: empty_map(), f: (acc, t) => map_insert(acc, t, true))
-    let candidates = unique_strings(items: concat(concat(concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), qualified_surface_leaves), field_surface_names), variant_payload_structs), realized_surface_names))
+    let candidates = unique_strings(items: concat(concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs), realized_surface_names))
       |> filter(name =>
         reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
           || emitter_attested_anon_heads |> any(h => h == name)
@@ -4245,7 +4244,9 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       )
       concat(block_lines, fallback)
     )
-    ReferenceDerivedUseLinePlan { lines: lines, rows: rows }
+    let names_already_in_lines = lines |> flat_map(l => imported_names_in_use_line(line: l))
+    let qualified_lines = qualified_type_reference_use_lines(names: type_surface_names, this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    ReferenceDerivedUseLinePlan { lines: concat(lines, qualified_lines), rows: rows }
   }
 }
 
@@ -4254,26 +4255,28 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
 // the surface walk collects the DOTTED spelling -- which is never an identifier token in the emitted
 // source, so the candidate filter dropped it before any disposition was assigned and the module
 // referenced a name it never imported (E0425 cannot find type `Determinism`, v2.std.determinism,
-// two sites). The leaf is admitted as a candidate only when the qualified registry row resolves it
-// AND the bare row names the SAME declaring module: the downstream lookups are bare-keyed and
-// last-write-wins, and a leaf whose bare row points elsewhere would import a homonym from the wrong
-// provider. That disagreement stays a loud unresolved name rather than a fabricated use-line.
-fn qualified_type_surface_leaf_candidates(names: List<String>, registry: Map<String, ItemInfo>) -> List<String> {
-  names |> flat_map(name =>
+// two sites). The qualifier IS the provider the author named, so the line is synthesized from it
+// directly -- under the same construction wall every other synthesized use-line passes:
+// provider_proven_exports_symbol must hold for the leaf on that module, or nothing is emitted and
+// the name stays a loud unresolved symbol. A first cut keyed this on the qualified item-registry
+// overlay instead; that overlay carries no row for the reference and the cut was a measured
+// NON-EVENT (falsifier m12 reddened nothing; the two sites stayed), so it is replaced, not kept.
+fn qualified_type_reference_use_lines(names: List<String>, this_module_name: String, already: Map<String, Bool>, names_already_in_lines: List<String>, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+  let leaves_done = names_already_in_lines |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
+  unique_strings(items: names |> flat_map(name =>
     if !string_contains(s: name, pattern: ".") { [] } else {
       let leaf = qualified_last_segment(name: name)
-      match map_get(registry, name) {
-        Present { value: qualified_info } =>
-          if is_duplicate_qualified_item_registry_marker(info: qualified_info) { [] } else {
-            match map_get(registry, leaf) {
-              Present { value: bare_info } => if bare_info.module_name == qualified_info.module_name { [leaf] } else { [] }
-              Absent => []
-            }
-          }
-        Absent => []
+      let segments = name |> split(delimiter: ".")
+      let qualifier = segments |> take(n: (segments |> count) - 1) |> join(separator: ".")
+      if qualifier == this_module_name || emit_map_has(m: already, key: leaf) || emit_map_has(m: leaves_done, key: leaf) || is_kernel_type(name: leaf) {
+        []
+      } else if provider_proven_exports_symbol(name: leaf, provider_module: qualifier, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+        [concat(rust_visibility_prefix(), "use crate::", module_to_filename(name: qualifier), "::", emit_import_name(n: leaf, registry: registry), ";")]
+      } else {
+        []
       }
     }
-  )
+  ))
 }
 
 fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
@@ -10123,15 +10126,19 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
 // instead would restate it, and would then have to be kept in step with any future change to the strip
 // -- reintroducing the shape of this defect while fixing this instance of it. `_` is also the device
 // already used for elem_render_has_spurious_generic a few bindings earlier.
-// THE UNDER-RESOLVED-GENERIC ACCUMULATOR ARM (is_under_resolved_generic below):
-// A DECLARATION'S OWN PARAMETER NAMES ARE NOT A RESOLVED ACCUMULATOR. fold_accumulator_type can
-// arrive as the container declaration's parametric shape -- Map<K, V> with K and V the
-// declaration's formals, bound to nothing at this call -- and the four shape tests above all
-// read that as resolved (two children, neither unit-like). The init arm then wrote the formals
-// straight into a turbofish, `v1_rt::rc_empty_map::<K, V>()`, four sites on the 00_compile
-// closure (v2.lens.unit_modeling) while the lambda beside it had already fallen back to `_`.
-// The contextual method result type IS the resolved accumulator here, so a shape whose atoms are
-// unbound in the closure scope is under-resolved exactly like an empty one.
+// THE INIT TURBOFISH DECLINES A DECLARATION'S OWN FORMALS, BY THE SAME ADMISSION THE LAMBDA USES.
+// In a module that resolves Map, Symbol, empty_map and map_insert by namespace alone
+// (v2.lens.unit_modeling imports none of them), the fold's accumulator arrives as the v2 Map
+// declaration's parametric shape -- Map<K, V> with K and V the declaration's formals -- and so
+// does the call's contextual result type, so no choice between the two helps. The lambda beside
+// the init already renders such an accumulator as `_` (rust_fold_rendered_type_has_any_spurious_generic
+// over the rendered string), while the init arm wrote the formals into a turbofish:
+// `v1_rt::rc_empty_map::<K, V>()`, four sites on the 00_compile closure. The init now asks the same
+// rendered-string admission and, where the formals are unbound in this fn's generic scope, defers
+// the key and value types to the target's own inference exactly as the lambda does -- rustc binds
+// them from the fold body or refuses loudly. An earlier cut of this repair instead widened the
+// "under-resolved accumulator" test to prefer the contextual type; that was a measured NON-EVENT
+// (falsifier m09: removing it reddened nothing, and the four sites stayed) and is deleted.
 fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
@@ -10146,8 +10153,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
       let is_under_resolved_list = node_is_element_collection(n: acc_type, source_indices: scope.type_env.source_indices) && !node_is_set_collection(n: acc_type, source_indices: scope.type_env.source_indices) && acc_type.children |> count == 0
       let is_under_resolved_set = node_is_set_collection(n: acc_type, source_indices: scope.type_env.source_indices) && (acc_type.children |> count == 0 || acc_children_have_unit)
       let is_under_resolved_non_collection = !node_is_keyed_collection(n: acc_type, source_indices: scope.type_env.source_indices) && !node_is_element_collection(n: acc_type, source_indices: scope.type_env.source_indices) && !node_is_collection(n: acc_type, source_indices: scope.type_env.source_indices)
-      let is_under_resolved_generic = type_node_has_closure_unbound_generic_atom(n: acc_type, generic_param_names: emit_info.fn_generic_param_names, env: scope.type_env, source_indices: scope.type_env.source_indices)
-      if is_under_resolved_map || is_under_resolved_list || is_under_resolved_set || is_under_resolved_non_collection || is_under_resolved_generic {
+      if is_under_resolved_map || is_under_resolved_list || is_under_resolved_set || is_under_resolved_non_collection {
         match contextual_acc_type {
           Present { value: concrete_type } => concrete_type
           Absent => acc_type
@@ -10263,7 +10269,9 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
           let init_func = expr_call_func_at(texpr: arg_value(n: init_arg), source_indices: scope.type_env.source_indices)
           if init_func == "empty_map" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
             let kv_type_str = rust_empty_map_kv_type_str(map_type: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
-            if kv_type_str != "" {
+            if kv_type_str != "" && rust_fold_rendered_type_has_any_spurious_generic(type_str: concat("<", kv_type_str, ">"), generic_param_names: emit_info.fn_generic_param_names) {
+              "v1_rt::rc_empty_map::<_, _>()"
+            } else if kv_type_str != "" {
               concat("v1_rt::rc_empty_map::<", kv_type_str, ">()")
             } else {
               rust_shared_wrap_ctor(inner_expr: "HashMap::new() /* BRIDGE: fold empty_map value type unresolved */")
