@@ -1,6 +1,8 @@
 module gunbc.spark.training_ready
 
-import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.cell_role {
   SparkCellRole,
@@ -114,19 +116,22 @@ fn spark_serving_retirement_observation_from_probes(
 //
 // A catalogued 128 GB is a fact about the product NVIDIA sells, not about how much of this machine's
 // pool is free right now, and the difference is the whole reason this carrier exists rather than a
-// constant. The bytes come from a read on the host, after the retirement, so the number describes a
+// constant. The quantity is a `std.measure` ByteSize rather than an Int: a bare integer named
+// `_bytes` is a second unit system standing beside the one the corpus already has, and it would
+// erase in the type exactly the distinction these paragraphs argue for in prose -- any integer at
+// all could be handed to the proof. The bytes come from a read on the host, after the retirement, so the number describes a
 // pool the serving process has already let go of. Reading it before would measure the wrong machine
 // state and would be indistinguishable in the type.
 type SparkUnifiedPoolObservation sole_constructor {
   host: HostIdentity
-  free_bytes: Int
+  free_pool: ByteSize
   observed_after_retirement: Bool
   producer: NonEmptyStr
 }
 
 // THE NUMBER MUST ARRIVE WITH THE READ THAT PRODUCED IT.
 //
-// A free Int is a number somebody typed. The capture is what makes it a measurement, so the producer
+// A free integer is a number somebody typed. The capture is what makes it a measurement, so the producer
 // takes both and refuses the pairing that would let a fabricated figure through: a capture that did
 // not answer cannot carry a byte count, whatever integer is passed beside it.
 type SparkUnifiedPoolReading
@@ -135,7 +140,7 @@ type SparkUnifiedPoolReading
 
 fn spark_unified_pool_observation_from_capture(
   host: HostIdentity,
-  free_bytes: Int,
+  free_bytes: Nat,
   capture: SparkServingProbeCapture,
   observed_after_retirement: Bool,
 ) -> SparkUnifiedPoolReading {
@@ -152,7 +157,7 @@ fn spark_unified_pool_observation_from_capture(
       SparkUnifiedPoolRead {
         observation: SparkUnifiedPoolObservation {
           host: host,
-          free_bytes: free_bytes,
+          free_pool: byte_size(count: free_bytes),
           observed_after_retirement: observed_after_retirement,
           producer: join(["free-pool read: ", out], "") as NonEmptyStr,
         },
@@ -173,7 +178,7 @@ fn spark_unified_pool_observation_from_capture(
 // opposite ends of a host's serving life.
 type SparkTrainingReadyProof sole_constructor {
   host: HostIdentity
-  free_pool_bytes: Int
+  free_pool: ByteSize
 }
 
 type SparkTrainingReadiness
@@ -217,7 +222,7 @@ fn spark_training_readiness(
         SparkTrainingNotReady {
           cause: "spark_training_ready: the unified pool was measured before the retirement, so it describes a machine that was still serving" as NonEmptyStr,
         }
-      } else if pool.free_bytes <= 0 {
+      } else if byte_size_count(b: pool.free_pool) <= 0 {
         SparkTrainingNotReady {
           cause: "spark_training_ready: the measured free pool is not positive — a non-positive capacity is a failed read, never an offer of nothing" as NonEmptyStr,
         }
@@ -225,7 +230,7 @@ fn spark_training_readiness(
         SparkTrainingReady {
           proof: SparkTrainingReadyProof {
             host: retirement.host,
-            free_pool_bytes: pool.free_bytes,
+            free_pool: pool.free_pool,
           },
         }
       }

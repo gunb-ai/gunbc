@@ -1,6 +1,7 @@
 module test.claim.spark.spark_training_ready_witness_test
 
-import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.serving_terminal_health {
@@ -91,7 +92,7 @@ fn w_retired_unit_silent() -> SparkServingRetirementObservation {
   )
 }
 
-fn w_pool_or_refused(host: HostIdentity, bytes: Int, after: Bool) -> SparkUnifiedPoolObservation? {
+fn w_pool_or_refused(host: HostIdentity, bytes: Nat, after: Bool) -> SparkUnifiedPoolObservation? {
   match spark_unified_pool_observation_from_capture(
     host: host,
     free_bytes: bytes,
@@ -106,7 +107,7 @@ fn w_pool_or_refused(host: HostIdentity, bytes: Int, after: Bool) -> SparkUnifie
 fn w_readiness(
   retirement: SparkServingRetirementObservation,
   host: HostIdentity,
-  bytes: Int,
+  bytes: Nat,
   after: Bool,
 ) -> Bool {
   match w_pool_or_refused(host: host, bytes: bytes, after: after) {
