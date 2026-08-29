@@ -5,6 +5,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.toolchain.types { Aarch64 }
 import gunbc.machine_intake_subject {
+  SubjectCurrent,
+  SubjectStale,
   AssemblyManifest,
   ComponentIdentity,
   DimmComponent,
@@ -98,6 +100,13 @@ data firmware_v1: FirmwareManifest = FirmwareManifest {
 data subject_before: QualificationSubject = qualification_subject_of(unit_key: unit, assembly: assembly_before, firmware: firmware_v1)
 data subject_after: QualificationSubject = qualification_subject_of(unit_key: unit, assembly: assembly_after, firmware: firmware_v1)
 
+data firmware_v2: FirmwareManifest = FirmwareManifest {
+  entries: [FirmwareEntry { component: "bmc", version: "3.23.00" }],
+  configuration_digests: [],
+}
+
+data subject_after_flash: QualificationSubject = qualification_subject_of(unit_key: unit, assembly: assembly_before, firmware: firmware_v2)
+
 data attempt_one: IntakeAttemptId = "intake-20260829-0001" as IntakeAttemptId
 
 data producer: IntakeProducerIdentity = IntakeProducerIdentity {
@@ -186,6 +195,35 @@ test fn prior_admission_does_not_survive_a_dimm_swap() -> Bool {
       list_length(items: m) == 0 && list_length(items: s) == list_length(items: fleet_admission_required_phases)
     FleetAdmissible { receipt: _ } => false
   }
+}
+
+// REVIEW 57434 CONTROL — the reported currency is the axes that actually moved,
+// never a constant: a firmware-only re-flash reports firmware_changed and NOT
+// assembly_changed; a ledger mixing a pre-swap and a pre-flash receipt reports
+// both. The fabricated `{ assembly_changed: true }` this replaces would fail
+// the first half.
+test fn stale_currency_names_the_axes_that_moved() -> Bool {
+  let flash_only = match derive_fleet_admission(observed_subject: subject_after_flash, receipts: full_ledger(subject: subject_before), now: 1788000002000) {
+    FleetNotAdmissible { missing: _, refused: _, subject_mismatched: _, subject_currency: c } =>
+      match c {
+        SubjectStale { unit_changed: u, assembly_changed: a, firmware_changed: f } => u == false && a == false && f == true
+        SubjectCurrent => false
+      }
+    FleetAdmissible { receipt: _ } => false
+  }
+  let phase_a = Arrival { phase: BootDeliveryEstablish }
+  let phase_b = Arrival { phase: MemoryAuthoritativeQualify }
+  let mixed = [satisfied_receipt(phase: phase_a, subject: subject_before, previous: none), satisfied_receipt(phase: phase_b, subject: subject_after, previous: none)]
+  let both = match derive_fleet_admission(observed_subject: subject_after_flash, receipts: mixed, now: 1788000002000) {
+    FleetNotAdmissible { missing: _, refused: _, subject_mismatched: s, subject_currency: c } =>
+      list_length(items: s) == 2
+        && match c {
+             SubjectStale { unit_changed: u, assembly_changed: a, firmware_changed: f } => u == false && a == true && f == true
+             SubjectCurrent => false
+           }
+    FleetAdmissible { receipt: _ } => false
+  }
+  flash_only && both
 }
 
 // Re-running from a stale attempt after a repair: the phase standing reports

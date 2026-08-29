@@ -106,6 +106,22 @@ type AdmissionFold {
   missing: List<IntakePhase>
   refused: List<PhaseRefusal>
   subject_mismatched: List<IntakePhase>
+  subject_currency: SubjectCurrency
+}
+
+// The union of the axes that moved across every mismatched receipt: a ledger
+// holding one pre-DIMM-swap receipt and one pre-BIOS-flash receipt reports both
+// axes, because both re-qualification scopes are owed. Never a constant.
+fn merge_subject_currency(left: SubjectCurrency, right: SubjectCurrency) -> SubjectCurrency {
+  match left {
+    SubjectCurrent => right
+    SubjectStale { unit_changed: lu, assembly_changed: la, firmware_changed: lf } =>
+      match right {
+        SubjectCurrent => left
+        SubjectStale { unit_changed: ru, assembly_changed: ra, firmware_changed: rf } =>
+          SubjectStale { unit_changed: lu || ru, assembly_changed: la || ra, firmware_changed: lf || rf }
+      }
+  }
 }
 
 // The admission predicate, as a fold over the required roster. The subject
@@ -119,17 +135,17 @@ fn derive_fleet_admission(
 ) -> FleetAdmissionStanding {
   let folded = fold(
     fleet_admission_required_phases,
-    init: AdmissionFold { satisfied: [], missing: [], refused: [], subject_mismatched: [] },
+    init: AdmissionFold { satisfied: [], missing: [], refused: [], subject_mismatched: [], subject_currency: SubjectCurrent },
     f: fn(acc, phase) {
       match phase_standing(phase: phase, subject: observed_subject, receipts: receipts) {
         PhaseSatisfiedByReceipt { receipt: _ } =>
-          AdmissionFold { satisfied: concat(acc.satisfied, [phase]), missing: acc.missing, refused: acc.refused, subject_mismatched: acc.subject_mismatched }
+          AdmissionFold { satisfied: concat(acc.satisfied, [phase]), missing: acc.missing, refused: acc.refused, subject_mismatched: acc.subject_mismatched, subject_currency: acc.subject_currency }
         PhaseRefusedByReceipt { owner: o, cause: c, receipt: _ } =>
-          AdmissionFold { satisfied: acc.satisfied, missing: acc.missing, refused: concat(acc.refused, [PhaseRefusal { phase: phase, owner: o, cause: c }]), subject_mismatched: acc.subject_mismatched }
-        PhaseReceiptSubjectMismatch { receipt: _, currency: _ } =>
-          AdmissionFold { satisfied: acc.satisfied, missing: acc.missing, refused: acc.refused, subject_mismatched: concat(acc.subject_mismatched, [phase]) }
+          AdmissionFold { satisfied: acc.satisfied, missing: acc.missing, refused: concat(acc.refused, [PhaseRefusal { phase: phase, owner: o, cause: c }]), subject_mismatched: acc.subject_mismatched, subject_currency: acc.subject_currency }
+        PhaseReceiptSubjectMismatch { receipt: _, currency: cur } =>
+          AdmissionFold { satisfied: acc.satisfied, missing: acc.missing, refused: acc.refused, subject_mismatched: concat(acc.subject_mismatched, [phase]), subject_currency: merge_subject_currency(left: acc.subject_currency, right: cur) }
         PhaseUnobserved =>
-          AdmissionFold { satisfied: acc.satisfied, missing: concat(acc.missing, [phase]), refused: acc.refused, subject_mismatched: acc.subject_mismatched }
+          AdmissionFold { satisfied: acc.satisfied, missing: concat(acc.missing, [phase]), refused: acc.refused, subject_mismatched: acc.subject_mismatched, subject_currency: acc.subject_currency }
       }
     },
   )
@@ -144,7 +160,7 @@ fn derive_fleet_admission(
       missing: folded.missing,
       refused: folded.refused,
       subject_mismatched: folded.subject_mismatched,
-      subject_currency: if list_length(items: folded.subject_mismatched) == 0 { SubjectCurrent } else { SubjectStale { unit_changed: false, assembly_changed: true, firmware_changed: false } },
+      subject_currency: folded.subject_currency,
     }
   }
 }
