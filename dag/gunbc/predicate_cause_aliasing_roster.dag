@@ -36,7 +36,6 @@ module gunbc.predicate_cause_aliasing_roster
 
 import std.logic { Bool }
 import std.types { String }
-import v2.std.algebra { fold_list }
 import v2.std.collection { List }
 
 type AliasedPredicateSite {
@@ -160,7 +159,10 @@ data class_b_remaining_sites: List<AliasedPredicateSite> = [
 // THIS MODULE HAS A CONSUMER, AND THAT IS NOT A FORMALITY. An unimported carrier is typechecked by no
 // closure and asserted by nothing -- the orphan shape where a module is CITED as an authority while
 // nothing compiles it. A roster of outstanding obligations is exactly the kind of file that rots that
-// way, so it carries its own witness.
+// way, so it has a witness: test.claim.predicate_cause_aliasing_roster_witness_test, the `*_test.dag`
+// sidecar floor discovery requires for `test`-marked decls (v2.workflow.floor_naming_hygiene
+// floor_test_marked_decl_allowed_in_entry). The three test fns lived in this file until 2026-08-29,
+// where the producer refused them and the floor's filename-blind Rust scan ran them anyway.
 //
 // The assertion is deliberately narrow: every row names a module, a symbol and a proposition, and the
 // roster is not empty. It does NOT check that the named sites still alias -- nothing does, which is
@@ -169,18 +171,6 @@ data class_b_remaining_sites: List<AliasedPredicateSite> = [
 // supposed to allow.
 fn aliased_predicate_site_is_named(row: AliasedPredicateSite) -> Bool {
   row.module_path != "" && row.symbol != "" && row.proposition != "" && row.aliased_causes != ""
-}
-
-test fn every_roster_row_names_its_site() -> Bool {
-  fold_list(
-    xs: class_b_remaining_sites,
-    empty: true,
-    cons: fn(ok, row) { ok && aliased_predicate_site_is_named(row: row) }
-  )
-}
-
-test fn the_roster_is_not_empty_while_the_class_is_open() -> Bool {
-  fold_list(xs: class_b_remaining_sites, empty: false, cons: fn(_acc, _row) { true })
 }
 
 
@@ -283,12 +273,4 @@ data bare_false_negative_controls: List<NegativeControlSite> = [
 
 fn negative_control_site_is_named(row: NegativeControlSite) -> Bool {
   row.module_path != "" && row.symbol != ""
-}
-
-test fn every_negative_control_row_names_its_site() -> Bool {
-  fold_list(
-    xs: bare_false_negative_controls,
-    empty: true,
-    cons: fn(ok, row) { ok && negative_control_site_is_named(row: row) }
-  )
 }

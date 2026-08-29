@@ -2261,9 +2261,9 @@ pub(crate) fn parse_module_node_tolerant(
     content: &str,
 ) -> Option<Rc<crate::v1_std_core::Node>> {
     let filename = rel.to_string();
-    let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
-    let source_index =
-        crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
+    // One acquisition, not one per walk -- see `cli_run::pool_acquire`.
+    let tokens = super::pool_acquire::tokens_for(&filename, content);
+    let source_index = super::pool_acquire::newline_index_for(&filename, content);
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), source_index);
     let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
