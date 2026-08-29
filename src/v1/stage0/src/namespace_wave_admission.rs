@@ -367,7 +367,35 @@ pub struct TransitionAdmission {
 /// the shape the paragraph above records for the first 53. Removed by the trigger they were
 /// authored with. The roster is EMPTY and empty is not permissive: a run carrying a real
 /// namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// FOURTH POPULATION, SAME RULE (2026-08-29). Two rows for #9698's `RequiredCiLane` move:
+/// `BuildLane` and `WitnessesLane` moved (not duplicated) from
+/// `gunbc.required_ci_host_verdict_census` to the new `gunbc.required_ci_phase_roster` —
+/// which the census itself named as its next rung — so the census's
+/// `required_ci_host_verdict_rows` now binds those spellings through the roster.
+/// `TargetChanged` firing on a deliberate declaration move is the wall working; these rows
+/// adjudicate exactly those two subjects and nothing else. They go STALE the moment #9698
+/// merges (both sides of every later comparison carry the move) and MUST be removed then,
+/// exactly as the three shrinks above were.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "required-ci lane vocabulary moved to its declared next-rung authority (#9698)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.required_ci_host_verdict_census",
+            in_declaration: "required_ci_host_verdict_rows",
+            spelling: "BuildLane",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "required-ci lane vocabulary moved to its declared next-rung authority (#9698)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.required_ci_host_verdict_census",
+            in_declaration: "required_ci_host_verdict_rows",
+            spelling: "WitnessesLane",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
 /// an instrument failure wearing coverage's clothes.
