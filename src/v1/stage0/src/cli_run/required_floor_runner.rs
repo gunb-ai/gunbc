@@ -3416,12 +3416,30 @@ pub fn run_required_floor(
         .iter()
         .map(|row| (row.identity.clone(), row.disposition.clone()))
         .collect();
-    let cost_debt_standings = partition_cost_debt_roster(
-        &cost_debt_roster,
-        &declared_identity_set,
-        &cost_debt_seen,
-        &cost_debt_disposition_index,
-    );
+    let cost_debt_standings =
+        partition_cost_debt_roster(&cost_debt_roster, &cost_debt_disposition_index);
+    // THE WITHHELD SET AND THE DISPOSITION ROWS MUST NAME THE SAME IDENTITIES, and a disagreement
+    // REFUSES rather than being resolved in either direction. They are two observations of one
+    // act — the build loop's own accounting, and the projection of that same loop — so they agree
+    // by construction or the loop is wrong. An earlier draft of this change consulted the
+    // withheld set as a FIRST classifier and fell back to the disposition, which made two
+    // structures answer one question and would have silently preferred one; that is the §3 defect
+    // this repair exists to close, and rebuilding it inside the repair is the failure mode worth
+    // refusing loudly for.
+    {
+        let (withheld_without_disposition, dispositioned_without_withhold) =
+            reconcile_withheld_against_dispositions(&cost_debt_seen, &cost_debt_disposition_index);
+        if !withheld_without_disposition.is_empty() || !dispositioned_without_withhold.is_empty() {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=CostDebtWithholdDispositionDisagreement — the \
+                 build loop's withheld set and its disposition projection are two observations of \
+                 one act and must name the same identities. withheld with no DeclinedCostDebt \
+                 disposition: [{}]; DeclinedCostDebt disposition with no withhold: [{}]",
+                withheld_without_disposition.join(", "),
+                dispositioned_without_withhold.join(", ")
+            ));
+        }
+    }
     let cost_debt_undeclared: Vec<&str> = cost_debt_standings
         .iter()
         .filter(|(_, s)| *s == CostDebtRosterStanding::Undeclared)
