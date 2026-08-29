@@ -1,4 +1,4 @@
- # Roadmap Launch MVP — Gated Serial Bootstrap
+# Roadmap Launch MVP — Gated Serial Bootstrap
 
 Project ID: RLM
 
@@ -8,7 +8,7 @@ Baseline reviewed: main@5e80671ce4a5fa27ea52da29f36c15c64827785c
 
 Terminal: edit the roadmap, deploy the exact accepted revision, launch one ready task from the daily workspace, observe exactly one worker complete it, verify and publish the result, accept it, and see its child become ready.
 
- ## 1. Terminal acceptance procedure
+## 1. Terminal acceptance procedure
 
 Starting from a clean revision R on main:
 
@@ -29,9 +29,9 @@ Starting from a clean revision R on main:
 
 No substitute terminal counts: a unit test, synthetic fixture, successful deploy alone, manually created branch, or manually edited host does not satisfy this procedure.
 
- ## 2. Current-state ruling
+## 2. Current-state ruling
 
- ### Already usable
+### Already usable
 
 - The daily workspace renders roadmap lifecycle/scheduling and consumes observed attempt activity.
 - The belt has real provider preflight, footprint admission, worktree/attempt/tmux spawn, exact-head verification, confined publication, and durable tick/attempt receipts.
@@ -39,7 +39,7 @@ No substitute terminal counts: a unit test, synthetic fixture, successful deploy
 - Required CI and fleet-desired admission are green on the reviewed baseline; `refs/fleet/desired` equals main at that revision.
 - Fleet convergence has typed plan/apply artifacts, fingerprints, lease/baseline checks, and wet live-deploy/readback machinery.
 
- ### Prevents the MVP today
+### Prevents the MVP today
 
 - **No current exact-revision production receipt.** Repository evidence proves admission to `refs/fleet/desired`, not that srv1 is running the same revision now.
 - **Two conflicting launch authorities.** The periodic belt consumes the ready frontier, but manual dispatch intentionally permits a node-ID override without proving dependency readiness.
@@ -47,15 +47,15 @@ No substitute terminal counts: a unit test, synthetic fixture, successful deploy
 - **No wet end-to-end proof.** There is no single receipt chain covering browser launch → exactly one attempt → exact work → verification → publication → acceptance → child unlock.
 - **Fleet autonomy remains incomplete.** `refs/fleet/desired` advances automatically, but production convergence/dashboard deployment are still explicit workflow-dispatch operations.
 
- ### Explicitly off the critical path
+### Explicitly off the critical path
 
 The compute-fabric / own-CI program is not required for this MVP. It now binds exact required build work, but still has no execution grant → process → result path. The roadmap belt already has a separate production provider/tmux execution path. Do not couple the first roadmap-launch proof to Fabric CI.
 
- ## 3. Serial gate chain
+## 3. Serial gate chain
 
 Only one gate may be mutating at a time. A downstream lane may author inert types, fixtures, and falsifiers, but may not activate production rows, transports, current-state claims, or success constructors before its predecessor's frozen receipt is accepted.
 
- ### RLM-0 — Freeze the terminal and inert canary
+### RLM-0 — Freeze the terminal and inert canary
 
 **Question owned:** What exact observable procedure constitutes success?
 
@@ -87,7 +87,7 @@ A dedicated `.dag` module contains one sentinel value bound to a nonce, initiall
 
 **Stop condition:** Any ambiguity about task bounds, validation identity, or the acceptance event stops the chain.
 
- ### RLM-1 — One shared serial launch admission
+### RLM-1 — One shared serial launch admission
 
 **Question owned:** May this exact cause start this exact node now?
 
@@ -151,7 +151,7 @@ The UI, manual route, and timer all return projections of the same decision iden
 
 **Stop condition:** Any surface independently re-derives eligibility or preserves an unreceipted override.
 
- ### RLM-2 — Exact-revision fleet convergence and launch environment
+### RLM-2 — Exact-revision fleet convergence and launch environment
 
 **Question owned:** Is the production roadmap instance demonstrably capable of executing RLM-1 at the exact accepted revision?
 
@@ -199,7 +199,7 @@ All launch prerequisites are proven against one exact deployed revision, with `M
 
 **Stop condition:** If srv1's exact state cannot be proven, repair fleet/live-deploy authority here; do not bypass the revision gate.
 
- ### RLM-3 — Activate and serve the two-node canary
+### RLM-3 — Activate and serve the two-node canary
 
 **Question owned:** Does the deployed daily workspace project the correct serial frontier before actuation?
 
@@ -228,7 +228,7 @@ All launch prerequisites are proven against one exact deployed revision, with `M
 
 **Frozen join:** served release revision + parent/child authority digests + criteria digest.
 
- ### RLM-4 — One click produces exactly one attempt
+### RLM-4 — One click produces exactly one attempt
 
 **Question owned:** Does an admitted operator action produce one—and only one—durable execution attempt?
 
@@ -261,7 +261,7 @@ The second parent action resolves to the existing attempt. The child resolves to
 
 **Frozen join:** attempt key + base revision + criteria digest + provider identity.
 
- ### RLM-5 — Exact work verifies and publishes
+### RLM-5 — Exact work verifies and publishes
 
 **Question owned:** Did the launched attempt satisfy the exact task, and was that exact result offered through the confined publication boundary?
 
@@ -289,7 +289,7 @@ Allow the provider to complete. The belt may reconcile, verify, and publish in `
 
 **Frozen join:** attempt head + verification receipt + publication receipt.
 
- ### RLM-6 — Acceptance ratchet unlocks the child
+### RLM-6 — Acceptance ratchet unlocks the child
 
 **Question owned:** Does accepted completion, rather than merge or self-report, advance the serial roadmap frontier?
 
@@ -316,7 +316,7 @@ Allow the provider to complete. The belt may reconcile, verify, and publish in `
 
 **Frozen join / terminal:** accepted parent identity + child-ready projection digest + exact deployed revision.
 
- ## 4. Ownership matrix
+## 4. Ownership matrix
 
 | Question | Sole authority / producer | Consumers that may only project it |
 | --- | --- | --- |
@@ -332,7 +332,7 @@ Allow the provider to complete. The belt may reconcile, verify, and publish in `
 
 The manager must always name the producer it read. A renderer, status carrier, branch, PR, or consumer is not the producer of current standing.
 
- ## 5. Manager protocol
+## 5. Manager protocol
 
 1. One manager owns RLM-0 through RLM-6 and is the only authority that opens the next gate.
 2. One mutating worker is active at a time. Parallel workers may only prepare inert schema, synthetic fixtures, or falsifiers behind the current gate.
@@ -345,9 +345,9 @@ The manager must always name the producer it read. A renderer, status carrier, b
 9. The next gate binds the previous gate's immutable revision/digest/receipt, never "latest."
 10. Synthetic/lab evidence may prove models, but only the production instance supplies RLM-2 through RLM-6 terminal receipts.
 
- ## 6. Scope boundary
+## 6. Scope boundary
 
- ### Required for this MVP
+### Required for this MVP
 
 - shared dependency-honest launch admission;
 - explicit `ManualReady` mode;
@@ -360,7 +360,7 @@ The manager must always name the producer it read. A renderer, status carrier, b
 - exact verification and confined publication;
 - explicit acceptance and child unlock.
 
- ### Deferred until after the terminal
+### Deferred until after the terminal
 
 - compute-fabric execution grants and own-CI process execution;
 - event-driven main/desired-ref → automatic production convergence;
@@ -370,7 +370,7 @@ The manager must always name the producer it read. A renderer, status carrier, b
 - multi-provider arbitration or generalized customer execution;
 - blue/green deployment (currently retired by design).
 
- ## 7. Post-MVP fleet continuation
+## 7. Post-MVP fleet continuation
 
 After RLM-6, the smallest honest continuation is:
 
@@ -382,13 +382,13 @@ After RLM-6, the smallest honest continuation is:
 
 Do not fold these into RLM unless the current manual plan/apply path cannot produce the exact RLM-2 receipt. The MVP should first prove the product loop using the existing reviewed actuator, then automate that actuator without changing the product acceptance test.
 
- ## 8. First implementation slice
+## 8. First implementation slice
 
 The first live PR after the inert brief should be RLM-1: shared serial launch admission + `ManualReady`. It is the narrowest change that makes a live canary safe.
 
 It should not add the live canary, change fleet automation, or touch compute fabric. Its sole acceptance is that UI, manual POST, and timer share one launch decision; blocked work cannot be launched through the ordinary path; and production can reconcile completed attempts without autonomously starting new ones.
 
- ## Manager amendment — 2026-08-29 (RLM-0 review ruling)
+## Manager amendment — 2026-08-29 (RLM-0 review ruling)
 
 Recorded by the RLM manager (session tidy-swift-334) on the side-chat REQUEST_CHANGES review 5059303095 of PR #9694; this amendment is the only departure from the controlling artifact above.
 
