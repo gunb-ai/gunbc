@@ -2381,6 +2381,7 @@ pub fn run_required_floor(
             source: view.source.clone(),
         })
         .collect();
+    let discovery_source_count = discovery_sources.len();
     drop(full_inventory);
     let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
     // WARM THE MODULE-PATH INDEX HERE, because otherwise ONE ARBITRARY CLAIM PAYS FOR IT.
@@ -3004,7 +3005,7 @@ pub fn run_required_floor(
          sources={} rows={} entries={}",
         discovery_started.elapsed().as_millis(),
         FLOOR_DISCOVERY_AUTHORITY_MODULE,
-        discovery_sources.len(),
+        discovery_source_count,
         discovery_rows.len(),
         files.len()
     );
