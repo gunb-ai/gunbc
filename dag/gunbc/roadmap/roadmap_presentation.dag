@@ -15,6 +15,12 @@ import gunbc.roadmap_status {
 import gunbc.roadmap_spawner {
   node_is_spawnable, node_is_upcoming, node_is_frontier_done, node_closes_dependency,
 }
+import gunbc.roadmap_launch_admission {
+  LaunchCause, Operator,
+  LaunchHostStanding, LaunchGraphStanding,
+  LaunchAdmission, LaunchAdmitted, LaunchRefused,
+  launch_admission, launch_admission_label, launch_admission_reason,
+}
 import gunbc.roadmap_provider_events {
   provider_execution_activity,
   ProviderEventsRefused,
@@ -98,11 +104,10 @@ type WorkAttemptFacts
 
 data one_progress_authority_note: String = "ActiveAttempt carries the progress projection ALONE (operator blocker 3, 2026-08-01): the first cut also took process and current_activity as separate parameters, which made disagreement writable — a caller could pass a progress whose reconciliation was derived under WorkerProcessRunning while asserting WorkerProcessExited beside it. WorkflowAttemptProgress already carries process (the shared worker_lifecycle evidence) and provider (whose provider_execution_activity IS the canonical current-activity projection), so the seam reads both from the one carrier and the fork is unwritable."
 
-data action_axes_note: String = "Availability and priority are ORTHOGONAL axes (the A1 recon's 'ten equally loud pills' defect): that an operation is legally available establishes nothing about how loudly it renders. Availability is a fact about the admission contract (belt_dispatch_node refuses signoff-Done but not Ready — manual out-of-order dispatch on blocked/unsized rows is a deliberately preserved override, dispatch_button_note); priority is a presentation decision this seam owns. The renderer derives prominence from BOTH: an AvailableAsOverride action renders quiet even though it is fully operable. Availability must never imply visual primacy."
+data action_axes_note: String = "Availability and priority are ORTHOGONAL axes (the A1 recon's 'ten equally loud pills' defect): that an operation is legally available establishes nothing about how loudly it renders. Availability is a fact about the admission contract -- for the dispatch action it is the projection of gunbc.roadmap_launch_admission, the same decision POST /dispatch and the belt tick consume (RLM-1), so the page can never claim a launch the route would refuse; priority is a presentation decision this seam owns. The renderer derives prominence from BOTH, and availability must never imply visual primacy. AvailableAsOverride is GONE: the manual out-of-order dispatch it named (a blocked, unsized, review or done row launchable by click) was a second launch authority beside the belt's, and the plan removes it; any break-glass path is a separate type, endpoint, authorization and receipt, not an availability arm."
 
 type ActionAvailability
   = ActionUnavailable
-  | AvailableAsOverride
   | ActionAvailable
 
 type ActionPriority
@@ -118,6 +123,8 @@ type WorkAction {
   kind: WorkActionKind
   availability: ActionAvailability
   priority: ActionPriority
+  label: String
+  detail: String
 }
 
 type ActionView {
@@ -385,31 +392,57 @@ fn row_disclosure(line: RoadmapItem) -> DisclosureView {
   }
 }
 
-data action_derivation_note: String = "The action derivation, both axes decided here. Availability mirrors the admission contract the page already respects (dispatch renders on every non-done, non-superseded row; a SchedulingReady row is Available, everything else dispatchable is AvailableAsOverride — the preserved manual out-of-order path, dispatch_button_note). Priority: a Ready row's dispatch is the row's PrimaryAction; an override dispatch is SecondaryAction (operable, quiet); clearing a retained session is DiagnosticAction. The renderer derives prominence from priority and NEVER from availability alone. WHAT THIS FN NO LONGER FABRICATES (operator blocker 4, 2026-08-01): the first cut minted an ActionAvailable ClearSessionAction for every active/refused/completed activity — but cleanup admission is an OBSERVED fact the sessions channel owns (cleanup_action / cleanup_allowed / cleanup_detail), and an active attempt does not prove a cleanup operation is currently allowed. The session action therefore arrives only through session_action_view over the observed admission, and this fn derives dispatch alone; a StopAction kind existed in the first cut with no producer and was removed with it."
+data action_derivation_note: String = "The action derivation, both axes decided here. Availability of the dispatch action is the LAUNCH ADMISSION'S verdict for cause Operator and nothing else (RLM-1): LaunchAdmitted renders ActionAvailable + PrimaryAction; LaunchRefused renders ActionUnavailable + SecondaryAction carrying the refusal's wire label and reason, so the row explains itself with the same words the route would answer. Done and superseded lifecycles render no dispatch action at all (the row's remedy is acceptance history, not a launch), as before. WHAT THIS FN NO LONGER DERIVES: any availability from the scheduling position -- SchedulingReady used to be Available and every other open row AvailableAsOverride, which re-derived eligibility from the frontier in the page's own words while the route derived it differently. WHAT THIS FN NO LONGER FABRICATES (operator blocker 4, 2026-08-01): a ClearSessionAction; cleanup admission is an OBSERVED fact the sessions channel owns (session_action_view), and this fn derives dispatch alone."
 
-fn dispatch_action(scheduling: WorkScheduling, lifecycle: WorkLifecycle) -> List<WorkAction> {
+type LaunchRowContext {
+  standing: LaunchHostStanding
+  graph: LaunchGraphStanding
+  merged: List<Int>
+}
+
+fn row_launch_admission(ctx: LaunchRowContext, node_id: String) -> LaunchAdmission {
+  launch_admission(
+    cause: Operator,
+    standing: ctx.standing,
+    graph: ctx.graph,
+    merged: ctx.merged,
+    node_id: node_id,
+    reserved: 0,
+  )
+}
+
+fn dispatch_action(lifecycle: WorkLifecycle, admission: LaunchAdmission) -> List<WorkAction> {
   match lifecycle {
     DoneLifecycle => []
     SupersededLifecycle => []
-    OpenLifecycle =>
-      match scheduling {
-        SchedulingReady =>
-          [ WorkAction { kind: DispatchAction, availability: ActionAvailable, priority: PrimaryAction } ]
-        SchedulingUpcoming { blockers: _ } =>
-          [ WorkAction { kind: DispatchAction, availability: AvailableAsOverride, priority: SecondaryAction } ]
-        SchedulingUnplanned =>
-          [ WorkAction { kind: DispatchAction, availability: AvailableAsOverride, priority: SecondaryAction } ]
-        SchedulingDone =>
-          [ WorkAction { kind: DispatchAction, availability: AvailableAsOverride, priority: SecondaryAction } ]
-        SchedulingSuperseded => []
-      }
-    ReviewLifecycle =>
-      [ WorkAction { kind: DispatchAction, availability: AvailableAsOverride, priority: SecondaryAction } ]
+    OpenLifecycle => [ dispatch_action_of_admission(admission: admission) ]
+    ReviewLifecycle => [ dispatch_action_of_admission(admission: admission) ]
   }
 }
 
-fn action_view(scheduling: WorkScheduling, lifecycle: WorkLifecycle) -> ActionView {
-  let dispatch = dispatch_action(scheduling: scheduling, lifecycle: lifecycle)
+fn dispatch_action_of_admission(admission: LaunchAdmission) -> WorkAction {
+  match admission {
+    LaunchAdmitted { identity: _ } =>
+      WorkAction {
+        kind: DispatchAction,
+        availability: ActionAvailable,
+        priority: PrimaryAction,
+        label: launch_admission_label(a: admission),
+        detail: launch_admission_reason(a: admission),
+      }
+    LaunchRefused { refusal: _ } =>
+      WorkAction {
+        kind: DispatchAction,
+        availability: ActionUnavailable,
+        priority: SecondaryAction,
+        label: launch_admission_label(a: admission),
+        detail: launch_admission_reason(a: admission),
+      }
+  }
+}
+
+fn action_view(lifecycle: WorkLifecycle, admission: LaunchAdmission) -> ActionView {
+  let dispatch = dispatch_action(lifecycle: lifecycle, admission: admission)
   let primary = fold(dispatch, init: none, f: (acc, a) => match a.priority {
     PrimaryAction => Present { value: a }
     SecondaryAction => acc
@@ -624,6 +657,7 @@ fn work_row_view(
   edges: List<RoadmapEdge>,
   merged: List<Int>,
   activity: ActivityView,
+  launch: LaunchRowContext,
 ) -> WorkRowView {
   let lifecycle = work_lifecycle(rn: rn, merged: merged)
   let scheduling = work_scheduling(rn: rn, nodes: nodes, edges: edges)
@@ -635,7 +669,7 @@ fn work_row_view(
     scheduling: scheduling,
     superseded_by: item_superseded_by(item: rn.line),
     activity: activity,
-    action: action_view(scheduling: scheduling, lifecycle: lifecycle),
+    action: action_view(lifecycle: lifecycle, admission: row_launch_admission(ctx: launch, node_id: rn.node as String)),
     supporting_facts: row_supporting_facts(rn: rn),
     disclosure: row_disclosure(line: rn.line),
   }
@@ -733,7 +767,6 @@ fn activity_view_json_value(view: ActivityView) -> JsonValue {
 fn action_availability_key(a: ActionAvailability) -> String {
   match a {
     ActionUnavailable => "unavailable"
-    AvailableAsOverride => "override"
     ActionAvailable => "available"
   }
 }

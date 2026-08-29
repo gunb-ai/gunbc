@@ -28,21 +28,31 @@ import extdeps.languages.json.emit {
   json_kv,
 }
 
-type BeltRunState
-  = Running
-  | Paused
+data spawn_mode_note: String = "RLM-1 (docs/plans/roadmap-launch-mvp-plan.md section 3): the belt's run state and the launch admission's spawn mode were ONE concept, migrated at the root (DESIGN 3 replacement migration) -- BeltRunState = Running | Paused is gone and SpawnMode stands where it stood. Paused: no cause may start work and the reconciler emits nothing. ManualReady (PRODUCTION): the operator may start a Ready node through the shared launch admission; the timer may not start new work, while its reconciliation (teardown of departed members), verification, publication and cleanup continue -- so the reconciler still runs and only the launch admission (gunbc.roadmap_launch_admission launch_gate_cause) withholds the timer's spawns. AutomaticReady: the timer starts Ready nodes up to capacity, the retired default. The production value is roadmap_belt_production_spawn_mode."
+
+type SpawnMode
+  = Paused
+  | ManualReady
+  | AutomaticReady
+
+fn spawn_mode_label(m: SpawnMode) -> String {
+  match m {
+    Paused => "paused"
+    ManualReady => "manual_ready"
+    AutomaticReady => "automatic_ready"
+  }
+}
+
+fn spawn_mode_reconciles(m: SpawnMode) -> Bool {
+  match m {
+    Paused => false
+    ManualReady => true
+    AutomaticReady => true
+  }
+}
 
 type BeltCapacity {
   max_concurrent: Int
-}
-
-type BeltAction
-  = SpawnWorker { node: RoadmapNode }
-  | HoldPaused
-  | AtCapacity { ready_waiting: Int }
-
-fn node_occupied(occupied: List<RoadmapNodeId>, node: RoadmapNode) -> Bool {
-  any(occupied, id => id == node.node)
 }
 
 fn belt_free_slots_int(cap: BeltCapacity, occupied_count: Int) -> Int {
@@ -50,149 +60,11 @@ fn belt_free_slots_int(cap: BeltCapacity, occupied_count: Int) -> Int {
   if free < 0 { 0 } else { free }
 }
 
-fn belt_free_slots(cap: BeltCapacity, occupied: List<RoadmapNodeId>) -> Int {
-  belt_free_slots_int(cap: cap, occupied_count: count(occupied))
-}
-
-fn belt_dispatchable(frontier: SpawnFrontier, occupied: List<RoadmapNodeId>) -> List<RoadmapNode> {
-  frontier.ready |> filter(n => !node_occupied(occupied: occupied, node: n))
-}
-
-fn belt_step(
-  state: BeltRunState,
-  frontier: SpawnFrontier,
-  occupied: List<RoadmapNodeId>,
-  cap: BeltCapacity,
-) -> List<BeltAction> {
-  match state {
-    Paused => [ HoldPaused ]
-    Running => {
-      let free = belt_free_slots(cap: cap, occupied: occupied)
-      let candidates = belt_dispatchable(frontier: frontier, occupied: occupied)
-      if free == 0 {
-        if count(candidates) == 0 { [] } else { [ AtCapacity { ready_waiting: count(candidates) } ] }
-      } else {
-        candidates.take(n: free) |> map(n => SpawnWorker { node: n })
-      }
-    }
-  }
-}
-
-fn belt_action_is_spawn(a: BeltAction) -> Bool {
-  match a {
-    SpawnWorker { node: _ } => true
-    HoldPaused => false
-    AtCapacity { ready_waiting: _ } => false
-  }
-}
-
-fn belt_spawn_count(actions: List<BeltAction>) -> Int {
-  count(actions |> filter(a => belt_action_is_spawn(a: a)))
-}
-
-fn belt_spawns_node(actions: List<BeltAction>, id: RoadmapNodeId) -> Bool {
-  any(actions, a => match a {
-    SpawnWorker { node } => node.node == id
-    HoldPaused => false
-    AtCapacity { ready_waiting: _ } => false
-  })
-}
-
 data roadmap_belt_default_capacity: BeltCapacity = BeltCapacity { max_concurrent: 3 }
 
-data roadmap_belt_default_run_state: BeltRunState = Running
+data roadmap_belt_production_spawn_mode: SpawnMode = ManualReady
 
-fn belt_plan(
-  state: BeltRunState,
-  doc: RoadmapDocument,
-  merged: List<Int>,
-  occupied: List<RoadmapNodeId>,
-  cap: BeltCapacity,
-) -> List<BeltAction> {
-  belt_step(
-    state: state,
-    frontier: spawn_frontier(doc: doc, merged: merged),
-    occupied: occupied,
-    cap: cap,
-  )
-}
-
-fn belt_run_state_label(s: BeltRunState) -> String {
-  match s {
-    Running => "running"
-    Paused => "paused"
-  }
-}
-
-fn belt_would_spawn_ids(actions: List<BeltAction>) -> List<RoadmapNodeId> {
-  fold(actions, init: [], f: fn(acc, a) {
-    match a {
-      SpawnWorker { node } => concat(acc, [node.node])
-      HoldPaused => acc
-      AtCapacity { ready_waiting: _ } => acc
-    }
-  })
-}
-
-fn belt_is_at_capacity(actions: List<BeltAction>) -> Bool {
-  any(actions, a => match a {
-    AtCapacity { ready_waiting: _ } => true
-    SpawnWorker { node: _ } => false
-    HoldPaused => false
-  })
-}
-
-fn belt_at_capacity_backlog(actions: List<BeltAction>) -> Int {
-  fold(actions, init: 0, f: fn(acc, a) {
-    match a {
-      AtCapacity { ready_waiting } => ready_waiting
-      SpawnWorker { node: _ } => acc
-      HoldPaused => acc
-    }
-  })
-}
-
-fn belt_json_value(
-  state: BeltRunState,
-  doc: RoadmapDocument,
-  merged: List<Int>,
-  occupied: List<RoadmapNodeId>,
-  cap: BeltCapacity,
-) -> JsonValue {
-  let frontier = spawn_frontier(doc: doc, merged: merged)
-  let actions = belt_plan(state: state, doc: doc, merged: merged, occupied: occupied, cap: cap)
-  json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "roadmap-belt/v1")),
-    json_kv(key: "run_state", value: json_string(s: belt_run_state_label(s: state))),
-    json_kv(key: "max_concurrent", value: json_int(n: cap.max_concurrent)),
-    json_kv(key: "occupied", value: json_array(elements: occupied |> map(id => json_string(s: id as String)))),
-    json_kv(key: "ready_count", value: json_int(n: count(frontier.ready))),
-    json_kv(key: "would_spawn", value: json_array(elements: belt_would_spawn_ids(actions: actions) |> map(id => json_string(s: id as String)))),
-    json_kv(key: "at_capacity", value: json_bool(b: belt_is_at_capacity(actions: actions))),
-    json_kv(key: "at_capacity_backlog", value: json_int(n: belt_at_capacity_backlog(actions: actions))),
-  ])
-}
-
-fn roadmap_belt_status_json() -> String {
-  match roadmap_authority_projection() {
-    RoadmapAuthorityProjectionRefused { detail: detail } =>
-      serialize_json(v: json_object(members: [
-        json_kv(key: "schema", value: json_string(s: "roadmap-belt/v1")),
-        json_kv(key: "refused", value: json_bool(b: true)),
-        json_kv(key: "detail", value: json_string(s: detail)),
-      ]))
-    RoadmapAuthorityProjected { doc: doc, accepted: _ } =>
-      serialize_json(v: belt_json_value(
-        state: roadmap_belt_default_run_state,
-        doc: doc,
-        merged: authored_merged_prs(),
-        occupied: [],
-        cap: roadmap_belt_default_capacity,
-      ))
-  }
-}
-
-data belt_reconcile_authority_note: String = "R9 session-grain binding: the belt IS gunbc.membership_reconcile at member-type = dispatch Session. Desired = frontier.ready roadmap nodes; observed = dispatch_live_sessions (belt-owned by construction — the gunbc-dispatch- prefix filter + node-id keying, so a foreign tmux session has no node-id key, is not a member, and never enters Removed). Added -> spawn, Removed(owned) -> reap, Unchanged -> noop, Paused -> no actions, capacity caps upserts. This SUBSUMES belt_step (spawn-only, observed hardcoded empty): belt_step is the degenerate slice-1 precursor and retires when the host-effect driver (slice 2b: MemberAdded/MemberChanged -> dispatch_spawn_commands, MemberRemoved -> tmux_kill_session_argv) consumes belt_reconcile as the sole belt decision. The belt is a CONTINUOUS reconciler => SIBLINGS-CONTINUE (product/plan grain: emit doable spawns+reaps, count+surface refusals), NOT the deploy's atomic wholesale-refuse. It reuses the spine UNCHANGED (zero spine edit) — the grain-agnosticism proof (DESIGN §2 Realization / R9)."
+data belt_reconcile_authority_note: String = "R9 session-grain binding: the belt IS gunbc.membership_reconcile at member-type = dispatch Session. Desired = frontier.ready roadmap nodes; observed = dispatch_live_sessions (belt-owned by construction — the gunbc-dispatch- prefix filter + node-id keying, so a foreign tmux session has no node-id key, is not a member, and never enters Removed). Added -> spawn, Removed(owned) -> reap, Unchanged -> noop, Paused -> no actions, capacity caps upserts. This SUBSUMED belt_step (spawn-only, observed hardcoded empty), the degenerate slice-1 precursor; the host-effect driver (belt_tick_for_instance: MemberAdded/MemberChanged -> launch admission -> dispatch_spawn_commands, MemberRemoved -> tmux_kill_session_argv) consumes belt_reconcile as the sole belt decision, and belt_step was DELETED under RLM-1 because a retired planner still selecting frontier.ready is a second eligibility authority (DESIGN 3 delete-first). The belt is a CONTINUOUS reconciler => SIBLINGS-CONTINUE (product/plan grain: emit doable spawns+reaps, count+surface refusals), NOT the deploy's atomic wholesale-refuse. It reuses the spine UNCHANGED (zero spine edit) — the grain-agnosticism proof (DESIGN §2 Realization / R9)."
 
 type DispatchMemberAt = String
 
@@ -292,7 +164,7 @@ fn belt_plan_refusals(plan: MembershipPlan<DispatchMember, DispatchMemberAt>) ->
 }
 
 type BeltReconcile {
-  run_state: BeltRunState,
+  mode: SpawnMode,
   occupied: Int,
   free: Int,
   spawns: List<DispatchMember>,
@@ -304,14 +176,14 @@ type BeltReconcile {
 data belt_deferred_note: String = "deferred = upserts beyond this tick's free capacity. NOT dropped-and-forgotten (absorbing): the deferred nodes stay desired-not-observed, so the next reconcile tick produces their upserts again (idempotent). The count is SURFACED (belt status at_capacity_backlog / would_defer), so a growing backlog is an observable signal, never silent."
 
 fn belt_reconcile(
-  state: BeltRunState,
+  state: SpawnMode,
   frontier: SpawnFrontier,
   live: List<DispatchLiveSession>,
   cap: BeltCapacity,
 ) -> BeltReconcile {
   match state {
     Paused => BeltReconcile {
-      run_state: Paused,
+      mode: Paused,
       occupied: count(live),
       free: 0,
       spawns: [],
@@ -319,14 +191,26 @@ fn belt_reconcile(
       teardowns: [],
       refusals: [],
     }
-    Running => {
+    ManualReady => belt_reconcile_members(mode: state, frontier: frontier, live: live, cap: cap)
+    AutomaticReady => belt_reconcile_members(mode: state, frontier: frontier, live: live, cap: cap)
+  }
+}
+
+data belt_reconcile_members_note: String = "The membership plan runs in BOTH non-paused modes. In ManualReady the upserts it plans are still handed to the tick, which folds each through gunbc.roadmap_launch_admission with cause Timer and receives LaunchCauseNotPermitted -- so the receipt shows what the timer WOULD have started and why it did not (the plan's exit: the timer returns a projection of the one decision), while the teardowns of departed members proceed. Withholding the plan here instead would make ManualReady indistinguishable from Paused on the reconcile axis and stop the reap arm the plan says must continue."
+
+fn belt_reconcile_members(
+  mode: SpawnMode,
+  frontier: SpawnFrontier,
+  live: List<DispatchLiveSession>,
+  cap: BeltCapacity,
+) -> BeltReconcile {
       let plan = belt_membership_plan(frontier: frontier, live: live)
       let ups = belt_plan_upserts(plan: plan)
       let free = belt_free_slots_int(cap: cap, occupied_count: count(live))
       let spawns = ups.take(n: free)
       let deferred = count(ups) - count(spawns)
       BeltReconcile {
-        run_state: Running,
+        mode: mode,
         occupied: count(live),
         free: free,
         spawns: spawns,
@@ -334,8 +218,6 @@ fn belt_reconcile(
         teardowns: belt_plan_teardowns(plan: plan),
         refusals: belt_plan_refusals(plan: plan),
       }
-    }
-  }
 }
 
 fn belt_reconcile_spawn_count(r: BeltReconcile) -> Int { count(r.spawns) }
@@ -363,7 +245,7 @@ fn belt_refusal_ids(as: List<MemberAction<DispatchMember, DispatchMemberAt>>) ->
 }
 
 fn belt_reconcile_json_value(
-  state: BeltRunState,
+  state: SpawnMode,
   frontier: SpawnFrontier,
   live: List<DispatchLiveSession>,
   cap: BeltCapacity,
@@ -371,7 +253,7 @@ fn belt_reconcile_json_value(
   let r = belt_reconcile(state: state, frontier: frontier, live: live, cap: cap)
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: "roadmap-belt-reconcile/v1")),
-    json_kv(key: "run_state", value: json_string(s: belt_run_state_label(s: r.run_state))),
+    json_kv(key: "spawn_mode", value: json_string(s: spawn_mode_label(m: r.mode))),
     json_kv(key: "max_concurrent", value: json_int(n: cap.max_concurrent)),
     json_kv(key: "occupied", value: json_int(n: r.occupied)),
     json_kv(key: "free", value: json_int(n: r.free)),
@@ -384,7 +266,7 @@ fn belt_reconcile_json_value(
 }
 
 fn belt_reconcile_status_json(
-  state: BeltRunState,
+  state: SpawnMode,
   frontier: SpawnFrontier,
   live: List<DispatchLiveSession>,
   cap: BeltCapacity,

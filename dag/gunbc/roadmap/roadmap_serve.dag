@@ -32,7 +32,15 @@ import extdeps.languages.json.emit {
   json_int,
   json_array,
 }
-import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority_observed }
+import gunbc.roadmap_launch_admission {
+  LaunchRefusal,
+  LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
+  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
+  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
+  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
+}
+import gunbc.roadmap_page { roadmap_page_for_authority_launch, roadmap_daily_workspace_page_for_authority_observed }
 import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
   sandbox_client_js_source, sandbox_asset_path,
@@ -53,15 +61,9 @@ import gunbc.roadmap_static_site {
 }
 import gunbc.roadmap_site_surface_render { page_render_refusal_body }
 import gunbc.roadmap_belt_actuate {
-  BeltDispatchResult,
-  DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
-  DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
-  DispatchStaleSession, DispatchSessionLivenessUnobserved,
-  DispatchRevisionDrifted, DispatchRevisionUnobserved,
-  DispatchTransitionInhibited,
-  DispatchSessionMultiplicityConflict,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
+  belt_spawn_outcome_json, belt_launch_host_standing,
   belt_dispatch_node, belt_dispatch_node_for_instance,
-  belt_dispatch_result_json_value,
   belt_dispatch_result_for_label,
   belt_dispatch_all_status_labels,
   BeltObserve, Observed, ObserveRefused,
@@ -258,30 +260,44 @@ fn serve_page_response_with_status(page: Fragment, status: HttpStatus) -> ServeH
 
 data belt_dispatch_status_note: String = "TOTAL per-variant status mapping — every BeltDispatchResult arm has its own row, no lazy 200-or-500 collapse (DESIGN 5; parent review 2026-07-20). Spawned/AlreadyLive = 200 (the click achieved or already holds the desired state — the same idempotent-success fold the CLI's exit map uses); NodeNotFound = 404; AlreadyDone = 409 (the operator's signoff makes the node undisp atchable — a conflict with current state, retryable never); ObserveRefused = 503 (the live session set was unknowable, retry can succeed); SpawnFailed = 502 (actuation behind the server failed; the receipt carries step + detail)."
 
-fn belt_dispatch_status(r: BeltDispatchResult) -> HttpStatus {
+fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
   match r {
-    DispatchSpawned { node_id: _, session_name: _, provider: _ } => 200
-    DispatchAlreadyLive { node_id: _, session_name: _ } => 200
-    DispatchDisabled { node_id: _, instance_id: _, reason: _ } => 403
-    DispatchNodeNotFound { node_id: _ } => 404
-    DispatchNodeAlreadyDone { node_id: _ } => 409
-    DispatchObserveRefused { node_id: _, reason: _ } => 503
-    DispatchAuthorityRefused { node_id: _, detail: _ } => 503
-    DispatchSpawnFailed { node_id: _, step: _, detail: _, provider: _ } => 502
-    DispatchStaleSession { node_id: _, session_name: _, detail: _ } => 409
-    DispatchRevisionDrifted { node_id: _, desired: _, local: _ } => 409
-    DispatchRevisionUnobserved { node_id: _, cause: _ } => 503
-    DispatchTransitionInhibited { node_id: _, reason: _ } => 409
-    DispatchSessionMultiplicityConflict { node_id: _, session_names: _, session_count: _ } => 409
-    DispatchSessionLivenessUnobserved { node_id: _, session_name: _, reason: _ } => 503
+    LaunchAlreadyLive { session_name: _ } => 200
+    LaunchInstanceActuationRefused { instance_id: _, reason: _ } => 403
+    LaunchNodeUnknown => 404
+    LaunchAlreadyAccepted => 409
+    LaunchNodeSuperseded { by: _ } => 409
+    LaunchReviewRequired => 409
+    LaunchSizeMissing => 409
+    LaunchExecutionContractMissing { reason: _ } => 409
+    LaunchDependenciesBlocked { blockers: _ } => 409
+    LaunchNoCapacity { occupied: _, max_concurrent: _ } => 409
+    LaunchCauseNotPermitted { cause: _, mode: _ } => 409
+    LaunchStaleSession { session_name: _, detail: _ } => 409
+    LaunchRevisionDrift { desired: _, local: _ } => 409
+    LaunchTransitionInhibited { reason: _ } => 409
+    LaunchSessionMultiplicityConflict { session_names: _, session_count: _ } => 409
+    LaunchSessionsUnobservable { reason: _ } => 503
+    LaunchAuthorityUnobserved { detail: _ } => 503
+    LaunchRevisionUnobserved { cause: _ } => 503
+    LaunchLivenessUnobserved { session_name: _, reason: _ } => 503
+    LaunchGateNotEvaluated { gate: _ } => 503
   }
 }
 
-fn belt_dispatch_response(r: BeltDispatchResult) -> ServeHttpResponse {
+fn belt_dispatch_status(r: BeltSpawnOutcome) -> HttpStatus {
+  match r {
+    Spawned { node_id: _, session_name: _, provider: _ } => 200
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => 502
+    SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_http_status(r: refusal)
+  }
+}
+
+fn belt_dispatch_response(r: BeltSpawnOutcome) -> ServeHttpResponse {
   serve_text_response(
     status: belt_dispatch_status(r: r),
     content_type: application_json_utf8,
-    body: serialize_json(v: belt_dispatch_result_json_value(r: r)),
+    body: serialize_json(v: belt_spawn_outcome_json(o: r)),
   )
 }
 
@@ -383,7 +399,7 @@ fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
       serve_text_response(
         status: 200,
         content_type: application_json_utf8,
-        body: serialize_json(v: belt_dispatch_result_json_value(r: r)),
+        body: serialize_json(v: belt_spawn_outcome_json(o: r)),
       )
     Absent =>
       serve_text_response(
@@ -408,7 +424,7 @@ fn roadmap_serve_invoke_for_instance(
 ) -> ServeHttpResponse {
   match handler {
     RoadmapDailyPageHandler => serve_daily_page_response_for_instance(instance: instance)
-    RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority())
+    RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority_launch(launch: belt_launch_host_standing(instance: instance)))
     RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body())
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body())
     HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
@@ -509,11 +525,12 @@ data roadmap_serve_host_shell_bounded_drain_receipt_note: String = "HOST-BOUNDAR
 fn serve_daily_page_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
+  let launch = belt_launch_host_standing(instance: instance)
   let page = match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsObserved { attempts } =>
-      roadmap_daily_workspace_page_for_authority_observed(attempts: attempts, attempts_refused: none)
+      roadmap_daily_workspace_page_for_authority_observed(attempts: attempts, attempts_refused: none, launch: launch)
     WorkflowAttemptsRefused { reason } =>
-      roadmap_daily_workspace_page_for_authority_observed(attempts: [], attempts_refused: Present { value: reason })
+      roadmap_daily_workspace_page_for_authority_observed(attempts: [], attempts_refused: Present { value: reason }, launch: launch)
   }
   serve_page_response(page: page)
 }
