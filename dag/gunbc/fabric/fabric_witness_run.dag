@@ -15,7 +15,7 @@ import product.fabric.work {
   ExecutionRequirements, Shape, HardRequirements, CapacityClass, ControlPlaneCapacity,
   CapabilityManifestRef, TrustDomainRef,
   ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
-  work_for, work_identity_material,
+  work_for,
 }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_object_id_content_hash, git_sha1_object_id }
@@ -78,7 +78,6 @@ type RequiredBuildWorkRefusal
 type RequiredBuildWorkBinding
   = RequiredBuildWorkBound {
       work: Work<NonEmptyStr>
-      work_digest: ContentHash
       source_tree_digest: ContentHash
       environment_materialization_digest: ContentHash
     }
@@ -86,7 +85,6 @@ type RequiredBuildWorkBinding
 
 type RequiredBuildFrozenIdentities {
   work_key: WorkKey
-  work_digest: ContentHash
   source_tree_digest: ContentHash
   environment_materialization_digest: ContentHash
 }
@@ -95,28 +93,48 @@ type RequiredBuildFrozenIdentityProjection
   = RequiredBuildFrozenIdentitiesProjected { identities: RequiredBuildFrozenIdentities }
   | RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildWorkRefusal }
 
+// Canonical sequence encoding. Delimiters alone are not an encoding: ["a", "b"] and
+// ["a<delimiter>b"] collapse. Every scalar is length-prefixed and every sequence carries its
+// cardinality, so arbitrary payload code points cannot move a boundary.
+fn framed_string(value: String) -> NonEmptyStr {
+  concat(to_string(value.length()), concat(":", value))
+}
+
 fn non_empty_strings_material(label: NonEmptyStr, values: List<NonEmptyStr>) -> NonEmptyStr? {
   match values {
     Empty {} => none
-    Cons { head: _, tail: _ } => Present { value: concat(label, concat(":", join(values, "\u{1e}"))) }
+    Cons { head: _, tail: _ } => Present {
+      value: fold(
+        values,
+        init: concat(label, concat(":", concat(to_string(values.length()), ":"))),
+        f: fn(acc, value) { concat(acc, framed_string(value: value)) },
+      )
+    }
   }
 }
 
 fn environment_material(entries: List<RequiredBuildEnvironmentEntry>) -> NonEmptyStr? {
   match entries {
     Empty {} => none
-    Cons { head: _, tail: _ } => Present {
-      value: concat("environment:", join(map(entries, e => concat(e.name, concat("=", e.value))), "\u{1e}"))
-    }
+    Cons { head: _, tail: _ } => Present { value: fold(
+      entries,
+      init: concat("environment:", concat(to_string(entries.length()), ":")),
+      f: fn(acc, entry) { concat(acc, concat(framed_string(value: entry.name), framed_string(value: entry.value))) },
+    ) }
   }
 }
 
 fn command_material(command: ArgvCommand) -> NonEmptyStr {
-  concat("argv:", join(argv_words(command: command), "\u{1e}"))
+  let words = argv_words(command: command)
+  fold(
+    words,
+    init: concat("argv:", concat(to_string(words.length()), ":")),
+    f: fn(acc, word) { concat(acc, framed_string(value: word)) },
+  )
 }
 
 fn action_ref_material(action: ActionRef) -> NonEmptyStr {
-  concat(action.owner, concat("/", concat(action.repo, concat("@", action.ref))))
+  concat("action:", concat(framed_string(value: action.owner), concat(framed_string(value: action.repo), framed_string(value: action.ref))))
 }
 
 fn required_build_contract_from_materials(
@@ -132,17 +150,17 @@ fn required_build_contract_from_materials(
   terminal: NonEmptyStr,
 ) -> WorkContract {
   WorkContract {
-    program: concat("gunbc.required-witnesses-build.program:", command),
+    program: concat("gunbc.required-witnesses-build.program:", framed_string(value: command)),
     steps: [
       WorkStep { step_id: "checkout-materialize", resumability: ReceiptSatisfiable },
       WorkStep { step_id: "toolchain-and-executable-materialize", resumability: ReceiptSatisfiable },
       WorkStep { step_id: "required-witnesses-build", resumability: ReceiptSatisfiable },
     ],
-    source: concat("gunbc.required-witnesses-build.source:", concat(source, concat("\u{1f}", checkout))),
-    inputs: concat("gunbc.required-witnesses-build.inputs:", concat(environment, concat("\u{1f}", concat(cache, concat("\u{1f}", credentials))))),
-    runtime_closure: concat("gunbc.required-witnesses-build.runtime:", concat(toolchain, concat("\u{1f}", executable))),
+    source: concat("gunbc.required-witnesses-build.source:", concat(framed_string(value: source), framed_string(value: checkout))),
+    inputs: concat("gunbc.required-witnesses-build.inputs:", concat(framed_string(value: environment), concat(framed_string(value: cache), framed_string(value: credentials)))),
+    runtime_closure: concat("gunbc.required-witnesses-build.runtime:", concat(framed_string(value: toolchain), framed_string(value: executable))),
     effect_contract: "gunbc.required-witnesses-build.effects.checkout-read-cache-and-permitted-credentials-only",
-    output_contract: concat("gunbc.required-witnesses-build.outputs:", concat(outputs, concat("\u{1f}", terminal))),
+    output_contract: concat("gunbc.required-witnesses-build.outputs:", concat(framed_string(value: outputs), framed_string(value: terminal))),
   }
 }
 
@@ -171,16 +189,15 @@ fn bind_required_witnesses_build_work(
                     Present { value: outputs } => match non_empty_strings_material(label: "terminal", values: spec.terminal_result_manifest) {
                       Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "terminal-result-manifest" } }
                       Present { value: terminal } => {
-                        let source = concat("commit:", concat(git_object_id_wire_hex(oid: commit), concat("\u{1f}tree:", concat(git_object_id_wire_hex(oid: verified_tree), concat("\u{1f}verified-by:", verification_receipt)))))
+                        let source = concat("git-source:", concat(framed_string(value: git_object_id_wire_hex(oid: commit)), concat(framed_string(value: git_object_id_wire_hex(oid: verified_tree)), framed_string(value: verification_receipt))))
                         let command = command_material(command: spec.command)
                         let contract = required_build_contract_from_materials(source: source, checkout: checkout, toolchain: toolchain, executable: executable, command: command, environment: environment, cache: cache, credentials: credentials, outputs: outputs, terminal: terminal)
                         let requirements = floor_execution_requirements()
                         let work = work_for(principal: principal, contract: contract, requirements: requirements)
                         RequiredBuildWorkBound {
                           work: work,
-                          work_digest: content_hash_of_value(value: work_identity_material(contract: contract, requirements: requirements)),
                           source_tree_digest: git_object_id_content_hash(oid: verified_tree),
-                          environment_materialization_digest: content_hash_of_value(value: concat(checkout, concat("\u{1f}", concat(toolchain, concat("\u{1f}", concat(executable, concat("\u{1f}", concat(environment, concat("\u{1f}", concat(cache, concat("\u{1f}", credentials))))))))))),
+                          environment_materialization_digest: content_hash_of_value(value: concat("environment-materialization:", concat(framed_string(value: checkout), concat(framed_string(value: toolchain), concat(framed_string(value: executable), concat(framed_string(value: environment), concat(framed_string(value: cache), framed_string(value: credentials)))))))),
                         }
                       }
                     }
@@ -194,46 +211,39 @@ fn bind_required_witnesses_build_work(
   }
 }
 
-// THE POSSESSED WORK FOR THE ONE TARGET LANE. These are full Git identities, not branch names or
-// abbreviated display forms. The checkout, bootstrap, build and run facts mirror the authorities
-// the current Actions realization consumes; this value does not make Actions execute through the
-// fabric. FCI-3 owns that later authority cut.
-fn required_witnesses_build_work() -> RequiredBuildWorkBinding {
-  match git_sha1_object_id(hex: "e9eaa579ed0b6585a48965842b43ee09af5671a1") {
-    Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "source-commit" } }
-    Present { value: commit } => match git_sha1_object_id(hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
-      Absent => RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate: "verified-source-tree" } }
-      Present { value: tree } => bind_required_witnesses_build_work(
-        principal: "gunbc",
-        spec: RequiredBuildExecutionSpec {
-          source: ExactGitSource { commit: commit, verified_tree: tree, verification_receipt: "git-rev-parse-HEAD^{tree}=verified-tree" },
+// THE POSSESSED WORK FOR THE ONE TARGET LANE. Source identity is an input from the PR checkout
+// verifier, never a historical literal transcribed into production. The checkout, bootstrap, build
+// and run facts mirror the authorities the current Actions realization consumes; this value does
+// not make Actions execute through the fabric. FCI-3 owns that later authority cut.
+fn required_witnesses_build_work(source: RequiredBuildSource) -> RequiredBuildWorkBinding {
+  bind_required_witnesses_build_work(
+    principal: "gunbc",
+    spec: RequiredBuildExecutionSpec {
+          source: source,
           checkout_materialization: [action_ref_material(action: checkout_action), "fetch-depth=0", ci_toolchain_home_isolation_script()],
           toolchain_provenance: [action_ref_material(action: setup_rust_action), "rust-toolchain.toml:1.93.0+clippy+rustfmt", ci_pin_rustup_default_script()],
           executable_provenance: [repo_self_build_all_bins_command(), "target/release/claim_executor"],
           command: build_lane_run_command(),
           environment: [
-            RequiredBuildEnvironmentEntry { name: "HOME", value: "derived-from-RUNNER_TEMP/home" },
+            RequiredBuildEnvironmentEntry { name: "HOME", value: "derived-from-RUNNER_TEMP" },
             RequiredBuildEnvironmentEntry { name: "CARGO_HOME", value: "derived-from-RUNNER_TEMP/cargo" },
             RequiredBuildEnvironmentEntry { name: "RUSTUP_HOME", value: "derived-from-RUNNER_TEMP/rustup" },
           ],
-          cache_policy: ["setup-rust-cache=false", "persistent-host-cargo-home", "step-reuse-permitted"],
+          cache_policy: ["setup-rust-cache=false", "delete-and-recreate-RUNNER_TEMP/rustup-and-cargo", "step-reuse-permitted"],
           permitted_credential_refs: ["github.actions.checkout-token"],
           output_manifest: ["required-ci-phase-ledger", "required-build-lane-log"],
           terminal_result_manifest: ["required-ci-exit-status", "required-ci-terminal-summary"],
-        },
-      )
-    }
-  }
+    },
+  )
 }
 
-fn required_witnesses_build_frozen_identities() -> RequiredBuildFrozenIdentityProjection {
-  match required_witnesses_build_work() {
+fn required_witnesses_build_frozen_identities(source: RequiredBuildSource) -> RequiredBuildFrozenIdentityProjection {
+  match required_witnesses_build_work(source: source) {
     RequiredBuildWorkRefused { cause } => RequiredBuildFrozenIdentitiesRefused { cause: cause }
-    RequiredBuildWorkBound { work, work_digest, source_tree_digest, environment_materialization_digest } =>
+    RequiredBuildWorkBound { work, source_tree_digest, environment_materialization_digest } =>
       RequiredBuildFrozenIdentitiesProjected {
         identities: RequiredBuildFrozenIdentities {
           work_key: work.id.key,
-          work_digest: work_digest,
           source_tree_digest: source_tree_digest,
           environment_materialization_digest: environment_materialization_digest,
         }
@@ -243,12 +253,24 @@ fn required_witnesses_build_frozen_identities() -> RequiredBuildFrozenIdentityPr
 
 // The handoff instrument for the next serial gate. It renders only identities, never secret
 // material or environment values; a refused construction stays visibly refused.
-fn required_witnesses_build_frozen_identity_wire() -> String {
-  match required_witnesses_build_frozen_identities() {
+fn required_witnesses_build_frozen_identity_wire(
+  commit_hex: NonEmptyStr,
+  tree_hex: NonEmptyStr,
+  verification_receipt: NonEmptyStr,
+) -> String {
+  let projection = match git_sha1_object_id(hex: commit_hex) {
+    Absent => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "source-commit" } }
+    Present { value: commit } => match git_sha1_object_id(hex: tree_hex) {
+      Absent => RequiredBuildFrozenIdentitiesRefused { cause: RequiredBuildCoordinateMissing { coordinate: "verified-source-tree" } }
+      Present { value: tree } => required_witnesses_build_frozen_identities(
+        source: ExactGitSource { commit: commit, verified_tree: tree, verification_receipt: verification_receipt },
+      )
+    }
+  }
+  match projection {
     RequiredBuildFrozenIdentitiesRefused { cause: _ } => "refused"
     RequiredBuildFrozenIdentitiesProjected { identities } => join([
       concat("work_key=", identities.work_key),
-      concat("work_digest=", serialize_content_hash(hash: identities.work_digest)),
       concat("source_tree_digest=", serialize_content_hash(hash: identities.source_tree_digest)),
       concat("environment_materialization_digest=", serialize_content_hash(hash: identities.environment_materialization_digest)),
     ], "\n")

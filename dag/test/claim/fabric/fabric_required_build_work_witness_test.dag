@@ -1,7 +1,6 @@
 module test.claim.fabric.fabric_required_build_work_witness_test
 
 import std.types { Bool, NonEmptyStr }
-import std.content_hash { serialize_content_hash }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
 import product.fabric.identity { WorkKey }
 import gunbc.fabric_witness_run {
@@ -15,9 +14,12 @@ import gunbc.fabric_witness_run {
 }
 
 test fn production_required_witnesses_build_work_is_possessed() -> Bool {
-  match required_witnesses_build_work() {
-    RequiredBuildWorkBound { work: _, work_digest: _, source_tree_digest: _, environment_materialization_digest: _ } => true
-    RequiredBuildWorkRefused { cause: _ } => false
+  match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+    Absent => false
+    Present { value: source } => match required_witnesses_build_work(source: source) {
+      RequiredBuildWorkBound { work: _, source_tree_digest: _, environment_materialization_digest: _ } => true
+      RequiredBuildWorkRefused { cause: _ } => false
+    }
   }
 }
 
@@ -59,14 +61,7 @@ fn exact_source(tree_hex: NonEmptyStr) -> RequiredBuildSource? {
 fn binding_key(binding: RequiredBuildWorkBinding) -> WorkKey? {
   match binding {
     RequiredBuildWorkRefused { cause: _ } => none
-    RequiredBuildWorkBound { work, work_digest: _, source_tree_digest: _, environment_materialization_digest: _ } => Present { value: work.id.key }
-  }
-}
-
-fn binding_digest(binding: RequiredBuildWorkBinding) -> NonEmptyStr? {
-  match binding {
-    RequiredBuildWorkRefused { cause: _ } => none
-    RequiredBuildWorkBound { work: _, work_digest, source_tree_digest: _, environment_materialization_digest: _ } => Present { value: serialize_content_hash(hash: work_digest) }
+    RequiredBuildWorkBound { work, source_tree_digest: _, environment_materialization_digest: _ } => Present { value: work.id.key }
   }
 }
 
@@ -84,14 +79,12 @@ test fn identical_semantic_inputs_derive_identical_work_identity() -> Bool {
       let left = bound_for(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary")
       let right = bound_for(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary")
       binding_key(binding: left) == binding_key(binding: right)
-        && binding_digest(binding: left) == binding_digest(binding: right)
     }
   }
 }
 
 fn identity_changes(left: RequiredBuildWorkBinding, right: RequiredBuildWorkBinding) -> Bool {
   binding_key(binding: left) != binding_key(binding: right)
-    && binding_digest(binding: left) != binding_digest(binding: right)
 }
 
 test fn one_command_word_changes_work_identity() -> Bool {
@@ -111,6 +104,80 @@ test fn one_environment_entry_changes_work_identity() -> Bool {
       left: bound_for(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary"),
       right: bound_for(source: source, command_mutated: false, environment_value: "1.93.1", toolchain: "rust:1.93.0", output: "required-ci-summary"),
     )
+  }
+}
+
+test fn separator_in_list_value_cannot_collapse_work_identity() -> Bool {
+  match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+    Absent => false
+    Present { value: source } => {
+      let base = fixture_spec(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary")
+      let split = RequiredBuildExecutionSpec {
+        source: base.source,
+        checkout_materialization: ["a", "b"],
+        toolchain_provenance: base.toolchain_provenance,
+        executable_provenance: base.executable_provenance,
+        command: base.command,
+        environment: base.environment,
+        cache_policy: base.cache_policy,
+        permitted_credential_refs: base.permitted_credential_refs,
+        output_manifest: base.output_manifest,
+        terminal_result_manifest: base.terminal_result_manifest,
+      }
+      let joined = RequiredBuildExecutionSpec {
+        source: base.source,
+        checkout_materialization: ["a\u{1e}b"],
+        toolchain_provenance: base.toolchain_provenance,
+        executable_provenance: base.executable_provenance,
+        command: base.command,
+        environment: base.environment,
+        cache_policy: base.cache_policy,
+        permitted_credential_refs: base.permitted_credential_refs,
+        output_manifest: base.output_manifest,
+        terminal_result_manifest: base.terminal_result_manifest,
+      }
+      identity_changes(
+        left: bind_required_witnesses_build_work(principal: "gunbc", spec: split),
+        right: bind_required_witnesses_build_work(principal: "gunbc", spec: joined),
+      )
+    }
+  }
+}
+
+test fn environment_name_value_boundaries_cannot_collapse_work_identity() -> Bool {
+  match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
+    Absent => false
+    Present { value: source } => {
+      let base = fixture_spec(source: source, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary")
+      let value_contains_equals = RequiredBuildExecutionSpec {
+        source: base.source,
+        checkout_materialization: base.checkout_materialization,
+        toolchain_provenance: base.toolchain_provenance,
+        executable_provenance: base.executable_provenance,
+        command: base.command,
+        environment: [RequiredBuildEnvironmentEntry { name: "a", value: "b=c" }],
+        cache_policy: base.cache_policy,
+        permitted_credential_refs: base.permitted_credential_refs,
+        output_manifest: base.output_manifest,
+        terminal_result_manifest: base.terminal_result_manifest,
+      }
+      let name_contains_equals = RequiredBuildExecutionSpec {
+        source: base.source,
+        checkout_materialization: base.checkout_materialization,
+        toolchain_provenance: base.toolchain_provenance,
+        executable_provenance: base.executable_provenance,
+        command: base.command,
+        environment: [RequiredBuildEnvironmentEntry { name: "a=b", value: "c" }],
+        cache_policy: base.cache_policy,
+        permitted_credential_refs: base.permitted_credential_refs,
+        output_manifest: base.output_manifest,
+        terminal_result_manifest: base.terminal_result_manifest,
+      }
+      identity_changes(
+        left: bind_required_witnesses_build_work(principal: "gunbc", spec: value_contains_equals),
+        right: bind_required_witnesses_build_work(principal: "gunbc", spec: name_contains_equals),
+      )
+    }
   }
 }
 
@@ -151,7 +218,7 @@ test fn moving_branch_refuses_before_work_construction() -> Bool {
   match bound_for(source: MovingGitRef { ref_name: "main" }, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary") {
     RequiredBuildWorkRefused { cause: RequiredBuildMovingRefRefused { ref_name: _ } } => true
     RequiredBuildWorkRefused { cause: _ } => false
-    RequiredBuildWorkBound { work: _, work_digest: _, source_tree_digest: _, environment_materialization_digest: _ } => false
+    RequiredBuildWorkBound { work: _, source_tree_digest: _, environment_materialization_digest: _ } => false
   }
 }
 
@@ -159,7 +226,7 @@ test fn working_directory_refuses_before_work_construction() -> Bool {
   match bound_for(source: WorkingDirectorySource { path: "." }, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary") {
     RequiredBuildWorkRefused { cause: RequiredBuildWorkingDirectoryRefused { path: _ } } => true
     RequiredBuildWorkRefused { cause: _ } => false
-    RequiredBuildWorkBound { work: _, work_digest: _, source_tree_digest: _, environment_materialization_digest: _ } => false
+    RequiredBuildWorkBound { work: _, source_tree_digest: _, environment_materialization_digest: _ } => false
   }
 }
 
@@ -183,7 +250,7 @@ test fn missing_required_coordinate_refuses_instead_of_defaulting() -> Bool {
       match bind_required_witnesses_build_work(principal: "gunbc", spec: missing) {
         RequiredBuildWorkRefused { cause: RequiredBuildCoordinateMissing { coordinate } } => coordinate == "toolchain-provenance"
         RequiredBuildWorkRefused { cause: _ } => false
-        RequiredBuildWorkBound { work: _, work_digest: _, source_tree_digest: _, environment_materialization_digest: _ } => false
+        RequiredBuildWorkBound { work: _, source_tree_digest: _, environment_materialization_digest: _ } => false
       }
     }
   }
