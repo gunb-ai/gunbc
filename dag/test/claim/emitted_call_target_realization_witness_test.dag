@@ -95,3 +95,33 @@ test fn w_symbol_lexeme_reaches_its_host_realization_not_its_self_call() -> Bool
     ["crate::v2_std_compilers_lexing::symbol_lexeme("]
   )
 }
+
+// THE SELF-CALL SEAM WALL, AND THIS IS THE ROW THAT MAKES THE CLASS STRUCTURAL RATHER THAN
+// ROSTERED. Adding a self-calling declaration with no target realization used to emit it verbatim:
+// `pub fn f(x) { f(x) }` compiles, and returns to no caller. Nothing reported it -- not the module
+// index, not the compile-clean gate, not cargo check -- which is why the two symbol bridges were
+// invisible until someone read the emitted bytes. The refusal now fires on the STRUCTURE, so a new
+// seam cannot be added silently even if nobody remembers to roster it.
+//
+// The discriminating pair is the declaration itself: pre-wall the emitted module carries
+// `pub fn declared_seam_without_realization`, post-wall it carries the refusal instead.
+test fn w_unrealized_self_call_seam_refuses_instead_of_emitting_recursion() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.unrealized_seam_probe\nimport std.types { String }\nfn declared_seam_without_realization(x: String) -> String { declared_seam_without_realization(x: x) }\nfn probe(x: String) -> String { declared_seam_without_realization(x: x) }\n",
+    "src/test_claim_unrealized_seam_probe.rs",
+    ["has no realization for this target"],
+    ["pub fn declared_seam_without_realization"]
+  )
+}
+
+// ORDINARY RECURSION IS NOT A SEAM, and this is the control that keeps the wall from refusing most
+// of the compiler. The predicate is whole-body identity, not "contains a self-call": a match, an if
+// or a let between the head and the recursive call means the body is not the call.
+test fn w_ordinary_recursion_is_not_read_as_a_host_seam() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.ordinary_recursion_probe\nimport std.types { Int }\nfn countdown(n: Int) -> Int { if n <= 0 { 0 } else { countdown(n: n - 1) } }\n",
+    "src/test_claim_ordinary_recursion_probe.rs",
+    ["pub fn countdown"],
+    ["has no realization for this target"]
+  )
+}
