@@ -6720,7 +6720,9 @@ pub fn parse_optional_from_key(
                                 let value = crate::v1_std_core::make_named_expr_node(
                                     value_mint.identity.clone(),
                                     key.clone(),
-                                    Rc::new(ExprData::NoExprData),
+                                    Rc::new(ExprData::ExprLiteral {
+                                        value: Rc::new(LiteralValue::LitStr { value: key.clone() }),
+                                    }),
                                     Rc::new(vec![]),
                                     None,
                                     token_span(tok2.clone()),
