@@ -516,6 +516,16 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "emit-type-surface-traversal-cost",
+    primary_work: DeclarationRef { module_path: "v1.compiler.infer_emit_info", decl_name: "collect_type_node_import_surface_names", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "collect_value_emit_type_surface_names", field: WholeDeclaration },
+      DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "reference_derived_use_line_plan", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the traversal this record measures stops re-entering shared nodes -- either because synthesised occurrences gain an identity a visited set can key on, or because the use-line seam is derived from the emitted reference set and this producer has no caller -- at which point the document describes history rather than a live cost and deletes with this row. Registered at subject grain: collect_type_node_import_surface_names is the traversal whose amplification these figures partition, collect_value_emit_type_surface_names is the per-expression caller that drives it, and reference_derived_use_line_plan is the consumer whose candidate union decides whether the producer is needed at all; movement in any of the three is what would make these numbers false.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "reconcile-cost-root-cause",
     primary_work: DeclarationRef { module_path: "v1.compiler.infer", decl_name: "typecheck_module", field: WholeDeclaration },
     additional_works: [
