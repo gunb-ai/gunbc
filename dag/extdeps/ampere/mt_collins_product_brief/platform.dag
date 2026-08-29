@@ -2,7 +2,7 @@ module extdeps.ampere.mt_collins_product_brief.platform
 
 import std.types { String, NonEmptyStr, Int }
 import std.nat { Nat }
-import std.measure { MegatransfersPerSecond, megatransfers_per_second, Millimeter, millimeter }
+import std.measure { MegatransfersPerSecond, megatransfers_per_second, Millimeter, millimeter, RackUnit, rack_unit }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.ampere.mt_collins_product_brief.subject { MtCollinsPublicProductBrief, mt_collins_public_product_brief }
 
@@ -76,21 +76,21 @@ type MtCollinsDimensionProvenance
 
 type MtCollinsChassisVariant {
   chassis_part_number: NonEmptyStr
-  rack_units: Nat
+  rack_units: RackUnit
   overall_depth: Millimeter
   depth_provenance: MtCollinsDimensionProvenance
 }
 
 data mt_collins_chassis_2u: MtCollinsChassisVariant = MtCollinsChassisVariant {
   chassis_part_number: "unstated in the public collateral",
-  rack_units: 2,
+  rack_units: rack_unit(count: 2),
   overall_depth: millimeter(count: 847),
   depth_provenance: CitedCollateral,
 }
 
 data mt_collins_chassis_1u: MtCollinsChassisVariant = MtCollinsChassisVariant {
   chassis_part_number: "1A624RA00-600-G",
-  rack_units: 1,
+  rack_units: rack_unit(count: 1),
   overall_depth: millimeter(count: 857),
   depth_provenance: OperatorMeasuredApproximate,
 }

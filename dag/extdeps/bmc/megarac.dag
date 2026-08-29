@@ -13,25 +13,25 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data megarac_subject_note: String = "AMI MEGARAC, THE PROPRIETARY BMC FIRMWARE STACK, sibling of extdeps.bmc.openbmc in the BmcFirmwareFamily dispatch. Unlike OpenBMC there is no public source tree; the interface facts below are grounded in the vendor product page plus execution against a shipping build (Foxconn Mt. Collins, probed 2026-08-29 over the operator's LAN), and each row says which. ODMs ship customized builds, so build-specific rows are scoped to the build they were observed on, never asserted for the family."
+data megarac_scope_note: String = "AMI MEGARAC, THE PROPRIETARY BMC FIRMWARE STACK - subject authority: extdeps.firmware.megarac.subject. SCOPE DISCIPLINE, PER GRAIN: rows in this module answer at the FAMILY grain and each states its basis - a published vendor default, or the guaranteed-across-builds floor. Anything observed on one shipping build only (Redfish absence, firmware revision, service roster) is a BUILD-scoped fact and lives with the build binding (extdeps.ampere.mt_collins_product_brief.bmc for the Foxconn Mt. Collins build), never promoted here. The REST operation rows below are the SP-X interface shape as executed on that build - the one place a single-build execution grounds a family-grain row - and carry that provenance explicitly."
 
-// The factory login OBSERVED on the Foxconn Mt. Collins build, which matches the widely
-// published MegaRAC default. An ODM build may differ; a workflow must treat this as the
-// first credential to TRY, and a refusal as an already-rotated or differently-shipped
-// build, never as an error to force past.
+// The family answer is the PUBLISHED default - which is what FactoryLogin's
+// published_password field means - admin/admin being AMI's widely published MegaRAC
+// default; the Foxconn Mt. Collins build observation (its bmc binding module) is
+// corroboration, not the basis. An ODM build may ship differently; a workflow treats
+// this as the first credential to TRY, and a refusal as an already-rotated or
+// differently-shipped build, never as an error to force past.
 data megarac_factory_login: FactoryLogin = FactoryLogin {
   username: "admin",
   published_password: "admin",
 }
 
-// Protocols observed live on the Mt. Collins build: IPMI v2 lanplus (chassis, sensors,
-// SEL, FRU, SOL, bootdev) and the proprietary HTTPS REST surface below. Redfish is a
-// family capability AMI advertises, but this build serves 404 at /redfish/v1 — so the
-// modeled protocol list carries what execution found, and a Redfish-assuming workflow
-// must probe, not presume.
-data megarac_supported_protocols: List<BmcProtocol> = [Ipmi]
-
-data megarac_no_redfish_on_observed_build_note: NonEmptyStr = "GET /redfish/v1 returns 404 on the Foxconn Mt. Collins build (2026-08-29). Family-level Redfish support is an AMI marketing claim, not an observed fact of this build."
+// The family FLOOR: protocols guaranteed across MegaRAC builds. IPMI v2 lanplus
+// (chassis, sensors, SEL, FRU, SOL, bootdev) is universal to the product line; Redfish
+// is advertised by AMI but shipped per ODM build, so its presence is a BUILD-scoped
+// observation carried on the build's binding module, never asserted or denied here.
+// A Redfish-assuming workflow must read the build row or probe.
+data megarac_supported_protocols_floor: List<BmcProtocol> = [Ipmi]
 
 // ---------------------------------------------------------------------------------------------
 // THE PROPRIETARY REST SURFACE (SP-X style), as executed. Session auth: POST /api/session
