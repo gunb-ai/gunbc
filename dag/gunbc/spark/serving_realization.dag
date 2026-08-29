@@ -477,12 +477,7 @@ type SparkServingPlannedEffect
   = PlannedInstallEffect { install: ServingInstallEffect }
   | PlannedRetirementEffect { retirement: SparkServingRetirementEffect }
 
-fn spark_serving_planned_effect_is_retirement(e: SparkServingPlannedEffect) -> Bool {
-  match e {
-    PlannedInstallEffect { install: _ } => false
-    PlannedRetirementEffect { retirement: _ } => true
-  }
-}
+
 
 // PRESERVED FOR THE ORDERING FOLD, and now a projection rather than an authority. It answers for
 // the DEFAULT actor -- the named serving account -- because effect_requires_escalation needs an

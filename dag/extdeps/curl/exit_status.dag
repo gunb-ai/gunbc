@@ -1,0 +1,23 @@
+module extdeps.curl.exit_status
+
+import std.types { String, Bool, Int, NonEmptyStr }
+
+data curl_exit_status_authority_note: String = "curl(1) EXIT CODES, cited to the upstream manual. Only the codes this repository actually reads are modelled; the list is deliberately not exhaustive, because a code nobody consumes is a row with no consumer."
+
+// EXIT 7 IS THE ONE CODE THAT PROVES NOTHING IS LISTENING, and the distinction is the reason this
+// row exists rather than a nonzero test at the call site. curl(1) documents 7 as "Failed to connect
+// to host" -- the transport-level refusal a dial gets when no process holds the port. Every other
+// nonzero says something else entirely: 6 could not resolve the host, 22 the server answered with an
+// HTTP error, 28 the operation timed out. A caller that reads "nonzero" as "absent" therefore reads
+// a DNS failure, an authentication rejection and a slow network as proof that a service is gone.
+//
+// Cited to curl(1) EXIT CODES, curl 8.x. The version is not pinned here because these two codes are
+// stable across every curl release that has had them and the repository consumes no others; a row
+// that grows to codes whose meaning has moved should carry the version it was read from.
+data curl_exit_failed_to_connect: Int = 7
+
+data curl_exit_ok: Int = 0
+
+fn curl_exit_proves_no_listener(exit_code: Int) -> Bool {
+  exit_code == curl_exit_failed_to_connect
+}

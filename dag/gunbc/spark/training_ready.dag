@@ -1,7 +1,8 @@
 module gunbc.spark.training_ready
 
-import std.types { String, Bool, List, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.measure { ByteSize, byte_size_count }
+import std.algebra { trim }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.cell_role {
   SparkCellRole,
@@ -10,6 +11,9 @@ import gunbc.spark.cell_role {
   spark_cell_role_of,
   spark_cell_role_eq,
 }
+import extdeps.curl.exit_status { curl_exit_failed_to_connect }
+import extdeps.procps.pgrep { pgrep_exit_no_match }
+import extdeps.systemd { systemd_unit_load_state_not_found_wire }
 import gunbc.spark.serving_terminal_health {
   SparkServingProbeCapture,
   ProbeNeverRan,
@@ -50,25 +54,80 @@ type SparkServingRetirementObservation sole_constructor {
   unit: SparkServingAbsence
 }
 
-fn spark_serving_absence_is_established(a: SparkServingAbsence) -> Bool {
+// THE CANONICAL QUERY OVER THE COPRODUCT RETURNS THE REFUSAL, NOT A BOOLEAN.
+//
+// This replaces an `is_established -> Bool` predicate. A Bool discards the half of the answer the
+// caller needs: the readiness gate has to tell an operator WHICH subject refused and why, and with a
+// predicate it was re-authoring a cause string per axis while the absence value was carrying a
+// better one. Returning the refusal makes the carrier answer for itself, and the caller's three
+// per-axis branches collapse into one fold over the three subjects.
+fn spark_serving_absence_refusal(a: SparkServingAbsence) -> NonEmptyStr? {
   match a {
-    ServingAbsent { evidence: _ } => true
-    ServingStillPresent { evidence: _ } => false
-    ServingAbsenceUnobserved { cause: _ } => false
+    ServingAbsent { evidence: _ } => none
+    ServingStillPresent { evidence: e } =>
+      Present { value: join(["still present — ", e as String], "") as NonEmptyStr }
+    ServingAbsenceUnobserved { cause: c } =>
+      Present { value: join(["not observed — ", c as String], "") as NonEmptyStr }
   }
 }
 
-// A CONNECTION-REFUSED CAPTURE IS THE ONE FAILURE THAT PROVES SOMETHING.
+// A NONZERO EXIT IS NOT ABSENCE, AND THIS DECODER SAID IT WAS.
 //
-// ProbeFailed carries an exit code and stderr from a probe that ran and got an answer -- and for a
-// dial against a port with no listener, that answer IS the evidence. ProbeNeverRan carries a cause
-// for a probe that did not execute, which establishes nothing about the host. ProbeAnswered means a
-// server responded, which is the loud arm: the retirement did not happen.
+// The shape this replaces mapped EVERY `ProbeFailed` to `ServingAbsent`, on the reasoning that a
+// dial against a dead port fails. That reasoning is right about one exit code and wrong about all
+// the others, which is the fail-open §5 forbids and is worse here than anywhere: a permission
+// denial, a malformed argv, a DNS failure or an internal error each exits nonzero, and each would
+// have proved a retirement that never happened -- admitting training onto a host with a live server
+// still holding the unified pool. The symptom would be an out-of-memory failure inside a training
+// run, attributed to the recipe.
 //
-// The decoder says only what the capture supports, which is the law the capture type exists to
-// enforce, and it is why this function cannot be collapsed into "non-empty stdout is bad".
+// So absence needs a DISCRIMINATING result, and which result discriminates is a property of the
+// TOOL rather than of this module. The three subjects answer in two different shapes, which is
+// exactly why one rule could not cover them:
+//
+//   - a dial exits 7 and only 7 to mean nothing is listening (curl(1) "Failed to connect to host")
+//   - a process scan exits 1 and only 1 to mean nothing matched (pgrep(1), where 2 and 3 mean the
+//     question was never answered)
+//   - a unit query exits ZERO and answers `not-found` on stdout; systemd's own authority records
+//     that a nonzero there means the MANAGER was unreadable, which is a different refusal
+//
+// The unit axis is the one that proves the old rule could not have been patched with a code: its
+// absence evidence arrives as a successful answer, so "nonzero means gone" was not merely too broad
+// there, it was inverted.
+type SparkServingAbsenceEvidence
+  = AbsenceByExitCode { absent_exit_code: Int, tool: NonEmptyStr }
+  | AbsenceByAnsweredLexeme { absent_lexeme: NonEmptyStr, tool: NonEmptyStr }
+
+fn spark_serving_endpoint_absence_evidence() -> SparkServingAbsenceEvidence {
+  AbsenceByExitCode {
+    absent_exit_code: curl_exit_failed_to_connect,
+    tool: "curl" as NonEmptyStr,
+  }
+}
+
+fn spark_serving_process_absence_evidence() -> SparkServingAbsenceEvidence {
+  AbsenceByExitCode {
+    absent_exit_code: pgrep_exit_no_match,
+    tool: "pgrep" as NonEmptyStr,
+  }
+}
+
+fn spark_serving_unit_absence_evidence() -> SparkServingAbsenceEvidence {
+  AbsenceByAnsweredLexeme {
+    absent_lexeme: systemd_unit_load_state_not_found_wire,
+    tool: "systemctl show --property=LoadState" as NonEmptyStr,
+  }
+}
+
+// A CAST DOES NOT PARSE INSIDE AN `if` CONDITION, so the lexeme comparison is a named function
+// rather than an inline test. The same grammar fact put `host_identity_eq` beside HostIdentity.
+fn spark_serving_answered_lexeme_matches(stdout: String, lexeme: NonEmptyStr) -> Bool {
+  trim(s: stdout) == lexeme as String
+}
+
 fn spark_serving_absence_from_probe(
   subject: NonEmptyStr,
+  evidence: SparkServingAbsenceEvidence,
   capture: SparkServingProbeCapture,
 ) -> SparkServingAbsence {
   match capture {
@@ -76,13 +135,39 @@ fn spark_serving_absence_from_probe(
       ServingAbsenceUnobserved {
         cause: join([subject as String, ": the probe never ran — ", c as String], "") as NonEmptyStr,
       }
-    ProbeAnswered { stdout: out } =>
-      ServingStillPresent {
-        evidence: join([subject as String, ": answered — ", out], "") as NonEmptyStr,
-      }
     ProbeFailed { exit_code: code, stderr: err } =>
-      ServingAbsent {
-        evidence: join([subject as String, ": probe ran and was refused, exit ", to_string(code), " — ", err], "") as NonEmptyStr,
+      match evidence {
+        AbsenceByExitCode { absent_exit_code: absent, tool: t } =>
+          if code == absent {
+            ServingAbsent {
+              evidence: join([subject as String, ": ", t as String, " exited ", to_string(code), ", the status that means nothing is there"], "") as NonEmptyStr,
+            }
+          } else {
+            ServingAbsenceUnobserved {
+              cause: join([subject as String, ": ", t as String, " exited ", to_string(code), ", which is a failure and not an absence — ", err], "") as NonEmptyStr,
+            }
+          }
+        AbsenceByAnsweredLexeme { absent_lexeme: _, tool: t } =>
+          ServingAbsenceUnobserved {
+            cause: join([subject as String, ": ", t as String, " exited ", to_string(code), " — this subject proves absence by ANSWERING, so a nonzero exit means the query itself failed — ", err], "") as NonEmptyStr,
+          }
+      }
+    ProbeAnswered { stdout: out } =>
+      match evidence {
+        AbsenceByExitCode { absent_exit_code: _, tool: t } =>
+          ServingStillPresent {
+            evidence: join([subject as String, ": ", t as String, " succeeded — ", out], "") as NonEmptyStr,
+          }
+        AbsenceByAnsweredLexeme { absent_lexeme: lexeme, tool: t } =>
+          if spark_serving_answered_lexeme_matches(stdout: out, lexeme: lexeme) {
+            ServingAbsent {
+              evidence: join([subject as String, ": ", t as String, " answered ", lexeme as String], "") as NonEmptyStr,
+            }
+          } else {
+            ServingStillPresent {
+              evidence: join([subject as String, ": ", t as String, " answered ", trim(s: out)], "") as NonEmptyStr,
+            }
+          }
       }
   }
 }
@@ -105,9 +190,21 @@ fn spark_serving_retirement_observation_from_probes(
 ) -> SparkServingRetirementObservation {
   SparkServingRetirementObservation {
     host: host,
-    endpoint: spark_serving_absence_from_probe(subject: "endpoint" as NonEmptyStr, capture: endpoint_capture),
-    process: spark_serving_absence_from_probe(subject: "process" as NonEmptyStr, capture: process_capture),
-    unit: spark_serving_absence_from_probe(subject: "unit" as NonEmptyStr, capture: unit_capture),
+    endpoint: spark_serving_absence_from_probe(
+      subject: "endpoint" as NonEmptyStr,
+      evidence: spark_serving_endpoint_absence_evidence(),
+      capture: endpoint_capture,
+    ),
+    process: spark_serving_absence_from_probe(
+      subject: "process" as NonEmptyStr,
+      evidence: spark_serving_process_absence_evidence(),
+      capture: process_capture,
+    ),
+    unit: spark_serving_absence_from_probe(
+      subject: "unit" as NonEmptyStr,
+      evidence: spark_serving_unit_absence_evidence(),
+      capture: unit_capture,
+    ),
   }
 }
 
@@ -194,6 +291,22 @@ type SparkTrainingReadiness
 // EVERY REFUSAL ARM NAMES WHICH SUBJECT REFUSED. A single "not ready" would make the operator's next
 // action a guess between four different mornings: reassign the role, re-run the retirement, re-probe
 // a subject that was never read, or re-measure the pool.
+// THE THREE SUBJECTS FOLD INTO ONE REFUSAL LIST, WHICH IS WHY THE PREDICATE WAS THE WRONG SHAPE.
+//
+// With a Bool per axis the gate needed three near-identical branches, each re-authoring a cause the
+// absence value already carried. Asking each subject for its refusal and collecting them reports
+// EVERY unsatisfied axis at once rather than the first, which is what an operator deciding whether
+// to re-probe or re-run the retirement actually needs.
+fn spark_serving_retirement_refusals(retirement: SparkServingRetirementObservation) -> List<NonEmptyStr> {
+  flat_map(
+    [retirement.endpoint, retirement.process, retirement.unit],
+    a => match spark_serving_absence_refusal(a: a) {
+      Absent => []
+      Present { value: r } => [r]
+    },
+  )
+}
+
 fn spark_training_readiness(
   retirement: SparkServingRetirementObservation,
   pool: SparkUnifiedPoolObservation,
@@ -212,17 +325,12 @@ fn spark_training_readiness(
         SparkTrainingNotReady {
           cause: "spark_training_ready: the pool measurement and the retirement observation name different hosts — a capacity read from one machine cannot admit another" as NonEmptyStr,
         }
-      } else if !spark_serving_absence_is_established(a: retirement.endpoint) {
+      } else if length(spark_serving_retirement_refusals(retirement: retirement)) > 0 {
         SparkTrainingNotReady {
-          cause: "spark_training_ready: the serving endpoint was not positively observed absent" as NonEmptyStr,
-        }
-      } else if !spark_serving_absence_is_established(a: retirement.process) {
-        SparkTrainingNotReady {
-          cause: "spark_training_ready: the serving process was not positively observed absent" as NonEmptyStr,
-        }
-      } else if !spark_serving_absence_is_established(a: retirement.unit) {
-        SparkTrainingNotReady {
-          cause: "spark_training_ready: the serving unit was not positively observed absent" as NonEmptyStr,
+          cause: join([
+            "spark_training_ready: the serving retirement is not terminally observed — ",
+            join(map(spark_serving_retirement_refusals(retirement: retirement), r => r as String), "; "),
+          ], "") as NonEmptyStr,
         }
       } else if !pool.observed_after_retirement {
         SparkTrainingNotReady {

@@ -1,6 +1,6 @@
 module test.claim.spark.spark_training_ready_witness_test
 
-import std.types { String, Bool, List, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.measure { ByteSize, byte_size }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
@@ -22,7 +22,10 @@ import gunbc.spark.training_ready {
   SparkTrainingNotReady,
   spark_training_readiness,
   spark_serving_absence_from_probe,
-  spark_serving_absence_is_established,
+  spark_serving_absence_refusal,
+  SparkServingAbsenceEvidence,
+  spark_serving_endpoint_absence_evidence,
+  spark_serving_unit_absence_evidence,
   spark_serving_retirement_observation_from_probes,
   spark_unified_pool_observation_from_capture,
   SparkUnifiedPoolReading,
@@ -189,21 +192,62 @@ test fn w_a_pool_number_without_a_read_is_refused() -> Bool {
   }
 }
 
-// THE DECODER SAYS ONLY WHAT THE CAPTURE SUPPORTS.
-test fn w_absence_is_decoded_from_the_capture_and_not_from_emptiness() -> Bool {
-  spark_serving_absence_is_established(
-    a: spark_serving_absence_from_probe(
-      subject: "endpoint" as NonEmptyStr,
-      capture: ProbeFailed { exit_code: 7, stderr: "connection refused" },
-    ))
-    && !spark_serving_absence_is_established(
-      a: spark_serving_absence_from_probe(
-        subject: "endpoint" as NonEmptyStr,
-        capture: ProbeNeverRan { cause: "host unreachable" as NonEmptyStr },
-      ))
-    && !spark_serving_absence_is_established(
-      a: spark_serving_absence_from_probe(
-        subject: "endpoint" as NonEmptyStr,
-        capture: ProbeAnswered { stdout: "0.12.11" },
-      ))
+// A NONZERO EXIT IS NOT ABSENCE, AND THIS IS THE CLAIM THE PREVIOUS DECODER FAILED.
+//
+// Its earlier shape mapped every ProbeFailed to ServingAbsent, so a permission denial proved a
+// retirement. Exit 7 is curl's "failed to connect" and is the only status that establishes nothing
+// is listening; 77 (a real curl code, for an unreadable CA bundle) is a failure and must not.
+fn w_absence_established(a: SparkServingAbsence) -> Bool {
+  match spark_serving_absence_refusal(a: a) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn w_endpoint_absence(capture: SparkServingProbeCapture) -> SparkServingAbsence {
+  spark_serving_absence_from_probe(
+    subject: "endpoint" as NonEmptyStr,
+    evidence: spark_serving_endpoint_absence_evidence(),
+    capture: capture,
+  )
+}
+
+test fn w_only_the_documented_no_listener_exit_establishes_endpoint_absence() -> Bool {
+  w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 7, stderr: "connection refused" }))
+    && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 77, stderr: "error setting certificate file" }))
+    && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 6, stderr: "could not resolve host" }))
+    && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 28, stderr: "operation timed out" }))
+}
+
+test fn w_a_probe_that_never_ran_or_answered_never_establishes_endpoint_absence() -> Bool {
+  !w_absence_established(a: w_endpoint_absence(capture: ProbeNeverRan { cause: "host unreachable" as NonEmptyStr }))
+    && !w_absence_established(a: w_endpoint_absence(capture: ProbeAnswered { stdout: "0.12.11" }))
+}
+
+// THE UNIT AXIS PROVES ABSENCE BY ANSWERING, WHICH IS WHY ONE RULE COULD NOT COVER ALL THREE.
+//
+// systemctl show exits ZERO and prints `not-found`; systemd's own authority records that a nonzero
+// there means the MANAGER was unreadable. So on this axis the old "nonzero means gone" rule was not
+// merely too broad, it was inverted -- and this claim is red under it in both directions.
+fn w_unit_absence(capture: SparkServingProbeCapture) -> SparkServingAbsence {
+  spark_serving_absence_from_probe(
+    subject: "unit" as NonEmptyStr,
+    evidence: spark_serving_unit_absence_evidence(),
+    capture: capture,
+  )
+}
+
+test fn w_the_unit_axis_establishes_absence_by_answering_not_by_failing() -> Bool {
+  w_absence_established(a: w_unit_absence(capture: ProbeAnswered { stdout: "not-found" }))
+    && !w_absence_established(a: w_unit_absence(capture: ProbeAnswered { stdout: "loaded" }))
+    && !w_absence_established(a: w_unit_absence(capture: ProbeFailed { exit_code: 1, stderr: "failed to connect to bus" }))
+}
+
+// THE REFUSAL NAMES EVERY UNSATISFIED AXIS, NOT THE FIRST. An operator deciding whether to re-probe
+// or re-run the retirement needs all of them.
+test fn w_the_refusal_carries_a_cause_rather_than_a_bare_negative() -> Bool {
+  match spark_serving_absence_refusal(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 77, stderr: "error setting certificate file" })) {
+    Present { value: c } => length(c as String) > 0
+    Absent => false
+  }
 }
