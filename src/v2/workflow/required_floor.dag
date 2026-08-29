@@ -982,6 +982,7 @@ type FloorPreparationPhase =
     ModulePathIndexBuild
   | SharedModuleIndexBuild
   | BareReferenceEdgeIndexBuild
+  | LanguagesConsumerCensusBuild
 
 // The terminal disposition of ONE shared preparation build. `PreparationWithinLimits` carries
 // its observations too: a phase that reports nothing is indistinguishable from a phase that did
@@ -1028,7 +1029,7 @@ type FloorPreparationOutcome =
 // no ledger at all, which is the harm this limit exists to preempt with a typed, located refusal
 // instead. THE POLICY: no single shared preparation build may consume more than ONE TENTH of that
 // budget. The fraction is the population's own arithmetic rather than a taste: `FloorPreparationPhase`
-// is closed at three members, so even all three at their ceiling leave 70% of the job for the claim
+// is closed at four members, so even all four at their ceiling leave 60% of the job for the claim
 // fold that is the run's actual product.
 //
 // THE CLOCK BASIS IS CPU, AND IT IS CHOSEN BY PURPOSE, never by whichever number read higher

@@ -1,0 +1,14 @@
+module tools.scratch_build_step_emit_dependents
+
+import v2.std.text { String }
+import tools.module_impact_query_front_door { render_reading, dependents_of_module, front_door_nodes }
+
+data scratch_subject: String = "v2.workflow.build_step_emit"
+
+fn dependents_of_build_step_emit_report() -> String {
+  render_reading(
+    subject: scratch_subject,
+    reading: dependents_of_module(module_name: scratch_subject),
+    nodes: front_door_nodes()
+  )
+}
