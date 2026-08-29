@@ -43,6 +43,8 @@ pub use crate::std_magnitude::Magnitude;
 pub use crate::std_measure::millisecond_count;
 pub use crate::std_measure::Millisecond;
 pub use crate::std_nat::Nat;
+pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_serialization::VariantEncoding::*;
 use crate::std_serialization::VariantNaming::*;
 pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, VariantNaming};
@@ -2866,6 +2868,7 @@ pub fn render_rust_alias_rhs_type(
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: crate::v1_std_core::no_span(),
         ident_span: None,
@@ -22490,6 +22493,7 @@ pub fn fill_default_args(
                 let mut __result = Vec::new();
                 for p in missing_with_defaults.iter().cloned() {
                     __result.push(crate::v1_std_core::make_arg_node(
+                        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         Some(crate::v1_std_core::param_node_name_at(
                             p.clone(),
                             scope.type_env.clone().source_indices.clone(),
@@ -22551,6 +22555,7 @@ pub fn fill_op_default_args(
                                 if (crate::v1_std_core::param_node_default_value(p.clone()) != None)
                                 {
                                     Rc::new(vec![crate::v1_std_core::make_arg_node(
+                                        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                         Some(pname.clone()),
                                         crate::v1_std_core::param_node_default_value(p.clone())
                                             .clone()

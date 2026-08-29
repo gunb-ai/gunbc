@@ -182,7 +182,11 @@ fn empty_source_indices() -> Rc<HashMap<String, Rc<NewlineIndex>>> {
 }
 
 fn leaf_node(name: String) -> Rc<Node> {
-    leaf_node_with_span(name, no_span())
+    leaf_node_with_span(
+        Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+        name,
+        no_span(),
+    )
 }
 
 fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
@@ -192,11 +196,17 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     };
     let sp = no_span();
     Rc::new(Node {
+        occurrence_identity: Rc::new(
+            v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        ),
         name: kind_name.clone(),
         ident: None,
         span: sp.clone(),
         ident_span: default_ident_span(kind_name, sp.clone()),
         children: Rc::new(vec![Rc::new(Node {
+            occurrence_identity: Rc::new(
+                v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
             name: param_name.clone(),
             ident: None,
             span: sp.clone(),
@@ -239,12 +249,14 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
         .expect("kernel Map should resolve V from PartialFunction profile");
     let sp = no_span();
     Rc::new(Node {
+        occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "Map".to_string(),
         ident: None,
         span: sp.clone(),
         ident_span: Some(sp.clone()),
         children: Rc::new(vec![
             Rc::new(Node {
+                occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: key_name,
                 ident: None,
                 span: sp.clone(),
@@ -265,6 +277,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
                 expr_data: Rc::new(ExprData::NoExprData),
             }),
             Rc::new(Node {
+                occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: val_name,
                 ident: None,
                 span: sp.clone(),
@@ -319,6 +332,7 @@ fn empty_type_env() -> Rc<TypeEnv> {
         authored_import_names: Rc::new(im::HashMap::new()),
         bindings: Rc::new(im::HashMap::new()),
         str_bindings: Rc::new(im::HashMap::new()),
+        unit_variant_index: Rc::new(im::HashMap::new()),
         ancestry_str_bindings: Rc::new(im::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
@@ -353,6 +367,9 @@ fn empty_infer_scope() -> Rc<InferScope> {
 fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc<Node> {
     let sp = no_span();
     Rc::new(Node {
+        occurrence_identity: Rc::new(
+            v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        ),
         name: name.to_string(),
         ident: None,
         span: sp.clone(),
@@ -376,6 +393,7 @@ fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc
 
 fn variant_arm(name: &str) -> Rc<Node> {
     make_arm_node(
+        Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
         Rc::new(MatchPattern::VariantPattern {
             name: name.to_string(),
             parent_enum: None,
@@ -784,11 +802,17 @@ fn optional_pattern_lookup_resolves_present_variant() {
 fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant() {
     let sp = no_span();
     let inner_present = Rc::new(Node {
+        occurrence_identity: Rc::new(
+            v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        ),
         name: "Present".to_string(),
         ident: None,
         span: sp.clone(),
         ident_span: default_ident_span("Present".to_string(), sp.clone()),
         children: Rc::new(vec![Rc::new(Node {
+            occurrence_identity: Rc::new(
+                v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
             name: "inner".to_string(),
             ident: None,
             span: sp.clone(),
@@ -825,6 +849,9 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let optional_inner_sum = Rc::new(Node {
+        occurrence_identity: Rc::new(
+            v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        ),
         name: "Inner".to_string(),
         ident: None,
         span: sp.clone(),
@@ -904,6 +931,9 @@ fn optional_present_absent_patterns_keep_canonical_names() {
 
 fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: Rc::new(
+            v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        ),
         name: type_name.to_string(),
         ident: None,
         span: no_span(),
@@ -1043,6 +1073,7 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
             authored_import_names: Rc::new(im::HashMap::new()),
             bindings: Rc::new(im::HashMap::new()),
             str_bindings: Rc::new(im::HashMap::new()),
+            unit_variant_index: Rc::new(im::HashMap::new()),
             ancestry_str_bindings: Rc::new(im::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
@@ -1072,6 +1103,7 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
             authored_import_names: Rc::new(im::HashMap::new()),
             bindings: Rc::new(im::HashMap::new()),
             str_bindings: Rc::new(im::HashMap::new()),
+            unit_variant_index: Rc::new(im::HashMap::new()),
             ancestry_str_bindings: Rc::new(im::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
@@ -1101,6 +1133,7 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
             authored_import_names: Rc::new(im::HashMap::new()),
             bindings: Rc::new(im::HashMap::new()),
             str_bindings: Rc::new(im::HashMap::new()),
+            unit_variant_index: Rc::new(im::HashMap::new()),
             ancestry_str_bindings: Rc::new(im::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
@@ -1195,6 +1228,9 @@ fn coproduct_runtime_arm_names_match_on_last_segment_not_type_name_compatible() 
 
 fn resolve_node_uses_node_name_for_lookup() {
     let node_ref = Rc::new(Node {
+        occurrence_identity: Rc::new(
+            v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        ),
         name: "User".to_string(),
         ident: None,
         span: zero_span(),
@@ -1235,6 +1271,7 @@ fn resolve_node_uses_node_name_for_lookup() {
             user_binding.clone(),
         )])),
         str_bindings: Rc::new(im::HashMap::from_iter([("User".to_string(), user_binding)])),
+        unit_variant_index: Rc::new(im::HashMap::new()),
         ancestry_str_bindings: Rc::new(im::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
@@ -1612,7 +1649,11 @@ fn authored_leaf_node(name: &str, text: &str) -> Rc<Node> {
         start,
         end: start + name.chars().count() as i64,
     });
-    leaf_node_with_span(name.to_string(), span)
+    leaf_node_with_span(
+        Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+        name.to_string(),
+        span,
+    )
 }
 
 fn container_spelling_verdict_declared_for_kernel_container() {
@@ -1814,6 +1855,9 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
         end: 0,
     }));
     let typed_child = Rc::new(Node {
+        occurrence_identity: Rc::new(
+            v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        ),
         name: "x".to_string(),
         ident_span: syn_span.clone(),
         inferred: Some(Rc::new(InferredNode::Resolved {
@@ -1823,6 +1867,9 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
         ..(*leaf_node("".to_string())).clone()
     });
     let error_child = Rc::new(Node {
+        occurrence_identity: Rc::new(
+            v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        ),
         name: "y".to_string(),
         ident_span: syn_span.clone(),
         inferred: Some(Rc::new(InferredNode::CompilerError {
@@ -1833,6 +1880,9 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
         ..(*leaf_node("".to_string())).clone()
     });
     let conj_node = Rc::new(Node {
+        occurrence_identity: Rc::new(
+            v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        ),
         name: "Result".to_string(),
         ident_span: syn_span.clone(),
         connective: Connective::Conj,
@@ -1884,6 +1934,9 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
 
     let t_param = leaf_node("T".to_string());
     let value_field = Rc::new(Node {
+        occurrence_identity: Rc::new(
+            v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        ),
         name: "value".to_string(),
         ident: None,
         span: no_span(),
@@ -1906,6 +1959,9 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let box_decl = Rc::new(Node {
+        occurrence_identity: Rc::new(
+            v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+        ),
         name: "Box".to_string(),
         ident: None,
         span: no_span(),
@@ -1939,6 +1995,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
             box_binding.clone(),
         )])),
         str_bindings: Rc::new(im::HashMap::from_iter([("Box".to_string(), box_binding)])),
+        unit_variant_index: Rc::new(im::HashMap::new()),
         ancestry_str_bindings: Rc::new(im::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),

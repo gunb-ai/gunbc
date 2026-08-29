@@ -91,6 +91,29 @@ fn systemctl_stop_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "stop", unit as String]
 }
 
+// MASK IS NOT A STRONGER DISABLE, IT IS A DIFFERENT OPERATION, and systemctl(1) separates them on
+// two axes this repository has a caller for. FIRST, REACH: `disable` removes the enablement
+// symlinks, which is why it does nothing at all to a STATIC unit -- one with no [Install] section,
+// which has no such symlinks to remove -- and why it never prevents `systemctl start` or activation
+// by another unit. `mask` links the unit name to /dev/null, so activation is refused whatever
+// requests it: a timer, a dependency, or a hand at a terminal. SECOND, AND IT IS THE REASON A
+// TEMPORARY QUIESCENCE WANTS MASK RATHER THAN DISABLE: `disable` DESTROYS the enablement state,
+// so restoring it means re-deciding what that state was, and a restore-by-enable would enable a
+// unit that had been deliberately disabled before the quiescence began. `mask` LAYERS over the
+// existing state and `unmask` removes the layer, leaving prior enablement exactly as it was found.
+// So the pair is state-preserving where enable/disable is state-asserting.
+data systemctl_mask_verb: NonEmptyStr = "mask" as NonEmptyStr
+
+data systemctl_unmask_verb: NonEmptyStr = "unmask" as NonEmptyStr
+
+fn systemctl_mask_now_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_mask_verb as String, "--now", unit as String]
+}
+
+fn systemctl_unmask_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", systemctl_unmask_verb as String, unit as String]
+}
+
 fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr) -> List<String> {
   [
     "systemctl",

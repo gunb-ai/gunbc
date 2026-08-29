@@ -368,6 +368,50 @@ data retained_rust_live_tree_migration_stall: GuaranteeStall = GuaranteeStall {
   next_rung_trigger: "live Rust-test discovery and the retained-kernel authority join exactly"
 }
 
+// REQUIRED-FLOOR RUN 32918791246 exposed these four pre-existing facts after the
+// DeclinedLiveTree arm stopped withholding their nine witness identities. None of their carriers
+// is changed by that deletion. They are declared rung drops rather than expected-red enrolments:
+// the witnesses remain ordinary, executing failures until the separately routed repair lands.
+// The work-item identity is part of each next-rung trigger, so ownership survives a squash merge
+// beside the bounded population and the semantic condition that ends the drop.
+
+// THE THREE CITED WORK ITEMS ARE ALREADY status=done AND THEIR CONDITIONS ARE NOT MET, measured
+// 2026-08-28 against the dashboard and against required-floor run 33140608194. adhoc-89fcf94a-bdd,
+// adhoc-3cb769e0-0a6 and adhoc-a3b0e05f-374 all report done, while frontier_cover_of_live_extdeps_tree_holds
+// is one of that run's 47 FAIL rows and a direct count puts 21 live dag/extdeps modules outside the
+// scope frontier's union of scope_carrier_paths, scope_machinery_exempt_paths and the legacy manifest.
+// So the node ids are PROVENANCE for who was asked, never evidence that the climb happened: a closed
+// work item beside an unmet condition is the reported-results-versus-committed-claims gap, and reading
+// "it lands" as satisfied would inflate three classes that are still at the bottom of the ladder.
+// EACH TRIGGER'S OPERATIVE HALF IS THE SEMANTIC CLAUSE AFTER THE COLON, which is what a later reader
+// must re-measure; the rows are authored that way and survive their work items unchanged.
+data external_model_scope_live_cover_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the live external-model scope cover does not cover the extdeps tree",
+  current: OutsideTheLadder,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "test.claim.external_model_scope_live_cover_witness.frontier_cover_of_live_extdeps_tree_holds", tail: Empty {} } },
+  next_rung_trigger: "node://adhoc-89fcf94a-bdd lands: the live extdeps-tree cover is exact and its routed witness returns true"
+}
+
+data observation_heartbeat_lockstep_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the observation heartbeat implementation and its declared cadence are out of lockstep",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "test.claim.observation_lockstep_witness_test.w_heartbeat_period_matches_the_seed_cadence", tail: Cons { head: "test.claim.observation_lockstep_witness_test.w_heartbeat_source_still_refuses_to_fabricate", tail: Empty {} } } },
+  next_rung_trigger: "node://adhoc-3cb769e0-0a6 lands: the heartbeat period is derived from one declared cadence and the source refuses fabricated heartbeat observations"
+}
+
+data operation_argv_binding_wall_stall: GuaranteeStall = GuaranteeStall {
+  subject: "the operation-argv binding wall does not materialize the previously unbindable operation",
+  current: OutsideTheLadder,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "test.claim.operation_argv_binding_wall_witness.operation_argv_previously_unbindable_operation_now_materializes", tail: Empty {} } },
+  next_rung_trigger: "node://adhoc-a3b0e05f-374 lands: the operation-argv binding wall materializes the controlled previously-unbindable operation"
+}
+
 // REQUIRED-FLOOR RUN 32942047138 first executed this ReadsLiveTree carrier after #9284 landed.
 // The direct byte-equality witness and its aggregate both returned false: one underlying fact,
 // namely that the committed .gitattributes no longer equals its emitting authority. This is real

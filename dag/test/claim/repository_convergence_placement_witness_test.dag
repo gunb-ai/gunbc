@@ -151,16 +151,16 @@ fn operands_refused(candidate: String, object_source: String) -> Bool {
   }
 }
 
-// THE OPERANDS COME FROM THE SPEC, WHICH IS THE POINT: repo and primary_path are the deployed tree's
-// own root read from one field, so they cannot disagree, and the base ref is the module's declared
-// authority rather than a caller string. The object source is the only path that comes from outside,
-// and it is the runner checkout -- never the target.
+// THE OPERANDS COME FROM THE SPEC, WHICH IS THE POINT: the repo is the deployed tree's own root
+// read from one field, and the base ref is the module's declared authority rather than a caller
+// string. The object source is the only path that comes from outside, and it is the runner
+// checkout -- never the target. The primary worktree path is no longer among them: #9555 moved
+// that derivation into repository_converge_wet, which reads it from git's own roster.
 test fn the_operands_derive_from_the_deployment_spec() -> Bool {
   match admitted_operands(candidate: fixture_candidate, object_source: fixture_object_source) {
     Absent => false
     Present { value: o } =>
       o.repo == srv1_repo_root()
-        && o.primary_path == srv1_repo_root()
         && o.base_ref == convergence_base_ref
         && o.candidate == fixture_candidate
         && o.remote == fixture_object_source

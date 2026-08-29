@@ -1,5 +1,7 @@
 module v1.compiler.infer_env
 
+import std.occurrence_identity { OccurrenceSynthetic }
+
 import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
@@ -31,12 +33,141 @@ type TypeEnv {
   authored_import_names: Map<String, Bool>
   symbol_index: SymbolIndex
   module_path: String
+  unit_variant_index: Map<String, Map<String, UnitVariantContribution>>
 }
 
 type TypeBinding {
   name: String
   resolved: Node
   provenance: SubValueRelation
+}
+
+// Precomputed phantom-variant relation over the env's VISIBLE bindings (locals shadowing
+// direct parents, one level — the exact set collect_unit_variant_phantom_matches used to
+// re-merge and re-scan per lookup; measured 2026-08-28 at ~66% of the whole-corpus
+// compile.reconcile wall, 92 of 148 stack samples, before this index existed).
+// unit_variant_index inverts that visible set: variant name -> (visible binding name ->
+// that binding's unit variants with this name). The merged visibility map itself is
+// TRANSIENT — built inside build_unit_variant_index and dropped — never stored on the env:
+// a first cut retained it per env and the ~4k retained merged maps moved the OOM earlier
+// instead of later. Shadowing removal is by KEY (the contributing binding's name), never by
+// count decrement, so a replaced binding's contribution cannot leave residue; the shadowed
+// binding an insert displaces is recovered by effective_visible_binding's ordered lookup
+// (locals first, then parents in order — the same precedence the merge implemented).
+// A coproduct declaring the same unit-variant name twice keeps count > 1 and still refuses
+// at lookup exactly as the scan's two appended matches did.
+type UnitVariantContribution {
+  count: Int
+  variant: Node
+}
+
+fn is_unit_variant_node(variant: Node) -> Bool {
+  (variant.children |> count) == 0
+}
+
+fn variant_lookup_structural(ty: Node) -> Node {
+  if ty.connective == NoConnective && ty.inferred != none {
+    match ty.inferred {
+      Present { value: Resolved { node: target } } => target
+      _ => ty
+    }
+  } else { ty }
+}
+
+fn binding_unit_variant_contributions(binding: TypeBinding, source_indices: Map<String, NewlineIndex>) -> Map<String, UnitVariantContribution> {
+  let ty = variant_lookup_structural(ty: binding.resolved)
+  match ty.connective {
+    Disj =>
+      fold(ty.children, init: empty_map(), f: (acc, v) =>
+        if is_unit_variant_node(variant: v) {
+          let vname = authored_name_at(source_indices: source_indices, node: v)
+          match map_get(acc, vname) {
+            Present { value: prev } => map_insert(acc, vname, UnitVariantContribution { count: prev.count + 1, variant: prev.variant })
+            Absent => map_insert(acc, vname, UnitVariantContribution { count: 1, variant: v })
+          }
+        } else { acc }
+      )
+    _ => empty_map()
+  }
+}
+
+fn contributions_without_key(contribs: Map<String, UnitVariantContribution>, key: String) -> Map<String, UnitVariantContribution> {
+  fold(contribs |> map_keys, init: empty_map(), f: (acc, k) =>
+    if k == key { acc }
+    else {
+      match map_get(contribs, k) {
+        Present { value: c } => map_insert(acc, k, c)
+        Absent => acc
+      }
+    }
+  )
+}
+
+fn unit_variant_index_remove_binding(
+  index: Map<String, Map<String, UnitVariantContribution>>,
+  binding: TypeBinding,
+  source_indices: Map<String, NewlineIndex>
+) -> Map<String, Map<String, UnitVariantContribution>> {
+  fold(binding_unit_variant_contributions(binding: binding, source_indices: source_indices) |> map_keys, init: index, f: (acc, vname) =>
+    match map_get(acc, vname) {
+      Present { value: contribs } => map_insert(acc, vname, contributions_without_key(contribs: contribs, key: binding.name))
+      Absent => acc
+    }
+  )
+}
+
+fn unit_variant_index_add_binding(
+  index: Map<String, Map<String, UnitVariantContribution>>,
+  binding: TypeBinding,
+  source_indices: Map<String, NewlineIndex>
+) -> Map<String, Map<String, UnitVariantContribution>> {
+  let contributions = binding_unit_variant_contributions(binding: binding, source_indices: source_indices)
+  fold(contributions |> map_keys, init: index, f: (acc, vname) =>
+    match map_get(contributions, vname) {
+      Present { value: contribution } =>
+        let contribs = match map_get(acc, vname) {
+          Present { value: existing } => existing
+          Absent => empty_map()
+        }
+        map_insert(acc, vname, map_insert(contribs, binding.name, contribution))
+      Absent => acc
+    }
+  )
+}
+
+// The shadowed binding an insert displaces, under the same precedence the per-call merge
+// implemented: locals first, then parents in declaration order (first parent wins).
+fn effective_visible_binding(str_bindings: Map<String, TypeBinding>, parents: List<TypeEnv>, name: String) -> TypeBinding? {
+  match map_get(str_bindings, name) {
+    Present { value: b } => Present { value: b }
+    Absent =>
+      fold(parents, init: none, f: (acc, parent) =>
+        if acc != none { acc }
+        else { map_get(parent.str_bindings, name) }
+      )
+  }
+}
+
+// The one write path: inserting a binding shadows whatever was visible under that name, so
+// the shadowed binding's contribution leaves the index with it.
+fn unit_variant_index_shadow_insert(
+  unit_variant_index: Map<String, Map<String, UnitVariantContribution>>,
+  shadowed: TypeBinding?,
+  binding: TypeBinding,
+  source_indices: Map<String, NewlineIndex>
+) -> Map<String, Map<String, UnitVariantContribution>> {
+  let cleared = match shadowed {
+    Present { value: old } => unit_variant_index_remove_binding(index: unit_variant_index, binding: old, source_indices: source_indices)
+    Absent => unit_variant_index
+  }
+  unit_variant_index_add_binding(index: cleared, binding: binding, source_indices: source_indices)
+}
+
+fn build_unit_variant_index(str_bindings: Map<String, TypeBinding>, parents: List<TypeEnv>, source_indices: Map<String, NewlineIndex>) -> Map<String, Map<String, UnitVariantContribution>> {
+  let visible = fold(parents, init: str_bindings, f: (acc, parent) => map_merge(parent.str_bindings, acc))
+  fold(visible |> map_values, init: empty_map(), f: (acc, binding) =>
+    unit_variant_index_add_binding(index: acc, binding: binding, source_indices: source_indices)
+  )
 }
 
 data global_bare_fallback_invariant: String = "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment under ImportScoped, while NamespaceOnlyY filters to the referencing module's containment chain and routes 0/1/many through module_path_owner_binding_decide. The production flip that removes the corpus fallback is downstream of reference-derived closure. lookup_binding_by_name consults global_bare only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node)."
@@ -102,7 +233,8 @@ fn empty_type_env() -> TypeEnv {
     source_indices: empty_map(),
     intern_table: empty_intern_table(),
     source_visible_names: empty_map(), authored_import_names: empty_map(),
-    symbol_index: empty_symbol_index()
+    symbol_index: empty_symbol_index(),
+    unit_variant_index: empty_map()
   }
 }
 
@@ -725,7 +857,7 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
       } else {
         let qname = concat(mp, ".", name)
         Node {
-          name: qname, span: n.span, ident_span: Present { value: kernel_span(name: qname) },
+          occurrence_identity: OccurrenceSynthetic, name: qname, span: n.span, ident_span: Present { value: kernel_span(name: qname) },
           children: qualified_children, connective: n.connective, params: n.params,
           inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses,
           body: n.body, transport: n.transport, properties: n.properties,
@@ -740,7 +872,7 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
 
 fn node_with_children(n: Node, children: List<Node>) -> Node {
   Node {
-    name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
+    occurrence_identity: OccurrenceSynthetic, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
     children: children, connective: n.connective, params: n.params,
     inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses,
     body: n.body, transport: n.transport, properties: n.properties,
@@ -752,7 +884,7 @@ fn node_with_children(n: Node, children: List<Node>) -> Node {
 
 fn node_with_inferred(n: Node, inferred: InferredNode?) -> Node {
   Node {
-    name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
+    occurrence_identity: OccurrenceSynthetic, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
     children: n.children, connective: n.connective, params: n.params,
     inferred: inferred, return_cardinality: n.return_cardinality, uses: n.uses,
     body: n.body, transport: n.transport, properties: n.properties,
@@ -1068,9 +1200,11 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
   fold(tp_names, init: env, f: (e, tp_name) =>
     let tp_binding = TypeBinding {
       name: tp_name,
-      resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
       provenance: SubValueUnknown
     }
+    let shadowed = effective_visible_binding(str_bindings: e.str_bindings, parents: e.parents, name: tp_name)
+    let updated_index = unit_variant_index_shadow_insert(unit_variant_index: e.unit_variant_index, shadowed: shadowed, binding: tp_binding, source_indices: e.source_indices)
     TypeEnv { module_path: e.module_path,
       bindings: map_insert(e.bindings, intern(table: e.intern_table, s: tp_name).id, tp_binding),
       str_bindings: map_insert(e.str_bindings, tp_name, tp_binding),
@@ -1083,7 +1217,8 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
       intern_table: e.intern_table,
       source_visible_names: map_insert(e.source_visible_names, tp_name, true),
       authored_import_names: e.authored_import_names,
-      symbol_index: e.symbol_index
+      symbol_index: e.symbol_index,
+      unit_variant_index: updated_index
     }
   )
 }

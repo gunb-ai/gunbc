@@ -1,7 +1,16 @@
 module test.claim.fabric_control_plane_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.durable_compare_and_set { CasUnreadableReadRefused, ExpectSlotAbsent }
+import std.durable_compare_and_set {
+  CasUnreadableReadRefused, ExpectSlotAbsent,
+  CasSlotObservation, CasObservedReadable, CasReadablePresent, CasSlotVersion,
+  cas_generation_first,
+}
+import std.content_hash { content_hash_of_value }
+import product.fabric.execution {
+  ReservationRef, LeaseIdentity, Receipt, ReceiptPayload, SettlementReceipt, ExecutionReceipt,
+  ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence,
+}
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
 import extdeps.currency.currency { Usd, Eur, CurrencyCode }
 import std.measure {
@@ -15,6 +24,7 @@ import extdeps.accounting.budget { Appropriation }
 import extdeps.accounting.encumbrance { EncumbranceLedger, ExceedsAppropriation }
 import product.fabric.budget {
   MoneyAccount, MoneyRefusal, CurrencyMismatch, LedgerRefused, StaleLeaseGeneration,
+  MoneyReservationRequest, AccountAdvanced, MoneyRefused, reserve_money, release_money,
 }
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, SelectionCost, selection_liability, bind_candidate, CandidateBound, DispatchInputsNameAnotherOffer,
@@ -34,6 +44,12 @@ import gunbc.fabric_floor_dispatch { floor_demand }
 import gunbc.fabric_control_plane {
   CellReservation, CellReserved, NoCellAdmissible, ReservationLost,
   StoreUnavailable, AttemptRefused, BudgetRefused, reserve_priced_cell,
+  CellSlotState, CellHeld, CellFree, CellSlotDecoded, CellSlotUndecodable,
+  cell_slot_payload, decode_cell_slot_payload,
+  CellHoldEnd, CellHoldEnded, HoldEndBudgetRefused, HoldEndSlotNotHeld,
+  HoldEndLost, HoldEndStoreUnavailable, HoldEndAttemptRefused, end_cell_hold,
+  CellSettlementAdmission, SettlementAdmitted, SettlementReceiptRefused,
+  SettlementReceiptCarriesNoSpend, admit_cell_settlement,
   CellCandidateBinding, CellCandidateBound, OfferExecutorIsNotTheCell,
   fabric_cell_allocation_key, fabric_reservation_payload,
   fabric_control_plane_store_root,
@@ -372,4 +388,359 @@ test fn the_encumbered_liability_is_the_full_selection_cost() -> Bool {
   let refusals = cp_budget_refusal(r: cp_priced(account: cp_account(currency: Usd, ceiling: 999)))
   (refusals |> count) == 1
     && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_ceiling(f: f))
+}
+
+// THE RELEASE HALF. Every row below reaches the store-free part of the release
+// decision, which is most of it: release_reserved_cell takes the slot
+// OBSERVATION as a parameter, so every refusal is decided from a value and only
+// the successful free-write is an effect. That split is what lets the walls be
+// witnessed here at all rather than deferred to the live probe, and it is the
+// same hermetic boundary the reservation half runs into from the other side.
+fn cp_held_slot(reservation: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
+  CasObservedReadable {
+    readable: CasReadablePresent {
+      version: CasSlotVersion {
+        generation: cas_generation_first(),
+        content: content_hash_of_value(value: cp_held_payload(reservation: reservation)),
+        value: cp_held_payload(reservation: reservation),
+      },
+    },
+  }
+}
+
+fn cp_held_payload(reservation: NonEmptyStr) -> NonEmptyStr {
+  cell_slot_payload(state: CellHeld { reservation: reservation as ReservationRef })
+}
+
+fn cp_lease(generation: Int) -> LeaseIdentity {
+  LeaseIdentity {
+    lease_key: "cell-lease-1",
+    resource_fingerprint: content_hash_of_value(value: "srv3-06"),
+    generation: generation,
+  }
+}
+
+// A funded account carrying a real hold at generation 1, so the release has
+// something to release and the fence has something to admit or refuse. Built by
+// RESERVING rather than by authoring a ledger with an entry in it: an authored
+// hold would let these rows pass against a release path that never agreed with
+// the reserve path about what a hold looks like.
+fn cp_held_account(reservation: NonEmptyStr) -> List<MoneyAccount> {
+  match reserve_money(
+    a: cp_account(currency: Usd, ceiling: 1000000),
+    request: MoneyReservationRequest {
+      reference: reservation as ReservationRef,
+      generation: 0,
+      maximum_liability: money_amount_micro(count: 1000),
+      currency: Usd,
+    },
+  ) {
+    AccountAdvanced { account: a } => [a]
+    MoneyRefused { refusal: _ } => []
+  }
+}
+
+fn cp_release(
+  observed: CasSlotObservation<NonEmptyStr>,
+  reservation: NonEmptyStr,
+  lease_generation: Int,
+) -> List<CellHoldEnd> {
+  fold(
+    cp_held_account(reservation: "demand-7|offer-1"),
+    init: [],
+    f: (acc, a) =>
+      acc + [
+        end_cell_hold(
+          root: fabric_control_plane_store_root(),
+          slot_key: "srv3-06",
+          observed: observed,
+          reservation: reservation as ReservationRef,
+          money: release_money(
+            a: a,
+            reference: reservation as ReservationRef,
+            generation: cp_lease(generation: lease_generation).generation,
+            reason: "attempt abandoned before execution",
+            released_at: "2026-08-28T02:00:00Z",
+          ),
+          reason: "attempt abandoned before execution",
+        )
+      ],
+  )
+}
+
+fn cp_release_not_held(r: CellHoldEnd) -> Bool {
+  match r {
+    HoldEndSlotNotHeld { slot_key: _, detail: _ } => true
+    CellHoldEnded { slot_key: _, generation: _, account: _ } => false
+    HoldEndBudgetRefused { slot_key: _, refusal: _ } => false
+    HoldEndLost { slot_key: _ } => false
+    HoldEndStoreUnavailable { slot_key: _, cause: _ } => false
+    HoldEndAttemptRefused { slot_key: _, detail: _ } => false
+  }
+}
+
+fn cp_release_budget_refused(r: CellHoldEnd) -> Bool {
+  match r {
+    HoldEndBudgetRefused { slot_key: _, refusal: _ } => true
+    CellHoldEnded { slot_key: _, generation: _, account: _ } => false
+    HoldEndSlotNotHeld { slot_key: _, detail: _ } => false
+    HoldEndLost { slot_key: _ } => false
+    HoldEndStoreUnavailable { slot_key: _, cause: _ } => false
+    HoldEndAttemptRefused { slot_key: _, detail: _ } => false
+  }
+}
+
+fn cp_all(rs: List<CellHoldEnd>, f: fn(CellHoldEnd) -> Bool) -> Bool {
+  (rs |> count) == 1 && fold(rs, init: false, f: (acc, r) => acc || f(r))
+}
+
+// THE WALL THIS INCREMENT EXISTS FOR: a release must not free a cell held by
+// SOMEONE ELSE. Before the slot carried a typed state, the payload was
+// write-only and this question had no answer -- the release would have gone
+// through on the strength of a generation the CALLER supplied, which is a
+// second account of who holds the cell and free to disagree with the store.
+test fn a_cell_held_by_another_reservation_is_not_released() -> Bool {
+  cp_all(
+    rs: cp_release(
+      observed: cp_held_slot(reservation: "demand-9|offer-4"),
+      reservation: "demand-7|offer-1",
+      lease_generation: 1,
+    ),
+    f: cp_release_not_held,
+  )
+}
+
+// THE POSITIVE CONTROL FOR THAT WALL, and without it the row above is satisfied
+// by a release that refuses every slot. Same observation shape, same lease, and
+// the ONLY difference is that the holder matches -- so this one must NOT answer
+// HoldEndSlotNotHeld. It stops short of a commit because the free-write is a
+// host effect refused under the hermetic envelope, so what it establishes is
+// exactly that the holder comparison admitted it and the decision moved on.
+test fn a_cell_held_by_this_reservation_passes_the_holder_wall() -> Bool {
+  cp_all(
+    rs: cp_release(
+      observed: cp_held_slot(reservation: "demand-7|offer-1"),
+      reservation: "demand-7|offer-1",
+      lease_generation: 1,
+    ),
+    f: fn(r) { !cp_release_not_held(r: r) },
+  )
+}
+
+// AN ALREADY-FREE SLOT IS NOT A NO-OP AND MUST NOT BE TREATED AS ONE. Releasing
+// it a second time would write free over free, and a re-reservation racing that
+// second write would find its precondition broken by the release of a hold it
+// never had.
+test fn an_already_free_slot_has_no_hold_to_release() -> Bool {
+  cp_all(
+    rs: cp_release(
+      observed: CasObservedReadable {
+        readable: CasReadablePresent {
+          version: CasSlotVersion {
+            generation: cas_generation_first(),
+            content: content_hash_of_value(value: cell_slot_payload(state: CellFree { released_by: "earlier release" })),
+            value: cell_slot_payload(state: CellFree { released_by: "earlier release" }),
+          },
+        },
+      },
+      reservation: "demand-7|offer-1",
+      lease_generation: 1,
+    ),
+    f: cp_release_not_held,
+  )
+}
+
+// AN UNREADABLE PAYLOAD REFUSES RATHER THAN BEING READ AS EITHER STATE. "I
+// cannot interpret this slot" is not "the cell is free" and not "the cell is
+// held", and answering either would be the fabricated plausible output.
+test fn a_slot_this_module_cannot_interpret_refuses_the_release() -> Bool {
+  cp_all(
+    rs: cp_release(
+      observed: CasObservedReadable {
+        readable: CasReadablePresent {
+          version: CasSlotVersion {
+            generation: cas_generation_first(),
+            content: content_hash_of_value(value: "demand-7|offer-1"),
+            value: "demand-7|offer-1",
+          },
+        },
+      },
+      reservation: "demand-7|offer-1",
+      lease_generation: 1,
+    ),
+    f: cp_release_not_held,
+  )
+}
+
+// THE FENCE IS PRESENTED, NOT ASSUMED. The hold was taken under lease
+// generation 0; releasing while presenting 1 must refuse at the budget seam. A
+// release that dropped the generation on the floor, or re-derived it from the
+// slot's CAS generation, would pass this row and would let a superseded holder
+// release an encumbrance it no longer owns.
+test fn a_superseded_lease_generation_refuses_at_the_budget_fence() -> Bool {
+  cp_all(
+    rs: cp_release(
+      observed: cp_held_slot(reservation: "demand-7|offer-1"),
+      reservation: "demand-7|offer-1",
+      lease_generation: 7,
+    ),
+    f: cp_release_budget_refused,
+  )
+}
+
+// THE SLOT RENDERING AND ITS DECODE ARE ONE RELATION READ IN BOTH DIRECTIONS,
+// proven by round trip rather than against a golden string. The held case
+// carries a reference containing the separator on purpose: that is what every
+// real reservation reference looks like, since it is itself a demand and an
+// offer joined by that character, and a decode splitting on every occurrence
+// would truncate all of them.
+fn cp_round_trips(state: CellSlotState) -> Bool {
+  match decode_cell_slot_payload(payload: cell_slot_payload(state: state)) {
+    CellSlotUndecodable { detail: _ } => false
+    CellSlotDecoded { state: back } =>
+      (cell_slot_payload(state: back) as String) == (cell_slot_payload(state: state) as String)
+  }
+}
+
+test fn both_slot_states_survive_the_round_trip() -> Bool {
+  cp_round_trips(state: CellHeld { reservation: "demand-7|offer-1" as ReservationRef })
+    && cp_round_trips(state: CellFree { released_by: "attempt abandoned" })
+}
+
+test fn an_untagged_payload_does_not_decode() -> Bool {
+  match decode_cell_slot_payload(payload: "demand-7|offer-1") {
+    CellSlotUndecodable { detail: _ } => true
+    CellSlotDecoded { state: _ } => false
+  }
+}
+
+// SETTLEMENT'S OWN WALLS. The receipt admission is where settlement differs
+// from release, so it is where the rows go: everything downstream of an
+// admitted receipt is the ending vocabulary release already covers, and
+// re-testing it here would be asserting the same fold twice.
+fn cp_grant_lease() -> LeaseIdentity {
+  LeaseIdentity {
+    lease_key: "cell-lease-1",
+    resource_fingerprint: content_hash_of_value(value: "srv3-06"),
+    generation: 1,
+  }
+}
+
+fn cp_grant() -> ExecutionGrant<NonEmptyStr> {
+  ExecutionGrant {
+    id: FabricIdentity { principal: "gunbc", key: "grant-1" },
+    object: FabricGrantObject {
+      offer: cp_offer_id(key: "offer-1"),
+      quote: cp_offer_for(executor: "srv3-06").quote,
+    },
+    context: FabricGrantContext {
+      demand: cp_demand_id(key: "demand-7"),
+      work: FabricIdentity { principal: "gunbc", key: "work-7" },
+      attempt: FabricIdentity { principal: "gunbc", key: "attempt-1" },
+      executor: "srv3-06",
+      lease: cp_grant_lease(),
+      issued_at: "2026-08-28T01:00:00Z",
+      maximum_liability: money_amount_micro(count: 1000),
+    },
+    evidence: FabricGrantEvidence {
+      fungibility_receipt: "gunbc.observation.fungibility-1",
+      offer_authority: "gunbc.observation.offer-1",
+      resource_conservation: "gunbc.observation.resource-1",
+      budget_conservation: "gunbc.observation.budget-1",
+      principal_authority: "gunbc.observation.principal-1",
+    },
+    resource_reservations: [],
+    money_reservation: "demand-7|offer-1" as ReservationRef,
+  }
+}
+
+fn cp_settlement_receipt(payload: ReceiptPayload) -> Receipt<NonEmptyStr> {
+  Receipt {
+    id: FabricIdentity { principal: "gunbc", key: "receipt-1" },
+    attempt: FabricIdentity { principal: "gunbc", key: "attempt-1" },
+    lease: cp_grant_lease(),
+    payload: payload,
+  }
+}
+
+fn cp_spend_payload() -> ReceiptPayload {
+  SettlementReceipt {
+    reservation: "demand-7|offer-1" as ReservationRef,
+    actual_spend: money_amount_micro(count: 400),
+    settled_at: "2026-08-28T02:00:00Z",
+  }
+}
+
+fn cp_admission(r: Receipt<NonEmptyStr>) -> CellSettlementAdmission {
+  admit_cell_settlement(receipt: r, grant: cp_grant())
+}
+
+fn cp_admission_is_admitted(a: CellSettlementAdmission) -> Bool {
+  match a {
+    SettlementAdmitted { reservation: _, actual_spend: _, settled_at: _ } => true
+    SettlementReceiptRefused { admission: _ } => false
+    SettlementReceiptCarriesNoSpend { detail: _ } => false
+  }
+}
+
+fn cp_admission_carries_no_spend(a: CellSettlementAdmission) -> Bool {
+  match a {
+    SettlementReceiptCarriesNoSpend { detail: _ } => true
+    SettlementAdmitted { reservation: _, actual_spend: _, settled_at: _ } => false
+    SettlementReceiptRefused { admission: _ } => false
+  }
+}
+
+fn cp_admission_receipt_refused(a: CellSettlementAdmission) -> Bool {
+  match a {
+    SettlementReceiptRefused { admission: _ } => true
+    SettlementAdmitted { reservation: _, actual_spend: _, settled_at: _ } => false
+    SettlementReceiptCarriesNoSpend { detail: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL, and the two rows below are worth nothing without it: a
+// settlement that refused every receipt would satisfy both of them.
+test fn a_settlement_receipt_for_this_grant_is_admitted() -> Bool {
+  cp_admission_is_admitted(a: cp_admission(r: cp_settlement_receipt(payload: cp_spend_payload())))
+}
+
+// ELAPSED TIME IS NOT A CHARGE. An execution receipt records billable seconds
+// as an OBSERVATION -- the billing rule is the supplier's, and quantum,
+// rounding, minimum charge and caps all sit between seconds and money. A
+// settlement that accepted it would have to invent the missing rule, which is
+// the fabricated plausible output, so the payload is matched rather than
+// trusted.
+test fn an_execution_receipt_cannot_settle_because_it_carries_no_spend() -> Bool {
+  cp_admission_carries_no_spend(
+    a: cp_admission(
+      r: cp_settlement_receipt(
+        payload: ExecutionReceipt {
+          step_id: "step-1",
+          outputs: content_hash_of_value(value: "outputs"),
+          billable: second(count: 60),
+          completed_at: "2026-08-28T02:00:00Z",
+        },
+      ),
+    ),
+  )
+}
+
+// A RECEIPT FROM ANOTHER ATTEMPT IS NOT STALE, IT IS UNRELATED, and the
+// admission keeps that distinction rather than answering a bare no. This row
+// also establishes the refusal is decided BEFORE any money is touched: the
+// account here holds no lease for this reservation at all, so a settlement that
+// reached the budget would refuse on the fence instead and answer a different
+// arm.
+test fn a_receipt_from_another_attempt_is_refused_before_the_budget() -> Bool {
+  cp_admission_receipt_refused(
+    a: cp_admission(
+      r: Receipt {
+        id: FabricIdentity { principal: "gunbc", key: "receipt-1" },
+        attempt: FabricIdentity { principal: "gunbc", key: "attempt-9" },
+        lease: cp_grant_lease(),
+        payload: cp_spend_payload(),
+      },
+    ),
+  )
 }

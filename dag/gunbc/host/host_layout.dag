@@ -137,6 +137,38 @@ fn instance_receipts_dir(instance_root: String) -> String {
   join([instance_root, "/receipts"], "")
 }
 
+// THE PUBLICATION SPOOL, HOMED HERE FOR THE REASON THE TWO ROWS ABOVE ARE: it has two consumers on
+// opposite sides of a PRIVILEGE boundary, so neither may own the name. gunbc.roadmap_belt_actuate
+// writes a request into it as the service principal; the publication helper reads that request and
+// writes an answer as its OWN principal; gunbc.live_deploy.emit creates both directories with the
+// ownership that makes exactly those two verbs possible and no others. Three consumers, one string
+// -- a literal in any of them is the same path in three files, and the failure it produces is a
+// silent one: the writer and the reader simply stop meeting.
+//
+// IT IS DERIVED FROM THE INSTANCE ROOT, never spelled, for the reason instance_receipts_dir is:
+// two slots on one host must not fuse their spools. A request is a statement about ONE instance's
+// attempt, and an answer written into a shared spool would be evidence about an attempt the reader
+// never dispatched.
+//
+// THE REQUEST AND ANSWER DIRECTORIES ARE SEPARATE BECAUSE THEIR PERMISSIONS ARE OPPOSITE, and a
+// single directory could not carry both. The belt must be able to CREATE a request and must not be
+// able to create an answer; the helper must be able to create an answer and must be able to read a
+// request. One directory would have to grant the union, at which point the service principal could
+// forge an answer -- a publication receipt the belt would then copy to the attempt's own address as
+// though GitHub had been asked. The split is what makes that forgery unwritable rather than merely
+// unlikely.
+fn publication_spool_root(instance_root: String) -> String {
+  join([instance_root, "/publication-spool"], "")
+}
+
+fn publication_request_dir(instance_root: String) -> String {
+  join([publication_spool_root(instance_root: instance_root), "/requests"], "")
+}
+
+fn publication_answer_dir(instance_root: String) -> String {
+  join([publication_spool_root(instance_root: instance_root), "/answers"], "")
+}
+
 // srv1 observation (2026-08-13, parent eager-koi-458): directory already briansrls-owned;
 // EACCES was a root-owned STALE FILE from the pre-b1 unit user, not the directory.
 // Publication authority is atomic rename in gunbc.fleet_converge_cli — NOT live_deploy

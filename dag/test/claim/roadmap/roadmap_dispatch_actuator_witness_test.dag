@@ -60,7 +60,6 @@ import gunbc.roadmap_dispatch_actuator {
   fill_dispatch_brief,
   dispatch_brief_fields,
   filled_dispatch_brief_for_node,
-  dispatch_cli_provider,
   CodexDispatchProvider,
   claude_spawn_argv,
   codex_spawn_argv,

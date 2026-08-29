@@ -1859,6 +1859,7 @@ mod parse_only_uppercase_variant_regression_tests {
 
     fn uppercase_var_without_binding() -> Rc<crate::v1_std_core::Node> {
         make_named_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             "SharedArm".to_string(),
             Rc::new(ExprData::ExprVar { binding_kind: None }),
             empty_node_list(),
@@ -1870,6 +1871,7 @@ mod parse_only_uppercase_variant_regression_tests {
 
     fn uppercase_var_with_variant_binding() -> Rc<crate::v1_std_core::Node> {
         make_named_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
             "SharedArm".to_string(),
             Rc::new(ExprData::ExprVar {
                 binding_kind: Some(Rc::new(VarBindingKind::VariantValueBinding {

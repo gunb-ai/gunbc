@@ -10342,6 +10342,7 @@ const CENSUS_HEADS_FN_STAND_IN_NAME: &str = "^census_heads_fn_stand_in";
 
 thread_local! {
     static STRIPPED_FN_BODY_MARKER: Rc<Node> = Rc::new(Node {
+        occurrence_identity: Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: CENSUS_HEADS_FN_STAND_IN_NAME.to_string(),
         span: no_span(),
         ident_span: None,
@@ -33248,7 +33249,12 @@ pub fn shell_transport_operation_declaration(
         let fallback_transport = if let Some(t) = item.transport.as_ref() {
             t.clone()
         } else {
-            crate::v1_std_core::local_transport_node(item.span.clone())
+            crate::v1_std_core::local_transport_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                item.span.clone(),
+            )
         };
         for op in item.children.iter() {
             if op.name != operation {
@@ -33639,7 +33645,12 @@ pub fn extdeps_shape_transport_policy_module_facts(
         let fallback_transport = if let Some(t) = item.transport.as_ref() {
             t.clone()
         } else {
-            crate::v1_std_core::local_transport_node(item.span.clone())
+            crate::v1_std_core::local_transport_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                item.span.clone(),
+            )
         };
         for op in item.children.iter() {
             if op.name.is_empty() {
@@ -34924,11 +34935,19 @@ mod peel_alias_fixpoint_termination {
         std::thread::spawn(move || {
             let span = crate::v1_std_core::kernel_span("PeelFixpointProbe".to_string());
             let elem = crate::v1_std_core::leaf_node_with_span(
+                std::rc::Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
                 "PeelFixpointElem".to_string(),
                 crate::v1_std_core::kernel_span("PeelFixpointElem".to_string()),
             );
-            let base =
-                crate::v1_std_core::leaf_node_with_span("PeelFixpointProbe".to_string(), span);
+            let base = crate::v1_std_core::leaf_node_with_span(
+                std::rc::Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                "PeelFixpointProbe".to_string(),
+                span,
+            );
             let n = std::rc::Rc::new(crate::v1_std_core::Node {
                 children: std::rc::Rc::new(im::vector![elem]),
                 ..(*base).clone()
@@ -35018,6 +35037,9 @@ mod peel_alias_fixpoint_termination {
             // report. Keeping this at zero prevents the typed carrier change
             // from turning ordinary speculative misses into false reds.
             let plain_int = crate::v1_std_core::leaf_node_with_span(
+                std::rc::Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
                 "Int".to_string(),
                 crate::v1_std_core::kernel_span("Int".to_string()),
             );
@@ -35141,6 +35163,9 @@ mod sigs_env_flat_parents {
             name: fn_name.to_string(),
             params: Rc::new(im::vector![]),
             inferred: crate::v1_std_core::leaf_node_with_span(
+                std::rc::Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
                 marker.to_string(),
                 crate::v1_std_core::kernel_span(marker.to_string()),
             ),

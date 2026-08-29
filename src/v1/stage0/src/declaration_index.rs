@@ -1342,9 +1342,30 @@ const FIXTURE_CARRIER_CITATION_EXEMPTIONS: &[(&str, &str, &str, &str, &str)] = &
     ),
     (
         "test.claim.annotation_carrier",
+        "planted_bound_row_ref",
+        "test.fixture.frontier",
+        "planted_bound_trigger",
+        "",
+    ),
+    (
+        "test.claim.annotation_carrier",
+        "planted_rows",
+        "test.fixture.frontier",
+        "planted_subject",
+        "",
+    ),
+    (
+        "test.claim.annotation_carrier",
+        "planted_rows",
+        "test.fixture.frontier",
+        "planted_unbound_subject",
+        "",
+    ),
+    (
+        "test.claim.annotation_carrier",
         "frontier_expiry_fired_trigger_absent_from_rows_is_clean",
-        "extdeps.network.mac",
-        "already_deleted_frontier_unit",
+        "test.fixture.frontier",
+        "never_a_trigger_here",
         "",
     ),
     (

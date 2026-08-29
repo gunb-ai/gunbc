@@ -90,6 +90,7 @@ pub(crate) fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
         census_heads_children(&item.children)
     };
     Rc::new(Node {
+        occurrence_identity: item.occurrence_identity.clone(),
         name: item.name.clone(),
         span: item.span.clone(),
         ident_span: item.ident_span.clone(),
@@ -113,6 +114,7 @@ pub(crate) fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
 
 pub(crate) fn census_heads_module_node(module: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        occurrence_identity: module.occurrence_identity.clone(),
         name: module.name.clone(),
         span: module.span.clone(),
         ident_span: module.ident_span.clone(),

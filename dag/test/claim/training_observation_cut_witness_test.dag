@@ -24,7 +24,7 @@ import product.training.resolution {
   TrainingRunDesired, TrainingRunDesiredAdmitted, TrainingRunDesiredRefused,
   resolve_training, training_work_for, admit_training_run_desired,
 }
-import product.fabric.work { ExecutionRequirements, Shape, HardRequirements }
+import product.fabric.work { ExecutionRequirements, Shape, HardRequirements, CustomerExecutableCapacity }
 import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.envelope { ResourceEnvelope }
 import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement }
@@ -56,6 +56,7 @@ fn dp(n: Nat) -> DropoutPermille? {
 }
 
 data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
+  capacity_class: CustomerExecutableCapacity,
   shape: Shape {
     hard: HardRequirements { threads: hardware_thread_count(count: 8) },
     envelope: ResourceEnvelope { cpu: none, gpu: none, memory: none, storage: none, network: none },

@@ -37,6 +37,7 @@ import v1.compiler.parse {
   ParseResult,
 }
 import std.occurrence_identity {
+  OccurrenceSynthetic,
   OccurrenceIdAllocator,
   OccurrenceIndex,
   OccurrenceTransport,

@@ -2,6 +2,7 @@ module extdeps.shell
 
 import std.types { FilePath, NonEmptyStr, Secret, String, List }
 import extdeps.external_authority { ExternalAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -17,6 +18,18 @@ data files_by_name_sorted_positional_note: String = "shell.Find.FilesByNameSorte
 
 
 data socket_inode_holder_bracket_note: String = "WHY THE PATTERN SPELLS THE BRACKETS AS `?` RATHER THAN ESCAPING THEM. A /proc fd symlink for a socket reads `socket:[N]`, and find's -lname argument is a GLOB, in which `[...]` is a character class -- so the obvious `-lname \"socket:[N]\"` silently matches nothing at all, which is the worst possible failure for a probe whose empty result is load-bearing evidence (it is exactly the clause that licenses unlinking a stale socket). Escaping the brackets works but puts backslashes through two layers of quoting; `?` matches the one literal bracket character in each position and is length-anchored, so `socket:?N?` matches `socket:[N]` and cannot match a different inode. Confirmed by execution 2026-08-21 against a live listening socket, WITH the negative control that a non-existent inode returns empty -- a probe whose only observed state is `found nothing` proves nothing, so the pair is the measurement."
+
+// A PIPELINE REPORTS ITS LAST STAGE'S STATUS.
+//
+// `find ... | sort` answered for `sort` and never for `find`, so a find that failed -- an
+// unreadable directory, a path that does not exist -- was reported as EXIT 0 WITH EMPTY OUTPUT.
+// An empty listing and a failed walk became the same observation, which is DESIGN section 5's
+// fabricated plausible output: a consumer cannot distinguish "no matches" from "the walk broke".
+//
+// `set -o pipefail` is NOT the remedy here -- /bin/sh is dash on this platform and aborts on it
+// rather than accepting it -- so the producing stage's status is captured directly and the rows
+// travel through a temporary file, following the in-tree exemplar extdeps.rust.rustc.
+data find_pipe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: shell.Find.FilesAndSymlinksWithMode / shell.Find.FilesByNameSorted transport argv -- hand-authored shell program expanded as a string literal to capture the producing stage's exit status; this edits the failure arm of an EXISTING transport and adds no new emission site, per the gunbc.githooks_pre_push_emit precedent. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes these operations through orchestration emit or typed host_effect_apply without a medium-as-string scaffold.")
 
 service shell.Find {
   operation ListDirs {
@@ -41,7 +54,7 @@ service shell.Find {
     transport shell {
       argv: [
         "sh", "-c",
-        "find \"$1\" \\( -type f -o -type l \\) -printf '%y\\t%m\\t%P\\t%l\\n' | sort",
+        "d=$(mktemp -d) || exit 1; find \"$1\" \\( -type f -o -type l \\) -printf '%y\\t%m\\t%P\\t%l\\n' > \"$d/f\"; rc=$?; if [ $rc -eq 0 ]; then sort < \"$d/f\"; rc=$?; fi; rm -rf \"$d\"; exit $rc",
         "sh", "{root}",
       ]
     }
@@ -94,7 +107,7 @@ service shell.Find {
     transport shell {
       argv: [
         "sh", "-c",
-        "find \"$1\" -type f -name \"$2\" | sort",
+        "d=$(mktemp -d) || exit 1; find \"$1\" -type f -name \"$2\" > \"$d/f\"; rc=$?; if [ $rc -eq 0 ]; then sort < \"$d/f\"; rc=$?; fi; rm -rf \"$d\"; exit $rc",
         "sh", "{root}", "{name_glob}",
       ]
     }
