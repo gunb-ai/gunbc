@@ -72,8 +72,17 @@ type SymbolConsumerRow {
 
 fn symbol_consumer_class_blocks_decision(consumer_class: SymbolConsumerClass) -> Bool {
   match consumer_class {
+    SymbolIdentityComparison => false
+    SymbolOrdering => false
+    SymbolHashOrMapKey => false
+    SymbolLiteralConstruction => false
+    SymbolToLexeme => false
+    LexemeToSymbol => false
+    SymbolSerialization => false
+    SymbolPersistenceAcrossProcesses => false
+    SymbolUsedAsTextOperation => false
+    SymbolAtHostBoundary => false
     UnresolvedOrAmbiguousUse => true
-    _ => false
   }
 }
 
