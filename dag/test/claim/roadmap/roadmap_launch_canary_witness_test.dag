@@ -14,8 +14,10 @@ import gunbc.roadmap_execution_contract {
   contract_has_closing_validation,
 }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_spawner { spawn_frontier, next_spawnable, node_unmet_parent_ids, doc_all_nodes, doc_all_edges }
-import gunbc.roadmap_presentation { WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned, work_scheduling }
+import gunbc.roadmap_spawner { spawn_frontier, next_spawnable, node_unmet_parent_ids, node_closes_dependency, doc_all_nodes, doc_all_edges }
+import gunbc.roadmap_presentation {
+  WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle, work_lifecycle,
+  WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned, work_scheduling }
 import gunbc.roadmap_validation_oracle { OraclePinScope, OraclePinnable, OracleNotPinnable, validation_oracle_scopes }
 import gunbc.roadmap_dispatch_environment {
   DispatchEnvironmentAdmission, EnvironmentAdmitted, EnvironmentRefused,
@@ -181,12 +183,94 @@ test fn witness_canary_child_ready_after_parent_accepted() -> Bool {
     && !any(frontier.ready, n => n.node == roadmap_launch_canary_parent_node_id())
 }
 
-// Merged-but-unaccepted parent does not unlock the child (RLM-6 falsifier, at the model grain).
+// Merge evidence, LOAD-BEARING (review 5059303095): gunbc.roadmap_spawner never reads `merged`, so
+// the only consumer of a merged PR roster is gunbc.roadmap_presentation work_lifecycle ->
+// gunbc.roadmap_status item_is_done, which for a DerivableLine needs every named PR merged. The
+// merged-but-unaccepted parent is therefore built on a DerivableLine naming PR 1 with Unsigned
+// signoff, and the three lifecycle states are witnessed as three distinct decisions:
+// open/unmerged, review/merged-but-unaccepted, done/accepted.
+fn canary_parent_derivable(signoff: Signoff) -> RoadmapNode {
+  RoadmapNode {
+    identity: roadmap_launch_canary_parent_identity,
+    node: roadmap_launch_canary_parent_node_id(),
+    line: DerivableLine { prs: [1], title: "Roadmap launch canary: flip one sentinel", description: "" },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: ManualAcceptance },
+    execution: roadmap_launch_canary_execution_contract(),
+    owner: "",
+    signoff: signoff,
+  }
+}
+
+fn lifecycle_is_review(l: WorkLifecycle) -> Bool {
+  match l {
+    ReviewLifecycle => true
+    OpenLifecycle => false
+    DoneLifecycle => false
+    SupersededLifecycle => false
+  }
+}
+
+fn lifecycle_is_open(l: WorkLifecycle) -> Bool {
+  match l {
+    OpenLifecycle => true
+    ReviewLifecycle => false
+    DoneLifecycle => false
+    SupersededLifecycle => false
+  }
+}
+
+fn lifecycle_is_done(l: WorkLifecycle) -> Bool {
+  match l {
+    DoneLifecycle => true
+    OpenLifecycle => false
+    ReviewLifecycle => false
+    SupersededLifecycle => false
+  }
+}
+
+fn child_blocked_under(parent: RoadmapNode) -> Bool {
+  blocked_exactly_by(
+    doc: canary_doc(nodes: [parent, canary_child()], edges: [roadmap_launch_canary_edge()]),
+    id: roadmap_launch_canary_child_node_id(),
+    blocker: roadmap_launch_canary_parent_id as String,
+  )
+}
+
+// State 2 of 3 (RLM-6 falsifier at the model grain): merged-but-unaccepted parent is in Review,
+// does not close the dependency, and the child stays blocked by it.
 test fn witness_canary_merged_unaccepted_parent_keeps_child_blocked() -> Bool {
-  let doc = canary_graph()
-  let frontier = spawn_frontier(doc: doc, merged: [1])
-  any(frontier.upcoming, n => n.node == roadmap_launch_canary_child_node_id())
-    && !any(frontier.ready, n => n.node == roadmap_launch_canary_child_node_id())
+  let parent = canary_parent_derivable(signoff: Unsigned)
+  lifecycle_is_review(l: work_lifecycle(rn: parent, merged: [1]))
+    && !node_closes_dependency(n: parent)
+    && child_blocked_under(parent: parent)
+}
+
+// Negative control for the merge evidence: the same fixture with an empty merged roster is Open,
+// so the review conjunct above is discriminating, not a restatement of "unsigned blocks".
+test fn control_unmerged_parent_is_open_not_review() -> Bool {
+  let parent = canary_parent_derivable(signoff: Unsigned)
+  lifecycle_is_open(l: work_lifecycle(rn: parent, merged: []))
+    && !lifecycle_is_review(l: work_lifecycle(rn: parent, merged: []))
+    && !node_closes_dependency(n: parent)
+    && child_blocked_under(parent: parent)
+}
+
+// State 3 of 3: the accepted signoff is what closes the dependency -- Done, and the child Ready --
+// while the merge roster alone (state 2) never did.
+test fn witness_canary_three_lifecycle_states_are_distinct() -> Bool {
+  let open = canary_parent_derivable(signoff: Unsigned)
+  let accepted = canary_parent_derivable(signoff: accepted_signoff())
+  lifecycle_is_open(l: work_lifecycle(rn: open, merged: []))
+    && lifecycle_is_review(l: work_lifecycle(rn: open, merged: [1]))
+    && lifecycle_is_done(l: work_lifecycle(rn: accepted, merged: [1]))
+    && !node_closes_dependency(n: open)
+    && node_closes_dependency(n: accepted)
+    && child_blocked_under(parent: open)
+    && is_ready(
+      doc: canary_doc(nodes: [accepted, canary_child()], edges: [roadmap_launch_canary_edge()]),
+      id: roadmap_launch_canary_child_node_id(),
+    )
 }
 
 // Falsifier (a): delete the dependency edge -> the child no longer produces the blocked decision.
