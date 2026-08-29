@@ -1,0 +1,87 @@
+module test.claim.namespace_cut_subject_observation_witness
+
+import std.decl_ref { decl_ref }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.decl_index { FnItem }
+import v2.std.decl_ref_resolution {
+  DeclarationIdentity,
+  DeclarationRefResolved,
+  DeclarationRefModuleAbsent,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefAmbiguous,
+}
+import gunbc.namespace_cut_subject_roster {
+  NamespaceCutSubjectProbe,
+  DagDeclarationProbe,
+  HostRustItemProbe,
+  namespace_cut_subjects,
+  subject_probe_list,
+  probe_render,
+}
+import gunbc.namespace_cut_subject_observation {
+  SubjectProbeObservation,
+  SubjectProbePresent,
+  SubjectProbeAbsent,
+  SubjectProbeUnobservable,
+  observation_from_resolution,
+  observe_probe,
+  probe_is_v1,
+}
+
+// ReadsLiveTree by G1 carrier-closure honesty, exactly as v2.test.lens_enforcement.gate_test
+// records for itself: every arm below feeds AUTHORED values, but the loader closure imports the
+// observation module, which is a declared live-read carrier home, so a SubstrateInputsOnly stamp
+// would be a lying stamp. The LIVE execution evidence for this instrument is its own runnable
+// report (subject_roster_report), exercised by the manager rather than by the floor.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn fixture_probe() -> NamespaceCutSubjectProbe {
+  DagDeclarationProbe { module_path: "v1.compiler.parse", decl_name: "parse_import" }
+}
+
+// The resolvable citation is carried because a DeclarationRef naming nothing is refused at
+// ingestion; the mapping under test never resolves it.
+fn observation_kind(o: SubjectProbeObservation) -> String {
+  match o {
+    SubjectProbePresent { probe: _ } => "present"
+    SubjectProbeAbsent { probe: _ } => "absent"
+    SubjectProbeUnobservable { probe: _, why: _ } => "unobservable"
+  }
+}
+
+// The mapping's four decided rows: resolved is the only Present, both absence arms are Absent,
+// and ambiguity refuses to answer -- the arm whose collapse into Absent would fabricate a
+// completed deletion out of a corpus defect.
+test fn resolution_maps_to_observation_without_collapsing_ambiguity() -> Bool {
+  let r = decl_ref(module_path: "gunbc.required_ci_phase_roster", decl_name: "required_ci_phases")
+  let ident = DeclarationIdentity { qualified_name: "fixture.q", name: "fixture", rel_path: "fixture.dag", kind: FnItem }
+  observation_kind(o: observation_from_resolution(p: fixture_probe(), r: DeclarationRefResolved { declaration_identity: ident })) == "present"
+    && observation_kind(o: observation_from_resolution(p: fixture_probe(), r: DeclarationRefModuleAbsent { reference: r })) == "absent"
+    && observation_kind(o: observation_from_resolution(p: fixture_probe(), r: DeclarationRefDeclarationAbsent { reference: r })) == "absent"
+    && observation_kind(o: observation_from_resolution(p: fixture_probe(), r: DeclarationRefAmbiguous { reference: r, candidates: [DeclarationIdentity { qualified_name: "fixture.a", name: "a", rel_path: "fixture.dag", kind: FnItem }, DeclarationIdentity { qualified_name: "fixture.b", name: "b", rel_path: "fixture.dag", kind: FnItem }] })) == "unobservable"
+}
+
+// A host probe refuses on EMPTY facts rather than answering Absent -- handed a fact population
+// that contains nothing, it must not fabricate a deletion.
+test fn a_host_probe_refuses_rather_than_answering_from_no_instrument() -> Bool {
+  let p = HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "extract_import_paths" }
+  observation_kind(o: observe_probe(p: p, facts: [], modules: [])) == "unobservable"
+}
+
+// A dag probe over EMPTY module facts answers Absent by the module-absent route -- authored
+// facts, so the arm is exercised without any tree state moving it. Beside it, the pool split:
+// a v1 probe and a v2 probe classify to different acquisitions, both ways.
+test fn a_dag_probe_over_authored_empty_facts_is_absent_and_pools_split_both_ways() -> Bool {
+  observation_kind(o: observe_probe(p: fixture_probe(), facts: [], modules: [])) == "absent"
+    && probe_is_v1(p: fixture_probe())
+    && !probe_is_v1(p: DagDeclarationProbe { module_path: "v2.compiler.name_resolve", decl_name: "admit_imports" })
+}
+
+// Every subject's probes render distinctly -- a duplicated probe row would double a report line
+// and a deletion milestone's outstanding member.
+test fn every_probe_render_is_distinct_across_the_roster() -> Bool {
+  let renders = namespace_cut_subjects
+    |> flat_map(s => subject_probe_list(s: s))
+    |> map(p => probe_render(p: p))
+  all(renders, r => count(renders |> filter(other => other == r)) == 1)
+}

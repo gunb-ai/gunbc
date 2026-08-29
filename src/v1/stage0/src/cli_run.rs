@@ -5040,7 +5040,7 @@ fn entry_file_touched_via_import_closure(
 }
 
 /// Receipted Rust mirror of the single authority `v2.std.live_read.live_read_carrier_homes_v0`
-/// (`src/v2/std/live_read.dag`) — the module names of the 8 declared live-read carrier homes.
+/// (`src/v2/std/live_read.dag`) — the module names of the declared live-read carrier homes.
 /// Kept in lockstep with that `.dag` roster by hand; a drift here under-approximates axis (iv)
 /// fail-closed-safe direction only if this list is a SUPERSET of the `.dag` roster, so any
 /// addition to the `.dag` roster must be mirrored here — the drift gate below
@@ -5063,6 +5063,7 @@ const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
     "v2.lens.module_graph",
     "tools.dag_compile_clean_shard_roster",
     "tools.dag_compile_clean_scope",
+    "gunbc.namespace_cut_subject_observation",
 ];
 
 fn runtime_data_dependency_touched_via_carrier_closure(
