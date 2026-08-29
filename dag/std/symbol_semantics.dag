@@ -1,0 +1,115 @@
+module std.symbol_semantics
+
+import std.types { List, String, Bool, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+
+// WHAT A SYMBOL TYPE IS, ASKED BEFORE HOW A TARGET SPELLS IT. A symbol is a name-valued atom; the
+// question a realization must answer is what its IDENTITY is decided by. Two semantics exist in
+// practice and they are not interchangeable:
+//   LexemeBackedNominal -- a symbol IS its lexeme. Equality, ordering, hashing and serialization are
+//                          all decided by the lexeme; interning and its inverse are bijective and
+//                          total; no table exists, so identity is stable across processes by
+//                          construction. What distinguishes the symbol from text is NOMINAL: text
+//                          operations are not defined on it, only on the lexeme obtained through the
+//                          declared conversion.
+//   InternedIdentity    -- a symbol is an index into an intern table. Equality and hashing are by
+//                          index; the lexeme is recovered through the table; ordering, serialization
+//                          and cross-process identity are facts about the TABLE's scope, and the
+//                          conversions are real operations rather than identities.
+// A realization that picks a representation without this decision is choosing semantics by
+// accident (DESIGN section 2: the concept first, the representation derived).
+type SymbolIdentitySemantics
+  = LexemeBackedNominal
+  | InternedIdentity
+
+type IdentityLaw
+  = DecidedByLexeme
+  | DecidedByInternId
+
+type InternTableScope
+  = NoInternTable
+  | ProcessLocalInternTable
+  | PersistentInternTable
+
+// The eight questions a consumer census must answer before a representation is chosen, carried as
+// typed fields so the decision is checkable against the semantics it claims (symbol_semantics_
+// decision_coherent) rather than asserted in prose.
+type SymbolSemanticsDecision {
+  semantics: SymbolIdentitySemantics
+  equality: IdentityLaw
+  ordering: IdentityLaw
+  hashing: IdentityLaw
+  serialization: IdentityLaw
+  intern_table: InternTableScope
+  text_operations_permitted_on_symbol: Bool
+  literals_canonicalized_beyond_lexeme: Bool
+  distinct_lexemes_yield_distinct_symbols: Bool
+}
+
+// One axis of what a use of a symbol type DOES, at the grain a representation decision needs.
+// UnresolvedOrAmbiguousUse is the arm that blocks: a use whose declaration identity the resolver
+// cannot settle contributes no evidence and forbids the decision until it is settled.
+type SymbolConsumerClass
+  = SymbolIdentityComparison
+  | SymbolOrdering
+  | SymbolHashOrMapKey
+  | SymbolLiteralConstruction
+  | SymbolToLexeme
+  | LexemeToSymbol
+  | SymbolSerialization
+  | SymbolPersistenceAcrossProcesses
+  | SymbolUsedAsTextOperation
+  | SymbolAtHostBoundary
+  | UnresolvedOrAmbiguousUse
+
+// A census row names the SYMBOL that is the evidence (DESIGN section 3 standing rule), never a
+// position, and states what was read there.
+type SymbolConsumerRow {
+  consumer_class: SymbolConsumerClass
+  exemplar: DeclarationRef
+  evidence: NonEmptyStr
+}
+
+fn symbol_consumer_class_blocks_decision(consumer_class: SymbolConsumerClass) -> Bool {
+  match consumer_class {
+    UnresolvedOrAmbiguousUse => true
+    _ => false
+  }
+}
+
+fn identity_law_is_lexeme(law: IdentityLaw) -> Bool {
+  match law {
+    DecidedByLexeme => true
+    DecidedByInternId => false
+  }
+}
+
+fn intern_table_is_absent(scope: InternTableScope) -> Bool {
+  match scope {
+    NoInternTable => true
+    ProcessLocalInternTable => false
+    PersistentInternTable => false
+  }
+}
+
+// THE Eq/Hash/Ord COHERENCE LAW, per semantics. Under LexemeBackedNominal every law is decided by
+// the lexeme, there is no table, canonicalization beyond the lexeme would make two spellings one
+// symbol (contradicting lexeme identity), and distinct lexemes are distinct symbols. Under
+// InternedIdentity equality and hashing are decided by the index and a table exists. A decision
+// that claims one semantics and answers the questions like the other is incoherent and refused.
+fn symbol_semantics_decision_coherent(decision: SymbolSemanticsDecision) -> Bool {
+  match decision.semantics {
+    LexemeBackedNominal =>
+      identity_law_is_lexeme(law: decision.equality)
+        && identity_law_is_lexeme(law: decision.ordering)
+        && identity_law_is_lexeme(law: decision.hashing)
+        && identity_law_is_lexeme(law: decision.serialization)
+        && intern_table_is_absent(scope: decision.intern_table)
+        && !decision.literals_canonicalized_beyond_lexeme
+        && decision.distinct_lexemes_yield_distinct_symbols
+    InternedIdentity =>
+      !identity_law_is_lexeme(law: decision.equality)
+        && !identity_law_is_lexeme(law: decision.hashing)
+        && !intern_table_is_absent(scope: decision.intern_table)
+  }
+}

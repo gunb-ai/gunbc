@@ -1,0 +1,101 @@
+module gunbc.symbol_identity_census
+
+import std.types { List, String, Bool, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.symbol_semantics {
+  SymbolIdentitySemantics, LexemeBackedNominal, InternedIdentity,
+  IdentityLaw, DecidedByLexeme, DecidedByInternId,
+  InternTableScope, NoInternTable,
+  SymbolSemanticsDecision, SymbolConsumerClass, SymbolConsumerRow,
+  SymbolIdentityComparison, SymbolOrdering, SymbolHashOrMapKey, SymbolLiteralConstruction,
+  SymbolToLexeme, LexemeToSymbol, SymbolSerialization, SymbolPersistenceAcrossProcesses,
+  SymbolUsedAsTextOperation, SymbolAtHostBoundary, UnresolvedOrAmbiguousUse,
+  symbol_consumer_class_blocks_decision
+}
+import extdeps.languages.rust.representation { RustRepresentation, RustStdString, RustSymbolNewtype }
+
+data symbol_identity_subject: DeclarationRef = decl_ref(module_path: "v2.std.node", decl_name: "Symbol")
+
+// THE QUESTION THIS MODULE ANSWERS, AND THE ONE IT REFUSES TO ASK. v2.std.node Symbol is an opaque
+// declaration; v2.std.text String is a structural FreeMonoid<Char>; v2.std.compilers.lexing declares
+// two CONVERSIONS between them (symbol_intern_lexeme, symbol_lexeme), not an alias. So the source
+// already says they are distinct declaration identities, and "is Symbol an alias of String" is not
+// the question. The question is what semantics the distinct Symbol REQUIRES, read off its consumers
+// at exact identity, and which Rust representation preserves them. The bare-name checkpoint row
+// (Symbol -> String) and the identity bridges in v1_rt are incumbent representation evidence only.
+//
+// CENSUS METHOD, so it can be rerun rather than believed. The subject has exactly one declaration in
+// the corpus (grep `^type Symbol` over dag/ and src/v2/), so every resolved reference spelled Symbol
+// is a use of this identity; a module reaches it either by importing it from v2.std.node or by
+// namespace-only resolution (DESIGN's open thread; XL-0 measured that the declarer modules of the
+// capture population resolve Symbol that way, so the identity a renderer threads must come from the
+// resolver's binding, not the import list). Each row below names the SYMBOL read as evidence.
+fn symbol_census_row(consumer_class: SymbolConsumerClass, module_path: String, decl_name: String, evidence: String) -> SymbolConsumerRow {
+  SymbolConsumerRow {
+    consumer_class: consumer_class,
+    exemplar: decl_ref(module_path: module_path, decl_name: decl_name),
+    evidence: evidence as NonEmptyStr
+  }
+}
+
+fn symbol_identity_census_rows() -> List<SymbolConsumerRow> {
+  [
+    symbol_census_row(consumer_class: SymbolLiteralConstruction, module_path: "v1.compiler.parse", decl_name: "parse_caret_expr", evidence: "`^ident` lexes as ShCaret + identifier and builds ExprLiteral LitSymbol with the identifier's spelling; no normalization beyond the lexeme, so two spellings are two symbols and one spelling is one symbol. v1.compiler.types types the literal string_type."),
+    symbol_census_row(consumer_class: SymbolLiteralConstruction, module_path: "v1.compiler.emit", decl_name: "emit_literal", evidence: "LitSymbol emits as the lexeme string literal with the target's string suffix (Rust: \"x\".to_string()); the value IS the lexeme at the target."),
+    symbol_census_row(consumer_class: SymbolIdentityComparison, module_path: "v2.std.node", decl_name: "labeled_named_is", evidence: "Named-edge label equality is `==` on two Symbols; the interpreter holds both as Value::Str, so equality is lexical, and emitted Rust compares the host strings."),
+    symbol_census_row(consumer_class: SymbolOrdering, module_path: "v2.std.node", decl_name: "label_sort_key", evidence: "Edge ordering sorts by a Symbol key through sort_by; the only order a lexeme-valued key has is lexical, and canonical child order depends on it being deterministic across processes."),
+    symbol_census_row(consumer_class: SymbolHashOrMapKey, module_path: "v2.std.node", decl_name: "symbol_identity_digest", evidence: "The content hash of a Symbol is content_hash_atom(value: sym), whose parameter is std.types NonEmptyStr: hashing CONSUMES THE LEXEME, and the call passes a Symbol where text is declared -- the source itself exploits the Symbol/String erasure, accepted by the v1 checker."),
+    symbol_census_row(consumer_class: SymbolHashOrMapKey, module_path: "v2.std.compilers.lexing", decl_name: "TokenRule", evidence: "Symbol keys Map and Set carriers throughout src/v2 (the census script counts 238 `Map<Symbol,..>`/`Set<Symbol>` positions); a map keyed on a lexeme-valued symbol needs Eq/Hash coherent with lexical equality."),
+    symbol_census_row(consumer_class: SymbolToLexeme, module_path: "v2.std.compilers.lexing", decl_name: "symbol_lexeme", evidence: "Declared Symbol -> String with a self-call body (a host seam, std.primitive_projection symbol_lexeme_seam_disposition_note); realized as the identity in the interpreter (coproduct_reflection eval_symbol_lexeme) and in v1_rt."),
+    symbol_census_row(consumer_class: LexemeToSymbol, module_path: "v2.std.compilers.lexing", decl_name: "symbol_intern_lexeme", evidence: "Declared Lexeme -> Symbol, the inverse seam; realized as the identity in both hosts, so intern(lexeme(s)) == s and lexeme(intern(l)) == l hold by construction and no table exists to scope."),
+    symbol_census_row(consumer_class: SymbolSerialization, module_path: "v1.compiler.emit", decl_name: "emit_json_literal", evidence: "A LitSymbol serializes as the JSON string of its lexeme; Node identities in receipts are therefore lexeme-keyed on disk."),
+    symbol_census_row(consumer_class: SymbolPersistenceAcrossProcesses, module_path: "std.content_hash", decl_name: "content_hash_atom", evidence: "Cross-process identity is the content hash of the lexeme (FNV-1a over the bytes), stable by construction across processes and generations; an intern id would NOT be, since no table is persisted or shared."),
+    symbol_census_row(consumer_class: SymbolUsedAsTextOperation, module_path: "v2.std.node", decl_name: "symbol_identity_digest", evidence: "The one text-typed operation a Symbol flows into without conversion is hashing through a NonEmptyStr parameter (content_hash_atom), at symbol-literal and symbol-variable call sites across the corpus; no concat/split/index of a Symbol was found (census script: zero `concat(` sites with a `^` literal argument)."),
+    symbol_census_row(consumer_class: SymbolAtHostBoundary, module_path: "v1.std.core", decl_name: "LitSymbol", evidence: "The host holds a Symbol as Value::Str exactly as it holds a String; the only host seams are the two lexing conversions and JSON, all lexeme-valued."),
+    symbol_census_row(consumer_class: SymbolAtHostBoundary, module_path: "v1.compiler.types", decl_name: "literal_type", evidence: "The v1 checker types LitSymbol as string_type and types the authored name `String` as string_type by spelling: at the kernel the two are one type, which is why a Symbol may flow into a NonEmptyStr parameter unrefused today.")
+  ]
+}
+
+fn symbol_identity_census_blocks_decision() -> Bool {
+  symbol_identity_census_rows() |> any(r => symbol_consumer_class_blocks_decision(consumer_class: r.consumer_class))
+}
+
+// THE DECISION, each field answered by a row above, checkable against the semantics it claims by
+// std.symbol_semantics symbol_semantics_decision_coherent.
+data symbol_identity_decision: SymbolSemanticsDecision = SymbolSemanticsDecision {
+  semantics: LexemeBackedNominal,
+  equality: DecidedByLexeme,
+  ordering: DecidedByLexeme,
+  hashing: DecidedByLexeme,
+  serialization: DecidedByLexeme,
+  intern_table: NoInternTable,
+  text_operations_permitted_on_symbol: false,
+  literals_canonicalized_beyond_lexeme: false,
+  distinct_lexemes_yield_distinct_symbols: true
+}
+
+// THE REPRESENTATION, AND WHY IT IS NOT THE NEWTYPE. LexemeBackedNominal admits two Rust
+// representations: `std::string::String` (the lexeme itself, nominal distinction erased at the
+// target) and `struct Symbol(std::string::String)` (nominal distinction enforced by rustc). The
+// newtype is the higher DESIGN section 4b rung and was not chosen, for a measured reason rather than
+// a convenience: the erasure is exploited at the SOURCE with the source checker's blessing
+// (SymbolUsedAsTextOperation and the literal_type row above -- a Symbol flows into NonEmptyStr at
+// hashing sites corpus-wide because v1.compiler.types makes Symbol literals and `String` one type).
+// A Rust newtype would make rustc refuse programs the .dag checker Accepts, which is a realization
+// disagreeing with its source about what is a program -- a divergence, not a wall. The wall belongs
+// at the source: when the .dag checker distinguishes v2.std.node Symbol from String, those sites are
+// repaired to pass symbol_lexeme(sym) explicitly and the newtype becomes byte-consistent with the
+// source; that capability is the trigger below. Until then the qualified `std::string::String` is
+// the faithful realization and the two lexing seams stay identities (v1_rt symbol_lexeme /
+// symbol_intern_lexeme), exactly as the freeze already realizes them.
+type SymbolRepresentationRuling {
+  chosen: RustRepresentation
+  next_rung: RustRepresentation
+  next_rung_trigger: NonEmptyStr
+}
+
+data symbol_representation_ruling: SymbolRepresentationRuling = SymbolRepresentationRuling {
+  chosen: RustStdString,
+  next_rung: RustSymbolNewtype,
+  next_rung_trigger: "The .dag type checker distinguishes v2.std.node Symbol from the kernel string type and from v2.std.text String -- refusing a Symbol at a String/NonEmptyStr parameter and a String at a Symbol parameter on the required floor -- with every SymbolUsedAsTextOperation site repaired through symbol_lexeme. Only then can struct Symbol(std::string::String) be emitted without the realization refusing an Accepted program." as NonEmptyStr
+}
