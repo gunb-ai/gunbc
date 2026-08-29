@@ -6,6 +6,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data emitted_call_target_realization_witness_note: String = "PERMANENT REGRESSION CONTROLS for the three emission defects that stood between the v2 compiler closure and a Rust crate rustc would accept (gunbc#9664 milestones 1 and 2). All three are one family -- emission ASSERTING a realization it had not established -- and each row here is the discriminating RED for one of them, paired with a boundary control that would go red if the repair had over-reached in the opposite direction.\n\nMEASURED POPULATIONS on the emitted closure at main 6447dd4, by `gunbc compile --entry src/v2/compiler/00_compile.dag --target rust` then `cargo check`: 260 coded errors, 254 of them E0425. Class C 102 (98 `v2` + 4 `std`), length 73, class B 65 (member 11, apply 11, is_empty 5, allocate_literal 4, step 3, init 3, and a tail of ones and twos).\n\nWHY THESE ARE NOT A SNAPSHOT. Each class's positive and negative assertion differ only in the fact the repair added, so no single edit satisfies both directions. The C rows would flip if decl_name reverted to the authored spelling; the length rows would flip if the registry membership gate were removed OR if the declaration fallback were extended to seams; the B rows would flip if runtime_bridge went back to a literal. The boundary controls (empty_map, a real bridge method) would flip if any of the three repairs had instead stopped emission reaching v1_rt at all.\n\nDISSOLVE-ON: never. Emission may change target SPELLING, but it may never again name a runtime symbol it has not established exists."
 
+// THE PROBE IMPORTS v2.std.collection AND THEN CALLS IT BY ITS QUALIFIED NAME, which looks
+// redundant and is not. compile_dag_rust_emit_check compiles through the witness harness's
+// restricted pool (2973 modules against the corpus's 4261), and a qualified spelling alone does not
+// put the target module in it -- so without the import this row FAILED while the repair was green,
+// which is how it was found. Measured both ways: the same probe emitted against the real corpus
+// produces `crate::v2_std_collection::map_get(m.clone(), "key".to_string())` exactly as asserted.
+// The import restores module presence; it does not answer the call, because decl_name is taken from
+// the authored spelling at the CALL SITE regardless of what is imported -- which is why the
+// negative assertion below still discriminates, and why falsifier 2 (restore the dotted spelling)
+// must red this row.
+//
 // CLASS C, THE DISCRIMINATING RED. A qualified call carried the whole dotted path as its
 // declaration name, so emission produced `crate::v2_std_collection::v2.std.collection.map_get(..)`
 // -- the module prefix correct and the identifier a dotted path Rust reads as field access on an
@@ -13,7 +24,7 @@ data emitted_call_target_realization_witness_note: String = "PERMANENT REGRESSIO
 // row proves the qualified path reaches the DECLARATION and not the bridge.
 test fn w_qualified_call_emits_only_the_declaration_last_segment() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.qualified_call_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.diagnostic { Outcome }\nimport v2.std.optional { Optional }\nfn probe(m: Map<String, Int>) -> Outcome<Optional<Int>> { v2.std.collection.map_get(m: m, key: \"key\") }\n",
+    "module test.claim.qualified_call_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { map_get }\nimport v2.std.diagnostic { Outcome }\nimport v2.std.optional { Optional }\nfn probe(m: Map<String, Int>) -> Outcome<Optional<Int>> { v2.std.collection.map_get(m: m, key: \"key\") }\n",
     "src/test_claim_qualified_call_probe.rs",
     ["crate::v2_std_collection::map_get("],
     ["::v2.std.collection", "v2.std.collection.map_get("]
